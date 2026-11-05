@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = एंटीवायरस स्कैन, फिर संक्रमित फ़ाइलों का खोज गुण
 processing-update-tables-title = तालिकाएँ
 processing-update-tables-explanation = { $files ->
-    [one] { $count } फ़ाइल JSON या JSON Lines फ़ाइल है जिसकी वर्तमान रीडर की तालिका नहीं है, या ऐसी तालिका है जिसे पुराने रीडर ने 300 कॉलम पर काट दिया था।
-   *[other] { $count } फ़ाइलें JSON या JSON Lines फ़ाइलें हैं जिनकी वर्तमान रीडर की तालिका नहीं है, या ऐसी तालिकाएँ हैं जिन्हें पुराने रीडर ने 300 कॉलम पर काट दिया था।
-} उन्हें फिर से पढ़ा जाता है। जिन JSON फ़ाइलों को पुराने रीडर ने CSV के रूप में पढ़ा था, उन्हें उनकी JSON तालिका मिलती है, और पुराने सेल दिखना बंद हो जाते हैं। मौजूदा रीडर JSON के null मान को खाली सेल के रूप में और नेस्टेड JSON को इंडेंट किए गए टेक्स्ट के रूप में सहेजता है।
-processing-update-tables-runs = तालिका पढ़ना, फिर इन फ़ाइलों का फ़ाइल प्रकार और इंडेक्सिंग
+    [one] { $count } फ़ाइल में पुराना तालिका पठन या अधूरे निर्भर परिणाम हैं। उसके संग्रहीत परिणाम अपडेट किए जाते हैं।
+    *[other] पुराने तालिका पठन या अधूरे निर्भर परिणामों वाली फ़ाइलें: { $count }। उनके संग्रहीत परिणाम अपडेट किए जाते हैं।
+    }
+
+processing-update-tables-runs = तालिका पठन, इकाइयाँ, संकेत, एम्बेडिंग और दोनों अनुक्रमणिकाएँ
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] लगभग { $count } फ़ाइल में वर्तमान भाषाओं का OCR टेक्स्ट नहीं है, या उन भाषाओं का OCR टेक्स्ट रखती है जो अब सेटिंग में नहीं हैं।
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = फ़ोल्डर ट्री
 admin-uploads-badge = अपलोड
 admin-uploads-badge-title = अपलोड स्वीकार करता है
+
+processing-update-archive_members-title = संग्रह के सदस्य
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } विभाजित संग्रह को वर्तमान सदस्य सूची चाहिए। उसके सदस्य और खोज परिणाम अपडेट किए जाते हैं।
+    *[other] वर्तमान सदस्य सूचियों की आवश्यकता वाले विभाजित संग्रह: { $count }। उनके सदस्य और खोज परिणाम अपडेट किए जाते हैं।
+    }
+
+processing-update-archive_members-runs = संग्रह निष्कर्षण, सदस्यों का मिलान और निर्भर प्रसंस्करण
+
+processing-update-image_previews-title = चित्र पूर्वावलोकन
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } असामान्य चित्र का पूर्वावलोकन नहीं है। उसका पूर्वावलोकन फिर से बनाया जाता है।
+    *[other] पूर्वावलोकन रहित असामान्य चित्र: { $count }। उनके पूर्वावलोकन फिर से बनाए जाते हैं।
+    }
+
+processing-update-image_previews-runs = चित्र पूर्वावलोकन बनाना और सत्यापन
+
+processing-update-search_terms-title = खोज शब्द
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } खोज तालिका को वर्तमान फ़िल्टर शब्द चाहिए। भाषा, OCR, लिपि और रेड फ़्लैग के शब्द खोजे जा सकेंगे।
+    *[other] वर्तमान फ़िल्टर शब्दों की आवश्यकता वाली खोज तालिकाएँ: { $count }। भाषा, OCR, लिपि और रेड फ़्लैग के शब्द खोजे जा सकेंगे।
+    }
+
+processing-update-search_terms-runs = फ़िल्टर शब्दों का अनुक्रमण और सत्यापन

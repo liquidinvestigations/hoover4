@@ -203,3 +203,16 @@ preview-with-search-next = Dalej: { $label }
 document-entities-panel-as-written =
     { $value }
     jak zapisano: { $written }
+
+preview-for-archive-search = Szukaj w tym archiwum
+
+preview-for-archive-search-zip = Szukaj w tym pliku ZIP
+
+email-graph-incomplete = { $count ->
+    [one] Wyświetlono { $count } wiadomość. Łączna liczba jest niepełna.
+    [few] Wyświetlono { $count } wiadomości. Łączna liczba jest niepełna.
+    [many] Wyświetlono { $count } wiadomości. Łączna liczba jest niepełna.
+    *[other] Wyświetlono { $count } wiadomości. Łączna liczba jest niepełna.
+    }
+
+email-graph-copies = Dostępne kopie: { $count }

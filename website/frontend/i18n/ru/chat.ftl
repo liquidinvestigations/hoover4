@@ -259,7 +259,13 @@ ai-chat-history-could-not-load-history = Не удалось загрузить 
 ai-chat-history-no-conversations-yet = Бесед пока нет.
 ai-chat-history-board = Доска
 ai-chat-history-new-chat = Новый чат
-ai-chat-history-messages-updated = Сообщений: { $s_message_count } · обновлено { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } сообщение · обновлено { $s_updated_at }
+    [few] { $s_message_count } сообщения · обновлено { $s_updated_at }
+    [many] { $s_message_count } сообщений · обновлено { $s_updated_at }
+    *[other] { $s_message_count } сообщения · обновлено { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Удалить беседу
 ai-chat-history-delete = Удалить
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - ИИ-чат
@@ -296,7 +302,13 @@ chat-transcript-calls = вызовы инструментов
 ai-chat-board-a-board-without-collections-needs = Доске без коллекций нужны интернет-инструменты.
 ai-chat-board-of = { $snap_explores_used } из { $snap_max_explores }
 ai-chat-board-assessment-2 = оценка { $number }
-ai-chat-history-messages = Сообщений: { $s_message_count }
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } сообщение
+    [few] { $s_message_count } сообщения
+    [many] { $s_message_count } сообщений
+    *[other] { $s_message_count } сообщения
+    }
+
 web-search-card-reranked-in = Кросс-энкодер ранжировал результаты за { $ms } мс.
 web-search-card-engine-results = { $name }: { $count } за { $ms } мс
 web-search-card-score-was-rank = оценка { $score } · было RRF #{ $rank }
@@ -455,7 +467,13 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = сбоев: { $failures }
 tool-run-summary-took = заняло { $duration_text_ms }
-chat-session-card-messages = Сообщений: { $session_message_count }
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } сообщение
+    [few] { $session_message_count } сообщения
+    [many] { $session_message_count } сообщений
+    *[other] { $session_message_count } сообщения
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } элемент
         [few] { $count } элемента
@@ -504,3 +522,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · до�
 cards-result-cards-version-unchanged = { $tool_name } · версия { $version } · без изменений
 cards-result-cards-version = { $tool_name } · версия { $version }
 web-search-card-results-in-after-deduplication = Получено результатов: { $json_u64_doc_total_before_dedupe }, после удаления дубликатов: { $json_u64_doc_total_after_dedupe }
+
+board-status-on = Включено
+
+board-status-off = Выключено
+
+chat-transcript-generic-tool = инструмент

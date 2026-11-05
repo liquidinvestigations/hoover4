@@ -165,3 +165,375 @@ search-filter-modal-search-entity-type = Ara: { $kind }…
 search-filter-modal-show-results = { $total } sonucu göster
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Henüz uygulanmadı. Ara'ya basın.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Altında
+
+facet-label-over = Üzerinde
+
+facet-language-en = İngilizce
+
+facet-language-de = Almanca
+
+facet-language-es = İspanyolca
+
+facet-language-fr = Fransızca
+
+facet-language-pl = Lehçe
+
+facet-language-pt = Portekizce
+
+facet-language-ar = Arapça
+
+facet-language-he = İbranice
+
+facet-language-hi = Hintçe
+
+facet-language-zh = Çince
+
+facet-language-it = İtalyanca
+
+facet-language-nl = Felemenkçe
+
+facet-language-da = Danca
+
+facet-language-nb = Norveççe Bokmål
+
+facet-language-sv = İsveççe
+
+facet-language-el = Yunanca
+
+facet-language-hr = Hırvatça
+
+facet-language-ro = Rumence
+
+facet-language-ru = Rusça
+
+facet-language-ja = Japonca
+
+facet-language-ko = Korece
+
+facet-language-tr = Türkçe
+
+facet-language-af = Afrikanca
+
+facet-language-als = Tosk Arnavutça
+
+facet-language-am = Etiyopyaca
+
+facet-language-an = Aragonca (İspanya)
+
+facet-language-arz = Mısır Arapçası
+
+facet-language-as = Assamese (Hindistan)
+
+facet-language-ast = Asturyasça
+
+facet-language-av = Avarca
+
+facet-language-az = Azerice
+
+facet-language-azb = Güney Azerice
+
+facet-language-ba = Başkurtça
+
+facet-language-bar = Bavarian
+
+facet-language-bcl = Merkez Bikol dili
+
+facet-language-be = Belarusça
+
+facet-language-bg = Bulgarca
+
+facet-language-bh = bh
+
+facet-language-bn = Bengalce
+
+facet-language-bo = Tibetçe
+
+facet-language-bpy = Bishnupriya
+
+facet-language-br = Bretonca
+
+facet-language-bs = Boşnakça
+
+facet-language-bxr = Rusya Buriat dili
+
+facet-language-ca = Katalanca
+
+facet-language-cbk = Chavacano
+
+facet-language-ce = Çeçence
+
+facet-language-ceb = Cebuano (Filipinler)
+
+facet-language-ckb = Orta Kürtçe
+
+facet-language-co = Korsikaca
+
+facet-language-cs = Çekçe
+
+facet-language-cv = Çuvaş (Türkçe)
+
+facet-language-cy = Gal Dili
+
+facet-language-diq = Dimli (kullanılmayan dil)
+
+facet-language-dsb = Aşağı Sorbca
+
+facet-language-dty = Dotyali
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estonca
+
+facet-language-eu = Baskça
+
+facet-language-fa = Farsça
+
+facet-language-fi = Fince
+
+facet-language-frr = Kuzey Frizya dili
+
+facet-language-fy = Batı Frizya dili
+
+facet-language-ga = İrlandaca
+
+facet-language-gd = gd
+
+facet-language-gl = Galiçyaca
+
+facet-language-gn = Guarani
+
+facet-language-gom = gom
+
+facet-language-gu = Gujarati
+
+facet-language-gv = Manx (Galler)
+
+facet-language-hif = Fiji Hintçesi
+
+facet-language-hsb = Yukarı Sorbca
+
+facet-language-ht = Haiti dili
+
+facet-language-hu = Macarca
+
+facet-language-hy = Ermenice
+
+facet-language-ia = Interlingua (Uluslararası Yapay Dil Derneği)
+
+facet-language-id = Endonezyaca
+
+facet-language-ie = Interlingue
+
+facet-language-ilo = Iloko
+
+facet-language-io = Ido
+
+facet-language-is = İzlandaca
+
+facet-language-jbo = Lojban
+
+facet-language-jv = Cava dili
+
+facet-language-ka = Gürcüce
+
+facet-language-kk = Kazakça
+
+facet-language-km = km
+
+facet-language-kn = Kannada
+
+facet-language-krc = Karachay-Balkar
+
+facet-language-ku = Kürtçe
+
+facet-language-kv = Komi
+
+facet-language-kw = Cornish (Kelt)
+
+facet-language-ky = Kırgızca
+
+facet-language-la = Latince
+
+facet-language-lb = Luxembourgish
+
+facet-language-lez = Lezghian
+
+facet-language-li = Limburgan
+
+facet-language-lmo = Lombard
+
+facet-language-lo = Laoca
+
+facet-language-lrc = Kuzey Luri dili
+
+facet-language-lt = Litvanyaca
+
+facet-language-lv = Letonca
+
+facet-language-mai = Maithili
+
+facet-language-mg = Malgaşça
+
+facet-language-mhr = mhr
+
+facet-language-min = Minangkabau
+
+facet-language-mk = Makedonca
+
+facet-language-ml = Malayalam
+
+facet-language-mn = Moğolca
+
+facet-language-mr = Marathi
+
+facet-language-mrj = Batı Mari dili
+
+facet-language-ms = Malayca (macrolanguage)
+
+facet-language-mt = Maltaca
+
+facet-language-mwl = Miranda dili
+
+facet-language-my = Birmanca
+
+facet-language-myv = Erzya
+
+facet-language-mzn = Mazanderani
+
+facet-language-nah = nah
+
+facet-language-nap = Neapolitan
+
+facet-language-nds = Aşağı Almanca
+
+facet-language-ne = Nepalce (makro dil)
+
+facet-language-new = new
+
+facet-language-nn = Norveççe Nynorsk
+
+facet-language-no = Norveççe
+
+facet-language-oc = Occitan (post 1500)
+
+facet-language-or = Oriya (makro dil)
+
+facet-language-os = Ossetian
+
+facet-language-pa = Panjabi
+
+facet-language-pam = Pampanga
+
+facet-language-pfl = Pfaelzisch
+
+facet-language-pms = Piemontese
+
+facet-language-pnb = pnb
+
+facet-language-ps = Pushto
+
+facet-language-qu = Quechua
+
+facet-language-rm = Romansh
+
+facet-language-rue = Rusyn
+
+facet-language-sa = Sanskrit
+
+facet-language-sah = Yakut
+
+facet-language-sc = Sardince
+
+facet-language-scn = Sicilian
+
+facet-language-sco = Scots
+
+facet-language-sd = Sindhi
+
+facet-language-sh = Sırp-Hırvat Dili
+
+facet-language-si = Sinhala
+
+facet-language-sk = Slovakça
+
+facet-language-sl = Slovence
+
+facet-language-so = Somali Dili
+
+facet-language-sq = Arnavutça
+
+facet-language-sr = Sırpça
+
+facet-language-su = Sundaca
+
+facet-language-sw = Svahili (macrolanguage)
+
+facet-language-ta = Tamilce
+
+facet-language-te = Telugu
+
+facet-language-tg = Tacikçe
+
+facet-language-th = Tayca
+
+facet-language-tk = Türkmence
+
+facet-language-tl = Tagalogca
+
+facet-language-tt = Tatarca
+
+facet-language-tyv = Tuvinian
+
+facet-language-ug = Uygurca
+
+facet-language-uk = Ukraynaca
+
+facet-language-ur = Urduca
+
+facet-language-uz = Özbekçe
+
+facet-language-vec = Venetian
+
+facet-language-vep = Veps
+
+facet-language-vi = Vietnamca
+
+facet-language-vls = Vlaams
+
+facet-language-vo = Volapük
+
+facet-language-wa = Valonca
+
+facet-language-war = Waray (Philippines)
+
+facet-language-wuu = Wu Çince
+
+facet-language-xal = Kalmyk
+
+facet-language-xmf = Mingrelian
+
+facet-language-yi = Yiddiş
+
+facet-language-yo = Yoruba
+
+facet-language-yue = Yue Çince

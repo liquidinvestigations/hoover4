@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Antivirusscan, daarna het zoekkenmerk van geïnfecteerde bestanden
 processing-update-tables-title = Tabellen
 processing-update-tables-explanation = { $files ->
-    [one] { $count } bestand is een JSON- of JSON Lines-bestand zonder tabel van de huidige reader, of een tabel die een eerdere reader bij 300 kolommen heeft afgekapt.
-   *[other] { $count } bestanden zijn JSON- of JSON Lines-bestanden zonder tabel van de huidige reader, of tabellen die een eerdere reader bij 300 kolommen heeft afgekapt.
-} Ze worden opnieuw gelezen. JSON-bestanden die een eerdere reader als CSV las, krijgen hun JSON-tabel en de eerdere cellen worden niet meer getoond. De huidige reader slaat een JSON-null op als lege cel en geneste JSON als ingesprongen tekst.
-processing-update-tables-runs = Tabellen lezen, daarna het bestandstype en de indexering van deze bestanden
+    [one] { $count } bestand heeft een eerdere tabellezing of onvolledige afhankelijke uitvoer. De opgeslagen resultaten worden bijgewerkt.
+    *[other] { $count } bestanden hebben eerdere tabellezingen of onvolledige afhankelijke uitvoer. Hun opgeslagen resultaten worden bijgewerkt.
+    }
+
+processing-update-tables-runs = Tabellen lezen, entiteiten, signalen, inbeddingen en beide indexen
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Ongeveer { $count } bestand heeft geen OCR-tekst voor de huidige talen, of bewaart OCR-tekst van talen die de instellingen niet meer bevatten.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Mappenboom
 admin-uploads-badge = Uploads
 admin-uploads-badge-title = Accepteert uploads
+
+processing-update-archive_members-title = Archiefonderdelen
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } gesplitst archief vereist een actuele onderdelenlijst. De onderdelen en zoekresultaten worden bijgewerkt.
+    *[other] { $count } gesplitste archieven vereisen actuele onderdelenlijsten. Hun onderdelen en zoekresultaten worden bijgewerkt.
+    }
+
+processing-update-archive_members-runs = Archieven uitpakken, onderdelen afstemmen en afhankelijke verwerking
+
+processing-update-image_previews-title = Afbeeldingsvoorbeelden
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } ongebruikelijke afbeelding heeft geen voorbeeld. Het voorbeeld wordt opnieuw gemaakt.
+    *[other] { $count } ongebruikelijke afbeeldingen hebben geen voorbeeld. Hun voorbeelden worden opnieuw gemaakt.
+    }
+
+processing-update-image_previews-runs = Afbeeldingsvoorbeelden maken en verifiëren
+
+processing-update-search_terms-title = Zoektermen
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } zoektabel heeft actuele filtertermen nodig. Termen voor taal, OCR, schrift en rode vlaggen worden doorzoekbaar.
+    *[other] Zoektabellen die actuele filtertermen nodig hebben: { $count }. Termen voor taal, OCR, schrift en rode vlaggen worden doorzoekbaar.
+    }
+
+processing-update-search_terms-runs = Filtertermen indexeren en verifiëren

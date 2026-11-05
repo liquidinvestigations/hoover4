@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(budget +{ $n } verkenningen)
 shared-boards-budget-unchanged = {" "}(budget ongewijzigd, het bord zit op zijn verkenningslimiet)
 
 shared-email-graph-selected-copy-removed = De geselecteerde kopie van de e-mail bestaat niet meer.
+
+shared-table-generation-changed = De tabel is gewijzigd. Probeer de tabel opnieuw te lezen.

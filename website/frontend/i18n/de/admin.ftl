@@ -848,12 +848,12 @@ processing-update-virus_scan-explanation =
     } Sie werden gescannt. Eine Datei, die der Scanner als infiziert erkennt, wird in der Suche markiert, und der Download ihres Originals und ihrer durchsuchbaren PDF-Datei wird abgelehnt.
 processing-update-virus_scan-runs = Virenscan, danach das Suchattribut infizierter Dateien
 processing-update-tables-title = Tabellen
-processing-update-tables-explanation =
-    { $files ->
-        [one] { $count } Datei ist eine JSON- oder JSON-Lines-Datei ohne Tabelle des aktuellen Readers oder eine Tabelle, die ein früherer Reader bei 300 Spalten abgeschnitten hat.
-       *[other] { $count } Dateien sind JSON- oder JSON-Lines-Dateien ohne Tabelle des aktuellen Readers oder Tabellen, die ein früherer Reader bei 300 Spalten abgeschnitten hat.
-    } Sie werden erneut gelesen. JSON-Dateien, die ein früherer Reader als CSV gelesen hat, erhalten ihre JSON-Tabelle, und die früheren Zellen werden nicht mehr angezeigt. Der aktuelle Reader speichert ein JSON-null als leere Zelle und verschachteltes JSON als eingerückten Text.
-processing-update-tables-runs = Tabellenlesen, danach Dateityp und Indizierung dieser Dateien
+processing-update-tables-explanation = { $files ->
+    [one] { $count } Datei hat eine ältere Tabellenlesung oder unvollständige Folgeergebnisse. Ihre gespeicherten Ergebnisse werden aktualisiert.
+    *[other] { $count } Dateien haben ältere Tabellenlesungen oder unvollständige Folgeergebnisse. Ihre gespeicherten Ergebnisse werden aktualisiert.
+    }
+
+processing-update-tables-runs = Tabellenlesen, Entitäten, Signale, Einbettungen und beide Indizes
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation =
     { $files ->
@@ -889,3 +889,30 @@ processing-update-folder_counts-explanation =
 processing-update-folder_counts-runs = Ordnerbaum
 admin-uploads-badge = Uploads
 admin-uploads-badge-title = Nimmt Uploads an
+
+processing-update-archive_members-title = Archivmitglieder
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } geteiltes Archiv benötigt eine aktuelle Dateiliste. Seine Dateien und Suchdaten werden aktualisiert.
+    *[other] { $count } geteilte Archive benötigen aktuelle Dateilisten. Ihre Dateien und Suchdaten werden aktualisiert.
+    }
+
+processing-update-archive_members-runs = Archivextraktion, Datei abgleich und abhängige Verarbeitung
+
+processing-update-image_previews-title = Bildvorschauen
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } seltenes Bild hat keine Vorschau. Seine Vorschau wird erneut erstellt.
+    *[other] { $count } seltene Bilder haben keine Vorschau. Ihre Vorschauen werden erneut erstellt.
+    }
+
+processing-update-image_previews-runs = Erstellung und Prüfung der Bildvorschauen
+
+processing-update-search_terms-title = Suchbegriffe
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } Suchtabelle benötigt aktuelle Filterbegriffe. Begriffe zu Sprache, OCR, Schrift und Warnsignalen werden durchsuchbar.
+    *[other] Suchtabellen, die aktuelle Filterbegriffe benötigen: { $count }. Begriffe zu Sprache, OCR, Schrift und Warnsignalen werden durchsuchbar.
+    }
+
+processing-update-search_terms-runs = Indexierung und Prüfung der Filterbegriffe

@@ -6,7 +6,7 @@ use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::tool_disclosure::{search_all_route_from_tool_input, search_route_from_tool_input};
 use crate::api::board_api::board_fact_for_intent;
-use crate::api::storage_api::list_storage_tree;
+use crate::components::session_context::use_storage_tree;
 use crate::routes::Route;
 
 use super::{CardShell, json_str, page_rows, tool_content, tool_failure};
@@ -93,9 +93,7 @@ pub fn SearchCard(tool_name: String, tool_input: String, tool_output: String, ru
     let mut expanded = use_signal(|| false);
     let needs_tree = tool_name == "search_collections" &&
         !crate::components::chat_components::tool_disclosure::call_collections(&tool_input).is_empty();
-    let collection_tree = use_resource(move || async move {
-        if needs_tree { list_storage_tree().await } else { Ok(Vec::new()) }
-    });
+    let collection_tree = use_storage_tree();
     let forms = numbered_forms(&tool_input);
     let page = page_rows(&tool_output);
     let (label, rows, fields, failure) = match page {

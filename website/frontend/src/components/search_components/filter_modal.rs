@@ -28,12 +28,13 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         go_icons::GoDatabase,
-        md_action_icons::{MdAccountBalance, MdAccountBalanceWallet, MdDateRange, MdInfo, MdSearch},
+        md_action_icons::{MdAccountBalance, MdAccountBalanceWallet, MdDateRange, MdInfo, MdSearch, MdTranslate},
         md_communication_icons::{MdBusiness, MdEmail, MdLocationOn, MdPhone},
-        md_content_icons::MdFilterList,
+        md_content_icons::{MdFilterList, MdFlag},
         md_device_icons::MdStorage,
         md_editor_icons::{MdAttachMoney, MdInsertDriveFile, MdTextFields},
         md_image_icons::MdStraighten,
+        md_hardware_icons::{MdScanner, MdSecurity},
         md_navigation_icons::MdClose,
         md_social_icons::{MdDomain, MdPerson},
         md_toggle_icons::{
@@ -82,7 +83,6 @@ pub enum FilterCategory {
     FileTypes,
     Language,
     OcrLanguage,
-    OcrScript,
     TextSource,
     FileSize,
     FileLocation,
@@ -93,12 +93,11 @@ pub enum FilterCategory {
 }
 
 impl FilterCategory {
-    pub const ALL: [FilterCategory; 12] = [
+    pub const ALL: [FilterCategory; 11] = [
         FilterCategory::Collections,
         FilterCategory::FileTypes,
         FilterCategory::Language,
         FilterCategory::OcrLanguage,
-        FilterCategory::OcrScript,
         FilterCategory::TextSource,
         FilterCategory::FileSize,
         FilterCategory::FileLocation,
@@ -113,8 +112,7 @@ impl FilterCategory {
             FilterCategory::Collections => tr!("search-filter-modal-collections"),
             FilterCategory::FileTypes => tr!("search-filter-modal-file-types"),
             FilterCategory::Language => tr!("search-filter-modal-language"),
-            FilterCategory::OcrLanguage => tr!("search-filter-modal-ocr-language"),
-            FilterCategory::OcrScript => tr!("search-filter-modal-ocr-script"),
+            FilterCategory::OcrLanguage => "OCR".to_string(),
             FilterCategory::TextSource => tr!("search-filter-modal-text-source"),
             FilterCategory::FileSize => tr!("search-filter-modal-file-size"),
             FilterCategory::FileLocation => tr!("search-filter-modal-file-location"),
@@ -131,8 +129,7 @@ impl FilterCategory {
             FilterCategory::Collections => &["collection_dataset"],
             FilterCategory::FileTypes => &["file_types"],
             FilterCategory::Language => &["language"],
-            FilterCategory::OcrLanguage => &["ocr_language"],
-            FilterCategory::OcrScript => &["ocr_script"],
+            FilterCategory::OcrLanguage => &["ocr_language", "ocr_script"],
             // A selected source matches a document through its text from that source.
             FilterCategory::TextSource => &["extracted_by"],
             FilterCategory::FileLocation => &["file_paths"],
@@ -279,7 +276,7 @@ const CHIP_OVERFLOW_SCRIPT: &str = r#"
 "#;
 
 /// One chip per active category shares a single row with the search controls.
-/// The count button opens the first hidden category. Clear all stays at the right.
+/// Clear all precedes the chips and the hidden-category control.
 #[component]
 pub fn FilterChips(
     query: Signal<SearchQuery>,
@@ -329,6 +326,19 @@ pub fn FilterChips(
                 class: "x-filter-chips-separator",
                 style: "width: 1px; height: 24px; background: rgba(0,0,0,0.25); margin: 0 2px;",
             }
+                button {
+                    class: "x-filter-chips-clear",
+                    style: "border: none; background: none; cursor: pointer; text-decoration: underline; white-space: nowrap; font-size: 13px; color: rgba(0,0,0,0.7);",
+                    onclick: move |_| {
+                        {
+                            let mut q = query.write();
+                            q.facet_filters.clear();
+                            q.range_filters.clear();
+                        }
+                        on_commit.call(());
+                    },
+                    {tr!("search-filter-modal-clear-all")}
+                }
             div {
                 class: "x-filter-chips-items",
                 for chip in all_chips {
@@ -396,19 +406,7 @@ pub fn FilterChips(
                     },
                     {tr!("search-filter-modal-more", hidden: hidden.to_string())}
                 }
-                button {
-                    class: "x-filter-chips-clear",
-                    style: "border: none; background: none; cursor: pointer; text-decoration: underline; white-space: nowrap; font-size: 13px; color: rgba(0,0,0,0.7);",
-                    onclick: move |_| {
-                        {
-                            let mut q = query.write();
-                            q.facet_filters.clear();
-                            q.range_filters.clear();
-                        }
-                        on_commit.call(());
-                    },
-                    {tr!("search-filter-modal-clear-all")}
-                }
+
             }
         }
     }
@@ -555,7 +553,14 @@ fn display_value(
     };
     match value {
         FacetOriginalValue::String(s) if field == "extracted_by" => {
-            let label = common::document_sources::text_source_label(s).shared();
+            let label = crate::i18n::term_label(field, s);
+            (label.clone(), label)
+        }
+        FacetOriginalValue::String(s) if field == "collection_dataset" => {
+            let label = try_consume_context::<crate::components::session_context::StorageResource>()
+                .and_then(|storage| storage.0.read().as_ref().and_then(|value| value.as_ref().ok())
+                    .map(|nodes| crate::components::session_context::dataset_label(nodes, s)))
+                .unwrap_or_else(|| s.clone());
             (label.clone(), label)
         }
         FacetOriginalValue::String(s) => (s.clone(), s.clone()),
@@ -565,7 +570,7 @@ fn display_value(
                 node_key_display_name(&text).to_string(),
                 node_key_display_path(&text).to_string(),
             ),
-            Some(text) => (text.clone(), text),
+            Some(text) => { let label = crate::i18n::term_label(field, &text); (label.clone(), label) },
             None => ("…".to_string(), "…".to_string()),
         },
     }
@@ -796,19 +801,24 @@ fn FilterModalDialog(
                                 }
                             },
                             FilterCategory::OcrLanguage => rsx! {
-                                SearchableFacetPane {
-                                    count_query, pending, field: "ocr_language".to_string(),
-                                    map_string_terms: term_field_prop("ocr_language"),
-                                    placeholder: tr!("search-filter-modal-search-ocr-languages").to_string(),
-                                }
-                            },
-                            FilterCategory::OcrScript => rsx! {
-                                SearchableFacetPane {
-                                    count_query, pending, field: "ocr_script".to_string(),
-                                    map_string_terms: term_field_prop("ocr_script"),
-                                    placeholder: tr!("search-filter-modal-search-ocr-scripts").to_string(),
-                                    // A few scripts per corpus, all on screen.
-                                    server_side: false,
+                                div { class: "x-ocr-facets",
+                                    div { class: "x-ocr-facet",
+                                        h3 { {tr!("search-filter-modal-ocr-language")} }
+                                        SearchableFacetPane {
+                                            count_query, pending, field: "ocr_language".to_string(),
+                                            map_string_terms: term_field_prop("ocr_language"),
+                                            placeholder: tr!("search-filter-modal-search-ocr-languages").to_string(),
+                                        }
+                                    }
+                                    div { class: "x-ocr-facet",
+                                        h3 { {tr!("search-filter-modal-ocr-script")} }
+                                        SearchableFacetPane {
+                                            count_query, pending, field: "ocr_script".to_string(),
+                                            map_string_terms: term_field_prop("ocr_script"),
+                                            placeholder: tr!("search-filter-modal-search-ocr-scripts").to_string(),
+                                            server_side: false,
+                                        }
+                                    }
                                 }
                             },
                             FilterCategory::TextSource => rsx! {
@@ -854,16 +864,15 @@ fn CategoryIcon(category: FilterCategory) -> Element {
     match category {
         FilterCategory::Collections => rsx! { Icon { icon: GoDatabase, style } },
         FilterCategory::FileTypes => rsx! { Icon { icon: MdInsertDriveFile, style } },
-        FilterCategory::Language => rsx! { Icon { icon: MdInfo, style } },
-        FilterCategory::OcrLanguage => rsx! { Icon { icon: MdInfo, style } },
-        FilterCategory::OcrScript => rsx! { Icon { icon: MdInfo, style } },
+        FilterCategory::Language => rsx! { Icon { icon: MdTranslate, style } },
+        FilterCategory::OcrLanguage => rsx! { Icon { icon: MdScanner, style } },
         FilterCategory::TextSource => rsx! { Icon { icon: MdTextFields, style } },
         FilterCategory::FileSize => rsx! { Icon { icon: MdStraighten, style } },
         FilterCategory::FileLocation => rsx! { Icon { icon: MdStorage, style } },
         FilterCategory::Dates => rsx! { Icon { icon: MdDateRange, style } },
         FilterCategory::Email => rsx! { Icon { icon: MdEmail, style } },
         FilterCategory::Entities => rsx! { Icon { icon: MdPerson, style } },
-        FilterCategory::Antivirus => rsx! { Icon { icon: MdInfo, style } },
+        FilterCategory::Antivirus => rsx! { Icon { icon: MdSecurity, style } },
     }
 }
 
@@ -1057,11 +1066,16 @@ fn use_entity_term_search(
         let query = count_query.read().clone();
         let text = debounced.read().clone();
         let columns = columns();
+        let language_codes = if columns.iter().all(|column| matches!(column.as_str(), "language" | "ocr_language")) {
+            Some(common::signals::language_names().keys().filter(|code|
+                crate::i18n::language_facet_label(code).to_lowercase().contains(&text.to_lowercase())
+                    || code.to_lowercase().contains(&text.to_lowercase())).cloned().collect::<Vec<_>>())
+        } else { None };
         async move {
             if !server_side || text.is_empty() {
                 return None;
             }
-            search_entity_terms(query, text, columns).await.ok()
+            search_entity_terms(query, text, columns, language_codes).await.ok()
         }
     });
     use_memo(move || resource.read().clone().flatten())
@@ -1168,7 +1182,7 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                                     } else {
                                         Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                                     }
-                                    div { style: "flex: 1 1 auto;", "{item.display_string}" }
+                                    div { style: "flex: 1 1 auto;", {crate::i18n::facet_label(&item)} }
                                     div { style: "color: rgba(0,0,0,0.6); font-size: 13px;", "{item.count}" }
                                 }
                             }
@@ -1916,7 +1930,7 @@ fn EntitySubIcon(sub: EntitySub, style: String) -> Element {
         EntitySub::CompanyId => rsx! { Icon { icon: MdDomain, style } },
         EntitySub::Money => rsx! { Icon { icon: MdAttachMoney, style } },
         EntitySub::CryptoWallet => rsx! { Icon { icon: MdAccountBalanceWallet, style } },
-        EntitySub::RedFlags => rsx! { Icon { icon: MdInfo, style } },
+        EntitySub::RedFlags => rsx! { Icon { icon: MdFlag, style } },
         EntitySub::MentionedDate => rsx! { Icon { icon: MdDateRange, style } },
     }
 }

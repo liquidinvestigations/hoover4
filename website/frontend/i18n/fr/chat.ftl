@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = Impossible de charger l’historique : 
 ai-chat-history-no-conversations-yet = Aucune conversation pour le moment.
 ai-chat-history-board = Tableau d’enquête
 ai-chat-history-new-chat = Nouvelle conversation
-ai-chat-history-messages-updated = { $s_message_count } messages · mise à jour { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } message · mise à jour { $s_updated_at }
+    *[other] { $s_message_count } messages · mise à jour { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Supprimer la conversation
 ai-chat-history-delete = Supprimer
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - Chat IA
@@ -292,7 +296,11 @@ chat-transcript-calls = appels
 ai-chat-board-a-board-without-collections-needs = Un tableau d’enquête sans collection a besoin des outils Internet.
 ai-chat-board-of = { $snap_explores_used } sur { $snap_max_explores }
 ai-chat-board-assessment-2 = évaluation { $number }
-ai-chat-history-messages = { $s_message_count } messages
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } message
+    *[other] { $s_message_count } messages
+    }
+
 web-search-card-reranked-in = Le cross-encoder a classé les résultats en { $ms } ms.
 web-search-card-engine-results = { $name } : { $count } en { $ms } ms
 web-search-card-score-was-rank = score { $score } · était RRF n° { $rank }
@@ -431,7 +439,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } en échec
 tool-run-summary-took = durée : { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } messages
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } message
+    *[other] { $session_message_count } messages
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } élément
        *[other] { $count } éléments
@@ -474,3 +486,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · version { $version } · inchangée
 cards-result-cards-version = { $tool_name } · version { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } résultats en entrée, { $json_u64_doc_total_after_dedupe } après dédoublonnage
+
+board-status-on = Activé
+
+board-status-off = Désactivé
+
+chat-transcript-generic-tool = l’outil

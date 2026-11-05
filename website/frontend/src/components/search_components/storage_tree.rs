@@ -30,7 +30,7 @@ use dioxus_free_icons::{
     },
 };
 
-use crate::api::storage_api::list_storage_tree;
+use crate::components::session_context::use_storage_tree;
 use crate::api::vfs_api::vfs_dataset_subtree_stats;
 use crate::components::search_components::vfs_tree::{
     LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, SubtreeStatsCells, TREE_QUERY_LOG, TreeSkin,
@@ -182,7 +182,7 @@ pub fn StorageTree(
 ) -> Element {
     // One request for every collection and dataset the user may read. Nothing below is
     // fetched until a dataset row is expanded.
-    let tree = use_resource(move || async move { list_storage_tree().await });
+    let tree = use_storage_tree();
     // The picker's dataset and collection rows show the file and byte counts of each
     // dataset root, in one request once the datasets are known. The sidebar asks nothing.
     let root_stats = use_resource(move || {
@@ -338,6 +338,7 @@ fn CollectionBranch(
     let dataset_ids = node.dataset_ids();
     let check_state = collection_tri_state(&dataset_ids, &selected.read());
     let name = node.collectionname.clone();
+    let label = node.display_name.clone().filter(|name| !name.trim().is_empty()).unwrap_or_else(|| name.clone());
 
     let level = {
         let focus = current_dataset();
@@ -368,7 +369,7 @@ fn CollectionBranch(
         SyntheticRow {
             depth: 0,
             stats: collection_stats,
-            label: name.clone(),
+            label: label.clone(),
             title: name.clone(),
             skin,
             check_state,
@@ -594,10 +595,10 @@ fn SyntheticRow(
                 style: "display: flex; align-items: center; flex-shrink: 0;",
                 match icon {
                     SyntheticIcon::Collection => rsx! {
-                        Icon { icon: MdStorage, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
+                        Icon { icon: GoDatabase, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
                     },
                     SyntheticIcon::Dataset => rsx! {
-                        Icon { icon: GoDatabase, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
+                        Icon { icon: MdStorage, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
                     },
                 }
             }

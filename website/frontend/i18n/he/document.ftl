@@ -203,3 +203,15 @@ preview-with-search-next = { $label } הבא
 document-entities-panel-as-written =
     { $value }
     כפי שנכתב: { $written }
+
+preview-for-archive-search = חיפוש בתוך הארכיון הזה
+
+preview-for-archive-search-zip = חיפוש בתוך קובץ ZIP זה
+
+email-graph-incomplete = { $count ->
+    [one] מוצגת הודעה אחת. הסכום אינו מלא.
+    [two] מוצגות { $count } הודעות. הסכום אינו מלא.
+    *[other] מוצגות { $count } הודעות. הסכום אינו מלא.
+    }
+
+email-graph-copies = מספר העותקים המורשים: { $count }

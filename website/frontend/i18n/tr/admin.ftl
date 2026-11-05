@@ -838,10 +838,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Antivirüs taraması, ardından enfekte dosyaların arama özniteliği
 processing-update-tables-title = Tablolar
 processing-update-tables-explanation = { $files ->
-    [one] { $count } dosya, güncel okuyucunun tablosu olmayan bir JSON ya da JSON Lines dosyası veya önceki bir okuyucunun 300 sütunda kestiği bir tablo.
-   *[other] { $count } dosya, güncel okuyucunun tablosu olmayan JSON ya da JSON Lines dosyaları veya önceki bir okuyucunun 300 sütunda kestiği tablolar.
-} Yeniden okunurlar. Daha önce bir okuyucunun CSV olarak okuduğu JSON dosyaları JSON tablolarını alır ve önceki hücreler gösterilmeyi bırakır. Geçerli okuyucu, bir JSON null değerini boş hücre olarak, iç içe JSON'u ise girintili metin olarak kaydeder.
-processing-update-tables-runs = Tablo okuma, ardından bu dosyaların dosya türü ve dizinlemesi
+    [one] { $count } dosyada eski tablo okuması veya eksik bağımlı çıktılar vardır. Saklanan sonuçları güncellenir.
+    *[other] Eski tablo okumaları veya eksik bağımlı çıktıları olan dosya sayısı: { $count }. Saklanan sonuçları güncellenir.
+    }
+
+processing-update-tables-runs = Tablo okuma, varlıklar, sinyaller, gömme ve her iki dizin
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Yaklaşık { $count } dosyada güncel diller için OCR metni yok ya da ayarların artık içermediği dillerin OCR metni duruyor.
@@ -874,3 +875,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Klasör ağacı
 admin-uploads-badge = Yüklemeler
 admin-uploads-badge-title = Yükleme kabul eder
+
+processing-update-archive_members-title = Arşiv üyeleri
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } bölünmüş arşiv için güncel üye listesi gerekir. Üyeleri ve arama sonuçları güncellenir.
+    *[other] Güncel üye listesi gereken bölünmüş arşiv sayısı: { $count }. Üyeleri ve arama sonuçları güncellenir.
+    }
+
+processing-update-archive_members-runs = Arşiv çıkarma, üye uzlaştırma ve bağımlı işleme
+
+processing-update-image_previews-title = Görüntü önizlemeleri
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } az kullanılan görüntünün önizlemesi yoktur. Önizlemesi yeniden oluşturulur.
+    *[other] Önizlemesi olmayan az kullanılan görüntü sayısı: { $count }. Önizlemeleri yeniden oluşturulur.
+    }
+
+processing-update-image_previews-runs = Görüntü önizlemesi oluşturma ve doğrulama
+
+processing-update-search_terms-title = Arama terimleri
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } arama tablosu için güncel filtre terimleri gerekir. Dil, OCR, yazı sistemi ve kırmızı bayrak terimleri aranabilir olur.
+    *[other] Güncel filtre terimleri gereken arama tabloları: { $count }. Dil, OCR, yazı sistemi ve kırmızı bayrak terimleri aranabilir olur.
+    }
+
+processing-update-search_terms-runs = Filtre terimi dizinleme ve doğrulama

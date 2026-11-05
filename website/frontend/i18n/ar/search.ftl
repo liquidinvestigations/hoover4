@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = ابحث في { $kind }…
 search-filter-modal-show-results = عرض { $total } نتيجة
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. لم يُطبَّق بعد. اضغط «بحث».
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = أقل من
+
+facet-label-over = أكثر من
+
+facet-language-en = الإنجليزية
+
+facet-language-de = الألمانية
+
+facet-language-es = الإسبانية
+
+facet-language-fr = الفرنسية
+
+facet-language-pl = البولندية
+
+facet-language-pt = البرتغالية
+
+facet-language-ar = العربية
+
+facet-language-he = العبرية
+
+facet-language-hi = الهندية
+
+facet-language-zh = الصينية
+
+facet-language-it = الإيطالية
+
+facet-language-nl = الهولندية
+
+facet-language-da = الدنماركية
+
+facet-language-nb = النرويجية بوكمول
+
+facet-language-sv = السويدية
+
+facet-language-el = اليونانية
+
+facet-language-hr = الكرواتية
+
+facet-language-ro = الرومانية
+
+facet-language-ru = الروسية
+
+facet-language-ja = اليابانية
+
+facet-language-ko = الكورية
+
+facet-language-tr = التركية
+
+facet-language-af = الأفريقانية
+
+facet-language-als = als
+
+facet-language-am = am
+
+facet-language-an = الأراغونية
+
+facet-language-arz = arz
+
+facet-language-as = الأساميزية
+
+facet-language-ast = ast
+
+facet-language-av = av
+
+facet-language-az = الأذربيجانية
+
+facet-language-azb = azb
+
+facet-language-ba = ba
+
+facet-language-bar = bar
+
+facet-language-bcl = bcl
+
+facet-language-be = البيلاروسية
+
+facet-language-bg = البلغارية
+
+facet-language-bh = bh
+
+facet-language-bn = البنغالية
+
+facet-language-bo = التبتية
+
+facet-language-bpy = bpy
+
+facet-language-br = البريتونية
+
+facet-language-bs = البوسنية
+
+facet-language-bxr = bxr
+
+facet-language-ca = الكاتالانية
+
+facet-language-cbk = cbk
+
+facet-language-ce = الشيشانية
+
+facet-language-ceb = السيبوانية
+
+facet-language-ckb = ckb
+
+facet-language-co = الكورسيكية
+
+facet-language-cs = التشيكية
+
+facet-language-cv = التشوفاشية
+
+facet-language-cy = الويلزية
+
+facet-language-diq = diq
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = الإسبرانتو
+
+facet-language-et = الإستونية
+
+facet-language-eu = الباسك
+
+facet-language-fa = الفارسي
+
+facet-language-fi = الفنلندية
+
+facet-language-frr = frr
+
+facet-language-fy = fy
+
+facet-language-ga = الأيرلندية
+
+facet-language-gd = gd
+
+facet-language-gl = gl
+
+facet-language-gn = غواراني
+
+facet-language-gom = gom
+
+facet-language-gu = الغوجاراتية
+
+facet-language-gv = مانكس
+
+facet-language-hif = hif
+
+facet-language-hsb = hsb
+
+facet-language-ht = ht
+
+facet-language-hu = الهنغارية (المجرية)
+
+facet-language-hy = الأرمينية
+
+facet-language-ia = ia
+
+facet-language-id = الإندونيسية
+
+facet-language-ie = ie
+
+facet-language-ilo = إيلوكو
+
+facet-language-io = ايدو
+
+facet-language-is = الآيسلندية
+
+facet-language-jbo = لوجبان
+
+facet-language-jv = jv
+
+facet-language-ka = ka
+
+facet-language-kk = الكازاخية
+
+facet-language-km = km
+
+facet-language-kn = kn
+
+facet-language-krc = krc
+
+facet-language-ku = الكردية
+
+facet-language-kv = kv
+
+facet-language-kw = kw
+
+facet-language-ky = ky
+
+facet-language-la = اللاتينية
+
+facet-language-lb = lb
+
+facet-language-lez = lez
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = lo
+
+facet-language-lrc = lrc
+
+facet-language-lt = الليتوانية
+
+facet-language-lv = اللاتفية
+
+facet-language-mai = mai
+
+facet-language-mg = mg
+
+facet-language-mhr = mhr
+
+facet-language-min = min
+
+facet-language-mk = المقدونية
+
+facet-language-ml = المالايلامية
+
+facet-language-mn = المنغولية
+
+facet-language-mr = mr
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = المالطية
+
+facet-language-mwl = mwl
+
+facet-language-my = البورمية
+
+facet-language-myv = myv
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = nap
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = nn
+
+facet-language-no = النرويجية
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = pam
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = ps
+
+facet-language-qu = الكيشوا
+
+facet-language-rm = rm
+
+facet-language-rue = rue
+
+facet-language-sa = السنسكريتية
+
+facet-language-sah = الياكوتية
+
+facet-language-sc = sc
+
+facet-language-scn = scn
+
+facet-language-sco = sco
+
+facet-language-sd = sd
+
+facet-language-sh = sh
+
+facet-language-si = si
+
+facet-language-sk = السلوفاكية
+
+facet-language-sl = السلوفينية
+
+facet-language-so = الصومالية
+
+facet-language-sq = sq
+
+facet-language-sr = الصربية
+
+facet-language-su = السوندانيسية
+
+facet-language-sw = sw
+
+facet-language-ta = التاميلية
+
+facet-language-te = te
+
+facet-language-tg = tg
+
+facet-language-th = التايلاندية
+
+facet-language-tk = tk
+
+facet-language-tl = التاغالوغية
+
+facet-language-tt = tt
+
+facet-language-tyv = tyv
+
+facet-language-ug = الاغورية
+
+facet-language-uk = uk
+
+facet-language-ur = الاردية
+
+facet-language-uz = uz
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = الفييتنامية
+
+facet-language-vls = vls
+
+facet-language-vo = vo
+
+facet-language-wa = الوالون
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = اليديشية
+
+facet-language-yo = yo
+
+facet-language-yue = yue

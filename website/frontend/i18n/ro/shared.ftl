@@ -267,3 +267,5 @@ shared-boards-budget-grew = {" "}(bugetul de explorări crește cu { $n })
 shared-boards-budget-unchanged = {" "}(bugetul rămâne neschimbat, tabloul a atins limita de explorări)
 
 shared-email-graph-selected-copy-removed = Copia selectată a mesajului de e-mail nu mai există.
+
+shared-table-generation-changed = Tabelul s-a schimbat. Reîncearcă citirea tabelului.

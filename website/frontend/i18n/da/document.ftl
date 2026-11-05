@@ -203,3 +203,17 @@ preview-with-search-next = Næste { $label }
 document-entities-panel-as-written =
     { $value }
     som skrevet: { $written }
+
+preview-for-archive-search = Søg i dette arkiv
+
+preview-for-archive-search-zip = Søg i denne ZIP-fil
+
+email-graph-incomplete = { $count ->
+    [one] { $count } e-mail vises. Det samlede antal er ufuldstændigt.
+    *[other] { $count } e-mails vises. Det samlede antal er ufuldstændigt.
+    }
+
+email-graph-copies = { $count ->
+    [one] { $count } tilladt kopi
+    *[other] { $count } tilladte kopier
+    }

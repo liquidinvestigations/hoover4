@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = 搜索{ $kind }…
 search-filter-modal-show-results = 显示 { $total } 条结果
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }。尚未应用，请点击“搜索”。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = 小于
+
+facet-label-over = 大于
+
+facet-language-en = 英语
+
+facet-language-de = 德语
+
+facet-language-es = 西班牙语
+
+facet-language-fr = 法语
+
+facet-language-pl = 波兰语
+
+facet-language-pt = 葡萄牙语
+
+facet-language-ar = 阿拉伯语
+
+facet-language-he = 希伯来语
+
+facet-language-hi = 印地语
+
+facet-language-zh = 中文
+
+facet-language-it = 意大利语
+
+facet-language-nl = 荷兰语
+
+facet-language-da = 丹麦语
+
+facet-language-nb = 挪威博克马尔语
+
+facet-language-sv = 瑞典语
+
+facet-language-el = 希腊语
+
+facet-language-hr = 克罗地亚语
+
+facet-language-ro = 罗马尼亚语
+
+facet-language-ru = 俄语
+
+facet-language-ja = 日语
+
+facet-language-ko = 韩语
+
+facet-language-tr = 土耳其语
+
+facet-language-af = 南非荷兰语
+
+facet-language-als = 托斯克阿尔巴尼亚语
+
+facet-language-am = 阿姆哈拉语
+
+facet-language-an = 阿拉贡语
+
+facet-language-arz = 埃及阿拉伯语
+
+facet-language-as = 阿萨姆语
+
+facet-language-ast = 阿斯图里亚斯语
+
+facet-language-av = 阿瓦尔语
+
+facet-language-az = 阿塞拜疆语
+
+facet-language-azb = 南阿塞拜疆语
+
+facet-language-ba = 巴什基尔语
+
+facet-language-bar = 巴伐利亚语
+
+facet-language-bcl = 中比科尔语
+
+facet-language-be = 白俄罗斯语
+
+facet-language-bg = 保加利亚语
+
+facet-language-bh = bh
+
+facet-language-bn = 孟加拉语
+
+facet-language-bo = 藏语
+
+facet-language-bpy = 比什奴普莱利亚-曼尼浦尔语
+
+facet-language-br = 布列塔尼语
+
+facet-language-bs = 波斯尼亚语
+
+facet-language-bxr = 布里亚特语 (俄罗斯)
+
+facet-language-ca = 加泰罗尼亚语
+
+facet-language-cbk = cbk
+
+facet-language-ce = 车臣语
+
+facet-language-ceb = 宿务语
+
+facet-language-ckb = 中库尔德语
+
+facet-language-co = 科西嘉语
+
+facet-language-cs = 捷克语
+
+facet-language-cv = 楚瓦什语
+
+facet-language-cy = 威尔士语
+
+facet-language-diq = 南扎扎其语
+
+facet-language-dsb = 下索布语
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = 世界语
+
+facet-language-et = 爱沙尼亚语
+
+facet-language-eu = 巴斯克语
+
+facet-language-fa = 波斯语
+
+facet-language-fi = 芬兰语
+
+facet-language-frr = 北弗里西亚语
+
+facet-language-fy = 西弗里西亚语
+
+facet-language-ga = 爱尔兰语
+
+facet-language-gd = gd
+
+facet-language-gl = 加利西亚语
+
+facet-language-gn = 瓜拉尼语
+
+facet-language-gom = gom
+
+facet-language-gu = 古吉拉特语
+
+facet-language-gv = 曼岛语
+
+facet-language-hif = 斐济印地语
+
+facet-language-hsb = 上索布语
+
+facet-language-ht = 海地克里奥尔语
+
+facet-language-hu = 匈牙利语
+
+facet-language-hy = 亚美尼亚语
+
+facet-language-ia = 拉丁国际语
+
+facet-language-id = 印尼语
+
+facet-language-ie = 西方国际语
+
+facet-language-ilo = 伊洛卡诺语
+
+facet-language-io = 伊多语
+
+facet-language-is = 冰岛语
+
+facet-language-jbo = 逻辑语
+
+facet-language-jv = 爪哇语
+
+facet-language-ka = 格鲁吉亚语
+
+facet-language-kk = 哈萨克语
+
+facet-language-km = 高棉语
+
+facet-language-kn = 卡纳达语
+
+facet-language-krc = 卡拉恰伊-巴尔卡尔语
+
+facet-language-ku = 库尔德语
+
+facet-language-kv = 科米语
+
+facet-language-kw = 康沃尔语
+
+facet-language-ky = 柯尔克孜语
+
+facet-language-la = 拉丁语
+
+facet-language-lb = 卢森堡语
+
+facet-language-lez = 列兹金语
+
+facet-language-li = 林堡语
+
+facet-language-lmo = 伦巴底语
+
+facet-language-lo = 寮语
+
+facet-language-lrc = 北卢尔语
+
+facet-language-lt = 立陶宛语
+
+facet-language-lv = 拉脱维亚语
+
+facet-language-mai = 米德勒语
+
+facet-language-mg = 马拉加西语
+
+facet-language-mhr = 东马里语
+
+facet-language-min = 米南卡保语
+
+facet-language-mk = 马其顿语
+
+facet-language-ml = 马拉雅拉姆语
+
+facet-language-mn = 蒙古语
+
+facet-language-mr = 马拉地语
+
+facet-language-mrj = 西马里语
+
+facet-language-ms = 马来语 (宏语言)
+
+facet-language-mt = 马耳他语
+
+facet-language-mwl = 米兰德斯语
+
+facet-language-my = 缅甸语
+
+facet-language-myv = 厄尔兹亚语
+
+facet-language-mzn = 马赞德兰语
+
+facet-language-nah = nah
+
+facet-language-nap = 拿坡里语
+
+facet-language-nds = 低地撒克逊语
+
+facet-language-ne = 尼泊尔语 (宏语言)
+
+facet-language-new = new
+
+facet-language-nn = 新挪威语
+
+facet-language-no = 挪威语
+
+facet-language-oc = 奥克语 (1500 -)
+
+facet-language-or = 奥利亚语; 奥里亚语
+
+facet-language-os = 奥塞梯语; 奥塞提语
+
+facet-language-pa = 旁遮普语
+
+facet-language-pam = 邦板牙语
+
+facet-language-pfl = 巴列丁奈特德语
+
+facet-language-pms = 皮埃蒙特语
+
+facet-language-pnb = 西旁遮普语
+
+facet-language-ps = 普什图语
+
+facet-language-qu = 克丘亚语
+
+facet-language-rm = 罗曼什语
+
+facet-language-rue = 卢森尼亚语
+
+facet-language-sa = 梵语
+
+facet-language-sah = 雅库特语
+
+facet-language-sc = 萨丁尼亚语
+
+facet-language-scn = 西西里语
+
+facet-language-sco = 苏格兰语
+
+facet-language-sd = 信德语
+
+facet-language-sh = 塞尔维亚-克罗地亚语
+
+facet-language-si = 僧伽罗语
+
+facet-language-sk = 斯洛伐克语
+
+facet-language-sl = 斯洛文尼亚语
+
+facet-language-so = 索马里语
+
+facet-language-sq = 阿尔巴尼亚语
+
+facet-language-sr = 塞尔维亚语
+
+facet-language-su = 巽他语
+
+facet-language-sw = 斯瓦希里语 (宏语言)
+
+facet-language-ta = 泰米尔语
+
+facet-language-te = 泰卢固语
+
+facet-language-tg = 塔吉克语
+
+facet-language-th = 泰语
+
+facet-language-tk = 土库曼语
+
+facet-language-tl = 他加禄语
+
+facet-language-tt = 鞑靼语
+
+facet-language-tyv = 图瓦语
+
+facet-language-ug = 维吾尔语
+
+facet-language-uk = 乌克兰语
+
+facet-language-ur = 乌尔都语
+
+facet-language-uz = 乌兹别克语
+
+facet-language-vec = 威尼斯语
+
+facet-language-vep = vep
+
+facet-language-vi = 越南语
+
+facet-language-vls = 西佛兰门语
+
+facet-language-vo = 沃拉普克语
+
+facet-language-wa = 瓦龙语
+
+facet-language-war = 瓦赖语
+
+facet-language-wuu = 汉语 (吴语)
+
+facet-language-xal = 卫拉特语; 卡尔梅克语
+
+facet-language-xmf = 明格列尔语
+
+facet-language-yi = 意第绪语
+
+facet-language-yo = 约鲁巴语
+
+facet-language-yue = 汉语 (粤语)

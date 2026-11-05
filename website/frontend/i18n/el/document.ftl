@@ -203,3 +203,14 @@ preview-with-search-next = Επόμενο: { $label }
 document-entities-panel-as-written =
     { $value }
     όπως γράφτηκε: { $written }
+
+preview-for-archive-search = Αναζήτηση σε αυτό το αρχείο
+
+preview-for-archive-search-zip = Αναζήτηση σε αυτό το αρχείο ZIP
+
+email-graph-incomplete = { $count ->
+    [one] Εμφανίζεται { $count } μήνυμα. Το σύνολο είναι ελλιπές.
+    *[other] Εμφανίζονται { $count } μηνύματα. Το σύνολο είναι ελλιπές.
+    }
+
+email-graph-copies = Εξουσιοδοτημένα αντίγραφα: { $count }

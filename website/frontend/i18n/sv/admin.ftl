@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Virusskanning, sedan sökattributet för infekterade filer
 processing-update-tables-title = Tabeller
 processing-update-tables-explanation = { $files ->
-    [one] { $count } fil är en JSON- eller JSON Lines-fil utan tabell från den nuvarande läsaren, eller en tabell som en tidigare läsare kapade vid 300 kolumner.
-   *[other] { $count } filer är JSON- eller JSON Lines-filer utan tabell från den nuvarande läsaren, eller tabeller som en tidigare läsare kapade vid 300 kolumner.
-} De läses igen. JSON-filer som en tidigare läsare läste som CSV får sin JSON-tabell, och de tidigare cellerna visas inte längre. Den aktuella läsaren sparar ett JSON-null som en tom cell och nästlad JSON som indragen text.
-processing-update-tables-runs = Tabellläsning, sedan filtyp och indexering av de här filerna
+    [one] { $count } fil har en äldre tabelläsning eller ofullständiga beroende resultat. Dess lagrade resultat uppdateras.
+    *[other] { $count } filer har äldre tabelläsningar eller ofullständiga beroende resultat. Deras lagrade resultat uppdateras.
+    }
+
+processing-update-tables-runs = Tabelläsning, entiteter, signaler, inbäddningar och båda indexen
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Ungefär { $count } fil saknar OCR-text för de nuvarande språken, eller behåller OCR-text för språk som inställningarna inte längre omfattar.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Mappträd
 admin-uploads-badge = Uppladdningar
 admin-uploads-badge-title = Tar emot uppladdningar
+
+processing-update-archive_members-title = Arkivmedlemmar
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } delat arkiv behöver en aktuell medlemslista. Dess medlemmar och sökresultat uppdateras.
+    *[other] { $count } delade arkiv behöver aktuella medlemslistor. Deras medlemmar och sökresultat uppdateras.
+    }
+
+processing-update-archive_members-runs = Arkivextrahering, medlemsavstämning och beroende bearbetning
+
+processing-update-image_previews-title = Bildförhandsvisningar
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } ovanlig bild saknar förhandsvisning. Dess förhandsvisning skapas igen.
+    *[other] { $count } ovanliga bilder saknar förhandsvisning. Deras förhandsvisningar skapas igen.
+    }
+
+processing-update-image_previews-runs = Skapande och verifiering av bildförhandsvisningar
+
+processing-update-search_terms-title = Söktermer
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } söktabell behöver aktuella filtertermer. Termer för språk, OCR, skriftsystem och röda flaggor blir sökbara.
+    *[other] Söktabeller som behöver aktuella filtertermer: { $count }. Termer för språk, OCR, skriftsystem och röda flaggor blir sökbara.
+    }
+
+processing-update-search_terms-runs = Indexering och verifiering av filtertermer

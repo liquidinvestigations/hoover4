@@ -9,6 +9,7 @@
 |---|---|---|
 | Connected email link | Open the graph for the current email. | It uses that message as the graph center. |
 | Message node | Select a message for the preview. | Selection changes preserve the center. |
+| Occurrence choice | Open an authorized collection and dataset copy of the selected message. | Canonical document identifiers remain in the URL. Older responses use the representative occurrence. |
 | Document preview | Read the selected message and its stored sources. | Normal document access checks apply. |
 
 ## States
@@ -28,3 +29,9 @@ A message without a known date remains distinct from a message dated at the epoc
 The layout settles before display and retains surviving node positions across selection changes.
 A graph limit can exclude a connected message.
 [The user procedure](../../user-manual/User_Manual.md#read-connected-email) explains separate search when a message is outside the displayed neighborhood.
+
+Exact file hashes identify logical message nodes across authorized occurrences.
+An older response without a logical identifier uses its representative hash.
+The viewport fits the occupied node bounds, including labels and margins.
+An incomplete logical count is identified as incomplete.
+Occurrence truncation remains separate from the logical node limit.

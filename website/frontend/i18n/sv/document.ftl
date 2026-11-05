@@ -203,3 +203,17 @@ preview-with-search-next = Nästa { $label }
 document-entities-panel-as-written =
     { $value }
     som skrivet: { $written }
+
+preview-for-archive-search = Sök i detta arkiv
+
+preview-for-archive-search-zip = Sök i denna ZIP-fil
+
+email-graph-incomplete = { $count ->
+    [one] { $count } e-postmeddelande visas. Totalen är ofullständig.
+    *[other] { $count } e-postmeddelanden visas. Totalen är ofullständig.
+    }
+
+email-graph-copies = { $count ->
+    [one] { $count } tillåten kopia
+    *[other] { $count } tillåtna kopior
+    }

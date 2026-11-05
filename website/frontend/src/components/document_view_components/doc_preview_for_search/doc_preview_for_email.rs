@@ -1,8 +1,10 @@
 //! The email viewer shows headers, attachments, and body text.
 //! Header values and body text use the same index highlight engine.
 
-use common::document_sources::{DocumentEmailSourceItem, DocumentTextSourceItem, EMAIL_TEXT_EXTRACTOR};
+use common::document_sources::{DocumentEmailSourceItem, DocumentTextSourceItem, DocumentSourceItem, EMAIL_TEXT_EXTRACTOR};
 use common::email_graph::{EmailEnvelope, EmailParty};
+use common::document_matches::{DocumentMatches, DocumentMatchTarget, MatchCompleteness};
+use crate::data_definitions::doc_viewer_state::TextMatchSelection;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 use dioxus_free_icons::{
@@ -21,6 +23,12 @@ use crate::components::document_view_components::doc_preview_shared::PreviewWrap
 use crate::routes::Route;
 use crate::tr;
 use crate::i18n::SharedText;
+
+static NEXT_EMAIL_CARD: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The existing source list lets unified navigation select a body extractor.
+#[derive(Clone, Copy)]
+pub struct EmailNavigationSources(pub ReadSignal<Option<Vec<DocumentSourceItem>>>);
 
 const CARD_STYLE: &str = "
     padding: 12px;
@@ -83,16 +91,13 @@ pub fn DocumentPreviewForEmail(
     // parent render, so a resource that subscribes to the prop never re-runs when the
     // selected document changes.
     let envelope = use_resource(use_reactive!(|document_identifier_value, find_query| {
-        async move { get_email_envelope(document_identifier_value, find_query).await }
+        async move {
+            let result = get_email_envelope(document_identifier_value.clone(), find_query.clone()).await;
+            ((document_identifier_value, find_query), result)
+        }
     }));
-
-    // The fallback is the flat header blob the source item already carries, so a failed
-    // or still-loading envelope degrades to what this viewer showed before rather than
-    // to a blank card.
-    let envelope_value: Option<EmailEnvelope> = match envelope() {
-        Some(Ok(Some(value))) => Some(value),
-        _ => None,
-    };
+    let envelope_reply = envelope().filter(|(key, _)| key == &(document_identifier_value.clone(), find_query.clone()));
+    let envelope_value = envelope_reply.as_ref().and_then(|(_, result)| result.as_ref().ok()).cloned().flatten();
 
     let preamble = match envelope_value {
         Some(value) => rsx! {
@@ -111,7 +116,7 @@ pub fn DocumentPreviewForEmail(
     };
 
     let preamble = rsx! {
-        if let Some(Err(error)) = envelope() {
+        if let Some((_, Err(error))) = envelope_reply {
             crate::components::error_boundary::ServerErrorDisplay { error }
         }
         {preamble}
@@ -124,7 +129,7 @@ pub fn DocumentPreviewForEmail(
     if !source.read().has_body {
         return rsx! {
             PreviewWrapper {
-                controls: rsx! { {tr!("preview-for-email-email")} },
+                controls: rsx! { EmailMatchControls { document: document_identifier_value.clone(), find_query: find_query.clone() } },
                 page: rsx! {
                     div {
                         style: "padding: 10px; overflow: auto; height: 100%;",
@@ -155,6 +160,7 @@ pub fn DocumentPreviewForEmail(
             },
             preamble,
             flow_layout: true,
+            match_controls: rsx! { EmailMatchControls { document: document_identifier_value, find_query } },
         }
     }
 }
@@ -168,11 +174,25 @@ fn EmailEnvelopeCard(
     // One boolean, one component. The details panel is the only thing on this card that
     // has state, and it is deliberately NOT in the URL: it is a reading gesture, not a
     // place, and putting it in the URL would push a history entry per click.
+    let card_id = use_hook(|| format!("x-email-card-{}", NEXT_EMAIL_CARD.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let mut show_details = use_signal(|| false);
-    let has_header_match = envelope.read().header_highlights.values().flatten().any(|span| span.is_highlighted);
-    use_effect(use_reactive!(|has_header_match| {
-        if has_header_match {
+    let control = use_context::<crate::pages::search_page::DocViewerStateControl>();
+    let state = control.doc_viewer_state.read().clone().unwrap_or_default();
+    let header_selection = state.selected_match.filter(|selection|
+        selection.find_query == state.find_query && selection.extracted_by.starts_with("email-header:"));
+    let scroll_card_id = card_id.clone();
+    use_effect(use_reactive!(|header_selection| {
+        if let Some(selection) = header_selection {
             show_details.set(true);
+            let key = selection.extracted_by.strip_prefix("email-header:").unwrap_or_default();
+            let key = serde_json::to_string(key).unwrap_or_default();
+            let start = selection.ordinal;
+            document::eval(&format!(r#"requestAnimationFrame(() => requestAnimationFrame(() => {{
+                const root = document.getElementById('{scroll_card_id}');
+                const field = Array.from(root?.querySelectorAll('[data-email-header]') || []).find(node => node.dataset.emailHeader === {key});
+                const mark = field?.querySelector('[data-header-start="{start}"]');
+                mark?.scrollIntoView({{block:'center',inline:'nearest'}});
+            }}));"#));
         }
     }));
 
@@ -184,6 +204,7 @@ fn EmailEnvelopeCard(
 
     rsx! {
         div {
+            id: "{card_id}",
             style: CARD_STYLE,
 
             if let Some(parent) = value.parent.clone() {
@@ -240,10 +261,10 @@ fn EmailEnvelopeCard(
                 Icon { icon: MdEmail, style: "width: 20px; height: 20px; flex: 0 0 auto; align-self: center;" }
                 div {
                     style: "flex: 1 1 auto; min-width: 0; font-size: 17px; font-weight: 500; overflow-wrap: anywhere;",
-                    {email_header_text(&value.subject, &value)}
+                    {email_header_at(&value.subject, &value, "subject", 0)}
                 }
                 if let Some(date) = date_label.clone() {
-                    div { style: "flex: 0 0 auto; font-size: 13px; color: rgba(0,0,0,0.75);", {email_header_text(&date, &value)} }
+                    div { style: "flex: 0 0 auto; font-size: 13px; color: rgba(0,0,0,0.75);", {email_header_at(&date, &value, "date", 0)} }
                 }
             }
 
@@ -347,15 +368,36 @@ fn email_header_text(text: &str, envelope: &EmailEnvelope) -> Element {
     }
 }
 
+/// Header marks retain their field, occurrence, and character position.
+fn email_header_at(text: &str, envelope: &EmailEnvelope, field: &str, occurrence: u32) -> Element {
+    let key = format!("{field}:{occurrence}");
+    let mut offset = 0u32;
+    let spans = envelope.header_highlights.get(text).cloned().unwrap_or_default();
+    rsx! {
+        span { "data-email-header": "{key}",
+            if spans.is_empty() { "{text}" }
+            for span in spans {
+                {let start = offset; offset += span.text.chars().count() as u32;
+                    rsx! {
+                        if span.is_highlighted {
+                            mark { class: "x-email-header-hit", "data-header-start": "{start}", "{span.text}" }
+                        } else { span { "{span.text}" } }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The expanded two-column participant table.
 #[component]
 fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
     let value = envelope.read().clone();
     let roles = [
-        ("From:", value.from.clone()),
-        ("To:", value.to.clone()),
-        ("Cc:", value.cc.clone()),
-        ("Bcc:", value.bcc.clone()),
+        ("from", "From:", value.from.clone()),
+        ("to", "To:", value.to.clone()),
+        ("cc", "Cc:", value.cc.clone()),
+        ("bcc", "Bcc:", value.bcc.clone()),
     ];
     rsx! {
         div {
@@ -370,7 +412,7 @@ fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
             table {
                 style: "border-collapse: collapse;",
                 tbody {
-                    for (label, people) in roles {
+                    for (field, label, people) in roles {
                         if !people.is_empty() {
                             tr {
                                 key: "{label}",
@@ -380,8 +422,8 @@ fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
                                 }
                                 td {
                                     style: "padding: 1px 0; overflow-wrap: anywhere;",
-                                    for person in people {
-                                        div { key: "{person.address}-{person.display_name}", {email_header_text(&person.full(), &value)} }
+                                    for (occurrence, person) in people.iter().enumerate() {
+                                        div { key: "{label}-{occurrence}", {email_header_at(&person.full(), &value, field, occurrence as u32)} }
                                     }
                                 }
                             }
@@ -426,4 +468,135 @@ async fn get_email_envelope(
         }
     }
     Ok(envelope)
+}
+
+/// Navigate the validated header and body targets in one order.
+#[component]
+pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> Element {
+    use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
+    use crate::components::search_components::search_result_list_controls::NavigationButton;
+    let control = use_context::<crate::pages::search_page::DocViewerStateControl>();
+    let sources = try_consume_context::<EmailNavigationSources>();
+    let mut retry = use_signal(|| 0u64);
+    let attempt = retry();
+    let matches = use_resource(use_reactive!(|document, find_query, attempt| {
+        async move {
+            let result = get_email_document_matches(document.clone(), find_query.clone()).await;
+            ((document, find_query, attempt), result)
+        }
+    }));
+    let reply = matches.read().clone().filter(|(key, _)| key == &(document.clone(), find_query.clone(), attempt));
+    let selected = control.doc_viewer_state.read().clone().unwrap_or_default().selected_match;
+    let value = reply.as_ref().and_then(|(_, result)| result.as_ref().ok());
+    let targets = value.map(|value| value.targets.clone()).unwrap_or_default();
+    let current = selected.as_ref().and_then(|selection| targets.iter().position(|target|
+        selection_for(target, &find_query) == *selection)).unwrap_or(0);
+    let count = targets.len();
+    let number = if count == 0 { 0 } else { current + 1 };
+    let completeness = value.map(|value| value.completeness);
+    let pending = reply.is_none();
+    let failed = reply.as_ref().is_some_and(|(_, result)| result.is_err());
+    let incomplete = completeness == Some(MatchCompleteness::AtLeast);
+    let unavailable = completeness == Some(MatchCompleteness::Unavailable);
+    let displayed_source = control.doc_viewer_state.read().as_ref().and_then(|state| state.selected_source.clone());
+    let initial_index = initial_match_index(&targets, displayed_source.as_ref());
+    let selection_current = selected.as_ref().is_some_and(|selection| targets.iter().any(|target| selection_for(target, &find_query) == *selection));
+    let initial_query = find_query.clone();
+    let navigate = Callback::new(move |index: usize| {
+        let Some(target) = targets.get(index) else { return };
+        let selection = selection_for(target, &find_query);
+        let mut state = control.doc_viewer_state.peek().clone().unwrap_or_default();
+        if state.find_query != find_query { return; }
+        let available = sources.and_then(|sources| sources.0.peek().clone()).unwrap_or_default();
+        state.selected_source = available.iter().find(|source| match (target, source) {
+            (DocumentMatchTarget::Header { .. }, DocumentSourceItem::Email(_)) => true,
+            (DocumentMatchTarget::Body { extracted_by, .. }, DocumentSourceItem::Email(_)) => extracted_by == EMAIL_TEXT_EXTRACTOR,
+            (DocumentMatchTarget::Body { extracted_by, .. }, DocumentSourceItem::Text(text)) => extracted_by == &text.extracted_by,
+            _ => false,
+        }).map(DocumentSourceItem::route_identity).or(state.selected_source);
+        if matches!(target, DocumentMatchTarget::Body { .. }) { state.selected_source_page = Some(selection.page_id); }
+        state.selected_match = Some(selection);
+        control.set_doc_viewer_state.call(state);
+    });
+    use_effect(use_reactive!(|initial_index, selection_current, initial_query| {
+        if control.doc_viewer_state.peek().as_ref().map(|state| state.find_query.clone()).unwrap_or_default() != initial_query { return; }
+        if !selection_current {
+            if let Some(index) = initial_index { navigate.call(index); }
+        }
+    }));
+    rsx! {
+        div { class: "x-email-match-controls", style: "display: flex; align-items: center; gap: 8px;",
+            NavigationButton { icon: MdArrowUpward, label: tr!("preview-with-search-previous-hit"), disabled: count == 0,
+                onclick: move |_| navigate.call(if current == 0 { count.saturating_sub(1) } else { current - 1 }) }
+            if pending {
+                span { role: "status", {tr!("preview-with-search-searching")} }
+            } else if failed {
+                span { role: "status", {tr!("preview-with-search-match-search-failed")} }
+            } else if unavailable {
+                span { role: "status", "data-email-match-unavailable": "true", {tr!("text-data-viewer-highlighting-failed-the-stored-text")} }
+            } else {
+                span { "data-email-match-count": "{count}", "{number} / {count}" }
+            }
+            if incomplete { span { role: "status", {tr!("preview-with-search-search-incomplete")} } }
+            NavigationButton { icon: MdArrowDownward, label: tr!("preview-with-search-next-hit"), disabled: count == 0,
+                onclick: move |_| navigate.call((current + 1) % count.max(1)) }
+            if let Some((_, Err(error))) = reply {
+                crate::components::error_boundary::ServerErrorDisplay { error }
+                button { onclick: move |_| retry += 1, {tr!("collections-facet-pane-retry")} }
+            }
+        }
+    }
+}
+
+fn initial_match_index(targets: &[DocumentMatchTarget], displayed_source: Option<&DocumentSourceItem>) -> Option<usize> {
+    if let Some(DocumentSourceItem::Text(text)) = displayed_source {
+        if let Some(index) = targets.iter().position(|target|
+            matches!(target, DocumentMatchTarget::Body { extracted_by, .. } if extracted_by == &text.extracted_by)) {
+            return Some(index);
+        }
+    }
+    (!targets.is_empty()).then_some(0)
+}
+
+fn selection_for(target: &DocumentMatchTarget, query: &str) -> TextMatchSelection {
+    match target {
+        DocumentMatchTarget::Header { field, occurrence, start_char, end_char } => TextMatchSelection {
+            extracted_by: format!("email-header:{field}:{occurrence}"), page_id: *end_char,
+            find_query: query.into(), ordinal: *start_char,
+        },
+        DocumentMatchTarget::Body { extracted_by, page_id, ordinal } => TextMatchSelection {
+            extracted_by: extracted_by.clone(), page_id: *page_id, find_query: query.into(), ordinal: *ordinal as u32,
+        },
+    }
+}
+
+#[server]
+async fn get_email_document_matches(document: DocumentIdentifier, find_query: String) -> Result<DocumentMatches, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::document_matches::get_document_matches(&user, document, find_query)
+        .await.map_err(crate::api::error_util::to_server_fn_error)
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+
+    #[test]
+    fn a_text_source_without_body_hits_selects_the_available_header() {
+        let targets = vec![DocumentMatchTarget::Header { field: "subject".into(), occurrence: 0, start_char: 0, end_char: 6 }];
+        let source = DocumentSourceItem::Text(DocumentTextSourceItem { extracted_by: "raw_text".into(), min_page: 1, max_page: 1 });
+        assert_eq!(initial_match_index(&targets, Some(&source)), Some(0));
+        assert_eq!(initial_match_index(&[], Some(&source)), None);
+    }
+
+    #[test]
+    fn repeated_header_values_keep_distinct_url_selections() {
+        let first = DocumentMatchTarget::Header { field: "to".into(), occurrence: 0, start_char: 0, end_char: 6 };
+        let second = DocumentMatchTarget::Header { field: "to".into(), occurrence: 1, start_char: 0, end_char: 6 };
+        assert_ne!(selection_for(&first, "quokka"), selection_for(&second, "quokka"));
+        let selected = selection_for(&second, "quokka");
+        let encoded = crate::data_definitions::url_param::UrlParam(selected.clone()).to_string();
+        let restored: crate::data_definitions::url_param::UrlParam<TextMatchSelection> = encoded.parse().unwrap();
+        assert_eq!(restored.0, selected);
+    }
 }

@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use common::search_result::DocumentIdentifier;
 use dioxus_free_icons::{
     Icon,
-    icons::go_icons::GoDatabase,
+    icons::md_device_icons::MdStorage,
 };
 
 use crate::components::search_components::card_action_buttons::{
@@ -38,7 +38,7 @@ pub fn DocTitleBar(
             ",
 
             // COLLECTION AND FILENAME
-            CollectionAndFilenameSection {document_identifier: document_identifier()}
+            DatasetAndFilenameSection {document_identifier: document_identifier()}
             // SPACER
             div {
                 style:"flex-grow: 1;"
@@ -63,8 +63,12 @@ pub fn DocTitleBar(
 }
 
 #[component]
-fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+fn DatasetAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let collection_dataset = document_identifier.read().clone().collection_dataset;
+    let storage = crate::components::session_context::use_storage_tree();
+    let label = storage.read().as_ref().and_then(|value| value.as_ref().ok())
+        .map(|nodes| crate::components::session_context::dataset_label(nodes, &collection_dataset))
+        .unwrap_or_else(|| collection_dataset.clone());
     rsx! {
         div {
             style: "
@@ -81,10 +85,11 @@ fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifi
                 font-weight: 400;
             ",
 
-            CollectionIcon {  }
+            DatasetIcon {  }
             div {
                 style: "color: rgba(0, 0, 0, 0.8); font-style: italic; font-size: var(--x-text-detail); line-height: var(--x-line-detail);",
-                "{collection_dataset}"
+                title: "{collection_dataset}",
+                "{label}"
             }
             div {
             "/"
@@ -96,7 +101,7 @@ fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifi
 }
 
 #[component]
-fn CollectionIcon() -> Element {
+fn DatasetIcon() -> Element {
     rsx! {
         div {
             style: "
@@ -111,7 +116,7 @@ fn CollectionIcon() -> Element {
                 flex-shrink: 0;
             ",
             Icon {
-                icon: GoDatabase,
+                icon: MdStorage,
                 style: "width: 15px; height: 15px;"
             }
         }

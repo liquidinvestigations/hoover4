@@ -271,6 +271,7 @@ ai-chat-history-messages-updated = { $s_message_count ->
         [many] { $s_message_count } رسالة
        *[other] { $s_message_count } رسالة
     } · آخر تحديث { $s_updated_at }
+
 ai-chat-history-delete-conversation = حذف المحادثة
 ai-chat-history-delete = حذف
 ai-chat-homepage-hoover-search-ai-chat = بحث Hoover - محادثة AI
@@ -322,6 +323,7 @@ ai-chat-history-messages = { $s_message_count ->
         [many] { $s_message_count } رسالة
        *[other] { $s_message_count } رسالة
     }
+
 web-search-card-reranked-in = أعاد المرمّز المتقاطع ترتيب النتائج في { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } في { $ms } ms
 web-search-card-score-was-rank = الدرجة { $score } · كان RRF #{ $rank }
@@ -528,6 +530,7 @@ chat-session-card-messages = { $session_message_count ->
         [many] { $session_message_count } رسالة
        *[other] { $session_message_count } رسالة
     }
+
 chat-tool-disclosure-item = { $count ->
         [zero] لا عناصر
         [one] عنصر واحد
@@ -587,3 +590,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · ال�
 cards-result-cards-version-unchanged = { $tool_name } · الإصدار { $version } · دون تغيير
 cards-result-cards-version = { $tool_name } · الإصدار { $version }
 web-search-card-results-in-after-deduplication = الواردة { $json_u64_doc_total_before_dedupe } نتيجة، وبعد إزالة التكرار { $json_u64_doc_total_after_dedupe }
+
+board-status-on = مفعّل
+
+board-status-off = معطّل
+
+chat-transcript-generic-tool = الأداة

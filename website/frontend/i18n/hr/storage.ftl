@@ -102,7 +102,12 @@ uploads-upload-these-paths-exist-in-the = Ove putanje postoje u mapi:
 uploads-upload-files = Datoteke
 uploads-upload-clear = Očisti
 uploads-upload-and-more-files = i još datoteka: { $format_count_more_as_u64 }
-uploads-upload-upload-files = Prenesi datoteke ({ $format_count_count_as_u64 })
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Prenesi { $format_count_count_as_u64 } datoteku
+    [few] Prenesi { $format_count_count_as_u64 } datoteke
+    *[other] Prenesi { $format_count_count_as_u64 } datoteka
+    }
+
 file-browser-search-names-in-all-collections = Pretraži nazive u svim zbirkama…
 file-browser-search-names-in-this-collection = Pretraži nazive u ovoj zbirci…
 file-browser-files-inside-this-archive-or = Datoteke unutar ove arhive ili e-poruke, na svim razinama

@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}（预算增加 { $n } 次探索）
 shared-boards-budget-unchanged = {" "}（预算不变，调查板已达探索上限）
 
 shared-email-graph-selected-copy-removed = 所选电子邮件副本已不存在。
+
+shared-table-generation-changed = 表格已更改。请重试表格读取。

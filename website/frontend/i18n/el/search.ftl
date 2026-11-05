@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Αναζήτηση { $kind }…
 search-filter-modal-show-results = Εμφάνιση { $total } αποτελεσμάτων
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Δεν έχει εφαρμοστεί ακόμη. Πατήστε Αναζήτηση.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Κάτω από
+
+facet-label-over = Πάνω από
+
+facet-language-en = Αγγλικά
+
+facet-language-de = Γερμανικά
+
+facet-language-es = Ισπανικά
+
+facet-language-fr = Γαλλικά
+
+facet-language-pl = Πολωνικά
+
+facet-language-pt = Πορτογαλικά
+
+facet-language-ar = Αραβικά
+
+facet-language-he = Εβραϊκά
+
+facet-language-hi = Χίντι
+
+facet-language-zh = Κινεζικά
+
+facet-language-it = Ιταλικά
+
+facet-language-nl = Ολλανδικά
+
+facet-language-da = Δανικά
+
+facet-language-nb = Νορβηγικά μποκμάλ
+
+facet-language-sv = Σουηδικά
+
+facet-language-el = Ελληνικά
+
+facet-language-hr = Κροατικά
+
+facet-language-ro = Ρουμανικά
+
+facet-language-ru = Ρωσικά
+
+facet-language-ja = Ιαπωνικά
+
+facet-language-ko = Κορεατικά
+
+facet-language-tr = Τουρκικά
+
+facet-language-af = Αφρικάανς
+
+facet-language-als = Τοσκ Αλβανικά
+
+facet-language-am = am
+
+facet-language-an = an
+
+facet-language-arz = Αιγυπτιακά Αραβικά
+
+facet-language-as = as
+
+facet-language-ast = Αστουριανά
+
+facet-language-av = Αβαρικά
+
+facet-language-az = Αζερμπαϊτζιανά
+
+facet-language-azb = azb
+
+facet-language-ba = Μπάσκιρ
+
+facet-language-bar = Βαυαρικά
+
+facet-language-bcl = bcl
+
+facet-language-be = Λευκωρωσικά
+
+facet-language-bg = Βουλγάρικα
+
+facet-language-bh = bh
+
+facet-language-bn = Βεγγαλικά
+
+facet-language-bo = Θιβετιανά
+
+facet-language-bpy = bpy
+
+facet-language-br = Βρετονικά
+
+facet-language-bs = Βοσνιακά
+
+facet-language-bxr = bxr
+
+facet-language-ca = Καταλανικά
+
+facet-language-cbk = cbk
+
+facet-language-ce = Τσετσένικα
+
+facet-language-ceb = ceb
+
+facet-language-ckb = ckb
+
+facet-language-co = Κορσικανικά
+
+facet-language-cs = Τσέχικα
+
+facet-language-cv = cv
+
+facet-language-cy = Ουαλικά
+
+facet-language-diq = Ντιμλι (αυτόνομη γλώσσα)
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Εσπεράντο
+
+facet-language-et = Εσθονικά
+
+facet-language-eu = Βασκικά
+
+facet-language-fa = Περσικά
+
+facet-language-fi = Φινλανδικά
+
+facet-language-frr = frr
+
+facet-language-fy = fy
+
+facet-language-ga = Ιρλανδέζικα
+
+facet-language-gd = gd
+
+facet-language-gl = gl
+
+facet-language-gn = Γκουαρανί
+
+facet-language-gom = gom
+
+facet-language-gu = Γκουτζαράτι
+
+facet-language-gv = gv
+
+facet-language-hif = hif
+
+facet-language-hsb = Άνω Σορβικά
+
+facet-language-ht = Αϊτικά
+
+facet-language-hu = Ουγγρικά
+
+facet-language-hy = Αρμενικά
+
+facet-language-ia = Ιντερλίνγκουα (Διεθνής Ένωση Βοηθητικής Γλώσσας IALA)
+
+facet-language-id = Ινδονησιακά
+
+facet-language-ie = ie
+
+facet-language-ilo = ilo
+
+facet-language-io = Ίντο
+
+facet-language-is = Ισλανδικά
+
+facet-language-jbo = jbo
+
+facet-language-jv = jv
+
+facet-language-ka = Γεωργιανά
+
+facet-language-kk = kk
+
+facet-language-km = km
+
+facet-language-kn = kn
+
+facet-language-krc = krc
+
+facet-language-ku = Κούρδικα
+
+facet-language-kv = kv
+
+facet-language-kw = kw
+
+facet-language-ky = ky
+
+facet-language-la = Λατινικά
+
+facet-language-lb = Λουξεμβουργιανά
+
+facet-language-lez = lez
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = lo
+
+facet-language-lrc = lrc
+
+facet-language-lt = Λιθουανικά
+
+facet-language-lv = Λετονέζικα
+
+facet-language-mai = mai
+
+facet-language-mg = Μαλαγασικά
+
+facet-language-mhr = Ανατολικό Μαρι
+
+facet-language-min = min
+
+facet-language-mk = Σλαβομακεδονικά
+
+facet-language-ml = Μαλαγιάλαμ
+
+facet-language-mn = Μογκολικά
+
+facet-language-mr = mr
+
+facet-language-mrj = mrj
+
+facet-language-ms = Μαλαισιανά (μακρογλώσσα)
+
+facet-language-mt = Μαλτέζικα
+
+facet-language-mwl = mwl
+
+facet-language-my = my
+
+facet-language-myv = myv
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = nap
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = Νορβηγικά Nynorsk
+
+facet-language-no = Νορβηγικά
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = Πουντζάμπι
+
+facet-language-pam = pam
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = ps
+
+facet-language-qu = qu
+
+facet-language-rm = rm
+
+facet-language-rue = rue
+
+facet-language-sa = Σανσκριτικά
+
+facet-language-sah = sah
+
+facet-language-sc = sc
+
+facet-language-scn = Σικελιανά
+
+facet-language-sco = Σκοτικά (Σκοτσέζικα)
+
+facet-language-sd = sd
+
+facet-language-sh = Σερβο-Κροατικά
+
+facet-language-si = si
+
+facet-language-sk = Σλοβακικά
+
+facet-language-sl = Σλοβενικά
+
+facet-language-so = Σομαλικά
+
+facet-language-sq = Αλβανικά
+
+facet-language-sr = Σερβικά
+
+facet-language-su = su
+
+facet-language-sw = Σουαχίλι (μακρογλώσσα)
+
+facet-language-ta = Ταμίλ
+
+facet-language-te = te
+
+facet-language-tg = tg
+
+facet-language-th = Ταϊλανδικά
+
+facet-language-tk = tk
+
+facet-language-tl = tl
+
+facet-language-tt = tt
+
+facet-language-tyv = tyv
+
+facet-language-ug = ug
+
+facet-language-uk = Ουκρανικά
+
+facet-language-ur = ur
+
+facet-language-uz = uz
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = Βιετναμέζικα
+
+facet-language-vls = vls
+
+facet-language-vo = vo
+
+facet-language-wa = wa
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = yi
+
+facet-language-yo = yo
+
+facet-language-yue = yue

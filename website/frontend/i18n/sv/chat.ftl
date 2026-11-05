@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = Det gick inte att läsa in historiken: 
 ai-chat-history-no-conversations-yet = Inga konversationer ännu.
 ai-chat-history-board = Utredningstavla
 ai-chat-history-new-chat = Ny chatt
-ai-chat-history-messages-updated = { $s_message_count } meddelanden · uppdaterad { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } meddelande · uppdaterad { $s_updated_at }
+    *[other] { $s_message_count } meddelanden · uppdaterad { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Radera konversationen
 ai-chat-history-delete = Radera
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - AI-chatt
@@ -292,7 +296,11 @@ chat-transcript-calls = verktygsanrop
 ai-chat-board-a-board-without-collections-needs = En utredningstavla utan samlingar behöver internetverktyg.
 ai-chat-board-of = { $snap_explores_used } av { $snap_max_explores }
 ai-chat-board-assessment-2 = bedömning { $number }
-ai-chat-history-messages = { $s_message_count } meddelanden
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } meddelande
+    *[other] { $s_message_count } meddelanden
+    }
+
 web-search-card-reranked-in = Cross-encodern rankade om resultaten på { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } på { $ms } ms
 web-search-card-score-was-rank = poäng { $score } · var RRF #{ $rank }
@@ -431,7 +439,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } misslyckades
 tool-run-summary-took = tog { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } meddelanden
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } meddelande
+    *[other] { $session_message_count } meddelanden
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } objekt
        *[other] { $count } objekt
@@ -476,3 +488,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · version { $version } · oförändrad
 cards-result-cards-version = { $tool_name } · version { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } resultat in, { $json_u64_doc_total_after_dedupe } efter borttagning av dubbletter
+
+board-status-on = På
+
+board-status-off = Av
+
+chat-transcript-generic-tool = verktyget

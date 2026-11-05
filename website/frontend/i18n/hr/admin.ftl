@@ -847,11 +847,12 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Antivirusno skeniranje, zatim atribut pretrage zaraženih datoteka
 processing-update-tables-title = Tablice
 processing-update-tables-explanation = { $files ->
-    [one] { $count } datoteka je JSON ili JSON Lines datoteka bez tablice trenutnog čitača ili tablica koju je raniji čitač skratio na 300 stupaca.
-    [few] { $count } datoteke su JSON ili JSON Lines datoteke bez tablice trenutnog čitača ili tablice koje je raniji čitač skratio na 300 stupaca.
-   *[other] { $count } datoteka je JSON ili JSON Lines datoteka bez tablice trenutnog čitača ili tablica koje je raniji čitač skratio na 300 stupaca.
-} Čitaju se ponovno. JSON datoteke koje je raniji čitač pročitao kao CSV dobivaju svoju JSON tablicu, a ranije ćelije više se ne prikazuju. Trenutačni čitač sprema JSON vrijednost null kao praznu ćeliju, a ugniježđeni JSON kao uvučeni tekst.
-processing-update-tables-runs = Čitanje tablica, zatim vrsta datoteke i indeksiranje ovih datoteka
+    [one] { $count } datoteka ima starije očitanje tablice ili nepotpune ovisne rezultate. Pohranjeni rezultati ažuriraju se.
+    [few] Datoteke sa starijim očitanjima tablica ili nepotpunim ovisnim rezultatima: { $count }. Pohranjeni rezultati ažuriraju se.
+    *[other] Datoteke sa starijim očitanjima tablica ili nepotpunim ovisnim rezultatima: { $count }. Pohranjeni rezultati ažuriraju se.
+    }
+
+processing-update-tables-runs = Čitanje tablica, entiteti, signali, ugrađivanja i oba indeksa
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike ili zadržava OCR tekst jezika koje postavke više ne uključuju.
@@ -889,3 +890,33 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Stablo mapa
 admin-uploads-badge = Prijenosi
 admin-uploads-badge-title = Prihvaća prijenose
+
+processing-update-archive_members-title = Članovi arhiva
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } podijeljena arhiva treba trenutačan popis članova. Članovi i rezultati pretraživanja ažuriraju se.
+    [few] Podijeljene arhive koje trebaju trenutačne popise članova: { $count }. Njihovi članovi i rezultati pretraživanja ažuriraju se.
+    *[other] Podijeljene arhive koje trebaju trenutačne popise članova: { $count }. Njihovi članovi i rezultati pretraživanja ažuriraju se.
+    }
+
+processing-update-archive_members-runs = Izdvajanje arhiva, usklađivanje članova i ovisna obrada
+
+processing-update-image_previews-title = Pregledi slika
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } neuobičajena slika nema pregled. Njezin pregled ponovno se stvara.
+    [few] Neuobičajene slike bez pregleda: { $count }. Njihovi pregledi ponovno se stvaraju.
+    *[other] Neuobičajene slike bez pregleda: { $count }. Njihovi pregledi ponovno se stvaraju.
+    }
+
+processing-update-image_previews-runs = Stvaranje i provjera pregleda slika
+
+processing-update-search_terms-title = Pojmovi pretraživanja
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } tablica pretraživanja treba trenutačne pojmove filtara. Pojmovi jezika, OCR-a, pisma i crvenih zastavica postaju pretraživi.
+    [few] Tablice pretraživanja koje trebaju trenutačne pojmove filtara: { $count }. Pojmovi jezika, OCR-a, pisma i crvenih zastavica postaju pretraživi.
+    *[other] Tablice pretraživanja koje trebaju trenutačne pojmove filtara: { $count }. Pojmovi jezika, OCR-a, pisma i crvenih zastavica postaju pretraživi.
+    }
+
+processing-update-search_terms-runs = Indeksiranje i provjera pojmova filtara

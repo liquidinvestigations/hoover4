@@ -6,7 +6,7 @@ mod raw_metadata_collector;
 
 pub(crate) use raw_metadata_collector::{METADATA_KEY_STYLE, SECTION_HEADER_STYLE, SECTION_STYLE, get_document_dates};
 
-use common::document_sources::{DocumentSourceItem, DocumentSourcesStatus, ItemHitCounts};
+use common::document_sources::{DocumentSourceItem, ItemHitCounts};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
@@ -53,7 +53,7 @@ pub fn DocViewerRoot(
             navigator().replace(Route::ViewDocumentPage {
                 document_identifier: document_identifier.read().clone().into(),
                 doc_viewer_state: Some(state).into(),
-                viewer_right_tab_state: ViewerRightTabState::default().into(),
+                viewer_right_tab_state: viewer_right_tab_state.read().clone().into(),
             });
         }),
     });
@@ -63,14 +63,21 @@ pub fn DocViewerRoot(
     // signal: a `ReadSignal` prop is a new signal on every parent render, so a resource
     // subscribed to it never re-runs and the pairing of `use_effect` + `restart()` that
     // used to compensate fired a second, identical request on every mount.
-    let mut source_request: Resource<Result<DocumentSourcesStatus, ServerFnError>> =
-        use_resource(use_reactive!(|document_identifier_value| {
-            async move { get_document_sources(document_identifier_value).await }
-        }));
+    let mut source_request = use_resource(use_reactive!(|document_identifier_value| {
+        async move {
+            let result = get_document_sources(document_identifier_value.clone()).await;
+            (document_identifier_value, result)
+        }
+    }));
+    let source_reply = use_memo(use_reactive!(|document_identifier_value| {
+        source_request.read().as_ref().filter(|(answered, _)| answered == &document_identifier_value)
+            .map(|(_, result)| result.clone())
+    }));
     let doc_sources: ReadSignal<Option<Vec<DocumentSourceItem>>> =
-        use_memo(move || source_request.read().as_ref()
+        use_memo(move || source_reply.read().as_ref()
             .and_then(|r| r.as_ref().ok().map(|status| status.sources.clone()))).into();
-    let source_error = use_memo(move || source_request.read().as_ref().and_then(|result| {
+    use_context_provider(move || crate::components::document_view_components::doc_preview_for_search::doc_preview_for_email::EmailNavigationSources(doc_sources));
+    let source_error = use_memo(move || source_reply.read().as_ref().and_then(|result| {
         match result {
             Ok(status) if !status.errors.is_empty() => Some(status.errors.join(", ")),
             Err(error) => Some(error.to_string()),
@@ -78,7 +85,7 @@ pub fn DocViewerRoot(
         }
     }));
 
-    let empty_source_message = use_memo(move || source_request.read().as_ref()
+    let empty_source_message = use_memo(move || source_reply.read().as_ref()
         .and_then(|result| result.as_ref().ok())
         .map(|status| status.processing.empty_source_message().shared()).unwrap_or_default());
 
@@ -125,28 +132,24 @@ pub fn DocViewerRoot(
     });
 
     // ================ ITEM HIT COUNTS: ================
-    let mut item_hit_counts = use_signal(move || ItemHitCounts(Vec::new()));
-    let _r = use_resource(use_reactive!(|document_identifier_value| {
+    let count_key = use_memo(use_reactive!(|document_identifier_value| {
         let sources = doc_sources.read().clone().unwrap_or_default();
-        let find_query = control
-            .doc_viewer_state
-            .read()
-            .clone()
-            .unwrap_or_default()
-            .find_query;
-        async move {
-            {
-                item_hit_counts.set(ItemHitCounts(Vec::new()));
-            }
-            let item =
-                search_document_item_hit_counts(document_identifier_value, find_query, sources)
-                    .await
-                    .unwrap_or_default();
-            {
-                item_hit_counts.set(item);
-            }
-        }
+        let query = control.doc_viewer_state.read().clone().unwrap_or_default().find_query;
+        (document_identifier_value, query, sources)
     }));
+    let counts = use_resource(move || {
+        let key = count_key();
+        async move {
+            let result = search_document_item_hit_counts(key.0.clone(), key.1.clone(), key.2.clone()).await;
+            (key, result)
+        }
+    });
+    let item_hit_counts = use_memo(move || match counts.read().as_ref() {
+        Some((answered, Ok(value))) if answered == &count_key() => value.clone(),
+        Some((answered, Err(_))) if answered == &count_key() => ItemHitCounts(answered.2.iter().cloned()
+            .map(|source| (source, common::document_text_pages::HitCountState::Failed)).collect()),
+        _ => ItemHitCounts(Vec::new()),
+    });
 
     use_context_provider(move || ViewerPageControls {
         document_identifier,

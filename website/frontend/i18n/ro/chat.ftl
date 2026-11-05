@@ -257,7 +257,12 @@ ai-chat-history-could-not-load-history = Istoricul nu a putut fi încărcat: { $
 ai-chat-history-no-conversations-yet = Încă nicio conversație.
 ai-chat-history-board = Tablou
 ai-chat-history-new-chat = Conversație nouă
-ai-chat-history-messages-updated = Mesaje: { $s_message_count } · actualizat { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } mesaj · actualizat { $s_updated_at }
+    [few] { $s_message_count } mesaje · actualizat { $s_updated_at }
+    *[other] { $s_message_count } de mesaje · actualizat { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Șterge conversația
 ai-chat-history-delete = Șterge
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - Conversație AI
@@ -294,7 +299,12 @@ chat-transcript-calls = apeluri
 ai-chat-board-a-board-without-collections-needs = Un tablou fără colecții are nevoie de instrumente de internet.
 ai-chat-board-of = { $snap_explores_used } din { $snap_max_explores }
 ai-chat-board-assessment-2 = evaluarea { $number }
-ai-chat-history-messages = Mesaje: { $s_message_count }
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } mesaj
+    [few] { $s_message_count } mesaje
+    *[other] { $s_message_count } de mesaje
+    }
+
 web-search-card-reranked-in = Cross-encoderul a ordonat rezultatele în { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } în { $ms } ms
 web-search-card-score-was-rank = scor { $score } · era RRF #{ $rank }
@@ -448,7 +458,12 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = eșuate: { $failures }
 tool-run-summary-took = a durat { $duration_text_ms }
-chat-session-card-messages = Mesaje: { $session_message_count }
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } mesaj
+    [few] { $session_message_count } mesaje
+    *[other] { $session_message_count } de mesaje
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] un element
         [few] { $count } elemente
@@ -499,3 +514,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · docum
 cards-result-cards-version-unchanged = { $tool_name } · versiunea { $version } · neschimbată
 cards-result-cards-version = { $tool_name } · versiunea { $version }
 web-search-card-results-in-after-deduplication = Rezultate primite: { $json_u64_doc_total_before_dedupe }, după deduplicare: { $json_u64_doc_total_after_dedupe }
+
+board-status-on = Activat
+
+board-status-off = Dezactivat
+
+chat-transcript-generic-tool = instrumentul

@@ -203,3 +203,15 @@ preview-with-search-next = Următor: { $label }
 document-entities-panel-as-written =
     { $value }
     scris ca: { $written }
+
+preview-for-archive-search = Caută în această arhivă
+
+preview-for-archive-search-zip = Caută în acest fișier ZIP
+
+email-graph-incomplete = { $count ->
+    [one] Este afișat { $count } e-mail. Totalul este incomplet.
+    [few] Sunt afișate { $count } e-mailuri. Totalul este incomplet.
+    *[other] Sunt afișate { $count } de e-mailuri. Totalul este incomplet.
+    }
+
+email-graph-copies = Număr de copii autorizate: { $count }

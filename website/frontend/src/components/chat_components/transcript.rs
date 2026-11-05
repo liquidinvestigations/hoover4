@@ -131,7 +131,7 @@ pub fn ChatTranscript(
     // document's entities names it by collection and hash, and the dataset that makes it
     // addressable was named earlier in the same conversation by whatever found it.
     let datasets = dataset_by_hash(&messages);
-    let collections = use_resource(crate::api::storage_api::list_storage_tree);
+    let collections = crate::components::session_context::use_storage_tree();
     let collection_tree = collections.read().as_ref().and_then(|result| result.as_ref().ok()).cloned().unwrap_or_default();
     // Handles are allocated for the whole conversation, so a handle that any citation of
     // any run gave is a real one. The answers mark every other handle as not cited.
@@ -1391,11 +1391,11 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
 /// (which tool ran and how many documents it found), because a bare chevron makes the
 /// reader open every one of them to find out whether it is worth opening.
 #[component]
-fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
+pub(crate) fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
     let mut open = use_signal(|| false);
     let count = refs.len();
     let tool = if tool_name.is_empty() || tool_name == "tool" {
-        "the tool".to_string()
+        tr!("chat-transcript-generic-tool")
     } else {
         tool_name
     };

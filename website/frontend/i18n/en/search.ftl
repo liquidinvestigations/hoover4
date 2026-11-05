@@ -164,3 +164,375 @@ search-filter-modal-search-entity-type = Search { $kind }…
 search-filter-modal-show-results = Show { $total } results
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Not applied yet. Press Search.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Under
+
+facet-label-over = Over
+
+facet-language-en = English
+
+facet-language-de = German
+
+facet-language-es = Spanish
+
+facet-language-fr = French
+
+facet-language-pl = Polish
+
+facet-language-pt = Portuguese
+
+facet-language-ar = Arabic
+
+facet-language-he = Hebrew
+
+facet-language-hi = Hindi
+
+facet-language-zh = Chinese
+
+facet-language-it = Italian
+
+facet-language-nl = Dutch
+
+facet-language-da = Danish
+
+facet-language-nb = Norwegian Bokmål
+
+facet-language-sv = Swedish
+
+facet-language-el = Greek
+
+facet-language-hr = Croatian
+
+facet-language-ro = Romanian
+
+facet-language-ru = Russian
+
+facet-language-ja = Japanese
+
+facet-language-ko = Korean
+
+facet-language-tr = Turkish
+
+facet-language-af = Afrikaans
+
+facet-language-als = Tosk Albanian
+
+facet-language-am = Amharic
+
+facet-language-an = Aragonese
+
+facet-language-arz = Egyptian Arabic
+
+facet-language-as = Assamese
+
+facet-language-ast = Asturian
+
+facet-language-av = Avaric
+
+facet-language-az = Azerbaijani
+
+facet-language-azb = South Azerbaijani
+
+facet-language-ba = Bashkir
+
+facet-language-bar = Bavarian
+
+facet-language-bcl = Central Bikol
+
+facet-language-be = Belarusian
+
+facet-language-bg = Bulgarian
+
+facet-language-bh = Bihari
+
+facet-language-bn = Bengali
+
+facet-language-bo = Tibetan
+
+facet-language-bpy = Bishnupriya
+
+facet-language-br = Breton
+
+facet-language-bs = Bosnian
+
+facet-language-bxr = Russia Buriat
+
+facet-language-ca = Catalan
+
+facet-language-cbk = Chavacano
+
+facet-language-ce = Chechen
+
+facet-language-ceb = Cebuano
+
+facet-language-ckb = Central Kurdish
+
+facet-language-co = Corsican
+
+facet-language-cs = Czech
+
+facet-language-cv = Chuvash
+
+facet-language-cy = Welsh
+
+facet-language-diq = Dimli (individual language)
+
+facet-language-dsb = Lower Sorbian
+
+facet-language-dty = Dotyali
+
+facet-language-dv = Divehi
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estonian
+
+facet-language-eu = Basque
+
+facet-language-fa = Persian
+
+facet-language-fi = Finnish
+
+facet-language-frr = Northern Frisian
+
+facet-language-fy = Western Frisian
+
+facet-language-ga = Irish
+
+facet-language-gd = Scottish Gaelic
+
+facet-language-gl = Galician
+
+facet-language-gn = Guarani
+
+facet-language-gom = Goan Konkani
+
+facet-language-gu = Gujarati
+
+facet-language-gv = Manx
+
+facet-language-hif = Fiji Hindi
+
+facet-language-hsb = Upper Sorbian
+
+facet-language-ht = Haitian
+
+facet-language-hu = Hungarian
+
+facet-language-hy = Armenian
+
+facet-language-ia = Interlingua (International Auxiliary Language Association)
+
+facet-language-id = Indonesian
+
+facet-language-ie = Interlingue
+
+facet-language-ilo = Iloko
+
+facet-language-io = Ido
+
+facet-language-is = Icelandic
+
+facet-language-jbo = Lojban
+
+facet-language-jv = Javanese
+
+facet-language-ka = Georgian
+
+facet-language-kk = Kazakh
+
+facet-language-km = Khmer
+
+facet-language-kn = Kannada
+
+facet-language-krc = Karachay-Balkar
+
+facet-language-ku = Kurdish
+
+facet-language-kv = Komi
+
+facet-language-kw = Cornish
+
+facet-language-ky = Kirghiz
+
+facet-language-la = Latin
+
+facet-language-lb = Luxembourgish
+
+facet-language-lez = Lezghian
+
+facet-language-li = Limburgan
+
+facet-language-lmo = Lombard
+
+facet-language-lo = Lao
+
+facet-language-lrc = Northern Luri
+
+facet-language-lt = Lithuanian
+
+facet-language-lv = Latvian
+
+facet-language-mai = Maithili
+
+facet-language-mg = Malagasy
+
+facet-language-mhr = Eastern Mari
+
+facet-language-min = Minangkabau
+
+facet-language-mk = Macedonian
+
+facet-language-ml = Malayalam
+
+facet-language-mn = Mongolian
+
+facet-language-mr = Marathi
+
+facet-language-mrj = Western Mari
+
+facet-language-ms = Malay (macrolanguage)
+
+facet-language-mt = Maltese
+
+facet-language-mwl = Mirandese
+
+facet-language-my = Burmese
+
+facet-language-myv = Erzya
+
+facet-language-mzn = Mazanderani
+
+facet-language-nah = Nahuatl
+
+facet-language-nap = Neapolitan
+
+facet-language-nds = Low German
+
+facet-language-ne = Nepali (macrolanguage)
+
+facet-language-new = Nepal Bhasa
+
+facet-language-nn = Norwegian Nynorsk
+
+facet-language-no = Norwegian
+
+facet-language-oc = Occitan (post 1500)
+
+facet-language-or = Oriya (macrolanguage)
+
+facet-language-os = Ossetian
+
+facet-language-pa = Panjabi
+
+facet-language-pam = Pampanga
+
+facet-language-pfl = Pfaelzisch
+
+facet-language-pms = Piemontese
+
+facet-language-pnb = Western Panjabi
+
+facet-language-ps = Pushto
+
+facet-language-qu = Quechua
+
+facet-language-rm = Romansh
+
+facet-language-rue = Rusyn
+
+facet-language-sa = Sanskrit
+
+facet-language-sah = Yakut
+
+facet-language-sc = Sardinian
+
+facet-language-scn = Sicilian
+
+facet-language-sco = Scots
+
+facet-language-sd = Sindhi
+
+facet-language-sh = Serbo-Croatian
+
+facet-language-si = Sinhala
+
+facet-language-sk = Slovak
+
+facet-language-sl = Slovenian
+
+facet-language-so = Somali
+
+facet-language-sq = Albanian
+
+facet-language-sr = Serbian
+
+facet-language-su = Sundanese
+
+facet-language-sw = Swahili (macrolanguage)
+
+facet-language-ta = Tamil
+
+facet-language-te = Telugu
+
+facet-language-tg = Tajik
+
+facet-language-th = Thai
+
+facet-language-tk = Turkmen
+
+facet-language-tl = Tagalog
+
+facet-language-tt = Tatar
+
+facet-language-tyv = Tuvinian
+
+facet-language-ug = Uighur
+
+facet-language-uk = Ukrainian
+
+facet-language-ur = Urdu
+
+facet-language-uz = Uzbek
+
+facet-language-vec = Venetian
+
+facet-language-vep = Veps
+
+facet-language-vi = Vietnamese
+
+facet-language-vls = Vlaams
+
+facet-language-vo = Volapük
+
+facet-language-wa = Walloon
+
+facet-language-war = Waray (Philippines)
+
+facet-language-wuu = Wu Chinese
+
+facet-language-xal = Kalmyk
+
+facet-language-xmf = Mingrelian
+
+facet-language-yi = Yiddish
+
+facet-language-yo = Yoruba
+
+facet-language-yue = Yue Chinese

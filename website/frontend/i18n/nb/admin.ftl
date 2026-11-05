@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Antivirusskanning, deretter søkeattributtet for infiserte filer
 processing-update-tables-title = Tabeller
 processing-update-tables-explanation = { $files ->
-    [one] { $count } fil er en JSON- eller JSON Lines-fil uten tabell fra den nåværende leseren, eller en tabell som en tidligere leser kuttet ved 300 kolonner.
-   *[other] { $count } filer er JSON- eller JSON Lines-filer uten tabell fra den nåværende leseren, eller tabeller som en tidligere leser kuttet ved 300 kolonner.
-} De leses på nytt. JSON-filer som en tidligere leser leste som CSV, får JSON-tabellen sin, og de tidligere cellene vises ikke lenger. Den gjeldende leseren lagrer en JSON-null som en tom celle og nestet JSON som innrykket tekst.
-processing-update-tables-runs = Tabellesing, deretter filtype og indeksering av disse filene
+    [one] { $count } fil har en eldre tabellavlesning eller ufullstendige avhengige resultater. De lagrede resultatene oppdateres.
+    *[other] { $count } filer har eldre tabellavlesninger eller ufullstendige avhengige resultater. De lagrede resultatene oppdateres.
+    }
+
+processing-update-tables-runs = Tabellavlesning, entiteter, signaler, innbygginger og begge indekser
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Omtrent { $count } fil mangler OCR-tekst for de nåværende språkene, eller beholder OCR-tekst for språk som innstillingene ikke lenger omfatter.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Mappetre
 admin-uploads-badge = Opplastinger
 admin-uploads-badge-title = Tar imot opplastinger
+
+processing-update-archive_members-title = Arkivmedlemmer
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } delt arkiv trenger en gjeldende medlemsliste. Medlemmene og søkeresultatene oppdateres.
+    *[other] { $count } delte arkiver trenger gjeldende medlemslister. Medlemmene og søkeresultatene oppdateres.
+    }
+
+processing-update-archive_members-runs = Arkivuttrekking, medlemsavstemming og avhengig behandling
+
+processing-update-image_previews-title = Bildeforhåndsvisninger
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } uvanlig bilde mangler forhåndsvisning. Forhåndsvisningen opprettes på nytt.
+    *[other] { $count } uvanlige bilder mangler forhåndsvisning. Forhåndsvisningene opprettes på nytt.
+    }
+
+processing-update-image_previews-runs = Oppretting og kontroll av bildeforhåndsvisninger
+
+processing-update-search_terms-title = Søkeord
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } søketabell trenger gjeldende filtertermer. Termer for språk, OCR, skriftsystem og røde flagg blir søkbare.
+    *[other] Søketabeller som trenger gjeldende filtertermer: { $count }. Termer for språk, OCR, skriftsystem og røde flagg blir søkbare.
+    }
+
+processing-update-search_terms-runs = Indeksering og kontroll av filtertermer

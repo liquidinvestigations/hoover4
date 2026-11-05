@@ -249,7 +249,10 @@ ai-chat-history-could-not-load-history = 기록을 불러오지 못했습니다:
 ai-chat-history-no-conversations-yet = 아직 대화가 없습니다.
 ai-chat-history-board = 보드
 ai-chat-history-new-chat = 새 채팅
-ai-chat-history-messages-updated = 메시지 { $s_message_count }개 · 갱신 { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    *[other] { $s_message_count } 개 메시지 · 갱신 { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = 대화 삭제
 ai-chat-history-delete = 삭제
 ai-chat-homepage-hoover-search-ai-chat = Hoover 검색 - AI 채팅
@@ -286,7 +289,10 @@ chat-transcript-calls = 호출
 ai-chat-board-a-board-without-collections-needs = 컬렉션이 없는 보드에는 인터넷 도구가 필요합니다.
 ai-chat-board-of = { $snap_max_explores }회 중 { $snap_explores_used }회
 ai-chat-board-assessment-2 = 평가 { $number }
-ai-chat-history-messages = 메시지 { $s_message_count }개
+ai-chat-history-messages = { $s_message_count ->
+    *[other] { $s_message_count } 개 메시지
+    }
+
 web-search-card-reranked-in = 크로스 인코더가 { $ms } ms 안에 결과의 순위를 다시 정했습니다.
 web-search-card-engine-results = { $name }: { $ms } ms 동안 { $count }개
 web-search-card-score-was-rank = 점수 { $score } · 이전 RRF #{ $rank }
@@ -380,7 +386,10 @@ tool-run-summary-to-the-agent = 에이전트에 대한 지시 { $n }개
 tool-run-summary-other = 기타 호출 { $n }회
 tool-run-summary-failed = { $failures }회 실패
 tool-run-summary-took = { $duration_text_ms } 소요
-chat-session-card-messages = 메시지 { $session_message_count }개
+chat-session-card-messages = { $session_message_count ->
+    *[other] { $session_message_count } 개 메시지
+    }
+
 chat-tool-disclosure-item = 항목 { $count }개
 chat-tool-disclosure-field = 필드 { $count }개
 chat-tool-disclosure-searched-collections = 컬렉션 검색{ $filters }
@@ -419,3 +428,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · 문�
 cards-result-cards-version-unchanged = { $tool_name } · 버전 { $version } · 변경 없음
 cards-result-cards-version = { $tool_name } · 버전 { $version }
 web-search-card-results-in-after-deduplication = 결과 { $json_u64_doc_total_before_dedupe }개, 중복 제거 후 { $json_u64_doc_total_after_dedupe }개
+
+board-status-on = 켜짐
+
+board-status-off = 꺼짐
+
+chat-transcript-generic-tool = 도구

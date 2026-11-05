@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = { $kind } 검색…
 search-filter-modal-show-results = 결과 { $total }건 표시
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. 아직 적용되지 않았습니다. 검색을 누르세요.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = 미만
+
+facet-label-over = 초과
+
+facet-language-en = 영어
+
+facet-language-de = 독일어
+
+facet-language-es = 스페인어
+
+facet-language-fr = 프랑스어
+
+facet-language-pl = 폴란드어
+
+facet-language-pt = 포르투갈어
+
+facet-language-ar = 아랍어
+
+facet-language-he = 히브리어
+
+facet-language-hi = 힌디어
+
+facet-language-zh = 중국어
+
+facet-language-it = 이탈리아어
+
+facet-language-nl = 네덜란드어
+
+facet-language-da = 덴마크어
+
+facet-language-nb = 노르웨이어 보크몰
+
+facet-language-sv = 스웨덴어
+
+facet-language-el = 그리스어
+
+facet-language-hr = 크로아티아어
+
+facet-language-ro = 루마니아어
+
+facet-language-ru = 러시아어
+
+facet-language-ja = 일본어
+
+facet-language-ko = 한국어
+
+facet-language-tr = 튀르키예어
+
+facet-language-af = 아프리칸스어
+
+facet-language-als = als
+
+facet-language-am = 암하라어
+
+facet-language-an = 아라곤어
+
+facet-language-arz = arz
+
+facet-language-as = 아삼어
+
+facet-language-ast = ast
+
+facet-language-av = 아바르어
+
+facet-language-az = 아제르바이잔어
+
+facet-language-azb = azb
+
+facet-language-ba = 바시키르어
+
+facet-language-bar = bar
+
+facet-language-bcl = bcl
+
+facet-language-be = 벨로루시어
+
+facet-language-bg = 불가리아어
+
+facet-language-bh = bh
+
+facet-language-bn = 벵골어
+
+facet-language-bo = 티베트어
+
+facet-language-bpy = bpy
+
+facet-language-br = 브르타뉴어
+
+facet-language-bs = 보스니아어
+
+facet-language-bxr = bxr
+
+facet-language-ca = 카탈로니아어
+
+facet-language-cbk = cbk
+
+facet-language-ce = 체첸어
+
+facet-language-ceb = 세부어
+
+facet-language-ckb = ckb
+
+facet-language-co = 코르시카어
+
+facet-language-cs = 체코어
+
+facet-language-cv = 추바슈어
+
+facet-language-cy = 웨일스어
+
+facet-language-diq = diq
+
+facet-language-dsb = 소르비아어 (저지)
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = 에스페란토어
+
+facet-language-et = 에스토니아어
+
+facet-language-eu = 바스크어
+
+facet-language-fa = 페르시아어
+
+facet-language-fi = 핀란드어
+
+facet-language-frr = 프리지아어 (북부)
+
+facet-language-fy = 프리지아어 (서부)
+
+facet-language-ga = 아일랜드어
+
+facet-language-gd = gd
+
+facet-language-gl = 갈리시아어
+
+facet-language-gn = 파라과이 과라니
+
+facet-language-gom = gom
+
+facet-language-gu = 구자라트어
+
+facet-language-gv = 맨어
+
+facet-language-hif = hif
+
+facet-language-hsb = 소르비아어 (고지)
+
+facet-language-ht = ht
+
+facet-language-hu = 헝가리어
+
+facet-language-hy = 아르메니아어
+
+facet-language-ia = 인테르링구아 (국제보조어협회)
+
+facet-language-id = 인도네시아어
+
+facet-language-ie = ie
+
+facet-language-ilo = 일로코어
+
+facet-language-io = 이도
+
+facet-language-is = 아이슬란드어
+
+facet-language-jbo = 로지반
+
+facet-language-jv = 자와어
+
+facet-language-ka = 조지아어
+
+facet-language-kk = 카자흐어
+
+facet-language-km = km
+
+facet-language-kn = 칸나다어
+
+facet-language-krc = 카라차이발카르어
+
+facet-language-ku = 쿠르드어
+
+facet-language-kv = 코미어
+
+facet-language-kw = 콘월어
+
+facet-language-ky = ky
+
+facet-language-la = 라틴어
+
+facet-language-lb = lb
+
+facet-language-lez = 레즈긴어
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = 라오어
+
+facet-language-lrc = lrc
+
+facet-language-lt = 리투아니아어
+
+facet-language-lv = 라트비아어
+
+facet-language-mai = 마이틸리어
+
+facet-language-mg = 말라가시어
+
+facet-language-mhr = mhr
+
+facet-language-min = 미낭카바우어
+
+facet-language-mk = 마케도니아어
+
+facet-language-ml = 말라얄람어
+
+facet-language-mn = 몽골어
+
+facet-language-mr = 마라티어
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = 몰타어
+
+facet-language-mwl = 미란데어
+
+facet-language-my = 버마어
+
+facet-language-myv = 에르지아어
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = 나폴리어
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = 노르웨이 뉘노르스크어
+
+facet-language-no = 노르웨이어
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = pam
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = ps
+
+facet-language-qu = 케추아어족
+
+facet-language-rm = 로만슈어
+
+facet-language-rue = rue
+
+facet-language-sa = 산스크리트어
+
+facet-language-sah = 야큐트어
+
+facet-language-sc = 사르데냐어
+
+facet-language-scn = 시칠리아어
+
+facet-language-sco = 스코트어
+
+facet-language-sd = 신디어
+
+facet-language-sh = sh
+
+facet-language-si = 신할라어
+
+facet-language-sk = 슬로바키아어
+
+facet-language-sl = 슬로베니아어
+
+facet-language-so = 소말리아어
+
+facet-language-sq = 알바니아어
+
+facet-language-sr = 세르비아어
+
+facet-language-su = 순다어
+
+facet-language-sw = sw
+
+facet-language-ta = 타밀어
+
+facet-language-te = 텔루구어
+
+facet-language-tg = 타지크어
+
+facet-language-th = 태국어
+
+facet-language-tk = 투르크멘어
+
+facet-language-tl = 타갈로그어
+
+facet-language-tt = 타타르어
+
+facet-language-tyv = 투바어
+
+facet-language-ug = ug
+
+facet-language-uk = uk
+
+facet-language-ur = 우르두어
+
+facet-language-uz = 우즈베크어
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = 베트남어
+
+facet-language-vls = vls
+
+facet-language-vo = 볼라퓌크
+
+facet-language-wa = 왈론어
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = 이디시어
+
+facet-language-yo = 요루바어
+
+facet-language-yue = yue

@@ -12,3 +12,6 @@ pub use board_page::AiBoardPage;
 pub use history_page::AiChatHistoryPage;
 pub use homepage::AiChatPage;
 pub use session_page::AiChatSessionPage;
+
+#[cfg(feature = "browser-fixtures")]
+pub(crate) use board_page::BoardStatistics;

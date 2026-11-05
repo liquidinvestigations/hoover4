@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Ces chemins existent déjà dans le do
 uploads-upload-files = Fichiers
 uploads-upload-clear = Effacer
 uploads-upload-and-more-files = et { $format_count_more_as_u64 } autres fichiers
-uploads-upload-upload-files = Téléverser { $format_count_count_as_u64 } fichiers
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Téléverser { $format_count_count_as_u64 } fichier
+    *[other] Téléverser { $format_count_count_as_u64 } fichiers
+    }
+
 file-browser-search-names-in-all-collections = Rechercher des noms dans toutes les collections…
 file-browser-search-names-in-this-collection = Rechercher des noms dans cette collection…
 file-browser-files-inside-this-archive-or = Fichiers à l’intérieur de cette archive ou de cet e-mail, à tous les niveaux

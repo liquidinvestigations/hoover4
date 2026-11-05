@@ -203,3 +203,11 @@ preview-with-search-next = अगला { $label }
 document-entities-panel-as-written =
     { $value }
     जैसा लिखा गया: { $written }
+
+preview-for-archive-search = इस संग्रह में खोजें
+
+preview-for-archive-search-zip = इस ZIP फ़ाइल में खोजें
+
+email-graph-incomplete = दिखाए गए ईमेल की संख्या: { $count }। कुल संख्या अधूरी है।
+
+email-graph-copies = अधिकृत प्रतियाँ: { $count }

@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Έλεγχος antivirus, έπειτα το χαρακτηριστικό αναζήτησης των μολυσμένων αρχείων
 processing-update-tables-title = Πίνακες
 processing-update-tables-explanation = { $files ->
-    [one] { $count } αρχείο είναι αρχείο JSON ή JSON Lines χωρίς πίνακα του τρέχοντος αναγνώστη, ή πίνακας που ένας παλαιότερος αναγνώστης έκοψε στις 300 στήλες.
-   *[other] { $count } αρχεία είναι αρχεία JSON ή JSON Lines χωρίς πίνακα του τρέχοντος αναγνώστη, ή πίνακες που ένας παλαιότερος αναγνώστης έκοψε στις 300 στήλες.
-} Διαβάζονται ξανά. Τα αρχεία JSON που ένας παλαιότερος αναγνώστης διάβασε ως CSV παίρνουν τον πίνακα JSON τους και τα παλαιότερα κελιά παύουν να εμφανίζονται. Ο τρέχων αναγνώστης αποθηκεύει μια τιμή null του JSON ως κενό κελί και το ένθετο JSON ως κείμενο με εσοχές.
-processing-update-tables-runs = Ανάγνωση πινάκων, έπειτα ο τύπος αρχείου και η ευρετηρίαση αυτών των αρχείων
+    [one] { $count } αρχείο έχει παλιότερη ανάγνωση πίνακα ή ελλιπή εξαρτώμενα αποτελέσματα. Τα αποθηκευμένα αποτελέσματα ενημερώνονται.
+    *[other] Αρχεία με παλιότερες αναγνώσεις πινάκων ή ελλιπή εξαρτώμενα αποτελέσματα: { $count }. Τα αποθηκευμένα αποτελέσματα ενημερώνονται.
+    }
+
+processing-update-tables-runs = Ανάγνωση πινάκων, οντότητες, σήματα, ενσωματώσεις και οι δύο δείκτες
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Περίπου { $count } αρχείο δεν έχει κείμενο OCR για τις τρέχουσες γλώσσες ή κρατά κείμενο OCR γλωσσών που οι ρυθμίσεις δεν περιλαμβάνουν πλέον.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Δέντρο φακέλων
 admin-uploads-badge = Μεταφορτώσεις
 admin-uploads-badge-title = Δέχεται μεταφορτώσεις
+
+processing-update-archive_members-title = Μέλη αρχείων
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } διαιρεμένο αρχείο χρειάζεται τρέχουσα λίστα μελών. Τα μέλη και τα αποτελέσματα αναζήτησης ενημερώνονται.
+    *[other] Διαιρεμένα αρχεία που χρειάζονται τρέχουσες λίστες μελών: { $count }. Τα μέλη και τα αποτελέσματα αναζήτησης ενημερώνονται.
+    }
+
+processing-update-archive_members-runs = Εξαγωγή αρχείων, συμφωνία μελών και εξαρτώμενη επεξεργασία
+
+processing-update-image_previews-title = Προεπισκοπήσεις εικόνων
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } ασυνήθιστη εικόνα δεν έχει προεπισκόπηση. Η προεπισκόπηση δημιουργείται ξανά.
+    *[other] Ασυνήθιστες εικόνες χωρίς προεπισκόπηση: { $count }. Οι προεπισκοπήσεις δημιουργούνται ξανά.
+    }
+
+processing-update-image_previews-runs = Δημιουργία και επαλήθευση προεπισκοπήσεων εικόνων
+
+processing-update-search_terms-title = Όροι αναζήτησης
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } πίνακας αναζήτησης χρειάζεται τρέχοντες όρους φίλτρων. Οι όροι γλώσσας, OCR, γραφής και κόκκινων σημαιών γίνονται αναζητήσιμοι.
+    *[other] Πίνακες αναζήτησης που χρειάζονται τρέχοντες όρους φίλτρων: { $count }. Οι όροι γλώσσας, OCR, γραφής και κόκκινων σημαιών γίνονται αναζητήσιμοι.
+    }
+
+processing-update-search_terms-runs = Ευρετηρίαση και επαλήθευση όρων φίλτρων

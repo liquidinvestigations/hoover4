@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(الميزانية +{ $n } استكشافات)
 shared-boards-budget-unchanged = {" "}(الميزانية لم تتغير، فاللوحة عند حد الاستكشاف)
 
 shared-email-graph-selected-copy-removed = لم تعد نسخة البريد الإلكتروني المحددة موجودة.
+
+shared-table-generation-changed = تغيّر الجدول. أعد محاولة قراءة الجدول.

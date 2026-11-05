@@ -471,6 +471,13 @@ pub async fn fetch_db_terms_for_ints(
     fetch_db_terms(collections, ints, field_name, true).await
 }
 
+/// Resolve canonical term codes for translated frontend labels.
+pub async fn fetch_db_term_codes_for_ints(
+    collections: &[String], ints: Vec<u64>, field_name: String,
+) -> anyhow::Result<HashMap<u64, String>> {
+    fetch_db_terms(collections, ints, field_name, false).await
+}
+
 async fn fetch_db_terms(
     collections: &[String], ints: Vec<u64>, field_name: String, legacy_labels: bool,
 ) -> anyhow::Result<HashMap<u64, String>> {

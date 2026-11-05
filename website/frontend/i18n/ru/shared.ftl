@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(бюджет исследований +{ $n })
 shared-boards-budget-unchanged = {" "}(бюджет не изменился, на доске достигнут предел исследований)
 
 shared-email-graph-selected-copy-removed = Выбранная копия электронного письма больше не существует.
+
+shared-table-generation-changed = Таблица изменилась. Повторите чтение таблицы.

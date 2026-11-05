@@ -256,7 +256,11 @@ ai-chat-history-could-not-load-history = Verlauf konnte nicht geladen werden: { 
 ai-chat-history-no-conversations-yet = Noch keine Unterhaltungen.
 ai-chat-history-board = Board
 ai-chat-history-new-chat = Neuer Chat
-ai-chat-history-messages-updated = { $s_message_count } Nachrichten · aktualisiert { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } Nachricht · aktualisiert { $s_updated_at }
+    *[other] { $s_message_count } Nachrichten · aktualisiert { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Unterhaltung löschen
 ai-chat-history-delete = Löschen
 ai-chat-homepage-hoover-search-ai-chat = Hoover-Suche – KI-Chat
@@ -293,7 +297,11 @@ chat-transcript-calls = Aufrufe
 ai-chat-board-a-board-without-collections-needs = Ein Board ohne Sammlungen braucht Internetwerkzeuge.
 ai-chat-board-of = { $snap_explores_used } von { $snap_max_explores }
 ai-chat-board-assessment-2 = Bewertung { $number }
-ai-chat-history-messages = { $s_message_count } Nachrichten
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } Nachricht
+    *[other] { $s_message_count } Nachrichten
+    }
+
 web-search-card-reranked-in = Der Cross-Encoder hat die Ergebnisse in { $ms } ms neu geordnet.
 web-search-card-engine-results = { $name }: { $count } in { $ms } ms
 web-search-card-score-was-rank = Score { $score } · vorher RRF #{ $rank }
@@ -449,7 +457,11 @@ tool-run-summary-other =
     }
 tool-run-summary-failed = { $failures } fehlgeschlagen
 tool-run-summary-took = dauerte { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } Nachrichten
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } Nachricht
+    *[other] { $session_message_count } Nachrichten
+    }
+
 chat-tool-disclosure-item =
     { $count ->
         [one] { $count } Element
@@ -500,3 +512,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · Version { $version } · unverändert
 cards-result-cards-version = { $tool_name } · Version { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } Ergebnisse eingegangen, { $json_u64_doc_total_after_dedupe } nach Deduplizierung
+
+board-status-on = Ein
+
+board-status-off = Aus
+
+chat-transcript-generic-tool = das Werkzeug

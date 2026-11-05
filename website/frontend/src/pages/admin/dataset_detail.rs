@@ -134,6 +134,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                                     match admin_update_dataset(cd, dn).await {
                                         Ok(()) => {
                                             msg.set(Some("The dataset was changed successfully.".to_string()));
+                                            crate::components::session_context::invalidate_storage_tree();
                                             detail_res.restart();
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -190,7 +191,9 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                             let cd = cd.clone();
                             let cid = cid.clone();
                             spawn(async move {
-                                match admin_delete_dataset(cd).await {
+                                let result = admin_delete_dataset(cd).await;
+                                crate::components::session_context::invalidate_storage_tree();
+                                match result {
                                     Ok(()) => {
                                         let _ = navigator().push(Route::AdminCollectionPage { collection_id: cid });
                                     }

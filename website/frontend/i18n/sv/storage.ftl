@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = De här sökvägarna finns redan i map
 uploads-upload-files = Filer
 uploads-upload-clear = Rensa
 uploads-upload-and-more-files = och { $format_count_more_as_u64 } filer till
-uploads-upload-upload-files = Ladda upp { $format_count_count_as_u64 } filer
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Ladda upp { $format_count_count_as_u64 } fil
+    *[other] Ladda upp { $format_count_count_as_u64 } filer
+    }
+
 file-browser-search-names-in-all-collections = Sök efter namn i alla samlingar…
 file-browser-search-names-in-this-collection = Sök efter namn i den här samlingen…
 file-browser-files-inside-this-archive-or = Filer i det här arkivet eller e-postmeddelandet, på alla nivåer

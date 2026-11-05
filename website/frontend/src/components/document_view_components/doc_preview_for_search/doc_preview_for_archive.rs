@@ -41,9 +41,9 @@ pub fn DocumentPreviewForArchive(
     let term = source.folder_term_id;
     let search = term.map(|term| archive_search_route(&dataset, term));
     let search_text = if source.kind == ARCHIVE && ZIP_TYPES.contains(&source.mime.as_str()) {
-        "search inside this zip file"
+        tr!("preview-for-archive-search-zip")
     } else {
-        "search inside this archive"
+        tr!("preview-for-archive-search")
     };
     let histogram_dataset = dataset.clone();
     // The date range of the files inside, from a search scoped to the archive folder. It

@@ -837,10 +837,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Antivirus scan, then the search attribute of infected files
 processing-update-tables-title = Tables
 processing-update-tables-explanation = { $files ->
-    [one] { $count } file is a JSON or JSON Lines file without a table of the current reader, or a table that an earlier reader cut at 300 columns.
-   *[other] { $count } files are JSON or JSON Lines files without a table of the current reader, or tables that an earlier reader cut at 300 columns.
-} They are read again. JSON files that an earlier reader read as CSV get their JSON table, and the earlier cells stop being shown. The current reader stores a JSON null as an empty cell, and nested JSON as indented text.
-processing-update-tables-runs = Table reading, then the file type and indexing of these files
+    [one] { $count } file has an earlier table reading or incomplete dependent output. Its stored results are updated.
+    *[other] { $count } files have earlier table readings or incomplete dependent output. Update their stored results.
+    }
+
+processing-update-tables-runs = Table reading, entities, signals, embedding, and both indexes
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] About { $count } file has no OCR text for the current languages, or keeps OCR text of languages that the settings no longer include.
@@ -873,3 +874,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Folder tree
 admin-uploads-badge = Uploads
 admin-uploads-badge-title = Accepts uploads
+
+processing-update-archive_members-title = Archive members
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } split archive needs a current member list. Its members and search output are updated.
+    *[other] { $count } split archives need current member lists. Update their members and search output.
+    }
+
+processing-update-archive_members-runs = Archive extraction, member reconciliation, and dependent processing
+
+processing-update-image_previews-title = Image previews
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } uncommon image has no preview. Its preview is created again.
+    *[other] { $count } uncommon images have no preview. Create their previews again.
+    }
+
+processing-update-image_previews-runs = Image preview creation and verification
+
+processing-update-search_terms-title = Search terms
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } search table needs current filter terms. Language, OCR, script, and red flag terms become searchable.
+    *[other] Search tables that need current filter terms: { $count }. Language, OCR, script, and red flag terms become searchable.
+    }
+
+processing-update-search_terms-runs = Filter term indexing and verification

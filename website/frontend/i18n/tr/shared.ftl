@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(bütçe +{ $n } keşif)
 shared-boards-budget-unchanged = {" "}(bütçe değişmedi, pano keşif sınırında)
 
 shared-email-graph-selected-copy-removed = Seçilen e-posta kopyası artık mevcut değil.
+
+shared-table-generation-changed = Tablo değişti. Tabloyu okumayı yeniden deneyin.

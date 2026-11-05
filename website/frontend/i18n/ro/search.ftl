@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Caută: { $kind }…
 search-filter-modal-show-results = Afișează rezultatele ({ $total })
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Încă neaplicat. Apasă Căutare.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Sub
+
+facet-label-over = Peste
+
+facet-language-en = Engleză
+
+facet-language-de = Germană
+
+facet-language-es = Spaniolă
+
+facet-language-fr = Franceză
+
+facet-language-pl = Polonă
+
+facet-language-pt = Portugheză
+
+facet-language-ar = Arabă
+
+facet-language-he = Ebraică
+
+facet-language-hi = Hindi
+
+facet-language-zh = Chineză
+
+facet-language-it = Italiană
+
+facet-language-nl = Olandeză
+
+facet-language-da = Daneză
+
+facet-language-nb = Norvegiană bokmål
+
+facet-language-sv = Suedeză
+
+facet-language-el = Greacă
+
+facet-language-hr = Croată
+
+facet-language-ro = Română
+
+facet-language-ru = Rusă
+
+facet-language-ja = Japoneză
+
+facet-language-ko = Coreeană
+
+facet-language-tr = Turcă
+
+facet-language-af = afrikaans
+
+facet-language-als = albaneză toskă
+
+facet-language-am = amharică
+
+facet-language-an = aragoneză
+
+facet-language-arz = arabă egipteană
+
+facet-language-as = asameză
+
+facet-language-ast = asturiană
+
+facet-language-av = avară
+
+facet-language-az = azeră (azerbaidjană)
+
+facet-language-azb = azeră (azerbaidjană) din sud
+
+facet-language-ba = bașchiră
+
+facet-language-bar = bavareză
+
+facet-language-bcl = bikol din zona centrală
+
+facet-language-be = bielorusă
+
+facet-language-bg = bulgară
+
+facet-language-bh = bh
+
+facet-language-bn = bengaleză
+
+facet-language-bo = tibetană
+
+facet-language-bpy = bpy
+
+facet-language-br = bretonă
+
+facet-language-bs = bosniacă
+
+facet-language-bxr = bxr
+
+facet-language-ca = catalană
+
+facet-language-cbk = cbk
+
+facet-language-ce = cecenă
+
+facet-language-ceb = cebuană (sebuană)
+
+facet-language-ckb = ckb
+
+facet-language-co = corsicană
+
+facet-language-cs = cehă
+
+facet-language-cv = ciuvașă
+
+facet-language-cy = galeză
+
+facet-language-diq = diq
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = esperanto
+
+facet-language-et = estonă, estoniană
+
+facet-language-eu = bască
+
+facet-language-fa = persană
+
+facet-language-fi = finlandeză
+
+facet-language-frr = frizonă nordică
+
+facet-language-fy = frizonă occidentală
+
+facet-language-ga = irlandeză
+
+facet-language-gd = galică scoțiană
+
+facet-language-gl = gl
+
+facet-language-gn = guarani
+
+facet-language-gom = gom
+
+facet-language-gu = gujarati
+
+facet-language-gv = manx (manx galic)
+
+facet-language-hif = hif
+
+facet-language-hsb = sorabă de sus
+
+facet-language-ht = haitiană
+
+facet-language-hu = maghiară
+
+facet-language-hy = armeană
+
+facet-language-ia = interlingua (asociația limbii auxiliare internaționale)
+
+facet-language-id = indoneziană
+
+facet-language-ie = interlingue
+
+facet-language-ilo = iloko (ilocană)
+
+facet-language-io = ido
+
+facet-language-is = islandeză
+
+facet-language-jbo = lojban
+
+facet-language-jv = javaneză
+
+facet-language-ka = georgiană
+
+facet-language-kk = cazacă
+
+facet-language-km = khmeră
+
+facet-language-kn = kannada
+
+facet-language-krc = karachay-balkară
+
+facet-language-ku = kurdă
+
+facet-language-kv = komi
+
+facet-language-kw = cornică
+
+facet-language-ky = kârgâză
+
+facet-language-la = latină
+
+facet-language-lb = luxemburgheză
+
+facet-language-lez = lezghiană
+
+facet-language-li = limburgheză
+
+facet-language-lmo = lmo
+
+facet-language-lo = loațiană
+
+facet-language-lrc = lrc
+
+facet-language-lt = lituaniană
+
+facet-language-lv = letonă
+
+facet-language-mai = maithili
+
+facet-language-mg = malgașă
+
+facet-language-mhr = mhr
+
+facet-language-min = minangkabau
+
+facet-language-mk = macedoneană
+
+facet-language-ml = malayalam
+
+facet-language-mn = mongolă
+
+facet-language-mr = marathi
+
+facet-language-mrj = mrj
+
+facet-language-ms = malaieză
+
+facet-language-mt = malteză
+
+facet-language-mwl = mirandeză
+
+facet-language-my = burmeză
+
+facet-language-myv = erzeană
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = napolitană (napoletană)
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = norvegiană nynorsk (modernă)
+
+facet-language-no = norvegiană
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = osetă
+
+facet-language-pa = punjabă (panjabi)
+
+facet-language-pam = pampanga
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = paștună
+
+facet-language-qu = quechua
+
+facet-language-rm = retoromană
+
+facet-language-rue = rue
+
+facet-language-sa = sanscrită
+
+facet-language-sah = iakută
+
+facet-language-sc = sc
+
+facet-language-scn = siciliană
+
+facet-language-sco = scots (scoțiană din ținuturile de jos)
+
+facet-language-sd = sindhi
+
+facet-language-sh = sh
+
+facet-language-si = sinhaleză
+
+facet-language-sk = slovacă
+
+facet-language-sl = slovenă
+
+facet-language-so = somaleză
+
+facet-language-sq = albaneză
+
+facet-language-sr = sârbă
+
+facet-language-su = sudaneză
+
+facet-language-sw = swahili
+
+facet-language-ta = tamilă
+
+facet-language-te = teluguă
+
+facet-language-tg = tajikă
+
+facet-language-th = thailandeză
+
+facet-language-tk = turcmenă
+
+facet-language-tl = tagalogă
+
+facet-language-tt = tătară
+
+facet-language-tyv = tuvinian (tuvan)
+
+facet-language-ug = uigură
+
+facet-language-uk = ucraineană
+
+facet-language-ur = urdu
+
+facet-language-uz = uzbecă
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = vietnameză
+
+facet-language-vls = vls
+
+facet-language-vo = volapük
+
+facet-language-wa = walloon
+
+facet-language-war = waray-waray (Filipine)
+
+facet-language-wuu = wuu
+
+facet-language-xal = kalmîcă (calmîcă)
+
+facet-language-xmf = xmf
+
+facet-language-yi = idiș
+
+facet-language-yo = yorubă
+
+facet-language-yue = yue

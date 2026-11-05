@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(budget +{ $n } esplorazioni)
 shared-boards-budget-unchanged = {" "}(budget invariato, la bacheca ha raggiunto il limite di esplorazioni)
 
 shared-email-graph-selected-copy-removed = La copia dell’email selezionata non esiste più.
+
+shared-table-generation-changed = La tabella è cambiata. Riprova a leggere la tabella.

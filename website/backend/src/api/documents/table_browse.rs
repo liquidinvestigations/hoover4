@@ -880,7 +880,7 @@ pub async fn read_table_page(
     };
 
     if window_rows.is_empty() || visible_columns.is_empty() {
-        let page = TablePage { rows: Vec::new(), total_rows, columns: visible_columns, offset, limit, clamps, find_terms: search };
+        let page = TablePage { generation: manifest.generation, rows: Vec::new(), total_rows, columns: visible_columns, offset, limit, clamps, find_terms: search };
         return Ok(TablePageRead { page, sheet, interpretation, columns });
     }
 
@@ -941,7 +941,7 @@ pub async fn read_table_page(
         })
         .collect();
 
-    let page = TablePage { rows, total_rows, columns: visible_columns, offset, limit, clamps, find_terms: search };
+    let page = TablePage { generation: manifest.generation, rows, total_rows, columns: visible_columns, offset, limit, clamps, find_terms: search };
     Ok(TablePageRead { page, sheet, interpretation, columns })
 }
 
@@ -1075,18 +1075,18 @@ pub async fn get_table_sheet_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     search: String,
-) -> anyhow::Result<Vec<(u16, u64)>> {
-    if table_find_text(&search).is_empty() {
-        return Ok(Vec::new());
-    }
+) -> anyhow::Result<common::document_tables::TableSheetHits> {
     let manifest = require_table_manifest(user, &document_identifier).await?;
+    if table_find_text(&search).is_empty() {
+        return Ok(common::document_tables::TableSheetHits { generation: manifest.generation, hits: Vec::new() });
+    }
     let search = table_find_terms(user, &document_identifier, &search).await;
     let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
     // The grid's own search count bounds a sheet by its header row only, so this does too.
     let Some(bounds) = sheet_bounds("c.", &display_sheets(&client, &document_identifier, &manifest).await?, false) else {
-        return Ok(Vec::new());
+        return Ok(common::document_tables::TableSheetHits { generation: manifest.generation, hits: Vec::new() });
     };
-    Ok(client
+    let hits = client
         .query(&format!(
             "SELECT c.sheet_id, uniqExact(c.row_id) FROM table_cells AS c FINAL \
              WHERE c.file_hash = ? AND {bounds} \
@@ -1097,7 +1097,8 @@ pub async fn get_table_sheet_hits(
         .bind(&document_identifier.file_hash)
         .bind(search)
         .fetch_all()
-        .await?)
+        .await?;
+    Ok(common::document_tables::TableSheetHits { generation: manifest.generation, hits })
 }
 
 /// The columns of one sheet whose data cells hold a find term of `search`
@@ -1147,7 +1148,7 @@ pub async fn get_table_column_values(
     sheet_id: u16,
     column_id: u32,
     search: String,
-) -> anyhow::Result<Vec<TableColumnValue>> {
+) -> anyhow::Result<common::document_tables::TableColumnValues> {
     let search = table_find_text(&search);
     let manifest = require_table_manifest(user, &document_identifier).await?;
     let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
@@ -1202,10 +1203,11 @@ pub async fn get_table_column_values(
         .fetch_all()
         .await?;
 
-    Ok(rows
+    let values = rows
         .into_iter()
         .map(|(value, count)| TableColumnValue { value, count })
-        .collect())
+        .collect();
+    Ok(common::document_tables::TableColumnValues { generation: manifest.generation, values })
 }
 
 /// How many cells of this document hold a find term of the viewer's find box

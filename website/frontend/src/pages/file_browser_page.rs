@@ -231,6 +231,8 @@ const FILE_NAME_STYLE: &str = "color: var(--x-ink-strong);";
 /// cards. `page` is the result page.
 #[component]
 pub fn FileBrowserCollectionsPage(q: String, page: u64) -> Element {
+    let storage_tree = crate::components::session_context::use_storage_tree();
+    let storage_names = storage_tree.read().as_ref().and_then(|result| result.as_ref().ok()).cloned().unwrap_or_default();
     // No dataset and no folder: the tree shows collections and their datasets only.
     let nothing = use_memo(String::new);
     let q = use_memo(use_reactive!(|q| q));
@@ -251,7 +253,7 @@ pub fn FileBrowserCollectionsPage(q: String, page: u64) -> Element {
                             StatsCard {
                                 key: "collection-{collection.collectionname}",
                                 to: Route::storage_collection(collection.collectionname.clone()),
-                                title: collection.collectionname.clone(),
+                                title: crate::components::session_context::collection_label(&storage_names, &collection.collectionname),
                                 tooltip: collection.collectionname.clone(),
                                 is_collection: true,
                                 dataset_count: Some(collection.dataset_count),
@@ -438,6 +440,9 @@ pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -
     // The signal, read inside the closure: that read is the subscription, and this page
     // is reachable from a sidebar row on another collection's page.
     let name = use_memo(use_reactive!(|collectionname| collectionname));
+    let storage = crate::components::session_context::use_storage_tree();
+    let storage_names = storage.read().as_ref().and_then(|value| value.as_ref().ok()).cloned().unwrap_or_default();
+    let collection_label = crate::components::session_context::collection_label(&storage_names, &name());
     let q = use_memo(use_reactive!(|q| q));
     let page = use_memo(use_reactive!(|page| page));
     let nothing = use_memo(String::new);
@@ -460,7 +465,7 @@ pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -
                                     PathDescriptor::root(),
                                     None,
                                 ),
-                                title: dataset.label().to_string(),
+                                title: crate::components::session_context::dataset_label(&storage_names, &dataset.collection_dataset),
                                 tooltip: dataset.collection_dataset.clone(),
                                 is_collection: false,
                                 dataset_count: None,
@@ -484,7 +489,8 @@ pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -
                     style: BREADCRUMB_BAR_STYLE,
                     Link { to: Route::storage_root(), style: CRUMB_LABEL_STYLE, {tr!("file-browser-browsing")} }
                     span { style: CRUMB_SEP_STYLE, "›" }
-                    span { style: CRUMB_LABEL_STYLE, "{name}" }
+                    Icon { icon: GoDatabase, style: "width: 19px; height: 19px;" }
+                    span { style: CRUMB_LABEL_STYLE, title: "{name}", "{collection_label}" }
                     StorageSearchInput { collection: name, q }
                     UploadButton { dataset: String::new(), folder: String::new() }
                 }
@@ -639,7 +645,6 @@ fn StorageSearchResults(collection: ReadSignal<String>, q: ReadSignal<String>, p
                                 StorageSearchRow {
                                     key: "{node.node_key}",
                                     node: node.clone(),
-                                    dataset_label: found.dataset_labels.get(&node.collection_dataset).cloned().unwrap_or_else(|| node.collection_dataset.clone()),
                                 }
                             }
                         }
@@ -680,7 +685,11 @@ fn storage_search_target(node: &VfsTreeNode) -> Route {
 
 /// One row of the storage search result list.
 #[component]
-fn StorageSearchRow(node: VfsTreeNode, dataset_label: String) -> Element {
+fn StorageSearchRow(node: VfsTreeNode) -> Element {
+    let storage = crate::components::session_context::use_storage_tree();
+    let dataset_label = storage.read().as_ref().and_then(|value| value.as_ref().ok())
+        .map(|nodes| crate::components::session_context::dataset_label(nodes, &node.collection_dataset))
+        .unwrap_or_else(|| node.collection_dataset.clone());
     let target = storage_search_target(&node);
     let size = if node.file_size_bytes >= 0 && node.kind != VfsNodeKind::Dir {
         format_size(node.file_size_bytes as u64)
@@ -1088,6 +1097,10 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
     let hidden = elide_crumbs(crumbs.len());
     // The upload page opens at this folder only outside archives and emails.
     let upload_folder = if path().container_hash.is_empty() { path().path } else { String::new() };
+    let tree = crate::components::session_context::use_storage_tree();
+    let dataset_label = tree.read().as_ref().and_then(|value| value.as_ref().ok())
+        .map(|nodes| crate::components::session_context::dataset_label(nodes, &collection()))
+        .unwrap_or_else(|| collection());
     let collapsed: Vec<Crumb> = crumbs[..hidden].to_vec();
     let visible: Vec<Crumb> = crumbs[hidden..].to_vec();
 
@@ -1102,7 +1115,7 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
             Link {
                 to: Route::file_browser_page(collection(), PathDescriptor::root(), None),
                 style: CRUMB_LINK_STYLE,
-                "{collection}"
+                "{dataset_label}"
             }
         if hidden > 0 {
             span { style: CRUMB_SEP_STYLE, "›" }

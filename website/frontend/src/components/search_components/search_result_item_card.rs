@@ -4,7 +4,7 @@ use common::{search_result::SearchResultDocumentItem, text_highlight::HighlightT
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::go_icons::GoDatabase,
+    icons::md_device_icons::MdStorage,
 };
 
 use crate::components::search_components::{
@@ -120,10 +120,10 @@ pub fn SearchResultItemCard(
                         flex: 1 1 auto;
                     ",
                 }
-                // ICON FOR COLLECTION
+                // Dataset icon.
                 CollectionIcon {}
 
-                // COLLECTION NAME
+                // Dataset display name.
                 ComponentNameSection {collection_dataset}
             }
             // Row 2: TEXT SNIPPET - BUTTONS
@@ -270,7 +270,7 @@ fn CollectionIcon() -> Element {
                 flex-shrink: 0;
             ",
             Icon {
-                icon: GoDatabase,
+                icon: MdStorage,
                 style: "width: 15px; height: 15px;"
             }
         }
@@ -279,6 +279,10 @@ fn CollectionIcon() -> Element {
 
 #[component]
 fn ComponentNameSection(collection_dataset: String) -> Element {
+    let tree = crate::components::session_context::use_storage_tree();
+    let label = tree.read().as_ref().and_then(|result| result.as_ref().ok())
+        .map(|nodes| crate::components::session_context::dataset_label(nodes, &collection_dataset))
+        .unwrap_or_else(|| collection_dataset.clone());
     rsx! {
         // Bounded, like the title beside it. A chat card can name several datasets for
         // one document, and an unbounded comma-joined list pushes the
@@ -299,7 +303,7 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
                 flex-shrink: 1;
             ",
             title: "{collection_dataset}",
-            "{collection_dataset}"
+            "{label}"
         }
     }
 }

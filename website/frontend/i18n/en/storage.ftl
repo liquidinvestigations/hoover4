@@ -100,7 +100,11 @@ uploads-upload-these-paths-exist-in-the = These paths exist in the folder:
 uploads-upload-files = Files
 uploads-upload-clear = Clear
 uploads-upload-and-more-files = and { $format_count_more_as_u64 } more files
-uploads-upload-upload-files = Upload { $format_count_count_as_u64 } files
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Upload { $format_count_count_as_u64 } file
+    *[other] Upload { $format_count_count_as_u64 } files
+    }
+
 file-browser-search-names-in-all-collections = Search names in all collections…
 file-browser-search-names-in-this-collection = Search names in this collection…
 file-browser-files-inside-this-archive-or = Files inside this archive or email, at every level

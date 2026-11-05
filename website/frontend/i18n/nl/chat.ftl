@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = De geschiedenis kon niet worden geladen
 ai-chat-history-no-conversations-yet = Nog geen gesprekken.
 ai-chat-history-board = Bord
 ai-chat-history-new-chat = Nieuwe chat
-ai-chat-history-messages-updated = { $s_message_count } berichten · bijgewerkt { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } bericht · bijgewerkt { $s_updated_at }
+    *[other] { $s_message_count } berichten · bijgewerkt { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Gesprek verwijderen
 ai-chat-history-delete = Verwijderen
 ai-chat-homepage-hoover-search-ai-chat = Hoover Zoeken - AI-chat
@@ -292,7 +296,11 @@ chat-transcript-calls = aanroepen
 ai-chat-board-a-board-without-collections-needs = Een bord zonder collecties heeft internettools nodig.
 ai-chat-board-of = { $snap_explores_used } van { $snap_max_explores }
 ai-chat-board-assessment-2 = evaluatie { $number }
-ai-chat-history-messages = { $s_message_count } berichten
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } bericht
+    *[other] { $s_message_count } berichten
+    }
+
 web-search-card-reranked-in = De cross-encoder heeft de resultaten in { $ms } ms herrangschikt.
 web-search-card-engine-results = { $name }: { $count } in { $ms } ms
 web-search-card-score-was-rank = score { $score } · was RRF #{ $rank }
@@ -433,7 +441,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } mislukt
 tool-run-summary-took = duurde { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } berichten
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } bericht
+    *[other] { $session_message_count } berichten
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } item
        *[other] { $count } items
@@ -481,3 +493,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · versie { $version } · ongewijzigd
 cards-result-cards-version = { $tool_name } · versie { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } resultaten binnen, { $json_u64_doc_total_after_dedupe } na ontdubbeling
+
+board-status-on = Aan
+
+board-status-off = Uit
+
+chat-transcript-generic-tool = het hulpmiddel

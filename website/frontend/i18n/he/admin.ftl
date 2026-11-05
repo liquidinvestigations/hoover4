@@ -847,11 +847,12 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = סריקת אנטי-וירוס, ואחריה תכונת החיפוש של קבצים נגועים
 processing-update-tables-title = טבלאות
 processing-update-tables-explanation = { $files ->
-    [one] קובץ JSON או JSON Lines אחד בלי טבלה של הקורא הנוכחי, או טבלה שקורא קודם חתך ב-300 עמודות.
-    [two] שני קובצי JSON או JSON Lines בלי טבלה של הקורא הנוכחי, או טבלאות שקורא קודם חתך ב-300 עמודות.
-   *[other] { $count } קובצי JSON או JSON Lines בלי טבלה של הקורא הנוכחי, או טבלאות שקורא קודם חתך ב-300 עמודות.
-} הם נקראים שוב. קובצי JSON שקורא קודם קרא כ-CSV מקבלים את טבלת ה-JSON שלהם, והתאים הקודמים מפסיקים להיות מוצגים. הקורא הנוכחי שומר ערך null של JSON כתא ריק, ו-JSON מקונן כטקסט עם הזחה.
-processing-update-tables-runs = קריאת טבלאות, ואחריה סוג הקובץ והאינדוקס של הקבצים האלה
+    [one] לקובץ אחד יש קריאת טבלה ישנה או פלט תלוי לא שלם. התוצאות השמורות שלו מעודכנות.
+    [two] מספר הקבצים עם קריאות טבלה ישנות או פלט תלוי לא שלם: { $count }. התוצאות השמורות שלהם מעודכנות.
+    *[other] מספר הקבצים עם קריאות טבלה ישנות או פלט תלוי לא שלם: { $count }. התוצאות השמורות שלהם מעודכנות.
+    }
+
+processing-update-tables-runs = קריאת טבלאות, ישויות, אותות, הטמעה ושני האינדקסים
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] בערך לקובץ אחד אין טקסט OCR לשפות הנוכחיות, או שנשאר בו טקסט OCR של שפות שההגדרות כבר אינן כוללות.
@@ -889,3 +890,33 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = עץ התיקיות
 admin-uploads-badge = העלאות
 admin-uploads-badge-title = מקבל העלאות
+
+processing-update-archive_members-title = פריטי ארכיון
+
+processing-update-archive_members-explanation = { $files ->
+    [one] ארכיון מפוצל אחד צריך רשימת פריטים עדכנית. הפריטים ותוצאות החיפוש שלו מעודכנים.
+    [two] מספר הארכיונים המפוצלים שצריכים רשימות פריטים עדכניות: { $count }. הפריטים ותוצאות החיפוש שלהם מעודכנים.
+    *[other] מספר הארכיונים המפוצלים שצריכים רשימות פריטים עדכניות: { $count }. הפריטים ותוצאות החיפוש שלהם מעודכנים.
+    }
+
+processing-update-archive_members-runs = חילוץ ארכיון, התאמת פריטים ועיבוד תלוי
+
+processing-update-image_previews-title = תצוגות מקדימות של תמונות
+
+processing-update-image_previews-explanation = { $files ->
+    [one] לתמונה אחת בפורמט לא נפוץ אין תצוגה מקדימה. התצוגה נוצרת מחדש.
+    [two] מספר התמונות בפורמטים לא נפוצים ללא תצוגה מקדימה: { $count }. התצוגות נוצרות מחדש.
+    *[other] מספר התמונות בפורמטים לא נפוצים ללא תצוגה מקדימה: { $count }. התצוגות נוצרות מחדש.
+    }
+
+processing-update-image_previews-runs = יצירה ואימות של תצוגות מקדימות של תמונות
+
+processing-update-search_terms-title = מונחי חיפוש
+
+processing-update-search_terms-explanation = { $files ->
+    [one] לטבלת חיפוש אחת דרושים מונחי סינון עדכניים. מונחי שפה, OCR, כתב ודגלים אדומים הופכים לניתנים לחיפוש.
+    [two] טבלאות חיפוש שצריכות מונחי סינון עדכניים: { $count }. מונחי שפה, OCR, כתב ודגלים אדומים הופכים לניתנים לחיפוש.
+    *[other] טבלאות חיפוש שצריכות מונחי סינון עדכניים: { $count }. מונחי שפה, OCR, כתב ודגלים אדומים הופכים לניתנים לחיפוש.
+    }
+
+processing-update-search_terms-runs = אינדוקס ואימות של מונחי סינון

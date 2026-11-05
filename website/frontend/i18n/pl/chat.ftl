@@ -259,7 +259,13 @@ ai-chat-history-could-not-load-history = Nie udało się wczytać historii: { $e
 ai-chat-history-no-conversations-yet = Nie ma jeszcze rozmów.
 ai-chat-history-board = Tablica
 ai-chat-history-new-chat = Nowy czat
-ai-chat-history-messages-updated = Wiadomości: { $s_message_count } · zaktualizowano: { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } wiadomość · zaktualizowano: { $s_updated_at }
+    [few] { $s_message_count } wiadomości · zaktualizowano: { $s_updated_at }
+    [many] { $s_message_count } wiadomości · zaktualizowano: { $s_updated_at }
+    *[other] { $s_message_count } wiadomości · zaktualizowano: { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Usuń rozmowę
 ai-chat-history-delete = Usuń
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - Czat AI
@@ -296,7 +302,13 @@ chat-transcript-calls = wywołania
 ai-chat-board-a-board-without-collections-needs = Tablica bez kolekcji wymaga narzędzi internetowych.
 ai-chat-board-of = { $snap_explores_used } z { $snap_max_explores }
 ai-chat-board-assessment-2 = ocena { $number }
-ai-chat-history-messages = Wiadomości: { $s_message_count }
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } wiadomość
+    [few] { $s_message_count } wiadomości
+    [many] { $s_message_count } wiadomości
+    *[other] { $s_message_count } wiadomości
+    }
+
 web-search-card-reranked-in = Cross-encoder uporządkował wyniki w { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } w { $ms } ms
 web-search-card-score-was-rank = ocena { $score } · poprzednio RRF #{ $rank }
@@ -455,7 +467,13 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = nieudane: { $failures }
 tool-run-summary-took = trwało { $duration_text_ms }
-chat-session-card-messages = Wiadomości: { $session_message_count }
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } wiadomość
+    [few] { $session_message_count } wiadomości
+    [many] { $session_message_count } wiadomości
+    *[other] { $session_message_count } wiadomości
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } element
         [few] { $count } elementy
@@ -504,3 +522,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · dokum
 cards-result-cards-version-unchanged = { $tool_name } · wersja { $version } · bez zmian
 cards-result-cards-version = { $tool_name } · wersja { $version }
 web-search-card-results-in-after-deduplication = Wyniki na wejściu: { $json_u64_doc_total_before_dedupe }, po usunięciu duplikatów: { $json_u64_doc_total_after_dedupe }
+
+board-status-on = Włączone
+
+board-status-off = Wyłączone
+
+chat-transcript-generic-tool = narzędzie

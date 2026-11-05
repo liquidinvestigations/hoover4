@@ -203,3 +203,11 @@ preview-with-search-next = 下一个{ $label }
 document-entities-panel-as-written =
     { $value }
     原文写法：{ $written }
+
+preview-for-archive-search = 在此归档中搜索
+
+preview-for-archive-search-zip = 在此 ZIP 文件中搜索
+
+email-graph-incomplete = 已显示 { $count } 封邮件。总数不完整。
+
+email-graph-copies = 授权副本数：{ $count }

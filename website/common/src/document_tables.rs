@@ -689,6 +689,9 @@ impl TableRow {
 /// One window of one sheet.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct TablePage {
+    /// The published generation used for this page read.
+    #[serde(default)]
+    pub generation: u32,
     pub rows: Vec<TableRow>,
     /// Rows matching the filters and the search, before paging. The pager's denominator.
     pub total_rows: u64,
@@ -1022,4 +1025,18 @@ mod find_tests {
         assert_eq!(table_find_text("D'Angelo"), "D'Angelo");
         assert_eq!(table_find_text("\"\""), "");
     }
+}
+
+/// Matching row counts and the published generation used for their read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct TableSheetHits {
+    pub generation: u32,
+    pub hits: Vec<(u16, u64)>,
+}
+
+/// Column values and the published generation used for their read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct TableColumnValues {
+    pub generation: u32,
+    pub values: Vec<TableColumnValue>,
 }

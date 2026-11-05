@@ -105,6 +105,7 @@ fn CollectionsListContent() -> Element {
                             match admin_create_collection(c.clone(), f).await {
                                 // The collection page is the confirmation.
                                 Ok(()) => {
+                                    crate::components::session_context::invalidate_storage_tree();
                                     navigator().push(Route::AdminCollectionPage { collection_id: c });
                                 }
                                 Err(e) => error_msg.set(Some(user_facing_message(&e))),

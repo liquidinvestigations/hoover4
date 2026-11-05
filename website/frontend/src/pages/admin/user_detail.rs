@@ -144,6 +144,7 @@ fn UserDetailContent(username: String) -> Element {
                                     match admin_update_user(uname, f, e, a).await {
                                         Ok(()) => {
                                             msg.set(Some("The user was changed successfully.".to_string()));
+                                            crate::components::session_context::invalidate_storage_tree();
                                             detail_res.restart();
                                         }
                                         Err(err) => error_msg.set(Some(err.to_string())),
@@ -197,6 +198,7 @@ fn UserDetailContent(username: String) -> Element {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     membership_refreshing.set(true);
+                                                    crate::components::session_context::invalidate_storage_tree();
                                                     detail_res.restart();
                                                 });
                                             }
@@ -223,6 +225,7 @@ fn UserDetailContent(username: String) -> Element {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     membership_refreshing.set(true);
+                                                    crate::components::session_context::invalidate_storage_tree();
                                                     detail_res.restart();
                                                 });
                                             }
@@ -246,6 +249,7 @@ fn UserDetailContent(username: String) -> Element {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     membership_refreshing.set(true);
+                                                    crate::components::session_context::invalidate_storage_tree();
                                                     detail_res.restart();
                                                 });
                                             }
@@ -287,6 +291,7 @@ fn UserDetailContent(username: String) -> Element {
                                             error_msg.set(Some(user_facing_message(&e)));
                                         }
                                         membership_refreshing.set(true);
+                                        crate::components::session_context::invalidate_storage_tree();
                                         detail_res.restart();
                                     });
                                 }
@@ -309,6 +314,7 @@ fn UserDetailContent(username: String) -> Element {
                             spawn(async move {
                                 match admin_delete_user(uname).await {
                                     Ok(()) => {
+                                        crate::components::session_context::invalidate_storage_tree();
                                         let _ = navigator().push(Route::AdminUsersPage {});
                                     }
                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),

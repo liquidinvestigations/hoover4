@@ -38,6 +38,7 @@ use crate::data_definitions::url_param::UrlParam;
 use crate::pages::search_page::DocViewerStateControl;
 use crate::routes::Route;
 use crate::tr;
+use crate::components::svg_title::dioxus_elements;
 
 /// Viewport the simulation runs in. The SVG scales to its pane through `viewBox`, so
 /// these are simulation units, not pixels, and the physics does not change with the
@@ -185,10 +186,13 @@ fn EmailGraphCanvas(
     });
 
     let layout = settled.read().clone();
+    let bounds = occupied_bounds(&layout);
+    let tree = crate::components::session_context::use_storage_tree();
+    let names = tree.read().as_ref().and_then(|value| value.as_ref().ok()).cloned().unwrap_or_default();
     let selected_key = selected
         .read()
         .clone()
-        .map(|d| (d.collection_dataset, d.file_hash));
+        .map(|d| (String::new(), d.file_hash));
 
     rsx! {
         div {
@@ -196,12 +200,37 @@ fn EmailGraphCanvas(
             div { style: "font-weight: 600;", {tr!("email-graph-connected-emails")} }
             div {
                 style: "font-size: 13px; color: rgba(0,0,0,0.6);",
-                {tr!("email-graph-of-shown", value_nodes_len: value.nodes.len(), value_cluster_size: value.cluster_size)}
-                if value.truncated {
+                if value.cluster_size_complete {
+                    {tr!("email-graph-of-shown", value_nodes_len: value.nodes.len(), value_cluster_size: value.cluster_size)}
+                } else {
+                    {tr!("email-graph-incomplete", count: value.nodes.len())}
+                }
+                if value.truncated || value.occurrences_truncated {
                     {tr!("email-graph-u-the-cluster-continues-beyond")}
                 }
             }
             GraphLegend {}
+            if let Some(node) = value.nodes.iter().find(|node| Some(node_key(node)) == selected_key) {
+                div { class: "x-email-occurrences", style: "display: flex; flex-wrap: wrap; gap: 8px;",
+                    span { {tr!("email-graph-copies", count: node.occurrences.len().max(1))} }
+                    if node.occurrences.is_empty() {
+                        button { onclick: { let identifier = node.document_identifier.clone(); move |_| on_node_click.call(identifier.clone()) },
+                            {crate::components::session_context::dataset_label(&names, &node.document_identifier.collection_dataset)}
+                        }
+                    } else {
+                        for occurrence in &node.occurrences {
+                            button {
+                                key: "{occurrence.document_identifier.collection_dataset}-{occurrence.document_identifier.file_hash}",
+                                "data-occurrence-dataset": "{occurrence.document_identifier.collection_dataset}",
+                                onclick: { let identifier = occurrence.document_identifier.clone(); move |_| on_node_click.call(identifier.clone()) },
+                                {crate::components::session_context::collection_label(&names, &occurrence.collectionname)}
+                                " / "
+                                {crate::components::session_context::dataset_label(&names, &occurrence.document_identifier.collection_dataset)}
+                            }
+                        }
+                    }
+                }
+            }
         }
         div {
             style: "flex: 1 1 auto; min-height: 0; overflow: auto;",
@@ -209,7 +238,7 @@ fn EmailGraphCanvas(
                 class: "x-email-graph-svg",
                 width: "100%",
                 height: "100%",
-                view_box: "0 0 {VIEW_WIDTH} {VIEW_HEIGHT}",
+                view_box: "{bounds}",
                 preserve_aspect_ratio: "xMidYMid meet",
                 defs {
                     marker {
@@ -223,21 +252,6 @@ fn EmailGraphCanvas(
                         path { d: "M 0 0 L 10 5 L 0 10 z", fill: "rgba(0,0,0,0.45)" }
                     }
                 }
-                // The time axis, drawn first so it sits behind everything.
-                line {
-                    x1: "0", y1: "{VIEW_HEIGHT - 18.0}", x2: "{VIEW_WIDTH}", y2: "{VIEW_HEIGHT - 18.0}",
-                    stroke: "rgba(0,0,0,0.12)", stroke_width: "1",
-                }
-                text {
-                    x: "8", y: "{VIEW_HEIGHT - 4.0}", font_size: "13", fill: "rgba(0,0,0,0.45)",
-                    {tr!("email-graph-older")}
-                }
-                text {
-                    x: "{VIEW_WIDTH - 8.0}", y: "{VIEW_HEIGHT - 4.0}", font_size: "13",
-                    text_anchor: "end", fill: "rgba(0,0,0,0.45)",
-                    {tr!("email-graph-newer")}
-                }
-
                 for edge in value.edges.iter() {
                     {render_edge(edge, &layout)}
                 }
@@ -277,14 +291,23 @@ fn GraphLegend() -> Element {
 }
 
 fn node_key(node: &EmailGraphNode) -> (String, String) {
-    (
-        node.document_identifier.collection_dataset.clone(),
-        node.document_identifier.file_hash.clone(),
-    )
+    (String::new(), if node.logical_id.is_empty() {
+        node.document_identifier.file_hash.clone()
+    } else { node.logical_id.clone() })
 }
 
 fn edge_key(identifier: &DocumentIdentifier) -> (String, String) {
-    (identifier.collection_dataset.clone(), identifier.file_hash.clone())
+    (String::new(), identifier.file_hash.clone())
+}
+
+/// Include node labels and a fixed margin in the occupied bounds.
+fn occupied_bounds(layout: &HashMap<(String, String), NodePosition>) -> String {
+    if layout.is_empty() { return format!("0 0 {VIEW_WIDTH} {VIEW_HEIGHT}"); }
+    let min_x = layout.values().map(|p| p.x - 108.0).fold(f64::INFINITY, f64::min);
+    let max_x = layout.values().map(|p| p.x + 108.0).fold(f64::NEG_INFINITY, f64::max);
+    let min_y = layout.values().map(|p| p.y - 55.0).fold(f64::INFINITY, f64::min);
+    let max_y = layout.values().map(|p| p.y + 55.0).fold(f64::NEG_INFINITY, f64::max);
+    format!("{min_x} {min_y} {} {}", max_x - min_x, max_y - min_y)
 }
 
 /// Where the time axis wants each node.
@@ -461,7 +484,7 @@ fn render_edge(edge: &EmailGraphEdge, layout: &HashMap<(String, String), NodePos
             stroke_width: "1.6",
             stroke_dasharray: "{dash}",
             marker_end: "url(#x-email-arrow)",
-            title { {tr!("email-graph-u-confidence-u", edge_kind: edge.kind.to_string(), edge_confidence: edge.confidence.to_string(), edge_evidence: edge.evidence.to_string())} }
+            svgtitle { {tr!("email-graph-u-confidence-u", edge_kind: edge.kind.to_string(), edge_confidence: edge.confidence.to_string(), edge_evidence: edge.evidence.to_string())} }
         }
     }
 }
@@ -517,7 +540,7 @@ fn render_node(
                 // Says the graph stops here rather than that the cluster does.
                 text { x: "156", y: "31", font_size: "13", fill: "rgba(0,0,0,0.45)", "\u{2026}" }
             }
-            title {
+            svgtitle {
                 "{node.subject}"
             }
         }
@@ -568,17 +591,40 @@ mod tests {
     }
 
     #[test]
+    fn logical_identity_survives_a_representative_change() {
+        let original = node("a", 1000, true);
+        let mut replacement = original.clone();
+        replacement.document_identifier.collection_dataset = "other_dataset".into();
+        assert_eq!(node_key(&original), node_key(&replacement));
+        replacement.logical_id.clear();
+        assert_eq!(node_key(&original), node_key(&replacement));
+    }
+
+    #[test]
+    fn occupied_bounds_include_each_node_and_its_label() {
+        let graph = EmailGraph { nodes: vec![node("a", 1000, true), node("b", 2000, true)], ..Default::default() };
+        let layout = settle(&graph, &HashMap::new());
+        let bounds: Vec<f64> = occupied_bounds(&layout).split_whitespace().map(|value| value.parse().unwrap()).collect();
+        for position in layout.values() {
+            assert!(position.x - 84.0 >= bounds[0]);
+            assert!(position.x + 84.0 <= bounds[0] + bounds[2]);
+            assert!(position.y - 20.0 >= bounds[1]);
+            assert!(position.y + 20.0 <= bounds[1] + bounds[3]);
+        }
+    }
+
+    #[test]
     fn the_time_axis_puts_the_oldest_left_and_the_newest_right() {
         let nodes = vec![node("a", 1_000, true), node("b", 2_000, true), node("c", 3_000, true)];
         let targets = target_x(&nodes);
-        let x = |h: &str| targets[&("ds".to_string(), h.to_string())];
+        let x = |h: &str| targets[&(String::new(), h.to_string())];
         assert!(x("a") < x("b"), "older node must be left of newer");
         assert!(x("b") < x("c"));
         // An undated node sits in the middle rather than at 1970, which is where its
         // epoch date would otherwise put it: hard left, next to nothing.
         let with_unknown = vec![node("a", 1_000, true), node("z", 0, false)];
         let targets = target_x(&with_unknown);
-        assert_eq!(targets[&("ds".to_string(), "z".to_string())], VIEW_WIDTH / 2.0);
+        assert_eq!(targets[&(String::new(), "z".to_string())], VIEW_WIDTH / 2.0);
     }
 
     #[test]

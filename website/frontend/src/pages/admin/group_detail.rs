@@ -121,6 +121,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 match admin_update_group(gname, f).await {
                                     Ok(()) => {
                                         msg.set(Some("The group was changed successfully.".to_string()));
+                                        crate::components::session_context::invalidate_storage_tree();
                                         detail_res.restart();
                                     }
                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -179,6 +180,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     membership_refreshing.set(true);
+                                                    crate::components::session_context::invalidate_storage_tree();
                                                     detail_res.restart();
                                                 });
                                             }
@@ -205,6 +207,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     membership_refreshing.set(true);
+                                                    crate::components::session_context::invalidate_storage_tree();
                                                     detail_res.restart();
                                                 });
                                             }
@@ -228,6 +231,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     membership_refreshing.set(true);
+                                                    crate::components::session_context::invalidate_storage_tree();
                                                     detail_res.restart();
                                                 });
                                             }
@@ -261,6 +265,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         add_user.set(String::new());
                                     }
                                     membership_refreshing.set(true);
+                                    crate::components::session_context::invalidate_storage_tree();
                                     detail_res.restart();
                                 });
                             }
@@ -294,6 +299,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                             if let Err(e) = admin_revoke_permission(gname, cn).await {
                                                 error_msg.set(Some(user_facing_message(&e)));
                                             }
+                                            crate::components::session_context::invalidate_storage_tree();
                                             detail_res.restart();
                                         });
                                     }
@@ -329,6 +335,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         if let Err(e) = admin_grant_permission(gname, cn).await {
                                             error_msg.set(Some(user_facing_message(&e)));
                                         }
+                                        crate::components::session_context::invalidate_storage_tree();
                                         detail_res.restart();
                                     });
                                 }
@@ -352,6 +359,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 spawn(async move {
                                     match admin_delete_group(gname).await {
                                         Ok(()) => {
+                                        crate::components::session_context::invalidate_storage_tree();
                                             let _ = navigator().push(Route::AdminGroupsPage {});
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),

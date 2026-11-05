@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = Kunne ikke laste historikken: { $e }
 ai-chat-history-no-conversations-yet = Ingen samtaler ennå.
 ai-chat-history-board = Tavle
 ai-chat-history-new-chat = Ny samtale
-ai-chat-history-messages-updated = { $s_message_count } meldinger · oppdatert { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } melding · oppdatert { $s_updated_at }
+    *[other] { $s_message_count } meldinger · oppdatert { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Slett samtalen
 ai-chat-history-delete = Slett
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search – AI-chat
@@ -292,7 +296,11 @@ chat-transcript-calls = kall
 ai-chat-board-a-board-without-collections-needs = En tavle uten samlinger trenger internettverktøy.
 ai-chat-board-of = { $snap_explores_used } av { $snap_max_explores }
 ai-chat-board-assessment-2 = vurdering { $number }
-ai-chat-history-messages = { $s_message_count } meldinger
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } melding
+    *[other] { $s_message_count } meldinger
+    }
+
 web-search-card-reranked-in = Cross-encoderen rangerte resultatene på { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } på { $ms } ms
 web-search-card-score-was-rank = poengsum { $score } · var RRF #{ $rank }
@@ -433,7 +441,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } mislyktes
 tool-run-summary-took = tok { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } meldinger
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } melding
+    *[other] { $session_message_count } meldinger
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } element
        *[other] { $count } elementer
@@ -482,3 +494,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · versjon { $version } · uendret
 cards-result-cards-version = { $tool_name } · versjon { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } resultater inn, { $json_u64_doc_total_after_dedupe } etter fjerning av duplikater
+
+board-status-on = På
+
+board-status-off = Av
+
+chat-transcript-generic-tool = verktøyet

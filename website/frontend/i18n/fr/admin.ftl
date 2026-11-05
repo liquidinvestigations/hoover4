@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Analyse antivirus, puis l’attribut de recherche des fichiers infectés
 processing-update-tables-title = Tableaux
 processing-update-tables-explanation = { $files ->
-    [one] { $count } fichier est un fichier JSON ou JSON Lines sans tableau du lecteur actuel, ou un tableau qu’un lecteur antérieur a coupé à 300 colonnes.
-   *[other] { $count } fichiers sont des fichiers JSON ou JSON Lines sans tableau du lecteur actuel, ou des tableaux qu’un lecteur antérieur a coupés à 300 colonnes.
-} Ils sont relus. Les fichiers JSON qu’un lecteur antérieur avait lus comme du CSV obtiennent leur tableau JSON, et les cellules antérieures ne sont plus affichées. Le lecteur actuel enregistre un null JSON comme une cellule vide, et le JSON imbriqué comme texte indenté.
-processing-update-tables-runs = Lecture des tableaux, puis type de fichier et indexation de ces fichiers
+    [one] { $count } fichier a une lecture de tableau ancienne ou des résultats dépendants incomplets. Ses résultats stockés sont actualisés.
+    *[other] { $count } fichiers ont des lectures de tableaux anciennes ou des résultats dépendants incomplets. Leurs résultats stockés sont actualisés.
+    }
+
+processing-update-tables-runs = Lecture des tableaux, entités, signaux, plongements et les deux index
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Environ { $count } fichier n’a aucun texte OCR pour les langues actuelles, ou garde du texte OCR de langues que les paramètres n’incluent plus.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Arborescence des dossiers
 admin-uploads-badge = Téléversements
 admin-uploads-badge-title = Accepte les téléversements
+
+processing-update-archive_members-title = Membres des archives
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } archive fractionnée nécessite une liste actuelle de ses membres. Ses membres et résultats de recherche sont actualisés.
+    *[other] { $count } archives fractionnées nécessitent une liste actuelle de leurs membres. Leurs membres et résultats de recherche sont actualisés.
+    }
+
+processing-update-archive_members-runs = Extraction des archives, rapprochement des membres et traitement dépendant
+
+processing-update-image_previews-title = Aperçus des images
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } image de format peu courant n’a aucun aperçu. Son aperçu est recréé.
+    *[other] { $count } images de formats peu courants n’ont aucun aperçu. Leurs aperçus sont recréés.
+    }
+
+processing-update-image_previews-runs = Création et vérification des aperçus des images
+
+processing-update-search_terms-title = Termes de recherche
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } table de recherche nécessite les termes de filtre actuels. Les termes de langue, OCR, écriture et signaux d’alerte deviennent recherchables.
+    *[other] Tables de recherche nécessitant les termes de filtre actuels : { $count }. Les termes de langue, OCR, écriture et signaux d’alerte deviennent recherchables.
+    }
+
+processing-update-search_terms-runs = Indexation et vérification des termes de filtre

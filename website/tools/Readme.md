@@ -16,10 +16,11 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 | [count_whoami.py](count_whoami.py) | how many identity requests one navigation costs |
 | [check_session_gate.py](check_session_gate.py) | which of the session gate's three states a page settled in |
 | `console_whitelist.txt` | console messages the screenshot run treats as expected |
+| [fixtures/release_browser.py](fixtures/release_browser.py) | prepares the disposable release correction collection, documents, and facet values inside a processing container |
 | [manual_qa.py](manual_qa.py) | validates fixtures, selects cases, and combines procedure evidence |
 | [manual_qa_runtime.py](manual_qa_runtime.py) | executes the manual interactions and records each assertion |
 
-All of them except `upload_scenarios/` run by copying the script into the browser container and executing it there. The
+All tools except `upload_scenarios/` and `fixtures/` run by copying the script into the browser container and executing it there. The
 container has no bind mounts, so both the script and its output travel by file copy. They do
 not use the browser MCP endpoint, which refuses internal hosts by design.
 

@@ -439,6 +439,7 @@ pub fn DatasetCreatePanel(
                                                     }
                                                     n0_future::time::sleep(std::time::Duration::from_millis(OPEN_WAIT_MS)).await;
                                                 }
+                                                crate::components::session_context::invalidate_storage_tree();
                                                 on_created.call(collection_dataset.clone());
                                                 navigator().push(Route::AdminDatasetPage {
                                                     collection_id: collectionname_for_route.clone(),

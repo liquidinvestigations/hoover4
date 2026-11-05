@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Análisis antivirus, y luego el atributo de búsqueda de los archivos infectados
 processing-update-tables-title = Tablas
 processing-update-tables-explanation = { $files ->
-    [one] { $count } archivo es un archivo JSON o JSON Lines sin una tabla del lector actual, o una tabla que un lector anterior cortó en 300 columnas.
-   *[other] { $count } archivos son archivos JSON o JSON Lines sin una tabla del lector actual, o tablas que un lector anterior cortó en 300 columnas.
-} Se leen de nuevo. Los archivos JSON que un lector anterior leyó como CSV obtienen su tabla JSON, y las celdas anteriores dejan de mostrarse. El lector actual guarda un null de JSON como una celda vacía, y el JSON anidado como texto con sangría.
-processing-update-tables-runs = Lectura de tablas, y luego el tipo de archivo y la indexación de estos archivos
+    [one] { $count } archivo tiene una lectura de tabla anterior o resultados dependientes incompletos. Sus resultados almacenados se actualizan.
+    *[other] { $count } archivos tienen lecturas de tablas anteriores o resultados dependientes incompletos. Se actualizan sus resultados almacenados.
+    }
+
+processing-update-tables-runs = Lectura de tablas, entidades, señales, vectores y ambos índices
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Aproximadamente { $count } archivo no tiene texto de OCR para los idiomas actuales, o conserva texto de OCR de idiomas que los ajustes ya no incluyen.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Árbol de carpetas
 admin-uploads-badge = Cargas
 admin-uploads-badge-title = Acepta cargas
+
+processing-update-archive_members-title = Miembros de archivos
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } archivo dividido necesita una lista actual de miembros. Sus miembros y resultados de búsqueda se actualizan.
+    *[other] { $count } archivos divididos necesitan listas actuales de miembros. Se actualizan sus miembros y resultados de búsqueda.
+    }
+
+processing-update-archive_members-runs = Extracción de archivos, conciliación de miembros y procesamiento dependiente
+
+processing-update-image_previews-title = Vistas previas de imágenes
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } imagen poco común no tiene vista previa. Su vista previa se vuelve a crear.
+    *[other] { $count } imágenes poco comunes no tienen vista previa. Se vuelven a crear sus vistas previas.
+    }
+
+processing-update-image_previews-runs = Creación y verificación de vistas previas de imágenes
+
+processing-update-search_terms-title = Términos de búsqueda
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } tabla de búsqueda necesita términos de filtro actuales. Los términos de idioma, OCR, escritura y señales de alerta serán buscables.
+    *[other] Tablas de búsqueda que necesitan términos de filtro actuales: { $count }. Los términos de idioma, OCR, escritura y señales de alerta serán buscables.
+    }
+
+processing-update-search_terms-runs = Indexación y verificación de términos de filtro

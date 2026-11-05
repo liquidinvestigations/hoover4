@@ -203,3 +203,15 @@ preview-with-search-next = Sljedeće: { $label }
 document-entities-panel-as-written =
     { $value }
     kako je napisano: { $written }
+
+preview-for-archive-search = Pretraži ovu arhivu
+
+preview-for-archive-search-zip = Pretraži ovu ZIP datoteku
+
+email-graph-incomplete = { $count ->
+    [one] Prikazana je { $count } poruka. Ukupan broj nije potpun.
+    [few] Prikazane su { $count } poruke. Ukupan broj nije potpun.
+    *[other] Prikazano je { $count } poruka. Ukupan broj nije potpun.
+    }
+
+email-graph-copies = Broj dopuštenih kopija: { $count }

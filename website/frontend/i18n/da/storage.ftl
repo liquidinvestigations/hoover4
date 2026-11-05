@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Disse stier findes i mappen:
 uploads-upload-files = Filer
 uploads-upload-clear = Ryd
 uploads-upload-and-more-files = og { $format_count_more_as_u64 } filer mere
-uploads-upload-upload-files = Upload { $format_count_count_as_u64 } filer
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Upload { $format_count_count_as_u64 } fil
+    *[other] Upload { $format_count_count_as_u64 } filer
+    }
+
 file-browser-search-names-in-all-collections = Søg i navne i alle samlinger…
 file-browser-search-names-in-this-collection = Søg i navne i denne samling…
 file-browser-files-inside-this-archive-or = Filer i dette arkiv eller denne e-mail, på alle niveauer

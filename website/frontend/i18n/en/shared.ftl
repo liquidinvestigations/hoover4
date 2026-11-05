@@ -268,3 +268,5 @@ shared-boards-budget-grew = {" "}(budget +{ $n } explores)
 shared-boards-budget-unchanged = {" "}(budget unchanged, the board is at its explore limit)
 
 shared-email-graph-selected-copy-removed = The selected email copy no longer exists.
+
+shared-table-generation-changed = The table changed. Retry the table read.

@@ -216,3 +216,68 @@ async fn facet_descriptors_keep_canonical_codes_and_storage_names_use_the_regist
     assert!(tree.iter().all(|node| node.collectionname != "release_api_hidden"));
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires explicitly reserved release reader fixtures"]
+async fn dataset_term_copies_do_not_consume_the_logical_term_limit() -> anyhow::Result<()> {
+    anyhow::ensure!(std::env::var("HOOVER4_RELEASE_READER_FIXTURES").as_deref() == Ok("1"), "Reserved fixtures are required.");
+    use backend::db_utils::manticore_match::quoted_manticore_string as quote;
+    async fn execute(sql: String) -> anyhow::Result<()> {
+        let response: serde_json::Value = reqwest::Client::new()
+            .post(format!("{}/sql?mode=raw", std::env::var("MANTICORE_URL")?))
+            .basic_auth("manticore", Some("manticore"))
+            .timeout(std::time::Duration::from_secs(10))
+            .form(&[("query", sql)]).send().await?.json().await?;
+        anyhow::ensure!(response[0]["error"].as_str().is_none_or(str::is_empty), "Manticore fixture write failed: {response}");
+        Ok(())
+    }
+    let run = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+    let prefix = format!("termgroup{}", run % 1_000_000_000);
+    let row_base = (run % (i64::MAX as u128 - 10_000)) as u64;
+    let term_base = row_base / 2;
+    let mut rows = Vec::new();
+    let mut ids = Vec::new();
+    for index in 0..225u64 {
+        let id = row_base + index;
+        ids.push(id);
+        rows.push(format!("({id},'ner',{0},{0},{term_base},{1})", quote(&format!("{prefix}aaa")), quote(&format!("release_browser_group_{index}"))));
+    }
+    ids.push(row_base + 225);
+    let distinct_id = row_base + 225;
+    let distinct_text = quote(&format!("{prefix}zzz"));
+    rows.push(format!("({distinct_id},'ner',{distinct_text},{distinct_text},{},'release_browser_primary')", term_base + 1));
+    let columns = "id,term_field,term_text,term_display,term_id,collection_dataset";
+    execute(format!("REPLACE INTO release_browser_entities ({columns}) VALUES {}", rows.join(","))).await?;
+    let result = async {
+        let query = common::search_query::SearchQuery { collection_datasets: vec!["release_browser_primary".into()], ..Default::default() };
+        let first = backend::api::search::search_entity_terms(&user(true), query.clone(), prefix.clone(), vec!["ner_per".into()]).await?;
+        assert_eq!(first.hits.len(), 2);
+        assert!(!first.truncated);
+        assert!(first.hits.iter().any(|hit| hit.term_id == term_base + 1));
+        let unknown_code = format!("unknownlanguage{}", run % 1_000_000_000);
+        let unknown_text = quote(&unknown_code);
+        let unknown_id = row_base + 999;
+        ids.push(unknown_id);
+        execute(format!("REPLACE INTO release_browser_entities ({columns}) VALUES ({unknown_id},'language',{unknown_text},{unknown_text},{},'release_browser_primary')", term_base + 999)).await?;
+        let unknown = backend::api::search::search_entity_terms_with_language_codes(
+            &user(true), query.clone(), unknown_code.clone(), vec!["language".into()], Some(Vec::new()),
+        ).await?;
+        assert_eq!(unknown.hits.len(), 1);
+        assert_eq!(unknown.hits[0].term_display, unknown_code);
+        let mut extra = Vec::new();
+        for index in 2..202u64 {
+            let id = row_base + 225 + index;
+            ids.push(id);
+            let text = quote(&format!("{prefix}extra{index:03}"));
+            extra.push(format!("({id},'ner',{text},{text},{},'release_browser_primary')", term_base + index));
+        }
+        execute(format!("REPLACE INTO release_browser_entities ({columns}) VALUES {}", extra.join(","))).await?;
+        let limited = backend::api::search::search_entity_terms(&user(true), query, prefix, vec!["ner_per".into()]).await?;
+        assert_eq!(limited.hits.len(), 200);
+        assert!(limited.truncated);
+        assert_eq!(limited.hits.iter().map(|hit| hit.term_id).collect::<std::collections::BTreeSet<_>>().len(), 200);
+        Ok::<(), anyhow::Error>(())
+    }.await;
+    execute(format!("DELETE FROM release_browser_entities WHERE id IN ({})", ids.iter().map(u64::to_string).collect::<Vec<_>>().join(","))).await?;
+    result
+}

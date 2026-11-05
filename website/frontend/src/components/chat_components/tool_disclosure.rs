@@ -19,7 +19,7 @@ use dioxus::prelude::*;
 use crate::components::chat_components::tool_cards::{tool_content, tool_failure};
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::routes::Route;
-use crate::api::storage_api::list_storage_tree;
+use crate::components::session_context::use_storage_tree;
 use crate::tr;
 
 /// Longest value rendered inline in the readable view before it is clipped. Past this
@@ -43,9 +43,7 @@ pub fn ToolCallDisclosure(
     let label = collapsed_label(&tool_name, &tool_input, &content_summary);
     let chip = tool_chip(&tool_name);
     let needs_tree = tool_name == "search_collections" && !call_collections(&tool_input).is_empty();
-    let collection_tree = use_resource(move || async move {
-        if needs_tree { list_storage_tree().await } else { Ok(Vec::new()) }
-    });
+    let collection_tree = use_storage_tree();
     let search_route = if needs_tree {
         collection_tree.read().as_ref().and_then(|result| result.as_ref().ok())
             .and_then(|tree| search_route_from_tool_input(&tool_name, &tool_input, tree))

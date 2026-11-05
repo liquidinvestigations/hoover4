@@ -45,7 +45,7 @@ use dioxus::prelude::*;
 use crate::api::board_api::{board_assessment, board_drop, board_snapshot, run_board_action};
 use crate::api::chat_api::chat_get_session;
 use crate::api::error_util::user_facing_message;
-use crate::api::storage_api::list_storage_tree;
+use crate::components::session_context::use_storage_tree;
 use dioxus_free_icons::icons::md_content_icons::{MdAdd, MdRemove};
 use dioxus_free_icons::icons::md_navigation_icons::MdArrowDownward;
 use dioxus_free_icons::Icon;
@@ -1027,7 +1027,7 @@ fn count_line(entries: &[(usize, &str, bool)]) -> String {
 
 /// The numbers and settings of a board, under the events.
 #[component]
-fn BoardStatistics(snap: BoardSnapshot) -> Element {
+pub(crate) fn BoardStatistics(snap: BoardSnapshot) -> Element {
     let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     let intents = |state: &str| snap.intents.iter().filter(|i| i.state == state).count();
     let facts = |kind: &str| snap.facts.iter().filter(|f| f.kind == kind && !f.rejected).count();
@@ -1042,7 +1042,7 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
         (facts("not_found"), "not found", true), (facts("correction"), "corrections", true),
         (rejected, "rejected", false),
     ]);
-    let internet = if snap.board.internet_tools { "On" } else { "Off" };
+    let internet = if snap.board.internet_tools { tr!("board-status-on") } else { tr!("board-status-off") };
     let collections = collections_text(&snap.board.collections);
     rsx! {
         div { class: "x-board-statistics", style: PANEL,
@@ -1255,15 +1255,16 @@ fn FactDetail(
     // The explore session gives the cards the metadata of the chat. The component is keyed
     // by the fact, and the result names the session it was read for, so a response for an
     // earlier selection never applies here.
+    let storage_tree = use_storage_tree();
     let read_session = fact.session_id.clone();
     let session = use_resource(move || {
         let session_id = read_session.clone();
+        let tree = storage_tree.read().as_ref().and_then(|value| value.as_ref().ok()).cloned().unwrap_or_default();
         async move {
             if session_id.is_empty() {
                 return None;
             }
             let detail = chat_get_session(session_id.clone()).await.ok()?;
-            let tree = list_storage_tree().await.unwrap_or_default();
             Some((session_id, session_citation_sources(&detail.messages, &tree, &detail.run_cited_refs)))
         }
     });

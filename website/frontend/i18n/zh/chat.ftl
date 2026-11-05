@@ -249,7 +249,10 @@ ai-chat-history-could-not-load-history = 无法加载历史记录：{ $e }
 ai-chat-history-no-conversations-yet = 还没有对话。
 ai-chat-history-board = 调查板
 ai-chat-history-new-chat = 新对话
-ai-chat-history-messages-updated = { $s_message_count } 条消息 · 更新于 { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    *[other] { $s_message_count } 条消息 · 更新于 { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = 删除对话
 ai-chat-history-delete = 删除
 ai-chat-homepage-hoover-search-ai-chat = Hoover 搜索 - AI 对话
@@ -286,7 +289,10 @@ chat-transcript-calls = 调用
 ai-chat-board-a-board-without-collections-needs = 没有文档集的调查板需要联网工具。
 ai-chat-board-of = { $snap_explores_used } / { $snap_max_explores }
 ai-chat-board-assessment-2 = 评估 { $number }
-ai-chat-history-messages = { $s_message_count } 条消息
+ai-chat-history-messages = { $s_message_count ->
+    *[other] { $s_message_count } 条消息
+    }
+
 web-search-card-reranked-in = 交叉编码器用 { $ms } 毫秒对结果重新排序。
 web-search-card-engine-results = { $name }：{ $count } 条，用时 { $ms } 毫秒
 web-search-card-score-was-rank = 得分 { $score } · 原为 RRF #{ $rank }
@@ -380,7 +386,10 @@ tool-run-summary-to-the-agent = { $n } 条给智能体的指令
 tool-run-summary-other = { $n } 次其他调用
 tool-run-summary-failed = { $failures } 个失败
 tool-run-summary-took = 耗时 { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } 条消息
+chat-session-card-messages = { $session_message_count ->
+    *[other] { $session_message_count } 条消息
+    }
+
 chat-tool-disclosure-item = { $count } 项
 chat-tool-disclosure-field = { $count } 个字段
 chat-tool-disclosure-searched-collections = 搜索文档集{ $filters }
@@ -419,3 +428,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · 版本 { $version } · 未更改
 cards-result-cards-version = { $tool_name } · 版本 { $version }
 web-search-card-results-in-after-deduplication = 共 { $json_u64_doc_total_before_dedupe } 条结果，去重后 { $json_u64_doc_total_after_dedupe } 条
+
+board-status-on = 开启
+
+board-status-off = 关闭
+
+chat-transcript-generic-tool = 工具

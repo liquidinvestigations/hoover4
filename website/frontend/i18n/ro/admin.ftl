@@ -847,11 +847,12 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Scanarea antivirus, apoi atributul de căutare al fișierelor infectate
 processing-update-tables-title = Tabele
 processing-update-tables-explanation = { $files ->
-    [one] { $count } fișier este un fișier JSON sau JSON Lines fără un tabel al cititorului curent sau cu un tabel pe care un cititor anterior l-a tăiat la 300 de coloane.
-    [few] { $count } fișiere sunt fișiere JSON sau JSON Lines fără un tabel al cititorului curent sau cu tabele pe care un cititor anterior le-a tăiat la 300 de coloane.
-   *[other] { $count } de fișiere sunt fișiere JSON sau JSON Lines fără un tabel al cititorului curent sau cu tabele pe care un cititor anterior le-a tăiat la 300 de coloane.
-} Fișierele sunt citite din nou. Fișierele JSON pe care un cititor anterior le-a citit ca CSV primesc tabelul lor JSON, iar celulele anterioare nu mai sunt afișate. Cititorul actual salvează o valoare null din JSON ca celulă goală, iar JSON-ul imbricat ca text indentat.
-processing-update-tables-runs = Citirea tabelelor, apoi tipul de fișier și indexarea acestor fișiere
+    [one] { $count } fișier are o citire de tabel anterioară sau rezultate dependente incomplete. Rezultatele stocate sunt actualizate.
+    [few] { $count } fișiere au citiri de tabele anterioare sau rezultate dependente incomplete. Rezultatele stocate sunt actualizate.
+    *[other] { $count } fișiere au citiri de tabele anterioare sau rezultate dependente incomplete. Rezultatele stocate sunt actualizate.
+    }
+
+processing-update-tables-runs = Citirea tabelelor, entități, semnale, vectorizare și ambele indexuri
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Aproximativ { $count } fișier nu are text OCR pentru limbile curente sau păstrează text OCR pentru limbi pe care setările nu le mai includ.
@@ -889,3 +890,33 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Arborele de foldere
 admin-uploads-badge = Încărcări
 admin-uploads-badge-title = Acceptă încărcări
+
+processing-update-archive_members-title = Membri ai arhivelor
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } arhivă divizată necesită o listă actuală de membri. Membrii și rezultatele de căutare sunt actualizate.
+    [few] { $count } arhive divizate necesită liste actuale de membri. Membrii și rezultatele de căutare sunt actualizate.
+    *[other] { $count } arhive divizate necesită liste actuale de membri. Membrii și rezultatele de căutare sunt actualizate.
+    }
+
+processing-update-archive_members-runs = Extragerea arhivelor, reconcilierea membrilor și procesarea dependentă
+
+processing-update-image_previews-title = Previzualizări de imagini
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } imagine cu format neobișnuit nu are previzualizare. Previzualizarea este creată din nou.
+    [few] { $count } imagini cu formate neobișnuite nu au previzualizare. Previzualizările sunt create din nou.
+    *[other] { $count } imagini cu formate neobișnuite nu au previzualizare. Previzualizările sunt create din nou.
+    }
+
+processing-update-image_previews-runs = Crearea și verificarea previzualizărilor de imagini
+
+processing-update-search_terms-title = Termeni de căutare
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } tabel de căutare necesită termenii de filtrare actuali. Termenii pentru limbă, OCR, scriere și indicatori roșii devin căutabili.
+    [few] Tabele de căutare care necesită termenii de filtrare actuali: { $count }. Termenii pentru limbă, OCR, scriere și indicatori roșii devin căutabili.
+    *[other] Tabele de căutare care necesită termenii de filtrare actuali: { $count }. Termenii pentru limbă, OCR, scriere și indicatori roșii devin căutabili.
+    }
+
+processing-update-search_terms-runs = Indexarea și verificarea termenilor de filtrare

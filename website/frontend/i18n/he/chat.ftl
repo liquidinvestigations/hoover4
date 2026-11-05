@@ -257,7 +257,12 @@ ai-chat-history-could-not-load-history = לא ניתן היה לטעון את ה
 ai-chat-history-no-conversations-yet = עדיין אין צ'אטים.
 ai-chat-history-board = לוח
 ai-chat-history-new-chat = צ'אט חדש
-ai-chat-history-messages-updated = { $s_message_count } הודעות · עודכן { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } הודעה · עודכן { $s_updated_at }
+    [two] { $s_message_count } הודעות · עודכן { $s_updated_at }
+    *[other] { $s_message_count } הודעות · עודכן { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = מחיקת הצ'אט
 ai-chat-history-delete = מחיקה
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - צ'אט AI
@@ -294,7 +299,12 @@ chat-transcript-calls = קריאות
 ai-chat-board-a-board-without-collections-needs = לוח בלי אוספים דורש כלי אינטרנט.
 ai-chat-board-of = { $snap_explores_used } מתוך { $snap_max_explores }
 ai-chat-board-assessment-2 = הערכה { $number }
-ai-chat-history-messages = { $s_message_count } הודעות
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } הודעה
+    [two] { $s_message_count } הודעות
+    *[other] { $s_message_count } הודעות
+    }
+
 web-search-card-reranked-in = ה-cross-encoder דירג את התוצאות תוך { $ms } אלפיות שנייה.
 web-search-card-engine-results = { $name }: { $count } תוך { $ms } אלפיות שנייה
 web-search-card-score-was-rank = ציון { $score } · היה RRF #{ $rank }
@@ -448,7 +458,12 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } נכשלו
 tool-run-summary-took = ארך { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } הודעות
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } הודעה
+    [two] { $session_message_count } הודעות
+    *[other] { $session_message_count } הודעות
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] פריט אחד
         [two] שני פריטים
@@ -499,3 +514,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · גרסה { $version } · ללא שינוי
 cards-result-cards-version = { $tool_name } · גרסה { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } תוצאות לפני, { $json_u64_doc_total_after_dedupe } אחרי הסרת כפילויות
+
+board-status-on = פעיל
+
+board-status-off = כבוי
+
+chat-transcript-generic-tool = הכלי

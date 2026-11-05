@@ -78,3 +78,35 @@ and keeps the shared helpers.
 [website/tools/split_browser_tests.py](../tools/split_browser_tests.py) writes this directory from a concatenated ini.
 [website/tools/verify_browser_test_split.py](../tools/verify_browser_test_split.py) compares the parsed scenario list from that
 ini with this directory.
+
+## Release correction fixtures
+
+The `release` scenarios use the synthetic `release_browser` collection and its `primary` and `duplicate` datasets.
+[The fixture helper](../tools/fixtures/release_browser.py) prepares their registry, schemas, indexes, documents, and facet values.
+Run it inside a processing container with the application's datastore configuration and current repository source.
+Use disposable datastores for this fixture collection.
+The helper applies global and fixture collection migrations, then writes its named datasets.
+Its JSON output records the stable document hashes used by these scenarios.
+
+The table fixtures contain `row-0-` and `row-1-` prefixes.
+The email fixture has one subject match, three recipient matches, and two body matches for `quokka`.
+The same email hash occurs in both datasets.
+The text fixture retains four mapped `quokka` matches across a removed encoded run.
+The table race scenario retains the browser runtime while changing the route and moving through browser history.
+The metadata scenario changes the fixture collection display name and restores its original value.
+
+The delayed Abort scenario needs a writable upload target for the primary fixture dataset.
+Its transfer and Abort responses are controlled browser fixtures.
+The production upload page and driver process both selections through their normal controls.
+The old Abort response resolves after the replacement page has a new selection.
+
+The metadata rename and disposable-dataset deletion scenarios require `--dispatch`.
+The deletion scenario removes only `release_browser_disposable`.
+Prepare that empty dataset with the display name `Delete this dataset` before each deletion run.
+
+The translation fixture page renders production chat cards, board statistics, and generic tool disclosures.
+Its scenarios use `--fixture-build` and exercise zero, one, two, five, and twenty-one counts.
+The fixture controls only the internet-tool availability response for its board settings.
+
+A deletion request can tombstone the fixture dataset before operation admission fails.
+The deletion scenario records that error separately and verifies that the shared tree still removes the dataset.

@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = { $kind }を検索…
 search-filter-modal-show-results = { $total } 件の結果を表示
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }。まだ適用されていません。「検索」を押してください。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = 未満
+
+facet-label-over = 超
+
+facet-language-en = 英語
+
+facet-language-de = ドイツ語
+
+facet-language-es = スペイン語
+
+facet-language-fr = フランス語
+
+facet-language-pl = ポーランド語
+
+facet-language-pt = ポルトガル語
+
+facet-language-ar = アラビア語
+
+facet-language-he = ヘブライ語
+
+facet-language-hi = ヒンディー語
+
+facet-language-zh = 中国語
+
+facet-language-it = イタリア語
+
+facet-language-nl = オランダ語
+
+facet-language-da = デンマーク語
+
+facet-language-nb = ノルウェー語ブークモール
+
+facet-language-sv = スウェーデン語
+
+facet-language-el = ギリシャ語
+
+facet-language-hr = クロアチア語
+
+facet-language-ro = ルーマニア語
+
+facet-language-ru = ロシア語
+
+facet-language-ja = 日本語
+
+facet-language-ko = 韓国語
+
+facet-language-tr = トルコ語
+
+facet-language-af = アフリカーンス語
+
+facet-language-als = als
+
+facet-language-am = アムハラ語
+
+facet-language-an = アラゴン語
+
+facet-language-arz = arz
+
+facet-language-as = アッサム語
+
+facet-language-ast = ast
+
+facet-language-av = アヴァル語
+
+facet-language-az = アゼルバイジャン語
+
+facet-language-azb = azb
+
+facet-language-ba = バシキール語
+
+facet-language-bar = bar
+
+facet-language-bcl = bcl
+
+facet-language-be = 白ロシア語
+
+facet-language-bg = ブルガリア語
+
+facet-language-bh = bh
+
+facet-language-bn = ベンガル語
+
+facet-language-bo = チベット語
+
+facet-language-bpy = bpy
+
+facet-language-br = ブルトン語
+
+facet-language-bs = ボスニア語
+
+facet-language-bxr = bxr
+
+facet-language-ca = カタロニア語
+
+facet-language-cbk = cbk
+
+facet-language-ce = チェチェン語
+
+facet-language-ceb = セブアノ語
+
+facet-language-ckb = ckb
+
+facet-language-co = コルシカ語
+
+facet-language-cs = チェコ語
+
+facet-language-cv = チュヴァシュ語
+
+facet-language-cy = ウェールズ語
+
+facet-language-diq = diq
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = エスペラント
+
+facet-language-et = エストニア語
+
+facet-language-eu = バスク語
+
+facet-language-fa = ペルシア語
+
+facet-language-fi = フィン語
+
+facet-language-frr = frr
+
+facet-language-fy = fy
+
+facet-language-ga = アイルランド語
+
+facet-language-gd = gd
+
+facet-language-gl = gl
+
+facet-language-gn = グアラニー
+
+facet-language-gom = gom
+
+facet-language-gu = グジャラーティー語
+
+facet-language-gv = マン島語
+
+facet-language-hif = hif
+
+facet-language-hsb = hsb
+
+facet-language-ht = ht
+
+facet-language-hu = ハンガリー語
+
+facet-language-hy = アルメニア語
+
+facet-language-ia = インターリングア語 (国際補助語協会)
+
+facet-language-id = インドネシア語
+
+facet-language-ie = インターリング
+
+facet-language-ilo = イロカノ語
+
+facet-language-io = イド語
+
+facet-language-is = アイスランド語
+
+facet-language-jbo = ロジバン語
+
+facet-language-jv = ジャワ語
+
+facet-language-ka = グルジア語
+
+facet-language-kk = カザーフ語
+
+facet-language-km = km
+
+facet-language-kn = カンナダ語
+
+facet-language-krc = カラチャイ・バルカル語
+
+facet-language-ku = クルド語
+
+facet-language-kv = コミ語
+
+facet-language-kw = コーンウォール語
+
+facet-language-ky = キルギス語
+
+facet-language-la = ラテン語
+
+facet-language-lb = lb
+
+facet-language-lez = レズギ語
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = ラオ語
+
+facet-language-lrc = lrc
+
+facet-language-lt = リトアニア語
+
+facet-language-lv = ラトビア語
+
+facet-language-mai = マイチリ語
+
+facet-language-mg = マラガシ語
+
+facet-language-mhr = mhr
+
+facet-language-min = ミナンカバウ語
+
+facet-language-mk = マケドニア語
+
+facet-language-ml = マラヤーラム語
+
+facet-language-mn = 蒙古語
+
+facet-language-mr = マラーティー語
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = マルタ語
+
+facet-language-mwl = ミランド語
+
+facet-language-my = ビルマ語
+
+facet-language-myv = エルジャ語
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = ナポリ語
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = ニーノシュク・ノルウェー語
+
+facet-language-no = ノルウェー語
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = パンパンガ語
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = プシュトゥー語
+
+facet-language-qu = キチュワ語
+
+facet-language-rm = rm
+
+facet-language-rue = rue
+
+facet-language-sa = 梵語
+
+facet-language-sah = ヤクート語
+
+facet-language-sc = サルデーニャ語
+
+facet-language-scn = シチリア語
+
+facet-language-sco = スコットランド語
+
+facet-language-sd = シンディー語
+
+facet-language-sh = sh
+
+facet-language-si = si
+
+facet-language-sk = スロヴァキア語
+
+facet-language-sl = スロヴェニア語
+
+facet-language-so = ソマリ語
+
+facet-language-sq = アルバニア語
+
+facet-language-sr = セルビア語
+
+facet-language-su = スンダ語
+
+facet-language-sw = sw
+
+facet-language-ta = タミル語
+
+facet-language-te = テルグ語
+
+facet-language-tg = タジク語
+
+facet-language-th = タイ語
+
+facet-language-tk = トゥルクメン語
+
+facet-language-tl = タガログ語
+
+facet-language-tt = タタール語
+
+facet-language-tyv = ツバニア語
+
+facet-language-ug = ウイグル語
+
+facet-language-uk = ウクライナ語
+
+facet-language-ur = ウルドゥー語
+
+facet-language-uz = ウズベク語
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = ベトナム語
+
+facet-language-vls = vls
+
+facet-language-vo = ボラピューク語
+
+facet-language-wa = ワロン語
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = イディッシュ語
+
+facet-language-yo = ヨルバ語
+
+facet-language-yue = yue

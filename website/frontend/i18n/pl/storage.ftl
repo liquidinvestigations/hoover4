@@ -102,7 +102,13 @@ uploads-upload-these-paths-exist-in-the = Te ścieżki istnieją w folderze:
 uploads-upload-files = Pliki
 uploads-upload-clear = Wyczyść
 uploads-upload-and-more-files = i inne pliki: { $format_count_more_as_u64 }
-uploads-upload-upload-files = Prześlij pliki ({ $format_count_count_as_u64 })
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Prześlij { $format_count_count_as_u64 } plik
+    [few] Prześlij { $format_count_count_as_u64 } pliki
+    [many] Prześlij { $format_count_count_as_u64 } plików
+    *[other] Prześlij { $format_count_count_as_u64 } pliku
+    }
+
 file-browser-search-names-in-all-collections = Szukaj nazw we wszystkich kolekcjach…
 file-browser-search-names-in-this-collection = Szukaj nazw w tej kolekcji…
 file-browser-files-inside-this-archive-or = Pliki wewnątrz tego archiwum lub e-maila, na każdym poziomie

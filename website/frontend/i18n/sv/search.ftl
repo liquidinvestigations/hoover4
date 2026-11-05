@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Sök bland { $kind }…
 search-filter-modal-show-results = Visa { $total } resultat
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Inte tillämpat ännu. Tryck på Sök.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Under
+
+facet-label-over = Över
+
+facet-language-en = Engelska
+
+facet-language-de = Tyska
+
+facet-language-es = Spanska
+
+facet-language-fr = Franska
+
+facet-language-pl = Polska
+
+facet-language-pt = Portugisiska
+
+facet-language-ar = Arabiska
+
+facet-language-he = Hebreiska
+
+facet-language-hi = Hindi
+
+facet-language-zh = Kinesiska
+
+facet-language-it = Italienska
+
+facet-language-nl = Nederländska
+
+facet-language-da = Danska
+
+facet-language-nb = Norskt bokmål
+
+facet-language-sv = Svenska
+
+facet-language-el = Grekiska
+
+facet-language-hr = Kroatiska
+
+facet-language-ro = Rumänska
+
+facet-language-ru = Ryska
+
+facet-language-ja = Japanska
+
+facet-language-ko = Koreanska
+
+facet-language-tr = Turkiska
+
+facet-language-af = Afrikaans
+
+facet-language-als = Toskiska
+
+facet-language-am = Amhariska
+
+facet-language-an = Aragonska
+
+facet-language-arz = Egyptisk arabiska
+
+facet-language-as = Assamesiska
+
+facet-language-ast = Asturiska (Bable)
+
+facet-language-av = Avariska
+
+facet-language-az = Azerbajdzjanska
+
+facet-language-azb = Azerbajdzjanska
+
+facet-language-ba = Basjkiriska
+
+facet-language-bar = Bayerska
+
+facet-language-bcl = Central Bikol
+
+facet-language-be = Vitryska
+
+facet-language-bg = Bulgariska
+
+facet-language-bh = bh
+
+facet-language-bn = Bengali
+
+facet-language-bo = Tibetanska
+
+facet-language-bpy = Bishnupriya manipuri
+
+facet-language-br = Bretonska
+
+facet-language-bs = Bosniska
+
+facet-language-bxr = Burjatiska
+
+facet-language-ca = Katalanska
+
+facet-language-cbk = Chavacano
+
+facet-language-ce = Tjetjenska
+
+facet-language-ceb = Cebuano
+
+facet-language-ckb = Sorani
+
+facet-language-co = Korsikanska
+
+facet-language-cs = Tjeckiska
+
+facet-language-cv = Tjuvasjiska
+
+facet-language-cy = Kymriska
+
+facet-language-diq = Dimli
+
+facet-language-dsb = Lågsorbiska
+
+facet-language-dty = Dotyali
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estniska
+
+facet-language-eu = Baskiska
+
+facet-language-fa = Persiska
+
+facet-language-fi = Finska
+
+facet-language-frr = Nordfrisiska
+
+facet-language-fy = frisiska
+
+facet-language-ga = Iriska
+
+facet-language-gd = Höglandsskotska
+
+facet-language-gl = Galiciska
+
+facet-language-gn = Guarani
+
+facet-language-gom = Konkani
+
+facet-language-gu = Gujarati
+
+facet-language-gv = Manx
+
+facet-language-hif = Fijiansk hindi
+
+facet-language-hsb = Högsorbiska
+
+facet-language-ht = Haitiska (Haitisk kreol)
+
+facet-language-hu = Ungerska
+
+facet-language-hy = Armeniska
+
+facet-language-ia = Interlingua
+
+facet-language-id = Indonesiska
+
+facet-language-ie = Interlingue
+
+facet-language-ilo = Iloko
+
+facet-language-io = Ido
+
+facet-language-is = Isländska
+
+facet-language-jbo = Lojban
+
+facet-language-jv = Javanska
+
+facet-language-ka = Georgiska
+
+facet-language-kk = Kazakiska
+
+facet-language-km = km
+
+facet-language-kn = Kanaresiska
+
+facet-language-krc = Karatjajbalkariska
+
+facet-language-ku = Kurdiska
+
+facet-language-kv = Komi
+
+facet-language-kw = Korniska
+
+facet-language-ky = Kirgisiska
+
+facet-language-la = Latin
+
+facet-language-lb = Luxemburgiska (Letzebüergesch)
+
+facet-language-lez = Lezginska
+
+facet-language-li = Limburgiska
+
+facet-language-lmo = Lombardiska
+
+facet-language-lo = Laotiska
+
+facet-language-lrc = Luri
+
+facet-language-lt = Litauiska
+
+facet-language-lv = Lettiska
+
+facet-language-mai = Maithili
+
+facet-language-mg = Malagasy
+
+facet-language-mhr = Östmariska
+
+facet-language-min = Minangkabau
+
+facet-language-mk = Makedonska
+
+facet-language-ml = Malayalam
+
+facet-language-mn = Mongoliska
+
+facet-language-mr = Marathi
+
+facet-language-mrj = Västmariska
+
+facet-language-ms = Malay (macrolanguage)
+
+facet-language-mt = Maltesiska
+
+facet-language-mwl = Mirandesiska
+
+facet-language-my = Burmesiska
+
+facet-language-myv = Erzya
+
+facet-language-mzn = Mazenderani
+
+facet-language-nah = nah
+
+facet-language-nap = Neapolitansk italienska
+
+facet-language-nds = Lågtyska
+
+facet-language-ne = Nepali
+
+facet-language-new = new
+
+facet-language-nn = Nynorsk
+
+facet-language-no = Norska
+
+facet-language-oc = Langue d'oc (1500-)
+
+facet-language-or = Oriya
+
+facet-language-os = Ossetiska
+
+facet-language-pa = Panjabi
+
+facet-language-pam = Pampanga
+
+facet-language-pfl = Pfaelzisch
+
+facet-language-pms = Piemontesiska
+
+facet-language-pnb = Western Panjabi
+
+facet-language-ps = Pashto
+
+facet-language-qu = Quechua
+
+facet-language-rm = Rätoromanska
+
+facet-language-rue = Rusinska
+
+facet-language-sa = Sanskrit
+
+facet-language-sah = Jakutiska
+
+facet-language-sc = Sardiska
+
+facet-language-scn = Siciliansk italienska
+
+facet-language-sco = Skotska
+
+facet-language-sd = Sindhi
+
+facet-language-sh = Serbokroatiska
+
+facet-language-si = Singalesiska
+
+facet-language-sk = Slovakiska
+
+facet-language-sl = Slovenska
+
+facet-language-so = Somali
+
+facet-language-sq = Albanska
+
+facet-language-sr = Serbiska
+
+facet-language-su = Sundanesiska
+
+facet-language-sw = Swahili
+
+facet-language-ta = Tamil
+
+facet-language-te = Telugu
+
+facet-language-tg = Tadzjikiska
+
+facet-language-th = Thailändska
+
+facet-language-tk = Turkmeniska
+
+facet-language-tl = Tagalog
+
+facet-language-tt = Tatariska
+
+facet-language-tyv = Tuvinska
+
+facet-language-ug = Uiguriska
+
+facet-language-uk = Ukrainska
+
+facet-language-ur = Urdu
+
+facet-language-uz = Uzbekiska
+
+facet-language-vec = Venetianska
+
+facet-language-vep = Vepsiska
+
+facet-language-vi = Vietnamesiska
+
+facet-language-vls = Flamländska
+
+facet-language-vo = Volapük
+
+facet-language-wa = Vallonska
+
+facet-language-war = Waray
+
+facet-language-wuu = Wu (dialekt)
+
+facet-language-xal = Kalmuckiska
+
+facet-language-xmf = Megreliska
+
+facet-language-yi = Jiddisch
+
+facet-language-yo = Yoruba
+
+facet-language-yue = Yue Chinese

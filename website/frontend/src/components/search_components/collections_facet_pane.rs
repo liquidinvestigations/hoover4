@@ -24,12 +24,13 @@ use dioxus_free_icons::{
     icons::{
         go_icons::GoDatabase,
         md_action_icons::MdSearch,
+        md_device_icons::MdStorage,
         md_navigation_icons::{MdChevronRight, MdExpandMore},
     },
 };
 
 use crate::api::search_api::search_string_facet;
-use crate::api::storage_api::list_storage_tree;
+use crate::components::session_context::use_storage_tree;
 use crate::components::error_boundary::ServerErrorDisplay;
 use crate::components::search_components::search_facets::{STALE_OPACITY, request_in_flight};
 use crate::components::search_components::vfs_tree::{TriState, tri_state_icon};
@@ -240,7 +241,7 @@ pub fn CollectionsFacetPane(
         search_string_facet(q, FACET_FIELD.to_string(), None, None)
     });
     // One call for the whole registry, on mount, exactly as the storage tree does it.
-    let tree = use_resource(move || async move { list_storage_tree().await });
+    let tree = use_storage_tree();
 
     let (facets_value, tree_value) = match (facets.read().clone(), tree.read().clone()) {
         (Some(Ok(f)), Some(Ok(t))) => (f, t),
@@ -287,7 +288,8 @@ pub fn CollectionsFacetPane(
         groups
             .into_iter()
             .filter_map(|group| {
-                let name_hit = group.collectionname.to_lowercase().contains(&needle_text);
+                let name_hit = crate::components::session_context::collection_label(&tree_value, &group.collectionname).to_lowercase().contains(&needle_text)
+                    || group.collectionname.to_lowercase().contains(&needle_text);
                 let dataset_hit = group
                     .datasets
                     .iter()
@@ -344,6 +346,9 @@ fn CollectionFacetRow(
     force_open: bool,
 ) -> Element {
     let name = group.collectionname.clone();
+    let tree = use_storage_tree();
+    let label = tree.read().as_ref().and_then(|result| result.as_ref().ok())
+        .map(|nodes| crate::components::session_context::collection_label(nodes, &name)).unwrap_or_else(|| name.clone());
     let dataset_ids = group.dataset_ids();
 
     // A memo of THIS row's key. `expanded` changing for another collection produces the
@@ -401,7 +406,7 @@ fn CollectionFacetRow(
                 }
             }
             Icon { icon: GoDatabase, style: "width: 19px; height: 19px; flex-shrink: 0; color: rgb(28,33,45);" }
-            div { style: LABEL_STYLE, title: "{group.collectionname}", "{group.collectionname}" }
+            div { style: LABEL_STYLE, title: "{group.collectionname}", "{label}" }
             div { style: COUNT_STYLE, "{group.count}" }
         }
         if open {
@@ -433,6 +438,7 @@ fn DatasetFacetRow(dataset: DatasetBucket, pending: Signal<SearchQuery>) -> Elem
                 set_selection(&mut pending.write(), std::slice::from_ref(&click_id), !on);
             },
             {tri_state_icon(if is_checked() { TriState::Checked } else { TriState::Unchecked })}
+            Icon { icon: MdStorage, style: "width: 19px; height: 19px; flex-shrink: 0; color: rgb(28,33,45);" }
             div {
                 style: LABEL_STYLE,
                 title: "{dataset.collection_dataset}",

@@ -831,9 +831,10 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = ウイルス対策スキャン、続いて感染ファイルの検索属性
 processing-update-tables-title = テーブル
 processing-update-tables-explanation = { $files ->
-   *[other] 現行のリーダーによるテーブルがないJSONまたはJSON Linesのファイル、もしくは以前のリーダーが300列で切り詰めたテーブルが { $count } 個あります。
-} これらを読み直します。以前のリーダーがCSVとして読み取ったJSONファイルには、JSONのテーブルが作られ、以前のセルは表示されなくなります。現行のリーダーは、JSONのnullを空のセルとして、入れ子のJSONをインデント付きのテキストとして保存します。
-processing-update-tables-runs = テーブルの読み取り、続いてこれらのファイルのファイルの種類の判定とインデックス作成
+    *[other] { $count } 件のファイルに古いテーブル読み取り結果または不完全な依存出力があります。保存済みの結果を更新します。
+    }
+
+processing-update-tables-runs = テーブルの読み取り、エンティティ、シグナル、埋め込み、両方のインデックス
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
    *[other] 現在の言語のOCRテキストがない、または設定にもう含まれていない言語のOCRテキストが残っているファイルが、約 { $count } 個あります。
@@ -861,3 +862,27 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = フォルダーツリー
 admin-uploads-badge = アップロード
 admin-uploads-badge-title = アップロードを受け付けます
+
+processing-update-archive_members-title = アーカイブのメンバー
+
+processing-update-archive_members-explanation = { $files ->
+    *[other] { $count } 件の分割アーカイブに最新のメンバー一覧が必要です。メンバーと検索結果を更新します。
+    }
+
+processing-update-archive_members-runs = アーカイブ抽出、メンバーの照合、依存する処理
+
+processing-update-image_previews-title = 画像プレビュー
+
+processing-update-image_previews-explanation = { $files ->
+    *[other] { $count } 件の一般的でない画像にプレビューがありません。プレビューを再作成します。
+    }
+
+processing-update-image_previews-runs = 画像プレビューの作成と検証
+
+processing-update-search_terms-title = 検索語
+
+processing-update-search_terms-explanation = { $files ->
+    *[other] 現在のフィルター語が必要な検索テーブル数: { $count }。言語、OCR、文字体系、レッドフラグの語が検索可能になります。
+    }
+
+processing-update-search_terms-runs = フィルター語のインデックス作成と検証

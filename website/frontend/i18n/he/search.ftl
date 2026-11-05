@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = חיפוש { $kind }…
 search-filter-modal-show-results = הצגת { $total } תוצאות
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. עדיין לא הוחל. יש ללחוץ על חיפוש.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = פחות מ־
+
+facet-label-over = יותר מ־
+
+facet-language-en = אנגלית
+
+facet-language-de = גרמנית
+
+facet-language-es = ספרדית
+
+facet-language-fr = צרפתית
+
+facet-language-pl = פולנית
+
+facet-language-pt = פורטוגזית
+
+facet-language-ar = ערבית
+
+facet-language-he = עברית
+
+facet-language-hi = הינדי
+
+facet-language-zh = סינית
+
+facet-language-it = איטלקית
+
+facet-language-nl = הולנדית
+
+facet-language-da = דנית
+
+facet-language-nb = נורווגית בוקמול
+
+facet-language-sv = שוודית
+
+facet-language-el = יוונית
+
+facet-language-hr = קרואטית
+
+facet-language-ro = רומנית
+
+facet-language-ru = רוסית
+
+facet-language-ja = יפנית
+
+facet-language-ko = קוריאנית
+
+facet-language-tr = טורקית
+
+facet-language-af = אפריקאנס
+
+facet-language-als = als
+
+facet-language-am = אמהרית
+
+facet-language-an = אראגונית
+
+facet-language-arz = arz
+
+facet-language-as = as
+
+facet-language-ast = ast
+
+facet-language-av = av
+
+facet-language-az = אזרית
+
+facet-language-azb = azb
+
+facet-language-ba = בשקירית
+
+facet-language-bar = bar
+
+facet-language-bcl = bcl
+
+facet-language-be = בלארוסית
+
+facet-language-bg = בולגרית
+
+facet-language-bh = bh
+
+facet-language-bn = בנגלית
+
+facet-language-bo = טיבטית
+
+facet-language-bpy = bpy
+
+facet-language-br = ברטונית
+
+facet-language-bs = bs
+
+facet-language-bxr = bxr
+
+facet-language-ca = קטלונית
+
+facet-language-cbk = cbk
+
+facet-language-ce = ce
+
+facet-language-ceb = ceb
+
+facet-language-ckb = ckb
+
+facet-language-co = co
+
+facet-language-cs = צ'כית
+
+facet-language-cv = cv
+
+facet-language-cy = וולשית
+
+facet-language-diq = diq
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = אספרנטו
+
+facet-language-et = אסטונית
+
+facet-language-eu = בסקית
+
+facet-language-fa = fa
+
+facet-language-fi = פינית
+
+facet-language-frr = פריזית צפונית
+
+facet-language-fy = פריזית מערבית
+
+facet-language-ga = אירית
+
+facet-language-gd = gd
+
+facet-language-gl = גליסית
+
+facet-language-gn = גוארני
+
+facet-language-gom = gom
+
+facet-language-gu = גוג׳ראטית
+
+facet-language-gv = gv
+
+facet-language-hif = hif
+
+facet-language-hsb = סורבית צפונית
+
+facet-language-ht = ht
+
+facet-language-hu = הונגרית
+
+facet-language-hy = ארמנית
+
+facet-language-ia = ia
+
+facet-language-id = אינדונזית
+
+facet-language-ie = ie
+
+facet-language-ilo = ilo
+
+facet-language-io = io
+
+facet-language-is = איסלנדית
+
+facet-language-jbo = jbo
+
+facet-language-jv = ג׳אווה
+
+facet-language-ka = גאורגית
+
+facet-language-kk = kk
+
+facet-language-km = km
+
+facet-language-kn = kn
+
+facet-language-krc = krc
+
+facet-language-ku = כורדית
+
+facet-language-kv = kv
+
+facet-language-kw = kw
+
+facet-language-ky = ky
+
+facet-language-la = לטינית
+
+facet-language-lb = lb
+
+facet-language-lez = lez
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = lo
+
+facet-language-lrc = lrc
+
+facet-language-lt = ליטאית
+
+facet-language-lv = לטבית
+
+facet-language-mai = מאיטילי
+
+facet-language-mg = mg
+
+facet-language-mhr = mhr
+
+facet-language-min = min
+
+facet-language-mk = מקדונית
+
+facet-language-ml = מלאיאלאם
+
+facet-language-mn = מונגולית
+
+facet-language-mr = מראטהית
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = מלטזית
+
+facet-language-mwl = מירנדית
+
+facet-language-my = my
+
+facet-language-myv = myv
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = nap
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = nn
+
+facet-language-no = נורווגית
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = pam
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = ps
+
+facet-language-qu = qu
+
+facet-language-rm = rm
+
+facet-language-rue = rue
+
+facet-language-sa = sa
+
+facet-language-sah = sah
+
+facet-language-sc = sc
+
+facet-language-scn = scn
+
+facet-language-sco = sco
+
+facet-language-sd = sd
+
+facet-language-sh = sh
+
+facet-language-si = si
+
+facet-language-sk = סלובקית
+
+facet-language-sl = סלובנית
+
+facet-language-so = so
+
+facet-language-sq = sq
+
+facet-language-sr = סרבית
+
+facet-language-su = su
+
+facet-language-sw = sw
+
+facet-language-ta = טמילית
+
+facet-language-te = te
+
+facet-language-tg = tg
+
+facet-language-th = תאית
+
+facet-language-tk = tk
+
+facet-language-tl = tl
+
+facet-language-tt = tt
+
+facet-language-tyv = tyv
+
+facet-language-ug = ug
+
+facet-language-uk = uk
+
+facet-language-ur = אורדו
+
+facet-language-uz = אוזבקית
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = וייטנאמית
+
+facet-language-vls = vls
+
+facet-language-vo = וולאפיק
+
+facet-language-wa = וולונית
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = יידיש
+
+facet-language-yo = יורובה
+
+facet-language-yue = yue

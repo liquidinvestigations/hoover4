@@ -202,3 +202,11 @@ preview-with-search-next = Sonraki { $label }
 document-entities-panel-as-written =
     { $value }
     yazıldığı gibi: { $written }
+
+preview-for-archive-search = Bu arşivde ara
+
+preview-for-archive-search-zip = Bu ZIP dosyasında ara
+
+email-graph-incomplete = { $count } e-posta gösteriliyor. Toplam eksik.
+
+email-graph-copies = İzin verilen kopya sayısı: { $count }

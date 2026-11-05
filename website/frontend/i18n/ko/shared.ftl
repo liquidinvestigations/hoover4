@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(예산 +탐색 { $n }회)
 shared-boards-budget-unchanged = {" "}(예산 변동 없음, 보드가 탐색 한도에 도달함)
 
 shared-email-graph-selected-copy-removed = 선택한 이메일 사본이 더 이상 존재하지 않습니다.
+
+shared-table-generation-changed = 표가 변경되었습니다. 표 읽기를 다시 시도하세요.

@@ -267,3 +267,5 @@ shared-boards-budget-grew = {" "}(Budget +{ $n } Erkundungen)
 shared-boards-budget-unchanged = {" "}(Budget unverändert, das Board hat sein Erkundungslimit erreicht)
 
 shared-email-graph-selected-copy-removed = Die ausgewählte E-Mail-Kopie ist nicht mehr vorhanden.
+
+shared-table-generation-changed = Die Tabelle wurde geändert. Wiederholen Sie das Lesen der Tabelle.

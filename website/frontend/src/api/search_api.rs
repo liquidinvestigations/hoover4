@@ -57,9 +57,10 @@ pub async fn search_entity_terms(
     input: SearchQuery,
     needle: String,
     columns: Vec<String>,
+    language_codes: Option<Vec<String>>,
 ) -> Result<common::entity_cards::EntityTermHits, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::search::search_entity_terms(&user, input, needle, columns)
+    backend::api::search::search_entity_terms_with_language_codes(&user, input, needle, columns, language_codes)
         .await
         .map_err(to_server_fn_error)
 }
@@ -123,9 +124,12 @@ pub async fn fetch_db_terms_for_ints(
     let collections = backend::db_utils::clickhouse_utils::list_permitted_collections(&user)
         .await
         .map_err(to_server_fn_error)?;
-    backend::api::search::fetch_db_terms_for_ints(&collections, ints, field_name)
-        .await
-        .map_err(to_server_fn_error)
+    let result = if matches!(field_name.as_str(), "language" | "ocr_language" | "filetype") {
+        backend::api::search::fetch_db_term_codes_for_ints(&collections, ints, field_name).await
+    } else {
+        backend::api::search::fetch_db_terms_for_ints(&collections, ints, field_name).await
+    };
+    result.map_err(to_server_fn_error)
 }
 
 /// Document counts per computed date bin, for the histogram under the Date filter pane.

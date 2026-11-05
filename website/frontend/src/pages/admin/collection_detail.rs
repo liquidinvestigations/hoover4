@@ -167,6 +167,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                 match admin_update_collection(cname, f).await {
                                     Ok(()) => {
                                         msg.set(Some("The collection was changed successfully.".to_string()));
+                                        crate::components::session_context::invalidate_storage_tree();
                                         detail_res.restart();
                                     }
                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -215,6 +216,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                                     {tr!("admin-collection-detail-the-collection-is-now-restricted")}.to_string()
                                                 },
                                             ));
+                                            crate::components::session_context::invalidate_storage_tree();
                                             detail_res.restart();
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -255,6 +257,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                             if let Err(e) = admin_revoke_permission(gn, cname).await {
                                                 error_msg.set(Some(user_facing_message(&e)));
                                             }
+                                            crate::components::session_context::invalidate_storage_tree();
                                             detail_res.restart();
                                         });
                                     }
@@ -290,6 +293,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         if let Err(e) = admin_grant_permission(gn, cname).await {
                                             error_msg.set(Some(user_facing_message(&e)));
                                         }
+                                        crate::components::session_context::invalidate_storage_tree();
                                         detail_res.restart();
                                     });
                                 }
@@ -334,6 +338,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                 spawn(async move {
                                     match admin_delete_collection(cname).await {
                                         Ok(()) => {
+                                        crate::components::session_context::invalidate_storage_tree();
                                             let _ = navigator().push(Route::AdminCollectionsPage {});
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),

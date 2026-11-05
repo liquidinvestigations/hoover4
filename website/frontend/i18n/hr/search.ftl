@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Pretraži: { $kind }…
 search-filter-modal-show-results = Prikaži rezultate ({ $total })
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Još nije primijenjeno. Pritisnite Pretraži.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Manje od
+
+facet-label-over = Više od
+
+facet-language-en = Engleski
+
+facet-language-de = Njemački
+
+facet-language-es = Španjolski
+
+facet-language-fr = Francuski
+
+facet-language-pl = Poljski
+
+facet-language-pt = Portugalski
+
+facet-language-ar = Arapski
+
+facet-language-he = Hebrejski
+
+facet-language-hi = Hindski
+
+facet-language-zh = Kineski
+
+facet-language-it = Talijanski
+
+facet-language-nl = Nizozemski
+
+facet-language-da = Danski
+
+facet-language-nb = Norveški bokmål
+
+facet-language-sv = Švedski
+
+facet-language-el = Grčki
+
+facet-language-hr = Hrvatski
+
+facet-language-ro = Rumunjski
+
+facet-language-ru = Ruski
+
+facet-language-ja = Japanski
+
+facet-language-ko = Korejski
+
+facet-language-tr = Turski
+
+facet-language-af = Afrikaans
+
+facet-language-als = Toskijski albanski
+
+facet-language-am = Amharski
+
+facet-language-an = Aragonski
+
+facet-language-arz = Egipatski arapski
+
+facet-language-as = Asamski
+
+facet-language-ast = Asturski
+
+facet-language-av = Avarski
+
+facet-language-az = Azerbajdžanski
+
+facet-language-azb = Južnoazerbajdžanski
+
+facet-language-ba = Baškirski
+
+facet-language-bar = Bavarski
+
+facet-language-bcl = Srednji bikolski
+
+facet-language-be = Bjeloruski
+
+facet-language-bg = Bugarski
+
+facet-language-bh = bh
+
+facet-language-bn = Bengalski
+
+facet-language-bo = Tibetski
+
+facet-language-bpy = bpy
+
+facet-language-br = Bretonski
+
+facet-language-bs = Bošnjački
+
+facet-language-bxr = Ruski burjatski
+
+facet-language-ca = Katalonski
+
+facet-language-cbk = cbk
+
+facet-language-ce = Čečenski
+
+facet-language-ceb = ceb
+
+facet-language-ckb = Centralnokurdski
+
+facet-language-co = Korzički
+
+facet-language-cs = Češki
+
+facet-language-cv = Čuvaški
+
+facet-language-cy = Velški
+
+facet-language-diq = diq
+
+facet-language-dsb = Donjolužički
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estonski
+
+facet-language-eu = Baskijski
+
+facet-language-fa = Perzijski
+
+facet-language-fi = Finski
+
+facet-language-frr = Sjeverni frizijski
+
+facet-language-fy = Zapadni frizijski
+
+facet-language-ga = Irski
+
+facet-language-gd = Škotski galski
+
+facet-language-gl = Galicijski
+
+facet-language-gn = Guarani
+
+facet-language-gom = gom
+
+facet-language-gu = Gudžarati
+
+facet-language-gv = Manski
+
+facet-language-hif = hif
+
+facet-language-hsb = Gornjolužički
+
+facet-language-ht = Haićanski
+
+facet-language-hu = Mađarski
+
+facet-language-hy = Armenski
+
+facet-language-ia = Interlingua (Međunarodno udruženje za pomoćne jezike)
+
+facet-language-id = Indonezijski
+
+facet-language-ie = ie
+
+facet-language-ilo = ilo
+
+facet-language-io = Ido
+
+facet-language-is = Islandski
+
+facet-language-jbo = jbo
+
+facet-language-jv = Javanski
+
+facet-language-ka = Gruzijski
+
+facet-language-kk = Kazaški
+
+facet-language-km = km
+
+facet-language-kn = Kannada
+
+facet-language-krc = krc
+
+facet-language-ku = Kurdski
+
+facet-language-kv = kv
+
+facet-language-kw = Kornijski
+
+facet-language-ky = Kirgiški
+
+facet-language-la = Latinica
+
+facet-language-lb = Luksemburški
+
+facet-language-lez = lez
+
+facet-language-li = Limburški
+
+facet-language-lmo = lmo
+
+facet-language-lo = Laoški
+
+facet-language-lrc = lrc
+
+facet-language-lt = Litavski
+
+facet-language-lv = Latvijski
+
+facet-language-mai = Maithili
+
+facet-language-mg = Malgaški
+
+facet-language-mhr = mhr
+
+facet-language-min = min
+
+facet-language-mk = Makedonski
+
+facet-language-ml = Malajalamski
+
+facet-language-mn = Mongolski
+
+facet-language-mr = mr
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = Malteški
+
+facet-language-mwl = Mirandski
+
+facet-language-my = Burmanski
+
+facet-language-myv = myv
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = Napolitanski
+
+facet-language-nds = Donjonjemački
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = Novonorveški (nynorsk)
+
+facet-language-no = Norveški
+
+facet-language-oc = Okcitanski (nakon 1500.)
+
+facet-language-or = or
+
+facet-language-os = Osetski
+
+facet-language-pa = Pandžapski
+
+facet-language-pam = pam
+
+facet-language-pfl = pfl
+
+facet-language-pms = Pijemontski
+
+facet-language-pnb = pnb
+
+facet-language-ps = ps
+
+facet-language-qu = Kečuanski
+
+facet-language-rm = Retoromanski
+
+facet-language-rue = rue
+
+facet-language-sa = Sanskrt
+
+facet-language-sah = sah
+
+facet-language-sc = Sardinijski
+
+facet-language-scn = Sicilijanski
+
+facet-language-sco = sco
+
+facet-language-sd = sd
+
+facet-language-sh = Srpsko-hrvatski
+
+facet-language-si = Singalski
+
+facet-language-sk = Slovački
+
+facet-language-sl = Slovenski
+
+facet-language-so = Somalski
+
+facet-language-sq = Albanski
+
+facet-language-sr = Srpski
+
+facet-language-su = Sundansko
+
+facet-language-sw = sw
+
+facet-language-ta = Tamilski
+
+facet-language-te = Teluški
+
+facet-language-tg = Tadžički
+
+facet-language-th = Tajski
+
+facet-language-tk = Turkmenski
+
+facet-language-tl = tl
+
+facet-language-tt = Tatarski
+
+facet-language-tyv = tyv
+
+facet-language-ug = ug
+
+facet-language-uk = Ukrajinski
+
+facet-language-ur = Urdski
+
+facet-language-uz = Uzbečki
+
+facet-language-vec = Venecijanski
+
+facet-language-vep = vep
+
+facet-language-vi = Vijetnamski
+
+facet-language-vls = vls
+
+facet-language-vo = vo
+
+facet-language-wa = Valonski
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = Jidiš
+
+facet-language-yo = yo
+
+facet-language-yue = yue

@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Disse stiene finnes allerede i mappen:
 uploads-upload-files = Filer
 uploads-upload-clear = Tøm
 uploads-upload-and-more-files = og { $format_count_more_as_u64 } filer til
-uploads-upload-upload-files = Last opp { $format_count_count_as_u64 } filer
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Last opp { $format_count_count_as_u64 } fil
+    *[other] Last opp { $format_count_count_as_u64 } filer
+    }
+
 file-browser-search-names-in-all-collections = Søk i navn i alle samlinger …
 file-browser-search-names-in-this-collection = Søk i navn i denne samlingen …
 file-browser-files-inside-this-archive-or = Filer i dette arkivet eller denne e-posten, på alle nivåer

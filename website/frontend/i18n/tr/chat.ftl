@@ -248,7 +248,11 @@ ai-chat-history-could-not-load-history = Geçmiş yüklenemedi: { $e }
 ai-chat-history-no-conversations-yet = Henüz konuşma yok.
 ai-chat-history-board = Pano
 ai-chat-history-new-chat = Yeni sohbet
-ai-chat-history-messages-updated = { $s_message_count } ileti · güncelleme { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } mesaj · güncelleme { $s_updated_at }
+    *[other] { $s_message_count } mesaj · güncelleme { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Konuşmayı sil
 ai-chat-history-delete = Sil
 ai-chat-homepage-hoover-search-ai-chat = Hoover Arama - YZ Sohbet
@@ -285,7 +289,11 @@ chat-transcript-calls = çağrısı
 ai-chat-board-a-board-without-collections-needs = Koleksiyonu olmayan bir pano internet araçlarına ihtiyaç duyar.
 ai-chat-board-of = { $snap_explores_used } / { $snap_max_explores }
 ai-chat-board-assessment-2 = değerlendirme { $number }
-ai-chat-history-messages = { $s_message_count } ileti
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } mesaj
+    *[other] { $s_message_count } mesaj
+    }
+
 web-search-card-reranked-in = Çapraz kodlayıcı sonuçları { $ms } ms içinde yeniden sıraladı.
 web-search-card-engine-results = { $name }: { $count } sonuç · { $ms } ms
 web-search-card-score-was-rank = puan { $score } · önceki sıra RRF #{ $rank }
@@ -379,7 +387,11 @@ tool-run-summary-to-the-agent = ajana { $n } talimat
 tool-run-summary-other = { $n } diğer çağrı
 tool-run-summary-failed = { $failures } başarısız
 tool-run-summary-took = { $duration_text_ms } sürdü
-chat-session-card-messages = { $session_message_count } ileti
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } mesaj
+    *[other] { $session_message_count } mesaj
+    }
+
 chat-tool-disclosure-item = { $count } öğe
 chat-tool-disclosure-field = { $count } alan
 chat-tool-disclosure-searched-collections = koleksiyonlarda arandı{ $filters }
@@ -418,3 +430,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · sürüm { $version } · değişmedi
 cards-result-cards-version = { $tool_name } · sürüm { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } sonuç girdi, yinelenenler çıkarıldıktan sonra { $json_u64_doc_total_after_dedupe }
+
+board-status-on = Açık
+
+board-status-off = Kapalı
+
+chat-transcript-generic-tool = araç

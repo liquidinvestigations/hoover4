@@ -831,9 +831,10 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = 바이러스 백신 검사, 이후 감염된 파일의 검색 속성
 processing-update-tables-title = 표
 processing-update-tables-explanation = { $files ->
-   *[other] 파일 { $count }개가 현재 판독기의 표가 없는 JSON 또는 JSON Lines 파일이거나, 이전 판독기가 열 300개에서 잘라 낸 표입니다.
-} 해당 파일을 다시 읽습니다. 이전 판독기가 CSV로 읽은 JSON 파일은 JSON 표를 얻고, 이전 셀은 더 이상 표시되지 않습니다. 현재 판독기는 JSON null을 빈 셀로, 중첩된 JSON을 들여쓴 텍스트로 저장합니다.
-processing-update-tables-runs = 표 읽기, 이후 이 파일의 파일 형식과 색인
+    *[other] 이전 표 읽기 또는 불완전한 종속 출력이 있는 파일: { $count }개. 저장된 결과를 업데이트합니다.
+    }
+
+processing-update-tables-runs = 표 읽기, 엔터티, 신호, 임베딩 및 두 인덱스
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
    *[other] 파일 약 { $count }개에 현재 언어의 OCR 텍스트가 없거나, 설정에서 더 이상 포함하지 않는 언어의 OCR 텍스트가 남아 있습니다.
@@ -861,3 +862,27 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = 폴더 트리
 admin-uploads-badge = 업로드
 admin-uploads-badge-title = 업로드를 받습니다
+
+processing-update-archive_members-title = 압축 파일 구성원
+
+processing-update-archive_members-explanation = { $files ->
+    *[other] 현재 구성원 목록이 필요한 분할 압축 파일: { $count }개. 구성원과 검색 결과를 업데이트합니다.
+    }
+
+processing-update-archive_members-runs = 압축 파일 추출, 구성원 조정 및 종속 처리
+
+processing-update-image_previews-title = 이미지 미리보기
+
+processing-update-image_previews-explanation = { $files ->
+    *[other] 미리보기가 없는 드문 형식의 이미지: { $count }개. 미리보기를 다시 만듭니다.
+    }
+
+processing-update-image_previews-runs = 이미지 미리보기 생성 및 검증
+
+processing-update-search_terms-title = 검색어
+
+processing-update-search_terms-explanation = { $files ->
+    *[other] 현재 필터 용어가 필요한 검색 테이블 수: { $count }개. 언어, OCR, 문자 체계 및 위험 신호 용어를 검색할 수 있게 됩니다.
+    }
+
+processing-update-search_terms-runs = 필터 용어 인덱싱 및 검증

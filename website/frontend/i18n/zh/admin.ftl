@@ -823,9 +823,10 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = 杀毒扫描，然后是被感染文件的搜索属性
 processing-update-tables-title = 表格
 processing-update-tables-explanation = { $files ->
-   *[other] 有 { $count } 个 JSON 或 JSON Lines 文件，没有当前读取器生成的表格，或者其表格被早期的读取器在 300 列处截断。
-} 系统会重新读取这些文件。早期读取器当作 CSV 读取的 JSON 文件会得到其 JSON 表格，早期的单元格将不再显示。当前读取器将 JSON 的 null 存为空单元格，将嵌套的 JSON 存为带缩进的文本。
-processing-update-tables-runs = 读取表格，然后是这些文件的文件类型和索引
+    *[other] { $count } 个文件使用旧版表格读取结果或具有不完整的相关输出。将更新其存储结果。
+    }
+
+processing-update-tables-runs = 表格读取、实体、信号、嵌入和两个索引
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
    *[other] 约有 { $count } 个文件缺少当前语言的 OCR 文本，或者保留着设置中已不再包含的语言的 OCR 文本。
@@ -853,3 +854,27 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = 文件夹树
 admin-uploads-badge = 上传
 admin-uploads-badge-title = 接受上传
+
+processing-update-archive_members-title = 归档成员
+
+processing-update-archive_members-explanation = { $files ->
+    *[other] { $count } 个分卷归档需要当前成员列表。将更新其成员和搜索结果。
+    }
+
+processing-update-archive_members-runs = 归档提取、成员核对和相关处理
+
+processing-update-image_previews-title = 图像预览
+
+processing-update-image_previews-explanation = { $files ->
+    *[other] { $count } 个不常见格式的图像没有预览。将重新创建其预览。
+    }
+
+processing-update-image_previews-runs = 图像预览创建和验证
+
+processing-update-search_terms-title = 搜索词
+
+processing-update-search_terms-explanation = { $files ->
+    *[other] 需要当前筛选词的搜索表数量：{ $count }。语言、OCR、文字系统和风险信号词将可供搜索。
+    }
+
+processing-update-search_terms-runs = 筛选词索引和验证

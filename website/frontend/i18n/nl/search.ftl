@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Zoek { $kind }…
 search-filter-modal-show-results = Toon { $total } resultaten
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Nog niet toegepast. Druk op Zoeken.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Minder dan
+
+facet-label-over = Meer dan
+
+facet-language-en = Engels
+
+facet-language-de = Duits
+
+facet-language-es = Spaans
+
+facet-language-fr = Frans
+
+facet-language-pl = Pools
+
+facet-language-pt = Portugees
+
+facet-language-ar = Arabisch
+
+facet-language-he = Hebreeuws
+
+facet-language-hi = Hindi
+
+facet-language-zh = Chinees
+
+facet-language-it = Italiaans
+
+facet-language-nl = Nederlands
+
+facet-language-da = Deens
+
+facet-language-nb = Noors Bokmål
+
+facet-language-sv = Zweeds
+
+facet-language-el = Grieks
+
+facet-language-hr = Kroatisch
+
+facet-language-ro = Roemeens
+
+facet-language-ru = Russisch
+
+facet-language-ja = Japans
+
+facet-language-ko = Koreaans
+
+facet-language-tr = Turks
+
+facet-language-af = Afrikaans
+
+facet-language-als = Tosk-Albanees
+
+facet-language-am = Amhaars
+
+facet-language-an = Aragonees
+
+facet-language-arz = Egyptisch Arabisch
+
+facet-language-as = Assamees
+
+facet-language-ast = Asturisch
+
+facet-language-av = Avaars
+
+facet-language-az = Azerbeidzjaans
+
+facet-language-azb = Zuid-Azerbeidzjaans
+
+facet-language-ba = Basjkiers
+
+facet-language-bar = Beiers
+
+facet-language-bcl = bcl
+
+facet-language-be = Wit-Russisch; Belarussisch
+
+facet-language-bg = Bulgaars
+
+facet-language-bh = bh
+
+facet-language-bn = Bengaals
+
+facet-language-bo = Tibetaans
+
+facet-language-bpy = Bishnupriya
+
+facet-language-br = Bretons
+
+facet-language-bs = Bosnisch
+
+facet-language-bxr = Russisch Boerjatisch
+
+facet-language-ca = Catalaans
+
+facet-language-cbk = Chavacano
+
+facet-language-ce = Tsjetsjeens
+
+facet-language-ceb = Cebuano
+
+facet-language-ckb = Centraal-Koerdisch
+
+facet-language-co = Corsicaans
+
+facet-language-cs = Tsjechisch
+
+facet-language-cv = Tsjoevasjisch
+
+facet-language-cy = Welsh
+
+facet-language-diq = diq
+
+facet-language-dsb = Nedersorbisch
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estlands
+
+facet-language-eu = Baskisch
+
+facet-language-fa = Perzisch
+
+facet-language-fi = Fins
+
+facet-language-frr = Noord-Fries
+
+facet-language-fy = fy
+
+facet-language-ga = Iers
+
+facet-language-gd = gd
+
+facet-language-gl = Galiciaans
+
+facet-language-gn = Paraguaanse guarani
+
+facet-language-gom = gom
+
+facet-language-gu = Gujarati
+
+facet-language-gv = Manx
+
+facet-language-hif = hif
+
+facet-language-hsb = Oppersorbisch
+
+facet-language-ht = ht
+
+facet-language-hu = Hongaars
+
+facet-language-hy = Armeens
+
+facet-language-ia = Interlingua
+
+facet-language-id = Indonesisch
+
+facet-language-ie = Interlingue
+
+facet-language-ilo = Iloko
+
+facet-language-io = Ido
+
+facet-language-is = IJslands
+
+facet-language-jbo = Lojbaans
+
+facet-language-jv = Javaans
+
+facet-language-ka = Georgisch
+
+facet-language-kk = Kazachs
+
+facet-language-km = km
+
+facet-language-kn = Kannada
+
+facet-language-krc = Karatsjay-Balkar
+
+facet-language-ku = Koerdisch
+
+facet-language-kv = Komi
+
+facet-language-kw = Cornish
+
+facet-language-ky = Kirgizisch
+
+facet-language-la = Latijn
+
+facet-language-lb = lb
+
+facet-language-lez = Lezghiaans
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = Lao
+
+facet-language-lrc = lrc
+
+facet-language-lt = Litouws
+
+facet-language-lv = Lets
+
+facet-language-mai = Maithili
+
+facet-language-mg = Malagassisch
+
+facet-language-mhr = mhr
+
+facet-language-min = Minangkabau
+
+facet-language-mk = Macedonisch
+
+facet-language-ml = Malayalam
+
+facet-language-mn = Mongools
+
+facet-language-mr = Marathi
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = Maltees
+
+facet-language-mwl = Mirandees
+
+facet-language-my = Burmees
+
+facet-language-myv = Erzya
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = Napolitaans
+
+facet-language-nds = Laagduits
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = Noors Nynorsk
+
+facet-language-no = Noors
+
+facet-language-oc = Occitaans (na 1500)
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = Pampanga
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = Poesjto
+
+facet-language-qu = Quechua
+
+facet-language-rm = Romaans
+
+facet-language-rue = rue
+
+facet-language-sa = Sanskriet
+
+facet-language-sah = Jakoets
+
+facet-language-sc = Sardijns
+
+facet-language-scn = Siciliaans
+
+facet-language-sco = Schots
+
+facet-language-sd = Sindhi
+
+facet-language-sh = sh
+
+facet-language-si = Sinhala
+
+facet-language-sk = Slovaaks, Slowaaks
+
+facet-language-sl = Sloveens
+
+facet-language-so = Somali
+
+facet-language-sq = Albanees
+
+facet-language-sr = Servisch
+
+facet-language-su = Soendanees
+
+facet-language-sw = sw
+
+facet-language-ta = Tamil
+
+facet-language-te = Telugu
+
+facet-language-tg = Tadzjieks
+
+facet-language-th = Thais
+
+facet-language-tk = Turkmeens
+
+facet-language-tl = Tagalog
+
+facet-language-tt = Tatar
+
+facet-language-tyv = Tuviniaans
+
+facet-language-ug = Oeigoers, Oejgoers
+
+facet-language-uk = Oekraïens
+
+facet-language-ur = Urdu
+
+facet-language-uz = Oezbeeks
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = Vietnamees
+
+facet-language-vls = vls
+
+facet-language-vo = Volapük
+
+facet-language-wa = Waals
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = Jiddisch
+
+facet-language-yo = Yoruba
+
+facet-language-yue = yue

@@ -345,7 +345,7 @@ fn UploadForm(
             div { style: "display: flex; align-items: center; gap: 12px; margin-top: 6px;",
                 p { style: "{FIELD_LABEL} margin: 0;", {tr!("uploads-upload-files")} }
                 span { class: "x-upload-summary", style: "flex: 1 1 auto; color: var(--x-ink-muted);",
-                    {tr!("uploads-upload-files-2", format_count_count_as_u64: (format_count(count as u64)).to_string(), format_upload_size_total: format_upload_size(total))}
+                    {tr!("uploads-upload-files-2", format_count_count_as_u64: count as u64, format_upload_size_total: format_upload_size(total))}
                 }
                 button {
                     class: "x-upload-clear",
@@ -399,7 +399,7 @@ fn UploadForm(
                         "chunk_bytes": chunk_bytes,
                     }));
                 },
-                {tr!("uploads-upload-upload-files", format_count_count_as_u64: (format_count(count as u64)).to_string())}
+                {tr!("uploads-upload-upload-files", format_count_count_as_u64: count as u64)}
             }
         }
     }

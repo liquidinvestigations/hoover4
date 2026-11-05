@@ -88,7 +88,7 @@ pub fn FacetSelectorList(
     let Some(search_result) = facet_request.read().clone() else {
         return rsx! { LoadingIndicator {} };
     };
-    let search_result = match search_result {
+    let mut search_result = match search_result {
         // The retry is a BUTTON and never automatic. This pane is one of four rendered
         // at once, and the failure it is most likely to show is the search running out
         // of its time budget. Retrying that by itself doubles the load on a Manticore
@@ -113,6 +113,9 @@ pub fn FacetSelectorList(
         }
         Ok(s) => s,
     };
+    for item in &mut search_result.facet_values {
+        item.display_string = crate::i18n::facet_label(item);
+    }
     let list_opacity = if in_flight { STALE_OPACITY } else { "1" };
     // Missing selections come from the draft, so a value selected in this opening that
     // has no bucket stays on screen and can be removed.
@@ -276,7 +279,7 @@ pub fn ResolveMissingItems(
             display_string: match &value {
                 FacetOriginalValue::Int(i) => {
                     if let Some(s) = map.get(i) {
-                        s.clone()
+                        crate::i18n::term_label(&facet_field_name.read(), s)
                     } else {
                         // The id resolved to no text: the term row is gone (a
                         // purged dataset) or the collection is unreadable. Showing the
@@ -287,7 +290,7 @@ pub fn ResolveMissingItems(
                 }
                 // The same label the backend gives a text source bucket.
                 FacetOriginalValue::String(s) if *facet_field_name.read() == "extracted_by" => {
-                    common::document_sources::text_source_label(s).shared()
+                    crate::i18n::term_label("extracted_by", s)
                 }
                 FacetOriginalValue::String(s) => s.clone(),
             },

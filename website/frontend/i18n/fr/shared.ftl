@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(budget +{ $n } explorations)
 shared-boards-budget-unchanged = {" "}(budget inchangé, le tableau d’enquête a atteint sa limite d’explorations)
 
 shared-email-graph-selected-copy-removed = La copie du courriel sélectionnée n’existe plus.
+
+shared-table-generation-changed = Le tableau a changé. Relancez la lecture du tableau.

@@ -12,6 +12,7 @@ dioxus-free-icons={version="0.10.0", features=[
     "material-design-icons-communication",
     "material-design-icons-social",
     "material-design-icons-image",
+    "material-design-icons-hardware",
     "material-design-icons-navigation",
     "material-design-icons-editor",
     "material-design-icons-toggle",

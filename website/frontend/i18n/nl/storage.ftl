@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Deze paden bestaan al in de map:
 uploads-upload-files = Bestanden
 uploads-upload-clear = Wissen
 uploads-upload-and-more-files = en nog { $format_count_more_as_u64 } bestanden
-uploads-upload-upload-files = { $format_count_count_as_u64 } bestanden uploaden
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Upload { $format_count_count_as_u64 } bestand
+    *[other] Upload { $format_count_count_as_u64 } bestanden
+    }
+
 file-browser-search-names-in-all-collections = Zoek namen in alle collecties…
 file-browser-search-names-in-this-collection = Zoek namen in deze collectie…
 file-browser-files-inside-this-archive-or = Bestanden in dit archief of deze e-mail, op elk niveau

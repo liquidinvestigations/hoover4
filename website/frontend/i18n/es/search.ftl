@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Buscar { $kind }…
 search-filter-modal-show-results = Mostrar { $total } resultados
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Aún no aplicado. Pulsa Buscar.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Menos de
+
+facet-label-over = Más de
+
+facet-language-en = Inglés
+
+facet-language-de = Alemán
+
+facet-language-es = Español
+
+facet-language-fr = Francés
+
+facet-language-pl = Polaco
+
+facet-language-pt = Portugués
+
+facet-language-ar = Árabe
+
+facet-language-he = Hebreo
+
+facet-language-hi = Hindi
+
+facet-language-zh = Chino
+
+facet-language-it = Italiano
+
+facet-language-nl = Neerlandés
+
+facet-language-da = Danés
+
+facet-language-nb = Noruego bokmål
+
+facet-language-sv = Sueco
+
+facet-language-el = Griego
+
+facet-language-hr = Croata
+
+facet-language-ro = Rumano
+
+facet-language-ru = Ruso
+
+facet-language-ja = Japonés
+
+facet-language-ko = Coreano
+
+facet-language-tr = Turco
+
+facet-language-af = Afrikaans
+
+facet-language-als = als
+
+facet-language-am = Ámárico
+
+facet-language-an = Aragonés
+
+facet-language-arz = Árabe Egipcio
+
+facet-language-as = Assamais
+
+facet-language-ast = Asturiano
+
+facet-language-av = Avaric
+
+facet-language-az = Azerbayano
+
+facet-language-azb = azb
+
+facet-language-ba = Bashkir
+
+facet-language-bar = bar
+
+facet-language-bcl = bcl
+
+facet-language-be = Bieloruso
+
+facet-language-bg = Búlgaro
+
+facet-language-bh = bh
+
+facet-language-bn = Bengalí
+
+facet-language-bo = Tibetano
+
+facet-language-bpy = bpy
+
+facet-language-br = Bretón
+
+facet-language-bs = Bosnio
+
+facet-language-bxr = bxr
+
+facet-language-ca = Catalán
+
+facet-language-cbk = cbk
+
+facet-language-ce = Checheno
+
+facet-language-ceb = Cebuano
+
+facet-language-ckb = ckb
+
+facet-language-co = Corso
+
+facet-language-cs = Checo
+
+facet-language-cv = Chuvash
+
+facet-language-cy = Galés
+
+facet-language-diq = diq
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estonio
+
+facet-language-eu = Vasco
+
+facet-language-fa = Persa
+
+facet-language-fi = Finés
+
+facet-language-frr = frr
+
+facet-language-fy = fy
+
+facet-language-ga = Irlandés
+
+facet-language-gd = gd
+
+facet-language-gl = gl
+
+facet-language-gn = Guaraní
+
+facet-language-gom = gom
+
+facet-language-gu = guyaratí
+
+facet-language-gv = Manx [Gaélico de Manx]
+
+facet-language-hif = hif
+
+facet-language-hsb = hsb
+
+facet-language-ht = ht
+
+facet-language-hu = Húngaro
+
+facet-language-hy = Armenio
+
+facet-language-ia = Interlingua (Asociación de la Lengua Auxiliar Internacional)
+
+facet-language-id = Indonesio
+
+facet-language-ie = Interlingue
+
+facet-language-ilo = Iloko
+
+facet-language-io = Ido
+
+facet-language-is = Islandés
+
+facet-language-jbo = Lojban
+
+facet-language-jv = Javanés
+
+facet-language-ka = Georgiano
+
+facet-language-kk = Kazako
+
+facet-language-km = km
+
+facet-language-kn = Canarés
+
+facet-language-krc = krc
+
+facet-language-ku = Kurdo
+
+facet-language-kv = Komi
+
+facet-language-kw = Córnico
+
+facet-language-ky = Kirghizo
+
+facet-language-la = Latín
+
+facet-language-lb = lb
+
+facet-language-lez = Lezghiano
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = laosiano
+
+facet-language-lrc = lrc
+
+facet-language-lt = Lituano
+
+facet-language-lv = Letón
+
+facet-language-mai = Maithili
+
+facet-language-mg = Malgache
+
+facet-language-mhr = mhr
+
+facet-language-min = Minangkabau
+
+facet-language-mk = Macedonio
+
+facet-language-ml = malabar
+
+facet-language-mn = Mongol
+
+facet-language-mr = Marath
+
+facet-language-mrj = mrj
+
+facet-language-ms = ms
+
+facet-language-mt = Maltés
+
+facet-language-mwl = Mirandés
+
+facet-language-my = Birmano
+
+facet-language-myv = Erzya
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = Neapolitano
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = Noruego Nynorsk
+
+facet-language-no = Noruego
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = Pampanga
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = Pashtún
+
+facet-language-qu = Quechua
+
+facet-language-rm = rm
+
+facet-language-rue = rue
+
+facet-language-sa = Sánscrito
+
+facet-language-sah = Yakut
+
+facet-language-sc = Sardo
+
+facet-language-scn = Siciliano
+
+facet-language-sco = Escocés
+
+facet-language-sd = Sindhi
+
+facet-language-sh = sh
+
+facet-language-si = Cingalés
+
+facet-language-sk = Eslovaco
+
+facet-language-sl = Esloveno
+
+facet-language-so = Somalí
+
+facet-language-sq = Albanés
+
+facet-language-sr = Serbio
+
+facet-language-su = Sondanés
+
+facet-language-sw = sw
+
+facet-language-ta = Tamil
+
+facet-language-te = Telugu
+
+facet-language-tg = Tajiko
+
+facet-language-th = Tailandés
+
+facet-language-tk = Turkmeno
+
+facet-language-tl = Tagalo
+
+facet-language-tt = Tataro
+
+facet-language-tyv = Tuvinian
+
+facet-language-ug = Uiguro
+
+facet-language-uk = Ukranio
+
+facet-language-ur = Urdu
+
+facet-language-uz = Uzbeko
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = Vietnamita
+
+facet-language-vls = vls
+
+facet-language-vo = vo
+
+facet-language-wa = valón
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = Yidish
+
+facet-language-yo = Yoruba
+
+facet-language-yue = yue

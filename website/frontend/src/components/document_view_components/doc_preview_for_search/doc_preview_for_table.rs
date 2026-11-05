@@ -27,7 +27,7 @@
 use common::document_sources::DocumentTableSourceItem;
 use common::document_tables::{
     DEFAULT_TABLE_PAGE_ROWS, MAX_TABLE_VISIBLE_COLUMNS, TableCell, TableColumnClass,
-    TableColumnFilter, TableColumnHits, TableColumnInfo, TableColumnSelection, TableColumnValue,
+    TableColumnFilter, TableColumnHits, TableColumnInfo, TableColumnSelection,
     TableFilterKind, TableOverview, TablePage, TableSort, TableViewQuery, columns_for_matches,
     effective_table_columns, table_find_text,
 };
@@ -91,15 +91,17 @@ pub fn DocumentPreviewForTable(
     let document_identifier_value = document_identifier();
 
     // ---- hooks, all of them, unconditionally ---------------------------------------
-    let overview: Resource<Option<TableOverview>> =
-        use_resource(use_reactive!(|document_identifier_value| {
-            async move {
-                get_table_overview(document_identifier_value)
-                    .await
-                    .ok()
-                    .flatten()
-            }
-        }));
+    let mut retry = use_signal(|| 0u64);
+    let retry_value = retry();
+    let overview = use_resource(use_reactive!(|document_identifier_value, retry_value| {
+        async move {
+            let result = get_table_overview(document_identifier_value.clone()).await;
+            (document_identifier_value, retry_value, result)
+        }
+    }));
+    let overview_reply = overview.read().clone().filter(|(document, attempt, _)|
+        document == &document_identifier_value && *attempt == retry_value);
+    let overview_error = overview_reply.as_ref().and_then(|(_, _, result)| result.as_ref().err()).cloned();
 
     let viewer_state = control.doc_viewer_state.read().clone().unwrap_or_default();
     let find_query = viewer_state.find_query.clone();
@@ -118,28 +120,30 @@ pub fn DocumentPreviewForTable(
             }
         }
     });
-    let overview_value = overview.read().clone().flatten();
+    let overview_value = overview_reply.and_then(|(_, _, result)| result.ok()).flatten();
 
     // Matching rows per sheet for the find box. The grid searches one sheet, so without
     // these counts a match on another sheet reads as "no rows match".
     let hits_query = find_query.clone();
     // The hits come back with the find text they answer. A restarted resource keeps its
     // previous value, so only hits for the current text say which sheet is settled.
-    let sheet_hits_resource: Resource<(String, Vec<(u16, u64)>)> =
-        use_resource(use_reactive!(|document_identifier_value, hits_query| {
-            async move {
-                if table_find_text(&hits_query).is_empty() {
-                    return (hits_query, Vec::new());
-                }
-                let hits = get_table_sheet_hits(document_identifier_value, hits_query.clone())
-                    .await
-                    .unwrap_or_default();
-                (hits_query, hits)
-            }
-        }));
-    let (hits_for, sheet_hits): (Option<String>, Vec<(u16, u64)>) = match sheet_hits_resource.read().clone() {
-        Some((query, hits)) => (Some(query), hits),
-        None => (None, Vec::new()),
+    let generation = overview_value.as_ref().map(|value| value.generation).unwrap_or(0);
+    let sheet_hits_resource = use_resource(use_reactive!(|document_identifier_value, hits_query, generation, retry_value| {
+        async move {
+            let result = if table_find_text(&hits_query).is_empty() { Ok(Vec::new()) }
+                else { get_table_sheet_hits(document_identifier_value.clone(), hits_query.clone()).await.and_then(|reply| {
+                    if reply.generation != generation { Err(ServerFnError::new("The table changed. Retry the table read.")) }
+                    else { Ok(reply.hits) }
+                }) };
+            ((document_identifier_value, hits_query, generation, retry_value), result)
+        }
+    }));
+    let sheet_reply = sheet_hits_resource.read().clone().filter(|(key, _)|
+        key == &(document_identifier_value.clone(), find_query.clone(), generation, retry_value));
+    let sheet_error = sheet_reply.as_ref().and_then(|(_, result)| result.as_ref().err()).cloned();
+    let (hits_for, sheet_hits) = match sheet_reply {
+        Some(((_, query, _, _), Ok(hits))) => (Some(query), hits),
+        _ => (None, Vec::new()),
     };
 
     // The sheet the grid is on. The state names an ordinal, not an index, and a sheet
@@ -197,22 +201,20 @@ pub fn DocumentPreviewForTable(
     let query_key = table_query.clone();
     // The page comes back with the query it answers. A restarted resource keeps the
     // previous page on screen, and only a page for the current query may move the grid.
-    let page: Resource<Option<(TableViewQuery, TablePage)>> =
-        use_resource(use_reactive!(|document_identifier_value, query_key| {
-            async move {
-                // The condition is INSIDE the closure. A resource declared behind an `if`
-                // would shift every hook after it the moment the overview arrived.
-                if query_key.visible_columns.is_empty() {
-                    return None;
-                }
-                let page = get_table_page(document_identifier_value, query_key.clone()).await.ok()?;
-                Some((query_key, page))
-            }
-        }));
-    let (page_query, page_value) = match page.read().clone().flatten() {
-        Some((answered, page)) => (Some(answered), Some(page)),
-        None => (None, None),
-    };
+    let page = use_resource(use_reactive!(|document_identifier_value, query_key, generation, retry_value| {
+        async move {
+            let result = if query_key.visible_columns.is_empty() { Ok(None) }
+                else { get_table_page(document_identifier_value.clone(), query_key.clone()).await.and_then(|reply| {
+                    if reply.generation != generation { Err(ServerFnError::new("The table changed. Retry the table read.")) }
+                    else { Ok(Some(reply)) }
+                }) };
+            ((document_identifier_value, query_key, generation, retry_value), result)
+        }
+    }));
+    let page_reply = page.read().clone().filter(|(key, _)|
+        key == &(document_identifier_value.clone(), table_query.clone(), generation, retry_value));
+    let page_error = page_reply.as_ref().and_then(|(_, result)| result.as_ref().err()).cloned();
+    let page_value = page_reply.and_then(|(_, result)| result.ok()).flatten();
 
     // ---- the one movement to the first match ----------------------------------------
     // Opening the table, a new find text, another sheet and a pager click each request
@@ -228,7 +230,7 @@ pub fn DocumentPreviewForTable(
     let sheet_settled = table_state.sheet_id.is_some()
         || find_text.is_empty()
         || hits_for.as_deref() == Some(find_query.as_str());
-    let page_current = page_query.as_ref() == Some(&table_query);
+    let page_current = page_value.is_some();
     let movement: Option<MovementIdentity> = (sheet_settled && page_current).then(|| {
         (document_identifier_value.clone(), sheet_id, find_text.clone(), pager_moves())
     });
@@ -259,7 +261,6 @@ pub fn DocumentPreviewForTable(
     // key of their request: document, sheet, find text, filters and generation. A
     // response is applied once, and only while its key is still the current key, so a
     // late response for an earlier query never changes the selection in the URL.
-    let generation = overview_value.as_ref().map(|o| o.generation).unwrap_or(0);
     let hits_key: ColumnHitsKey = (
         document_identifier_value.clone(),
         sheet_id,
@@ -268,20 +269,21 @@ pub fn DocumentPreviewForTable(
         generation,
     );
     let hits_request = hits_key.clone();
-    let column_hits: Resource<Option<(ColumnHitsKey, TableColumnHits)>> =
-        use_resource(use_reactive!(|hits_request| {
+    let column_hits =
+        use_resource(use_reactive!(|hits_request, retry_value| {
             async move {
                 if hits_request.2.is_empty() {
-                    return None;
+                    return ((hits_request, retry_value), Ok(None));
                 }
                 let hits = get_table_column_hits(hits_request.0.clone(), hits_request.1, hits_request.2.clone())
-                    .await
-                    .ok()?;
-                Some((hits_request, hits))
+                    .await.map(Some);
+                ((hits_request, retry_value), hits)
             }
         }));
     let mut applied_hits = use_signal(|| None::<ColumnHitsKey>);
-    let answered_hits = column_hits.read().clone().flatten();
+    let column_reply = column_hits.read().clone().filter(|(key, _)| key == &(hits_key.clone(), retry_value));
+    let column_error = column_reply.as_ref().and_then(|(_, result)| result.as_ref().err()).cloned();
+    let answered_hits = column_reply.and_then(|(key, result)| result.ok().flatten().map(|hits| (key.0, hits)));
     let apply_columns = sheet_column_ids.clone();
     let apply_visible = visible_columns.clone();
     let apply_key = hits_key.clone();
@@ -304,8 +306,34 @@ pub fn DocumentPreviewForTable(
     }));
     let mut banner_closed = use_signal(|| None::<DocumentIdentifier>);
 
+    let read_error = overview_error.or(sheet_error).or(page_error).or(column_error);
     // ---- render ---------------------------------------------------------------------
+    if let Some(error) = read_error {
+        return rsx! {
+            PreviewWrapper {
+                controls: rsx! { {tr!("preview-for-table-table")} },
+                page: rsx! {
+                    div { role: "alert", class: "x-table-read-error", style: "padding: 16px;",
+                        crate::components::error_boundary::ServerErrorDisplay { error }
+                        button { style: CONTROL_BUTTON_STYLE, onclick: move |_| retry += 1,
+                            {tr!("collections-facet-pane-retry")}
+                        }
+                    }
+                }
+            }
+        };
+    }
+
     let Some(overview) = overview_value else {
+        if overview_reply_absent(&overview.read(), &document_identifier_value, retry_value) {
+            return rsx! { PreviewWrapper {
+                controls: rsx! { {tr!("preview-for-table-table")} },
+                page: rsx! { div { style: "padding: 16px;",
+                    {tr!("preview-for-table-this-document-was-read-as")}
+                    button { onclick: move |_| retry += 1, {tr!("collections-facet-pane-retry")} }
+                } }
+            } };
+        }
         return rsx! {
             PreviewWrapper {
                 controls: rsx! { {tr!("preview-for-table-table")} },
@@ -458,6 +486,7 @@ pub fn DocumentPreviewForTable(
         PreviewWrapper { controls, page: body }
         if let Some(modal) = column_modal() {
             TableColumnModalDialog {
+                on_retry_read: Callback::new(move |_| retry += 1),
                 modal,
                 columns: sheet_columns,
                 shown_columns: visible_columns.clone(),
@@ -635,6 +664,7 @@ fn ColumnPicker(
 
 #[component]
 fn TableColumnModalDialog(
+    on_retry_read: Callback<()>,
     modal: TableColumnModal,
     columns: Vec<TableColumnInfo>,
     shown_columns: Vec<u32>,
@@ -682,6 +712,8 @@ fn TableColumnModalDialog(
         },
         TableColumnModal::Filter(column) => rsx! {
             ColumnFilterPopover {
+                on_retry_read,
+                generation: overview.generation,
                 column,
                 table_state,
                 set_table_state,
@@ -929,6 +961,8 @@ fn ColumnHeader(
     };
 
     let align = if class == TableColumnClass::Number { "right" } else { "left" };
+    let sort_colour = if sorted.is_some() { "var(--x-link)" } else { "var(--x-ink-muted)" };
+    let sort_state = match sorted { Some(TableSort { desc: true, .. }) => "descending", Some(_) => "ascending", None => "none" };
     rsx! {
         th {
             style: "position: sticky; top: 0; z-index: 2; background: #f3f3f3; border-bottom: 1px solid rgba(0,0,0,0.2); padding: 3px 8px; text-align: {align}; white-space: nowrap; font-weight: 600;",
@@ -950,8 +984,13 @@ fn ColumnHeader(
                     },
                     TableColumnClass::Text => rsx! {},
                 }
-                span {
-                    style: "cursor: pointer; display: inline-flex;",
+                button {
+                    r#type: "button",
+                    class: "x-table-sort",
+                    "data-column-id": "{column_id}",
+                    "data-sorted": sort_state,
+                    "aria-label": tr!("preview-for-table-sort-rows-with-nothing-in"),
+                    style: "cursor: pointer; display: inline-flex; border: none; background: none; padding: 0; color: {sort_colour};",
                     title: tr!("preview-for-table-sort-rows-with-nothing-in"),
                     onclick: on_sort,
                     match sorted {
@@ -962,7 +1001,7 @@ fn ColumnHeader(
                             Icon { icon: MdArrowDownward, style: "width: 15px; height: 15px;" }
                         },
                         None => rsx! {
-                            Icon { icon: MdSort, style: "width: 14px; height: 14px; opacity: 0.35;" }
+                            Icon { icon: MdSort, style: "width: 14px; height: 14px;" }
                         },
                     }
                 }
@@ -986,12 +1025,13 @@ fn ColumnFilterTrigger(
     modal_opener: FocusHandle,
 ) -> Element {
     let mut trigger: FocusHandle = use_signal(|| None);
-    let colour = if active { "#0b57d0" } else { "rgba(0,0,0,0.35)" };
+    let colour = if active { "#0b57d0" } else { "var(--x-ink-muted)" };
     let label = column.label();
     rsx! {
         button {
             r#type: "button",
             style: "cursor: pointer; display: inline-flex; color: {colour}; background: none; border: none; padding: 0;",
+            class: "x-table-column-filter",
             "aria-label": "Filter {label}",
             "aria-haspopup": "dialog",
             onmounted: move |e| trigger.set(Some(e.data())),
@@ -1011,12 +1051,14 @@ fn ColumnFilterTrigger(
 /// the stored class, because range filtering text would hide rows without a valid order.
 #[component]
 fn ColumnFilterPopover(
+    on_retry_read: Callback<()>,
     column: TableColumnInfo,
     table_state: DocTableState,
     set_table_state: Callback<DocTableState>,
     document_identifier: DocumentIdentifier,
     sheet_id: u16,
     on_close: EventHandler<()>,
+    generation: u32,
 ) -> Element {
     let column_id = column.column_id;
     let class = column.class();
@@ -1028,22 +1070,22 @@ fn ColumnFilterPopover(
     // every column class, because a conditional resource would shift this hook's order.
     let value_search = text();
     let is_text = class == TableColumnClass::Text;
-    let values: Resource<Vec<TableColumnValue>> = use_resource(use_reactive!(|(
-        document_identifier,
-        sheet_id,
-        column_id,
-        value_search,
-        is_text
-    )| {
+    let mut retry = use_signal(|| 0u64);
+    let key = (document_identifier.clone(), sheet_id, column_id, value_search, generation, retry());
+    let request_key = key.clone();
+    let values_resource = use_resource(use_reactive!(|request_key, is_text| {
         async move {
-            if !is_text {
-                return Vec::new();
-            }
-            get_table_column_values(document_identifier, sheet_id, column_id, value_search)
-                .await
-                .unwrap_or_default()
+            let result = if !is_text { Ok(Vec::new()) } else {
+                get_table_column_values(request_key.0.clone(), request_key.1, request_key.2, request_key.3.clone()).await
+                    .and_then(|reply| {
+                        if reply.generation != request_key.4 { Err(ServerFnError::new("The table changed. Retry the table read.")) }
+                        else { Ok(reply.values) }
+                    })
+            };
+            (request_key, result)
         }
     }));
+    let values = values_resource.read().clone().filter(|(answered, _)| answered == &key).map(|(_, result)| result);
 
     let apply = {
         let table_state = table_state.clone();
@@ -1139,12 +1181,16 @@ fn ColumnFilterPopover(
                             }
                             div {
                                 style: "margin-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 6px;",
-                                match values.read().clone() {
+                                match values.clone() {
                                     None => rsx! { div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("preview-for-table-loading-values-u")} } },
-                                    Some(values) if values.is_empty() => rsx! {
+                                    Some(Ok(values)) if values.is_empty() => rsx! {
                                         div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("preview-for-table-no-values-match")} }
                                     },
-                                    Some(values) => rsx! {
+                                    Some(Err(error)) => rsx! {
+                                        crate::components::error_boundary::ServerErrorDisplay { error }
+                                        button { onclick: move |_| { retry += 1; on_retry_read.call(()); }, {tr!("collections-facet-pane-retry")} }
+                                    },
+                                    Some(Ok(values)) => rsx! {
                                         for value in values {
                                             div {
                                                 key: "{value.value}",
@@ -1450,7 +1496,7 @@ pub async fn get_table_column_hits(
 pub async fn get_table_sheet_hits(
     document_identifier: DocumentIdentifier,
     search: String,
-) -> Result<Vec<(u16, u64)>, ServerFnError> {
+) -> Result<common::document_tables::TableSheetHits, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::table_browse::get_table_sheet_hits(&user, document_identifier, search)
         .await
@@ -1463,7 +1509,7 @@ pub async fn get_table_column_values(
     sheet_id: u16,
     column_id: u32,
     search: String,
-) -> Result<Vec<TableColumnValue>, ServerFnError> {
+) -> Result<common::document_tables::TableColumnValues, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::table_browse::get_table_column_values(
         &user,
@@ -1474,4 +1520,8 @@ pub async fn get_table_column_values(
     )
     .await
     .map_err(crate::api::error_util::to_server_fn_error)
+}
+
+fn overview_reply_absent(reply: &Option<(DocumentIdentifier, u64, Result<Option<TableOverview>, ServerFnError>)>, document: &DocumentIdentifier, attempt: u64) -> bool {
+    matches!(reply, Some((answered, answered_attempt, Ok(None))) if answered == document && *answered_attempt == attempt)
 }

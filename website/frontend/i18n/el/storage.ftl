@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Αυτές οι διαδρομές υ�
 uploads-upload-files = Αρχεία
 uploads-upload-clear = Εκκαθάριση
 uploads-upload-and-more-files = και { $format_count_more_as_u64 } ακόμη αρχεία
-uploads-upload-upload-files = Μεταφόρτωση { $format_count_count_as_u64 } αρχείων
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Μεταφόρτωση { $format_count_count_as_u64 } αρχείου
+    *[other] Μεταφόρτωση { $format_count_count_as_u64 } αρχείων
+    }
+
 file-browser-search-names-in-all-collections = Αναζήτηση ονομάτων σε όλες τις συλλογές…
 file-browser-search-names-in-this-collection = Αναζήτηση ονομάτων σε αυτή τη συλλογή…
 file-browser-files-inside-this-archive-or = Αρχεία μέσα σε αυτή την αρχειοθήκη ή αυτό το email, σε κάθε επίπεδο

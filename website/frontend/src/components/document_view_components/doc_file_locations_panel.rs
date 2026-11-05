@@ -12,7 +12,7 @@ use common::vfs::{VfsFileLocation, VfsFileLocations};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::{md_content_icons::MdContentPaste, md_file_icons::MdFolderOpen},
+    icons::{md_content_icons::MdContentPaste, md_device_icons::MdStorage, md_file_icons::MdFolderOpen},
 };
 
 use wasm_bindgen::JsCast;
@@ -100,6 +100,10 @@ fn display_path(location: &VfsFileLocation) -> String {
 pub fn DocumentFileLocationsPanel(
     document_identifier: ReadSignal<DocumentIdentifier>,
 ) -> Element {
+    let storage = crate::components::session_context::use_storage_tree();
+    let dataset_label = storage.read().as_ref().and_then(|value| value.as_ref().ok())
+        .map(|nodes| crate::components::session_context::dataset_label(nodes, &document_identifier().collection_dataset))
+        .unwrap_or_else(|| document_identifier().collection_dataset);
     let document_identifier_value = document_identifier();
     // ONE resource for the whole panel, and by value through `use_reactive`: the chains
     // are resolved server-side precisely so a document at N paths is one request rather
@@ -138,7 +142,8 @@ pub fn DocumentFileLocationsPanel(
                 div {
                     style: "padding: 4px 2px; color: rgba(0,0,0,0.6);",
                     {tr!("file-locations-panel-this-document-is-not-recorded")}
-                    b { "{document_identifier().collection_dataset}" }
+                    Icon { icon: MdStorage, style: "width: 19px; height: 19px;" }
+                    b { "{dataset_label}" }
                     {tr!("file-locations-panel-so-there-is-nothing-to")}
                 }
             }

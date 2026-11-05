@@ -409,6 +409,29 @@ mod tests {
     }
 
     #[test]
+    fn update_descriptions_select_singular_and_plural_counts() {
+        let bundle = bundle(DEFAULT_LANGUAGE);
+        for (step, singular, plural) in [
+            ("archive_members", "1 split archive needs", "2 split archives need"),
+            ("image_previews", "1 uncommon image has", "2 uncommon images have"),
+            ("search_terms", "1 search table needs", "Search tables that need current filter terms: 2"),
+            ("tables", "1 file has", "2 files have"),
+        ] {
+            let id = format!("processing-update-{step}-explanation");
+            let pattern = bundle.get_message(&id).unwrap().value().unwrap();
+            for (count, expected) in [(1, singular), (2, plural)] {
+                let mut args = FluentArgs::new();
+                args.set("files", count);
+                args.set("count", count.to_string());
+                let mut errors = Vec::new();
+                let rendered = bundle.format_pattern(pattern, Some(&args), &mut errors);
+                assert!(errors.is_empty(), "{id}: {errors:?}");
+                assert!(rendered.contains(expected), "{id}: {rendered}");
+            }
+        }
+    }
+
+    #[test]
     fn every_english_message_formats_without_errors() {
         let bundle = bundle(DEFAULT_LANGUAGE);
         for (id, vars) in messages(DEFAULT_LANGUAGE) {
@@ -424,4 +447,48 @@ mod tests {
             assert!(errors.is_empty(), "{id}: {errors:?}");
         }
     }
+}
+
+/// Translate a finite facet descriptor without changing its filter value.
+pub fn facet_label(item: &common::search_result::SearchResultFacetItem) -> String {
+    let Some(descriptor) = &item.descriptor else { return item.display_string.clone(); };
+    let code = descriptor.code.as_str();
+    match descriptor.kind.as_str() {
+        "language" | "ocr_language" => language_facet_label(code),
+        "filetype" => {
+            if code == "other" { tr!("preview-source-selector-other") }
+            else if common::file_type_icons::CANONICAL_FILE_TYPES.contains(&code) {
+                common::file_type_icons::file_type_label(code).shared()
+            } else { code.into() }
+        },
+        "text_source" => common::document_sources::text_source_label(code).shared(),
+        "size_range" => match code {
+            "0" => format!("{} 1 MB", tr!("facet-label-under")),
+            "1" => "1 – 10 MB".into(),
+            "2" => "10 – 100 MB".into(),
+            "3" => format!("{} 100 MB", tr!("facet-label-over")),
+            _ => code.into(),
+        },
+        _ => item.display_string.clone(),
+    }
+}
+
+/// Catalog language names retain a raw code for an unknown future language.
+pub fn language_facet_label(code: &str) -> String {
+    if common::signals::language_names().contains_key(code) {
+        translate(&format!("facet-language-{code}"), None)
+    } else { code.into() }
+}
+
+/// Label a canonical code returned by the existing term lookup.
+pub fn term_label(field: &str, code: &str) -> String {
+    let kind = match field {
+        "file_types" => "filetype",
+        "extracted_by" => "text_source",
+        other => other,
+    };
+    facet_label(&common::search_result::SearchResultFacetItem {
+        descriptor: Some(common::search_result::FacetTermDescriptor { kind: kind.into(), code: code.into() }),
+        display_string: code.into(), original_value: common::search_result::FacetOriginalValue::String(code.into()), count: 0,
+    })
 }

@@ -267,3 +267,5 @@ shared-boards-budget-grew = {" "}(התקציב +{ $n } חקירות)
 shared-boards-budget-unchanged = {" "}(התקציב לא השתנה, הלוח הגיע למגבלת החקירות)
 
 shared-email-graph-selected-copy-removed = עותק הודעת הדואר האלקטרוני שנבחר אינו קיים עוד.
+
+shared-table-generation-changed = הטבלה השתנתה. יש לנסות לקרוא אותה שוב.

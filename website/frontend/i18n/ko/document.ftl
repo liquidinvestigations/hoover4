@@ -203,3 +203,11 @@ preview-with-search-next = 다음 { $label }
 document-entities-panel-as-written =
     { $value }
     원문 표기: { $written }
+
+preview-for-archive-search = 이 압축 파일 안에서 검색
+
+preview-for-archive-search-zip = 이 ZIP 파일 안에서 검색
+
+email-graph-incomplete = 이메일 { $count }개가 표시됩니다. 총계는 불완전합니다.
+
+email-graph-copies = 허용된 사본 수: { $count }

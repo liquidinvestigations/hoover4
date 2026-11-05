@@ -855,12 +855,13 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Skan antywirusowy, potem atrybut wyszukiwania zainfekowanych plików
 processing-update-tables-title = Tabele
 processing-update-tables-explanation = { $files ->
-    [one] { $count } plik to plik JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelą, którą wcześniejszy czytnik obciął do 300 kolumn.
-    [few] { $count } pliki to pliki JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelami, które wcześniejszy czytnik obciął do 300 kolumn.
-    [many] { $count } plików to pliki JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelami, które wcześniejszy czytnik obciął do 300 kolumn.
-   *[other] { $count } pliku to pliki JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelami, które wcześniejszy czytnik obciął do 300 kolumn.
-} Zostaną odczytane ponownie. Pliki JSON, które wcześniejszy czytnik odczytał jako CSV, dostaną swoją tabelę JSON, a wcześniejsze komórki przestaną być pokazywane. Obecny czytnik zapisuje wartość null z JSON jako pustą komórkę, a zagnieżdżony JSON jako tekst z wcięciami.
-processing-update-tables-runs = Odczyt tabel, potem typ pliku i indeksowanie tych plików
+    [one] { $count } plik ma starszy odczyt tabeli lub niepełne wyniki zależne. Jego zapisane wyniki zostaną zaktualizowane.
+    [few] Pliki ze starszym odczytem tabel lub niepełnymi wynikami zależnymi: { $count }. Ich zapisane wyniki zostaną zaktualizowane.
+    [many] Pliki ze starszym odczytem tabel lub niepełnymi wynikami zależnymi: { $count }. Ich zapisane wyniki zostaną zaktualizowane.
+    *[other] Pliki ze starszym odczytem tabel lub niepełnymi wynikami zależnymi: { $count }. Ich zapisane wyniki zostaną zaktualizowane.
+    }
+
+processing-update-tables-runs = Odczyt tabel, encje, sygnały, osadzenia i oba indeksy
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Około { $count } pliku nie ma tekstu OCR dla bieżących języków albo zachowuje tekst OCR języków, których ustawienia już nie obejmują.
@@ -903,3 +904,36 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Drzewo folderów
 admin-uploads-badge = Przesyłanie
 admin-uploads-badge-title = Przyjmuje przesłane pliki
+
+processing-update-archive_members-title = Elementy archiwów
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } archiwum dzielone wymaga aktualnej listy elementów. Jego elementy i wyniki wyszukiwania zostaną zaktualizowane.
+    [few] Archiwa dzielone wymagające aktualnych list elementów: { $count }. Ich elementy i wyniki wyszukiwania zostaną zaktualizowane.
+    [many] Archiwa dzielone wymagające aktualnych list elementów: { $count }. Ich elementy i wyniki wyszukiwania zostaną zaktualizowane.
+    *[other] Archiwa dzielone wymagające aktualnych list elementów: { $count }. Ich elementy i wyniki wyszukiwania zostaną zaktualizowane.
+    }
+
+processing-update-archive_members-runs = Rozpakowanie archiwów, uzgodnienie elementów i przetwarzanie zależne
+
+processing-update-image_previews-title = Podglądy obrazów
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } obraz nietypowego formatu nie ma podglądu. Jego podgląd zostanie utworzony ponownie.
+    [few] Obrazy nietypowych formatów bez podglądu: { $count }. Ich podglądy zostaną utworzone ponownie.
+    [many] Obrazy nietypowych formatów bez podglądu: { $count }. Ich podglądy zostaną utworzone ponownie.
+    *[other] Obrazy nietypowych formatów bez podglądu: { $count }. Ich podglądy zostaną utworzone ponownie.
+    }
+
+processing-update-image_previews-runs = Tworzenie i weryfikacja podglądów obrazów
+
+processing-update-search_terms-title = Hasła wyszukiwania
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } tabela wyszukiwania wymaga aktualnych haseł filtrów. Można wyszukiwać hasła języka, OCR, pisma i czerwonych flag.
+    [few] Tabele wyszukiwania wymagające aktualnych haseł filtrów: { $count }. Można wyszukiwać hasła języka, OCR, pisma i czerwonych flag.
+    [many] Tabele wyszukiwania wymagające aktualnych haseł filtrów: { $count }. Można wyszukiwać hasła języka, OCR, pisma i czerwonych flag.
+    *[other] Tabele wyszukiwania wymagające aktualnych haseł filtrów: { $count }. Można wyszukiwać hasła języka, OCR, pisma i czerwonych flag.
+    }
+
+processing-update-search_terms-runs = Indeksowanie i weryfikacja haseł filtrów

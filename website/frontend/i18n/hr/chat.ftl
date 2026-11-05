@@ -257,7 +257,12 @@ ai-chat-history-could-not-load-history = Nije moguće učitati povijest: { $e }
 ai-chat-history-no-conversations-yet = Još nema razgovora.
 ai-chat-history-board = Ploča
 ai-chat-history-new-chat = Novi razgovor
-ai-chat-history-messages-updated = Poruka: { $s_message_count } · ažurirano { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } poruka · ažurirano { $s_updated_at }
+    [few] { $s_message_count } poruke · ažurirano { $s_updated_at }
+    *[other] { $s_message_count } poruka · ažurirano { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Izbriši razgovor
 ai-chat-history-delete = Izbriši
 ai-chat-homepage-hoover-search-ai-chat = Hoover pretraga - AI razgovor
@@ -294,7 +299,12 @@ chat-transcript-calls = poziva
 ai-chat-board-a-board-without-collections-needs = Ploča bez zbirki treba internetske alate.
 ai-chat-board-of = { $snap_explores_used } od { $snap_max_explores }
 ai-chat-board-assessment-2 = procjena { $number }
-ai-chat-history-messages = Poruka: { $s_message_count }
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } poruka
+    [few] { $s_message_count } poruke
+    *[other] { $s_message_count } poruka
+    }
+
 web-search-card-reranked-in = Cross-encoder je rangirao rezultate za { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } za { $ms } ms
 web-search-card-score-was-rank = ocjena { $score } · bio je RRF #{ $rank }
@@ -448,7 +458,12 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = neuspjelo: { $failures }
 tool-run-summary-took = trajalo: { $duration_text_ms }
-chat-session-card-messages = Poruka: { $session_message_count }
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } poruka
+    [few] { $session_message_count } poruke
+    *[other] { $session_message_count } poruka
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } stavka
         [few] { $count } stavke
@@ -499,3 +514,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · dokum
 cards-result-cards-version-unchanged = { $tool_name } · verzija { $version } · nepromijenjeno
 cards-result-cards-version = { $tool_name } · verzija { $version }
 web-search-card-results-in-after-deduplication = Rezultata na ulazu: { $json_u64_doc_total_before_dedupe }, nakon uklanjanja duplikata: { $json_u64_doc_total_after_dedupe }
+
+board-status-on = Uključeno
+
+board-status-off = Isključeno
+
+chat-transcript-generic-tool = alat

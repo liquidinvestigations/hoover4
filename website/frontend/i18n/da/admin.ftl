@@ -839,10 +839,11 @@ processing-update-virus_scan-explanation = { $files ->
 processing-update-virus_scan-runs = Antivirusscanning, derefter søgeattributten for inficerede filer
 processing-update-tables-title = Tabeller
 processing-update-tables-explanation = { $files ->
-    [one] { $count } fil er en JSON- eller JSON Lines-fil uden en tabel fra den nuværende læser, eller en tabel, som en tidligere læser afkortede ved 300 kolonner.
-   *[other] { $count } filer er JSON- eller JSON Lines-filer uden en tabel fra den nuværende læser, eller tabeller, som en tidligere læser afkortede ved 300 kolonner.
-} De læses igen. JSON-filer, som en tidligere læser læste som CSV, får deres JSON-tabel, og de tidligere celler vises ikke længere. Den aktuelle læser gemmer et JSON-null som en tom celle og indlejret JSON som indrykket tekst.
-processing-update-tables-runs = Tabellæsning, derefter filtype og indeksering af disse filer
+    [one] { $count } fil har en tidligere tabellæsning eller ufuldstændige afhængige resultater. Dens gemte resultater opdateres.
+    *[other] { $count } filer har tidligere tabellæsninger eller ufuldstændige afhængige resultater. Deres gemte resultater opdateres.
+    }
+
+processing-update-tables-runs = Tabellæsning, entiteter, signaler, indlejringer og begge indeks
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
     [one] Omkring { $count } fil har ingen OCR-tekst for de nuværende sprog, eller beholder OCR-tekst på sprog, som indstillingerne ikke længere omfatter.
@@ -875,3 +876,30 @@ processing-update-folder_counts-explanation = { $files ->
 processing-update-folder_counts-runs = Mappetræ
 admin-uploads-badge = Uploads
 admin-uploads-badge-title = Accepterer uploads
+
+processing-update-archive_members-title = Arkivmedlemmer
+
+processing-update-archive_members-explanation = { $files ->
+    [one] { $count } opdelt arkiv kræver en aktuel medlemsliste. Dets medlemmer og søgeresultater opdateres.
+    *[other] { $count } opdelte arkiver kræver aktuelle medlemslister. Deres medlemmer og søgeresultater opdateres.
+    }
+
+processing-update-archive_members-runs = Arkivudtrækning, medlemsafstemning og afhængig behandling
+
+processing-update-image_previews-title = Billedforhåndsvisninger
+
+processing-update-image_previews-explanation = { $files ->
+    [one] { $count } usædvanligt billede har ingen forhåndsvisning. Dets forhåndsvisning oprettes igen.
+    *[other] { $count } usædvanlige billeder har ingen forhåndsvisning. Deres forhåndsvisninger oprettes igen.
+    }
+
+processing-update-image_previews-runs = Oprettelse og kontrol af billedforhåndsvisninger
+
+processing-update-search_terms-title = Søgeord
+
+processing-update-search_terms-explanation = { $files ->
+    [one] { $count } søgetabel kræver aktuelle filtertermer. Termer for sprog, OCR, skrift og røde flag bliver søgbare.
+    *[other] Søgetabeller, som kræver aktuelle filtertermer: { $count }. Termer for sprog, OCR, skrift og røde flag bliver søgbare.
+    }
+
+processing-update-search_terms-runs = Indeksering og kontrol af filtertermer

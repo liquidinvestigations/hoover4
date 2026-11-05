@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(όριο +{ $n } διερευνήσεις)
 shared-boards-budget-unchanged = {" "}(το όριο δεν άλλαξε, ο ερευνητικός πίνακας βρίσκεται στο όριο διερευνήσεων)
 
 shared-email-graph-selected-copy-removed = Το επιλεγμένο αντίγραφο του μηνύματος ηλεκτρονικού ταχυδρομείου δεν υπάρχει πλέον.
+
+shared-table-generation-changed = Ο πίνακας άλλαξε. Επαναλάβετε την ανάγνωση του πίνακα.

@@ -42,6 +42,9 @@ fn two_previews(
 
 /// The fixture page for these segments, or `None` when they name no fixture.
 pub fn fixture_page(segments: &[String]) -> Option<Element> {
+    if segments == [FIXTURE_PREFIX, "translations"] {
+        return Some(rsx! { TranslationFixture {} });
+    }
     let [(document_a, state_a), (document_b, state_b)] = two_previews(segments)?;
     Some(rsx! {
         div {
@@ -124,6 +127,47 @@ mod tests {
             vec![FIXTURE_PREFIX.into(), "two-previews".into(), "%%".into(), none.clone(), id, none],
         ] {
             assert!(two_previews(&segments).is_none(), "{segments:?}");
+        }
+    }
+}
+
+/// Render production text controls with bounded synthetic counts and board settings.
+#[component]
+fn TranslationFixture() -> Element {
+    use common::chat_types::{ChatSessionItem, ChatOptions};
+    use crate::components::chat_components::session_card::ChatSessionCard;
+    use crate::components::chat_components::transcript::DocRefsDisclosure;
+    let snapshot = |internet_tools: bool| -> common::board_types::BoardSnapshot {
+        serde_json::from_value(serde_json::json!({
+            "board": {"board_id":"browser-status", "owner":"fixture", "title":"Browser status fixture",
+                "goal":"", "context":"", "collections":[], "llm_model":"", "max_parallel":1,
+                "internet_tools":internet_tools, "created_ms":0},
+            "status":"active", "explores_used":0, "reasons_done":0, "stall_count":0,
+            "review_statement":"", "answers_proposed":[], "answers_accepted":[],
+            "max_explores":1, "explore_steps":1, "facts":[], "intents":[], "events":[]
+        })).expect("valid browser board fixture")
+    };
+    rsx! {
+        div { "data-browser-fixture": "translations", style: "padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;",
+            div { style: "display: flex; flex-direction: column; gap: 8px;",
+                for count in [0u32, 1, 2, 5, 21] {
+                    div { key: "{count}", "data-fixture-count": "{count}",
+                        ChatSessionCard { session: ChatSessionItem {
+                            session_id: format!("browser-count-{count}"), title: format!("Count {count}"),
+                            summary: String::new(), collections: Vec::new(), created_at: String::new(),
+                            updated_at: String::new(), message_count: count, options: ChatOptions::default(),
+                        } }
+                        button { disabled: true, "data-fixture-upload-count": "{count}",
+                            {crate::tr!("uploads-upload-upload-files", format_count_count_as_u64: count)}
+                        }
+                    }
+                }
+            }
+            div {
+                div { "data-fixture-internet": "on", crate::pages::ai_chat::BoardStatistics { snap: snapshot(true) } }
+                div { "data-fixture-internet": "off", crate::pages::ai_chat::BoardStatistics { snap: snapshot(false) } }
+                DocRefsDisclosure { tool_name: "tool".to_string(), refs: Vec::new() }
+            }
         }
     }
 }

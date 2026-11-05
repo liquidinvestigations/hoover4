@@ -136,6 +136,7 @@ fn NavbarBottomIconLinks() -> Element {
                 display:flex;
                 flex-direction: column;
                 gap: 24px;
+                padding-bottom: max(12px, env(safe-area-inset-bottom));
                 width: 100%;
                 align-items: center;
                 justify-content: center;

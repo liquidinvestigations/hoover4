@@ -42,6 +42,11 @@ The tree windows large sibling groups and deep ancestor chains.
 Every document read retains collection access checks.
 The permitted-storage response includes optional collection display names and existing dataset display names.
 Missing display names retain the canonical identifiers.
+One session resource shares the permitted tree across cards, filters, navigation, and document locations.
+Storage and permission edits invalidate that resource.
+Window focus and visibility changes refresh identity and permitted storage.
+The resource clears previous names and permissions before refresh.
+Collection icons use the database glyph, and dataset icons use the storage glyph.
 
 ## Upload routes
 

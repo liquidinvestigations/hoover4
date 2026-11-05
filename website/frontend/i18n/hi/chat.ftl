@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = इतिहास लोड नही�
 ai-chat-history-no-conversations-yet = अभी तक कोई बातचीत नहीं।
 ai-chat-history-board = बोर्ड
 ai-chat-history-new-chat = नई चैट
-ai-chat-history-messages-updated = { $s_message_count } संदेश · अपडेट { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } संदेश · अपडेट { $s_updated_at }
+    *[other] { $s_message_count } संदेश · अपडेट { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = बातचीत हटाएँ
 ai-chat-history-delete = हटाएँ
 ai-chat-homepage-hoover-search-ai-chat = Hoover खोज - AI चैट
@@ -292,7 +296,11 @@ chat-transcript-calls = कॉल
 ai-chat-board-a-board-without-collections-needs = संग्रहों के बिना बोर्ड को इंटरनेट टूल चाहिए।
 ai-chat-board-of = { $snap_max_explores } में से { $snap_explores_used }
 ai-chat-board-assessment-2 = आकलन { $number }
-ai-chat-history-messages = { $s_message_count } संदेश
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } संदेश
+    *[other] { $s_message_count } संदेश
+    }
+
 web-search-card-reranked-in = क्रॉस-एन्कोडर ने परिणामों को { $ms } ms में रैंक किया।
 web-search-card-engine-results = { $name }: { $ms } ms में { $count }
 web-search-card-score-was-rank = स्कोर { $score } · पहले RRF #{ $rank }
@@ -425,7 +433,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } विफल
 tool-run-summary-took = { $duration_text_ms } लगे
-chat-session-card-messages = { $session_message_count } संदेश
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } संदेश
+    *[other] { $session_message_count } संदेश
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } आइटम
        *[other] { $count } आइटम
@@ -470,3 +482,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · संस्करण { $version } · अपरिवर्तित
 cards-result-cards-version = { $tool_name } · संस्करण { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } परिणाम आए, डीडुप्लिकेशन के बाद { $json_u64_doc_total_after_dedupe }
+
+board-status-on = चालू
+
+board-status-off = बंद
+
+chat-transcript-generic-tool = टूल

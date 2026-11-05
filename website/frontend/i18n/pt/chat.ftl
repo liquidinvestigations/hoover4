@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = Não foi possível carregar o históric
 ai-chat-history-no-conversations-yet = Ainda não há conversas.
 ai-chat-history-board = Quadro
 ai-chat-history-new-chat = Nova conversa
-ai-chat-history-messages-updated = { $s_message_count } mensagens · atualizada em { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } mensagem · atualizada em { $s_updated_at }
+    *[other] { $s_message_count } mensagens · atualizada em { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Eliminar conversa
 ai-chat-history-delete = Eliminar
 ai-chat-homepage-hoover-search-ai-chat = Pesquisa Hoover - Conversa com IA
@@ -292,7 +296,11 @@ chat-transcript-calls = chamadas
 ai-chat-board-a-board-without-collections-needs = Um quadro sem coleções precisa de ferramentas de internet.
 ai-chat-board-of = { $snap_explores_used } de { $snap_max_explores }
 ai-chat-board-assessment-2 = avaliação { $number }
-ai-chat-history-messages = { $s_message_count } mensagens
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } mensagem
+    *[other] { $s_message_count } mensagens
+    }
+
 web-search-card-reranked-in = O codificador cruzado reclassificou os resultados em { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } em { $ms } ms
 web-search-card-score-was-rank = pontuação { $score } · era RRF #{ $rank }
@@ -431,7 +439,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } falharam
 tool-run-summary-took = demorou { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } mensagens
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } mensagem
+    *[other] { $session_message_count } mensagens
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } item
        *[other] { $count } itens
@@ -479,3 +491,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · versão { $version } · inalterada
 cards-result-cards-version = { $tool_name } · versão { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } resultados à entrada, { $json_u64_doc_total_after_dedupe } após a eliminação de duplicados
+
+board-status-on = Ativado
+
+board-status-off = Desativado
+
+chat-transcript-generic-tool = a ferramenta

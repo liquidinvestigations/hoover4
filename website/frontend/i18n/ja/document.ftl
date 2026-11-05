@@ -203,3 +203,11 @@ preview-with-search-next = 次の{ $label }
 document-entities-panel-as-written =
     { $value }
     記載どおり: { $written }
+
+preview-for-archive-search = このアーカイブ内を検索
+
+preview-for-archive-search-zip = このZIPファイル内を検索
+
+email-graph-incomplete = { $count } 件のメールを表示しています。総数は不完全です。
+
+email-graph-copies = 許可されたコピー数: { $count }

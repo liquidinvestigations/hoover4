@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(budsjett +{ $n } utforskninger)
 shared-boards-budget-unchanged = {" "}(budsjettet er uendret, tavlen har nådd grensen for utforskninger)
 
 shared-email-graph-selected-copy-removed = Den valgte kopien av e-posten finnes ikke lenger.
+
+shared-table-generation-changed = Tabellen er endret. Prøv å lese tabellen på nytt.

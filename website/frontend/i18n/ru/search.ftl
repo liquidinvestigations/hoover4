@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = Поиск: { $kind }…
 search-filter-modal-show-results = Показать результаты: { $total }
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Ещё не применено. Нажмите «Найти».
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Менее
+
+facet-label-over = Более
+
+facet-language-en = Английский
+
+facet-language-de = Немецкий
+
+facet-language-es = Испанский
+
+facet-language-fr = Французский
+
+facet-language-pl = Польский
+
+facet-language-pt = Португальский
+
+facet-language-ar = Арабский
+
+facet-language-he = Иврит
+
+facet-language-hi = Хинди
+
+facet-language-zh = Китайский
+
+facet-language-it = Итальянский
+
+facet-language-nl = Нидерландский
+
+facet-language-da = Датский
+
+facet-language-nb = Норвежский букмол
+
+facet-language-sv = Шведский
+
+facet-language-el = Греческий
+
+facet-language-hr = Хорватский
+
+facet-language-ro = Румынский
+
+facet-language-ru = Русский
+
+facet-language-ja = Японский
+
+facet-language-ko = Корейский
+
+facet-language-tr = Турецкий
+
+facet-language-af = африкаанс
+
+facet-language-als = тоскский диалект албанского
+
+facet-language-am = амхарский
+
+facet-language-an = арагонский
+
+facet-language-arz = египетский диалект арабского
+
+facet-language-as = ассамский
+
+facet-language-ast = астурийский
+
+facet-language-av = аварский
+
+facet-language-az = азербайджанский
+
+facet-language-azb = южный диалект азербайджанского
+
+facet-language-ba = башкирский
+
+facet-language-bar = баварский
+
+facet-language-bcl = bcl
+
+facet-language-be = белорусский
+
+facet-language-bg = болгарский
+
+facet-language-bh = bh
+
+facet-language-bn = бенгальский
+
+facet-language-bo = тибетский
+
+facet-language-bpy = bpy
+
+facet-language-br = бретонский
+
+facet-language-bs = боснийский
+
+facet-language-bxr = бурятский (Россия)
+
+facet-language-ca = каталанский
+
+facet-language-cbk = cbk
+
+facet-language-ce = чеченский
+
+facet-language-ceb = себуанский
+
+facet-language-ckb = ckb
+
+facet-language-co = корсиканский
+
+facet-language-cs = чешский
+
+facet-language-cv = чувашский
+
+facet-language-cy = валлийский
+
+facet-language-diq = diq
+
+facet-language-dsb = dsb
+
+facet-language-dty = dty
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = эсперанто
+
+facet-language-et = эстонский
+
+facet-language-eu = баскский
+
+facet-language-fa = персидский
+
+facet-language-fi = финский
+
+facet-language-frr = frr
+
+facet-language-fy = fy
+
+facet-language-ga = ирландский
+
+facet-language-gd = gd
+
+facet-language-gl = галисийский
+
+facet-language-gn = гуарани
+
+facet-language-gom = gom
+
+facet-language-gu = гуджарати
+
+facet-language-gv = мэнкский
+
+facet-language-hif = hif
+
+facet-language-hsb = hsb
+
+facet-language-ht = гаитянский
+
+facet-language-hu = венгерский
+
+facet-language-hy = армянский
+
+facet-language-ia = интерлингва (ассоциация международного вспомогательного языка)
+
+facet-language-id = индонезийский
+
+facet-language-ie = интерлингве
+
+facet-language-ilo = илоко
+
+facet-language-io = идо
+
+facet-language-is = исландский
+
+facet-language-jbo = лоджбан
+
+facet-language-jv = яванский
+
+facet-language-ka = грузинский
+
+facet-language-kk = казахский
+
+facet-language-km = km
+
+facet-language-kn = каннада
+
+facet-language-krc = карачаево-балкарский
+
+facet-language-ku = курдский
+
+facet-language-kv = коми
+
+facet-language-kw = корнский
+
+facet-language-ky = киргизский
+
+facet-language-la = латынь
+
+facet-language-lb = люксембургский
+
+facet-language-lez = лезгинский
+
+facet-language-li = li
+
+facet-language-lmo = lmo
+
+facet-language-lo = лаосский
+
+facet-language-lrc = lrc
+
+facet-language-lt = литовский
+
+facet-language-lv = латышский
+
+facet-language-mai = майтхили
+
+facet-language-mg = малагасийский
+
+facet-language-mhr = mhr
+
+facet-language-min = минангкабау
+
+facet-language-mk = македонский
+
+facet-language-ml = малаялам
+
+facet-language-mn = монгольский
+
+facet-language-mr = маратхи
+
+facet-language-mrj = mrj
+
+facet-language-ms = малайский (макроязык)
+
+facet-language-mt = мальтийский
+
+facet-language-mwl = мирандийский
+
+facet-language-my = бирманский
+
+facet-language-myv = эрзянский
+
+facet-language-mzn = mzn
+
+facet-language-nah = nah
+
+facet-language-nap = неаполитанский
+
+facet-language-nds = nds
+
+facet-language-ne = ne
+
+facet-language-new = new
+
+facet-language-nn = норвежский нюнорск
+
+facet-language-no = норвежский
+
+facet-language-oc = oc
+
+facet-language-or = or
+
+facet-language-os = os
+
+facet-language-pa = pa
+
+facet-language-pam = пампанга
+
+facet-language-pfl = pfl
+
+facet-language-pms = pms
+
+facet-language-pnb = pnb
+
+facet-language-ps = пушту
+
+facet-language-qu = кечуа
+
+facet-language-rm = rm
+
+facet-language-rue = rue
+
+facet-language-sa = санскрит
+
+facet-language-sah = якутский
+
+facet-language-sc = сардинский
+
+facet-language-scn = сицилийский
+
+facet-language-sco = шотландский
+
+facet-language-sd = синдхи
+
+facet-language-sh = sh
+
+facet-language-si = si
+
+facet-language-sk = словацкий
+
+facet-language-sl = словенский
+
+facet-language-so = сомали
+
+facet-language-sq = албанский
+
+facet-language-sr = сербский
+
+facet-language-su = сунданский
+
+facet-language-sw = суахили (макроязык)
+
+facet-language-ta = тамильский
+
+facet-language-te = телугу
+
+facet-language-tg = таджикский
+
+facet-language-th = тайский
+
+facet-language-tk = туркменский
+
+facet-language-tl = тагальский
+
+facet-language-tt = татарский
+
+facet-language-tyv = тувинский
+
+facet-language-ug = уйгурский
+
+facet-language-uk = украинский
+
+facet-language-ur = урду
+
+facet-language-uz = узбекский
+
+facet-language-vec = vec
+
+facet-language-vep = vep
+
+facet-language-vi = вьетнамский
+
+facet-language-vls = vls
+
+facet-language-vo = волапюк
+
+facet-language-wa = валлун
+
+facet-language-war = war
+
+facet-language-wuu = wuu
+
+facet-language-xal = xal
+
+facet-language-xmf = xmf
+
+facet-language-yi = идиш
+
+facet-language-yo = йоруба
+
+facet-language-yue = yue

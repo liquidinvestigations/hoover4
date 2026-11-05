@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Estes caminhos já existem na pasta:
 uploads-upload-files = Ficheiros
 uploads-upload-clear = Limpar
 uploads-upload-and-more-files = e mais { $format_count_more_as_u64 } ficheiros
-uploads-upload-upload-files = Carregar { $format_count_count_as_u64 } ficheiros
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Carregar { $format_count_count_as_u64 } ficheiro
+    *[other] Carregar { $format_count_count_as_u64 } ficheiros
+    }
+
 file-browser-search-names-in-all-collections = Pesquisar nomes em todas as coleções…
 file-browser-search-names-in-this-collection = Pesquisar nomes nesta coleção…
 file-browser-files-inside-this-archive-or = Ficheiros dentro deste arquivo ou mensagem de correio eletrónico, a todos os níveis

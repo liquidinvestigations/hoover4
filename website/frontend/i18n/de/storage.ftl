@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Diese Pfade sind im Ordner vorhanden:
 uploads-upload-files = Dateien
 uploads-upload-clear = Leeren
 uploads-upload-and-more-files = und { $format_count_more_as_u64 } weitere Dateien
-uploads-upload-upload-files = { $format_count_count_as_u64 } Dateien hochladen
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Hochladen: { $format_count_count_as_u64 } Datei
+    *[other] Hochladen: { $format_count_count_as_u64 } Dateien
+    }
+
 file-browser-search-names-in-all-collections = Namen in allen Sammlungen durchsuchen…
 file-browser-search-names-in-this-collection = Namen in dieser Sammlung durchsuchen…
 file-browser-files-inside-this-archive-or = Dateien in diesem Archiv oder dieser E-Mail, auf jeder Ebene

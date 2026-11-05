@@ -107,6 +107,14 @@ pub async fn search_entity_terms(
     needle: String,
     columns: Vec<String>,
 ) -> anyhow::Result<EntityTermHits> {
+    search_entity_terms_with_language_codes(user, query, needle, columns, None).await
+}
+
+/// Search translated language labels through their canonical codes in one request.
+pub async fn search_entity_terms_with_language_codes(
+    user: &CurrentUser, query: SearchQuery, needle: String, columns: Vec<String>,
+    language_codes: Option<Vec<String>>,
+) -> anyhow::Result<EntityTermHits> {
     let needle = needle.trim().to_string();
     if needle.is_empty() || columns.is_empty() {
         return Ok(EntityTermHits::default());
@@ -139,16 +147,23 @@ pub async fn search_entity_terms(
     let where_argument = if term_fields == ["language"] || term_fields == ["ocr_language"] || term_fields == ["red_flags"] {
         let lower = needle.to_lowercase();
         let values: Vec<String> = if term_fields != ["red_flags"] {
-            common::signals::language_names().iter().filter(|(code, name)|
-                code.contains(&lower) || name.to_lowercase().contains(&lower))
-                .map(|(code, _)| code.clone()).collect()
+            match &language_codes {
+                Some(codes) => codes.iter().filter(|code| common::signals::language_names().contains_key(*code)).cloned().collect(),
+                None => common::signals::language_names().iter().filter(|(code, name)|
+                    code.contains(&lower) || name.to_lowercase().contains(&lower))
+                    .map(|(code, _)| code.clone()).collect(),
+            }
         } else {
             titles.iter().filter(|(id, title)| id.contains(&lower) || title.to_lowercase().contains(&lower))
                 .map(|(id, _)| id.clone()).collect()
         };
-        if values.is_empty() { return Ok(EntityTermHits::default()); }
-        format!("term_display IN ({})", values.into_iter()
-            .map(|value| quoted_manticore_string(&value)).collect::<Vec<_>>().join(","))
+        if values.is_empty() {
+            format!("MATCH({})", prepare_match_query(&format!("*{needle}*"))
+                .map_err(anyhow::Error::from)?.quoted())
+        } else {
+            format!("term_display IN ({})", values.into_iter()
+                .map(|value| quoted_manticore_string(&value)).collect::<Vec<_>>().join(","))
+        }
     } else {
         format!("MATCH({})", prepare_match_query(&format!("*{needle}*"))
             .map_err(anyhow::Error::from)?.quoted())
@@ -179,6 +194,7 @@ pub async fn search_entity_terms(
                 FROM {table}
                 WHERE {where_argument}
                   AND term_field IN ({field_list})
+                GROUP BY term_field, term_id
                 ORDER BY term_display ASC
                 LIMIT {TERM_HIT_LIMIT}
                 {options_clause}

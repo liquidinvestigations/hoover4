@@ -16,7 +16,7 @@ pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
         session.title.clone()
     };
     let summary = if session.summary.is_empty() {
-        tr!("chat-session-card-messages", session_message_count: session.message_count.to_string())
+        tr!("chat-session-card-messages", session_message_count: session.message_count)
     } else {
         session.summary.clone()
     };

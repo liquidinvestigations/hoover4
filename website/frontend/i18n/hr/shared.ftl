@@ -267,3 +267,5 @@ shared-boards-budget-grew = {" "}(proračun +{ $n } istraživanja)
 shared-boards-budget-unchanged = {" "}(proračun je nepromijenjen, ploča je na svojem ograničenju istraživanja)
 
 shared-email-graph-selected-copy-removed = Odabrana kopija e-pošte više ne postoji.
+
+shared-table-generation-changed = Tablica se promijenila. Ponovno pokušajte pročitati tablicu.

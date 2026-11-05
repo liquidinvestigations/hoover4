@@ -270,3 +270,5 @@ shared-boards-budget-grew = {" "}(बजट +{ $n } खोजबीन)
 shared-boards-budget-unchanged = {" "}(बजट अपरिवर्तित, बोर्ड अपनी खोजबीन की सीमा पर है)
 
 shared-email-graph-selected-copy-removed = चुने गए ईमेल की प्रति अब मौजूद नहीं है।
+
+shared-table-generation-changed = तालिका बदल गई है। तालिका पढ़ने का फिर से प्रयास करें।

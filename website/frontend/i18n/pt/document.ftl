@@ -203,3 +203,17 @@ preview-with-search-next = { $label } seguinte
 document-entities-panel-as-written =
     { $value }
     como escrito: { $written }
+
+preview-for-archive-search = Pesquisar neste arquivo
+
+preview-for-archive-search-zip = Pesquisar neste ficheiro ZIP
+
+email-graph-incomplete = { $count ->
+    [one] { $count } mensagem apresentada. O total está incompleto.
+    *[other] { $count } mensagens apresentadas. O total está incompleto.
+    }
+
+email-graph-copies = { $count ->
+    [one] { $count } cópia autorizada
+    *[other] { $count } cópias autorizadas
+    }

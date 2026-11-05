@@ -23,7 +23,7 @@ The remembered query is specific to the dataset, container, and folder path.
 | `.folder.open_search` | Open in Search link | opens the folder constraint in Search | it opens a new tab and preserves the folder page |
 | `.collections` | collection selector | which collections and datasets are searched | an empty selection searches nothing and says so, rather than searching everything |
 | `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments, language, text source, red flags, antivirus | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
-| `.chips` | filter chips, hidden-chip count, clear all | show the applied filters after Sort, remove one or all of them, and open the filter popup at a category | The controls and chips share one row. Clear all stays right. A count opens the first hidden category. Resizing preserves filters. |
+| `.chips` | filter chips, hidden-chip count, clear all | show the applied filters after Sort, remove one or all of them, and open the filter popup at a category | The controls and chips share one row. Clear all precedes the chips in visual and keyboard order. A count opens the first hidden category. Resizing preserves filters. |
 | `.range.dates` | date filter, before, after, between, no confirmed date | narrow by the document's date interval | a document with no confirmed date matches only through "no confirmed date": it can never fall inside a range |
 | `.range.file_size_bytes` | file size filter | narrow by size | Unknown size is excluded from every range. Reopening the filter restores its applied bounds, including after reload. |
 | `.filters_modal` | "All filters", clear all, cancel, close, show results | edits every filter at once in a draft, and show results applies the draft once | each opening copies the toolbar query into a new draft; cancel, close and the backdrop discard it; the chips, the results and the URL do not change while it is open; the button names how many results the draft would show |
@@ -75,7 +75,7 @@ Both actions preserve collection selection, sort, the selected document, and vie
 backend). The fan-out, the match builder and the caching boundary are
 [../../architecture/Search_Architecture.md](../../architecture/Search_Architecture.md).
 
-Language values show English names and accept a code or name in facet search.
+Language values use interface catalogs and accept canonical codes or translated names in facet search.
 Detected OCR language values follow the same rule. Detected OCR script values show the script name.
 Text source values show the source labels of the document viewer and omit the filename row.
 A text source filter matches a document through its text from a selected source.
@@ -122,3 +122,10 @@ Facet responses retain canonical filter values and add optional term descriptors
 A descriptor identifies its kind and canonical code for interface translation.
 Language, datatype, text-source, and size-range descriptors preserve the existing request identities.
 Legacy display text remains available.
+Term search groups dataset copies by field and term identifier before applying the result limit.
+Dataset copies cannot consume the limit for distinct terms.
+Unknown language codes remain searchable through their stored canonical text.
+
+The OCR category contains the detected-language and detected-script lists.
+Filter labels retain their canonical values when the interface language changes.
+Unknown language and datatype codes remain visible as canonical identifiers.

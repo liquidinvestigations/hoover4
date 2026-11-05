@@ -7,7 +7,7 @@ mod search_for_results_hit_count;
 pub use search_for_results_hit_count::search_for_results_hit_count;
 
 mod search_facets;
-pub use search_facets::fetch_db_terms_for_ints;
+pub use search_facets::{fetch_db_terms_for_ints, fetch_db_term_codes_for_ints};
 pub use search_facets::search_string_facet;
 
 pub mod date_histogram;
@@ -17,7 +17,7 @@ mod mentioned_date_histogram;
 pub use mentioned_date_histogram::search_mentioned_date_histogram;
 
 mod entity_terms;
-pub use entity_terms::{search_entity_terms, term_field_for_column};
+pub use entity_terms::{search_entity_terms, search_entity_terms_with_language_codes, term_field_for_column};
 
 mod explain_entity;
 pub use explain_entity::explain_entity;

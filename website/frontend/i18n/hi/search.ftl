@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = { $kind } खोजें…
 search-filter-modal-show-results = { $total } परिणाम दिखाएँ
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }। अभी लागू नहीं हुआ। खोजें दबाएँ।
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = से कम
+
+facet-label-over = से अधिक
+
+facet-language-en = अंग्रेज़ी
+
+facet-language-de = जर्मन
+
+facet-language-es = स्पेनिश
+
+facet-language-fr = फ़्रेंच
+
+facet-language-pl = पोलिश
+
+facet-language-pt = पुर्तगाली
+
+facet-language-ar = अरबी
+
+facet-language-he = हिब्रू
+
+facet-language-hi = हिन्दी
+
+facet-language-zh = चीनी
+
+facet-language-it = इतालवी
+
+facet-language-nl = डच
+
+facet-language-da = डेनिश
+
+facet-language-nb = नॉर्वेजियन बोकमाल
+
+facet-language-sv = स्वीडिश
+
+facet-language-el = यूनानी
+
+facet-language-hr = क्रोएशियाई
+
+facet-language-ro = रोमानियाई
+
+facet-language-ru = रूसी
+
+facet-language-ja = जापानी
+
+facet-language-ko = कोरियाई
+
+facet-language-tr = तुर्की
+
+facet-language-af = अफ्रीकी
+
+facet-language-als = टोस्क अल्बानियाई
+
+facet-language-am = अम्हारिक्
+
+facet-language-an = अर्गोनी
+
+facet-language-arz = मिस्र अरबी
+
+facet-language-as = असामी
+
+facet-language-ast = अस्तुरियन
+
+facet-language-av = अवेरिक
+
+facet-language-az = अज़रबैंजानी
+
+facet-language-azb = दक्षिण अज़रबैजानी
+
+facet-language-ba = बशख़िर
+
+facet-language-bar = बावेरियन
+
+facet-language-bcl = मध्य बिकोल
+
+facet-language-be = बेलारूसी
+
+facet-language-bg = बल्गेरियाई
+
+facet-language-bh = bh
+
+facet-language-bn = बँगाली
+
+facet-language-bo = तिब्बती
+
+facet-language-bpy = बिष्णुप्रिया
+
+facet-language-br = ब्रेटन
+
+facet-language-bs = बोस्नियाई
+
+facet-language-bxr = रूसी बुरियाट
+
+facet-language-ca = कातालान
+
+facet-language-cbk = चावाकानो
+
+facet-language-ce = चेचन
+
+facet-language-ceb = सिबुआनो
+
+facet-language-ckb = मध्य कुर्दिश
+
+facet-language-co = कोर्सीकन
+
+facet-language-cs = चेक
+
+facet-language-cv = चुवाश
+
+facet-language-cy = वेल्श
+
+facet-language-diq = डिमली (व्यक्तिगत भाषा)
+
+facet-language-dsb = निचला सोरबियन
+
+facet-language-dty = दोत्याली
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = एस्पेरान्तो
+
+facet-language-et = एस्टोनियाई
+
+facet-language-eu = बास्क
+
+facet-language-fa = फारसी
+
+facet-language-fi = फिनिश
+
+facet-language-frr = उत्तरी फ़्रिसियाई
+
+facet-language-fy = पश्चिमी फ़्रिसियाई
+
+facet-language-ga = आईरिश
+
+facet-language-gd = स्कॉटिश गेलिक
+
+facet-language-gl = गैलिशियन्
+
+facet-language-gn = गुआरानी
+
+facet-language-gom = गोवा कोंकणी
+
+facet-language-gu = गुज़राती
+
+facet-language-gv = मैंक्स
+
+facet-language-hif = फ़िजी हिंदी
+
+facet-language-hsb = ऊपरी सॉर्बियन
+
+facet-language-ht = हैतीयन
+
+facet-language-hu = हंगेरियाई
+
+facet-language-hy = अर्मेनियाई
+
+facet-language-ia = इंटरलिंगुआ (अंतर्राष्ट्रीय सहायक भाषा संघ)
+
+facet-language-id = इन्डोनेशियाई
+
+facet-language-ie = ईन्टरलिंगुइ
+
+facet-language-ilo = इलोको
+
+facet-language-io = इदो
+
+facet-language-is = आइसलैंडिक
+
+facet-language-jbo = लोज्बान
+
+facet-language-jv = जावानीस
+
+facet-language-ka = जॉर्जियाई
+
+facet-language-kk = कज़ाख
+
+facet-language-km = ख्मेर
+
+facet-language-kn = कन्नड़
+
+facet-language-krc = कराचय-बल्कार
+
+facet-language-ku = कुरदीश
+
+facet-language-kv = कोमी
+
+facet-language-kw = कोर्निश
+
+facet-language-ky = किरघिज़
+
+facet-language-la = लैटीन
+
+facet-language-lb = लक्जमबर्गिश
+
+facet-language-lez = लेज़्घीयन
+
+facet-language-li = लिम्बर्गन
+
+facet-language-lmo = लोम्बारड
+
+facet-language-lo = लाओ
+
+facet-language-lrc = उत्तरी लूरी
+
+facet-language-lt = लिथुआनियाई
+
+facet-language-lv = लातवियाई
+
+facet-language-mai = मैथिली
+
+facet-language-mg = मालागासी
+
+facet-language-mhr = पूर्वी मारी
+
+facet-language-min = मिनांग्काबाउ
+
+facet-language-mk = मकदूनियाई
+
+facet-language-ml = मलयालम
+
+facet-language-mn = मंगोलियाई
+
+facet-language-mr = मराठी
+
+facet-language-mrj = पश्चिमी मारी
+
+facet-language-ms = मलय (मैक्रोभाषा)
+
+facet-language-mt = मोलतिज़
+
+facet-language-mwl = मिरांडीज़
+
+facet-language-my = बर्मी
+
+facet-language-myv = एर्ज़या
+
+facet-language-mzn = माज़ंदरानी
+
+facet-language-nah = nah
+
+facet-language-nap = नियपोलिटन
+
+facet-language-nds = लो जर्मन
+
+facet-language-ne = नेपाली (मैक्रोलैंग्वेज)
+
+facet-language-new = new
+
+facet-language-nn = नॉर्वेजियन नाइनोर्स्क
+
+facet-language-no = नार्वेजियन
+
+facet-language-oc = ओसीटान (1500 के बाद)
+
+facet-language-or = उड़िया (मैक्रोलैंग्वेज)
+
+facet-language-os = ओस्सेटियन
+
+facet-language-pa = पंजाबी
+
+facet-language-pam = पाम्पंगा
+
+facet-language-pfl = फ़ेल्ज़िश
+
+facet-language-pms = पिमोंटेस
+
+facet-language-pnb = पश्चिमी पंजाबी
+
+facet-language-ps = पुश्तो
+
+facet-language-qu = क्वेशुआ
+
+facet-language-rm = रोमांश
+
+facet-language-rue = रुसिन
+
+facet-language-sa = संस्कृत
+
+facet-language-sah = याकुट
+
+facet-language-sc = सार्डिनियन
+
+facet-language-scn = सिसिलियन
+
+facet-language-sco = स्कॉट्स
+
+facet-language-sd = सिन्धी
+
+facet-language-sh = सर्बो-क्रोशियाई
+
+facet-language-si = सिंहली
+
+facet-language-sk = स्लोवाक
+
+facet-language-sl = स्लोवेनियाई
+
+facet-language-so = सोमाली
+
+facet-language-sq = अल्बानियाई
+
+facet-language-sr = सर्बियाई
+
+facet-language-su = सुंडानी
+
+facet-language-sw = स्वाहिली (मैक्रोलैंग्वेज)
+
+facet-language-ta = तामिल
+
+facet-language-te = तेलुगू
+
+facet-language-tg = ताजिक
+
+facet-language-th = थाई
+
+facet-language-tk = तुक्रमेन
+
+facet-language-tl = तागालोग
+
+facet-language-tt = टाटर
+
+facet-language-tyv = तुवीनियन
+
+facet-language-ug = उईघुर
+
+facet-language-uk = यूक्रेनी
+
+facet-language-ur = उर्दू
+
+facet-language-uz = उज़बेक्
+
+facet-language-vec = विनीशियन
+
+facet-language-vep = वेप्स
+
+facet-language-vi = वियेतनामी
+
+facet-language-vls = व्लाम्स
+
+facet-language-vo = वोलापुक
+
+facet-language-wa = वलून
+
+facet-language-war = वारे (फिलीपींस)
+
+facet-language-wuu = वू चीनी
+
+facet-language-xal = काल्मिक
+
+facet-language-xmf = मिंग्रेलियन
+
+facet-language-yi = येहुदी
+
+facet-language-yo = योरूबा
+
+facet-language-yue = कैंटोनीज़ चीनी

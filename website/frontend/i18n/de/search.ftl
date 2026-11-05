@@ -166,3 +166,375 @@ search-filter-modal-search-entity-type = { $kind } durchsuchen…
 search-filter-modal-show-results = { $total } Ergebnisse anzeigen
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Noch nicht angewendet. Wählen Sie „Suchen“.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+facet-label-under = Unter
+
+facet-label-over = Über
+
+facet-language-en = Englisch
+
+facet-language-de = Deutsch
+
+facet-language-es = Spanisch
+
+facet-language-fr = Französisch
+
+facet-language-pl = Polnisch
+
+facet-language-pt = Portugiesisch
+
+facet-language-ar = Arabisch
+
+facet-language-he = Hebräisch
+
+facet-language-hi = Hindi
+
+facet-language-zh = Chinesisch
+
+facet-language-it = Italienisch
+
+facet-language-nl = Niederländisch
+
+facet-language-da = Dänisch
+
+facet-language-nb = Norwegisch Bokmål
+
+facet-language-sv = Schwedisch
+
+facet-language-el = Griechisch
+
+facet-language-hr = Kroatisch
+
+facet-language-ro = Rumänisch
+
+facet-language-ru = Russisch
+
+facet-language-ja = Japanisch
+
+facet-language-ko = Koreanisch
+
+facet-language-tr = Türkisch
+
+facet-language-af = Afrikaans
+
+facet-language-als = Toskisch-Albanisch
+
+facet-language-am = Amharisch
+
+facet-language-an = Aragonesisch
+
+facet-language-arz = Ägyptisch-Arabisch
+
+facet-language-as = Assamesisch
+
+facet-language-ast = Asturisch
+
+facet-language-av = Awarisch
+
+facet-language-az = Aserbaidschanisch
+
+facet-language-azb = Süd-Aserbaidschanisch
+
+facet-language-ba = Baschkirisch
+
+facet-language-bar = Bayrisch
+
+facet-language-bcl = Zentral-Bikolani
+
+facet-language-be = Weißrussisch
+
+facet-language-bg = Bulgarisch
+
+facet-language-bh = bh
+
+facet-language-bn = Bengalisch
+
+facet-language-bo = Tibetisch
+
+facet-language-bpy = Bishnupriya
+
+facet-language-br = Bretonisch
+
+facet-language-bs = Bosnisch
+
+facet-language-bxr = Russland-Burjatisch
+
+facet-language-ca = Katalanisch
+
+facet-language-cbk = Chavacano
+
+facet-language-ce = Tschetschenisch
+
+facet-language-ceb = Cebuano
+
+facet-language-ckb = Zentralkurdisch
+
+facet-language-co = Korsisch
+
+facet-language-cs = Tschechisch
+
+facet-language-cv = Tschuwaschisch
+
+facet-language-cy = Walisisch
+
+facet-language-diq = Dimli (Individuelle Sprache)
+
+facet-language-dsb = Niedersorbisch
+
+facet-language-dty = Nepali
+
+facet-language-dv = dv
+
+facet-language-eml = eml
+
+facet-language-eo = Esperanto
+
+facet-language-et = Estnisch
+
+facet-language-eu = Baskisch
+
+facet-language-fa = Persisch
+
+facet-language-fi = Finnisch
+
+facet-language-frr = Nordfriesisch
+
+facet-language-fy = Westfriesisch
+
+facet-language-ga = Irisch
+
+facet-language-gd = Schottisches Gälisch
+
+facet-language-gl = Galizisch
+
+facet-language-gn = Guaraní
+
+facet-language-gom = Goanisches Konkani
+
+facet-language-gu = Gujarati
+
+facet-language-gv = Manx
+
+facet-language-hif = Fidschi-Hindi
+
+facet-language-hsb = Obersorbisch
+
+facet-language-ht = Haitianisch
+
+facet-language-hu = Ungarisch
+
+facet-language-hy = Armenisch
+
+facet-language-ia = Interlingua (Internationale Hilfssprachen-Vereinigung)
+
+facet-language-id = Indonesisch
+
+facet-language-ie = Interlingue
+
+facet-language-ilo = Ilokano
+
+facet-language-io = Ido
+
+facet-language-is = Isländisch
+
+facet-language-jbo = Lojban
+
+facet-language-jv = Javanisch
+
+facet-language-ka = Georgisch
+
+facet-language-kk = Kasachisch
+
+facet-language-km = km
+
+facet-language-kn = Kannada
+
+facet-language-krc = Karachay-Balkar
+
+facet-language-ku = Kurdisch
+
+facet-language-kv = Komi
+
+facet-language-kw = Kornisch
+
+facet-language-ky = Kirgisisch
+
+facet-language-la = Lateinisch
+
+facet-language-lb = Luxemburgisch
+
+facet-language-lez = Lesgisch
+
+facet-language-li = Limburgisch
+
+facet-language-lmo = Langobardisch
+
+facet-language-lo = Laotisch
+
+facet-language-lrc = Nord-Luri
+
+facet-language-lt = Litauisch
+
+facet-language-lv = Lettisch
+
+facet-language-mai = Maithili
+
+facet-language-mg = Madegassisch
+
+facet-language-mhr = Ost-Mari
+
+facet-language-min = Minangkabau
+
+facet-language-mk = Makedonisch
+
+facet-language-ml = Malayalam
+
+facet-language-mn = Mongolisch
+
+facet-language-mr = Marathi
+
+facet-language-mrj = West-Mari
+
+facet-language-ms = Malaiisch (Makrosprache)
+
+facet-language-mt = Maltesisch
+
+facet-language-mwl = Mirandesisch
+
+facet-language-my = Burmesisch
+
+facet-language-myv = Erzya
+
+facet-language-mzn = Mazanderani
+
+facet-language-nah = nah
+
+facet-language-nap = Neapolitanisch
+
+facet-language-nds = Plattdeutsch
+
+facet-language-ne = Nepali (Makrosprache)
+
+facet-language-new = new
+
+facet-language-nn = Nynorsk (Norwegen)
+
+facet-language-no = Norwegisch
+
+facet-language-oc = Okzitanisch (nach 1500)
+
+facet-language-or = Oriya (Makrosprache)
+
+facet-language-os = Ossetisch
+
+facet-language-pa = Panjabi
+
+facet-language-pam = Pampanggan
+
+facet-language-pfl = Pfälzisch
+
+facet-language-pms = Piemontesisch
+
+facet-language-pnb = West-Panjabi
+
+facet-language-ps = Paschtu; Afghanisch
+
+facet-language-qu = Ketschua
+
+facet-language-rm = Bündnerromanisch
+
+facet-language-rue = Rusyn
+
+facet-language-sa = Sanskrit
+
+facet-language-sah = Jakutisch
+
+facet-language-sc = Sardisch
+
+facet-language-scn = Sizilianisch
+
+facet-language-sco = Schottisch
+
+facet-language-sd = Sindhi
+
+facet-language-sh = Serbokroatisch
+
+facet-language-si = Singhalesisch
+
+facet-language-sk = Slowakisch
+
+facet-language-sl = Slowenisch
+
+facet-language-so = Somali
+
+facet-language-sq = Albanisch
+
+facet-language-sr = Serbisch
+
+facet-language-su = Sundanesisch
+
+facet-language-sw = Swahili (Makrosprache)
+
+facet-language-ta = Tamilisch
+
+facet-language-te = Telugu
+
+facet-language-tg = Tadschikisch
+
+facet-language-th = Thai
+
+facet-language-tk = Turkmenisch
+
+facet-language-tl = Tagalog
+
+facet-language-tt = Tatarisch
+
+facet-language-tyv = Tuwinisch
+
+facet-language-ug = Uigurisch
+
+facet-language-uk = Ukrainisch
+
+facet-language-ur = Urdu
+
+facet-language-uz = Usbekisch
+
+facet-language-vec = Venetisch
+
+facet-language-vep = Veps
+
+facet-language-vi = Vietnamesisch
+
+facet-language-vls = Vlaams
+
+facet-language-vo = Volapük
+
+facet-language-wa = Wallonisch
+
+facet-language-war = Waray (Philippinen)
+
+facet-language-wuu = Wu-Chinesisch
+
+facet-language-xal = Kalmükisch
+
+facet-language-xmf = Mingrelisch
+
+facet-language-yi = Jiddisch
+
+facet-language-yo = Joruba
+
+facet-language-yue = Yue-Chinesisch

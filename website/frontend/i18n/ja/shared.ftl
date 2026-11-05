@@ -267,3 +267,5 @@ shared-boards-budget-grew = {" "}(予算 +{ $n } 回の探索)
 shared-boards-budget-unchanged = {" "}(予算は変わらず、ボードは探索の上限に達しています)
 
 shared-email-graph-selected-copy-removed = 選択したメールのコピーはもう存在しません。
+
+shared-table-generation-changed = テーブルが変更されました。テーブルの読み取りを再試行してください。

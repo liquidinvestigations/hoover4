@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = Impossibile caricare la cronologia: { $
 ai-chat-history-no-conversations-yet = Ancora nessuna conversazione.
 ai-chat-history-board = Bacheca
 ai-chat-history-new-chat = Nuova chat
-ai-chat-history-messages-updated = { $s_message_count } messaggi · aggiornata { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } messaggio · aggiornata { $s_updated_at }
+    *[other] { $s_message_count } messaggi · aggiornata { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Elimina la conversazione
 ai-chat-history-delete = Elimina
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - Chat AI
@@ -292,7 +296,11 @@ chat-transcript-calls = chiamate
 ai-chat-board-a-board-without-collections-needs = Una bacheca senza raccolte richiede gli strumenti internet.
 ai-chat-board-of = { $snap_explores_used } di { $snap_max_explores }
 ai-chat-board-assessment-2 = valutazione { $number }
-ai-chat-history-messages = { $s_message_count } messaggi
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } messaggio
+    *[other] { $s_message_count } messaggi
+    }
+
 web-search-card-reranked-in = Il cross-encoder ha riordinato i risultati in { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } in { $ms } ms
 web-search-card-score-was-rank = punteggio { $score } · era RRF #{ $rank }
@@ -431,7 +439,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } non riuscite
 tool-run-summary-took = durata { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } messaggi
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } messaggio
+    *[other] { $session_message_count } messaggi
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } elemento
        *[other] { $count } elementi
@@ -479,3 +491,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · versione { $version } · invariata
 cards-result-cards-version = { $tool_name } · versione { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } risultati in ingresso, { $json_u64_doc_total_after_dedupe } dopo la deduplicazione
+
+board-status-on = Attivo
+
+board-status-off = Disattivo
+
+chat-transcript-generic-tool = lo strumento

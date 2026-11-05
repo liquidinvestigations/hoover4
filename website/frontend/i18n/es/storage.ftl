@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Estas rutas ya existen en la carpeta:
 uploads-upload-files = Archivos
 uploads-upload-clear = Quitar
 uploads-upload-and-more-files = y { $format_count_more_as_u64 } archivos más
-uploads-upload-upload-files = Subir { $format_count_count_as_u64 } archivos
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Subir { $format_count_count_as_u64 } archivo
+    *[other] Subir { $format_count_count_as_u64 } archivos
+    }
+
 file-browser-search-names-in-all-collections = Buscar nombres en todas las colecciones…
 file-browser-search-names-in-this-collection = Buscar nombres en esta colección…
 file-browser-files-inside-this-archive-or = Archivos dentro de este archivo comprimido o correo electrónico, en todos los niveles

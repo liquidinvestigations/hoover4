@@ -249,7 +249,10 @@ ai-chat-history-could-not-load-history = 履歴を読み込めませんでした
 ai-chat-history-no-conversations-yet = 会話はまだありません。
 ai-chat-history-board = ボード
 ai-chat-history-new-chat = 新しいチャット
-ai-chat-history-messages-updated = { $s_message_count } 件のメッセージ · 更新: { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    *[other] { $s_message_count } 件のメッセージ · 更新: { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = 会話を削除
 ai-chat-history-delete = 削除
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - AIチャット
@@ -286,7 +289,10 @@ chat-transcript-calls = 呼び出し
 ai-chat-board-a-board-without-collections-needs = コレクションのないボードには、インターネットツールが必要です。
 ai-chat-board-of = { $snap_explores_used } / { $snap_max_explores }
 ai-chat-board-assessment-2 = 評価 { $number }
-ai-chat-history-messages = { $s_message_count } 件のメッセージ
+ai-chat-history-messages = { $s_message_count ->
+    *[other] { $s_message_count } 件のメッセージ
+    }
+
 web-search-card-reranked-in = クロスエンコーダーが { $ms } ms で結果の順位を付け直しました。
 web-search-card-engine-results = { $name }: { $count } 件 ({ $ms } ms)
 web-search-card-score-was-rank = スコア { $score } · 元はRRF #{ $rank }
@@ -380,7 +386,10 @@ tool-run-summary-to-the-agent = エージェントへの指示 { $n } 件
 tool-run-summary-other = その他の呼び出し { $n } 件
 tool-run-summary-failed = 失敗 { $failures } 件
 tool-run-summary-took = 所要時間 { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } 件のメッセージ
+chat-session-card-messages = { $session_message_count ->
+    *[other] { $session_message_count } 件のメッセージ
+    }
+
 chat-tool-disclosure-item = { $count } 個の項目
 chat-tool-disclosure-field = { $count } 個のフィールド
 chat-tool-disclosure-searched-collections = コレクションを検索{ $filters }
@@ -419,3 +428,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · ド�
 cards-result-cards-version-unchanged = { $tool_name } · バージョン { $version } · 変更なし
 cards-result-cards-version = { $tool_name } · バージョン { $version }
 web-search-card-results-in-after-deduplication = 結果 { $json_u64_doc_total_before_dedupe } 件、重複除去後 { $json_u64_doc_total_after_dedupe } 件
+
+board-status-on = オン
+
+board-status-off = オフ
+
+chat-transcript-generic-tool = ツール

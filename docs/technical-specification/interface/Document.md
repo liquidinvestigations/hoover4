@@ -32,16 +32,18 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 | `.text.sole_page` | link to the sole stored identifier in the absent-page text | opens the only stored entry of the source | it appears when a link selects an absent identifier of a source with one stored entry, which has no page overlay |
 | `.text.retry` | retry button beside a failed text request | requests the same page again | the previous page text stays visible |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
+| `.table.retry` | retry button beside a failed table read | repeats the overview, page, sheet-count, and column-count requests | generation changes require a fresh overview |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
 | `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
 | `.archive.browse` | `Browse the archive` link on the Archive or Email Archive tab | opens the file browser inside the archive in a new tab | it appears when the extraction created the archive's folder |
-| `.archive.search` | search link after `Browse the archive` | opens the search page in a new tab, filtered to the archive folder as the `file_paths` parent and to the dataset of the archive | it appears when the archive folder has a search term. The text is `search inside this zip file` when the canonical MIME type of the file is ZIP, and `search inside this archive` otherwise |
+| `.archive.search` | search link after `Browse the archive` | opens the search page in a new tab, filtered to the archive folder as the `file_paths` parent and to the dataset of the archive | it appears when the archive folder has a search term. The translated text identifies ZIP files separately from other archives |
 
 ## States
 
 | state | when | what the page shows |
 |---|---|---|
 | table loading | the table overview or page request is pending | a loading indicator |
+| table failure | an overview, page, sheet-count, column-count, or column-value request fails | the error and a retry action |
 | text page loading | a requested text page has not loaded | the previous page stays, and a status in the page overlay names the requested page to a screen reader. Before the first page loads, a loading indicator and no page overlay |
 | text page failure | a text page request fails | the previous page stays, with the error and the retry button above it |
 | text page absent | the requested identifier has no stored text | a statement that no text is stored there. The page overlay opens its stored neighbours. A source with one entry has no overlay, and the statement links its sole stored identifier |
@@ -88,7 +90,7 @@ Document permission checks apply before signal evidence queries.
 A signal query failure appears as an error.
 
 Email header values use the body highlight engine.
-A matching header value opens the details panel.
+Selecting a header match opens the details panel before scrolling to its marked span.
 Entity cards show the value before the category.
 Entity counts state that they include all sources.
 Text hit navigation finds the current rendered span after query, source, or page changes.
@@ -147,3 +149,14 @@ A removed selected occurrence returns an error.
 Node limits apply after grouping, and occurrence expansion has a separate limit.
 The response reports occurrence truncation and count completeness.
 Conflicting nonidentical files remain separate.
+
+Email header and body matches share one navigator across the text sources.
+Header targets occur once before body targets in extractor, page, and match order.
+The navigator selects the required source and page before revealing a body match.
+Equal recipient values retain distinct field and occurrence identities.
+Previous and next actions wrap within the validated target list.
+Loading, failure, limited counts, and unavailable validation remain separate states.
+The URL retains the selected target across source changes.
+
+Table pages, sheet counts, column counts, and column values report their actual published generation.
+The viewer rejects a reply whose document, request identity, or generation differs from the current view.

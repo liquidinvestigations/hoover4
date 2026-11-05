@@ -255,7 +255,11 @@ ai-chat-history-could-not-load-history = Δεν ήταν δυνατή η φόρ�
 ai-chat-history-no-conversations-yet = Δεν υπάρχουν ακόμη συνομιλίες.
 ai-chat-history-board = Ερευνητικός πίνακας
 ai-chat-history-new-chat = Νέα συνομιλία
-ai-chat-history-messages-updated = { $s_message_count } μηνύματα · ενημερώθηκε { $s_updated_at }
+ai-chat-history-messages-updated = { $s_message_count ->
+    [one] { $s_message_count } μήνυμα · ενημερώθηκε { $s_updated_at }
+    *[other] { $s_message_count } μηνύματα · ενημερώθηκε { $s_updated_at }
+    }
+
 ai-chat-history-delete-conversation = Διαγραφή συνομιλίας
 ai-chat-history-delete = Διαγραφή
 ai-chat-homepage-hoover-search-ai-chat = Hoover Search - Συνομιλία AI
@@ -292,7 +296,11 @@ chat-transcript-calls = κλήσεις
 ai-chat-board-a-board-without-collections-needs = Ένας ερευνητικός πίνακας χωρίς συλλογές χρειάζεται εργαλεία διαδικτύου.
 ai-chat-board-of = { $snap_explores_used } από { $snap_max_explores }
 ai-chat-board-assessment-2 = αξιολόγηση { $number }
-ai-chat-history-messages = { $s_message_count } μηνύματα
+ai-chat-history-messages = { $s_message_count ->
+    [one] { $s_message_count } μήνυμα
+    *[other] { $s_message_count } μηνύματα
+    }
+
 web-search-card-reranked-in = Ο cross-encoder κατέταξε τα αποτελέσματα σε { $ms } ms.
 web-search-card-engine-results = { $name }: { $count } σε { $ms } ms
 web-search-card-score-was-rank = βαθμολογία { $score } · ήταν RRF #{ $rank }
@@ -431,7 +439,11 @@ tool-run-summary-other = { $n ->
     }
 tool-run-summary-failed = { $failures } απέτυχαν
 tool-run-summary-took = διήρκεσε { $duration_text_ms }
-chat-session-card-messages = { $session_message_count } μηνύματα
+chat-session-card-messages = { $session_message_count ->
+    [one] { $session_message_count } μήνυμα
+    *[other] { $session_message_count } μηνύματα
+    }
+
 chat-tool-disclosure-item = { $count ->
         [one] { $count } στοιχείο
        *[other] { $count } στοιχεία
@@ -479,3 +491,9 @@ cards-result-cards-cite-documents-documents-quotes-not = cite_documents · { $ci
 cards-result-cards-version-unchanged = { $tool_name } · έκδοση { $version } · αμετάβλητη
 cards-result-cards-version = { $tool_name } · έκδοση { $version }
 web-search-card-results-in-after-deduplication = { $json_u64_doc_total_before_dedupe } αποτελέσματα στην είσοδο, { $json_u64_doc_total_after_dedupe } μετά την αφαίρεση διπλότυπων
+
+board-status-on = Ενεργό
+
+board-status-off = Ανενεργό
+
+chat-transcript-generic-tool = το εργαλείο

@@ -102,7 +102,13 @@ uploads-upload-these-paths-exist-in-the = Эти пути уже есть в п�
 uploads-upload-files = Файлы
 uploads-upload-clear = Очистить
 uploads-upload-and-more-files = и ещё файлов: { $format_count_more_as_u64 }
-uploads-upload-upload-files = Загрузить файлы: { $format_count_count_as_u64 }
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Загрузить { $format_count_count_as_u64 } файл
+    [few] Загрузить { $format_count_count_as_u64 } файла
+    [many] Загрузить { $format_count_count_as_u64 } файлов
+    *[other] Загрузить { $format_count_count_as_u64 } файла
+    }
+
 file-browser-search-names-in-all-collections = Поиск по именам во всех коллекциях…
 file-browser-search-names-in-this-collection = Поиск по именам в этой коллекции…
 file-browser-files-inside-this-archive-or = Файлы внутри этого архива или письма на всех уровнях

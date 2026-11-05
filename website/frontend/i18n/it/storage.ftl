@@ -102,7 +102,11 @@ uploads-upload-these-paths-exist-in-the = Questi percorsi esistono già nella ca
 uploads-upload-files = File
 uploads-upload-clear = Cancella
 uploads-upload-and-more-files = e altri { $format_count_more_as_u64 } file
-uploads-upload-upload-files = Carica { $format_count_count_as_u64 } file
+uploads-upload-upload-files = { $format_count_count_as_u64 ->
+    [one] Carica { $format_count_count_as_u64 } file
+    *[other] Carica { $format_count_count_as_u64 } file
+    }
+
 file-browser-search-names-in-all-collections = Cerca i nomi in tutte le raccolte…
 file-browser-search-names-in-this-collection = Cerca i nomi in questa raccolta…
 file-browser-files-inside-this-archive-or = File dentro questo archivio o questa email, a ogni livello

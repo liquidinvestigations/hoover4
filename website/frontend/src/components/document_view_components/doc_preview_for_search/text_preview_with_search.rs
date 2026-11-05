@@ -134,8 +134,14 @@ pub fn DocumentPreviewTextWithSearch(
     /// its own, which is what a plain text source needs.
     #[props(default)]
     flow_layout: bool,
+    #[props(default)]
+    match_controls: Option<Element>,
 ) -> Element {
     let control = use_context::<DocViewerStateControl>();
+    let email_sources = try_consume_context::<super::doc_preview_for_email::EmailNavigationSources>();
+    let has_email = email_sources.is_some_and(|sources| sources.0.read().as_ref().is_some_and(|items|
+        items.iter().any(|source| matches!(source, common::document_sources::DocumentSourceItem::Email(_)))));
+
     let state = control.doc_viewer_state;
     let set_state = control.set_doc_viewer_state;
     let viewer_key = use_hook(|| NEXT_VIEWER_KEY.fetch_add(1, Ordering::Relaxed));
@@ -220,6 +226,10 @@ pub fn DocumentPreviewTextWithSearch(
         }
         let Some(view) = shown() else { return 0 };
         let TextPageBody::Text { page_id, .. } = &view.body else { return 0 };
+        if selected_match().as_ref().is_some_and(|selection|
+            selection.find_query == find_query() && selection.extracted_by.starts_with("email-header:")) {
+            return u32::MAX;
+        }
         selected_match()
             .and_then(|selection| selection.ordinal_for(&view.navigation.extracted_by, *page_id, &find_query(), match_count()))
             .unwrap_or(0)
@@ -291,6 +301,18 @@ pub fn DocumentPreviewTextWithSearch(
         scroll_intent.set(Some(ScrollIntent::Match));
         *generation.write() += 1;
     });
+    use_effect(use_reactive!(|has_email| {
+        if !has_email { return; }
+        let selection = selected_match();
+        let query = find_query();
+        if let Some(selection) = selection.filter(|selection| selection.find_query == query) {
+            if selection.extracted_by.starts_with("email-header:") {
+                scroll_intent.set(None);
+            } else {
+                scroll_intent.set(Some(ScrollIntent::Match));
+            }
+        }
+    }));
     // Work of an obsolete operation stops. A result that arrives after the cancellation is
     // still discarded by its key.
     use_effect(move || {
@@ -487,7 +509,10 @@ pub fn DocumentPreviewTextWithSearch(
     rsx! {
         PreviewWrapper {
             controls: rsx! {
-                TextMatchControls {}
+                if let Some(controls) = match_controls { {controls} }
+                else if has_email {
+                    super::doc_preview_for_email::EmailMatchControls { document: document_identifier(), find_query: find_query() }
+                } else { TextMatchControls {} }
             },
             // The overlay is a sibling of the scroll container, so it keeps its place in the
             // viewport while the text scrolls.
