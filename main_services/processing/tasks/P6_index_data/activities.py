@@ -1618,14 +1618,9 @@ SEARCHABLE_TERM_FIELDS = (
 )
 
 
-def entity_term_row_id(term_field: str, term_id: int) -> int:
-    """Deterministic id for one `<coll>_entities` row, so REPLACE upserts in place.
-
-    The field is part of the key: one value can be a term in two fields (an address is
-    both an envelope sender and something the body mentions), and those are two rows,
-    because ticking them applies different filters.
-    """
-    return hash_string_to_uint63(f"{term_field}|{term_id}")
+def entity_term_row_id(collection_dataset: str, term_field: str, term_id: int) -> int:
+    """Identify one dataset's term without replacing another dataset's ownership."""
+    return hash_string_to_uint63(f"{collection_dataset}|{term_field}|{term_id}")
 
 
 def entities_replace_sql(entities_table: str, rows: list[dict]) -> tuple[str, tuple]:
@@ -1696,16 +1691,15 @@ def index_entity_terms(params: BuildVfsNodesParams) -> str:
         }).to_pylist()
 
     index_rows = [{
-        "id": entity_term_row_id(row['term_field'], int(row['term_id'])),
+        "id": entity_term_row_id(collection_dataset, row['term_field'], int(row['term_id'])),
         "term_field": row['term_field'],
         # The same string twice: `term_text` is the full-text field the needle matches
         # and HIGHLIGHT() reads, `term_display` is the attribute, because a text field
         # cannot be selected back exactly.
         "term_text": row['term_value'],
         "term_display": row['term_value'],
-        # The number a facet filter is actually written in. The row id hashes the field
-        # and the term id together and cannot be inverted, so the search box would have
-        # nothing to hand the facet query without this column.
+        # Filters use the public term identity. The internal row identity also includes
+        # the dataset, so publication and cleanup preserve each dataset's ownership.
         "term_id": int(row['term_id']),
         "collection_dataset": collection_dataset,
     } for row in terms]

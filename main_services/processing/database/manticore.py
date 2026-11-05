@@ -524,7 +524,7 @@ def entities_table_ddl(table_name: str) -> str:
 
     ``term_id`` is the value the facet MVAs hold, carried here so one query answers the
     whole question. It is not derivable from the row id, which hashes the field and the
-    id together, and looking it up again in ClickHouse would be a second round trip for
+    id with the dataset, and looking it up again in ClickHouse would be a second round trip for
     a number this row already knows.
 
     One table per COLLECTION, holding every facet field except ``filetype``, that one

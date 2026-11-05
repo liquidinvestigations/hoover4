@@ -147,7 +147,7 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "installation serves. Their vectors are computed and indexed.",
         runs="Embedding and vector indexing"),
     UpdateStep(
-        step_id="search_terms", scope=SCOPE_DATASET, version=1, stages=("index_terms",),
+        step_id="search_terms", scope=SCOPE_DATASET, version=2, stages=("index_terms",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Search terms",
         explanation="{files} search tables need current filter terms. Language, OCR, script, and red-flag terms become searchable.",

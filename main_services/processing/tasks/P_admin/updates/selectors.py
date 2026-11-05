@@ -453,7 +453,7 @@ def missing_search_terms(client, ctx: ScopeContext) -> int:
                             "field": after[0], "id": after[1]}).result_rows
             if not rows:
                 return missing
-            expected = {entity_term_row_id(field, int(term_id)): (field, int(term_id), value)
+            expected = {entity_term_row_id(ctx.scope_id, field, int(term_id)): (field, int(term_id), value)
                         for field, term_id, value in rows}
             ids = ",".join(str(row_id) for row_id in expected)
             cursor.execute(f"SELECT id, term_field, term_id, term_display FROM {table} "

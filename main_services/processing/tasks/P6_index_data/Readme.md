@@ -100,18 +100,22 @@ Without it a "Search X" box narrows the buckets already on screen, which on a co
 tens of thousands of distinct values answers "nothing matches" for values that are
 present.
 
-One row per `(term_field, term_id)`, for every searchable facet field, `filetype` is
+One row per `(collection_dataset, term_field, term_id)`, for every searchable facet field, `filetype` is
 excluded, having few enough buckets to fit on screen. The row carries `term_text` (the
 infix-indexed full-text field a needle matches and `HIGHLIGHT()` reads), `term_display`
 (the same string as an attribute, because a text field cannot be selected back exactly)
 and `term_id` (the number a facet filter is written in). `term_id` is a column of its own
-rather than being recovered from the row id, which hashes the field and the id together
+rather than being recovered from the row id, which hashes the dataset, field, and term id
 and cannot be inverted; without it the search box would have nothing to hand the facet
 query. Deterministic row ids so a REPLACE upserts in place, no dataset-wide DELETE first
 (the box would answer nothing for the length of the rewrite), and a reconciliation sweep
 afterwards that removes rows whose term is gone. The sweep pages with an explicit `LIMIT` and `max_matches`: a bare `SELECT`
 returns Manticore's implicit twenty rows and would leave every removed term searchable
 for ever.
+
+Dataset-scoped row identities preserve shared terms when another dataset is purged.
+The reader groups identical field and term identities before applying its result limit.
+The processing update replaces legacy rows with current dataset-scoped rows and removes their obsolete identities.
 
 `index_vfs_structure` copies ClickHouse `vfs_nodes` into `<coll>_vfs` with one multi-row
 `REPLACE INTO … VALUES (…),(…),…` per 512-node chunk. Deterministic ids make REPLACE
