@@ -33,7 +33,7 @@ def _run_cdp(command, answer: dict):
 
 def _commit(loader: str) -> SimpleNamespace:
     """A `Page.frameNavigated` event of the main frame."""
-    return SimpleNamespace(frame=SimpleNamespace(parent_id=None, loader_id=loader))
+    return SimpleNamespace(frame=SimpleNamespace(parent_id=None, loader_id=loader, id_="F"))
 
 
 class FakeTab:
@@ -73,7 +73,7 @@ class FakeTab:
 
         cmd = next(command)
         method, params = cmd["method"], cmd.get("params", {})
-        if method == "Page.enable":
+        if method in ("Page.enable", "Network.enable"):
             return _run_cdp(command, {})
         if method == "Page.handleJavaScriptDialog":
             self.dialogs.append(params["accept"])
@@ -255,7 +255,7 @@ _EXTRACT = f"({read_page.extract_script(True)})()"
 
 def _page_values(title: str) -> dict:
     return {
-        _CHECK: '{"text": "", "check": false, "url": "u", "title": "", "type": "text/html"}',
+        _CHECK: '{"text": "", "check": false, "url": "https://a.example/", "title": "", "type": "text/html"}',
         _EXTRACT: '{"title": "%s", "url": "https://a.example/", "text": "%s text"}' % (title, title),
     }
 
@@ -651,3 +651,19 @@ def test_shutdown_cancels_pending_browser_start(monkeypatch):
         assert pool._starting.done() and pool._died.is_set()
         assert cancelled.is_set() and pool._chat is None
     asyncio.run(run())
+
+
+def test_response_metadata_uses_only_main_document_and_bounded_retry_after():
+    client = reader_client.TabClient(FakeTab())
+    def response(frame, status, headers, kind="Document"):
+        return SimpleNamespace(frame_id=frame, type_=kind,
+                               response=SimpleNamespace(status=status, headers=headers))
+    client._on_response(response("F", 429, {"Retry-After": "20", "Set-Cookie": "secret"}))
+    client._on_navigated(_commit("loader"))
+    assert client.response_status == 429 and client.retry_after == "20"
+    client._on_response(response("child", 200, {"Retry-After": "1"}))
+    client._on_response(response("F", 200, {"Retry-After": "1"}, kind="Image"))
+    assert client.response_status == 429 and client.retry_after == "20"
+    client._on_response(response("F", 503, {"Retry-After": "9" * 200}))
+    assert len(client.retry_after) == 128 and client.response_status == 503
+    assert "secret" not in repr(client._responses)

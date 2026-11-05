@@ -153,6 +153,21 @@ def read_version(username: str, session_id: str, name: str,
     return _version(rows[0]) if rows else None
 
 
+def read_operation_version(username: str, session_id: str, operation_id: str) -> Optional[FileVersion]:
+    """Find the original committed version of an operation after its file head advances."""
+    if not operation_id:
+        return None
+    with _client() as client:
+        result = client.query(
+            f"SELECT {', '.join(FILE_COLUMNS)} FROM chat_workspace_files FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} "
+            "AND operation_id = {o:String} AND is_deleted = 0 ORDER BY version LIMIT 1",
+            parameters={"u": username, "s": session_id, "o": operation_id},
+        )
+    rows = [dict(zip(result.column_names, row)) for row in result.result_rows]
+    return _version(rows[0]) if rows else None
+
+
 def list_files(username: str, session_id: str) -> list[dict]:
     """The files of a session: name, highest version, character count and time of that
     version, by name."""

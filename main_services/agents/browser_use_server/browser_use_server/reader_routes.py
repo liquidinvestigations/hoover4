@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import logging
+import json
 import time
 from collections.abc import MutableMapping
 from types import SimpleNamespace
@@ -13,6 +15,8 @@ from browser_use_server import tor_routes
 from browser_use_server.reader_client import TabClient
 from browser_use_server.special_browser import SlotWaitTimeout
 from browser_use_server.urlcheck import UrlNotAllowed, check_url
+
+log = logging.getLogger(__name__)
 
 KEEP_MAX_CHARS = int(os.getenv("READ_PAGE_KEEP_MAX_CHARS", "32000000"))
 TOR_MIN_LEFT_S = 15.0
@@ -93,19 +97,19 @@ async def read_fresh(reader, url: str, goal: str, limit: int, username: str,
                 if reading in done:
                     return reading.result()
                 if died in done:
-                    return read_page.PageRead(url=url, error="The reader browser stopped during the read.")
-                return read_page.PageRead(url=url, error="The page read reached its call deadline.")
+                    return read_page.PageRead(url=url, error="The reader browser stopped during the read.", outcome="transport_error")
+                return read_page.PageRead(url=url, error="The page read reached its call deadline.", outcome="timeout")
             finally:
                 for task in (reading, died):
                     if not task.done():
                         task.cancel()
                 await asyncio.gather(reading, died, return_exceptions=True)
     except UrlNotAllowed as exc:
-        return read_page.PageRead(url=url, error=f"refused: {exc}")
+        return read_page.PageRead(url=url, error=f"refused: {exc}", outcome="transport_error")
     except (SlotWaitTimeout, asyncio.TimeoutError):
-        return read_page.PageRead(url=url, error="No reader slot became available before the call deadline.")
+        return read_page.PageRead(url=url, error="No reader slot became available before the call deadline.", outcome="timeout")
     except Exception as exc:
-        return read_page.PageRead(url=url, error=f"The page could not be read: {exc}")
+        return read_page.PageRead(url=url, error=f"The page could not be read: {exc}", outcome="transport_error")
 
 
 async def _routes(reader, lease, url, goal, limit, username, deadline, links, page_start=1):
@@ -114,7 +118,8 @@ async def _routes(reader, lease, url, goal, limit, username, deadline, links, pa
     host = (urlsplit(url).hostname or "").lower()
     names = tor_routes.order(host)
     tried = []
-    page = read_page.PageRead(url=url, error="The page was not read.")
+    diagnostics = []
+    page = read_page.PageRead(url=url, error="The page was not read.", outcome="timeout")
     for index, name in enumerate(names):
         if tried and deadline - time.monotonic() < TOR_MIN_LEFT_S:
             break
@@ -122,16 +127,33 @@ async def _routes(reader, lease, url, goal, limit, username, deadline, links, pa
         # Every attempt gets a fresh cookie context and a public-destination proxy.
         async with tor_routes.SocksRelay(route) as relay:
             async with reader.pool.context_tab(lease, relay.proxy_server, "<-loopback>") as tab:
-                chat = SimpleNamespace(client=TabClient(tab), tab=tab, session_id=reader.session_id)
+                started = time.monotonic()
+                chat = SimpleNamespace(client=TabClient(tab), tab=tab, session_id=reader.session_id,
+                                       deadline=deadline)
                 page = await read_page._read_one(chat, url, goal, limit, username,
                                                  links=links, capture_result=False,
                                                  page_start=page_start)
+                if page.error and page.outcome == "content":
+                    page.outcome = "transport_error"
                 page.route = name
                 tor_routes.record(host, name, page.blocked)
                 try_next = retry(page) and index + 1 < len(names) and deadline - time.monotonic() >= TOR_MIN_LEFT_S
+                if try_next and page.status == 429 and page.retry_after_s:
+                    if deadline - time.monotonic() - page.retry_after_s < TOR_MIN_LEFT_S:
+                        try_next = False
+                    else:
+                        await asyncio.sleep(page.retry_after_s)
+                diagnostics.append({"route": "direct" if name == tor_routes.DIRECT else "tor",
+                                    "outcome": page.outcome, "status": page.status,
+                                    "challenge": page.challenge_signal,
+                                    "elapsed_ms": round((time.monotonic() - started) * 1000),
+                                    "final_url_class": "http" if page.final_url else "unvalidated",
+                                    "retry_reason": page.outcome if try_next else ""})
+                log.info("read_page route outcome %s", json.dumps(diagnostics[-1], sort_keys=True))
                 if not try_next:
                     await read_page._capture_read(chat, page, url, goal, username)
                     break
         tried.append(f"{name} ({page.error or 'read'})")
     page.tried = tried
+    page.diagnostics = diagnostics
     return page

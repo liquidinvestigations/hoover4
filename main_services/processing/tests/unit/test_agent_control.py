@@ -1345,7 +1345,11 @@ def test_completion_advice_needs_delivery_evidence():
     context = replace(_progress_context(stalled, (search,), 2), results=(write, search))
     evidenced = asyncio.run(Handler().evaluate(_event(), context, {}, _Signals(0.95)))
     note = next(a for a in evidenced.actions if a.kind == "append_note")
-    assert COMPLETION_ADVICE in note.arguments["text"]
+    assert COMPLETION_ADVICE not in note.arguments["text"]
+    from tasks.P_agent.control import task_state as TS
+    context = replace(context, task_state=freeze(TS.derive("Write a report on the contracts.", 1)))
+    known = asyncio.run(Handler().evaluate(_event(), context, {}, _Signals(0.95)))
+    assert any(COMPLETION_ADVICE in a.arguments.get("text", "") for a in known.actions)
     off = asyncio.run(Handler().evaluate(_event(), context, {"completion": "none"}, _Signals(0.95)))
     assert all(COMPLETION_ADVICE not in a.arguments.get("text", "") for a in off.actions)
 

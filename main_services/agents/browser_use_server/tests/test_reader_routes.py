@@ -87,7 +87,8 @@ class Relay:
         pass
 
 
-def test_blocked_direct_read_retries_in_a_new_context_and_keeps_capture_owner(monkeypatch):
+def test_blocked_direct_read_retries_in_a_new_context_and_keeps_capture_owner(monkeypatch, caplog):
+    caplog.set_level("INFO", logger="browser_use_server.reader_routes")
     pool = Pool()
     seen = []
     async def attempt(chat, url, goal, limit, username, **kwargs):
@@ -115,6 +116,9 @@ def test_blocked_direct_read_retries_in_a_new_context_and_keeps_capture_owner(mo
     assert pool.closed == pool.tabs and pool.active == 0
     assert captures == [(pool.tabs[1], "run", "user")]
     assert len(page.tried) == 1 and page.tried[0].startswith("direct")
+    assert len(page.diagnostics) == 2
+    assert "route outcome" in caplog.text and "page.example" not in caplog.text
+    assert all(d["outcome"] != "content" for d in page.diagnostics if d["retry_reason"])
 
 
 def test_explicit_capture_never_selects_another_parallel_tab(monkeypatch):
@@ -195,3 +199,31 @@ def test_blocked_http_result_reports_status_without_a_wait_claim():
     rendered = read_page.render(result)
     assert "HTTP 403" in rendered and "stayed on" not in rendered
     assert "Do not use this page as a source" in rendered
+
+
+@pytest.mark.parametrize("delay,expected_attempts", [(0.01, 2), (1000, 1)])
+def test_rate_limit_wait_precedes_next_route_and_cannot_extend_deadline(monkeypatch, delay, expected_attempts):
+    pool = Pool()
+    starts = []
+    async def attempt(chat, url, goal, limit, username, **kwargs):
+        starts.append(time.monotonic())
+        if len(starts) == 1:
+            return read_page.PageRead(url=url, outcome="rate_limited", status=429, blocked=True,
+                                      retry_after_s=delay, error="the page returned HTTP 429")
+        return read_page.PageRead(url=url, full_text="Content")
+    async def archive(*args, **kwargs):
+        pass
+    monkeypatch.setattr(reader_routes, "check_url", lambda _: None)
+    monkeypatch.setattr(tor_routes, "SocksRelay", Relay)
+    monkeypatch.setattr(tor_routes, "order", lambda _: ["direct", "tor-test"])
+    monkeypatch.setattr(tor_routes, "route", lambda name: tor_routes.Route(name, "proxy.example", 9050))
+    monkeypatch.setattr(tor_routes, "record", lambda *_: None)
+    monkeypatch.setattr(read_page, "_read_one", attempt)
+    monkeypatch.setattr(read_page, "_capture_read", archive)
+    page = asyncio.run(reader_routes.read_fresh(
+        Reader(pool, "user", "run"), "https://page.example", "", 1000, "user", time.monotonic()+60))
+    assert len(starts) == expected_attempts and pool.closed == pool.tabs
+    if expected_attempts == 2:
+        assert starts[1] - starts[0] >= delay
+    else:
+        assert page.outcome == "rate_limited"

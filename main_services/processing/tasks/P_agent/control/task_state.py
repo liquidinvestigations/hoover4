@@ -14,7 +14,7 @@ read: `new`, `continuation`, `amendment` or `unresolved`. `amendments` holds the
 later turns that changed the active objective, in turn order. `source_rules` holds each
 source permission and restriction with its turn, its character span and its status:
 `active`, `superseded` (by a later turn), `suspended` (by a use request of one task) or
-`expired` (a rule for one task that a new objective ended). `output_spec` holds the requested output groups. `interpretation_state` is
+`expired` (a rule for one task that a new objective ended). `output_spec` holds the requested output groups and versioned recognition state. `interpretation_state` is
 `resolved` or `unresolved`, and `unresolved` names each message that the rules below could
 not classify. `omissions` names the evidence that the stored record leaves out because of
 its bounds. `reconstruction` states how the earlier turns were read. `messages` counts the messages
@@ -744,7 +744,8 @@ def empty() -> dict:
 
 
 def _new_spec() -> dict:
-    return {"groups": [], "uncertain": [], "delivered_before": []}
+    return {"groups": [], "uncertain": [], "delivered_before": [],
+            "recognition": {"version": 1, "state": "unknown"}}
 
 
 def _omit(state: dict, field: str, count: int, reason: str, turn: Optional[int] = None) -> None:
@@ -829,6 +830,9 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
         groups, uncertain = output_groups(request, turn, source, _next_group_id(state))
         state["output_spec"]["groups"].extend(groups)
         state["output_spec"]["uncertain"].extend(uncertain)
+    state["output_spec"]["recognition"] = {
+        "version": 1, "state": "known" if state["output_spec"]["groups"] else "unknown",
+        "turn": turn, "message": message}
     _bound_lists(state)
     return state
 
@@ -1014,7 +1018,7 @@ def requirements(state: Optional[Mapping]) -> dict:
 def delivery(state: Optional[Mapping], delivered: Iterable[str]) -> dict:
     """The requested outputs of the record compared with the names of the delivered files.
 
-    `state` is `none` when the task asks for no file, `complete` when every active group has
+    `state` is `none` when all established groups are cancelled, `complete` when every active group has
     its named files and its count of further distinct files, and `incomplete` when one is
     missing. It is `unknown` when a group has no exact count, when the interpretation is
     unresolved, or when its evidence is incomplete. Names and counts state only whether the
@@ -1025,7 +1029,7 @@ def delivery(state: Optional[Mapping], delivered: Iterable[str]) -> dict:
            "delivered": delivered, "missing": [], "groups": [], "evidence": False}
     complete = complete_interpretation(state)
     if not required["file"]:
-        out["state"] = "none" if complete else "unknown"
+        out["state"] = "none" if complete and (state or {}).get("output_spec", {}).get("groups") else "unknown"
         return out
     named = set(required["names"])
     out["missing"] = [n for n in required["names"] if n not in delivered]

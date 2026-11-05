@@ -482,3 +482,36 @@ def test_a_wrapper_tag_line_of_the_request_is_removed_from_the_fact():
     assert conversion.check_args({"fact": inline, "kind": "sourced"})["fact"] == inline
     with pytest.raises(conversion.MalformedConversion):
         conversion.check_args({"fact": "<fact>\n</fact>", "kind": "sourced"})
+
+
+def test_opening_retry_keeps_language_after_settings_change(board, opening, monkeypatch):
+    _set_board(board, monkeypatch, ["enron"], 0, True)
+    opening["settings"] = {"agent.language": "de"}
+    req = activities.TurnRequest("b1", "intent-approval", 1)
+    first = activities.open_explore_turn(req)
+    saved = json.loads(opening["rows"][0][1])
+    assert saved["language"] == "de"
+    monkeypatch.setattr(activities, "_existing_user_seq", lambda *args: 3)
+    monkeypatch.setattr(activities, "_opening_language", lambda *args: saved["language"])
+    opening["settings"] = {"agent.language": "fr"}
+    retried = activities.open_explore_turn(req)
+    assert retried.run_input.language == first.run_input.language == "de"
+    assert retried.run_input.turn_uuid == first.run_input.turn_uuid
+    assert len(opening["rows"]) == 1
+    monkeypatch.setattr(activities, "_existing_user_seq", lambda *args: None)
+    assert activities.open_explore_turn(req).run_input.language == "fr"
+
+
+def test_explore_brief_separates_rejected_claim_and_correction_reason():
+    board = BoardRow("b1", "owner", "Board", [], "")
+    facts = [FactRow("b1", "good", m.SOURCED, "Accepted claim [D1]."),
+             FactRow("b1", "bad", m.SOURCED, "Wrong meeting date [D2].")]
+    from types import SimpleNamespace
+    intent = SimpleNamespace(intent_id="intent", from_facts=["bad"], objective="Verify the date", brief="")
+    text = render_brief(board, facts, [], [], intent, ["enron"], 60,
+                        rejected={"bad": "The correct date is 4 May."})
+    known = text.split("<facts>")[1].split("</facts>")[0]
+    assert "Accepted claim" in known and "Wrong meeting date" not in known
+    correction = text.split("<rejected>")[1].split("</rejected>")[0]
+    assert "Wrong meeting date" in correction and "The correct date is 4 May." in correction
+    assert "[D2]" not in correction

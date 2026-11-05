@@ -55,6 +55,10 @@ class TabClient:
         #: The URL of the last main-frame document that committed. For an error page of
         #: Chromium it is the URL that could not be reached, for example a redirect target.
         self.seen_url = ""
+        self.retry_after = ""
+        self.response_status = 0
+        self._main_frame = ""
+        self._responses = {}
 
     async def call_tool(self, tool: str, arguments: dict, raise_on_error: bool = False):
         timeout = float(arguments.get("timeout") or SCRIPT_TIMEOUT_S)
@@ -79,15 +83,36 @@ class TabClient:
             return
         from nodriver import cdp
 
+        self.tab.add_handler(cdp.network.ResponseReceived, self._on_response)
+        await self.tab.send(cdp.network.enable())
         self.tab.add_handler(cdp.page.FrameNavigated, self._on_navigated)
         self.tab.add_handler(cdp.page.JavascriptDialogOpening, self._on_dialog)
         await self.tab.send(cdp.page.enable())
         self._enabled = True
 
+    def _on_response(self, event, _tab=None) -> None:
+        """Retain only the document's bounded Retry-After value from response headers."""
+        kind = str(getattr(event.type_, "value", event.type_))
+        if kind != "Document":
+            return
+        frame = str(getattr(event, "frame_id", "") or "")
+        if not frame:
+            return
+        headers = event.response.headers
+        retry_after = next((str(value)[:128] for name, value in headers.items()
+                            if str(name).lower() == "retry-after"), "")
+        self._responses[frame] = (int(event.response.status), retry_after)
+        while len(self._responses) > 16:
+            del self._responses[next(iter(self._responses))]
+        if frame == self._main_frame:
+            self.response_status, self.retry_after = self._responses[frame]
+
     def _on_navigated(self, event, _tab=None) -> None:
         frame = event.frame
         if getattr(frame, "parent_id", None):
             return
+        self._main_frame = str(frame.id_)
+        self.response_status, self.retry_after = self._responses.get(self._main_frame, (0, ""))
         self._commits.append(str(frame.loader_id))
         self.seen_url = str(getattr(frame, "unreachable_url", None)
                             or getattr(frame, "url", None) or "")
@@ -116,6 +141,10 @@ class TabClient:
         previous = (self._own, self._commits)
         self._own, self._commits = None, []
         self.seen_url = ""
+        self.retry_after = ""
+        self.response_status = 0
+        self._main_frame = ""
+        self._responses = {}
         _frame, loader, error_text, is_download = await self.tab.send(cdp.page.navigate(url))
         if loader is None and not error_text and not is_download:
             # A navigation inside the document keeps the document and its loader.

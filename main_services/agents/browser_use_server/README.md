@@ -99,6 +99,14 @@ Tool results include owned artifact identifiers in `_hoover4_artifacts` and the 
 The marker records a failed tool result because transcript text alone cannot establish success.
 Unreadable sidecar snapshot file links become instructions to request readable page content.
 
+Each route classifies content, challenge, HTTP restriction, service failure, extension block, timeout, or transport failure.
+Challenge detection runs before HTTP error handling and uses the shared call deadline.
+A cleared challenge gets another response probe before extraction.
+Only validated HTTP final addresses can provide source text.
+Route diagnostics record class, outcome, status, challenge detection, duration, final-address class, and fallback reason.
+Diagnostics exclude request credentials and complete addresses.
+Existing direct and configured Tor routes retain their order and isolated contexts.
+
 ## Image dependencies
 
 The image pins Playwright MCP and these extensions.

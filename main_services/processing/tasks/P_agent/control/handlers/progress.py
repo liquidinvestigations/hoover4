@@ -174,11 +174,9 @@ def delivery(state, results) -> dict:
     A delivered file is a successful write or patch that stored a new version. A retry that
     names the unchanged version delivers nothing more. The files that earlier turns of the
     same objective delivered count as well. `state` is `complete`, `incomplete`, `unknown`
-    or `none` (no file requested). `evidence` is what the completion advice may rely on: a
-    complete delivery, or for a task that requests no file, a stored file version or a
-    verified citation of a successful read. A group without an exact count, an unresolved
-    interpretation or incomplete task evidence gives `unknown` and no evidence, so one file
-    never stands for an unknown requirement.
+    or `none` (all established output groups were cancelled). `evidence` is what the completion advice may rely on: a
+    complete delivery of recognized file requirements. Unrecognized requirements give
+    `unknown` and no evidence. The agent can continue work with the original request.
     """
     from tasks.P_agent.control import task_state
 

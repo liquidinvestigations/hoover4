@@ -218,7 +218,7 @@ def test_a_new_objective_after_an_unresolved_message_is_resolved_again():
     state = TS.derive("Make it shorter.", 2, _state("Write a report on the 2001 trades."))
     after = TS.derive("What is the capital of France?", 3, state)
     assert after["interpretation_state"] == "resolved" and after["unresolved"] == []
-    assert TS.delivery(after, [])["state"] == "none"
+    assert TS.delivery(after, [])["state"] == "unknown"
 
 
 @pytest.mark.parametrize("request_text", [
@@ -765,3 +765,14 @@ def test_a_collection_search_under_an_exclusive_web_rule_is_unresolved():
     state = TS.derive("Search the documents for the filing date.", 2, first)
     assert TS.source_scope(state)["collections"] == "forbidden"
     assert state["interpretation_state"] == "unresolved"
+
+
+@pytest.mark.parametrize("message", ["Écris trois rapports sur les contrats.", "合同について報告書を三つ書いてください。", "请写三份合同报告。"])
+def test_unknown_output_recognition_supplies_no_positive_evidence(message):
+    from tasks.P_agent.control.handlers.progress import delivery
+    state = _state(message)
+    assert state["objective"]["text"] == message
+    assert state["output_spec"]["recognition"]["state"] == "unknown"
+    assert TS.delivery(state, ["one.md"])["state"] == "unknown"
+    write = _fact("write_file", file_version=("one.md", 1, True))
+    assert delivery(state, [write])["evidence"] is False

@@ -66,6 +66,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from typing import Literal
 from urllib.parse import urlsplit
 
 from agent_common import artifacts, batching
@@ -189,6 +190,12 @@ class PageRead:
     """One URL's outcome. `text` is empty when `error` is set, and never both."""
 
     url: str
+    outcome: Literal["content", "challenge", "forbidden", "rate_limited", "legal_restriction",
+                     "unavailable", "extension_block", "timeout", "transport_error"] = "content"
+    status: int = 0
+    retry_after_s: float = 0
+    challenge_signal: bool = False
+    diagnostics: list[dict] = field(default_factory=list)
     title: str = ""
     final_url: str = ""
     text: str = ""
@@ -690,9 +697,9 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         if isinstance(outcome, PageRead):
             page = outcome
         elif outcome.cancelled():
-            page = PageRead(url=url, error="The page read reached its call deadline.")
+            page = PageRead(url=url, error="The page read reached its call deadline.", outcome="timeout")
         elif outcome.exception() is not None:
-            page = PageRead(url=url, error=f"The page could not be read: {outcome.exception()}")
+            page = PageRead(url=url, error=f"The page could not be read: {outcome.exception()}", outcome="transport_error")
         else:
             page = outcome.result()
             valid_page(page)
@@ -702,6 +709,8 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
                     time.monotonic() + KEEP_SECONDS, page.title, page.final_url,
                     page.full_text, page.version, page.route, page.image, dict(page.extent),
                 )
+        if page.error and page.outcome == "content":
+            page.outcome = "transport_error"
         valid_page(page)
         page.links = links
         if page.route != "direct":
@@ -734,6 +743,7 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str,
         await asyncio.to_thread(check_url, url)
     except UrlNotAllowed as exc:
         page.error = f"refused: {exc}"
+        page.outcome = "transport_error"
         return page
 
     try:
@@ -755,32 +765,94 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str,
 
     if _document(chat) != "ours":
         page.error = navigated or "The page did not load."
+        page.outcome = "timeout" if "did not settle" in page.error else "transport_error"
         return page
 
     first = await _probe(chat)
-    status = (first or {}).get("status")
-    if status in (403, 429, 451, 503):
-        page.blocked = True
-        page.final_url = str(first.get("url") or url)
-        page.error = f"the page returned HTTP {status}"
-        if capture_result:
-            await _capture_read(chat, page, url, goal, username)
+    page.status = int((first or {}).get("status") or getattr(chat.client, "response_status", 0))
+    page.retry_after_s = retry_after_seconds(getattr(chat.client, "retry_after", ""))
+    page.challenge_signal = bool(first and first.get("check"))
+    if not await _validate_final(page, str((first or {}).get("url") or url)):
         return page
-    if first and first.get("type") == "application/pdf":
-        await _read_pdf(chat, page, url, goal, limit, first, page_start)
-    elif (blocked_at := await _wait_out_check(chat, first)) is not None:
-        # The check text is never returned as page text.
+    blocked_at = await _wait_out_check(chat, first)
+    if blocked_at is not None:
         page.blocked = True
-        page.final_url = blocked_at or url
+        page.outcome = "challenge"
         page.error = BOT_CHECK_ERROR
+        await _validate_final(page, blocked_at or url)
     else:
-        _extract(page, url, goal, limit, navigated, await _call(
-            chat, "browser_evaluate", {"function": extract_script(links)}
-        ))
+        # A cleared challenge can redirect or change the response status.
+        current = await _probe(chat) if page.challenge_signal else first
+        if not await _validate_final(page, str((current or {}).get("url") or url)):
+            return page
+        response = dict(current or {})
+        response["status"] = response.get("status") or getattr(chat.client, "response_status", 0)
+        _response_status(page, response)
+        if page.error:
+            pass
+        elif current and current.get("type") == "application/pdf":
+            await _read_pdf(chat, page, url, goal, limit, current, page_start)
+        else:
+            _extract(page, url, goal, limit, navigated, await _call(
+                chat, "browser_evaluate", {"function": extract_script(links)}
+            ))
+            if not await _validate_final(page, page.final_url or url):
+                page.full_text = page.text = ""
+    if page.error and page.outcome == "content":
+        page.outcome = "timeout" if "did not settle" in page.error else "transport_error"
 
     if capture_result:
         await _capture_read(chat, page, url, goal, username)
     return page
+
+
+async def _validate_final(page: PageRead, final_url: str) -> bool:
+    """Keep validated HTTP destinations apart from extension pages and refused redirects."""
+    page.final_url = ""
+    try:
+        scheme = urlsplit(final_url).scheme.lower()
+    except ValueError:
+        scheme = ""
+    if scheme in ("chrome-extension", "moz-extension"):
+        page.outcome = "extension_block"
+        page.blocked = True
+        page.error = "A browser extension blocked the requested page."
+        return False
+    if scheme not in ("http", "https"):
+        page.outcome = "transport_error"
+        page.error = "The final page address is not permitted."
+        return False
+    try:
+        await asyncio.to_thread(check_url, final_url)
+    except (UrlNotAllowed, ValueError):
+        page.outcome = "transport_error"
+        page.error = "The final page address is not permitted."
+        return False
+    page.final_url = final_url
+    return True
+
+
+def retry_after_seconds(value: str) -> float:
+    """Parse a delay or HTTP date without extending the shared deadline."""
+    from datetime import datetime, timezone
+    from email.utils import parsedate_to_datetime
+    try:
+        if value.strip().isdigit():
+            return float(int(value.strip()))
+        date = parsedate_to_datetime(value)
+        return max(0, (date - datetime.now(timezone.utc)).total_seconds())
+    except (ValueError, TypeError, OverflowError):
+        return 0
+
+
+def _response_status(page: PageRead, payload: dict) -> None:
+    status = payload.get("status")
+    page.status = status if isinstance(status, int) and status else page.status
+    page.error = _http_error(payload)
+    if page.error:
+        page.outcome = {403: "forbidden", 429: "rate_limited", 451: "legal_restriction",
+                        503: "unavailable"}.get(page.status, "transport_error")
+        page.blocked = page.status in (403, 429, 451, 503)
 
 
 async def _capture_read(chat, page, url, goal, username):
@@ -819,7 +891,7 @@ def _extract(
         return
     page.title = str(payload.get("title") or "")
     page.final_url = str(payload.get("url") or url)
-    page.error = _http_error(payload)
+    _response_status(page, payload)
     if page.error:
         return
     text = str(payload.get("text") or "")
@@ -854,9 +926,10 @@ async def _wait_out_check(chat, probe: dict | None) -> str | None:
     if not (probe and probe.get("check")):
         return None
     last_url = str(probe.get("url") or "")
-    deadline = time.monotonic() + BOT_CHECK_WAIT_S
+    deadline = min(time.monotonic() + BOT_CHECK_WAIT_S,
+                   getattr(chat, "deadline", float("inf")))
     while time.monotonic() < deadline:
-        await asyncio.sleep(BOT_CHECK_POLL_S)
+        await asyncio.sleep(min(BOT_CHECK_POLL_S, max(0, deadline - time.monotonic())))
         probe = await _probe(chat)
         if probe is None:
             # The redirect after a passed check destroys the page context. Poll again.
@@ -864,7 +937,7 @@ async def _wait_out_check(chat, probe: dict | None) -> str | None:
         last_url = str(probe.get("url") or last_url)
         if not probe.get("check"):
             # The next navigation can still be in flight. Let it settle before the read.
-            await asyncio.sleep(BOT_CHECK_POLL_S)
+            await asyncio.sleep(min(BOT_CHECK_POLL_S, max(0, deadline - time.monotonic())))
             return None
     return last_url
 

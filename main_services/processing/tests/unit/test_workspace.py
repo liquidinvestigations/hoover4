@@ -25,8 +25,10 @@ def cite(handle, file_hash="a" * 64, verified=True, **extra):
 
 
 def command(op="write", name="report.md", **fields):
-    return mutations.Command(username="ann", session_id="s1", operation_id="op-1",
-                             run_id="run-1", op=op, name=name, **fields)
+    values = dict(username="ann", session_id="s1", operation_id="op-1",
+                  run_id="run-1", op=op, name=name)
+    values.update(fields)
+    return mutations.Command(**values)
 
 
 def head(content, version=1, **fields):
@@ -184,6 +186,9 @@ def stored(monkeypatch):
     def write_version(version):
         state["versions"][(version.username, version.session_id, version.name, version.version)] = version
 
+    monkeypatch.setattr(store, "read_operation_version",
+                        lambda u, s, o: next((v for v in state["versions"].values()
+                                              if (v.username, v.session_id, v.operation_id) == (u, s, o)), None))
     monkeypatch.setattr(store, "read_version", read_version)
     monkeypatch.setattr(store, "write_version", write_version)
     monkeypatch.setattr(store, "read_receipt", lambda u, s, o: state["receipts"].get((u, s, o)))
@@ -322,3 +327,31 @@ def test_answer_metadata_lists_the_delivered_files():
     meta = citations.answer_metadata("Two files.", [], False, report, files)
     assert meta["report"] == {"name": "b.md", "version": 2}
     assert meta["reports"] == files and meta["citation_status"] == "none"
+
+
+def test_historical_commit_recovers_after_receipt_exhaustion_and_later_edit(stored, monkeypatch):
+    first = command(content="10.")
+    run_command(first)
+    patch = command(op="patch", operation_id="op-insert", old_string="10", new_string="10 plus 5")
+    prepared = writer.prepare_workspace_mutation(patch)
+    original_write = store.write_receipt
+    def unavailable(*args):
+        raise OSError("receipt unavailable")
+    monkeypatch.setattr(store, "write_receipt", unavailable)
+    for _ in range(writer.COMMIT_ROUNDS):
+        with pytest.raises(OSError):
+            writer.commit_workspace_mutation(writer.CommitInput(patch, prepared))
+    monkeypatch.setattr(store, "write_receipt", original_write)
+    run_command(command(operation_id="op-later", content="10 plus 5. Later.", expected_version=2))
+    recovered = run_command(patch)
+    assert recovered.result == prepared.result and recovered.found_version == 2
+    assert len(stored["versions"]) == 3
+    assert store.read_version("ann", "s1", "report.md").content == "10 plus 5. Later."
+    assert run_command(patch).replay
+
+
+def test_historical_recovery_does_not_cross_owner_or_session(stored):
+    run_command(command(content="First."))
+    stored["receipts"].clear()
+    assert run_command(command(username="other", content="Other.")).found_version == 1
+    assert run_command(command(session_id="other", content="Session.")).found_version == 1

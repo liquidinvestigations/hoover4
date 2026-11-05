@@ -151,7 +151,7 @@ def test_no_check_costs_one_probe_and_no_wait():
 def test_a_check_that_clears_lets_the_extraction_run():
     client = FakeClient([True, True, None, True, False])
     page, _ = _read(client)
-    assert client.probes == 5
+    assert client.probes == 6
     assert client.extractions == 1
     assert page.text == "the article text" and not page.blocked
 
@@ -302,3 +302,100 @@ def test_a_pdf_with_no_text_is_an_error():
     writer.add_blank_page(width=612, height=792)
     writer.write(buffer)
     assert read_page.pdf_text(buffer.getvalue())[2] == "the PDF has no text layer"
+
+
+@pytest.mark.parametrize("status,outcome", [(403, "forbidden"), (429, "rate_limited"),
+                                             (451, "legal_restriction"), (503, "unavailable")])
+def test_ordinary_http_failure_has_typed_outcome(status, outcome):
+    class StatusClient(FakeClient):
+        async def call_tool(self, tool, arguments, **kwargs):
+            if tool == "browser_evaluate" and arguments["function"] == read_page._CHECK_JS:
+                return _answer({"text": "", "check": False, "url": CHECK_URL, "status": status})
+            return await super().call_tool(tool, arguments, **kwargs)
+    client = StatusClient([])
+    page, _ = _read(client)
+    assert page.outcome == outcome and page.status == status
+    assert not page.full_text and client.extractions == 0
+
+
+def test_http_403_challenge_waits_then_reads_cleared_response():
+    class ChallengeClient(FakeClient):
+        async def call_tool(self, tool, arguments, **kwargs):
+            result = await super().call_tool(tool, arguments, **kwargs)
+            if tool == "browser_evaluate" and arguments["function"] == read_page._CHECK_JS:
+                payload = read_page._decode(read_page._text(result))
+                payload["status"] = 403 if payload["check"] else 200
+                return _answer(payload)
+            return result
+    client = ChallengeClient([True, False])
+    page, _ = _read(client)
+    assert page.outcome == "content" and page.status == 200
+    assert page.challenge_signal and page.full_text == "the article text"
+
+
+def test_persistent_challenge_obeys_shared_deadline(monkeypatch):
+    monkeypatch.setattr(read_page, "BOT_CHECK_WAIT_S", 10)
+    client = FakeClient([], stay=True)
+    chat = SimpleNamespace(client=client, deadline=time.monotonic() + 0.03)
+    started = time.monotonic()
+    page = asyncio.run(read_page._read_one(chat, CHECK_URL, "", 5000, "user"))
+    assert page.outcome == "challenge" and not page.full_text
+    assert time.monotonic() - started < 0.5
+
+
+@pytest.mark.parametrize("destination", ["chrome-extension://blocked/index.html?url=secret", "moz-extension://block/page"])
+def test_extension_redirect_never_becomes_source_content(destination):
+    class ExtensionClient(FakeClient):
+        async def call_tool(self, tool, arguments, **kwargs):
+            if tool == "browser_evaluate":
+                return _answer({"text": "extension block content", "url": destination, "check": False})
+            return await super().call_tool(tool, arguments, **kwargs)
+    page, _ = _read(ExtensionClient([]))
+    assert page.outcome == "extension_block" and page.url == CHECK_URL
+    assert not page.final_url and not page.full_text and not page.text
+
+
+@pytest.mark.parametrize("value,expected", [("2", 2), ("", 0), ("invalid", 0), ("-3", 0)])
+def test_retry_after_delay_is_bounded_by_the_caller(value, expected):
+    assert read_page.retry_after_seconds(value) == expected
+
+
+def test_rejected_later_redirect_clears_previously_valid_final_url():
+    page = PageRead(url=CHECK_URL, final_url=CHECK_URL, full_text="")
+    assert not asyncio.run(read_page._validate_final(page, "chrome-extension://blocked/page"))
+    assert page.final_url == "" and page.outcome == "extension_block"
+
+
+def test_persistent_403_challenge_preserves_status(monkeypatch):
+    monkeypatch.setattr(read_page, "BOT_CHECK_WAIT_S", 0)
+    class ChallengeClient(FakeClient):
+        async def call_tool(self, tool, arguments, **kwargs):
+            if tool == "browser_evaluate":
+                return _answer({"text": "check", "check": True, "status": 403, "url": CHECK_URL})
+            return await super().call_tool(tool, arguments, **kwargs)
+    page, _ = _read(ChallengeClient([]))
+    assert page.outcome == "challenge" and page.status == 403 and not page.full_text
+
+
+def test_retry_after_http_date_and_oversized_delay():
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    value = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=30))
+    assert 28 <= read_page.retry_after_seconds(value) <= 30
+    assert read_page.retry_after_seconds("9" * 128) > read_page.CALL_TIMEOUT_S
+
+
+def test_refused_initial_url_has_failure_outcome(monkeypatch):
+    from browser_use_server.urlcheck import UrlNotAllowed
+    def refuse(_):
+        raise UrlNotAllowed("refused fixture")
+    monkeypatch.setattr(read_page, "check_url", refuse)
+    page, _ = _read(FakeClient([]))
+    assert page.outcome == "transport_error" and not page.full_text
+
+
+def test_foreign_document_has_failure_outcome():
+    client = FakeClient([])
+    client.document = lambda: "none"
+    page, _ = _read(client)
+    assert page.outcome == "transport_error" and not page.full_text

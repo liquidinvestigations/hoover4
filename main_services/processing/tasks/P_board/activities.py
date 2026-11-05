@@ -741,20 +741,59 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
         seq = _next_seq(board.owner, session_id)
         text = render_brief(board, facts, boards.read_citations(board.board_id),
                             folded.hints, intent, collections, folded.explore_steps,
-                            boards.read_labels([board.board_id]), web)
+                            boards.read_labels([board.board_id]), web, folded.rejected)
         task = explore_task(intent, facts, folded, collections, web)
+        language = explore_language(board)
         _write_turn_rows(board.owner, session_id, seq, text, turn_uuid,
-                         json.dumps({"task": task}, ensure_ascii=False))
+                         json.dumps({"task": task, "language": language}, ensure_ascii=False))
+    else:
+        language = _opening_language(board, session_id, seq, turn_uuid)
     steps = folded.explore_steps
     run_input = AgentRunInput(
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
         allowed_collections=collections, llm_model="",  # empty: the agent model of hoover4.ini
         internet_tools=web, max_model_steps=int(steps), board_turn=True,
-        language=explore_language(board))
+        language=language)
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 
 
+
+
+def _opening_language(board, session_id: str, seq: int, turn_uuid: str) -> str:
+    """Recover opening language, including pinned legacy turns, before consulting settings."""
+    from database import agent_runs
+    from database.clickhouse import get_global_client, insert_durable
+    from tasks.P_agent.language import supported_code
+
+    with get_global_client() as client:
+        result = client.query(
+            "SELECT * FROM chat_messages FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND seq = {q:UInt32} AND message_uuid = {m:String} "
+            "AND role = 'user' LIMIT 1",
+            parameters={"u": board.owner, "s": session_id, "q": seq, "m": turn_uuid})
+        if not result.result_rows:
+            raise RuntimeError("The board opening row is unavailable.")
+        row = dict(zip(result.column_names, result.result_rows[0]))
+        usage = _usage(row)
+        language = supported_code(usage.get("language"))
+        if language:
+            return language
+        run_id = str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid))
+        run = agent_runs.read_run(board.owner, session_id, run_id)
+        if run is not None:
+            for message in agent_runs.read_messages(board.owner, session_id, run.thread_id):
+                control = (message.usage or {}).get("control") or {}
+                language = supported_code((control.get("assets") or {}).get("language"))
+                if language:
+                    break
+        language = language or explore_language(board)
+        usage["language"] = language
+        row["usage_json"] = json.dumps(usage, ensure_ascii=False)
+        from database import boards
+        row["updated_at"] = boards.now().replace(microsecond=0)
+        insert_durable(client, "chat_messages", [list(row.values())], column_names=list(row))
+        return language
 
 
 def explore_language(board) -> str:

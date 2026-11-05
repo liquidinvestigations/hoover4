@@ -94,11 +94,12 @@ def prepare_workspace_mutation(cmd: Command) -> Prepared:
                         found_version=receipt.version, replay=True)
     if store.session_deleted(cmd.username, cmd.session_id):
         return mutations.failure(cmd, "This conversation was deleted, so its files cannot change.", None)
+    committed = store.read_operation_version(cmd.username, cmd.session_id, cmd.operation_id)
+    if committed is not None:
+        return Prepared(ok=True, result=_committed_result(committed), name=committed.name,
+                        found_version=committed.version)
     head = (store.read_version(cmd.username, cmd.session_id, cmd.name)
             if not store.valid_name(cmd.name) else None)
-    if head is not None and cmd.operation_id and head.operation_id == cmd.operation_id:
-        return Prepared(ok=True, result=_committed_result(head), name=head.name,
-                        found_version=head.version)
     entries = reports.session_citation_entries(cmd.username, cmd.session_id)
     return mutations.prepare(cmd, head, entries)
 
