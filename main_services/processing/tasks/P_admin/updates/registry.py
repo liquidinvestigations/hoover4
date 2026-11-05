@@ -95,15 +95,24 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "are refused.",
         runs="Antivirus scan, then the search attribute of infected files"),
     UpdateStep(
-        step_id="tables", scope=SCOPE_DATASET, version=1, stages=("table",),
+        step_id="tables", scope=SCOPE_DATASET, version=2,
+        stages=("table", "entities", "regex", "embed", "index_text", "index_vectors"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Tables",
-        explanation="{files} files are JSON or JSON Lines files without a table of the current reader, or "
-                    "tables that an earlier reader cut at 300 columns. They are read again. JSON files "
-                    "that an earlier reader read as CSV get their JSON table, and the earlier cells stop "
-                    "being shown. The current reader stores a JSON null as an empty cell, and nested JSON "
-                    "as indented text.",
-        runs="Table reading, then the file type and indexing of these files"),
+        explanation="{files} files have earlier table readings or incomplete dependent output. Their stored results are updated.",
+        runs="Table reading, entities, signals, embedding, and both indexes"),
+    UpdateStep(
+        step_id="archive_members", scope=SCOPE_DATASET, version=1, stages=("archive",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Archive members",
+        explanation="{files} split archives need their current member list. Their members and search output are updated.",
+        runs="Archive extraction, member reconciliation, and dependent processing"),
+    UpdateStep(
+        step_id="image_previews", scope=SCOPE_DATASET, version=1, stages=("image_preview",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Image previews",
+        explanation="{files} uncommon images have no preview. Their previews are created again.",
+        runs="Image preview creation and verification"),
     UpdateStep(
         step_id="ocr", scope=SCOPE_DATASET, version=1,
         stages=("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf"),
@@ -114,7 +123,7 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "the text of the removed languages is deleted.",
         runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
     UpdateStep(
-        step_id="ocr_detection", scope=SCOPE_DATASET, version=1, stages=("ocr_detection",),
+        step_id="ocr_detection", scope=SCOPE_DATASET, version=2, stages=("ocr_detection",),
         automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
         title="OCR detection",
         explanation="{files} files have no detected text, script or language. Each image and each page "

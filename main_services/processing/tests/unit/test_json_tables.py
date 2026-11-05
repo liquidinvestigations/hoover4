@@ -102,7 +102,7 @@ def test_closing_the_stream_stops_the_process(tmp_path):
 
 
 @pytest.fixture
-def writes(monkeypatch):
+def writes(monkeypatch, table_generation_commands):
     rows = []
     def query(sql, **kwargs):
         # Aggregates return one row. The dedup lookup finds no earlier parse.

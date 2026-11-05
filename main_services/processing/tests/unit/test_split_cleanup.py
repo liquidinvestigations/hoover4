@@ -111,3 +111,23 @@ def test_ocr_variant_cleanup_routes_vector_table(monkeypatch):
     assert result["manticore_tables"] == 2
     assert {table for table, sql, _ in calls if sql == "COMMIT"} == {
         "sample_1_pages", "sample_1_vectors"}
+
+
+def test_table_sweep_retains_writers_without_retirement_proof(monkeypatch):
+    from tasks.P_admin import activities as admin
+    from tasks.P_admin.activities import CollectionDatabaseParams
+
+    @contextmanager
+    def collection(_name):
+        class Client:
+            def query(self, sql, parameters=None):
+                if sql == "SHOW TABLES":
+                    return _Rows([("table_generation_owners",)])
+                assert "state IN ('published', 'retired')" in sql
+                assert "INTERVAL" not in sql
+                return _Rows([])
+        yield Client()
+
+    monkeypatch.setattr(clickhouse, "get_collection_client", collection)
+    assert admin.sweep_orphan_table_cells(CollectionDatabaseParams("sample")) == (
+        "retirement verified for 0 generations")

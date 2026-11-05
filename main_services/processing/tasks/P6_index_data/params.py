@@ -12,6 +12,8 @@ class IndexDatasetPlanParams:
     vectors_only: bool = False
     #: The files to read. Empty reads every file of the plan, through `fetch_plan_hashes`.
     item_hashes: List[str] = field(default_factory=list)
+    fail_on_errors: bool = False
+
 
 @dataclass
 class PlanShardsParams:

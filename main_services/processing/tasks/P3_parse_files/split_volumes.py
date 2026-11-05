@@ -142,29 +142,40 @@ class VolumeSet:
     def has_siblings(self) -> bool:
         return len(self.volumes) > 1
 
+    def missing_count(self) -> int:
+        """Count missing indexes without expanding their intervals."""
+        orders = {v[0] for v in self.volumes}
+        first = 0 if self.scheme == RAR_OLD else 1
+        if self.scheme == ZIP_SPAN:
+            parts = {order for order in orders if order != 10 ** 6}
+            return max(parts, default=0) - len(parts) + int(10 ** 6 not in orders)
+        last = max(orders, default=first - 1)
+        return max(0, last - first + 1 - len({order for order in orders if order >= first}))
+
     def missing(self) -> List[str]:
-        """The names of the volumes that the indexes show as missing."""
-        orders = [v[0] for v in self.volumes]
+        """Return at most 20 missing volume names, using intervals between present indexes."""
+        orders = sorted({v[0] for v in self.volumes})
         sample = self.volumes[0][1] if self.volumes else ""
         missing: List[str] = []
-        if self.scheme in (NUMBERED, RAR_PART):
-            width = len(re.search(r"(\d+)(?:\.rar)?$", sample, re.IGNORECASE).group(1)) if sample else 3
-            last = max(orders) if orders else 1
-            for index in range(1, last + 1):
-                if index not in orders:
+        limit = 20
+        width = len(re.search(r"(\d+)(?:\.rar)?$", sample, re.IGNORECASE).group(1)) if sample and self.scheme in (NUMBERED, RAR_PART) else 3
+        first = 0 if self.scheme == RAR_OLD else 1
+        parts = [order for order in orders if not (self.scheme == ZIP_SPAN and order == 10 ** 6)]
+        previous = first - 1
+        for order in parts:
+            count = min(max(0, order - previous - 1), limit - len(missing))
+            for index in range(previous + 1, previous + 1 + count):
+                if self.scheme in (NUMBERED, RAR_PART):
                     missing.append(_volume_name(self, index, width))
-        elif self.scheme == RAR_OLD:
-            last = max(orders) if orders else 0
-            for order in range(0, last + 1):
-                if order not in orders:
-                    missing.append(f"{self.stem}.rar" if order == 0 else f"{self.stem}.r{order - 1:02d}")
-        elif self.scheme == ZIP_SPAN:
-            parts = [o for o in orders if o < 10 ** 6]
-            for index in range(1, (max(parts) if parts else 0) + 1):
-                if index not in parts:
+                elif self.scheme == RAR_OLD:
+                    missing.append(f"{self.stem}.rar" if index == 0 else f"{self.stem}.r{index - 1:02d}")
+                else:
                     missing.append(f"{self.stem}.z{index:02d}")
-            if 10 ** 6 not in orders:
-                missing.append(f"{self.stem}.zip")
+            previous = order
+            if len(missing) == limit:
+                break
+        if self.scheme == ZIP_SPAN and 10 ** 6 not in orders and len(missing) < limit:
+            missing.append(f"{self.stem}.zip")
         return missing
 
     def next_name(self) -> str:
@@ -181,6 +192,13 @@ class VolumeSet:
 
     def key(self) -> Tuple[str, ...]:
         return tuple(self.hashes)
+
+    def manifest_identity(self) -> str:
+        """Identify the ordered volume content and naming scheme."""
+        import hashlib
+        import json
+        value = json.dumps([self.scheme, self.hashes], separators=(",", ":"))
+        return hashlib.sha256(value.encode()).hexdigest()
 
 
 def _volume_name(volume_set: VolumeSet, index: int, width: int) -> str:

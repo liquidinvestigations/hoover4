@@ -159,6 +159,9 @@ EXPECTED_COLLECTION_TABLES = {
     "pdf_previews",
     "ocr_page_needs",
     "ocr_detection",
+    "processing_output_receipts",
+    "table_generation_owners",
+    "table_text_publication_ready",
     "pdf_ocr_parts",
     "pdf_parts_ready",
 }

@@ -7,7 +7,9 @@ with the functions that the disk scan runs, and then removes it. It starts no wo
 Only the scan of a folder removes that folder, after the scan. An earlier activity attempt
 can remove a folder before its result is recorded. The retry reads `vfs_files` and reports a
 recovered scan when that container already has stored members. A scan that fails leaves its
-folder on disk, and a rerun of the file extracts into the same folder again.
+folder on disk. A new extraction attempt uses another folder.
+Split archives reconcile removed members after the successful scan reaches storage.
+A durable receipt identifies each completed reconciliation attempt.
 """
 
 import logging
@@ -85,6 +87,13 @@ def scan_container_folders(params: ScanContainerFoldersParams) -> BatchResult:
         if not os.path.isdir(folder.out_dir):
             from database.clickhouse import get_collection_client
 
+            if folder.reconcile_members:
+                if archive_scan_receipt(params, folder):
+                    return {"status": "scanned", "recovered": "published reconciliation receipt"}
+                raise ApplicationError(
+                    "The archive scan has no complete reconciliation receipt",
+                    type=CONTAINER_FOLDER_MISSING, non_retryable=True)
+
             try:
                 with get_collection_client(params.collectionname) as client:
                     rows = client.query(
@@ -109,11 +118,45 @@ def scan_container_folders(params: ScanContainerFoldersParams) -> BatchResult:
                          folder.out_dir, folder.container_hash, params.op_id)
         from tasks.P3_parse_files.insert_batch import current_batch
 
-        current_batch().after_storage(
-            lambda: cleanup_temp_dir(CleanupTempDirParams(out_dir=folder.out_dir)))
+        def finish():
+            if folder.reconcile_members:
+                from tasks.P3_parse_files.parse_archives import _tombstone_absent_members
+                _tombstone_absent_members(params.collectionname, params.collection_dataset,
+                                          folder.container_hash, folder.out_dir)
+                archive_scan_receipt(params, folder, write=True)
+            cleanup_temp_dir(CleanupTempDirParams(out_dir=folder.out_dir))
+
+        current_batch().after_storage(finish)
         return {"status": "scanned"}
 
     return run_batch("scan_container_folders", params.folders,
                      key=lambda d: d.container_hash, size=lambda d: d.source_size_bytes,
                      step=scan_one, task_name="scan_folder_tree",
                      budget=member_scan_seconds)
+
+
+def archive_scan_receipt(params, folder, *, write=False) -> bool:
+    """Read or write the receipt of this exact extraction attempt."""
+    import hashlib
+    from database.clickhouse import get_collection_client, insert_durable
+    identity = hashlib.sha256(folder.out_dir.encode()).hexdigest()
+    fingerprint = "archive-reconciliation-1"
+    with get_collection_client(params.collectionname) as client:
+        if write:
+            rows = [[params.collection_dataset, folder.container_hash, "archive", identity,
+                     fingerprint, "reconcile", params.op_id]]
+            if folder.archive_manifest_identity:
+                from tasks.P_admin.updates.archive_members import contract
+                rows.append([params.collection_dataset, folder.container_hash, "archive_manifest",
+                             folder.archive_manifest_identity, contract(), "members_published", params.op_id])
+            insert_durable(client, "processing_output_receipts", rows,
+                           column_names=["collection_dataset", "file_hash", "output_kind", "output_identity",
+                                         "fingerprint", "stage", "op_id"])
+            return True
+        rows = client.query(
+            "SELECT count() FROM processing_output_receipts WHERE collection_dataset = {cd:String} "
+            "AND file_hash = {hash:String} AND output_kind = 'archive' AND output_identity = {identity:String} "
+            "AND fingerprint = {fingerprint:String} AND stage = 'reconcile'",
+            parameters={"cd": params.collection_dataset, "hash": folder.container_hash,
+                        "identity": identity, "fingerprint": fingerprint}).result_rows
+        return bool(rows and rows[0][0])

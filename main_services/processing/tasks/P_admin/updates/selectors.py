@@ -31,11 +31,9 @@ Selector contracts, one for each step:
 * `ocr_detection` selects, when the Tesseract service is configured, live images and live
   PDF sources with OCR pages that have no `ocr_detection` row of the current version.
   Settlement: the count is zero.
-* `tables` selects live files with a table manifest of an older reader version that is a
-  JSON candidate or that an earlier reader cut at the column limit, and live JSON
-  candidates without a manifest of the current version. A JSON candidate has a JSON MIME
-  type or a JSON file name in its stored detection. Settlement: the count is zero, which
-  includes files whose new parse found no table (an `empty` manifest).
+* `tables` selects earlier or failed table readings and missing JSON or delimited readings.
+  A current publication remains selected until every matching downstream receipt exists.
+  Settlement requires zero selected files.
 * `pdf_text` selects live files with a searchable PDF part of text layer version 1 of a
   current pair that the PDF builder can build. See `pdf_text_layer.py`. Settlement: the
   count is zero and no part that the step removed is without a new part.
@@ -379,22 +377,31 @@ def select_virus_scan(client, ctx: ScopeContext) -> Selection:
 def tables_hash_sql() -> Tuple[str, dict]:
     """The files that the `tables` step reads again, as a subquery with parameters."""
     from tasks.P3_parse_files.table_formats import (
-        JSON_EXTENSIONS, JSON_TABLE_MIMES, LIMIT_COLUMNS_PER_SHEET, READER_VERSION)
+        DELIMITED_EXTENSIONS, JSON_EXTENSIONS,
+        LIMIT_COLUMNS_PER_SHEET, READER_VERSION, TABLE_MIMES)
 
-    json_candidates = ("SELECT hash FROM file_types WHERE collection_dataset = {cd:String} "
+    table_candidates = ("SELECT hash FROM file_types WHERE collection_dataset = {cd:String} "
                        "AND (hasAny(mime_type, {tj_mimes:Array(String)}) "
                        "OR hasAny(extensions, {tj_exts:Array(String)}))")
+    from tasks.P_admin.updates.table_receipts import STAGES, contract
     sql = (
         "SELECT hash FROM ("
         "SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
-        "AND reader_version < {tj_version:UInt16} "
-        f"AND (hash IN ({json_candidates}) OR has(truncated_limits, {{tj_limit:String}})) "
-        f"UNION ALL SELECT hash FROM ({json_candidates}) WHERE hash NOT IN ("
+        "AND status IN ('ok', 'empty') AND (hash, toString(generation)) NOT IN ("
+        "SELECT file_hash, output_identity FROM processing_output_receipts "
+        "WHERE collection_dataset = {cd:String} AND output_kind = 'table' "
+        "AND fingerprint = {tr_contract:String} AND stage IN {tr_stages:Array(String)} "
+        "GROUP BY file_hash, output_identity HAVING uniqExact(stage) = {tr_count:UInt8}) "
+        "UNION ALL SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
+        "AND (reader_version < {tj_version:UInt16} OR status = 'failed') "
+        f"UNION ALL SELECT hash FROM ({table_candidates}) WHERE hash NOT IN ("
         "SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
-        "AND reader_version >= {tj_version:UInt16})"
+        "AND reader_version >= {tj_version:UInt16} AND status != 'failed')"
         f") WHERE hash IN ({_LIVE})")
-    return sql, {"tj_mimes": sorted(JSON_TABLE_MIMES), "tj_exts": sorted(JSON_EXTENSIONS),
-                 "tj_version": READER_VERSION, "tj_limit": LIMIT_COLUMNS_PER_SHEET}
+    return sql, {"tj_mimes": sorted(TABLE_MIMES),
+                 "tj_exts": sorted(JSON_EXTENSIONS | DELIMITED_EXTENSIONS),
+                 "tj_version": READER_VERSION, "tj_limit": LIMIT_COLUMNS_PER_SHEET,
+                 "tr_contract": contract(), "tr_stages": list(STAGES), "tr_count": len(STAGES)}
 
 
 def select_tables(client, ctx: ScopeContext) -> Selection:
@@ -463,6 +470,17 @@ def select_ocr_detection(client, ctx: ScopeContext) -> Selection:
     hash_sql, extra = detection_hash_sql()
     parameters = {"cd": ctx.scope_id, **extra}
     files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    from tasks.P_admin.updates.registry import fingerprint
+    step = STEPS_BY_ID["ocr_detection"]
+    target, _ = target_key(step, ctx)
+    applied = ctx.applied.get("ocr_detection", {}).get("applied_fingerprint")
+    if applied != fingerprint(step, target):
+        from tasks.P6_index_data.location_refresh import list_stale_location_hashes
+        stale, _, _ = list_stale_location_hashes(ctx.collectionname, ctx.scope_id)
+        if stale:
+            parameters["d_stale"] = stale
+            hash_sql = f"SELECT hash FROM ({hash_sql} UNION ALL SELECT arrayJoin({{d_stale:Array(String)}}) AS hash)"
+            files, size = _count(client, hash_sql, parameters, ctx.scope_id)
     return Selection(files, size, files, hash_sql if files else "", parameters, {"ocr_detection": "on"})
 
 
@@ -514,6 +532,10 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_unfinished(client, ctx)
     if step.step_id == "failed_files":
         return select_failed(client, ctx)
+    if step.step_id == "archive_members":
+        return select_archive_members(client, ctx)
+    if step.step_id == "image_previews":
+        return select_image_previews(client, ctx)
     if step.step_id == "ocr":
         return select_ocr(client, ctx, target)
     if step.step_id == "vectors":
@@ -548,3 +570,33 @@ def unique_files(client, selections: Sequence[Selection], collection_dataset: st
     if not parts:
         return 0, 0
     return _count(client, " UNION ALL ".join(parts), parameters, collection_dataset)
+
+
+def image_preview_hash_sql() -> Tuple[str, dict]:
+    """Select live uncommon images without a published preview, including earlier skips."""
+    sql = (
+        "SELECT DISTINCT hash FROM file_types WHERE collection_dataset = {cd:String} "
+        "AND arrayExists(mime -> startsWith(mime, 'image/'), mime_type) "
+        "AND hash NOT IN (SELECT hash FROM file_types WHERE collection_dataset = {cd:String} "
+        "AND hasAny(mime_type, {preview_direct:Array(String)})) "
+        "AND hash NOT IN (SELECT hash FROM image_previews WHERE collection_dataset = {cd:String}) "
+        f"AND hash IN ({_LIVE})")
+    return sql, {"preview_direct": ["image/jpeg", "image/png", "image/bmp", "image/webp", "image/x-ms-bmp"]}
+
+
+def select_image_previews(client, ctx: ScopeContext) -> Selection:
+    hash_sql, extra = image_preview_hash_sql()
+    parameters = {"cd": ctx.scope_id, **extra}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {})
+
+
+def select_archive_members(client, ctx: ScopeContext) -> Selection:
+    from tasks.P_admin.updates.archive_members import pending_archives
+    pending = pending_archives(client, ctx.scope_id)
+    if not pending:
+        return Selection()
+    sql = "SELECT arrayJoin({archive_hashes:Array(String)}) AS hash"
+    parameters = {"cd": ctx.scope_id, "archive_hashes": sorted(pending)}
+    files, size = _count(client, sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, sql, parameters, {})

@@ -107,6 +107,10 @@ class ExtractEntitiesForPlan:
             op_id=params.op_id,
         )
 
+        if params.fail_on_errors and failed_results:
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError("A required table dependency failed", non_retryable=True)
+
         log.info(f"[P4] Done: entity extraction for plan {params.collection_dataset} {params.plan_hash}")
         return f"extracted entities for {params.plan_hash}"
 
@@ -186,6 +190,10 @@ class ScanRegexEntitiesForPlan:
             item_hashes=failed_hashes,
             op_id=params.op_id,
         )
+
+        if params.fail_on_errors and failed_results:
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError("A required table dependency failed", non_retryable=True)
 
         log.info(f"[P4] Done: regex entity scan for plan {params.collection_dataset} {params.plan_hash}")
         return f"scanned regex entities for {params.plan_hash}"

@@ -255,6 +255,10 @@ class IndexDatasetPlan:
                 task_queue=PLANNER_TASK_QUEUE,
             )
 
+        if params.fail_on_errors and failed_results:
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError("A required table dependency failed", non_retryable=True)
+
         log.info(f"[P6] Done: Indexing dataset plan {params.collection_dataset} {params.plan_hash}")
         return f"indexed {params.plan_hash}"
 

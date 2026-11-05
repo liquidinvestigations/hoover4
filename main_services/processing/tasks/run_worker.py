@@ -351,6 +351,10 @@ async def run_common_worker():
         PurgeDataset,
         SweepChatArtifacts,
     )
+    from .P3_parse_files.table_generations import TableGenerationCommand
+    from .P3_parse_files.archive_reconciliation import reconcile_archive_descendants
+    from .P_admin.updates.archive_members import restore_archive_members, finish_archive_members
+    from .P_admin.updates.table_receipts import record_table_update_receipts
     from .P_admin.updates.activities import (
         apply_search_schema,
         begin_update_step,
@@ -359,6 +363,8 @@ async def run_common_worker():
         list_update_vector_plans,
         list_update_table_plans,
         reparse_update_tables,
+        restore_missing_image_previews,
+        prepare_table_update,
         list_update_virus_plans,
         list_update_detection_plans,
         obsolete_ocr_variants,
@@ -376,6 +382,8 @@ async def run_common_worker():
         RunProcessingUpdate,
         UpdateDatasetVectors,
         UpdateDatasetTables,
+        UpdateDatasetImagePreviews,
+        UpdateDatasetArchiveMembers,
         UpdateDatasetVirusScan,
         UpdateDatasetOcrDetection,
     )
@@ -478,6 +486,9 @@ async def run_common_worker():
             RunProcessingUpdate,
             UpdateDatasetVectors,
             UpdateDatasetTables,
+            UpdateDatasetImagePreviews,
+            UpdateDatasetArchiveMembers,
+            TableGenerationCommand,
             UpdateDatasetVirusScan,
             UpdateDatasetOcrDetection,
           ],
@@ -530,6 +541,7 @@ async def run_common_worker():
             pdf_ocr_finalize_cursor,
             video_batch,
             scan_container_folders,
+            reconcile_archive_descendants,
 
             # Regex entity scanning: CPU work in another container, so it pipelines
             # HTTP here and belongs on the common queue rather than on the NLP tier's.
@@ -591,6 +603,11 @@ async def run_common_worker():
             list_update_vector_plans,
             list_update_table_plans,
             reparse_update_tables,
+            restore_missing_image_previews,
+            restore_archive_members,
+            finish_archive_members,
+            prepare_table_update,
+            record_table_update_receipts,
             list_update_virus_plans,
             list_update_detection_plans,
             scan_pdf_text_layers,
@@ -841,6 +858,7 @@ async def run_index_planner_worker():
   # planner activities for the same collection would corrupt it. The dedicated
   # queue plus max_concurrent_activities=1 is the whole concurrency story.
   from .P6_index_data.shard_planner import finalize_index_batch, plan_shards, record_indexed
+  from .P3_parse_files.table_generations import apply_table_generation_command
   from .visibility import ensure_search_attributes
   log.info("Starting Index planner worker...")
   client = await Client.connect("temporal:7233")
@@ -855,7 +873,7 @@ async def run_index_planner_worker():
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
-      activities=[plan_shards, finalize_index_batch, record_indexed],
+      activities=[plan_shards, finalize_index_batch, record_indexed, apply_table_generation_command],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

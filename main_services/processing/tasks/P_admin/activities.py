@@ -200,8 +200,7 @@ def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
     return "ok"
 
 
-#: Cell batches one sweep pass releases. Bounded so a purge of a large dataset does not
-#: turn into a single unbounded DELETE over the whole cell table.
+#: Generations that one sweep query selects before retirement authorization.
 SWEEP_ORPHAN_HASH_BATCH = 1000
 
 #: Passes one sweep runs before it stops and leaves the rest to the next one.
@@ -211,103 +210,34 @@ SWEEP_ORPHAN_MAX_BATCHES = 100
 @activity.defn
 @with_heartbeat
 def sweep_orphan_table_cells(params: CollectionDatabaseParams) -> str:
-    """Release cells no dataset claims any more.
-
-    `table_cells` is keyed by hash alone so one parse serves every dataset in the
-    collection that holds the same file. The price is that `purge_dataset_from_clickhouse`
-    cannot see the table at all -- it enumerates tables by their `collection_dataset`
-    column -- so a purged dataset leaves its cells behind unless something looks for them.
-    That something is this.
-
-    It refuses to run against an empty manifest, and says so. An authority table with no
-    rows is a symptom -- a migration that has not applied, a collection whose datasets
-    were all purged in the same breath, a query that failed -- and never a licence to
-    delete every cell in the collection.
-
-    `parsing` counts as a claim, so a sweep cannot race an in-flight parse. A `parsing`
-    row that has outlived any plausible parse is tombstoned to `failed` first, which is
-    what releases a genuinely abandoned parse's cells on the following pass.
-    """
+    """Retire completed unreferenced generations through the publication coordinator."""
     from database.clickhouse import get_collection_client
-
+    from tasks.P3_parse_files.table_generations import GenerationCommand, delete_retired_generation, send_command
     with get_collection_client(params.collectionname) as client:
         tables = {row[0] for row in client.query("SHOW TABLES").result_rows}
-        if not {"table_cells", "table_documents"} <= tables:
-            log.info("[P_admin] %s has no table storage, nothing to sweep",
-                     params.collectionname)
-            return "ok"
-
-        client.command("""
-            ALTER TABLE table_documents UPDATE status = 'failed',
-                parse_error = 'abandoned parse, no cells claimed'
-            WHERE status = 'parsing' AND updated_at < now() - INTERVAL 1 DAY
-        """)
-
-        claimed = client.query(
-            "SELECT count() FROM table_documents FINAL WHERE status = 'ok'"
-        ).result_rows[0][0]
-        if not claimed:
-            log.warning(
-                "[P_admin] %s: table_documents holds no completed parse, refusing to "
-                "sweep table_cells -- an empty authority table is a symptom, not a "
-                "licence to delete every cell in the collection",
-                params.collectionname,
-            )
-            return "refused: empty manifest"
-
-        released = 0
-        for _ in range(SWEEP_ORPHAN_MAX_BATCHES):
-            orphans = [row[0] for row in client.query("""
-                SELECT DISTINCT file_hash FROM table_cells
-                WHERE file_hash NOT IN (
-                    SELECT hash FROM table_documents FINAL
-                    WHERE status IN ('ok', 'parsing')
-                )
-                LIMIT {n:UInt32}
-            """, parameters={"n": SWEEP_ORPHAN_HASH_BATCH}).result_rows]
-            if not orphans:
-                break
-            client.command(
-                "DELETE FROM table_cells WHERE file_hash IN {hashes:Array(String)}",
-                parameters={"hashes": orphans},
-            )
-            released += len(orphans)
-
-        # A newer parse leaves its earlier generations behind. A generation that no
-        # manifest names and that is older than a named one has no reader. A generation
-        # above every named one can belong to a parse in progress, so it stays.
-        generations = 0
-        for _ in range(SWEEP_ORPHAN_MAX_BATCHES):
-            stale = [(row[0], int(row[1])) for row in client.query("""
-                SELECT c.file_hash, c.generation
-                FROM (SELECT DISTINCT file_hash, generation FROM table_cells) AS c
-                INNER JOIN (
-                    SELECT hash, groupUniqArray(generation) AS named, max(generation) AS top
-                    FROM table_documents FINAL WHERE status IN ('ok', 'parsing') GROUP BY hash
-                ) AS d ON d.hash = c.file_hash
-                WHERE c.generation < d.top AND NOT has(d.named, c.generation)
-                LIMIT {n:UInt32}
-            """, parameters={"n": SWEEP_ORPHAN_HASH_BATCH}).result_rows]
-            if not stale:
-                break
-            client.command(
-                "DELETE FROM table_cells WHERE (file_hash, generation) IN {pairs:Array(Tuple(String, UInt32))}",
-                parameters={"pairs": stale},
-            )
-            generations += len(stale)
-        for table in ("table_sheets", "table_columns"):
-            client.command(f"""
-                DELETE FROM {table} WHERE (collection_dataset, hash, generation) IN (
-                    SELECT s.collection_dataset, s.hash, s.generation FROM {table} AS s
-                    INNER JOIN (SELECT collection_dataset, hash, generation FROM table_documents FINAL
-                                WHERE status = 'ok') AS d
-                    ON d.collection_dataset = s.collection_dataset AND d.hash = s.hash
-                    WHERE s.generation < d.generation)
-            """)
-
-    log.info("[P_admin] %s: released the cells of %d unclaimed table document(s) and %d "
-             "earlier generation(s)", params.collectionname, released, generations)
-    return f"released {released}, generations {generations}"
+        if "table_generation_owners" not in tables:
+            return "retained: generation ownership is unavailable"
+    retired = 0
+    for _ in range(SWEEP_ORPHAN_MAX_BATCHES):
+        with get_collection_client(params.collectionname) as client:
+            rows = client.query(
+                "SELECT file_hash, generation FROM table_generation_owners FINAL "
+                "WHERE state IN ('published', 'retired') AND (file_hash, generation) NOT IN ("
+                "SELECT hash, generation FROM table_documents FINAL WHERE status = 'ok') "
+                "AND (file_hash, toString(generation)) NOT IN (SELECT file_hash, output_identity "
+                "FROM processing_output_receipts WHERE output_kind = 'table_generation' AND stage = 'deleted') "
+                "LIMIT {limit:UInt32}", parameters={"limit": SWEEP_ORPHAN_HASH_BATCH}).result_rows
+        if not rows:
+            break
+        for file_hash, generation in rows:
+            authorized = send_command(GenerationCommand(params.collectionname, file_hash, "retire", generation=int(generation)))
+            if authorized == int(generation):
+                with get_collection_client(params.collectionname) as client:
+                    delete_retired_generation(client, file_hash, int(generation))
+                retired += 1
+        if len(rows) < SWEEP_ORPHAN_HASH_BATCH:
+            break
+    return f"retirement verified for {retired} generations"
 
 
 @activity.defn

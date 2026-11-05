@@ -1360,6 +1360,8 @@ def build_email_graph(params: BuildEmailGraphParams) -> str:
                    date_sent_known
             FROM email_headers FINAL
             WHERE collection_dataset = {cd:String}
+            AND email_hash IN (SELECT hash FROM vfs_files FINAL
+                               WHERE collection_dataset = {cd:String} AND is_deleted = 0)
         """, {"cd": collection_dataset}).to_pylist()
         # `toString(role)`: an Enum8 read through arrow arrives as its ORDINAL, and
         # comparing that to 'from' is false for every row without raising. That is the
@@ -1420,6 +1422,8 @@ def build_email_graph(params: BuildEmailGraphParams) -> str:
             SELECT collection_dataset, email_hash, message_id, subject_norm, subject_prefix,
                    toInt64(date_sent) AS date_sent, date_sent_known, from_address, participants
             FROM email_identity FINAL
+            WHERE (collection_dataset, email_hash) IN (
+                SELECT collection_dataset, hash FROM vfs_files FINAL WHERE is_deleted = 0)
         """).to_pylist()
         containment_rows = client.query_arrow("""
             SELECT collection_dataset, container_hash, hash FROM vfs_files FINAL
@@ -1814,6 +1818,10 @@ def index_vectors(params: IndexShardParams) -> list[str]:
     if not rows:
         # Embeddings disabled, or P5 found nothing to chunk: both are normal, and
         # search has no vector half for these documents.
+        if shard_knn_dims(vectors_table) is not None:
+            with get_manticore_client(VECTORS) as client:
+                _delete_obsolete_index_pages(client, vectors_table, collection_dataset, item_hashes, set())
+                client.commit()
         return []
 
     serving_model = get_server_setting("embeddings_serving_model")
@@ -1949,6 +1957,10 @@ def index_vectors(params: IndexShardParams) -> list[str]:
                 f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} vectors into {vectors_table}"
             )
             client.commit()
+        expected_ids = {vectors_row_id(collection_dataset, row['file_hash'], row['extracted_by'],
+                                       int(row['page_id']), int(row['chunk_index']), row['embedding_model'])
+                        for row in kept}
+        _delete_obsolete_index_pages(client, vectors_table, collection_dataset, item_hashes, expected_ids)
         client.commit()
     return sorted({row['file_hash'] for row in kept})
 

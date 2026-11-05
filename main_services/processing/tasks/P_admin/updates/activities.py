@@ -419,6 +419,12 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             return (selection.count == 0 and not stale,
                     f"{selection.count} files have no antivirus verdict, and {len(stale)} infected files "
                     "have search rows without their search attribute.")
+        if step_id == "archive_members":
+            selection = selectors.select_archive_members(client, ctx)
+            return selection.count == 0, f"{selection.count} archives still have no complete member receipt."
+        if step_id == "image_previews":
+            selection = selectors.select_image_previews(client, ctx)
+            return selection.count == 0, f"{selection.count} files still have no image preview."
         if step_id == "tables":
             selection = selectors.select_tables(client, ctx)
             return selection.count == 0, f"{selection.count} files still have an earlier table reading."
@@ -608,7 +614,8 @@ def reparse_update_tables(params: TablePlanParams) -> List[str]:
     from tasks.P3_parse_files.batch_runner import try_budget_seconds
     from tasks.P3_parse_files.file_names import bounded_file_names
     from tasks.P3_parse_files.parse_table import ParseTableParams, parse_table_and_store
-    from tasks.P3_parse_files.table_formats import MARKUP_TABLE_READERS
+    from tasks.P3_parse_files.table_formats import MARKUP_TABLE_READERS, READER_VERSION
+    from tasks.P_admin.updates.table_receipts import TableReceiptParams, prepare_table_text
 
     hash_sql, extra = selectors.tables_hash_sql()
     with get_collection_client(params.collectionname) as client:
@@ -640,17 +647,58 @@ def reparse_update_tables(params: TablePlanParams) -> List[str]:
         for file_hash, size, _, names, mimes, encodings, sniff, file_mime in rows:
             clock.beat(f"table {file_hash}")
             authoritative = next((m for m in (sniff or []) if m in MARKUP_TABLE_READERS), "")
-            parse_table_and_store(ParseTableParams(
+            with get_collection_client(params.collectionname) as client:
+                published = client.query(
+                    "SELECT status, generation FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
+                    "AND hash = {hash:String} AND reader_version = {version:UInt16} "
+                    "AND status IN ('ok', 'empty') LIMIT 1",
+                    parameters={"cd": params.collection_dataset, "hash": file_hash,
+                                "version": READER_VERSION}).result_rows
+            from tasks.P3_parse_files.table_generations import complete_column_coverage
+            with get_collection_client(params.collectionname) as client:
+                complete = bool(published) and (published[0][0] == "empty" or complete_column_coverage(
+                    client, params.collection_dataset, file_hash, int(published[0][1])))
+                if complete:
+                    from tasks.P3_parse_files.table_text import complete_table_text
+                    complete = complete_table_text(client, params.collection_dataset, file_hash, int(published[0][1]))
+            if complete:
+                read.append(file_hash)
+                continue
+            outcome = parse_table_and_store(ParseTableParams(
                 collectionname=params.collectionname, collection_dataset=params.collection_dataset,
                 file_hash=file_hash, file_path=os.path.join(out_dir, file_hash),
                 timeout_seconds=try_budget_seconds("parse_table_batch", int(size or 0)),
                 mime_types=list(mimes or []), mime_encodings=list(encodings or []),
                 op_id=params.op_id, file_names=bounded_file_names(list(names or [])),
                 sniff_mime_type=authoritative, file_mime_type=file_mime or ""))
+            if isinstance(outcome, dict) and outcome.get("status") == "failed":
+                raise RuntimeError(f"Table parsing failed for {file_hash}: {outcome.get('error', '')}")
             read.append(file_hash)
+        with get_collection_client(params.collectionname) as client:
+            prepare_table_text(client, TableReceiptParams(params.collectionname, params.collection_dataset,
+                                                         params.op_id, read))
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
     return read
+
+
+@activity.defn
+@with_heartbeat
+def prepare_table_update(params: TablePlanParams) -> Dict[str, int]:
+    """Read tables and return the exact published generation for each selected file."""
+    from database.clickhouse import get_collection_client
+    hashes = reparse_update_tables(params)
+    if not hashes:
+        return {}
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT hash, generation FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
+            "AND hash IN {hashes:Array(String)} AND status IN ('ok', 'empty')",
+            parameters={"cd": params.collection_dataset, "hashes": hashes}).result_rows
+    generations = {file_hash: int(generation) for file_hash, generation in rows}
+    if set(generations) != set(hashes):
+        raise RuntimeError("A table update has no published generation")
+    return generations
 
 
 @activity.defn
@@ -862,3 +910,40 @@ def retire_cached_searches(params: TablePlansParams) -> None:
     from tasks.llm_catalog import set_server_setting
 
     set_server_setting("cache_epoch", f"virus-{params.collection_dataset}-{_time.time_ns()}")
+
+
+@activity.defn
+@with_heartbeat
+def restore_missing_image_previews(params: TablePlansParams) -> int:
+    """Publish and read at most 100 missing uncommon-image previews."""
+    import tempfile
+    from database.clickhouse import get_collection_client
+    from tasks.P2_execute_plan.activities import write_blob_files
+    from tasks.P3_parse_files.batch_runner import try_budget_seconds
+    from tasks.P3_parse_files.image_preview import ImagePreviewParams, make_image_preview, read_preview_bytes
+
+    hash_sql, extra = selectors.image_preview_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT h.hash, any(b.blob_size_bytes), any(b.s3_path), groupUniqArrayArray(t.mime_type) "
+            f"FROM (SELECT hash FROM ({hash_sql}) LIMIT 100) AS h "
+            "INNER JOIN blobs AS b ON b.blob_hash = h.hash AND b.collection_dataset = {cd:String} "
+            "LEFT JOIN file_types AS t ON t.hash = h.hash AND t.collection_dataset = {cd:String} "
+            "GROUP BY h.hash",
+            parameters={"cd": params.collection_dataset, **extra}).result_rows
+        clock = HeartbeatClock()
+        with tempfile.TemporaryDirectory(prefix="hoover4-preview-update-") as folder:
+            for file_hash, size, s3_path, mimes in rows:
+                clock.beat(f"preview {file_hash}")
+                path = os.path.join(folder, file_hash)
+                write_blob_files(params.collectionname, params.collection_dataset, [
+                    {"item_hash": file_hash, "file_size_bytes": int(size or 0), "s3_url": s3_path or "", "path": path}],
+                    context=f"{params.collection_dataset} missing image preview")
+                make_image_preview(ImagePreviewParams(
+                    params.collectionname, params.collection_dataset, file_hash, path,
+                    list(mimes or []), ["image"],
+                    try_budget_seconds("make_image_preview_batch", int(size or 0))))
+                if not read_preview_bytes(client, params.collection_dataset, file_hash):
+                    raise RuntimeError(f"The image preview remains unavailable for {file_hash}")
+                os.remove(path)
+    return len(rows)

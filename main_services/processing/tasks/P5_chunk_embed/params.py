@@ -12,6 +12,7 @@ class ChunkEmbedForPlanParams:
     op_id: str = ""
     #: The files to read. Empty reads every file of the plan, through `fetch_plan_hashes`.
     item_hashes: List[str] = field(default_factory=list)
+    fail_on_errors: bool = False
 
 
 @dataclass

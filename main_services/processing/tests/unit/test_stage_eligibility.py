@@ -34,6 +34,9 @@ def test_ocr_stages_need_an_endpoint_and_languages(monkeypatch):
 
 
 def test_embeddings_stages_follow_the_endpoint(monkeypatch):
+    import tasks.dataset_config as dataset_config
+    monkeypatch.setattr(dataset_config, "get_dataset_settings", lambda _key: {})
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
     monkeypatch.delenv("EMBEDDINGS_URL", raising=False)
     assert stage_eligibility.stage_is_off("P5_ChunkEmbed", "dataset")
     assert stage_eligibility.stage_is_off("P6_IndexVectors", "dataset")

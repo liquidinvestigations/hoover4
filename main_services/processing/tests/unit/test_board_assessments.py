@@ -75,6 +75,7 @@ def test_a_reason_with_a_reply_sends_one_request(monkeypatch):
 
 
 def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
+    monkeypatch.setenv("LLM_QUALITY_BASE_URL", "http://quality.invalid")
     store = _patch(monkeypatch)
     reply = '{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}'
     monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply(reply))

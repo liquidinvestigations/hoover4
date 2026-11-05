@@ -53,6 +53,7 @@ def config(monkeypatch):
         return {key: dataset_config.SettingRow(value, False, version, precise)
                 for key, (value, version, precise) in state["rows"].items() if key in keys}
 
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
     monkeypatch.setattr(dataset_config, "latest_setting_rows", rows)
     return state
 
@@ -390,6 +391,7 @@ def test_the_targets_read_the_latest_row_and_not_the_cache(monkeypatch, config):
 
 def test_a_deleted_or_absent_setting_gives_the_default_and_its_version(monkeypatch):
     rows = {"ocr.tesseract.languages": dataset_config.SettingRow("ron", True, 5, False)}
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
     monkeypatch.setattr(dataset_config, "latest_setting_rows", lambda _cd, keys: rows)
     settings = ocr_targets.language_settings(CD)
     assert settings["tesseract"] == ocr_targets.LanguageSetting(

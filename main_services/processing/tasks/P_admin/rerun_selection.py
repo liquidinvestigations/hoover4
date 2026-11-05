@@ -43,6 +43,7 @@ def recovery_activity(task_name: str) -> str | None:
         "detector_error_tika": "run_tika_and_store",
         "parse_error_tika": "run_tika_and_store",
         "tika_text_batch": "run_tika_and_store",
+        "archive_scan": "scan_folder_tree",
         "extract_plaintext_chunks": "extract_plaintext_chunks",
         "parse_office_xml_and_store": "parse_office_xml_and_store",
         "parse_table_and_store": "parse_table_and_store",
@@ -72,6 +73,8 @@ def recovery_activity(task_name: str) -> str | None:
 def recovery_activities(task_name: str) -> tuple[str, ...]:
     """Accept the activity generations that can prove recovery for one Error name."""
     primary = recovery_activity(task_name)
+    if task_name == "archive_scan":
+        return ("scan_folder_tree", "extract_archive_to_temp")
     if task_name == "pdf_process":
         return ("pdf_prepare", "pdf_get_metadata_and_store")
     if task_name == "P6_IndexTextPages":

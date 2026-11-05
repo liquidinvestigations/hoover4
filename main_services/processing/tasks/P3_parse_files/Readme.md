@@ -421,18 +421,38 @@ and agent read filters `table_cells`, `table_sheets` and `table_columns` to the 
 of the manifest. An interrupted parse thus shows no mix of two parses. Old cells inside the
 bounds of a new table stay invisible, and so do removed sheets and removed columns.
 
-A dataset without a published table gets a `parsing` manifest before the first cell batch
-of a large table, as before. A dataset with a published table keeps that table readable
-until the new parse publishes. A parse that finds no table writes an `empty` manifest.
-That row hides the earlier table of the dataset and records valid output, so the update
-step does not select the file again. A failed read writes a `failed` manifest of the new
-generation.
+A dataset keeps its published table readable while another attempt parses the same content.
+A successful empty parse publishes an `empty` manifest.
+A failed parse preserves an existing published table and remains eligible for retry.
 
-The generation belongs to the hash, because the cells are shared by every dataset of the
-collection that holds the hash. Another dataset keeps reading its own manifest generation.
-The dedup copy (`_copy_structure`) moves it to the new generation: the sheets and columns of
-the generation land first, and the manifest last. `sweep_orphan_table_cells` removes the
-cells, sheets and columns of each generation that no manifest names.
+[Generation commands](table_generations.py) allocate each attempt a distinct generation before its first cell write.
+The commands use the existing planner queue with one consumer.
+Cell parsing remains concurrent.
+Publication waits for buffered writes and verifies stored cells, sheets, and prepared column metadata before replacing the manifest.
+SQLite publication also verifies the complete stored text digest and page count.
+A publication cannot replace a newer generation of the same dataset.
+
+The sweeper uses the same command protocol to retire published generations without live manifest references.
+It deletes cells and structure only after retirement.
+Writing generations do not expire.
+Legacy generations without ownership records remain stored until writer inactivity can be verified.
+Drain old table writers before enabling the new command protocol.
+
+Table updates retain separate receipts for parsing, text, entities, signals, embedding, and both indexes.
+Each receipt names the source hash, published generation, and update fingerprint.
+The update resumes from a current parse when downstream work fails.
+Failed parses and missing receipts remain selectable.
+Older delimited readings receive the current header interpretation.
+
+Split archive updates compare stable ordered volume identities with complete reconciliation receipts.
+They queue removed roots after successful member publication.
+Descendant cleanup waits until recursive discovery completes and preserves references from later nested scans.
+Another reachable occurrence preserves its content and descendants.
+Historical archive errors retain the baseline retry policy.
+
+The missing-preview update selects uncommon images even when earlier converter failures were stored as skips.
+It verifies the published preview through the object reader.
+Settled OCR output remains unchanged.
 
 ### JSON and JSON Lines become tables.
 
@@ -535,9 +555,10 @@ to `POST /detect` of `hoover4-tesseract-cpu`. A PDF source sends up to 100 evenl
 rendered at 200 dpi in the worker. The worker sets the language from the script model or with
 `lid.176` on the sample: at least 20 letters and a score of 0.5, otherwise `und`.
 
-Each image and page takes one `ocr_detection` row. An image that the service cannot read, a page
-that cannot be rendered and an image under the OCR size gate store a row without text, so the
-update step does not select them again. The stage selects no OCR language and no OCR pass.
+Each successful image or page detection stores one `ocr_detection` row.
+An image under the OCR size gate stores a row without text.
+A PDF render failure raises a retryable error before detection rows are stored.
+The update step selects earlier detection versions and files without current output. The stage selects no OCR language and no OCR pass.
 A box without the Tesseract service skips the stage. `index_text_pages` writes each value of a
 document with text to `ocr_script` and `ocr_language`. The group workflow uses the patch
 `ocr-detection`.

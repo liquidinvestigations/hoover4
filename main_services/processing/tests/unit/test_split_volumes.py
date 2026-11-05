@@ -68,3 +68,18 @@ def test_unsafe_names_are_refused():
         with pytest.raises(ValueError):
             safe_volume_name(bad)
     assert safe_volume_name("x.7z.001") == "x.7z.001"
+
+
+@pytest.mark.parametrize("names", [
+    ("log.20260101", "log.20260102"),
+    ("x.001", "x.999999999999999999999999999999"),
+    ("x.part1.rar", "x.part999999999999999999999999.rar"),
+    ("x.rar", "x.r999999999999999999999999"),
+    ("x.z01", "x.z999999999999999999999999"),
+])
+def test_missing_names_are_bounded_for_extreme_suffixes(names):
+    volume_set = group_volume_sets(rows(*names), "ds")[0]
+    missing = volume_set.missing()
+    assert volume_set.missing_count() >= 20
+    assert len(missing) == 20
+    assert len("".join(missing)) < 2000

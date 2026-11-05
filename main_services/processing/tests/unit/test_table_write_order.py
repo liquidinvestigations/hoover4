@@ -14,7 +14,7 @@ def cell(row, column, text):
 
 
 @pytest.fixture
-def writes(monkeypatch, tmp_path):
+def writes(monkeypatch, tmp_path, table_generation_commands):
     rows = []
     client = SimpleNamespace(query=lambda *a, **k: SimpleNamespace(result_rows=[]),
                              command=lambda *a, **k: pytest.fail("Table parsing issued a delete"))

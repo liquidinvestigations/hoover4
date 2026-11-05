@@ -5,11 +5,10 @@ changes search filters and the document metadata, and leaves OCR text as it is.
 
 An image takes one row. A PDF source takes one row for each page that `ocr_page_needs`
 selected, up to `MAX_DETECTED_PAGES` evenly spaced pages, which bounds one try of one file.
-Each result is a decision: an image that the service cannot read, a page that cannot be
-rendered, and an image under the OCR size gate store a row without text.
+An image under the OCR size gate stores a row without text.
+A PDF render failure raises an error before any detection rows are stored.
+The update step selects files without the current detection version.
 
-A failed file is not a processing error. The `ocr_detection` update step selects each file
-without a row of the current version, as the antivirus step does.
 """
 
 import logging
@@ -32,7 +31,7 @@ from tasks.text_sources import ENGINE_TESSERACT, MIN_OCR_IMAGE_PX
 log = logging.getLogger(__name__)
 
 #: The logical version of the stage output. `STAGE_VERSIONS["ocr_detection"]` reads it.
-OCR_DETECTION_VERSION = 1
+OCR_DETECTION_VERSION = 2
 #: The workflow patch that runs the stage in a new group.
 OCR_DETECTION_PATCH = "ocr-detection"
 #: The largest number of pages that one PDF source sends.
@@ -82,7 +81,7 @@ def image_rows(collection_dataset: str, file_hash: str, image_bytes: bytes) -> L
 
 
 def render_page(path: str, page: int) -> Optional[bytes]:
-    """One JPEG page, or `None` when pdftoppm cannot render it."""
+    """Render one JPEG page. Raise a retryable error when rendering fails."""
     with tempfile.TemporaryDirectory(prefix="hoover4-ocr-detection-") as folder:
         out = os.path.join(folder, "page")
         try:
@@ -92,10 +91,10 @@ def render_page(path: str, page: int) -> Optional[bytes]:
                 capture_output=True, timeout=RENDER_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             log.warning("[P3] page %d render timed out for OCR detection: %s", page, path)
-            return None
+            raise RuntimeError(f"OCR detection render timed out for page {page}")
         if result.returncode != 0 or not os.path.exists(out + ".jpg"):
             log.warning("[P3] page %d render failed for OCR detection: %s", page, path)
-            return None
+            raise RuntimeError(f"OCR detection render failed for page {page}")
         with open(out + ".jpg", "rb") as handle:
             return handle.read()
 
@@ -105,7 +104,9 @@ def pdf_rows(collection_dataset: str, file_hash: str, kind: str, path: str, page
     rows = []
     for page in spaced_pages(pages):
         rendered = render_page(path, page)
-        rows.append(_row(collection_dataset, file_hash, kind, page, detect_text(rendered) if rendered else None))
+        if not rendered:
+            raise RuntimeError(f"OCR detection render returned no image for page {page}")
+        rows.append(_row(collection_dataset, file_hash, kind, page, detect_text(rendered)))
     return rows
 
 

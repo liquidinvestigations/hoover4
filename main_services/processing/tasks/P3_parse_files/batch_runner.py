@@ -200,6 +200,8 @@ class ContainerFolder:
     error_task_name: str
     source_size_bytes: int = 0
     member_count: int = 0   # files the extraction wrote into out_dir, all levels
+    reconcile_members: bool = False
+    archive_manifest_identity: str = ""
 
 
 @dataclass

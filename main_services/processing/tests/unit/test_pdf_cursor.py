@@ -31,6 +31,9 @@ def source_store(monkeypatch):
     setting = SimpleNamespace(value="eng", version=SettingVersion(17, True))
     monkeypatch.setattr(ocr_targets, "language_settings", lambda _dataset: {"tesseract": setting})
     monkeypatch.setattr(clickhouse, "get_collection_client", db.client)
+    import tasks.dataset_config as dataset_config
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
+    monkeypatch.setattr(dataset_config, "latest_setting_rows", lambda *_args: {})
     return db, setting
 
 
@@ -340,6 +343,9 @@ def test_descriptor_activity_pages_targets_without_repeating_recovery(monkeypatc
     for number in range(250):
         db.add_image(f"i{number:03d}")
     monkeypatch.setattr(clickhouse, "get_collection_client", db.client)
+    import tasks.dataset_config as dataset_config
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
+    monkeypatch.setattr(dataset_config, "latest_setting_rows", lambda *_args: {})
     monkeypatch.setattr(ocr_client, "engine_configured", lambda engine: engine == "tesseract")
     monkeypatch.setattr(ocr_pdf_client, "service_configured", lambda: True)
     monkeypatch.setattr(ocr_pdf_client, "engines_for_provider", lambda: ["tesseract"])
@@ -374,6 +380,9 @@ def test_identity_change_propagates_without_document_errors_and_fresh_targets_re
     db = Store()
     db.add_pdf("doc")
     monkeypatch.setattr(clickhouse, "get_collection_client", db.client)
+    import tasks.dataset_config as dataset_config
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
+    monkeypatch.setattr(dataset_config, "latest_setting_rows", lambda *_args: {})
     monkeypatch.setattr(dataset_config, "latest_setting_rows", lambda *_args:
                         {"ocr.tesseract.languages": dataset_config.SettingRow("eng", False, 17, True)})
     monkeypatch.setattr(ocr_client, "engine_configured", lambda engine: engine == "tesseract")

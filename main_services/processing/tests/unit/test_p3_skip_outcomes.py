@@ -251,3 +251,8 @@ def test_table_skip_writer_uses_op_id(monkeypatch):
     row = writes[0].errors[0]
     assert row["task_name"] == "parse_table_and_store"
     assert row["op_id"] == "operation-4"
+
+
+@pytest.fixture(autouse=True)
+def _table_commands(table_generation_commands):
+    yield

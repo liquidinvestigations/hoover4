@@ -36,10 +36,12 @@ class _Cursor:
     def __init__(self):
         self.statement = ""
 
-    def execute(self, statement):
+    def execute(self, statement, params=None):
         self.statement = statement
 
     def fetchall(self):
+        if self.statement.startswith("SELECT id, file_hash"):
+            return []
         if self.statement == "SHOW TABLES":
             return [("testdata_1_vectors",)]
         return [("indexed_documents", "10000000")]

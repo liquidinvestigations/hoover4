@@ -34,9 +34,9 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     import shutil
     import subprocess
     from tasks.P3_parse_files.result_samples import short_name
-    from tasks.P3_parse_files.temp_dirs import make_temp_dir
+    from tasks.P3_parse_files.temp_dirs import make_attempt_dir
     from tasks.P3_parse_files.mail_containers import mail_format
-    out_dir = make_temp_dir(params.collection_dataset, "extract", params.archive_hash)
+    out_dir = make_attempt_dir(params.collection_dataset, "extract", params.archive_hash)
 
     kind = mail_format(params.archive_path, params.archive_types)
     if kind:
@@ -218,10 +218,10 @@ def split_extraction_seconds(set_size: int) -> int:
 
 def extract_split_set(collectionname: str, volume_set, entry_hash: str) -> Dict[str, Any]:
     """Write every volume of `volume_set` under its own name, run 7-Zip on the entry
-    volume, and remove the volumes. The members go to a folder named by the entry hash.
+    volume, and remove the transfer files. Each attempt has a separate member folder.
 
-    A missing or truncated volume raises `SplitArchiveIncomplete`. Members of an earlier
-    extraction of the same container that this one lacks are tombstoned.
+    A missing or truncated volume raises `SplitArchiveIncomplete`.
+    The member scan reconciles removed members after successful publication.
     """
     import shutil
     import subprocess
@@ -229,10 +229,10 @@ def extract_split_set(collectionname: str, volume_set, entry_hash: str) -> Dict[
     from tasks.P2_execute_plan.activities import write_blob_files
     from tasks.P3_parse_files.split_volumes import (
         SPLIT_ARCHIVE_INCOMPLETE, has_archive_signature, safe_volume_name)
-    from tasks.P3_parse_files.temp_dirs import make_temp_dir
+    from tasks.P3_parse_files.temp_dirs import make_attempt_dir
 
-    out_dir = make_temp_dir(volume_set.collection_dataset, "extract", entry_hash)
-    volumes_dir = make_temp_dir(volume_set.collection_dataset, "volumes", entry_hash)
+    out_dir = make_attempt_dir(volume_set.collection_dataset, "extract", entry_hash)
+    volumes_dir = make_attempt_dir(volume_set.collection_dataset, "volumes", entry_hash)
     shutil.rmtree(out_dir, ignore_errors=True)
     shutil.rmtree(volumes_dir, ignore_errors=True)
     os.makedirs(out_dir)
@@ -275,11 +275,9 @@ def extract_split_set(collectionname: str, volume_set, entry_hash: str) -> Dict[
     finally:
         shutil.rmtree(volumes_dir, ignore_errors=True)
     entry_count = count_member_files(out_dir)
-    tombstoned = _tombstone_absent_members(collectionname, volume_set.collection_dataset, entry_hash, out_dir)
-    if entry_count == 0:
-        shutil.rmtree(out_dir, ignore_errors=True)
     return {"out_dir": out_dir, "entry_count": entry_count, "container_hash": entry_hash,
-            "volumes": volume_set.names, "tombstoned_members": tombstoned}
+            "volumes": volume_set.names, "reconcile_members": True,
+            "archive_manifest_identity": volume_set.manifest_identity()}
 
 
 def _tombstone_absent_members(collectionname: str, collection_dataset: str, container_hash: str,
@@ -298,13 +296,95 @@ def _tombstone_absent_members(collectionname: str, collection_dataset: str, cont
         rows = client.query(
             "SELECT container_hash, path, hash, file_size_bytes, toUnixTimestamp(mtime), mtime_source "
             "FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND container_hash = {ch:String} "
-            "AND is_deleted = 0", parameters={"cd": collection_dataset, "ch": container_hash}).result_rows
+            "", parameters={"cd": collection_dataset, "ch": container_hash}).result_rows
         gone = [{"container_hash": r[0], "path": r[1], "hash": r[2], "file_size_bytes": r[3],
                  "mtime": r[4], "mtime_source": r[5]} for r in rows if r[1] not in present]
         if gone:
             _tombstone_paths(client, collection_dataset, gone,
-                             datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0))
+                             datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0), durable=True)
+            import hashlib
+            from database.clickhouse import insert_durable
+            identity = hashlib.sha256(out_dir.encode()).hexdigest()
+            insert_durable(client, "processing_output_receipts",
+                [[collection_dataset, file_hash, "archive_removed_root", identity, "archive-cleanup-1", "pending", ""]
+                 for file_hash in sorted({row["hash"] for row in gone})],
+                column_names=["collection_dataset", "file_hash", "output_kind", "output_identity", "fingerprint", "stage", "op_id"])
     return len(gone)
+
+
+def _reconcile_removed_descendants(client, collection_dataset: str, removed: set[str],
+                                   candidate_hashes: set[str] | None = None) -> int:
+    """Tombstone removed descendants while preserving all reachable occurrences."""
+    from datetime import datetime, timezone
+    from tasks.P0_scan_disk.activities import _tombstone_paths
+
+    candidates = {}
+    pending, visited = set(removed), set()
+    while pending:
+        batch = sorted(pending)[:500]
+        pending.difference_update(batch)
+        visited.update(batch)
+        rows = client.query(
+            "SELECT container_hash, path, hash, file_size_bytes, toUnixTimestamp(mtime), mtime_source "
+            "FROM vfs_files FINAL WHERE collection_dataset = {cd:String} "
+            "AND container_hash IN {parents:Array(String)}",
+            parameters={"cd": collection_dataset, "parents": batch}).result_rows
+        for row in rows:
+            candidates[row[0], row[1]] = row
+            if row[2] not in visited:
+                pending.add(row[2])
+    if candidate_hashes is not None:
+        candidate_hashes.update(row[2] for row in candidates.values())
+    if not candidates:
+        return 0
+    reachable, pending = set(), {""}
+    while pending:
+        batch = sorted(pending)[:500]
+        pending.difference_update(batch)
+        rows = client.query(
+            "SELECT DISTINCT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} "
+            "AND container_hash IN {parents:Array(String)} AND is_deleted = 0",
+            parameters={"cd": collection_dataset, "parents": batch}).result_rows
+        for (file_hash,) in rows:
+            if file_hash not in reachable:
+                reachable.add(file_hash)
+                pending.add(file_hash)
+    gone = [{"container_hash": r[0], "path": r[1], "hash": r[2], "file_size_bytes": r[3],
+             "mtime": r[4], "mtime_source": r[5]} for r in candidates.values() if r[0] not in reachable]
+    now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    for start in range(0, len(gone), 500):
+        _tombstone_paths(client, collection_dataset, gone[start:start + 500], now, durable=True)
+    return len(gone)
+
+
+def _remove_unreachable_output(client, collection_dataset: str, candidates: set[str]) -> None:
+    """Remove dataset output only after all live occurrences of its content disappear."""
+    tables = {row[0] for row in client.query("SHOW TABLES").result_rows}
+    hashes = sorted(candidates)
+    for start in range(0, len(hashes), 500):
+        rows = client.query(
+            "SELECT arrayJoin({hashes:Array(String)}) AS hash WHERE hash NOT IN ("
+            "SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND is_deleted = 0)",
+            parameters={"hashes": hashes[start:start + 500], "cd": collection_dataset}).result_rows
+        missing = [row[0] for row in rows]
+        if not missing:
+            continue
+        parameters = {"cd": collection_dataset, "hashes": missing}
+        for table in ("text_content", "entity_hit", "nlp_processed", "regex_entity_hit", "regex_scanned",
+                      "signal_hit", "signal_scanned", "signal_cluster", "text_chunks", "text_chunk_vectors",
+                      "table_documents", "table_sheets", "table_columns",
+                      "email_identity", "email_clusters"):
+            if table not in tables:
+                continue
+            column = "hash" if table.startswith("table_") else "email_hash" if table.startswith("email_") else "file_hash"
+            client.command(f"DELETE FROM {table} WHERE collection_dataset = {{cd:String}} "
+                           f"AND {column} IN {{hashes:Array(String)}} SETTINGS mutations_sync = 2",
+                           parameters=parameters)
+        if "email_edges" in tables:
+            client.command(
+                "DELETE FROM email_edges WHERE (src_dataset = {cd:String} AND src_hash IN {hashes:Array(String)}) "
+                "OR (dst_dataset = {cd:String} AND dst_hash IN {hashes:Array(String)}) SETTINGS mutations_sync = 2",
+                parameters=parameters)
 
 
 def split_step(collectionname: str, collection_dataset: str, file: BatchFile, batch_hashes: set,
@@ -323,6 +403,11 @@ def split_step(collectionname: str, collection_dataset: str, file: BatchFile, ba
         sets = resolve_volume_sets(client, collection_dataset, file.item_hash)
     if not sets:
         return None
+    # Resolve every occurrence of each entry before accepting any volume.
+    entry_hashes = {volume_set.entry[2] for volume_set in sets if volume_set.entry is not None}
+    with get_collection_client(collectionname) as client:
+        for entry_hash in sorted(entry_hashes - {file.item_hash}):
+            sets.extend(resolve_volume_sets(client, collection_dataset, entry_hash))
     complete = {}
     incomplete = []
     for volume_set in sets:
@@ -330,12 +415,14 @@ def split_step(collectionname: str, collection_dataset: str, file: BatchFile, ba
             complete.setdefault(volume_set.key(), volume_set)
         else:
             incomplete.append(volume_set)
+    for entry_hash in entry_hashes:
+        alternatives = [s for s in complete.values() if s.entry[2] == entry_hash]
+        if len(alternatives) > 1:
+            folders = ", ".join(sorted(s.folder for s in alternatives))
+            raise _split_error(SPLIT_ARCHIVE_AMBIGUOUS,
+                               f"The first volume occurs in {len(alternatives)} folders with different later volumes "
+                               f"({folders}). Its members cannot be stored under one container.")
     as_entry = [s for s in complete.values() if s.entry[2] == file.item_hash]
-    if len({s.key() for s in as_entry}) > 1:
-        folders = ", ".join(sorted(s.folder for s in as_entry))
-        raise _split_error(SPLIT_ARCHIVE_AMBIGUOUS,
-                           f"The first volume occurs in {len(as_entry)} folders with different later volumes "
-                           f"({folders}). Its members cannot be stored under one container.")
     if as_entry:
         value = extract_split_set(collectionname, as_entry[0], file.item_hash)
         extracted.add(file.item_hash)
@@ -364,7 +451,8 @@ def split_step(collectionname: str, collection_dataset: str, file: BatchFile, ba
     if (entry is not None and entry[2] == file.item_hash) or (entry is None and first_present):
         raise _split_error(SPLIT_ARCHIVE_INCOMPLETE,
                            f"Split archive {volume_set.folder}/{volume_set.stem} is incomplete. "
-                           f"Missing volumes: {', '.join(missing) or 'unknown'}.")
+                           f"Missing volume count: {volume_set.missing_count()}. "
+                           f"First missing volumes: {', '.join(missing) or 'unknown'}.")
     return SkippedOutcome({"status": "skipped", "reason": "volume of an incomplete split archive",
                            "missing": missing})
 

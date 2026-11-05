@@ -81,6 +81,7 @@ def test_new_text_raises_the_total_before_the_ocr_targets_settle(monkeypatch):
     monkeypatch.setattr(clickhouse, "get_collection_client", store.client)
     monkeypatch.setattr(ocr_client, "engine_configured", lambda e: e == "tesseract")
     monkeypatch.setattr(ocr_pdf_client, "service_configured", lambda: False)
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
     monkeypatch.setattr(dataset_config, "latest_setting_rows", lambda _cd, keys: {
         k: dataset_config.SettingRow("eng", False, 1, True) for k in keys
         if k == "ocr.tesseract.languages"})

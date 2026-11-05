@@ -113,11 +113,18 @@ are in [updates/registry.py](updates/registry.py), in run order.
 | `unfinished` | dataset | Unfinished plans and live files without a plan | `ExecutePlans` with every stage | No unfinished plan or file without a plan remains. |
 | `failed_files` | dataset | Files with a current processing error | The historical error selection, `ExecutePlans` on the failed stages, then the reconciliation | The reconciliation recorded the outcome of each selected pair. |
 | `virus_scan` | dataset | With `clamav_enabled` on: live files of at most 500 MiB without a completed scan, except files whose last attempt is `skipped_size` or `incomplete`. Earlier `failed` and `skipped_disabled` attempts are selected. | `UpdateDatasetVirusScan`: `scan_update_files` for each plan on the ClamAV queue, then `stale_virus_attributes` lists the files whose search rows hold another `virus_hit` than their verdict, `IndexDatasetPlan` writes those rows again, and `retire_cached_searches` changes the search cache epoch | No selected file remains, and no search row of an infected file has `virus_hit` 0. |
-| `tables` | dataset | Manifests of an earlier reader version for JSON candidates or with the `columns_per_sheet` limit, and JSON candidates without a manifest of the current version | `UpdateDatasetTables`: the table stage for each plan, the canonical file type, then indexing of the files | No selected file remains. |
+| `tables` | dataset | Earlier or failed table readings, missing JSON or delimited readings, and published tables without complete matching receipts | `UpdateDatasetTables` resumes parsing, entities, signals, embedding, and both indexes for the published generation | Every selected file has complete matching output receipts. |
+| `archive_members` | dataset | Successful split archives without a current complete manifest receipt | Re-extract, scan, reconcile removed descendants, and finish dependent processing | Current manifest receipts are complete. |
+| `image_previews` | dataset | Live uncommon images without a published preview, including historical converter skips | Create and read each missing preview without repeating settled OCR | No selected preview remains missing. |
 | `ocr` | dataset | Files without OCR text for the effective languages, and text of removed languages | `RerunOcr`, then the purge of dropped variants and orphaned searchable PDFs | No variant of a removed language remains. |
 | `pdf_text` | dataset | Files with a searchable PDF part of text layer version 1 for a current language pass that the PDF builder can build | `scan_pdf_text_layers` gives version 2 to the parts of language passes with Windows-1252 alphabets, to borrowed parts, and to parts whose `pdftotext` text has no black square. It removes the other parts, sets their variant to `text_complete = 0` and the `overlay` form, then `RerunOcr` builds the removed parts again. | No part of version 1 remains, and no removed part is without a new part. |
 | `vectors` | dataset | Files with text and no vectors of the served embedding model | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time | Each selected plan ran. |
 | `folder_counts` | dataset | Folders without counts, or every folder when the stage version is newer than the applied one | `build_vfs_nodes` | No folder lacks counts. |
+
+The first observed stage version remains its baseline.
+Historical archive errors on a direct release upgrade require explicit retry.
+Successful old split archives use the separate member-reconciliation step.
+An archive error clears only after a complete empty extraction or successful member scanning supplies matching operation evidence.
 
 The state is in five global tables of migration `00051`.
 

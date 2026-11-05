@@ -122,7 +122,7 @@ def is_ocr_text(extracted_by: str) -> bool:
 
 def indexed_preparation_text(extracted_by: str) -> bool:
     """Return whether Run OCR verifies an exact index receipt for this source."""
-    return extracted_by == "pdftotext" or is_ocr_text(extracted_by)
+    return extracted_by in ("pdftotext", TABLE_TEXT) or is_ocr_text(extracted_by)
 
 
 #: Smallest image edge worth sending to an OCR engine, in pixels.

@@ -951,14 +951,16 @@ class ReconcileDeletedFilesResult:
     deindexed: int
 
 
-def _tombstone_paths(client, collection_dataset: str, gone: list, now) -> None:
+def _tombstone_paths(client, collection_dataset: str, gone: list, now, *, durable: bool = False) -> None:
     """Write an `is_deleted = 1` version of each path the scan stopped finding.
 
     The row is replaced in place rather than removed: `vfs_files` is a
     `ReplacingMergeTree` keyed on the path, so a tombstone is how a path says it is gone
     and still says what used to be there.
     """
-    insert_parser_arrow(client, "vfs_files", pa.table({
+    from database.clickhouse import insert_arrow_durable
+    writer = insert_arrow_durable if durable else insert_parser_arrow
+    writer(client, "vfs_files", pa.table({
         "collection_dataset": pa.array([collection_dataset] * len(gone), type=pa.string()),
         "container_hash": pa.array([r.get("container_hash", "") for r in gone], type=pa.string()),
         "path": pa.array([r["path"] for r in gone], type=pa.string()),

@@ -11,7 +11,8 @@ shows cells of two parses, and old cells inside the bounds of a new table stay
 invisible. The generation is collection-wide for a hash, because the cells are shared by
 every dataset of the collection that holds the hash. Another dataset keeps reading its
 own manifest generation until its own parse or the dedup copy moves it. The sweep
-`sweep_orphan_table_cells` removes the generations that no manifest names.
+`sweep_orphan_table_cells` retires owned, published generations without manifest references.
+Writing generations and legacy generations without ownership records remain stored.
 
 A parse without a table writes an `empty` manifest, so the earlier table of the hash
 stops being visible for the dataset.
@@ -653,7 +654,29 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
         "parse_ms": pa.array([parse_ms], type=pa.uint32()),
         "parse_error": pa.array([parse_error], type=pa.string()),
         "generation": pa.array([generation], type=pa.uint32()),
+        "text_digest": pa.array([getattr(params, "_table_text_digest", "")], type=pa.string()),
+        "text_page_count": pa.array([getattr(params, "_table_text_count", 0)], type=pa.uint32()),
+        "text_complete": pa.array([getattr(params, "_table_text_complete", 0)], type=pa.uint8()),
     })
+    if status in ("ok", STATUS_EMPTY):
+        from tasks.P3_parse_files.insert_batch import current_batch
+        from tasks.P3_parse_files.table_generations import GenerationCommand, send_command
+        batch = current_batch()
+        if batch is not None:
+            batch.flush()
+            if batch.index in batch.errors:
+                raise batch.errors[batch.index]
+            batch.finish_file(batch.index)
+        buffer = pa.BufferOutputStream()
+        with pa.ipc.new_stream(buffer, table.schema) as stream:
+            stream.write_table(table)
+        send_command(GenerationCommand(params.collectionname, params.file_hash, "publish",
+                                       getattr(params, "_generation_token", ""), generation,
+                                       params.op_id, buffer.getvalue().to_pybytes(),
+                                       getattr(params, "_expected_column_rows", -1)))
+        return
+    if status == "failed" and _has_published(client, params):
+        return
     writer = insert_arrow_durable if durable else insert_parser_arrow
     writer(client, "table_documents", table)
 
@@ -690,32 +713,39 @@ def _existing_parse(client, file_hash: str, collection_dataset: str = ""):
     rows = client.query("""
         SELECT reader, table_format, sheet_count, row_count, column_count, cell_count,
                stored_bytes, truncated, truncated_limits, truncated_maximums,
-               truncated_sheets, truncated_reason, collection_dataset, generation
+               truncated_sheets, truncated_reason, collection_dataset, generation,
+               text_digest, text_page_count, text_complete
         FROM table_documents FINAL
         WHERE hash = {h:String} AND status = 'ok' AND reader_version = {v:UInt16}
           AND collection_dataset != {cd:String}
         ORDER BY generation DESC
         LIMIT 1
     """, parameters={"h": file_hash, "v": READER_VERSION, "cd": collection_dataset}).result_rows
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    from tasks.P3_parse_files.table_generations import complete_column_coverage
+    candidate = rows[0]
+    if not complete_column_coverage(client, candidate[12], file_hash, int(candidate[13])):
+        return None
+    from tasks.P3_parse_files.table_text import complete_table_text
+    if candidate[0] == "sqlite" and not complete_table_text(client, candidate[12], file_hash, int(candidate[13])):
+        return None
+    return candidate
 
 
-def _next_generation(client, file_hash: str) -> int:
-    """A generation above every manifest and every stored cell of the hash."""
-    manifests = client.query(
-        "SELECT max(generation) FROM table_documents FINAL WHERE hash = {h:String}",
-        parameters={"h": file_hash}).result_rows
-    cells = client.query(
-        "SELECT max(generation) FROM table_cells WHERE file_hash = {h:String}",
-        parameters={"h": file_hash}).result_rows
-    highest = [int(rows[0][0] or 0) for rows in (manifests, cells) if rows]
-    return max(highest, default=0) + 1
+def _next_generation(client, params: "ParseTableParams") -> int:
+    """Allocate one owned generation before the first cell write."""
+    import uuid
+    from tasks.P3_parse_files.table_generations import GenerationCommand, send_command
+    params._generation_token = str(uuid.uuid4())
+    return send_command(GenerationCommand(params.collectionname, params.file_hash, "allocate",
+                                         params._generation_token, owner_op=params.op_id))
 
 
 def _has_published(client, params: "ParseTableParams") -> bool:
     rows = client.query(
         "SELECT count() FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
-        "AND hash = {h:String} AND status = 'ok'",
+        "AND hash = {h:String} AND status IN ('ok', 'empty')",
         parameters={"cd": params.collection_dataset, "h": params.file_hash}).result_rows
     return bool(rows and int(rows[0][0]))
 
@@ -723,8 +753,16 @@ def _has_published(client, params: "ParseTableParams") -> bool:
 def _write_empty(client, params: "ParseTableParams", reader: str, table_format: str,
                  run_time_ms: int) -> None:
     """Publish a parse without a table, so an earlier table of the hash is not shown."""
+    if reader == "sqlite":
+        from tasks.P3_parse_files.parse_common import insert_text_pages
+        from tasks.P3_parse_files.table_text import text_identity
+        from tasks.text_sources import TABLE_TEXT
+        insert_text_pages(params.collectionname, params.collection_dataset, params.file_hash, TABLE_TEXT, [])
+        params._table_text_count, params._table_text_digest = text_identity([])
+        params._table_text_complete = 1
     _write_manifest(client, params, status=STATUS_EMPTY, reader=reader,
-                    table_format=table_format, parse_ms=run_time_ms)
+                    table_format=table_format, parse_ms=run_time_ms,
+                    generation=getattr(params, "_current_generation", 0))
 
 
 def _copy_structure(client, params: ParseTableParams, source_dataset: str, generation: int) -> None:
@@ -734,6 +772,11 @@ def _copy_structure(client, params: ParseTableParams, source_dataset: str, gener
     rows describing per-collection data, and re-deriving them would mean re-reading the
     file, which is the whole cost this short-circuit exists to avoid.
     """
+    rows = client.query(
+        "SELECT count() FROM table_columns FINAL WHERE collection_dataset = {dataset:String} "
+        "AND hash = {hash:String} AND generation = {generation:UInt32}",
+        parameters={"dataset": source_dataset, "hash": params.file_hash, "generation": generation}).result_rows
+    params._expected_column_rows = int(rows[0][0]) if rows else 0
     for table in ("table_sheets", "table_columns"):
         columns = [row[0] for row in client.query(f"DESCRIBE TABLE `{table}`").result_rows]
         selected = ", ".join(
@@ -786,6 +829,7 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
 
     with get_collection_client(params.collectionname) as client:
         if not reader:
+            params._current_generation = _next_generation(client, params)
             _write_empty(client, params, "", "", 0)
             return SkippedOutcome({"status": "skipped", "reason": "no reader for this file"})
         table_format = table_format_for(reader, file_name)
@@ -797,13 +841,6 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
             )
             # The structure lands before the manifest that names its generation.
             _copy_structure(client, params, existing[12], int(existing[13]))
-            _write_manifest(
-                client, params, status="ok", reader=existing[0],
-                table_format=existing[1], sheet_count=int(existing[2]),
-                row_count=int(existing[3]), column_count=int(existing[4]),
-                cell_count=int(existing[5]), stored_bytes=int(existing[6]),
-                truncation=truncation, parse_ms=0, generation=int(existing[13]),
-            )
             if existing[0] == "sqlite":
                 from tasks.P3_parse_files.parse_common import insert_text_pages
                 from tasks.text_sources import TABLE_TEXT
@@ -813,9 +850,21 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
                     "AND extracted_by = {source:String} GROUP BY page_id ORDER BY page_id",
                     parameters={"ds": existing[12], "h": params.file_hash, "source": TABLE_TEXT},
                 ).result_rows
+                from tasks.P3_parse_files.table_text import text_identity
+                params._table_text_count, params._table_text_digest = text_identity(pages)
+                if (params._table_text_count, params._table_text_digest) != (int(existing[15]), existing[14]):
+                    raise RuntimeError("The source table text changed during its copy")
+                params._table_text_complete = 1
                 insert_text_pages(params.collectionname, params.collection_dataset,
                                   params.file_hash, TABLE_TEXT, pages)
 
+            _write_manifest(
+                client, params, status="ok", reader=existing[0],
+                table_format=existing[1], sheet_count=int(existing[2]),
+                row_count=int(existing[3]), column_count=int(existing[4]),
+                cell_count=int(existing[5]), stored_bytes=int(existing[6]),
+                truncation=truncation, parse_ms=0, generation=int(existing[13]),
+            )
             log.info("[P3] table %s already parsed by %s, claimed for %s",
                      params.file_hash, existing[12], params.collection_dataset)
             return {"status": "ok", "reader": existing[0], "deduped": True,
@@ -826,7 +875,8 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
         def on_progress(sheet_name: str, row: int) -> None:
             heartbeat.beat(f"table {sheet_name or table_format} row {row}")
 
-        generation = _next_generation(client, params.file_hash)
+        generation = _next_generation(client, params)
+        params._current_generation = generation
         published = _has_published(client, params)
 
         def new_collector(name: str) -> _Collector:
@@ -919,6 +969,7 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
         collector.settle_headers()
         insert_parser_arrow(client, "table_sheets", _sheet_rows(params, collector))
         columns = _column_rows(params, collector)
+        params._expected_column_rows = columns.num_rows
         if columns.num_rows:
             insert_parser_arrow(client, "table_columns", columns)
 
@@ -926,6 +977,9 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
             from tasks.P3_parse_files.parse_common import insert_text_pages
             from tasks.text_sources import TABLE_TEXT
             pages = collector.text.pages()
+            from tasks.P3_parse_files.table_text import text_identity
+            params._table_text_count, params._table_text_digest = text_identity(pages)
+            params._table_text_complete = 1
             insert_text_pages(params.collectionname, params.collection_dataset,
                               params.file_hash, TABLE_TEXT, pages)
             if collector.text.truncated:

@@ -152,7 +152,8 @@ def load_shard_assignments(
     with get_collection_client(collectionname) as client:
         rows = client.query(
             "SELECT file_hash, shard_name FROM manticore_shard_assignments FINAL "
-            "WHERE collection_dataset = {cd:String}",
+            "WHERE collection_dataset = {cd:String} AND file_hash IN ("
+            "SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND is_deleted = 0)",
             parameters={"cd": collection_dataset},
         ).result_rows
     return {file_hash: shard_name for file_hash, shard_name in rows}
@@ -200,14 +201,7 @@ def load_expected_ocr_ids(
 def load_indexed_ids(
     collectionname: str, collection_dataset: str, assignments: dict[str, str]
 ) -> tuple[dict[str, frozenset[int]], ...]:
-    """Indexed `file_paths`, `language`, `ocr_script` and `ocr_language` per hash.
-
-    Each value is read from the assigned pages table. A table without the OCR columns
-    gives no OCR value, because the search schema step adds them. Reads the `filename_index` row, which carries the same document attributes as the
-    document's other page rows. That row is identified by `extracted_by`, because a
-    bound `page_id = -1` does not match the unsigned value Manticore stores for that
-    sentinel.
-    """
+    """Read every indexed row and mark inconsistent or missing document attributes."""
     from database.manticore import get_manticore_client, shard_table_from_name, table_has_column
 
     from .activities import FILENAME_EXTRACTED_BY
@@ -225,27 +219,63 @@ def load_indexed_ids(
         for shard_name, hashes in by_shard.items():
             table = shard_table_from_name(shard_name)
             has_ocr = table_has_column(table, "ocr_script")
-            columns = "file_hash, file_paths, language" + (", ocr_script, ocr_language" if has_ocr else "")
+            columns = "id, file_hash, extracted_by, page_id, file_paths, language" + (", ocr_script, ocr_language" if has_ocr else "")
+            filenames, incomplete = set(), set()
             for i in range(0, len(hashes), PATHS_SCAN_PAGE):
                 chunk = hashes[i:i + PATHS_SCAN_PAGE]
                 placeholders = ",".join(["%s"] * len(chunk))
-                # Filter by extractor, not `page_id = -1`. The filename row
-                # stores `page_id` as unsigned 4294967295, and a bound `-1`
-                # matches no row through this client.
-                cur.execute(
-                    f"SELECT {columns} FROM {table} "
-                    "WHERE collection_dataset = %s AND extracted_by = %s "
-                    f"AND file_hash IN ({placeholders}) "
-                    f"LIMIT {len(chunk)} OPTION max_matches={len(chunk)}",
-                    (collection_dataset, FILENAME_EXTRACTED_BY, *chunk),
-                )
-                for row in cur.fetchall() or []:
-                    paths[row[0]] = parse_mva_ids(row[1])
-                    languages[row[0]] = parse_mva_ids(row[2])
-                    if has_ocr:
-                        ocr_scripts[row[0]] = parse_mva_ids(row[3])
-                        ocr_languages[row[0]] = parse_mva_ids(row[4])
+                expected_pages = load_expected_page_keys(collectionname, collection_dataset, chunk)
+                observed_pages = {}
+                after = 0
+                while True:
+                    _heartbeat("Reading indexed document attributes")
+                    cur.execute(
+                        f"SELECT {columns} FROM {table} WHERE collection_dataset = %s "
+                        f"AND file_hash IN ({placeholders}) AND id > %s ORDER BY id ASC "
+                        f"LIMIT {PATHS_SCAN_PAGE} OPTION max_matches={PATHS_SCAN_PAGE}",
+                        (collection_dataset, *chunk, after))
+                    rows = cur.fetchall() or []
+                    if not rows:
+                        break
+                    for row in rows:
+                        after = int(row[0])
+                        file_hash = row[1]
+                        if row[2] == FILENAME_EXTRACTED_BY:
+                            filenames.add(file_hash)
+                        else:
+                            observed_pages.setdefault(file_hash, set()).add((row[2], int(row[3])))
+                        targets = [(paths, row[4]), (languages, row[5])]
+                        if has_ocr:
+                            targets.extend([(ocr_scripts, row[6]), (ocr_languages, row[7])])
+                        for target, value in targets:
+                            value = parse_mva_ids(value)
+                            if file_hash in target and target[file_hash] != value:
+                                target[file_hash] = frozenset({-1})
+                            else:
+                                target[file_hash] = value
+                    if len(rows) < PATHS_SCAN_PAGE:
+                        break
+                incomplete.update(file_hash for file_hash in chunk
+                                  if observed_pages.get(file_hash, set()) != expected_pages.get(file_hash, set()))
+            for file_hash in hashes:
+                if file_hash not in filenames or file_hash in incomplete:
+                    for target in (paths, languages, ocr_scripts, ocr_languages):
+                        target[file_hash] = frozenset({-1})
     return paths, languages, ocr_scripts, ocr_languages
+
+
+def load_expected_page_keys(collectionname: str, collection_dataset: str, hashes: list[str]) -> dict:
+    """Read every current text-page identity that the page writer must publish."""
+    from database.clickhouse import get_collection_client
+    with get_collection_client(collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT file_hash, extracted_by, page_id FROM text_content "
+            "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)}",
+            parameters={"cd": collection_dataset, "hashes": hashes}).result_rows
+    expected = {}
+    for file_hash, source, page in rows:
+        expected.setdefault(file_hash, set()).add((source, int(page)))
+    return expected
 
 
 def list_stale_location_hashes(

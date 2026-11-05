@@ -62,6 +62,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
     from tasks.P3_parse_files.parse_archives import SPLIT_VOLUME_PATCH, split_set_sizes
+    from tasks.P3_parse_files.archive_reconciliation import reconcile_archive_descendants
     from tasks.P3_parse_files.ocr_detection import OCR_DETECTION_PATCH
     from tasks.P3_parse_files.scan_virus import CLAMAV_SCAN_PATCH
     from tasks.P3_parse_files.split_volumes import is_volume_name
@@ -294,6 +295,18 @@ class ExecutePlans:
                 )
                 child_id = f"execute-plans-{params.collection_dataset}-restart-{depth + 1}"
         if child_params is None:
+            if workflow.patched("archive-member-reconciliation"):
+                reconciled_archive_roots = await workflow.execute_activity(
+                    reconcile_archive_descendants, vfs_params, task_queue="processing-common-queue",
+                    start_to_close_timeout=timedelta(minutes=30), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+                if reconciled_archive_roots:
+                    await run_dataset_step(build_vfs_nodes, vfs_params, 30)
+                    await run_dataset_step(refresh_stale_document_locations,
+                        RefreshDocumentLocationsParams(params.collectionname, params.collection_dataset, []), 45)
+                    await run_dataset_step(index_vfs_structure, vfs_params, 30)
+                    await run_dataset_step(build_email_graph,
+                        BuildEmailGraphParams(params.collectionname, params.collection_dataset), 60, EMAIL_GRAPH_TASK_QUEUE)
             await run_dataset_step(
                 compact_collection_shards,
                 CompactCollectionShardsParams(params.collectionname, False, params.op_id), 10,
@@ -675,7 +688,7 @@ class ProcessItemsBatched:
             value = result.value if isinstance(result.value, dict) else {}
             if result.status == "failed" or not value.get("out_dir"):
                 return
-            if count_key and not int(value.get(count_key) or 0) > 0:
+            if count_key and not int(value.get(count_key) or 0) > 0 and not value.get("reconcile_members"):
                 return
             folders.append((index, ContainerFolder(
                 # A split set names its entry volume, which owns the members.
@@ -684,6 +697,8 @@ class ProcessItemsBatched:
                 error_task_name=error_name,
                 source_size_bytes=files[index].file_size_bytes,
                 member_count=int(value.get("member_count") or 0),
+                reconcile_members=bool(value.get("reconcile_members")),
+                archive_manifest_identity=value.get("archive_manifest_identity") or "",
             )))
 
         async def email_chain() -> None:

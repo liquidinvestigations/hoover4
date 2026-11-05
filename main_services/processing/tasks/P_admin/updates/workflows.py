@@ -52,6 +52,8 @@ with workflow.unsafe.imports_passed_through():
         list_update_vector_plans,
         obsolete_ocr_variants,
         reparse_update_tables,
+        restore_missing_image_previews,
+        prepare_table_update,
         refresh_update_checks,
         report_update_progress,
         settle_update_step,
@@ -71,6 +73,8 @@ with workflow.unsafe.imports_passed_through():
         VirusPlansParams,
         VectorPlansParams,
     )
+    from tasks.P_admin.updates.archive_members import restore_archive_members, finish_archive_members
+    from tasks.P_admin.updates.table_receipts import TableReceiptParams, record_table_update_receipts
     from tasks.P_admin.updates.registry import SCOPE_DATASET
     from tasks.P6_index_data.params import RefreshDocumentLocationsParams, RefreshDocumentLocationsResult
     from tasks.visibility import dataset_search_attributes
@@ -241,6 +245,18 @@ class RunProcessingUpdate:
             return json.dumps(counts, sort_keys=True)
         if step_id == "failed_files":
             return await self._failed_files(params, step)
+        if step_id == "archive_members":
+            done = await workflow.execute_child_workflow(
+                UpdateDatasetArchiveMembers.run,
+                TablePlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                id=f"update-archive-members-{params.op_id}", **self._child(params))
+            return f"reconciled {done} split archives"
+        if step_id == "image_previews":
+            done = await workflow.execute_child_workflow(
+                UpdateDatasetImagePreviews.run,
+                TablePlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                id=f"update-previews-{params.op_id}", **self._child(params))
+            return f"published {done} image previews"
         if step_id == "ocr":
             return await self._ocr(params, step)
         if step_id == "pdf_text":
@@ -403,14 +419,7 @@ class UpdateDatasetVectors:
 
 @workflow.defn
 class UpdateDatasetTables:
-    """Table reading of the files that the `tables` step selects, plan by plan.
-
-    For each plan: read the selected files again (`reparse_update_tables`), resolve their
-    file type again, and index those files again, because the file type and the table
-    kind of a document are search attributes. Entity extraction and embedding read the
-    text, which a table reading does not change, so they do not run. Pages of at most
-    100 plans, four at a time, with continue-as-new after each page.
-    """
+    """Read selected tables and update all output that depends on their text."""
 
     @workflow.run
     async def run(self, params: TablePlansParams) -> int:
@@ -425,11 +434,14 @@ class UpdateDatasetTables:
                       search_attributes=dataset_search_attributes(params.collection_dataset))
 
         async def plan(plan_hash: str):
-            hashes = await workflow.execute_activity(
-                reparse_update_tables,
+            durable = workflow.patched("table-update-text-dependencies")
+            prepared = await workflow.execute_activity(
+                prepare_table_update if durable else reparse_update_tables,
                 TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
                 task_queue="processing-common-queue", start_to_close_timeout=timedelta(hours=6),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            generations = prepared if durable else {}
+            hashes = list(prepared) if durable else prepared
             if not hashes:
                 return
             await workflow.execute_activity(
@@ -438,11 +450,33 @@ class UpdateDatasetTables:
                  "item_hashes": hashes},
                 task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=20),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            async def receipt(stages):
+                await workflow.execute_activity(
+                    record_table_update_receipts,
+                    TableReceiptParams(params.collectionname, params.collection_dataset,
+                                       params.op_id, hashes, stages, generations),
+                    start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=_RETRY)
+
+            if durable:
+                await receipt(["parse", "text"])
+                for name, stage in (("ExtractEntitiesForPlan", "entities"),
+                                    ("ScanRegexEntitiesForPlan", "regex"), ("ChunkEmbedForPlan", "embed")):
+                    await workflow.execute_child_workflow(
+                        name,
+                        {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                         "plan_hash": plan_hash, "op_id": params.op_id, "item_hashes": hashes,
+                         "fail_on_errors": True},
+                        id=f"update-tables-{name}-{params.op_id}-{plan_hash}", **common)
+                    await receipt([stage])
             await workflow.execute_child_workflow(
                 "IndexDatasetPlan",
                 {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
-                 "plan_hash": plan_hash, "op_id": params.op_id, "item_hashes": hashes},
+                 "plan_hash": plan_hash, "op_id": params.op_id, "item_hashes": hashes,
+                 **({"fail_on_errors": True} if durable else {})},
                 id=f"update-index-tables-{params.op_id}-{plan_hash}", **common)
+            if durable:
+                await receipt(["index_text", "index_vectors"])
 
         results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
         failed = 0
@@ -566,3 +600,47 @@ class UpdateDatasetOcrDetection:
         workflow.continue_as_new(VirusPlansParams(
             params.op_id, params.collectionname, params.collection_dataset,
             plans[-1], params.done + len(plans), params.failed + failed))
+
+
+@workflow.defn
+class UpdateDatasetImagePreviews:
+    """Restore missing previews in bounded batches without repeating OCR."""
+
+    @workflow.run
+    async def run(self, params: TablePlansParams) -> int:
+        count = await workflow.execute_activity(
+            restore_missing_image_previews, params, start_to_close_timeout=timedelta(hours=6),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if count:
+            workflow.continue_as_new(TablePlansParams(params.op_id, params.collectionname,
+                params.collection_dataset, done=params.done + count))
+        return params.done
+
+
+@workflow.defn
+class UpdateDatasetArchiveMembers:
+    """Reconcile split archives, then complete processing of their current members."""
+
+    @workflow.run
+    async def run(self, params: TablePlansParams) -> int:
+        count = await workflow.execute_activity(
+            restore_archive_members, params, start_to_close_timeout=timedelta(hours=6),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if count:
+            workflow.continue_as_new(TablePlansParams(params.op_id, params.collectionname,
+                params.collection_dataset, done=params.done + count))
+        common = dict(task_queue="processing-common-queue",
+                      search_attributes=dataset_search_attributes(params.collection_dataset))
+        await workflow.execute_child_workflow(
+            "ComputePlans", {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset},
+            id=f"archive-update-plans-{params.op_id}", **common)
+        counts = await workflow.execute_child_workflow(
+            "ExecutePlans", {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                             "base_temp_dir": "/tmp/hoover4", "op_id": params.op_id},
+            id=f"archive-update-process-{params.op_id}", **common)
+        if counts.get("failed_plans") or counts.get("failed_dataset_steps"):
+            raise ApplicationError("Archive member processing did not complete", non_retryable=True)
+        await workflow.execute_activity(
+            finish_archive_members, params, start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        return params.done

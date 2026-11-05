@@ -212,14 +212,12 @@ def test_execute_plans_rebuilds_the_tree_once_per_batch():
     )
     # The pre-loop rebuild cannot see structure this batch's own P3 produced, so
     # the tree is rebuilt again between the children and the Manticore copy.
-    assert ordered.count("build_vfs_nodes") == 2, (
-        f"build_vfs_nodes must run before and after the per-plan children: {ordered}"
-    )
-    assert ordered.index("ExecuteSinglePlan") \
-        < len(ordered) - 1 - ordered[::-1].index("build_vfs_nodes") \
-        < ordered.index("index_vfs_structure"), (
-        f"the second build_vfs_nodes must sit between the children and the copy: {ordered}"
-    )
+    builds = [index for index, name in enumerate(ordered) if name == "build_vfs_nodes"]
+    assert len(builds) == 3
+    assert ordered.index("ExecuteSinglePlan") < builds[1] < ordered.index("index_vfs_structure")
+    assert ordered.index("reconcile_archive_descendants") < builds[2]
+    assert builds[2] < max(index for index, name in enumerate(ordered) if name == "index_vfs_structure")
+
 
 
 def test_canonical_file_type_runs_inside_the_plan_that_produced_the_evidence():
@@ -286,15 +284,13 @@ def test_index_dataset_plan_does_not_build_the_email_graph():
 
 
 def test_execute_plans_builds_the_email_graph_last_on_its_own_queue():
-    """Once, after the dataset-wide steps, before the continuation hand-off, only when
-    the invocation indexed plans, and on the queue that one process with one slot
-    serves."""
+    """Verify normal graph publication and its conditional refresh after archive cleanup."""
     source = open(p2_workflows.__file__).read()
     targets = _execute_targets(source, "ExecutePlans")
     ordered = [name for _, name in targets]
-    assert ordered.count("build_email_graph") == 1, (
-        f"ExecutePlans must execute build_email_graph once: {ordered}"
-    )
+    assert ordered.count("build_email_graph") == 2
+    assert ordered.index("reconcile_archive_descendants") < max(
+        index for index, name in enumerate(ordered) if name == "build_email_graph")
     graph_line = next(line for line, name in targets if name == "build_email_graph")
     terms_line = next(line for line, name in targets if name == "index_entity_terms")
     handoff_line = next(
@@ -385,3 +381,39 @@ def test_downstream_workflows_read_the_plan_hashes_only_without_an_item_list(
     else:
         assert names[0] == "fetch_plan_hashes"
         assert hashes_seen[0] == ["p1"]
+
+
+@pytest.mark.parametrize("case", range(4))
+@pytest.mark.parametrize("fail_on_errors", [False, True])
+def test_table_dependency_failure_propagates_without_changing_legacy_defaults(monkeypatch, case, fail_on_errors):
+    import asyncio
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from temporalio.exceptions import ApplicationError
+
+    module, workflow_type, params_type = _downstream_cases()[case]
+
+    def execute_activity(fn, params, **kwargs):
+        async def result():
+            if fn.__name__ == "plan_shards":
+                return [SimpleNamespace(shard_name="collection_1", hashes=["source"])]
+            if fn.__name__ == "finalize_index_batch":
+                return None
+            raise RuntimeError("injected table dependency failure")
+        return result()
+
+    async def record(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr(module.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(module.workflow, "now", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    monkeypatch.setattr(module.workflow, "info", lambda: SimpleNamespace(run_id="run"))
+    monkeypatch.setattr(module.workflow, "patched", lambda _name: True)
+    monkeypatch.setattr(module, "record_errors_from_results", record)
+    params = params_type("collection", "dataset", "plan", op_id="operation",
+                         item_hashes=["source"], fail_on_errors=fail_on_errors)
+    if fail_on_errors:
+        with pytest.raises(ApplicationError, match="required table dependency"):
+            asyncio.run(workflow_type().run(params))
+    else:
+        asyncio.run(workflow_type().run(params))

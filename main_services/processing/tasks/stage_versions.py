@@ -30,7 +30,7 @@ VFS_SUBTREE_STATS_VERSION = 1
 STAGE_VERSIONS: Dict[str, int] = {
     "detect": 2,
     "virus_scan": SCAN_VERSION,
-    "archive": 2,
+    "archive": 3,
     "email": 1,
     "plaintext": 1,
     "tika": 1,
@@ -38,7 +38,7 @@ STAGE_VERSIONS: Dict[str, int] = {
     "table": READER_VERSION,
     "pdf": PDF_SEGMENTATION_VERSION,
     "pdf_preview": 1,
-    "image_preview": 1,
+    "image_preview": 2,
     "image_pdf": 1,
     "image_metadata": 1,
     "ocr_image": 1,
@@ -50,8 +50,8 @@ STAGE_VERSIONS: Dict[str, int] = {
     "entities": 1,
     "regex": 1,
     "embed": 1,
-    "index_text": 1,
-    "index_vectors": 1,
+    "index_text": 2,
+    "index_vectors": 2,
     "vfs_stats": VFS_SUBTREE_STATS_VERSION,
 }
 

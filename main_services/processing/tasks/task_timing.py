@@ -688,6 +688,8 @@ _OUTCOME_NAMES = {
     "pdf_get_metadata_and_store": "pdf_process",
     "make_pdf_preview": "make_pdf_preview",
     "make_image_preview": "make_image_preview",
+    "scan_folder_tree": "archive_scan",
+    "extract_archive_to_temp": "archive_scan",
     "extract_plaintext_chunks": "extract_plaintext_chunks",
     "parse_office_xml_and_store": "parse_office_xml_and_store",
     "parse_table_and_store": "parse_table_and_store",
@@ -773,6 +775,9 @@ def _batch_rows(batch: Any, stage_row: list, fields: _ActivityFields, op_id: str
         error_name = _outcome_name(file.task_name, engine)
         if (op_id and outcome in ("ok", "skipped") and error_name and file.item_hash
                 and fields.task_name != "run_ocr_pdf_parts_batch"
+                and (file.task_name != "extract_archive_to_temp"
+                     or (not (isinstance(file.value, dict) and (file.value.get("entry_count") or file.value.get("partial_errors")))
+                         and "incomplete" not in str(file.value)))
                 and (file.task_name != "pdf_get_metadata_and_store"
                      or (isinstance(file.value, dict) and file.value.get("defect")))):
             outcomes.append([op_id, dataset, file.item_hash, error_name, file.task_name,

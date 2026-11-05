@@ -104,4 +104,8 @@ class ChunkEmbedForPlan:
         )
 
         log.info(f"[P5] Done: chunk+embed for plan {params.collection_dataset} {params.plan_hash}")
+        if params.fail_on_errors and failed_results:
+            from temporalio.exceptions import ApplicationError
+            raise ApplicationError("A required table dependency failed", non_retryable=True)
+
         return f"chunked and embedded {params.plan_hash}"

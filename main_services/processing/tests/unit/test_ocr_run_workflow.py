@@ -357,6 +357,7 @@ def store(monkeypatch):
     monkeypatch.setattr(ocr_pdf_client, "service_configured", lambda: True)
     monkeypatch.setattr(ocr_pdf_client, "engines_for_provider", lambda: ["tesseract"])
     rows = {"ocr.tesseract.languages": dataset_config.SettingRow("eng", False, 100_100_000, True)}
+    monkeypatch.setattr(dataset_config, "collection_of_dataset", lambda _cd: "")
     monkeypatch.setattr(dataset_config, "latest_setting_rows",
                         lambda _cd, keys: {k: v for k, v in rows.items() if k in keys})
     return store

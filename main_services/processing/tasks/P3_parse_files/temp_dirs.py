@@ -17,6 +17,13 @@ def make_temp_dir(collection_dataset: str, kind: str, file_hash: str) -> str:
     return out_dir
 
 
+def make_attempt_dir(collection_dataset: str, kind: str, file_hash: str) -> str:
+    """Create a directory that belongs to one extraction attempt."""
+    root = os.path.join(tempfile.gettempdir(), "hoover4", collection_dataset)
+    os.makedirs(root, exist_ok=True)
+    return tempfile.mkdtemp(prefix=f"{kind}_{file_hash}_", dir=root)
+
+
 
 
 #: The `ApplicationError.type` of a parse or detector input path that does not exist.

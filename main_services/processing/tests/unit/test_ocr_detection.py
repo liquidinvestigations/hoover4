@@ -51,11 +51,11 @@ def test_an_image_under_the_size_gate_sends_no_request(monkeypatch):
     assert ocr_detection.image_rows("c_ds", "h", b"x")[0]["has_text"] == 0
 
 
-def test_a_page_that_cannot_render_stores_a_row_and_sends_no_request(monkeypatch):
+def test_a_page_that_cannot_render_fails_without_a_negative_decision(monkeypatch):
     monkeypatch.setattr(ocr_detection, "render_page", lambda path, page: None)
     monkeypatch.setattr(ocr_detection, "detect_text", lambda data: pytest.fail("no request"))
-    rows = ocr_detection.pdf_rows("c_ds", "h", "original", "/none", [2, 4])
-    assert [(row["page_id"], row["has_text"]) for row in rows] == [(2, 0), (4, 0)]
+    with pytest.raises(RuntimeError, match="render returned no image"):
+        ocr_detection.pdf_rows("c_ds", "h", "original", "/none", [2, 4])
 
 
 def test_a_writer_names_the_ocr_columns_only_for_a_table_that_has_them():
@@ -78,3 +78,18 @@ def test_document_attributes_leave_out_empty_values():
     scripts, languages = document_ocr_attributes(Client(), "c_ds")
     assert scripts == {"a": ["Latin"], "b": ["Hebrew"]}
     assert languages == {"a": ["en"]}
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_render_failures_raise_without_a_negative_detection(monkeypatch, timeout):
+    import subprocess
+    from types import SimpleNamespace
+
+    def run(command, **kwargs):
+        if timeout:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="render (timed out|failed)"):
+        ocr_detection.render_page("source.pdf", 2)

@@ -337,27 +337,29 @@ change the operation and Error tables, and add document outcomes. The Error repl
 preserves historical rows and creates `processing_errors_identity_ready` last.
 
 **The readiness sentinel names the table that the last table-creating migration creates**.
-It is `processing_errors_identity_ready`. Update both sentinel copies when a later table-creating migration
+It is `table_text_publication_ready`. Update both sentinel copies when a later table-creating migration
 is added.
 
-## Hash-keyed table cells need a sweeper.
+## Table generation ownership
 
-`purge_dataset_from_clickhouse` enumerates `SHOW TABLES`, runs `DESCRIBE TABLE` on each,
-and **skips every table with no `collection_dataset` column**. `table_cells` has none, on
-purpose: cells are shared by every dataset in the collection that holds the same file, so
-one workbook mailed to forty people is parsed once. A dataset purge therefore reaches
-`table_documents`, `table_sheets` and `table_columns` and leaves the cells alone, which
-is correct while another dataset still claims them, and a leak once none does.
+Table cells are shared by content hash within a collection.
+Dataset manifests identify the generation that their readers use.
+A dataset purge removes its manifest and keeps shared cells.
 
-`sweep_orphan_table_cells` closes that: it deletes the cells of every hash with no
-`table_documents` row in `('ok', 'parsing')`, in bounded batches, and it **refuses to run
-against an empty manifest** and logs the refusal. An authority table with no rows is a
-symptom (an unapplied migration, a failed query), and never a licence to delete every
-cell in the collection. `'parsing'` counts as a claim so a sweep cannot race an in-flight
-parse, and a `parsing` row older than a day is tombstoned to `failed` by the same pass,
-which is what releases a genuinely abandoned parse's cells on the next one.
+Migration `00067` adds exact output completion receipts.
+Migration `00068` adds durable generation ownership records.
+Migration `00069` adds SQLite text publication identities, counts, and completeness markers.
+The generation coordinator serializes allocation, publication, and retirement commands through the planner queue.
+Parsing occurs outside that queue.
 
-Collection deletion needs none of this: `drop_collection_db` drops the whole database.
+The sweeper retires only owned generations whose parser completed publication and whose manifests no longer reference them.
+The coordinator verifies references and writes retirement authorization.
+The sweeper deletes retired rows outside the planner queue and stores a completion receipt.
+A retired generation cannot publish through a delayed command.
+Writing generations and legacy generations without ownership records remain stored.
+Elapsed time alone cannot prove that a writer stopped.
+
+Collection deletion removes the collection database.
 
 ## Navigation
 

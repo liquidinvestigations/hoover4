@@ -54,3 +54,43 @@ class TableText:
             self.segments.append(self.buffer)
             self.buffer = ""
         return list(enumerate(self.segments, start=1))
+
+
+def text_identity(pages) -> tuple[int, str]:
+    """Identify the complete normalized table text, including an empty source."""
+    import hashlib
+    from tasks.P3_parse_files.parse_common import stored_page_bodies
+    rows = sorted(stored_page_bodies(pages))
+    digest = hashlib.sha256()
+    for page, text in rows:
+        body = text.encode("utf-8")
+        digest.update(f"{page}:{len(body)}:".encode())
+        digest.update(body)
+    return len(rows), digest.hexdigest()
+
+
+def stored_text_identity(client, dataset: str, file_hash: str) -> tuple[int, str]:
+    """Read the complete stored page identity without returning text bodies."""
+    from tasks.text_sources import TABLE_TEXT
+    rows = client.query(
+        "SELECT count(), lower(hex(SHA256(arrayStringConcat(arrayMap(item -> "
+        "concat(toString(item.1), ':', toString(length(item.2)), ':', item.2), "
+        "arraySort(groupArray((page_id, body)))), '')))) FROM ("
+        "SELECT page_id, argMax(text, version) AS body FROM text_content "
+        "WHERE collection_dataset = {dataset:String} AND file_hash = {hash:String} "
+        "AND extracted_by = {source:String} GROUP BY page_id)",
+        parameters={"dataset": dataset, "hash": file_hash, "source": TABLE_TEXT}).result_rows
+    return int(rows[0][0]), str(rows[0][1])
+
+
+def complete_table_text(client, dataset: str, file_hash: str, generation: int) -> bool:
+    """Verify the required text manifest of a published SQLite reading."""
+    rows = client.query(
+        "SELECT reader, text_complete, text_page_count, text_digest FROM table_documents FINAL "
+        "WHERE collection_dataset = {dataset:String} AND hash = {hash:String} "
+        "AND generation = {generation:UInt32} AND status IN ('ok', 'empty') LIMIT 1",
+        parameters={"dataset": dataset, "hash": file_hash, "generation": generation}).result_rows
+    if not rows:
+        return False
+    reader, complete, count, digest = rows[0]
+    return reader != "sqlite" or (bool(complete) and stored_text_identity(client, dataset, file_hash) == (int(count), digest))

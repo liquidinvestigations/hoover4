@@ -651,3 +651,23 @@ def test_only_known_pdf_metadata_defects_prove_preparation_error_recovery(monkey
         _input("pdf_metadata_batch",_StageParams(op_id="op"))))
     assert bool(calls[0]) == bool(defect)
     assert "pdf_get_metadata_and_store" in recovery_activities("pdf_process")
+
+
+@pytest.mark.parametrize("task,value,proof", [
+    ("extract_archive_to_temp", {"entry_count": 2}, False),
+    ("extract_archive_to_temp", {"entry_count": 0}, True),
+    ("extract_archive_to_temp", {"entry_count": 0, "partial_errors": ["unreadable"]}, False),
+    ("extract_archive_to_temp", {"reason": "volume of an incomplete split archive"}, False),
+    ("scan_folder_tree", {"status": "scanned"}, True),
+])
+def test_archive_recovery_waits_for_member_scanning_or_a_complete_empty_extraction(monkeypatch, task, value, proof):
+    from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
+    calls = []
+    monkeypatch.setattr(task_timing, "_write_operation_result",
+                        lambda collection, rows, outcomes: calls.append(outcomes))
+    result = BatchResult("archive", [FileResult("source", task, "ok", value)])
+    asyncio.run(_TimingActivityInbound(_FakeNext(result=result)).execute_activity(
+        _input("archive", _StageParams(op_id="operation"))))
+    assert bool(calls[0]) == proof
+    if proof:
+        assert calls[0][0][3] == "archive_scan"
