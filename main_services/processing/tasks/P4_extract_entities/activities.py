@@ -18,7 +18,7 @@ from tasks.entity_stoplist import filter_entity_values
 from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
-from tasks.text_sources import fetch_text_batch, ner_reads_variant, plan_text_batches
+from tasks.text_sources import fetch_text_batch, ner_reads_variant, pages_over_work_limit, plan_text_batches
 from tasks.P6_index_data.string_term_encodings import get_string_term_ids
 
 from .completion import NER_STAGE_VERSION
@@ -214,6 +214,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             "item_hashes": item_hashes,
         }).to_pylist():
             variants_present[row['file_hash']] = set(row['variants'])
+        over_limit = pages_over_work_limit(client, collection_dataset, item_hashes)
 
     entity_groups = 0
     stopped_values = 0
@@ -233,6 +234,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
         ner_indices = [
             i for i, row in enumerate(text_content)
             if ner_reads_variant(row['extracted_by'], variants_present.get(row['file_hash'], ()))
+            and (row['file_hash'], row['extracted_by'], row['page_id']) not in over_limit
         ]
         skipped_count += len(text_content) - len(ner_indices)
         ner_texts = [cleaned_texts[i] for i in ner_indices]

@@ -252,7 +252,7 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
                                   "part_key": part_path, "file_size_bytes": part_size,
                                   "ocr_pages": [page - first + 1 for page in needs if first <= page <= last]})
             if kind == "original":
-                _insert_pdf_text_pages(params.collectionname, cd, h, pages)
+                _insert_pdf_text_pages(params.collectionname, cd, h, pages, ranges)
                 if current_batch() is not None:
                     current_batch().flush()
             write_row(client, "ocr_page_needs", dict(collection_dataset=cd, hash=h,
@@ -397,7 +397,7 @@ def covered_parts(source: list[dict], parts: list[dict]) -> bool:
 
 def finalize_variant(client, params: StageBatchParams, file: BatchFile,
                      languages: str, result: dict | None = None) -> None:
-    from tasks.P3_parse_files.parse_common import insert_text_pages
+    from tasks.P3_parse_files.parse_common import insert_text_pages, pdf_text_rows
     from tasks.P3_parse_files.insert_batch import current_batch
     source = source_parts(client, params.collection_dataset, file.item_hash, file.source_kind)
     parts = variant_parts(client, params.collection_dataset, file.item_hash,
@@ -409,7 +409,8 @@ def finalize_variant(client, params: StageBatchParams, file: BatchFile,
     if len({page for page, _ in pages}) != len(pages):
         raise RuntimeError("Searchable PDF part text has duplicate page identities")
     insert_text_pages(params.collectionname, params.collection_dataset, file.item_hash,
-                      pdf_ocr_extracted_by(params.engine, languages), pages)
+                      pdf_ocr_extracted_by(params.engine, languages),
+                      pdf_text_rows(pages, [(part["first_page"], part["last_page"]) for part in source]))
     if current_batch() is not None:
         current_batch().flush()
     direct = parts[0]["blob_key"] if len(parts) == 1 else ""

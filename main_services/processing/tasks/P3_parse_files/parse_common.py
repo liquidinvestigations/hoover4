@@ -23,6 +23,16 @@ log = logging.getLogger(__name__)
 #: plausible unit of retrieval, and for genuinely paged formats the page number is used
 #: directly instead (see :func:`insert_text_pages`).
 DEFAULT_TEXT_SEGMENT_BYTES = 256 * 1024
+#: The split rule of new `text_content` rows, stored in `segment_version`.
+TEXT_SEGMENT_VERSION = 1
+#: Text that a segment repeats from the end of the segment before it. A name on the cut
+#: then appears whole in one segment for NER, regex, embedding and phrase search.
+TEXT_SEGMENT_OVERLAP_BYTES = 256
+#: Text of one PDF row. A PDF part with more text splits at a page boundary.
+PDF_ROW_MAX_BYTES = 1024 * 1024
+#: Separates the pages of one PDF row. The first page of a row is its `page_id`, so the
+#: page of a text position is `page_id` plus the count of breaks before that position.
+PAGE_BREAK = "\f"
 DELETE_PAGE_BATCH = 1000
 
 
@@ -50,12 +60,46 @@ def direct_error_fields(params: Any, task_name: str, item_hash: str) -> Dict[str
     return fields
 
 
+def _letter_start(data: bytes, position: int) -> int:
+    """The nearest position at or before `position` that starts a UTF-8 sequence."""
+    while position > 0 and data[position] & 0xC0 == 0x80:
+        position -= 1
+    return position
+
+
+def _segment_end(data: bytes, start: int, limit: int, reach: int) -> int:
+    """Cut after the last white space in the `reach` bytes before `limit`, or between letters."""
+    for position in range(limit - 1, max(start, limit - reach) - 1, -1):
+        if data[position] in b" \t\r\n":
+            return position + 1
+    end = _letter_start(data, limit)
+    return end if end > start else limit
+
+
+def _next_start(data: bytes, start: int, end: int, overlap: int) -> int:
+    """Start the next segment at a word in the last `overlap` bytes of this one."""
+    first = max(start + 1, end - overlap)
+    for position in range(first, end):
+        if data[position - 1] in b" \t\r\n":
+            return position
+    while first < end and data[first] & 0xC0 == 0x80:
+        first += 1
+    return first
+
+
 def _split_utf8_bytes_to_chunks(data: bytes, max_bytes: int) -> List[str]:
+    """Cut text at white space, with each segment repeating the end of the one before it."""
+    overlap = min(TEXT_SEGMENT_OVERLAP_BYTES, max_bytes // 4)
+    reach = max(1, max_bytes // 8)
     chunks: List[str] = []
-    for i in range(0, len(data), max_bytes):
-        seg = data[i:i + max_bytes]
-        if seg:
-            chunks.append(seg.decode("utf-8", errors="ignore"))
+    start = 0
+    while start < len(data):
+        limit = start + max_bytes
+        end = len(data) if limit >= len(data) else _segment_end(data, start, limit, reach)
+        chunks.append(data[start:end].decode("utf-8", errors="ignore"))
+        if end >= len(data):
+            break
+        start = _next_start(data, start, end, overlap)
     return chunks
 
 
@@ -89,18 +133,48 @@ def text_chunk_pages(text_or_bytes: Any, *, start_page_id: int = 1,
     return [(start_page_id + i, c) for i, c in enumerate(chunks)]
 
 
+def pdf_text_rows(pages: Sequence[tuple], ranges: Sequence[tuple], *,
+                  max_bytes: int = PDF_ROW_MAX_BYTES, min_chars: int = 2) -> List[tuple]:
+    """Join `(page, text)` pairs into one `(first_page, text)` row for each PDF part.
+
+    `ranges` are the `(first_page, last_page)` parts of the PDF, so all sources of a PDF
+    share their row boundaries. `PAGE_BREAK` follows each page of a row, and a page without
+    text stays as an empty place. A row without text is absent.
+    """
+    bodies = {}
+    for page, text in pages:
+        body = (text or "").replace(PAGE_BREAK, " ").strip()
+        if len(body) >= min_chars:
+            bodies[int(page)] = body
+    rows = []
+    for first, last in ranges:
+        start, places, size = first, [], 0
+        for page in range(first, last + 1):
+            body = bodies.get(page, "")
+            length = len(body.encode("utf-8", errors="ignore")) + 1
+            if places and size + length > max_bytes:
+                rows.append((start, PAGE_BREAK.join(places).rstrip(PAGE_BREAK)))
+                start, places, size = page, [], 0
+            places.append(body)
+            size += length
+        rows.append((start, PAGE_BREAK.join(places).rstrip(PAGE_BREAK)))
+    return [(page, text) for page, text in rows if text]
+
+
 def stored_page_bodies(pages: Sequence[tuple], *, min_chars: int = 2) -> List[tuple]:
     """The `(page_id, body)` pairs that a complete source stores in `text_content`.
 
-    Each body is the page text without surrounding white space. A page with fewer than
-    `min_chars` characters is absent.
+    Each body is the page text without surrounding white space. Leading page breaks stay,
+    because they count the empty pages of a PDF row. A page with fewer than `min_chars`
+    characters is absent.
     """
     rows = []
     for page_id, text in pages:
         page_id = int(page_id)
-        body = (text or "").strip()
+        text = text or ""
+        body = text.strip()
         if len(body) >= min_chars:
-            rows.append((page_id, body))
+            rows.append((page_id, text[:len(text) - len(text.lstrip(PAGE_BREAK))] + body))
     return rows
 
 
@@ -215,6 +289,7 @@ def insert_text_sources(collectionname: str, collection_dataset: str, file_hash:
                 "text_bytes": pa.array([r[3] for r in rows], type=pa.uint64()),
                 "version": pa.array([versions[r[0]] for r in rows], type=pa.uint64()),
                 "language": pa.array([languages[r[0]] for r in rows], type=pa.string()),
+                "segment_version": pa.array([TEXT_SEGMENT_VERSION] * len(rows), type=pa.uint16()),
             })
             insert_parser_arrow(client, "text_content", table)
         batch = current_batch()

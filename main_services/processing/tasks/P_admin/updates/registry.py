@@ -138,6 +138,14 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "page gets a new OCR request.",
         runs="Searchable PDF parts, then OCR text indexing of the rebuilt PDFs"),
     UpdateStep(
+        step_id="text_rows", scope=SCOPE_DATASET, version=1, stages=("text_rows",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Text rows",
+        explanation="{files} files have text rows from an earlier split. PDF text moves into one row "
+                    "for each PDF part. Long text gets cuts at white space with a short overlap, so a "
+                    "name on a cut is found. The stored text is split again, with no new OCR or parsing.",
+        runs="Text rows, then entity extraction, embedding and indexing of the changed files"),
+    UpdateStep(
         step_id="entities", scope=SCOPE_DATASET, version=1,
         stages=("entities", "index_text", "index_terms"), automatic=True, uses_input_revision=True,
         prerequisites=("search_schema",), requires=(), title="Named entities",

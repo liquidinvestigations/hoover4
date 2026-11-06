@@ -460,6 +460,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
         if step_id == "search_terms":
             missing = selectors.missing_search_terms(client, ctx)
             return missing == 0, f"{missing} filter terms remain absent or incorrect."
+        if step_id == "text_rows":
+            selection = selectors.select_text_rows(client, ctx)
+            return selection.count == 0, f"{selection.count} files still have text rows from an earlier split."
         if step_id == "page_text":
             selection = selectors.select_page_text(client, ctx)
             return selection.count == 0, f"{selection.count} files still have incomplete indexed text."
@@ -607,6 +610,21 @@ def list_update_vector_plans(params: VectorPlansParams) -> List[str]:
             "AND embedding_model = {model:String})) ORDER BY plan_hash LIMIT 100",
             parameters={"cd": params.collection_dataset, "after": params.after,
                         "model": params.model}).result_rows
+    return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def list_update_text_row_plans(params: TablePlansParams) -> List[str]:
+    """At most 100 plans after `after` that hold a file that the `text_rows` step selects."""
+    from database.clickhouse import get_collection_client
+
+    hash_sql, extra = selectors.text_rows_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT plan_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            f"AND plan_hash > {{after:String}} AND item_hash IN ({hash_sql}) ORDER BY plan_hash LIMIT 100",
+            parameters={"cd": params.collection_dataset, "after": params.after, **extra}).result_rows
     return [row[0] for row in rows]
 
 

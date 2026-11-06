@@ -140,21 +140,18 @@ def _pdftotext_pages(path: str) -> List[str]:
 
 
 def _insert_pdf_text_pages(collectionname: str, collection_dataset: str, pdf_hash: str,
-                           pages: List[str]) -> int:
-    """Store extracted PDF text one row per real page.
+                           pages: List[str], ranges: List[tuple]) -> int:
+    """Store extracted PDF text with one row for each part of the PDF.
 
-    `page_id` is the 1-based PDF page number here, not a segment ordinal, which is what
-    makes the document viewer's page jump and `search_document_pdf.rs`'s
-    `min_page..=max_page` iteration correct rather than coincidental. It is also the
-    unit OCR works in, so an OCR variant of the same PDF lines up page for page with
-    this one.
+    `page_id` is the 1-based number of the first page of the row, as `pdf_text_rows`
+    describes. OCR variants of the same PDF use the same parts, so their rows line up.
     """
     if not pages:
         return 0
-    from tasks.P3_parse_files.parse_common import insert_text_pages
+    from tasks.P3_parse_files.parse_common import insert_text_pages, pdf_text_rows
     return insert_text_pages(
         collectionname, collection_dataset, pdf_hash, "pdftotext",
-        [(i, text) for i, text in enumerate(pages, start=1)],
+        pdf_text_rows(list(enumerate(pages, start=1)), ranges),
     )
 
 
@@ -320,7 +317,9 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
     with heartbeat_pump(f"pdf small {pdf_hash[:8]}"):
         # Text, one row per real PDF page.
         text_pages = _pdftotext_pages(file_path)
-        _insert_pdf_text_pages(params.collectionname, collection_dataset, pdf_hash, text_pages)
+        from tasks.P3_parse_files.pdf_parts import source_ranges
+        _insert_pdf_text_pages(params.collectionname, collection_dataset, pdf_hash, text_pages,
+                               source_ranges(len(text_pages), os.path.getsize(file_path)))
 
         # Extract images via qpdf (best-effort)
         image_paths = _extract_images_with_qpdf(file_path, out_dir)

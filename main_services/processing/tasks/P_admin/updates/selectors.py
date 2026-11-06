@@ -519,6 +519,31 @@ def detection_hash_sql() -> Tuple[str, dict]:
     return sql, {"od_version": STAGE_VERSIONS["ocr_detection"]}
 
 
+def text_rows_hash_sql() -> Tuple[str, dict]:
+    """The files that the `text_rows` step splits again, as a subquery with parameters.
+
+    A source of one row with an unpaged split needs no change. `table_text` keeps its cell
+    aware split. A PDF source of one row can start after page 1, and the row then needs
+    empty places for the pages before it.
+    """
+    from tasks.P3_parse_files.parse_common import TEXT_SEGMENT_VERSION
+
+    sql = ("SELECT DISTINCT file_hash AS hash FROM (SELECT file_hash, extracted_by, page_id, "
+           "argMax(segment_version, version) AS written FROM text_content "
+           "WHERE collection_dataset = {cd:String} AND extracted_by != 'table_text' "
+           "GROUP BY file_hash, extracted_by, page_id) WHERE written < {tr_version:UInt16} "
+           "GROUP BY file_hash, extracted_by HAVING count() > 1 OR (min(page_id) > 1 AND "
+           "(extracted_by = 'pdftotext' OR startsWith(extracted_by, 'pdfocr_')))")
+    return f"SELECT hash FROM ({sql}) WHERE hash IN ({_LIVE})", {"tr_version": TEXT_SEGMENT_VERSION}
+
+
+def select_text_rows(client, ctx: ScopeContext) -> Selection:
+    hash_sql, extra = text_rows_hash_sql()
+    parameters = {"cd": ctx.scope_id, **extra}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {})
+
+
 def select_page_text(client, ctx: ScopeContext) -> Selection:
     """The files with a pages row that ended at a NUL byte of the stored text."""
     from .page_text import stale_page_files
@@ -630,6 +655,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_folder_counts(client, ctx)
     if step.step_id == "page_text":
         return select_page_text(client, ctx)
+    if step.step_id == "text_rows":
+        return select_text_rows(client, ctx)
     raise ValueError(f"unknown update step {step.step_id!r}")
 
 

@@ -105,6 +105,7 @@ def _install_fakes(monkeypatch, text_rows, post):
         yield fake_client
 
     monkeypatch.setattr(nlp_activities, "get_collection_client", fake_client_ctx)
+    monkeypatch.setattr(nlp_activities, "pages_over_work_limit", lambda *a: set())
     monkeypatch.setattr(nlp_activities, "get_string_term_ids", lambda *a, **kw: {})
     # The endpoint list is now built from the environment per call, so the
     # stub server is injected the same way deploy.py injects the real one.

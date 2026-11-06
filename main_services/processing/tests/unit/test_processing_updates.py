@@ -64,7 +64,7 @@ def test_a_fingerprint_changes_with_version_target_and_input(monkeypatch):
 
 def test_the_steps_of_a_scope_keep_registry_order():
     assert [s.step_id for s in registry.steps_of("dataset")] == [
-        "unfinished", "failed_files", "virus_scan", "tables", "archive_members", "image_previews", "ocr_detection", "ocr", "pdf_text", "entities", "page_text", "vectors",
+        "unfinished", "failed_files", "virus_scan", "tables", "archive_members", "image_previews", "ocr_detection", "ocr", "pdf_text", "text_rows", "entities", "page_text", "vectors",
         "search_terms", "folder_counts"]
     assert [s.step_id for s in registry.steps_of("collection")] == ["search_schema"]
 

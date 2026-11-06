@@ -364,6 +364,7 @@ async def run_common_worker():
         finish_update_step,
         list_update_vector_plans,
         list_update_table_plans,
+        list_update_text_row_plans,
         reparse_update_tables,
         restore_missing_image_previews,
         prepare_table_update,
@@ -378,11 +379,13 @@ async def run_common_worker():
         update_operation_state,
     )
     from .P_admin.updates.pdf_text_layer import scan_pdf_text_layers
+    from .P_admin.updates.text_rows import rewrite_text_rows
     from .P_admin.updates.workflows import (
         COORDINATOR_ID,
         ProcessingUpdates,
         RunProcessingUpdate,
         UpdateDatasetVectors,
+        UpdateDatasetTextRows,
         UpdateDatasetTables,
         UpdateDatasetEntities,
         UpdateDatasetImagePreviews,
@@ -488,6 +491,7 @@ async def run_common_worker():
             ProcessingUpdates,
             RunProcessingUpdate,
             UpdateDatasetVectors,
+            UpdateDatasetTextRows,
             UpdateDatasetTables,
             UpdateDatasetEntities,
             UpdateDatasetImagePreviews,
@@ -606,11 +610,13 @@ async def run_common_worker():
             apply_search_schema,
             list_update_vector_plans,
             list_update_table_plans,
+            list_update_text_row_plans,
             reparse_update_tables,
             restore_missing_image_previews,
             restore_archive_members,
             finish_archive_members,
             prepare_table_update,
+            rewrite_text_rows,
             record_table_update_receipts,
             list_entity_update_hashes,
             list_update_virus_plans,

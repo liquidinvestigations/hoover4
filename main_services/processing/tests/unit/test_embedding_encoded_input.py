@@ -64,6 +64,7 @@ def run_embedding(monkeypatch, text):
 
     monkeypatch.setenv("EMBEDDINGS_URL", "http://embeddings.example/v1")
     monkeypatch.setattr(activities, "get_collection_client", lambda _name: nullcontext(Client()))
+    monkeypatch.setattr(activities, "pages_over_work_limit", lambda *_args: set())
     monkeypatch.setattr(activities, "_probed_serving", lambda: ("intfloat/multilingual-e5-small", 2))
     monkeypatch.setattr(activities, "HeartbeatClock", lambda: SimpleNamespace(beat=lambda *_args: None))
     monkeypatch.setattr(activities, "stop_if_worker_is_stopping", lambda *_args: None)

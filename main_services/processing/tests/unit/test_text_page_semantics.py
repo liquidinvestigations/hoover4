@@ -9,6 +9,7 @@ split produces one enormous row that still looks like a successful extraction.
 import pytest
 
 from tasks.P3_parse_files.parse_common import (
+    TEXT_SEGMENT_OVERLAP_BYTES,
     DEFAULT_TEXT_SEGMENT_BYTES,
     insert_text_pages,
     split_text_segments,
@@ -26,7 +27,7 @@ def test_split_text_segments_cuts_at_the_segment_size():
     segments = split_text_segments(text)
     assert len(segments) == 2
     assert len(segments[0]) == DEFAULT_TEXT_SEGMENT_BYTES
-    assert len(segments[1]) == 10
+    assert len(segments[1]) == 10 + TEXT_SEGMENT_OVERLAP_BYTES
 
 
 def test_split_text_segments_ignores_content_too_short_to_be_text():

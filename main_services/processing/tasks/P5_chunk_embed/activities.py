@@ -32,6 +32,7 @@ from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.remote import post_json
 from tasks.text_quality import non_linguistic_reason
+from tasks.text_sources import pages_over_work_limit
 
 from .chunking import chunk_page_text
 from .embedding_prefix import embedding_input
@@ -141,6 +142,9 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
             after = (last["file_hash"], last["extracted_by"], int(last["page_id"]))
             yield rows
 
+    with get_collection_client(params.collectionname) as limit_client:
+        over_limit = pages_over_work_limit(limit_client, collection_dataset, item_hashes)
+
     total_segments = 0
     total_chunk_rows = 0
     total_vectors = 0
@@ -148,6 +152,8 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     saw_any = False
 
     for text_content in _segment_pages():
+        text_content = [row for row in text_content if (
+            row["file_hash"], row["extracted_by"], int(row["page_id"])) not in over_limit]
         # Page boundary. Every page before this one is fully written, and the anti-join
         # above skips it on the next attempt, so a worker being drained gives the batch
         # back here rather than being killed part-way through a page.

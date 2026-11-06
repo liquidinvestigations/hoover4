@@ -104,7 +104,7 @@ def test_variant_completion_follows_durable_text_including_empty(store,params,mo
     monkeypatch.setattr(common,"insert_text_pages",lambda *args: events.append(("text",args[-1])))
     monkeypatch.setattr(parts,"write_row",lambda *args,**kw: events.append(("result",args[2])))
     parts.finalize_variant(store,params,BatchFile("doc","/unused"),"eng")
-    assert events[0] == ("text",list(enumerate(texts,1)))
+    assert events[0] == ("text",common.pdf_text_rows(list(enumerate(texts,1)),[(1,2)]))
     assert events[1][1]["text_complete"] == 1
     assert events[1][1]["form"] == "overlay"
 

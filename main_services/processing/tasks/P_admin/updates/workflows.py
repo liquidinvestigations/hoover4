@@ -45,6 +45,7 @@ with workflow.unsafe.imports_passed_through():
         finish_update_step,
         list_update_detection_plans,
         list_update_table_plans,
+        list_update_text_row_plans,
         list_update_virus_plans,
         retire_cached_searches,
         stale_virus_attributes,
@@ -301,6 +302,12 @@ class RunProcessingUpdate:
                 task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=RetryPolicy(maximum_attempts=2))
             return "filter terms written"
+        if step_id == "text_rows":
+            done = await workflow.execute_child_workflow(
+                UpdateDatasetTextRows.run,
+                TablePlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                id=f"update-text-rows-{params.op_id}", **self._child(params))
+            return f"split the text of {done} plans again"
         if step_id == "page_text":
             done = await workflow.execute_activity(
                 "rewrite_page_text",
@@ -440,6 +447,53 @@ class UpdateDatasetVectors:
                 failed += 1
         workflow.continue_as_new(VectorPlansParams(
             params.op_id, params.collectionname, params.collection_dataset, params.model,
+            plans[-1], params.done + len(plans), params.failed + failed))
+
+
+@workflow.defn
+class UpdateDatasetTextRows:
+    """Split stored text again, then run the stages that read the text rows.
+
+    Pages of at most 100 plans, four at a time, with continue-as-new after each page.
+    """
+
+    @workflow.run
+    async def run(self, params: TablePlansParams) -> int:
+        plans = await workflow.execute_activity(list_update_text_row_plans, params, start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not plans:
+            if params.failed:
+                raise ApplicationError(f"{params.failed} plans failed the text split or its stages",
+                                       non_retryable=True)
+            return params.done
+        common = dict(task_queue="processing-common-queue",
+                      search_attributes=dataset_search_attributes(params.collection_dataset))
+
+        async def plan(plan_hash: str):
+            await workflow.execute_activity(
+                "rewrite_text_rows",
+                TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
+                task_queue="processing-common-queue", start_to_close_timeout=timedelta(hours=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            child = {"collectionname": params.collectionname,
+                     "collection_dataset": params.collection_dataset,
+                     "plan_hash": plan_hash, "op_id": params.op_id}
+            await asyncio.gather(*(
+                workflow.execute_child_workflow(name, child, id=f"update-text-{stage}-{params.op_id}-{plan_hash}", **common)
+                for name, stage in (("ExtractEntitiesForPlan", "entities"), ("ScanRegexEntitiesForPlan", "regex"),
+                                    ("ChunkEmbedForPlan", "embed"))))
+            await workflow.execute_child_workflow(
+                "IndexDatasetPlan", child, id=f"update-text-index-{params.op_id}-{plan_hash}", **common)
+
+        results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
+        failed = 0
+        for result in results:
+            if isinstance(result, BaseException):
+                if is_cancellation(result):
+                    raise result
+                failed += 1
+        workflow.continue_as_new(TablePlansParams(
+            params.op_id, params.collectionname, params.collection_dataset,
             plans[-1], params.done + len(plans), params.failed + failed))
 
 

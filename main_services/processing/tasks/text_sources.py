@@ -29,6 +29,28 @@ SegmentKey = tuple[str, str, int]
 TEXT_BATCH_BYTES = 32 * 1024 * 1024
 
 
+#: Text of one source that NER and embedding read. It holds a PDF of 10,000 dense pages.
+#: The rest of a larger source stays in `text_content` and in the search index.
+TEXT_WORK_LIMIT_BYTES = 75_000_000
+
+
+def pages_over_work_limit(client, collection_dataset: str, hashes: list[str]) -> set[SegmentKey]:
+    """The segments of these files that come after their source passes the work limit."""
+    if not hashes:
+        return set()
+    rows = client.query(
+        "SELECT file_hash, extracted_by, page_id FROM ("
+        "SELECT file_hash, extracted_by, page_id, sum(text_bytes) OVER "
+        "(PARTITION BY file_hash, extracted_by ORDER BY page_id) AS reached FROM ("
+        "SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS text_bytes "
+        "FROM text_content WHERE collection_dataset = {cd:String} "
+        "AND file_hash IN {h:Array(String)} GROUP BY file_hash, extracted_by, page_id)"
+        ") WHERE reached > {limit:UInt64}",
+        parameters={"cd": collection_dataset, "h": hashes, "limit": TEXT_WORK_LIMIT_BYTES},
+    ).result_rows
+    return {(str(file_hash), str(source), int(page_id)) for file_hash, source, page_id in rows}
+
+
 def plan_text_batches(keys: list[tuple[SegmentKey, int]],
                       max_bytes: int = TEXT_BATCH_BYTES) -> list[list[SegmentKey]]:
     """Group ordered segment keys into byte-bounded batches."""
