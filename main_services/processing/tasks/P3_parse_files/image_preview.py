@@ -51,6 +51,10 @@ _DIRECT_MAGIC: Tuple[bytes, ...] = (
 )
 
 
+#: The prefix of the skip reason of a file that the converter refuses. The update step does not select it.
+PREVIEW_UNDECODABLE = "preview_undecodable_"
+
+
 def preview_kind(head: bytes, mime_types: List[str], routes: List[str]) -> str:
     """`video`, `svg`, `raster`, or an empty string when the file needs no preview."""
     if "video" in routes:
@@ -195,10 +199,12 @@ def make_image_preview(params: ImagePreviewParams) -> str | SkippedOutcome:
         except (RuntimeError, subprocess.TimeoutExpired, UnidentifiedImageError) as exc:
             log.info("[P3] no %s preview for %s: %s", kind, params.file_hash, exc)
             from tasks.ocr_targets import record_ocr_skips
+            # A timeout says nothing about the bytes, so the update step can try it again.
+            prefix = "preview_failed_" if isinstance(exc, subprocess.TimeoutExpired) else PREVIEW_UNDECODABLE
             with get_collection_client(params.collectionname) as client:
                 record_ocr_skips(client, params.collection_dataset, params.file_hash,
-                                 "preview", "", [""], f"preview_failed_{kind}")
-            return SkippedOutcome(f"preview_failed_{kind}")
+                                 "preview", "", [""], f"{prefix}{kind}")
+            return SkippedOutcome(f"{prefix}{kind}")
         size_bytes = os.path.getsize(out_path)
         bucket = collection_bucket(params.collectionname)
         key = preview_key(params.file_hash)

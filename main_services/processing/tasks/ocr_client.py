@@ -117,7 +117,9 @@ def detect_text(image_bytes: bytes) -> Optional[dict]:
         if getattr(exc.response, "status_code", None) in (413, 422):
             return None
         raise
-    return result.data if isinstance(result.data, dict) else None
+    if not isinstance(result.data, dict):
+        raise RuntimeError("OCR detector returned an unreadable answer")
+    return result.data
 
 
 __all__ = [

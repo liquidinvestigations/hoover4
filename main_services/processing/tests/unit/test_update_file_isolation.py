@@ -5,7 +5,7 @@ import pytest
 from tasks.P3_parse_files import ocr_detection
 from tasks.P_admin.updates import activities, selectors
 from tasks.P_admin.updates.entities import indexed_page_is_current
-from tasks.P_admin.updates.params import TablePlanParams
+from tasks.P_admin.updates.params import TablePlanParams, TablePlansParams
 
 
 class Result:
@@ -26,7 +26,7 @@ class Client:
         return False
 
     def query(self, sql, parameters=None):
-        return Result(self.selected if "processing_plan_hits" in sql else [])
+        return Result(self.selected if "processing_plan_hits" in sql or "groupUniqArrayArray" in sql else [])
 
 
 PARAMS = TablePlanParams("op", "collection", "dataset", "plan")
@@ -51,6 +51,25 @@ def test_an_undetectable_file_does_not_stop_its_plan(monkeypatch):
     monkeypatch.setattr(ocr_detection, "_detect_file", detect)
     assert activities.detect_update_files.__wrapped__(PARAMS) == 2
     assert seen == ["bad", "good"]
+
+
+def test_an_undecodable_preview_leaves_its_step_and_a_missing_one_fails(monkeypatch):
+    from tasks.P3_parse_files import image_preview
+    from tasks.task_timing import SkippedOutcome
+
+    clients(monkeypatch, [("bad", 1, "s3://b/bad", ["image/gif"])])
+    monkeypatch.setattr(image_preview, "read_preview_bytes", lambda *_a: None)
+    params = TablePlansParams("op", "c", "cd")
+    monkeypatch.setattr(image_preview, "make_image_preview", lambda _p: SkippedOutcome("preview_undecodable_image"))
+    assert activities.restore_missing_image_previews.__wrapped__(params) == 1
+    monkeypatch.setattr(image_preview, "make_image_preview", lambda _p: SkippedOutcome("preview_failed_image"))
+    with pytest.raises(RuntimeError, match="remains unavailable"):
+        activities.restore_missing_image_previews.__wrapped__(params)
+
+
+def test_the_preview_step_does_not_select_an_undecodable_file():
+    sql, parameters = selectors.image_preview_hash_sql()
+    assert "ocr_skips" in sql and parameters["preview_undecodable"] == "preview_undecodable_"
 
 
 def test_a_service_failure_keeps_its_temporal_retry(monkeypatch):

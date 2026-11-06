@@ -804,7 +804,8 @@ def list_update_detection_plans(params: VirusPlansParams) -> List[str]:
 def detect_update_files(params: TablePlanParams) -> int:
     """Examine the selected files of one plan, one at a time, and store their rows.
 
-    A file that the detector cannot process stays selected, and settlement reports it.
+    An image that the service cannot decode stores an `undecodable` row and leaves the
+    selection. A PDF that does not render stays selected, and settlement reports it.
     The other files of the plan continue.
     """
     import shutil
@@ -948,7 +949,8 @@ def restore_missing_image_previews(params: TablePlansParams) -> int:
     from database.clickhouse import get_collection_client
     from tasks.P2_execute_plan.activities import write_blob_files
     from tasks.P3_parse_files.batch_runner import try_budget_seconds
-    from tasks.P3_parse_files.image_preview import ImagePreviewParams, make_image_preview, read_preview_bytes
+    from tasks.P3_parse_files.image_preview import (
+        PREVIEW_UNDECODABLE, ImagePreviewParams, make_image_preview, read_preview_bytes)
 
     hash_sql, extra = selectors.image_preview_hash_sql()
     with get_collection_client(params.collectionname) as client:
@@ -967,11 +969,12 @@ def restore_missing_image_previews(params: TablePlansParams) -> int:
                 write_blob_files(params.collectionname, params.collection_dataset, [
                     {"item_hash": file_hash, "file_size_bytes": int(size or 0), "s3_url": s3_path or "", "path": path}],
                     context=f"{params.collection_dataset} missing image preview")
-                make_image_preview(ImagePreviewParams(
+                outcome = make_image_preview(ImagePreviewParams(
                     params.collectionname, params.collection_dataset, file_hash, path,
                     list(mimes or []), ["image"],
                     try_budget_seconds("make_image_preview_batch", int(size or 0))))
-                if not read_preview_bytes(client, params.collection_dataset, file_hash):
+                undecodable = str(getattr(outcome, "value", "")).startswith(PREVIEW_UNDECODABLE)
+                if not undecodable and not read_preview_bytes(client, params.collection_dataset, file_hash):
                     raise RuntimeError(f"The image preview remains unavailable for {file_hash}")
                 os.remove(path)
     return len(rows)

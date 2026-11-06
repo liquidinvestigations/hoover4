@@ -51,9 +51,14 @@ def test_detection_inspects_pages_after_one_hundred(monkeypatch):
     assert len(rows) == 151
 
 
-def test_detector_missing_result_is_retryable():
-    with pytest.raises(RuntimeError, match="no processable result"):
-        ocr_detection._row("c_ds", "h", "image", 1, None)
+def test_an_unreadable_detector_answer_is_retryable(monkeypatch):
+    from types import SimpleNamespace
+    from tasks import ocr_client
+
+    monkeypatch.setattr(ocr_client, "_endpoints_for", lambda _engine: [("tesseract", "http://ocr/ocr")])
+    monkeypatch.setattr(ocr_client, "post_json", lambda *_a, **_k: SimpleNamespace(data=["not", "a", "dict"]))
+    with pytest.raises(RuntimeError, match="unreadable answer"):
+        ocr_client.detect_text(b"image")
 
 
 def test_recognized_short_tsv_keeps_its_delimiter_after_download(tmp_path):

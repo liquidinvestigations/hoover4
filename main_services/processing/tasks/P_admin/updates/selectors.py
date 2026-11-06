@@ -653,15 +653,20 @@ def unique_files(client, selections: Sequence[Selection], collection_dataset: st
 
 
 def image_preview_hash_sql() -> Tuple[str, dict]:
-    """Select live uncommon images without a published preview, including earlier skips."""
+    """Select live uncommon images without a published preview, except undecodable files."""
     sql = (
         "SELECT DISTINCT hash FROM file_types WHERE collection_dataset = {cd:String} "
         "AND arrayExists(mime -> startsWith(mime, 'image/'), mime_type) "
         "AND hash NOT IN (SELECT hash FROM file_types WHERE collection_dataset = {cd:String} "
         "AND hasAny(mime_type, {preview_direct:Array(String)})) "
         "AND hash NOT IN (SELECT hash FROM image_previews WHERE collection_dataset = {cd:String}) "
+        "AND hash NOT IN (SELECT file_hash FROM ocr_skips WHERE collection_dataset = {cd:String} "
+        "AND stage = 'preview' AND startsWith(reason, {preview_undecodable:String})) "
         f"AND hash IN ({_LIVE})")
-    return sql, {"preview_direct": ["image/jpeg", "image/png", "image/bmp", "image/webp", "image/x-ms-bmp"]}
+    from tasks.P3_parse_files.image_preview import PREVIEW_UNDECODABLE
+
+    return sql, {"preview_direct": ["image/jpeg", "image/png", "image/bmp", "image/webp", "image/x-ms-bmp"],
+                 "preview_undecodable": PREVIEW_UNDECODABLE}
 
 
 def select_image_previews(client, ctx: ScopeContext) -> Selection:

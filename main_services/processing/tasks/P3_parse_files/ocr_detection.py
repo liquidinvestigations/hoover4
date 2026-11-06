@@ -6,7 +6,8 @@ Requests use bounded page batches and retain completed detection rows.
 An image under the OCR size gate stores a successful negative row.
 A render failure stores no negative result for its page.
 The update step selects missing current-version page identities.
-`NotDetectable` marks a file that a retry cannot change, so an update continues with the
+An image that the service cannot decode stores a row with `model` `undecodable`.
+`NotDetectable` marks a PDF page that does not render, so an update continues with the
 other files of its plan and the file stays selected.
 
 """
@@ -41,10 +42,13 @@ RENDER_DPI = 200
 RENDER_TIMEOUT_SECONDS = 120
 
 KIND_IMAGE = "image"
+#: The `model` of a row for an image that the service cannot decode. The row has no text, so
+#: the update step selects it no more and OCR sends no request. A retry sends the same bytes.
+UNDECODABLE = "undecodable"
 
 
 class NotDetectable(RuntimeError):
-    """The detector cannot process this file. Another try sends the same bytes."""
+    """The page cannot be rendered. Another try uses the same file."""
 
 
 def spaced_pages(pages: Sequence[int], limit: int = MAX_DETECTED_PAGES) -> List[int]:
@@ -57,7 +61,9 @@ def spaced_pages(pages: Sequence[int], limit: int = MAX_DETECTED_PAGES) -> List[
 
 def _row(collection_dataset: str, file_hash: str, kind: str, page: int, found: Optional[dict]) -> dict:
     if found is None:
-        raise NotDetectable("OCR detector returned no processable result")
+        return dict(collection_dataset=collection_dataset, hash=file_hash, source_kind=kind, page_id=page,
+                    detector_version=OCR_DETECTION_VERSION, has_text=0, box_count=0, script="",
+                    model=UNDECODABLE, language="und", run_time_ms=0)
     from tasks.automatic_ocr import LANGUAGE_SCRIPTS
 
     script, model = found.get("script") or "", found.get("model") or ""

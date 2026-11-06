@@ -60,6 +60,14 @@ def test_an_image_under_the_size_gate_sends_no_request(monkeypatch):
     assert ocr_detection.image_rows("c_ds", "h", b"x")[0]["has_text"] == 0
 
 
+def test_an_undecodable_image_stores_a_row_that_settles_it(monkeypatch):
+    monkeypatch.setattr(ocr_detection, "detect_text", lambda _bytes: None)
+    monkeypatch.setattr(ocr_detection, "image_dimensions", lambda _bytes: None)
+    row = ocr_detection.image_rows("dataset", "file", b"not an image")[0]
+    assert (row["has_text"], row["model"], row["script"], row["language"]) == (0, "undecodable", "", "und")
+    assert row["detector_version"] == ocr_detection.OCR_DETECTION_VERSION
+
+
 def test_a_page_that_cannot_render_fails_without_a_negative_decision(monkeypatch):
     monkeypatch.setattr(ocr_detection, "render_page", lambda path, page: None)
     monkeypatch.setattr(ocr_detection, "detect_text", lambda data: pytest.fail("no request"))

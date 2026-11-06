@@ -108,13 +108,13 @@ STEPS: Tuple[UpdateStep, ...] = (
         explanation="{files} split archives need their current member list. Their members and search output are updated.",
         runs="Archive extraction, member reconciliation, and dependent processing"),
     UpdateStep(
-        step_id="image_previews", scope=SCOPE_DATASET, version=1, stages=("image_preview",),
+        step_id="image_previews", scope=SCOPE_DATASET, version=2, stages=("image_preview",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Image previews",
         explanation="{files} uncommon images have no preview. Their previews are created again.",
         runs="Image preview creation and verification"),
     UpdateStep(
-        step_id="ocr_detection", scope=SCOPE_DATASET, version=3, stages=("ocr_detection",),
+        step_id="ocr_detection", scope=SCOPE_DATASET, version=4, stages=("ocr_detection",),
         automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
         title="OCR detection",
         explanation="{files} files have no detected text, script or language. Each image and each page "
