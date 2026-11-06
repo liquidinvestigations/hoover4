@@ -162,6 +162,12 @@ fn TextSpans(page_id: u32, spans: Vec<common::text_highlight::HighlightTextSpan>
     let onclick = Callback::new(move |clicked_index: u32| store.select_match.call(clicked_index));
     let page_label = store.displayed.read().as_ref()
         .map(|view| view.navigation.unit.label().shared().to_string()).unwrap_or_default();
+    let requested = store.displayed.read().as_ref().and_then(|view| view.navigation.requested_page);
+    use_effect(use_reactive!(|(requested, page_id)| {
+        if let Some(page) = requested.filter(|page| *page > page_id) {
+            document::eval(&format!("document.querySelector('[data-text-page=\"{page}\"]')?.scrollIntoView()"));
+        }
+    }));
     let mut page = page_id;
     let spans = spans
         .into_iter()

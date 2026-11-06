@@ -601,6 +601,8 @@ impl DocumentSourceItem {
         match (self, other) {
             (Self::Pdf(a),Self::Pdf(b)) => a.identity() == b.identity(),
             (Self::Archive(_), Self::Archive(_)) => true,
+            // The page range changes when text is split again, so a saved link keeps its source.
+            (Self::Text(a), Self::Text(b)) => a.extracted_by == b.extracted_by,
             _ => self == other,
         }
     }
