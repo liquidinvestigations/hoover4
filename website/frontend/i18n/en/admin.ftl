@@ -854,6 +854,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } files have searchable PDFs with an earlier text layer.
 } That layer copied each letter outside the Western European alphabets as a black square. PDFs of languages with only Western European letters are kept. The other PDFs are read, and the parts with black squares are built again. An image PDF uses the stored OCR words. A PDF page gets a new OCR request.
 processing-update-pdf_text-runs = Searchable PDF parts, then OCR text indexing of the rebuilt PDFs
+processing-update-page_text-title = Indexed page text
+processing-update-page_text-explanation = Files with incomplete search text: { $count }. A control character in a page ended its indexed text. The complete text is indexed.
+processing-update-page_text-runs = Search index text of these pages
 processing-update-vectors-title = Vectors
 processing-update-vectors-explanation = { $files ->
     [one] { $count } file with text has no vectors of the embedding model that the installation serves.

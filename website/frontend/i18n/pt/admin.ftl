@@ -856,6 +856,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } ficheiros têm PDF pesquisáveis com uma camada de texto anterior.
 } Essa camada copiava cada letra fora dos alfabetos da Europa Ocidental como um quadrado preto. Os PDF de línguas que só têm letras da Europa Ocidental mantêm-se. Os outros PDF são lidos, e as partes com quadrados pretos são criadas de novo. Um PDF de imagem usa as palavras de OCR guardadas. Uma página de PDF recebe um novo pedido de OCR.
 processing-update-pdf_text-runs = Partes dos PDF pesquisáveis, depois a indexação do texto OCR dos PDF recriados
+processing-update-page_text-title = Texto indexado das páginas
+processing-update-page_text-explanation = Ficheiros com texto de pesquisa incompleto: { $count }. Um carácter de controlo numa página terminou o texto indexado. O texto completo é indexado.
+processing-update-page_text-runs = Texto do índice de pesquisa destas páginas
 processing-update-vectors-title = Vetores
 processing-update-vectors-explanation = { $files ->
     [one] { $count } ficheiro com texto não tem vetores do modelo de incorporação que a instalação serve.

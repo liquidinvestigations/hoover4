@@ -8,7 +8,7 @@ root = Path(__file__).resolve().parents[3]
 namespace = {"re": re}
 for relative, names in [
     ("main_services/processing/tasks/plan_utils.py", {"clean_text"}),
-    ("main_services/processing/database/manticore.py", {"limit_encoded_runs", "ENCODED_LINE_MIN", "ENCODED_RUN_KEEP", "ENCODED_INLINE_MIN", "_ENCODED_LINE", "_ENCODED_RUN"}),
+    ("main_services/processing/database/manticore.py", {"indexed_text", "limit_encoded_runs", "ENCODED_LINE_MIN", "ENCODED_RUN_KEEP", "ENCODED_INLINE_MIN", "_ENCODED_LINE", "_ENCODED_RUN"}),
 ]:
     path = root / relative
     tree = ast.parse(path.read_text())
@@ -25,6 +25,7 @@ sources = [
     "A" * 300,
     " \r\n\t ",
     "quokka\n" + "A" * 80 + "\u2028quokka",
+    "quokka\0quokka \0\0 quokka",
 ]
-fixtures = [{"source": source, "indexed": namespace["limit_encoded_runs"](namespace["clean_text"](source))} for source in sources]
+fixtures = [{"source": source, "indexed": namespace["indexed_text"](namespace["clean_text"](source))} for source in sources]
 Path(__file__).with_name("text_projection.json").write_text(json.dumps(fixtures, ensure_ascii=False, indent=2) + "\n")

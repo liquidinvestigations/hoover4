@@ -53,6 +53,9 @@ STAGE_VERSIONS: Dict[str, int] = {
     "regex": 1,
     "embed": 1,
     "index_text": 3,
+    # The bytes of the indexed page text. `index_text` is in every entity receipt contract,
+    # so a change of that version rewrites all pages.
+    "index_page_text": 1,
     "index_vectors": 2,
     "index_terms": 3,
     "vfs_stats": VFS_SUBTREE_STATS_VERSION,

@@ -144,6 +144,13 @@ STEPS: Tuple[UpdateStep, ...] = (
         explanation="{files} files need complete current entity extraction or searchable output. Earlier successful results are replaced after inference completes.",
         runs="Named entity extraction, text attributes, and searchable entity terms"),
     UpdateStep(
+        step_id="page_text", scope=SCOPE_DATASET, version=1, stages=("index_page_text",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Indexed page text",
+        explanation="{files} files have pages that search holds only up to a NUL byte. The complete "
+                    "text goes into the search index.",
+        runs="Search index text of these pages"),
+    UpdateStep(
         step_id="vectors", scope=SCOPE_DATASET, version=1, stages=("embed", "index_vectors"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Vectors",

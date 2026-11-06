@@ -866,6 +866,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] ל-{ $count } קבצים יש קובצי PDF ניתנים לחיפוש עם שכבת טקסט קודמת.
 } השכבה הזו העתיקה כל אות שמחוץ לאלפביתים של מערב אירופה כריבוע שחור. קובצי PDF של שפות עם אותיות של מערב אירופה בלבד נשמרים. קובצי ה-PDF האחרים נקראים, והחלקים עם ריבועים שחורים נוצרים מחדש. PDF של תמונה משתמש במילות ה-OCR השמורות. עמוד PDF מקבל בקשת OCR חדשה.
 processing-update-pdf_text-runs = חלקים של קובצי PDF ניתנים לחיפוש, ואז אינדוקס טקסט ה-OCR של קובצי ה-PDF שנוצרו מחדש
+processing-update-page_text-title = טקסט עמודים באינדקס
+processing-update-page_text-explanation = קבצים עם טקסט חיפוש חלקי: { $count }. תו בקרה בעמוד קטע את הטקסט שלו באינדקס. הטקסט המלא נוסף לאינדקס.
+processing-update-page_text-runs = טקסט אינדקס החיפוש של עמודים אלה
 processing-update-vectors-title = וקטורים
 processing-update-vectors-explanation = { $files ->
     [one] לקובץ אחד עם טקסט אין וקטורים של מודל ההטמעה שההתקנה משרתת.

@@ -519,6 +519,14 @@ def detection_hash_sql() -> Tuple[str, dict]:
     return sql, {"od_version": STAGE_VERSIONS["ocr_detection"]}
 
 
+def select_page_text(client, ctx: ScopeContext) -> Selection:
+    """The files with a pages row that ended at a NUL byte of the stored text."""
+    from .page_text import stale_page_files
+
+    count = len(stale_page_files(client, ctx.collectionname, ctx.scope_id))
+    return Selection(count=count, automatic=count)
+
+
 def select_ocr_detection(client, ctx: ScopeContext) -> Selection:
     if detection_target()["ocr_detection"] != "on":
         return Selection(detail={"ocr_detection": "off"})
@@ -620,6 +628,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_search_terms(ctx)
     if step.step_id == "folder_counts":
         return select_folder_counts(client, ctx)
+    if step.step_id == "page_text":
+        return select_page_text(client, ctx)
     raise ValueError(f"unknown update step {step.step_id!r}")
 
 

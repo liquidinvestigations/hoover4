@@ -846,6 +846,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count }개 파일의 검색 가능한 PDF에 이전 텍스트 레이어가 있습니다.
 } 그 레이어는 서유럽 알파벳 밖의 모든 글자를 검은 사각형으로 복사했습니다. 서유럽 글자만 쓰는 언어의 PDF는 그대로 둡니다. 다른 PDF는 읽고, 검은 사각형이 있는 부분은 다시 만듭니다. 이미지 PDF는 저장된 OCR 단어를 사용합니다. PDF 페이지는 새 OCR 요청을 받습니다.
 processing-update-pdf_text-runs = 검색 가능한 PDF 부분, 그다음 다시 만든 PDF의 OCR 텍스트 색인
+processing-update-page_text-title = 색인된 페이지 텍스트
+processing-update-page_text-explanation = 검색 텍스트가 불완전한 파일 수: { $count }. 페이지의 제어 문자에서 색인된 텍스트가 끝났습니다. 전체 텍스트를 색인합니다.
+processing-update-page_text-runs = 이 페이지의 검색 색인 텍스트
 processing-update-vectors-title = 벡터
 processing-update-vectors-explanation = { $files ->
    *[other] 텍스트가 있는 파일 { $count }개에 설치가 제공하는 임베딩 모델의 벡터가 없습니다.

@@ -876,6 +876,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } pliku ma przeszukiwalne pliki PDF z wcześniejszą warstwą tekstu.
 } Ta warstwa kopiowała każdą literę spoza alfabetów zachodnioeuropejskich jako czarny kwadrat. Pliki PDF języków, które mają tylko litery zachodnioeuropejskie, pozostają bez zmian. Pozostałe pliki PDF są odczytywane, a części z czarnymi kwadratami są tworzone ponownie. PDF obrazu używa zapisanych słów OCR. Strona PDF otrzymuje nowe żądanie OCR.
 processing-update-pdf_text-runs = Części przeszukiwalnych plików PDF, potem indeksowanie tekstu OCR odtworzonych plików PDF
+processing-update-page_text-title = Zindeksowany tekst stron
+processing-update-page_text-explanation = Pliki z niepełnym tekstem wyszukiwania: { $count }. Znak sterujący na stronie zakończył jej zindeksowany tekst. Indeksowany jest pełny tekst.
+processing-update-page_text-runs = Tekst indeksu wyszukiwania tych stron
 processing-update-vectors-title = Wektory
 processing-update-vectors-explanation = { $files ->
     [one] { $count } plik z tekstem nie ma wektorów modelu embeddingów, który obsługuje instalacja.

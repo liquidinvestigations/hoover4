@@ -82,10 +82,13 @@ fn project(source: &str) -> Vec<Unit> {
             i += 1;
         }
     }
+    for unit in &mut out {
+        if unit.character == '\0' { unit.character = ' '; }
+    }
     out
 }
 
-/// Return the exact bytes produced by Python's clean_text and limit_encoded_runs.
+/// Return the exact bytes produced by Python's clean_text and indexed_text.
 pub fn indexed_text(source: &str) -> String {
     project(source).iter().map(|u| u.character).collect()
 }

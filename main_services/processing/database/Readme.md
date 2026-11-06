@@ -239,7 +239,7 @@ be assumed:
   is the other way round. The worker gets one and a script that imported the driver first
   gets the other, so `quote_manticore_values` handles both.
 
-Page text uses `limit_encoded_runs` before indexing. Source text remains in ClickHouse.
+Page text uses `indexed_text` before indexing. It applies `limit_encoded_runs` and writes a space for each NUL byte. Source text remains in ClickHouse.
 See [P6](../tasks/P6_index_data/Readme.md) for the encoded text rule and merge submission.
 
 ## Manticore infix indexing (`min_infix_len='3'`)

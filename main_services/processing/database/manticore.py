@@ -84,6 +84,14 @@ def limit_encoded_runs(text: str) -> str:
     return "".join(output)
 
 
+def indexed_text(cleaned: str) -> str:
+    """The page text of a pages row. Manticore ends a stored string at a NUL byte.
+
+    `website/common/src/text_projection.rs` maps this text to the stored page.
+    """
+    return limit_encoded_runs(cleaned).replace("\0", " ")
+
+
 def endpoint_for_table(table: str) -> str:
     """Return the endpoint that owns `table`."""
     return VECTORS if table.endswith(f"_{VECTORS_TABLE_SUFFIX}") else TEXT

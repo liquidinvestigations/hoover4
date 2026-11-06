@@ -866,6 +866,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } de fișiere au PDF-uri căutabile cu un strat de text anterior.
 } Acel strat copia fiecare literă din afara alfabetelor vest-europene ca un pătrat negru. PDF-urile limbilor care au doar litere vest-europene rămân neschimbate. Celelalte PDF-uri sunt citite, iar părțile cu pătrate negre sunt create din nou. Un PDF de imagine folosește cuvintele OCR salvate. O pagină PDF primește o nouă cerere OCR.
 processing-update-pdf_text-runs = Părți ale PDF-urilor căutabile, apoi indexarea textului OCR al PDF-urilor recreate
+processing-update-page_text-title = Text indexat al paginilor
+processing-update-page_text-explanation = Fișiere cu text de căutare incomplet: { $count }. Un caracter de control dintr-o pagină i-a încheiat textul indexat. Textul complet este indexat.
+processing-update-page_text-runs = Textul indexului de căutare pentru aceste pagini
 processing-update-vectors-title = Vectori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fișier cu text nu are vectori ai modelului de embeddings pe care îl servește instalarea.

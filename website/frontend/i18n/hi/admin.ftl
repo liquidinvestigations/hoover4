@@ -856,6 +856,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } फ़ाइलों में पुरानी टेक्स्ट परत वाले खोजने योग्य PDF हैं।
 } वह परत पश्चिमी यूरोपीय वर्णमालाओं से बाहर के हर अक्षर को काले वर्ग के रूप में कॉपी करती थी। केवल पश्चिमी यूरोपीय अक्षरों वाली भाषाओं के PDF वैसे ही रहते हैं। बाकी PDF पढ़े जाते हैं, और काले वर्गों वाले हिस्से फिर से बनाए जाते हैं। इमेज PDF सहेजे गए OCR शब्दों का उपयोग करता है। PDF पेज को नया OCR अनुरोध मिलता है।
 processing-update-pdf_text-runs = खोजने योग्य PDF के हिस्से, फिर फिर से बनाए गए PDF के OCR टेक्स्ट की इंडेक्सिंग
+processing-update-page_text-title = अनुक्रमित पृष्ठ पाठ
+processing-update-page_text-explanation = अधूरे खोज पाठ वाली फ़ाइलें: { $count }। किसी पृष्ठ में एक नियंत्रण वर्ण ने उसका अनुक्रमित पाठ समाप्त कर दिया। पूरा पाठ अनुक्रमित किया जाता है।
+processing-update-page_text-runs = इन पृष्ठों का खोज अनुक्रमणिका पाठ
 processing-update-vectors-title = वेक्टर
 processing-update-vectors-explanation = { $files ->
     [one] टेक्स्ट वाली { $count } फ़ाइल के पास उस एम्बेडिंग मॉडल के वेक्टर नहीं हैं जिसे इंस्टॉलेशन चलाता है।

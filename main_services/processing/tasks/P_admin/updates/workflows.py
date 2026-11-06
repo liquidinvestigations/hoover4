@@ -301,6 +301,13 @@ class RunProcessingUpdate:
                 task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=RetryPolicy(maximum_attempts=2))
             return "filter terms written"
+        if step_id == "page_text":
+            done = await workflow.execute_activity(
+                "rewrite_page_text",
+                EntityUpdateParams(params.collectionname, params.collection_dataset, params.op_id),
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=RetryPolicy(maximum_attempts=2))
+            return f"indexed text replaced in {done} files"
         if step_id == "folder_counts":
             await workflow.execute_activity(
                 "build_vfs_nodes",

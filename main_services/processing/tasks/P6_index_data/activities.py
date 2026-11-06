@@ -36,7 +36,7 @@ from database.manticore import (
     DATE_UNKNOWN,
     DOCUMENT_COLUMNS,
     bind_manticore_sql,
-    limit_encoded_runs,
+    indexed_text,
     manticore_execute,
     shard_table_from_name,
 )
@@ -684,7 +684,7 @@ def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
                 'file_hash': row['file_hash'],
                 'extracted_by': row['extracted_by'],
                 'page_id': row['page_id'],
-                'page_text': limit_encoded_runs(cleaned),
+                'page_text': indexed_text(cleaned),
                 'red_flags': repr_manticore_tuple(sorted({red_flag_ids[cluster['category']] for cluster in scored})),
             })
             for entity_type in ("PER", "ORG", "LOC", "MISC"):

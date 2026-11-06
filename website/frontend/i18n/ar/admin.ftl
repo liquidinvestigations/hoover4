@@ -881,6 +881,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } ملفًا لها ملفات PDF قابلة للبحث بطبقة نص سابقة.
 } كانت تلك الطبقة تنسخ كل حرف خارج الأبجديات الأوروبية الغربية كمربع أسود. تبقى ملفات PDF للغات التي لا تحتوي إلا على حروف أوروبية غربية كما هي. تُقرأ ملفات PDF الأخرى، وتُنشأ الأجزاء التي فيها مربعات سوداء من جديد. يستخدم ملف PDF للصورة كلمات OCR المحفوظة. تحصل صفحة PDF على طلب OCR جديد.
 processing-update-pdf_text-runs = أجزاء ملفات PDF القابلة للبحث، ثم فهرسة نص OCR لملفات PDF المعاد إنشاؤها
+processing-update-page_text-title = نص الصفحات المفهرس
+processing-update-page_text-explanation = ملفات نص البحث فيها غير مكتمل: { $count }. أنهى حرف تحكم في إحدى الصفحات نصها المفهرس. يُفهرس النص الكامل.
+processing-update-page_text-runs = نص فهرس البحث لهذه الصفحات
 processing-update-vectors-title = المتجهات
 processing-update-vectors-explanation = { $files ->
     [one] ملف واحد فيه نص بلا متجهات لنموذج التضمين الذي يخدمه التثبيت.

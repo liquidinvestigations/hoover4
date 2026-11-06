@@ -866,6 +866,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } Dateien haben durchsuchbare PDFs mit einer früheren Textebene.
 } Diese Ebene kopierte jeden Buchstaben außerhalb der westeuropäischen Alphabete als schwarzes Quadrat. PDFs von Sprachen mit nur westeuropäischen Buchstaben bleiben unverändert. Die anderen PDFs werden gelesen, und die Teile mit schwarzen Quadraten werden neu erstellt. Ein Bild-PDF verwendet die gespeicherten OCR-Wörter. Eine PDF-Seite erhält eine neue OCR-Anfrage.
 processing-update-pdf_text-runs = Teile durchsuchbarer PDFs, danach die Indizierung des OCR-Textes der neu erstellten PDFs
+processing-update-page_text-title = Indizierter Seitentext
+processing-update-page_text-explanation = Dateien mit unvollständigem Suchtext: { $count }. Ein Steuerzeichen auf einer Seite hat ihren indizierten Text beendet. Der vollständige Text wird indiziert.
+processing-update-page_text-runs = Suchindextext dieser Seiten
 processing-update-vectors-title = Vektoren
 processing-update-vectors-explanation =
     { $files ->

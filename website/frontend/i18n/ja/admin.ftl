@@ -846,6 +846,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] 以前のテキストレイヤーを持つ検索可能な PDF のファイルが { $count } 個あります。
 } そのレイヤーは、西ヨーロッパのアルファベット以外の文字をすべて黒い四角としてコピーしていました。西ヨーロッパの文字だけを使う言語の PDF はそのまま残ります。ほかの PDF は読み込まれ、黒い四角がある部分は作り直されます。画像の PDF は保存された OCR の単語を使います。PDF のページには新しい OCR 要求が送られます。
 processing-update-pdf_text-runs = 検索可能な PDF の部分、その後作り直した PDF の OCR テキストのインデックス作成
+processing-update-page_text-title = インデックス済みのページテキスト
+processing-update-page_text-explanation = 検索テキストが不完全なファイル数：{ $count }。ページ内の制御文字でインデックス済みテキストが途切れています。全文をインデックスします。
+processing-update-page_text-runs = これらのページの検索インデックステキスト
 processing-update-vectors-title = ベクトル
 processing-update-vectors-explanation = { $files ->
    *[other] テキストがあり、この環境が提供する埋め込みモデルのベクトルがないファイルが { $count } 個あります。

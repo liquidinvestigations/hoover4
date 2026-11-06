@@ -856,6 +856,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } file hanno PDF ricercabili con un livello di testo precedente.
 } Quel livello copiava ogni lettera fuori dagli alfabeti dell’Europa occidentale come un quadrato nero. I PDF delle lingue con sole lettere dell’Europa occidentale restano invariati. Gli altri PDF vengono letti e le parti con quadrati neri vengono create di nuovo. Un PDF di immagine usa le parole OCR salvate. Una pagina PDF riceve una nuova richiesta OCR.
 processing-update-pdf_text-runs = Parti dei PDF ricercabili, poi l’indicizzazione del testo OCR dei PDF ricreati
+processing-update-page_text-title = Testo indicizzato delle pagine
+processing-update-page_text-explanation = File con testo di ricerca incompleto: { $count }. Un carattere di controllo in una pagina ha interrotto il testo indicizzato. Viene indicizzato il testo completo.
+processing-update-page_text-runs = Testo dell’indice di ricerca di queste pagine
 processing-update-vectors-title = Vettori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } file con testo non ha vettori del modello di embedding che l'installazione serve.

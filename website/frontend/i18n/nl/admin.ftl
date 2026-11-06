@@ -856,6 +856,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } bestanden hebben doorzoekbare pdf's met een eerdere tekstlaag.
 } Die laag kopieerde elke letter buiten de West-Europese alfabetten als een zwart vierkant. Pdf's van talen met alleen West-Europese letters blijven ongewijzigd. De andere pdf's worden gelezen, en de delen met zwarte vierkanten worden opnieuw gemaakt. Een afbeeldings-pdf gebruikt de opgeslagen OCR-woorden. Een pdf-pagina krijgt een nieuw OCR-verzoek.
 processing-update-pdf_text-runs = Delen van doorzoekbare pdf's, daarna de indexering van de OCR-tekst van de opnieuw gemaakte pdf's
+processing-update-page_text-title = Geïndexeerde paginatekst
+processing-update-page_text-explanation = Bestanden met onvolledige zoektekst: { $count }. Een besturingsteken op een pagina beëindigde de geïndexeerde tekst. De volledige tekst wordt geïndexeerd.
+processing-update-page_text-runs = Zoekindextekst van deze pagina's
 processing-update-vectors-title = Vectoren
 processing-update-vectors-explanation = { $files ->
     [one] { $count } bestand met tekst heeft geen vectoren van het embeddingmodel dat de installatie aanbiedt.

@@ -856,6 +856,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } filer har søgbare PDF'er med et tidligere tekstlag.
 } Det lag kopierede hvert bogstav uden for de vesteuropæiske alfabeter som en sort firkant. PDF'er på sprog med kun vesteuropæiske bogstaver bevares. De andre PDF'er læses, og delene med sorte firkanter oprettes igen. En billed-PDF bruger de gemte OCR-ord. En PDF-side får en ny OCR-anmodning.
 processing-update-pdf_text-runs = Dele af søgbare PDF'er, derefter indeksering af OCR-teksten i de genoprettede PDF'er
+processing-update-page_text-title = Indekseret sidetekst
+processing-update-page_text-explanation = Filer med ufuldstændig søgetekst: { $count }. Et kontroltegn på en side afsluttede dens indekserede tekst. Den fulde tekst indekseres.
+processing-update-page_text-runs = Søgeindeksets tekst for disse sider
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fil med tekst har ingen vektorer fra den embedding-model, som installationen leverer.

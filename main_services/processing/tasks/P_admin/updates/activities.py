@@ -460,6 +460,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
         if step_id == "search_terms":
             missing = selectors.missing_search_terms(client, ctx)
             return missing == 0, f"{missing} filter terms remain absent or incorrect."
+        if step_id == "page_text":
+            selection = selectors.select_page_text(client, ctx)
+            return selection.count == 0, f"{selection.count} files still have incomplete indexed text."
         if step_id == "folder_counts":
             selection = selectors.select_folder_counts(
                 client, selectors.ScopeContext(scope_kind, scope_id, params.collectionname))

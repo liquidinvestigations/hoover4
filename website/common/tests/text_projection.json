@@ -26,5 +26,9 @@
   {
     "source": "quokka\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA quokka",
     "indexed": "quokka\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA quokka"
+  },
+  {
+    "source": "quokka\u0000quokka \u0000\u0000 quokka",
+    "indexed": "quokka quokka    quokka"
   }
 ]

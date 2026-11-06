@@ -856,6 +856,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } filer har sökbara PDF-filer med ett tidigare textlager.
 } Det lagret kopierade varje bokstav utanför de västeuropeiska alfabeten som en svart fyrkant. PDF-filer på språk med bara västeuropeiska bokstäver behålls. De andra PDF-filerna läses, och delarna med svarta fyrkanter skapas på nytt. En bild-PDF använder de sparade OCR-orden. En PDF-sida får en ny OCR-begäran.
 processing-update-pdf_text-runs = Delar av sökbara PDF-filer, sedan indexering av OCR-texten i de återskapade PDF-filerna
+processing-update-page_text-title = Indexerad sidtext
+processing-update-page_text-explanation = Filer med ofullständig söktext: { $count }. Ett styrtecken på en sida avslutade den indexerade texten. Hela texten indexeras.
+processing-update-page_text-runs = Sökindexets text för dessa sidor
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fil med text saknar vektorer från den inbäddningsmodell som installationen använder.

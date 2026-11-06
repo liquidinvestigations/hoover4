@@ -866,6 +866,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } datoteka ima pretražive PDF-ove s ranijim slojem teksta.
 } Taj je sloj kopirao svako slovo izvan zapadnoeuropskih abeceda kao crni kvadrat. PDF-ovi jezika sa samo zapadnoeuropskim slovima ostaju nepromijenjeni. Ostali PDF-ovi se čitaju, a dijelovi s crnim kvadratima izrađuju se ponovno. PDF slike koristi spremljene OCR riječi. Stranica PDF-a dobiva novi OCR zahtjev.
 processing-update-pdf_text-runs = Dijelovi pretraživih PDF-ova, zatim indeksiranje OCR teksta ponovno izrađenih PDF-ova
+processing-update-page_text-title = Indeksirani tekst stranica
+processing-update-page_text-explanation = Datoteke s nepotpunim tekstom za pretraživanje: { $count }. Kontrolni znak na stranici prekinuo je njezin indeksirani tekst. Indeksira se cijeli tekst.
+processing-update-page_text-runs = Tekst indeksa pretraživanja za ove stranice
 processing-update-vectors-title = Vektori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } datoteka s tekstom nema vektore modela ugrađivanja koji instalacija poslužuje.

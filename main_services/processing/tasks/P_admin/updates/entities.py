@@ -18,9 +18,22 @@ class EntityUpdateParams:
     done: int = 0
 
 
-def indexed_copy(text: str) -> str:
-    """The page text as Manticore stores it. A stored string ends at its first NUL byte."""
-    return text.partition("\0")[0]
+def indexed_page_is_current(stored: str, cleaned: str) -> bool:
+    """Compare a pages row with the cleaned text, including a copy that ended at a NUL byte.
+
+    The `page_text` update step replaces that earlier copy.
+    """
+    from database.manticore import indexed_text, limit_encoded_runs
+    return stored in (indexed_text(cleaned), limit_encoded_runs(cleaned).partition("\0")[0])
+
+
+def normalize_page_mvas(row: dict) -> None:
+    """Write the MVA values of a `SELECT *` pages row in the form REPLACE accepts."""
+    from tasks.P6_index_data.activities import _MVA_COLUMNS, _OCR_MVA_COLUMNS, repr_manticore_tuple
+    from tasks.P6_index_data.location_refresh import parse_mva_ids
+    for column in _MVA_COLUMNS + _OCR_MVA_COLUMNS:
+        if column in row:
+            row[column] = repr_manticore_tuple(sorted(parse_mva_ids(row[column])))
 
 
 def contract(target=None):
@@ -148,7 +161,7 @@ def verify_index(params):
 def rewrite_ner_attributes(params, assignments):
     """Replace NER attributes while preserving stored text and every other search attribute."""
     from database.clickhouse import get_collection_client
-    from database.manticore import get_manticore_client, shard_table_from_name, manticore_execute, limit_encoded_runs
+    from database.manticore import get_manticore_client, shard_table_from_name, manticore_execute
     from tasks.P6_index_data.activities import union_entities_by_segment, pages_replace_sql, pages_replace_params, _MVA_COLUMNS, _OCR_MVA_COLUMNS, repr_manticore_tuple
     from tasks.P6_index_data.string_term_encodings import get_string_term_ids
     from tasks.P6_index_data.activities import FILENAME_EXTRACTED_BY
@@ -184,11 +197,9 @@ def rewrite_ner_attributes(params, assignments):
                     bodies = { (row["file_hash"],row["extracted_by"],int(row["page_id"])): row["text"]
                                for row in fetch_text_batch(client,params.collection_dataset,keys) }
                 for row,key in zip(rows,keys):
-                    if key not in bodies or row["page_text"] != indexed_copy(limit_encoded_runs(clean_text(bodies[key]))):
+                    if key not in bodies or not indexed_page_is_current(row["page_text"], clean_text(bodies[key])):
                         raise RuntimeError("NER update awaits current indexed source text")
-                    for column in _MVA_COLUMNS+_OCR_MVA_COLUMNS:
-                        if column in row:
-                            row[column] = repr_manticore_tuple(sorted(parse_mva_ids(row[column])))
+                    normalize_page_mvas(row)
                     for kind in ("PER","ORG","LOC","MISC"):
                         row[f"ner_{kind.lower()}"] = repr_manticore_tuple(sorted({ids[value] for value in filter_entity_values(groups.get(key,{}).get(kind,[]))}))
                     manticore_execute(connection,pages_replace_sql(table,row),pages_replace_params(params.collection_dataset,row))

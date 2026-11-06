@@ -4,7 +4,7 @@ import pytest
 
 from tasks.P3_parse_files import ocr_detection
 from tasks.P_admin.updates import activities, selectors
-from tasks.P_admin.updates.entities import indexed_copy
+from tasks.P_admin.updates.entities import indexed_page_is_current
 from tasks.P_admin.updates.params import TablePlanParams
 
 
@@ -137,9 +137,11 @@ def test_a_row_that_differs_alone_and_an_absent_row_are_missing(monkeypatch):
     assert compare(monkeypatch, stored, {"first": ("ner", 1, "stale")}) == 2
 
 
-def test_indexed_text_ends_at_the_first_nul_byte():
-    assert indexed_copy("before\0after\0end") == "before"
-    assert indexed_copy("no nul byte") == "no nul byte"
+def test_an_entity_rewrite_accepts_both_copies_of_a_nul_page():
+    assert indexed_page_is_current("before", "before\0after\0end")
+    assert indexed_page_is_current("before after end", "before\0after\0end")
+    assert indexed_page_is_current("no nul byte", "no nul byte")
+    assert not indexed_page_is_current("before after", "before\0after\0end")
 
 
 def test_a_text_row_is_verified_without_a_string_inequality_filter(monkeypatch):

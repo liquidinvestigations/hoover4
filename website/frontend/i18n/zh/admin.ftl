@@ -838,6 +838,9 @@ processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } 个文件的可搜索 PDF 使用旧的文本层。
 } 该文本层把西欧字母表以外的每个字母复制为黑色方块。只含西欧字母的语言的 PDF 保持不变。其他 PDF 会被读取，含黑色方块的部分会重新生成。图片 PDF 使用已保存的 OCR 单词。PDF 页面会发出新的 OCR 请求。
 processing-update-pdf_text-runs = 可搜索 PDF 的部分，然后为重新生成的 PDF 的 OCR 文本建立索引
+processing-update-page_text-title = 已索引页面文本
+processing-update-page_text-explanation = 搜索文本不完整的文件数：{ $count }。页面中的控制字符截断了已索引文本。系统将索引完整文本。
+processing-update-page_text-runs = 这些页面的搜索索引文本
 processing-update-vectors-title = 向量
 processing-update-vectors-explanation = { $files ->
    *[other] 有 { $count } 个含文本的文件，没有此安装所用嵌入模型的向量。
