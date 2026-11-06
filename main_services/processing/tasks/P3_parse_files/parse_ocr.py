@@ -216,14 +216,12 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
                 # activity fires whenever any one detector's guess includes "image",
                 # even when the other detectors disagree, so this is the expected
                 # shape for a document a weaker detector mistyped: retrying sends
-                # the same bytes and gets the same 422.
+                # the same bytes and gets the same 422. The skip keeps a corrupt file
+                # out of the error count.
                 if getattr(exc.response, "status_code", None) == 422:
-                    from temporalio.exceptions import ApplicationError
-                    raise ApplicationError(
-                        f"OCR engine {params.engine} rejected the bytes as not a "
-                        f"processable image (422) for {params.file_path}",
-                        non_retryable=True,
-                    ) from exc
+                    log.info("[P3] OCR skip for %s: %s rejected the bytes (422)",
+                             params.file_hash, params.engine)
+                    return skip("ocr_skipped_undecodable")
                 raise
             run_time_ms = max(int((time.time() - started) * 1000), 0)
 

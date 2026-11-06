@@ -1,6 +1,7 @@
 """Image metadata extraction activity using ffprobe."""
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 from typing import Dict, Any
 from dataclasses import dataclass
 import subprocess
@@ -13,6 +14,7 @@ from tasks.heartbeat import with_heartbeat
 from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
 )
+from tasks.task_timing import SkippedOutcome
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +24,10 @@ log = logging.getLogger(__name__)
 #: so this is the expected shape for a document a weaker detector mistyped: retrying
 #: does not change what ffprobe reads.
 _NOT_MEDIA_MARKER = b"Invalid data found when processing input"
+
+
+class UndecodableMedia(ApplicationError):
+    """ffprobe read the bytes and found no media. Another try reads the same bytes."""
 
 
 def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
@@ -36,8 +42,7 @@ def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
     res = subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
     if res.returncode != 0:
         if _NOT_MEDIA_MARKER in (res.stderr or b""):
-            from temporalio.exceptions import ApplicationError
-            raise ApplicationError(
+            raise UndecodableMedia(
                 f"ffprobe failed: {res.stderr[:200]} {res.stdout[:200]}",
                 non_retryable=True,
             )
@@ -72,7 +77,7 @@ class ParseImageParams:
 
 @activity.defn
 @with_heartbeat
-def parse_image_metadata_and_store(params: ParseImageParams) -> str:
+def parse_image_metadata_and_store(params: ParseImageParams) -> str | SkippedOutcome:
     from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
 
@@ -83,7 +88,12 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
     except Exception:
         size_bytes = 0
 
-    meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
+    try:
+        meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
+    except UndecodableMedia as exc:
+        # Another try reads the same bytes, so this is a decision and not a failure.
+        log.info("[P3] image metadata skip for %s: %s", params.file_hash, exc)
+        return SkippedOutcome("image_undecodable")
     width, height = _first_stream_resolution(meta)
     # TODO: if ffprobe reports a 0x0 resolution here the image
     # may be undecodable; consider routing it through

@@ -541,6 +541,7 @@ rendered at 200 dpi in the worker. The worker sets the language from the script 
 
 Each successful image or page detection stores one `ocr_detection` row.
 An image under the OCR size gate stores a row without text.
+Corrupt images are skipped and do not count as errors. Image metadata records `image_undecodable` when ffprobe reports invalid data, and image OCR records `ocr_skipped_undecodable` after a 422 answer.
 An image or rendered page that the service cannot decode stores a row without text and with `model` `undecodable`. The update step then selects it no more, and OCR sends no request for it.
 A PDF render failure raises a retryable error before detection rows are stored.
 The update step selects earlier detection versions and files without current output. The stage selects no OCR language and no OCR pass.

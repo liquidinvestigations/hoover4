@@ -149,14 +149,28 @@ def _run_ocr_activity(monkeypatch, tmp_path, http_error):
     return parse_ocr.run_ocr_and_store(params)
 
 
-def test_ocr_422_is_non_retryable(monkeypatch, tmp_path):
+def test_ocr_422_is_a_skip_and_not_an_error(monkeypatch, tmp_path):
     import requests
+    import tasks.ocr_targets as ocr_targets
 
+    recorded = []
+    monkeypatch.setattr(ocr_targets, "record_ocr_skips", lambda *a, **k: recorded.append(a))
     http_error = requests.HTTPError("422 Client Error")
     http_error.response = _FakeResponse(422)
-    with pytest.raises(ApplicationError) as excinfo:
-        _run_ocr_activity(monkeypatch, tmp_path, http_error)
-    assert excinfo.value.non_retryable is True
+    outcome = _run_ocr_activity(monkeypatch, tmp_path, http_error)
+    assert outcome.value == "ocr_skipped_undecodable"
+    assert recorded and recorded[0][-2] == "ocr_skipped_undecodable"
+
+
+def test_image_metadata_of_unreadable_bytes_is_a_skip_and_not_an_error(monkeypatch):
+    monkeypatch.setattr(
+        parse_image.subprocess, "run",
+        lambda *a, **k: _completed(1, stderr=b"x: Invalid data found when processing input\n"),
+    )
+    outcome = parse_image.parse_image_metadata_and_store(parse_image.ParseImageParams(
+        collectionname="c", collection_dataset="ds", file_hash="h", file_path="/does/not/matter",
+        timeout_seconds=30))
+    assert outcome.value == "image_undecodable"
 
 
 def test_ocr_other_http_error_stays_retryable(monkeypatch, tmp_path):
