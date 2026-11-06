@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::document_sources::TextSource;
 use crate::text_highlight::HighlightTextSpan;
 
+/// Separates the document pages inside one PDF text row.
+pub const PAGE_BREAK: char = '\u{c}';
+
 /// What the `page_id` of a text source counts.
 ///
 /// The writers decide it. `insert_text_pages` stores document page numbers and
@@ -17,7 +20,8 @@ use crate::text_highlight::HighlightTextSpan;
 /// that its numbers are PDF pages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextSourceUnit {
-    /// `page_id` is the document page number. Native PDF text and PDF OCR text.
+    /// `page_id` is the document page number of the first page of the row. Native PDF text
+    /// and PDF OCR text. A form feed separates the pages of the row.
     DocumentPage,
     /// `page_id` is the 1-based ordinal of a segment of about 256 KiB. A segment can cross
     /// document page boundaries.

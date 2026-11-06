@@ -879,6 +879,9 @@ processing-update-pdf_text-runs = Части PDF с поиском, затем �
 processing-update-page_text-title = Индексированный текст страниц
 processing-update-page_text-explanation = Файлы с неполным текстом для поиска: { $count }. Управляющий символ на странице оборвал её индексированный текст. Полный текст индексируется.
 processing-update-page_text-runs = Текст поискового индекса этих страниц
+processing-update-text_rows-title = Разбиение текста
+processing-update-text_rows-explanation = Файлы с текстом из прежнего разбиения: { $count }. Текст PDF переходит в одну строку на каждую часть PDF, а длинный текст режется с коротким перекрытием. Новое OCR и новый разбор не запускаются.
+processing-update-text_rows-runs = Разбиение текста, затем извлечение сущностей, эмбеддинги и индексация нового текста
 processing-update-vectors-title = Векторы
 processing-update-vectors-explanation = { $files ->
     [one] У { $count } файла с текстом нет векторов модели эмбеддингов, которую использует установка.

@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = Delar av sökbara PDF-filer, sedan indexering 
 processing-update-page_text-title = Indexerad sidtext
 processing-update-page_text-explanation = Filer med ofullständig söktext: { $count }. Ett styrtecken på en sida avslutade den indexerade texten. Hela texten indexeras.
 processing-update-page_text-runs = Sökindexets text för dessa sidor
+processing-update-text_rows-title = Textuppdelning
+processing-update-text_rows-explanation = Filer med text från en tidigare uppdelning: { $count }. PDF-text flyttas till en rad för varje PDF-del, och lång text delas med en kort överlappning. Ingen ny OCR eller parsning körs.
+processing-update-text_rows-runs = Textuppdelning, sedan entitetsextraktion, inbäddning och indexering av den nya texten
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fil med text saknar vektorer från den inbäddningsmodell som installationen använder.

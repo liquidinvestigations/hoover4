@@ -127,7 +127,7 @@ pub async fn page_navigation(
     requested: Option<u32>,
 ) -> anyhow::Result<TextPageNavigation> {
     let around = match requested {
-        Some(page) => page,
+        Some(page) => row_of_page(client, identifier, extracted_by, page).await?,
         None => {
             let first = page_stats(client, identifier, extracted_by, 0).await?;
             if first.stored_count == 0 {
@@ -142,13 +142,39 @@ pub async fn page_navigation(
     Ok(navigation)
 }
 
-/// The latest stored version of one page, or `None` when the identifier has no row.
+/// The `page_id` of the row that holds a document page. A PDF row starts at its first page
+/// and holds the pages up to the next row. Another source keeps its identifier.
+pub async fn row_of_page(
+    client: &clickhouse::Client,
+    identifier: &DocumentIdentifier,
+    extracted_by: &str,
+    page: u32,
+) -> anyhow::Result<u32> {
+    if TextSourceUnit::of(extracted_by) != TextSourceUnit::DocumentPage {
+        return Ok(page);
+    }
+    let row = client
+        .query(
+            "SELECT max(page_id) FROM text_content
+            WHERE collection_dataset = ? AND file_hash = ? AND extracted_by = ? AND page_id <= ?",
+        )
+        .bind(&identifier.collection_dataset)
+        .bind(&identifier.file_hash)
+        .bind(extracted_by)
+        .bind(page)
+        .fetch_one::<u32>()
+        .await?;
+    Ok(if row == 0 { page } else { row })
+}
+
+/// The latest stored version of the row of one page, or `None` when no row holds it.
 pub async fn page_body(
     client: &clickhouse::Client,
     identifier: &DocumentIdentifier,
     extracted_by: &str,
     page_id: u32,
 ) -> anyhow::Result<Option<(String, u64)>> {
+    let page_id = row_of_page(client, identifier, extracted_by, page_id).await?;
     Ok(client
         .query(
             "SELECT text, version FROM text_content

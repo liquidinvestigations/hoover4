@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = खोजने योग्य PDF के ह
 processing-update-page_text-title = अनुक्रमित पृष्ठ पाठ
 processing-update-page_text-explanation = अधूरे खोज पाठ वाली फ़ाइलें: { $count }। किसी पृष्ठ में एक नियंत्रण वर्ण ने उसका अनुक्रमित पाठ समाप्त कर दिया। पूरा पाठ अनुक्रमित किया जाता है।
 processing-update-page_text-runs = इन पृष्ठों का खोज अनुक्रमणिका पाठ
+processing-update-text_rows-title = टेक्स्ट विभाजन
+processing-update-text_rows-explanation = पिछले विभाजन के टेक्स्ट वाली फ़ाइलें: { $count }। PDF टेक्स्ट हर PDF भाग के लिए एक पंक्ति में जाता है, और लंबा टेक्स्ट छोटे ओवरलैप के साथ काटा जाता है। कोई नया OCR या पार्सिंग नहीं चलती।
+processing-update-text_rows-runs = टेक्स्ट विभाजन, फिर नए टेक्स्ट का इकाई निष्कर्षण, एम्बेडिंग और इंडेक्सिंग
 processing-update-vectors-title = वेक्टर
 processing-update-vectors-explanation = { $files ->
     [one] टेक्स्ट वाली { $count } फ़ाइल के पास उस एम्बेडिंग मॉडल के वेक्टर नहीं हैं जिसे इंस्टॉलेशन चलाता है।

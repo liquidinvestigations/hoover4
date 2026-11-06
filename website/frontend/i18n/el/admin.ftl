@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = Τμήματα αναζητήσιμων PDF, �
 processing-update-page_text-title = Ευρετηριασμένο κείμενο σελίδων
 processing-update-page_text-explanation = Αρχεία με ελλιπές κείμενο αναζήτησης: { $count }. Ένας χαρακτήρας ελέγχου σε μια σελίδα τερμάτισε το ευρετηριασμένο κείμενό της. Το πλήρες κείμενο ευρετηριάζεται.
 processing-update-page_text-runs = Κείμενο ευρετηρίου αναζήτησης αυτών των σελίδων
+processing-update-text_rows-title = Διαίρεση κειμένου
+processing-update-text_rows-explanation = Αρχεία με κείμενο από προηγούμενη διαίρεση: { $count }. Το κείμενο PDF μεταφέρεται σε μία γραμμή για κάθε τμήμα PDF, και το μεγάλο κείμενο διαιρείται με μικρή επικάλυψη. Δεν εκτελείται νέο OCR ή νέα ανάλυση.
+processing-update-text_rows-runs = Διαίρεση κειμένου, έπειτα εξαγωγή οντοτήτων, embedding και ευρετηρίαση του νέου κειμένου
 processing-update-vectors-title = Διανύσματα
 processing-update-vectors-explanation = { $files ->
     [one] { $count } αρχείο με κείμενο δεν έχει διανύσματα του μοντέλου embedding που εξυπηρετεί η εγκατάσταση.

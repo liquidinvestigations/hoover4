@@ -879,6 +879,9 @@ processing-update-pdf_text-runs = Części przeszukiwalnych plików PDF, potem i
 processing-update-page_text-title = Zindeksowany tekst stron
 processing-update-page_text-explanation = Pliki z niepełnym tekstem wyszukiwania: { $count }. Znak sterujący na stronie zakończył jej zindeksowany tekst. Indeksowany jest pełny tekst.
 processing-update-page_text-runs = Tekst indeksu wyszukiwania tych stron
+processing-update-text_rows-title = Podział tekstu
+processing-update-text_rows-explanation = Pliki z tekstem z wcześniejszego podziału: { $count }. Tekst PDF przechodzi do jednego wiersza na każdą część PDF, a długi tekst jest cięty z krótkim nakładaniem. Nie jest uruchamiany nowy OCR ani nowa analiza.
+processing-update-text_rows-runs = Podział tekstu, potem wyodrębnianie encji, embedding i indeksowanie nowego tekstu
 processing-update-vectors-title = Wektory
 processing-update-vectors-explanation = { $files ->
     [one] { $count } plik z tekstem nie ma wektorów modelu embeddingów, który obsługuje instalacja.

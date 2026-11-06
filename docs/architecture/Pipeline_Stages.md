@@ -66,12 +66,13 @@ widening a batch. See [tuning](../operations/Troubleshooting.md) and the tuning 
 
 ## Text pages: the writer contract
 
-`text_content` holds one row per page of text, per extractor variant, per file. Two rules
+`text_content` holds one row per text segment, per extractor variant, per file. Two rules
 govern every writer, and breaking either is silent.
 
-**`page_id` is never 0.** It is a real 1-based page number for paged formats and a 1-based
-segment ordinal (roughly 256 KB apiece), for everything else. A scan therefore loses at
-most one entity to a segment boundary, which is the accepted cost of segmenting at all.
+**`page_id` is never 0.** For a PDF it is the first page of a row, and the row holds one PDF part
+with a form feed between pages. For everything else it is a 1-based segment ordinal (roughly
+256 KB apiece). Unpaged segments cut at white space and overlap by about 256 bytes. PDF rows have
+no overlap, so a scan can lose one entity at the boundary between two PDF parts.
 
 **The writer is called once per `(file, extractor)` with the complete page list.**
 `parse_common.insert_text_pages` trims rows above the highest page it writes, so a second

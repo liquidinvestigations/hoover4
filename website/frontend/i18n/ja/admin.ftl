@@ -849,6 +849,9 @@ processing-update-pdf_text-runs = 検索可能な PDF の部分、その後作�
 processing-update-page_text-title = インデックス済みのページテキスト
 processing-update-page_text-explanation = 検索テキストが不完全なファイル数：{ $count }。ページ内の制御文字でインデックス済みテキストが途切れています。全文をインデックスします。
 processing-update-page_text-runs = これらのページの検索インデックステキスト
+processing-update-text_rows-title = テキストの分割
+processing-update-text_rows-explanation = 以前の分割によるテキストを持つファイル数：{ $count }。PDF のテキストは PDF パートごとに 1 行へ移り、長いテキストは短い重なりを持たせて区切ります。新しい OCR や解析は実行しません。
+processing-update-text_rows-runs = テキストの分割、続いて新しいテキストのエンティティの抽出、埋め込み、インデックス作成
 processing-update-vectors-title = ベクトル
 processing-update-vectors-explanation = { $files ->
    *[other] テキストがあり、この環境が提供する埋め込みモデルのベクトルがないファイルが { $count } 個あります。

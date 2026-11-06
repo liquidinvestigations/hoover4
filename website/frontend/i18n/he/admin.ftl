@@ -869,6 +869,9 @@ processing-update-pdf_text-runs = חלקים של קובצי PDF ניתנים ל
 processing-update-page_text-title = טקסט עמודים באינדקס
 processing-update-page_text-explanation = קבצים עם טקסט חיפוש חלקי: { $count }. תו בקרה בעמוד קטע את הטקסט שלו באינדקס. הטקסט המלא נוסף לאינדקס.
 processing-update-page_text-runs = טקסט אינדקס החיפוש של עמודים אלה
+processing-update-text_rows-title = פיצול טקסט
+processing-update-text_rows-explanation = קבצים עם טקסט מפיצול קודם: { $count }. טקסט PDF עובר לשורה אחת לכל חלק של PDF, וטקסט ארוך נחתך עם חפיפה קצרה. לא מורץ OCR חדש או ניתוח חדש.
+processing-update-text_rows-runs = פיצול טקסט, ואחריו חילוץ ישויות, הטמעה ואינדוקס של הטקסט החדש
 processing-update-vectors-title = וקטורים
 processing-update-vectors-explanation = { $files ->
     [one] לקובץ אחד עם טקסט אין וקטורים של מודל ההטמעה שההתקנה משרתת.

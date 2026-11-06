@@ -160,19 +160,37 @@ fn TextSpans(page_id: u32, spans: Vec<common::text_highlight::HighlightTextSpan>
     let store = use_context::<DocumentViewerResultStore>();
     let request = store.request.read().clone();
     let onclick = Callback::new(move |clicked_index: u32| store.select_match.call(clicked_index));
+    let page_label = store.displayed.read().as_ref()
+        .map(|view| view.navigation.unit.label().shared().to_string()).unwrap_or_default();
+    let mut page = page_id;
     let spans = spans
         .into_iter()
         .enumerate()
-        .map(|(nth, span)| {
+        .flat_map(|(nth, span)| {
             let index = span.index as u32;
             let key = format!("{:?}-{}-{nth}-{page_id}", request.document, request.extracted_by);
-            rsx! {
-                if span.is_highlighted {
+            if span.is_highlighted {
+                page += span.text.matches(common::document_text_pages::PAGE_BREAK).count() as u32;
+                return vec![rsx! {
                     TextDataSpan { key: "{key}", index, text: span.text, key2: key.clone(), onclick }
-                } else {
-                    TextDataSpanClean { key: "{key}", text: span.text, key2: key.clone() }
-                }
+                }];
             }
+            let mut parts = Vec::new();
+            for (part, text) in span.text.split(common::document_text_pages::PAGE_BREAK).enumerate() {
+                if part > 0 {
+                    page += 1;
+                    let marker = format!("{page_label} {page}");
+                    parts.push(rsx! {
+                        div { key: "{key}-page-{part}", "data-text-page": "{page}",
+                            style: "margin: var(--x-space-3) 0; border-top: 1px solid var(--x-border-strong); color: var(--x-ink-muted); font-size: var(--x-text-sm);",
+                            "{marker}"
+                        }
+                    });
+                }
+                let key = format!("{key}-{part}");
+                parts.push(rsx! { TextDataSpanClean { key: "{key}", text: text.to_string(), key2: key.clone() } });
+            }
+            parts
         })
         .collect::<Vec<_>>();
     rsx! {

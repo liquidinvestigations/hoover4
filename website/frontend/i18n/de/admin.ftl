@@ -869,6 +869,9 @@ processing-update-pdf_text-runs = Teile durchsuchbarer PDFs, danach die Indizier
 processing-update-page_text-title = Indizierter Seitentext
 processing-update-page_text-explanation = Dateien mit unvollständigem Suchtext: { $count }. Ein Steuerzeichen auf einer Seite hat ihren indizierten Text beendet. Der vollständige Text wird indiziert.
 processing-update-page_text-runs = Suchindextext dieser Seiten
+processing-update-text_rows-title = Textaufteilung
+processing-update-text_rows-explanation = Dateien mit Text aus einer früheren Aufteilung: { $count }. PDF-Text wandert in eine Zeile je PDF-Teil, und langer Text wird mit einer kurzen Überlappung getrennt. Es laufen kein neues OCR und kein neues Parsen.
+processing-update-text_rows-runs = Textaufteilung, danach die Entitätenerkennung, Einbettung und Indizierung des neuen Textes
 processing-update-vectors-title = Vektoren
 processing-update-vectors-explanation =
     { $files ->

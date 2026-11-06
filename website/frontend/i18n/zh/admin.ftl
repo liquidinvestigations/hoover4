@@ -841,6 +841,9 @@ processing-update-pdf_text-runs = 可搜索 PDF 的部分，然后为重新生�
 processing-update-page_text-title = 已索引页面文本
 processing-update-page_text-explanation = 搜索文本不完整的文件数：{ $count }。页面中的控制字符截断了已索引文本。系统将索引完整文本。
 processing-update-page_text-runs = 这些页面的搜索索引文本
+processing-update-text_rows-title = 文本拆分
+processing-update-text_rows-explanation = 含有早期拆分文本的文件数：{ $count }。PDF 文本移入每个 PDF 部分对应的一行，长文本按较短的重叠切分。不会运行新的 OCR 或解析。
+processing-update-text_rows-runs = 文本拆分，然后是新文本的实体提取、嵌入和索引
 processing-update-vectors-title = 向量
 processing-update-vectors-explanation = { $files ->
    *[other] 有 { $count } 个含文本的文件，没有此安装所用嵌入模型的向量。

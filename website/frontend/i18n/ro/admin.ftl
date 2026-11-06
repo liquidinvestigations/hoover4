@@ -869,6 +869,9 @@ processing-update-pdf_text-runs = Părți ale PDF-urilor căutabile, apoi indexa
 processing-update-page_text-title = Text indexat al paginilor
 processing-update-page_text-explanation = Fișiere cu text de căutare incomplet: { $count }. Un caracter de control dintr-o pagină i-a încheiat textul indexat. Textul complet este indexat.
 processing-update-page_text-runs = Textul indexului de căutare pentru aceste pagini
+processing-update-text_rows-title = Împărțirea textului
+processing-update-text_rows-explanation = Fișiere cu text dintr-o împărțire anterioară: { $count }. Textul PDF trece într-un rând pentru fiecare parte de PDF, iar textul lung este tăiat cu o suprapunere scurtă. Nu rulează OCR sau analiză nouă.
+processing-update-text_rows-runs = Împărțirea textului, apoi extragerea de entități, embedding și indexarea textului nou
 processing-update-vectors-title = Vectori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fișier cu text nu are vectori ai modelului de embeddings pe care îl servește instalarea.

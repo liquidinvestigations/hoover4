@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = Partes dos PDF pesquisáveis, depois a indexa�
 processing-update-page_text-title = Texto indexado das páginas
 processing-update-page_text-explanation = Ficheiros com texto de pesquisa incompleto: { $count }. Um carácter de controlo numa página terminou o texto indexado. O texto completo é indexado.
 processing-update-page_text-runs = Texto do índice de pesquisa destas páginas
+processing-update-text_rows-title = Divisão do texto
+processing-update-text_rows-explanation = Ficheiros com texto de uma divisão anterior: { $count }. O texto dos PDF passa para uma linha por cada parte do PDF, e o texto longo é cortado com uma sobreposição curta. Não corre novo OCR nem nova análise.
+processing-update-text_rows-runs = Divisão do texto, depois a extração de entidades, a incorporação e a indexação do texto novo
 processing-update-vectors-title = Vetores
 processing-update-vectors-explanation = { $files ->
     [one] { $count } ficheiro com texto não tem vetores do modelo de incorporação que a instalação serve.

@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = Dele af søgbare PDF'er, derefter indeksering 
 processing-update-page_text-title = Indekseret sidetekst
 processing-update-page_text-explanation = Filer med ufuldstændig søgetekst: { $count }. Et kontroltegn på en side afsluttede dens indekserede tekst. Den fulde tekst indekseres.
 processing-update-page_text-runs = Søgeindeksets tekst for disse sider
+processing-update-text_rows-title = Tekstopdeling
+processing-update-text_rows-explanation = Filer med tekst fra en tidligere opdeling: { $count }. PDF-tekst flyttes til én række for hver PDF-del, og lang tekst deles med et kort overlap. Der køres ingen ny OCR eller parsing.
+processing-update-text_rows-runs = Tekstopdeling, derefter entitetsudtrækning, embedding og indeksering af den nye tekst
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fil med tekst har ingen vektorer fra den embedding-model, som installationen leverer.

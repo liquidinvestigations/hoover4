@@ -869,6 +869,9 @@ processing-update-pdf_text-runs = Dijelovi pretraživih PDF-ova, zatim indeksira
 processing-update-page_text-title = Indeksirani tekst stranica
 processing-update-page_text-explanation = Datoteke s nepotpunim tekstom za pretraživanje: { $count }. Kontrolni znak na stranici prekinuo je njezin indeksirani tekst. Indeksira se cijeli tekst.
 processing-update-page_text-runs = Tekst indeksa pretraživanja za ove stranice
+processing-update-text_rows-title = Podjela teksta
+processing-update-text_rows-explanation = Datoteke s tekstom iz ranije podjele: { $count }. Tekst PDF-a prelazi u jedan redak za svaki dio PDF-a, a dugi tekst dijeli se s kratkim preklapanjem. Ne pokreću se novi OCR ni novo parsiranje.
+processing-update-text_rows-runs = Podjela teksta, zatim izdvajanje entiteta, ugrađivanje i indeksiranje novog teksta
 processing-update-vectors-title = Vektori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } datoteka s tekstom nema vektore modela ugrađivanja koji instalacija poslužuje.

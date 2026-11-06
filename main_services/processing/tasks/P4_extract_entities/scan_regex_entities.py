@@ -9,11 +9,9 @@ already hold.
 The scan makes one HTTP call per batch. A busy response preserves ordinary failure tries.
 The activity keeps its first busy time across retries and uses a bounded busy budget.
 
-**A segment boundary loses an entity.** `text_content.page_id` is a ~256 KB segment
-ordinal for unpaged formats, and a value that straddles two segments is seen by neither,
-at most one per boundary. The scanner takes an `offset` parameter precisely so a windowed
-caller can overlap and deduplicate; this stage does not window, so the loss is real and
-bounded rather than mysterious.
+**A PDF row boundary loses an entity.** Unpaged segments overlap by about 256 bytes, so a
+value on their cut appears whole in one segment. A value across two PDF rows is seen by
+neither, at most one per boundary.
 """
 
 import json

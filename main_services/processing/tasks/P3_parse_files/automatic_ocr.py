@@ -401,9 +401,10 @@ def _publish_serialized(client, params, file, plan, outputs, source_languages):
         sources[extractor(engine, languages)] = sorted((int(page), text) for value in values for page, text in value["pages"])
     if plan["source_kind"] != "image":
         from tasks.P3_parse_files.parse_common import pdf_text_rows
-        from tasks.P3_parse_files.pdf_parts import source_parts
+        from tasks.P3_parse_files.pdf_parts import source_parts, source_ranges
         ranges = [(part["first_page"], part["last_page"]) for part in source_parts(
             client, params.collection_dataset, file.item_hash, plan["source_kind"])]
+        ranges = ranges or source_ranges(max((int(page) for pages in sources.values() for page, _ in pages), default=0), 1)
         sources = {source: pdf_text_rows(pages, ranges) for source, pages in sources.items()}
     states = client.query("SELECT state, has_ocr_output FROM automatic_ocr_plans FINAL WHERE collection_dataset = {cd:String} "
         "AND hash = {h:String} AND plan_digest = {p:String}",

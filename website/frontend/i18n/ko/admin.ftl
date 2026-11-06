@@ -849,6 +849,9 @@ processing-update-pdf_text-runs = 검색 가능한 PDF 부분, 그다음 다시 
 processing-update-page_text-title = 색인된 페이지 텍스트
 processing-update-page_text-explanation = 검색 텍스트가 불완전한 파일 수: { $count }. 페이지의 제어 문자에서 색인된 텍스트가 끝났습니다. 전체 텍스트를 색인합니다.
 processing-update-page_text-runs = 이 페이지의 검색 색인 텍스트
+processing-update-text_rows-title = 텍스트 분할
+processing-update-text_rows-explanation = 이전 분할의 텍스트가 있는 파일 수: { $count }. PDF 텍스트는 PDF 파트마다 한 행으로 옮겨지고, 긴 텍스트는 짧은 겹침을 두고 나뉩니다. 새 OCR이나 파싱은 실행하지 않습니다.
+processing-update-text_rows-runs = 텍스트 분할, 이후 새 텍스트의 개체 추출, 임베딩, 색인
 processing-update-vectors-title = 벡터
 processing-update-vectors-explanation = { $files ->
    *[other] 텍스트가 있는 파일 { $count }개에 설치가 제공하는 임베딩 모델의 벡터가 없습니다.

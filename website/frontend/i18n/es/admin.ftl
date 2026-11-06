@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = Partes de PDF con búsqueda, luego la indexaci
 processing-update-page_text-title = Texto indexado de las páginas
 processing-update-page_text-explanation = Archivos con texto de búsqueda incompleto: { $count }. Un carácter de control en una página terminó su texto indexado. Se indexa el texto completo.
 processing-update-page_text-runs = Texto del índice de búsqueda de estas páginas
+processing-update-text_rows-title = División del texto
+processing-update-text_rows-explanation = Archivos con texto de una división anterior: { $count }. El texto de PDF pasa a una fila por cada parte del PDF, y el texto largo se corta con un solapamiento breve. No se ejecuta OCR ni análisis nuevo.
+processing-update-text_rows-runs = División del texto, y luego extracción de entidades, embeddings e indexación del texto nuevo
 processing-update-vectors-title = Vectores
 processing-update-vectors-explanation = { $files ->
     [one] { $count } archivo con texto no tiene vectores del modelo de embeddings que sirve la instalación.

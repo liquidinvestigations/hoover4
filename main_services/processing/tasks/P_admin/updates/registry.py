@@ -140,11 +140,10 @@ STEPS: Tuple[UpdateStep, ...] = (
     UpdateStep(
         step_id="text_rows", scope=SCOPE_DATASET, version=1, stages=("text_rows",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
-        title="Text rows",
-        explanation="{files} files have text rows from an earlier split. PDF text moves into one row "
-                    "for each PDF part. Long text gets cuts at white space with a short overlap, so a "
-                    "name on a cut is found. The stored text is split again, with no new OCR or parsing.",
-        runs="Text rows, then entity extraction, embedding and indexing of the changed files"),
+        title="Text split",
+        explanation="{files} files have text from an earlier split. PDF text moves into one row for "
+                    "each PDF part, and long text gets cuts with a short overlap. No new OCR or parsing runs.",
+        runs="Text split, then entity extraction, embedding and indexing of the new text"),
     UpdateStep(
         step_id="entities", scope=SCOPE_DATASET, version=1,
         stages=("entities", "index_text", "index_terms"), automatic=True, uses_input_revision=True,

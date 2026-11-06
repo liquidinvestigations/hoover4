@@ -884,6 +884,9 @@ processing-update-pdf_text-runs = أجزاء ملفات PDF القابلة لل�
 processing-update-page_text-title = نص الصفحات المفهرس
 processing-update-page_text-explanation = ملفات نص البحث فيها غير مكتمل: { $count }. أنهى حرف تحكم في إحدى الصفحات نصها المفهرس. يُفهرس النص الكامل.
 processing-update-page_text-runs = نص فهرس البحث لهذه الصفحات
+processing-update-text_rows-title = تقسيم النص
+processing-update-text_rows-explanation = ملفات نصها من تقسيم سابق: { $count }. ينتقل نص PDF إلى صف واحد لكل جزء من PDF، ويُقسَّم النص الطويل مع تداخل قصير. لا يُشغَّل OCR ولا تحليل جديد.
+processing-update-text_rows-runs = تقسيم النص، ثم استخراج الكيانات والتضمين والفهرسة للنص الجديد
 processing-update-vectors-title = المتجهات
 processing-update-vectors-explanation = { $files ->
     [one] ملف واحد فيه نص بلا متجهات لنموذج التضمين الذي يخدمه التثبيت.

@@ -858,6 +858,9 @@ processing-update-pdf_text-runs = Aranabilir PDF parçaları, ardından yeniden 
 processing-update-page_text-title = Dizine eklenen sayfa metni
 processing-update-page_text-explanation = Arama metni eksik dosyalar: { $count }. Bir sayfadaki denetim karakteri dizine eklenen metni sonlandırdı. Metnin tamamı dizine eklenir.
 processing-update-page_text-runs = Bu sayfaların arama dizini metni
+processing-update-text_rows-title = Metin bölme
+processing-update-text_rows-explanation = Önceki bir bölmeden metni olan dosyalar: { $count }. PDF metni her PDF parçası için bir satıra taşınır ve uzun metin kısa bir örtüşmeyle kesilir. Yeni OCR veya ayrıştırma çalışmaz.
+processing-update-text_rows-runs = Metin bölme, ardından yeni metnin varlık çıkarma, gömme ve dizinlemesi
 processing-update-vectors-title = Vektörler
 processing-update-vectors-explanation = { $files ->
     [one] Metni olan { $count } dosyanın, kurulumun sunduğu gömme modelinden vektörü yok.

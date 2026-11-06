@@ -43,4 +43,6 @@ def clean_text(text: str) -> str:
     if not text:
         return ''
     # TODO: try different encoding on utf-8 errors
-    return text.encode('utf-8', errors='replace').decode('utf-8').strip()
+    text = text.encode('utf-8', errors='replace').decode('utf-8')
+    # Leading form feeds count the empty first pages of a PDF row.
+    return text[:len(text) - len(text.lstrip('\f'))] + text.strip()

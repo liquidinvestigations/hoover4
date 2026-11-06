@@ -123,13 +123,9 @@ Everything else about it is different from NER, and the differences are the desi
   188 MB at full load with no per-request growth and runs at about 0.85 MB/s per thread.
   A megabyte is roughly a second of one thread's work rather than a queue-blocking unit.
 
-**An entity that straddles a segment boundary is lost.** `text_content.page_id` is a real
-page number for paged formats and a ~256 KB segment ordinal otherwise, and a value split
-across two segments is seen by neither, at most one per boundary, which on a corpus of
-ordinary documents is a handful. The scanner takes an `offset` parameter precisely so a
-windowed caller can overlap its windows and deduplicate on `(type, start, end)`; this
-stage does not window. The loss is real, bounded, and written down here so it is not
-rediscovered later as a mystery about one missing value.
+**An entity on the boundary of two PDF rows is lost.** Unpaged segments overlap by about
+256 bytes, so a value on their cut appears whole in one segment, and a repeated value can
+appear in both. PDF rows have no overlap, so a value across two PDF parts is seen by neither.
 
 The derived facets (the money magnitude ladder, the day snap, the date plausibility window)
 are **not** here. They live in [tasks/regex_entities.py](../regex_entities.py), which the indexing stage imports

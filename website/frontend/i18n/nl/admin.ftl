@@ -859,6 +859,9 @@ processing-update-pdf_text-runs = Delen van doorzoekbare pdf's, daarna de indexe
 processing-update-page_text-title = Geïndexeerde paginatekst
 processing-update-page_text-explanation = Bestanden met onvolledige zoektekst: { $count }. Een besturingsteken op een pagina beëindigde de geïndexeerde tekst. De volledige tekst wordt geïndexeerd.
 processing-update-page_text-runs = Zoekindextekst van deze pagina's
+processing-update-text_rows-title = Tekstsplitsing
+processing-update-text_rows-explanation = Bestanden met tekst uit een eerdere splitsing: { $count }. PDF-tekst gaat naar één rij per PDF-deel, en lange tekst wordt gesneden met een korte overlap. Er draait geen nieuwe OCR of parsing.
+processing-update-text_rows-runs = Tekstsplitsing, daarna entiteitsextractie, embedding en indexering van de nieuwe tekst
 processing-update-vectors-title = Vectoren
 processing-update-vectors-explanation = { $files ->
     [one] { $count } bestand met tekst heeft geen vectoren van het embeddingmodel dat de installatie aanbiedt.

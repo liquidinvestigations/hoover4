@@ -857,6 +857,9 @@ processing-update-pdf_text-runs = Searchable PDF parts, then OCR text indexing o
 processing-update-page_text-title = Indexed page text
 processing-update-page_text-explanation = Files with incomplete search text: { $count }. A control character in a page ended its indexed text. The complete text is indexed.
 processing-update-page_text-runs = Search index text of these pages
+processing-update-text_rows-title = Text split
+processing-update-text_rows-explanation = Files with text from an earlier split: { $count }. PDF text moves into one row for each PDF part, and long text gets cuts with a short overlap. No new OCR or parsing runs.
+processing-update-text_rows-runs = Text split, then entity extraction, embedding and indexing of the new text
 processing-update-vectors-title = Vectors
 processing-update-vectors-explanation = { $files ->
     [one] { $count } file with text has no vectors of the embedding model that the installation serves.

@@ -40,6 +40,19 @@ activity id, attempt, task name and document hash. Recorder retries keep that id
 `text_content.page_id` is a **1-based page number** for paged formats and a **1-based
 ~256 KB segment ordinal** for everything else. It is never 0.
 
+A PDF source has one row for each PDF part, so all sources of a PDF share their row boundaries.
+`page_id` is the first page of the row, and the next row starts after its last page.
+A form feed separates the pages of a row, and a page without text keeps its place.
+A part with more than 1 MiB of text splits at a page boundary, and the new row takes that page as its `page_id`.
+`pdf_text_rows(...)` builds these rows.
+
+Unpaged text cuts at white space. Each segment repeats about 256 bytes of the segment before it,
+so a name on a cut appears whole in one segment. `table_text` keeps its own cut between letters.
+`segment_version` records the rule that wrote a row.
+
+NER and embedding read the first 75 MB of each text source (`TEXT_WORK_LIMIT_BYTES`).
+The remaining rows stay in `text_content` and in search.
+
 - `insert_text_pages(...)` is the paged path. Callers pass the real page numbers.
   **Call it once per `(file, extracted_by)` with the complete page list**. A successful
   call replaces that source's page identities. It removes prior pages absent from the

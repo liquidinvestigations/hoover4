@@ -12,6 +12,7 @@ There is no CPU embedding fallback.
 - Read the latest text segment version with `argMax`, before pagination.
   Split each segment with `chunking.chunk_page_text` into word-boundary chunks of at most 1200 bytes and about 200 overlap bytes.
   Chunk offsets refer to UTF-8 bytes. Current versions produce one chunk set per segment.
+- Read the first 75 MB of each text source, as `TEXT_WORK_LIMIT_BYTES` sets.
 - Hold back chunks that are not language ([tasks/text_quality.py](../text_quality.py)): base64 attachment
   bodies, XPM colour tables, XBM byte dumps. Extraction is greedy on purpose, so it
   produces these; embedding them buys a vector that then wins searches it has no business
