@@ -27,7 +27,7 @@ use serde::Deserialize;
 use crate::api::documents::search_document_text::{
     exact_highlight_spans, find_query_match_argument, page_highlight_texts, pages_table_for_document,
 };
-use crate::api::search::search_sql::{QueryTable, sql_options_clause};
+use crate::api::search::search_sql::{FILENAME_INDEX_EXTRACTED_BY, QueryTable, sql_options_clause};
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 use crate::db_utils::{manticore_match::quoted_manticore_string, manticore_utils::manticore_search_sql};
@@ -229,6 +229,9 @@ pub async fn matching_page_batch(
     direction: MatchDirection,
     limit: usize,
 ) -> anyhow::Result<MatchBatch> {
+    if extracted_by == FILENAME_INDEX_EXTRACTED_BY {
+        return Ok(MatchBatch::default());
+    }
     let Some(match_argument) = find_query_match_argument(find_query) else {
         return Ok(MatchBatch::default());
     };
@@ -245,8 +248,7 @@ pub async fn matching_page_batch(
     let options = sql_options_clause(QueryTable::Pages, rows as u64);
     let sql = format!(
         "SELECT page_id FROM {pages_table}
-        WHERE file_hash = {} AND collection_dataset = {} AND extracted_by = {}
-        AND extracted_by != 'filename_index' {boundary}
+        WHERE file_hash = {} AND collection_dataset = {} AND extracted_by = {} {boundary}
         AND MATCH({match_argument})
         ORDER BY page_id {order}
         LIMIT {rows}

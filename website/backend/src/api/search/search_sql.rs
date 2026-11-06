@@ -38,13 +38,16 @@ use crate::db_utils::manticore_utils::search_timeout_ms;
 /// table with `page_id = -1`. That makes it a landmine for every consumer that treats a
 /// pages row as a real page: `page_id` is deserialised as `u32` in the document
 /// endpoints, and a "N other matches" count that includes it is off by one on every
-/// filename hit. Every such query excludes it with [`EXCLUDE_FILENAME_ROW`], and
+/// filename hit. Every such query excludes it with [`TEXT_ROW`], and
 /// `test_filename_row_excluded.py` enumerates the readers.
 pub const FILENAME_INDEX_EXTRACTED_BY: &str = "filename_index";
 
-/// Drop-in `AND` predicate excluding the filename row. See
+/// A select expression with value 1 on a text row and 0 on the filename row. See
 /// [`FILENAME_INDEX_EXTRACTED_BY`].
-pub const EXCLUDE_FILENAME_ROW: &str = "extracted_by != 'filename_index'";
+///
+/// Manticore 29.9.0 drops text rows for `extracted_by != 'filename_index'`, so this
+/// compares with `=`. Filter on the alias of this expression.
+pub const TEXT_ROW: &str = "IF(extracted_by='filename_index', 0, 1)";
 
 /// Every column a query may name. One whitelist, because one shard is one table:
 /// per-document metadata is denormalized onto the pages rows, so no name needs

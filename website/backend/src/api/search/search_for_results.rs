@@ -6,7 +6,7 @@
 //! every shard; the merge then slices the global window.
 
 use crate::api::search::fanout::{self, FanoutTarget, HitIdentity, ShardQueryParts, SortValue};
-use crate::api::search::search_sql::{EXCLUDE_FILENAME_ROW, sql_options_clause, sort_order_by};
+use crate::api::search::search_sql::{TEXT_ROW, sql_options_clause, sort_order_by};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans, manticore_utils::manticore_search_sql,
 };
@@ -111,7 +111,7 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
         date_max,
         file_size_bytes,
 
-        MAX(IF({EXCLUDE_FILENAME_ROW}, 1, 0)) AS has_text_match,
+        MAX({TEXT_ROW}) AS has_text_match,
         MAX(weight()) AS relevance_score,
         IF(extracted_by='email_parser' OR extracted_by='tika', 0,
            IF(extracted_by='filename_index', 3, IF(extracted_by='raw_text', 2, 1))) AS snippet_priority
@@ -421,7 +421,7 @@ mod tests {
                 date_min,
                 date_max,
                 file_size_bytes,
-                MAX(IF(extracted_by != 'filename_index', 1, 0)) AS has_text_match,
+                MAX(IF(extracted_by='filename_index', 0, 1)) AS has_text_match,
                 MAX(weight()) AS relevance_score,
                 IF(extracted_by='email_parser' OR extracted_by='tika', 0,
                    IF(extracted_by='filename_index', 3, IF(extracted_by='raw_text', 2, 1))) AS snippet_priority

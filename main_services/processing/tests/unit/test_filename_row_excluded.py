@@ -28,7 +28,7 @@ WEBSITE_BACKEND = _website_backend()
 REPO_ROOT = WEBSITE_BACKEND.parents[2] if WEBSITE_BACKEND else pathlib.Path("/")
 
 #: The exclusion predicate, in the spelling the Rust side uses.
-EXCLUSION = "extracted_by != 'filename_index'"
+EXCLUSION = "text_row = 1"
 
 #: `FROM <something>_pages` or a bound pages table. The Rust queries interpolate a
 #: validated table name, so the marker is the identifier rather than a literal.
@@ -105,13 +105,15 @@ def test_the_indexer_and_the_readers_agree_on_the_spelling():
 
     assert FILENAME_EXTRACTED_BY == "filename_index"
     assert FILENAME_PAGE_ID == -1
-    assert FILENAME_EXTRACTED_BY in EXCLUSION
 
     if WEBSITE_BACKEND is None:
         return
     search_sql = (WEBSITE_BACKEND / "api" / "search" / "search_sql.rs").read_text()
     assert f'"{FILENAME_EXTRACTED_BY}"' in search_sql, (
         "the Rust constant no longer spells the extractor the same way the indexer does"
+    )
+    assert f"\"IF(extracted_by='{FILENAME_EXTRACTED_BY}', 0, 1)\"" in search_sql, (
+        "the Rust text row expression no longer compares with the extractor name"
     )
 
 

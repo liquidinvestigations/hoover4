@@ -17,7 +17,7 @@ use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::{
     find_shard_for_document, get_client_for_dataset, resolve_collection, shard_generation,
 };
-use crate::api::search::search_sql::{shard_table_name, sql_options_clause};
+use crate::api::search::search_sql::{TEXT_ROW, shard_table_name, sql_options_clause};
 use crate::db_utils::{
     decompose_spans::decompose_text_into_spans,
     manticore_match::{prepare_match_query, quoted_manticore_string},
@@ -195,7 +195,6 @@ async fn page_hit_documents(
                 }}) as text
             FROM {pages_table}
             WHERE file_hash = {} AND collection_dataset = {} AND extracted_by = {} AND page_id = {}
-            AND extracted_by != 'filename_index'
             AND MATCH({match_argument})
             LIMIT 1000
             {options_clause}
@@ -265,10 +264,11 @@ pub(crate) async fn document_hit_texts(
                 before_match='<hoover4_strong>',
                 after_match='</hoover4_strong>',
                 force_snippets=1
-            }}) as text
+            }}) as text,
+            {TEXT_ROW} AS text_row
         FROM {pages_table}
         WHERE file_hash = {} AND collection_dataset = {}
-        AND extracted_by != 'filename_index'
+        AND text_row = 1
         AND MATCH({match_argument})
         LIMIT {DOCUMENT_HIT_ROW_LIMIT}
         {options_clause}

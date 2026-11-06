@@ -273,8 +273,10 @@ from `vfs_files` paths and never from page text.
 
 **It is not a page**, and every query over a pages table must exclude it: `page_id` is
 deserialised as `u32` in the document endpoints, so a leak is a failed query rather than an
-off-by-one. `EXCLUDE_FILENAME_ROW` is the predicate; `test_filename_row_excluded.py` greps
-for readers that forget it.
+off-by-one. The `TEXT_ROW` expression is 1 on a text row and 0 on this row.
+A query filters on its alias, because Manticore 29.9.0 drops text rows for `extracted_by != 'filename_index'`.
+A query that names one `extracted_by` value does not need the filter.
+`test_filename_row_excluded.py` reports a reader that has neither.
 
 Folder names are deliberately NOT in that row. They go through the structure index, where a
 folder is one row rather than one row per document under it.
