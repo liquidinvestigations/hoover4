@@ -669,11 +669,13 @@ _screenshot_lock = asyncio.Lock()
 
 
 async def screenshot(tab, full_page: bool) -> bytes:
-    """Activate the target tab and serialize captures from concurrent observers."""
+    """Activate the tab, wait for focus refresh, and serialize concurrent captures."""
     import nodriver.cdp.page as page_cdp
 
     async with _screenshot_lock:
         await tab.send(page_cdp.bring_to_front())
+        await js_async(tab, "await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;")
+        await wait_for_loading_to_end(tab)
         data = await tab.send(
             page_cdp.capture_screenshot(format_="png", capture_beyond_viewport=full_page)
         )
@@ -1344,6 +1346,7 @@ async def _capture_one(
 
     actual_w, actual_h = await measured_viewport(tab)
     shot = await screenshot(tab, False)
+    still_loading = still_loading or not (await js(tab, LOADING_DONE_JS)).get("ok", False)
     (res_dir / f"{stem}.png").write_bytes(shot)
     pw, ph = png_dimensions(shot)
 

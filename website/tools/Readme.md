@@ -39,6 +39,7 @@ Operation scenarios use `--operation-id ID` to select a row by its exact operati
 Screenshot scenarios can use `pointer_click_css`, `pointer_wheel_css SELECTOR :: DELTA`,
 `press_key`, and `wait_eval` for CDP input and bounded assertions.
 Before each capture, the harness waits up to 30 seconds until no visible loading indicator remains.
+It repeats this wait after tab activation, which can refresh session identity.
 A page that still shows one is an application error. Set `color_scheme` to `light` or `dark` before navigation.
 Use `history_back` and `history_forward` to navigate actual browser history entries.
 Each scenario writes a steps JSON file with input, starting URL, observed values, and API request counts.

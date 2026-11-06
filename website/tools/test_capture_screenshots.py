@@ -184,12 +184,23 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
                 if method == "Page.captureScreenshot":
                     return base64.b64encode(self.name.encode()).decode()
 
-        with patch.object(MODULE, "_screenshot_lock", asyncio.Lock()):
+        async def frames(tab, _expression):
+            commands.append((tab.name, "frames"))
+
+        async def ready(tab):
+            commands.append((tab.name, "loading-settled"))
+            return True
+
+        with patch.object(MODULE, "_screenshot_lock", asyncio.Lock()), patch.object(
+            MODULE, "js_async", frames
+        ), patch.object(MODULE, "wait_for_loading_to_end", ready):
             images = await asyncio.gather(MODULE.screenshot(Tab("first"), False),
                                           MODULE.screenshot(Tab("second"), True))
         self.assertEqual(images, [b"first", b"second"])
-        self.assertEqual(commands, [("first", "Page.bringToFront"), ("first", "Page.captureScreenshot"),
-                                    ("second", "Page.bringToFront"), ("second", "Page.captureScreenshot")])
+        self.assertEqual(commands, [("first", "Page.bringToFront"), ("first", "frames"),
+                                    ("first", "loading-settled"), ("first", "Page.captureScreenshot"),
+                                    ("second", "Page.bringToFront"), ("second", "frames"),
+                                    ("second", "loading-settled"), ("second", "Page.captureScreenshot")])
 
     async def test_navigation_removes_initial_script_in_the_same_session(self) -> None:
         commands = []
