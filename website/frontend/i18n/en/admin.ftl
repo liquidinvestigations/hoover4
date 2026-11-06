@@ -843,16 +843,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Table reading, entities, signals, embedding, and both indexes
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] About { $count } file has no OCR text for the current languages, or keeps OCR text of languages that the settings no longer include.
-   *[other] About { $count } files have no OCR text for the current languages, or keep OCR text of languages that the settings no longer include.
-} OCR runs for the current languages, and the text of the removed languages is deleted.
+processing-update-ocr-explanation = Files needing automatic OCR: { $count }. Detected pages select installed models. Complete replacement output removes superseded variants.
 processing-update-ocr-runs = OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text
 processing-update-ocr_detection-title = OCR detection
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } file has no detected text, script or language.
-   *[other] { $count } files have no detected text, script or language.
-} Each image and each page selected for OCR is examined. A PDF sends at most 100 pages. OCR text does not change.
+processing-update-ocr_detection-explanation = Files without current text, script, or language detection: { $count }. Every eligible image and PDF page is examined in bounded batches.
 processing-update-ocr_detection-runs = Detection, then the search attributes of these files
 processing-update-pdf_text-title = Searchable PDF text
 processing-update-pdf_text-explanation = { $files ->
@@ -901,3 +895,48 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Filter term indexing and verification
+
+automatic-ocr-title = Automatic OCR
+automatic-ocr-refresh = Refresh status
+automatic-ocr-coverage = Page coverage
+automatic-ocr-pages = Pages
+automatic-ocr-models = OCR models
+automatic-ocr-reason = Reason
+automatic-ocr-truncated = The diagnostic list is incomplete.
+automatic-ocr-presence = Has published OCR text
+automatic-ocr-policy = OCR selects installed models from each eligible page’s detected script and language. Tesseract runs first, with EasyOCR for scripts it cannot cover.
+automatic-ocr-unknown = No current publication is recorded. Missing detection and failed processing do not establish absence.
+automatic-ocr-retry = Use processing updates to retry incomplete or failed work after its cause is corrected. Unsupported coverage requires compatible installed models.
+automatic-ocr-presence-help = Only verified published OCR text matches this filter. Detection and attempted processing do not establish published output.
+automatic-ocr-state = { $state ->
+    [candidate] Pending
+    [planned] Planned
+    [failed] Failed
+    [incomplete] Incomplete
+    [unsupported] Unsupported
+    [published] Published
+    [applied] Verified
+    [ready] Detected text
+    [no_text] No detected text
+    *[other] { $state }
+    }
+
+
+processing-update-entities-title = Named entities
+processing-update-entities-explanation = Files needing current entity extraction or searchable output: { $count }. Earlier successful results are replaced after inference completes.
+processing-update-entities-runs = Named entity extraction, text attributes, and searchable entity terms
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Script not identified
+    [tesseract_capabilities_unavailable] Tesseract coverage unavailable
+    [detected_language] Model matches detected language
+    [unknown_language_script_coverage] Unknown language. A script model is selected.
+    [language_script_mismatch_script_coverage] Language and script differ. A script model is selected.
+    [language_model_unavailable_script_coverage] Language model unavailable. A script model is selected.
+    [easyocr_capabilities_unavailable] EasyOCR coverage unavailable
+    [tesseract_script_unavailable] Tesseract lacks script coverage. EasyOCR is selected.
+    [script_coverage_unavailable] No installed model covers this script.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = The pipeline is calculating the updates. Counts change when calculation finishes.

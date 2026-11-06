@@ -1,27 +1,24 @@
-//! The dataset OCR language form and the operation strip of the dataset.
+//! Read-only automatic OCR coverage and the dataset operation strip.
 //!
 //! The strip polls the newest operation of the dataset, reports staleness, and shows the
 //! error when an operation fails.
 //!
-//! Apply saves the languages and signals the processing updates. It starts no operation
-//! itself, so it is not locked by a running one. The OCR step of the processing updates
-//! runs the work, and the strip shows that operation like any other.
-
 use dioxus::prelude::*;
 
 use common::admin_types::{DatasetOcrPanel, DatasetOperationStatus};
 
 use crate::api::admin_api::{
-    admin_apply_ocr_languages, admin_get_dataset_ocr, admin_get_dataset_operation,
+    admin_get_dataset_ocr, admin_get_dataset_operation,
 };
 use crate::components::admin_components::{
-    action_state, ErrorBar, SuccessBar, BTN, HELP_TEXT, SUBHEADING, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
+    ErrorBar, BTN, HELP_TEXT, SUBHEADING, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 use crate::tr;
 use crate::i18n::SharedText;
 
 /// How often the strip re-reads the operation row while one is running. Fast enough that
-/// Apply reads as answered, slow enough that an admin leaving the page open is not a load
+/// status changes remain visible without frequent requests from an idle page.
+/// An open page is not a load
 /// source.
 const POLL_SECONDS: u64 = 3;
 
@@ -175,388 +172,139 @@ pub fn DatasetOperationStrip(
     }
 }
 
-/// One engine's language list, as checkboxes over what the service reports, with a text
-/// filter, because the Tesseract image lists more than 100 entries.
-///
-/// A text box would let an admin type a language the image does not have, which fails per
-/// file hours later. The backend refuses that too, but the form should not be able to
-/// compose the request in the first place.
-#[component]
-pub(crate) fn LanguageChecklist(
-    available: Vec<String>,
-    selected: Signal<Vec<String>>,
-    disabled: bool,
-) -> Element {
-    let mut filter = use_signal(String::new);
-    let ink = if disabled { "var(--x-ink-faint)" } else { "var(--x-ink)" };
-    let needle = filter.read().trim().to_lowercase();
-    // Selected codes stay visible whatever the filter says, so a choice never hides.
-    let shown: Vec<String> = available
-        .iter()
-        .filter(|code| needle.is_empty() || code.contains(&needle) || selected.read().contains(code))
-        .cloned()
-        .collect();
-    rsx! {
-        input {
-            class: "x-language-filter",
-            style: "{INPUT} width: 220px; margin-bottom: 8px;",
-            placeholder: tr!("dataset-ocr-panel-filter-languages"),
-            value: "{filter}",
-            disabled,
-            oninput: move |e| filter.set(e.value()),
-        }
-        div {
-            style: "display: flex; flex-wrap: wrap; gap: 8px 14px; max-height: 220px; overflow: auto;",
-            for code in shown.iter().cloned() {
-                {
-                    let code_for_check = code.clone();
-                    let code_for_toggle = code.clone();
-                    let is_on = selected.read().iter().any(|c| *c == code_for_check);
-                    rsx! {
-                        label {
-                            key: "{code}",
-                            style: "display: flex; align-items: center; gap: 5px; font-size: var(--x-text-sm); \
-                                    color: {ink};",
-                            input {
-                                r#type: "checkbox",
-                                checked: is_on,
-                                disabled,
-                                onchange: move |_| {
-                                    let mut current = selected.write();
-                                    // Append rather than insert in sorted position:
-                                    // Tesseract treats the first language as primary, so
-                                    // the order the admin builds is the request.
-                                    if let Some(at) = current.iter().position(|c| *c == code_for_toggle) {
-                                        current.remove(at);
-                                    } else {
-                                        current.push(code_for_toggle.clone());
-                                    }
-                                },
-                            }
-                            "{language_label(&code)}"
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// The label of a language code. Tesseract also lists its orientation model, which reads
-/// differently from a language.
-fn language_label(code: &str) -> String {
-    if code == "osd" {
-        return "osd (page orientation and script detection)".to_string();
-    }
-    code.to_string()
-}
-
-/// The words for a value source.
-fn source_label(source: &str) -> &'static str {
-    match source {
-        "dataset" => "this dataset",
-        "collection" => "the collection default",
-        _ => "the installation default",
-    }
-}
-
-pub(crate) fn split_languages(raw: &str) -> Vec<String> {
-    raw.split('+')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-/// The Tesseract codes that the form offers. Debian installs the script models under
-/// capitalised names such as `Latin`. The server accepts only lowercase codes, because the
-/// setting becomes part of a storage key.
-pub(crate) fn tesseract_choices(available: &[String]) -> Vec<String> {
-    available
-        .iter()
-        .filter(|c| c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_'))
-        .cloned()
-        .collect()
-}
-
+/// Read current automatic OCR coverage without exposing legacy settings.
 #[component]
 pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Element {
-    // `use_resource` subscribes to the signal it reads, which is what makes this refetch
-    // when the router reuses the component for a different dataset.
-    let mut panel_res = use_resource(move || admin_get_dataset_ocr(collection_dataset.read().clone()));
-
-    let mut tesseract = use_signal(Vec::<String>::new);
-    let mut easyocr = use_signal(Vec::<String>::new);
-    let mut easyocr_on = use_signal(|| true);
-    let mut inherit_tesseract = use_signal(|| false);
-    let mut inherit_easyocr = use_signal(|| false);
-    let mut seeded_for = use_signal(String::new);
-    let mut msg = use_signal(|| None::<String>);
-    let mut error_msg = use_signal(|| None::<String>);
-    let mut submitting = use_signal(|| false);
-
-    let panel: Option<DatasetOcrPanel> = panel_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned();
-    let load_failed = panel_res.read().as_ref().is_some_and(|r| r.is_err());
-
-    // Seed the form from the server's values once per dataset, and re-seed when the
-    // router reuses this component for another one.
-    //
-    // The hook runs on every render and the resource is read *inside* it, both so the
-    // effect re-runs when the fetch resolves and because a `use_effect` that only exists
-    // once a resource has resolved shifts every hook index after it on the render that
-    // adds it, which traps the WebAssembly runtime and leaves the page painted but dead.
-    use_effect(move || {
-        let loaded = panel_res
-            .read()
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .cloned();
-        if let Some(loaded) = loaded {
-            if *seeded_for.peek() != loaded.collection_dataset {
-                tesseract.set(split_languages(&loaded.tesseract_languages));
-                easyocr.set(split_languages(&loaded.easyocr_languages));
-                easyocr_on.set(!loaded.easyocr_languages.is_empty());
-                inherit_tesseract.set(loaded.tesseract_source != "dataset");
-                inherit_easyocr.set(loaded.easyocr_source != "dataset");
-                seeded_for.set(loaded.collection_dataset);
-            }
+    let dataset = collection_dataset();
+    let mut attempt = use_signal(|| 0u64);
+    let mut active_dataset = use_signal(|| dataset.clone());
+    let mut scope_generation = use_signal(|| 0u64);
+    use_effect(use_reactive!(|dataset| {
+        if *active_dataset.peek() != dataset {
+            active_dataset.set(dataset);
+            scope_generation += 1;
         }
-    });
-
-    let Some(panel) = panel else {
-        return rsx! {
-            div { class: "x-admin-module", style: MODULE,
-                h2 { style: MODULE_CAPTION, {tr!("dataset-ocr-panel-ocr-languages")} }
-                div { style: MODULE_BODY,
-                    if load_failed {
-                        ErrorBar { message: tr!("dataset-ocr-panel-failed-to-load-the-ocr") }
-                    } else {
-                        {tr!("dataset-ocr-panel-loading-u")}
-                    }
-                }
-            }
-        };
-    };
-
-    let selected_tesseract = tesseract.read().clone();
-    let easyocr_value = if *easyocr_on.read() { easyocr.read().join("+") } else { String::new() };
-    let request_tesseract = if *inherit_tesseract.read() { panel.inherited_tesseract.clone() } else { selected_tesseract.join("+") };
-    let request_easyocr = if *inherit_easyocr.read() { panel.inherited_easyocr.clone() } else { easyocr_value.clone() };
-    let sources_change = (*inherit_tesseract.read()) != (panel.tesseract_source != "dataset")
-        || (*inherit_easyocr.read()) != (panel.easyocr_source != "dataset");
-    let dirty = sources_change
-        || request_tesseract != panel.tesseract_languages
-        || request_easyocr != panel.easyocr_languages;
-    let tesseract_ok = *inherit_tesseract.read() || !selected_tesseract.is_empty();
-    let easyocr_ok = *inherit_easyocr.read() || !*easyocr_on.read() || !easyocr.read().is_empty();
-    let can_apply = dirty && !*submitting.read() && tesseract_ok && easyocr_ok;
-
-    let apply_style = action_state(can_apply);
-    let dataset_for_apply = panel.collection_dataset.clone();
-    let dataset_for_strip = panel.collection_dataset.clone();
-    let tesseract_choices = tesseract_choices(&panel.tesseract_available);
-    let script_models = panel.tesseract_available.len() - tesseract_choices.len();
-    let easyocr_choices = if panel.easyocr_supported.is_empty() {
-        // The service did not report its inventory. The stored codes stay selectable.
-        split_languages(&panel.easyocr_languages)
-    } else {
-        panel.easyocr_supported.clone()
-    };
-    let not_preloaded: Vec<String> = easyocr
-        .read()
-        .iter()
-        .filter(|code| !panel.easyocr_preloaded.is_empty() && !panel.easyocr_preloaded.contains(code))
-        .cloned()
-        .collect();
-
+    }));
+    let refresh = attempt();
+    let generation = scope_generation();
+    let mut panel_res = use_resource(use_reactive!(|dataset, generation, refresh| async move {
+        let result = admin_get_dataset_ocr(dataset.clone()).await;
+        (dataset, generation, refresh, result)
+    }));
+    let reply = panel_res.read().clone().filter(|(id, epoch, revision, _)|
+        id == &dataset && *epoch == generation && *revision == refresh);
     rsx! {
         DatasetOperationStrip {
-            collection_dataset: dataset_for_strip,
-            on_change: move |_| panel_res.restart(),
+            collection_dataset,
+            on_change: move |_| { attempt += 1; },
         }
-        div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, {tr!("dataset-ocr-panel-ocr-languages")} }
-            div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 16px;",
-                if let Some(m) = msg.read().clone() { SuccessBar { message: m } }
-                if let Some(e) = error_msg.read().clone() { ErrorBar { message: e } }
-
-                p { style: "{HELP_TEXT} margin: 0;",
-                    {tr!("dataset-ocr-panel-each-easyocr-script-group-adds")}
-                    {tr!("dataset-ocr-panel-apply-saves-the-languages-and")}
+        div { class: "x-admin-module x-automatic-ocr", "data-dataset": "{dataset}", style: MODULE,
+            h2 { style: MODULE_CAPTION, {tr!("automatic-ocr-title")} }
+            div { style: MODULE_BODY,
+                p { style: HELP_TEXT, {tr!("automatic-ocr-policy")} }
+                match reply {
+                    None => rsx! { p { {tr!("dataset-ocr-panel-loading-u")} } },
+                    Some((_, _, _, Err(error))) => rsx! { ErrorBar { message: crate::api::error_util::user_facing_message(&error) } },
+                    Some((_, _, _, Ok(panel))) => rsx! { AutomaticOcrCoverage { panel } },
                 }
-
-                div {
-                    h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-tesseract")} }
-                    p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
-                        {tr!("dataset-ocr-panel-in-force-from", panel_tesseract_languages: panel.tesseract_languages.to_string(), source_label_panel_tesseract_source: (source_label(&panel.tesseract_source)).to_string())}
-                    }
-                    label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
-                        input {
-                            r#type: "checkbox",
-                            checked: *inherit_tesseract.read(),
-                            onchange: move |e| inherit_tesseract.set(e.checked()),
-                        }
-                        {tr!("dataset-ocr-panel-use", source_label_panel_inherited_tesseract_s: (source_label(&panel.inherited_tesseract_source)).to_string(), panel_inherited_tesseract: panel.inherited_tesseract.to_string())}
-                    }
-                    if !*inherit_tesseract.read() {
-                        if panel.tesseract_available.is_empty() {
-                            p { style: "{HELP_TEXT} margin: 0;",
-                                {tr!("dataset-ocr-panel-the-tesseract-service-did-not")}
-                                {tr!("dataset-ocr-panel-the-list-comes-from-the")}
-                            }
-                        } else {
-                            LanguageChecklist {
-                                available: tesseract_choices.clone(),
-                                selected: tesseract,
-                                disabled: false,
-                            }
-                            if script_models > 0 {
-                                p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                                    {tr!("dataset-ocr-panel-the-image-also-has-script", script_models: script_models.to_string())}
-                                }
-                            }
-                            p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                                {tr!("dataset-ocr-panel-the-first-language-is-the")}
-                                strong { "{selected_tesseract.join(\"+\")}" }
-                            }
-                        }
-                    }
+                button { style: BTN, onclick: move |_| { panel_res.clear(); attempt += 1; },
+                    {tr!("automatic-ocr-refresh")}
                 }
+            }
+        }
+    }
+}
 
-                div {
-                    h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-easyocr")} }
-                    if !panel.easyocr_configured {
-                        p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                            {tr!("dataset-ocr-panel-easyocr-is-off-on-this")}
+/// Translate planner reasons while retaining arbitrary stored failure text.
+fn coverage_reason(reason: &str) -> String {
+    match reason {
+        "detected_no_text" => tr!("automatic-ocr-state", state: "no_text"),
+        "unknown_script" | "tesseract_capabilities_unavailable" | "detected_language" |
+        "unknown_language_script_coverage" | "language_script_mismatch_script_coverage" |
+        "language_model_unavailable_script_coverage" | "easyocr_capabilities_unavailable" |
+        "tesseract_script_unavailable" | "script_coverage_unavailable" =>
+            tr!("automatic-ocr-reason-label", reason: reason.to_string()),
+        _ => reason.to_string(),
+    }
+}
+
+fn detected_label(code: &str, script: bool) -> String {
+    if code.is_empty() || matches!(code, "und" | "Unknown" | "Common" | "NULL") {
+        tr!("admin-collections-list-unknown")
+    } else if script { crate::i18n::script_facet_label(code) }
+    else { crate::i18n::language_facet_label(code) }
+}
+
+/// State labels distinguish published output from planned and failed coverage.
+fn coverage_state(state: &str) -> String {
+    match state {
+        "candidate" | "planned" | "failed" | "incomplete" | "unsupported" | "published" | "applied" |
+        "ready" | "no_text" => tr!("automatic-ocr-state", state: state.to_string()),
+        _ => state.to_string(),
+    }
+}
+
+#[component]
+fn AutomaticOcrCoverage(panel: DatasetOcrPanel) -> Element {
+    let status = &panel.automatic_status;
+    rsx! {
+        div { class: "x-automatic-ocr-status", "data-policy-version": "{status.policy_version}",
+            if status.states.is_empty() {
+                p { class: "x-automatic-ocr-unknown", {tr!("automatic-ocr-unknown")} }
+            } else {
+                table { style: "width: 100%; text-align: left; margin: 12px 0;",
+                    thead { tr {
+                        th { {tr!("processing-updates-panel-state")} }
+                        th { {tr!("file-browser-files")} }
+                        th { {tr!("automatic-ocr-pages")} }
+                        th { {tr!("automatic-ocr-reason")} }
+                    } }
+                    tbody { for (index, row) in status.states.iter().enumerate() {
+                        tr { key: "{index}", "data-ocr-state": "{row.state}",
+                            td { "{coverage_state(&row.state)}" }
+                            td { "{row.files}" } td { "{row.pages}" }
+                            td { title: "{row.reason}", "{coverage_reason(&row.reason)}" }
                         }
-                    }
-                    p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
-                        if panel.easyocr_languages.is_empty() {
-                            {tr!("dataset-ocr-panel-in-force-off-from", source_label_panel_easyocr_source: (source_label(&panel.easyocr_source)).to_string())}
-                        } else {
-                            {tr!("dataset-ocr-panel-in-force-from-2", panel_easyocr_languages: panel.easyocr_languages.to_string(), source_label_panel_easyocr_source: (source_label(&panel.easyocr_source)).to_string())}
-                        }
-                    }
-                    label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
-                        input {
-                            r#type: "checkbox",
-                            checked: *inherit_easyocr.read(),
-                            onchange: move |e| inherit_easyocr.set(e.checked()),
-                        }
-                        if panel.inherited_easyocr.is_empty() {
-                            {tr!("dataset-ocr-panel-use-off", source_label_panel_inherited_easyocr_sou: (source_label(&panel.inherited_easyocr_source)).to_string())}
-                        } else {
-                            {tr!("dataset-ocr-panel-use-2", source_label_panel_inherited_easyocr_sou: (source_label(&panel.inherited_easyocr_source)).to_string(), panel_inherited_easyocr: panel.inherited_easyocr.to_string())}
-                        }
-                    }
-                    if !*inherit_easyocr.read() {
-                        label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
-                            input {
-                                r#type: "checkbox",
-                                checked: *easyocr_on.read(),
-                                onchange: move |e| easyocr_on.set(e.checked()),
-                            }
-                            {tr!("dataset-ocr-panel-enabled")}
-                        }
-                        if *easyocr_on.read() {
-                            if panel.easyocr_supported.is_empty() {
-                                p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                                    {tr!("dataset-ocr-panel-the-easyocr-service-did-not")}
-                                }
-                            }
-                            LanguageChecklist {
-                                available: easyocr_choices.clone(),
-                                selected: easyocr,
-                                disabled: false,
-                            }
-                            if !not_preloaded.is_empty() {
-                                p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                                    {tr!("admin-dataset-ocr-panel-models-not-in-image", languages: not_preloaded.join(", "))}
-                                }
-                            }
-                        }
-                    }
-                    for failure in panel.easyocr_failed_downloads.iter() {
-                        p { key: "{failure}", style: "margin: 6px 0 0; color: var(--x-danger); font-size: var(--x-text-sm);",
-                            {tr!("dataset-ocr-panel-a-model-download-failed", failure: failure.to_string())}
-                        }
-                    }
+                    } }
                 }
-
-                if !panel.text_variants.is_empty() {
-                    div {
-                        h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-stored-text-variants")} }
-                        div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
-                            for variant in panel.text_variants.iter() {
-                                span {
-                                    key: "{variant.extracted_by}",
-                                    style: "background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 999px; \
-                                            padding: 2px 10px; font-size: var(--x-text-xs);",
-                                    {tr!("admin-dataset-ocr-panel-variant-pages", source: common::document_sources::text_source_label(&variant.extracted_by).shared(), pages: variant.page_count)}
-                                }
-                            }
+            }
+            if status.states.iter().any(|row| matches!(row.state.as_str(), "failed" | "incomplete" | "unsupported")) {
+                p { class: "x-automatic-ocr-retry", {tr!("automatic-ocr-retry")} }
+            }
+            if !status.page_decisions.is_empty() {
+                h3 { style: SUBHEADING, {tr!("automatic-ocr-coverage")} }
+                table { style: "width: 100%; text-align: left; margin: 12px 0;",
+                    thead { tr {
+                        th { {tr!("search-filter-modal-ocr-script")} }
+                        th { {tr!("search-filter-modal-ocr-language")} }
+                        th { {tr!("processing-updates-panel-state")} }
+                        th { {tr!("automatic-ocr-models")} }
+                        th { {tr!("automatic-ocr-pages")} }
+                        th { {tr!("automatic-ocr-reason")} }
+                    } }
+                    tbody { for (index, row) in status.page_decisions.iter().enumerate() {
+                        tr { key: "{index}", "data-ocr-page-state": "{row.status}",
+                            td { title: "{row.script}", "{detected_label(&row.script, true)}" } td { title: "{row.language}", "{detected_label(&row.language, false)}" }
+                            td { "{coverage_state(&row.status)}" }
+                            td { "{row.engine} {row.languages}" }
+                            td { "{row.pages}" } td { title: "{row.reason}", "{coverage_reason(&row.reason)}" }
                         }
-                        p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            {tr!("dataset-ocr-panel-removing-a-language-deletes-its")}
-                        }
-                    }
+                    } }
                 }
-
-                if panel.ocr_pdf_configured && !panel.pdf_variants.is_empty() {
-                    div {
-                        h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-searchable-pdfs")} }
-                        div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
-                            for variant in panel.pdf_variants.iter() {
-                                span {
-                                    key: "{variant.engine}-{variant.languages}",
-                                    style: "background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 999px; \
-                                            padding: 2px 10px; font-size: var(--x-text-xs);",
-                                    {tr!("dataset-ocr-panel-u-u-files-u-mb", variant_engine: variant.engine.to_string(), variant_languages: variant.languages.to_string(), variant_pdf_count: variant.pdf_count, variant_total_bytes_1024_1024: (variant.total_bytes / 1024 / 1024).to_string())}
-                                }
-                            }
-                        }
-                    }
-                } else if !panel.ocr_pdf_configured {
-                    p { style: "{HELP_TEXT} margin: 0;", {tr!("dataset-ocr-panel-searchable-pdfs-are-off-on")} }
+            }
+            if status.page_decisions_truncated || status.capability_digests_truncated {
+                p { {tr!("automatic-ocr-truncated")} }
+            }
+            if !panel.text_variants.is_empty() {
+                h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-stored-text-variants")} }
+                for (index, variant) in panel.text_variants.iter().enumerate() {
+                    p { key: "{index}", {tr!("admin-dataset-ocr-panel-variant-pages", source: common::document_sources::text_source_label(&variant.extracted_by).shared(), pages: variant.page_count)} }
                 }
-
-                div {
-                    button {
-                        style: "{BTN} {apply_style}",
-                        disabled: !can_apply,
-                        onclick: {
-                            let dataset = dataset_for_apply.clone();
-                            move |_| {
-                                let dataset = dataset.clone();
-                                let tess = tesseract.read().join("+");
-                                let easy = if *easyocr_on.read() { easyocr.read().join("+") } else { String::new() };
-                                let inherit_t = *inherit_tesseract.read();
-                                let inherit_e = *inherit_easyocr.read();
-                                submitting.set(true);
-                                spawn(async move {
-                                    msg.set(None);
-                                    error_msg.set(None);
-                                    match admin_apply_ocr_languages(dataset, tess, easy, inherit_t, inherit_e).await {
-                                        Ok(sentence) => {
-                                            msg.set(Some(sentence));
-                                            seeded_for.set(String::new());
-                                            panel_res.restart();
-                                        }
-                                        Err(e) => error_msg.set(Some(e.to_string())),
-                                    }
-                                    submitting.set(false);
-                                });
-                            }
-                        },
-                        if *submitting.read() { {tr!("dataset-ocr-panel-saving-u")} } else { {tr!("dataset-ocr-panel-apply")} }
-                    }
-                    if !dirty {
-                        span { style: "{HELP_TEXT} margin-left: 10px;", {tr!("dataset-ocr-panel-no-changes-to-apply")} }
-                    }
+            }
+            if !panel.pdf_variants.is_empty() {
+                h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-searchable-pdfs")} }
+                for (index, variant) in panel.pdf_variants.iter().enumerate() {
+                    p { key: "{index}", {tr!("dataset-ocr-panel-u-u-files-u-mb", variant_engine: variant.engine.clone(), variant_languages: variant.languages.clone(), variant_pdf_count: variant.pdf_count, variant_total_bytes_1024_1024: (variant.total_bytes / 1024 / 1024).to_string())} }
                 }
             }
         }
@@ -566,6 +314,14 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coverage_reasons_preserve_stored_failure_details() {
+        assert_eq!(coverage_reason("unknown_script"), "Script not identified");
+        assert_eq!(coverage_reason("RemoteError: private model diagnostic"), "RemoteError: private model diagnostic");
+        assert_eq!(detected_label("FutureScript", true), "FutureScript");
+        assert_eq!(detected_label("und", false), "Unknown");
+    }
 
     #[test]
     fn ingest_without_stage_uses_operation_state_and_plan_counts() {

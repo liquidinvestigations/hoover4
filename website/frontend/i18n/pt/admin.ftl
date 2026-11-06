@@ -845,16 +845,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Leitura de tabelas, entidades, sinais, vetores e ambos os índices
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Cerca de { $count } ficheiro não tem texto de OCR para os idiomas atuais, ou mantém texto de OCR de idiomas que as definições já não incluem.
-   *[other] Cerca de { $count } ficheiros não têm texto de OCR para os idiomas atuais, ou mantêm texto de OCR de idiomas que as definições já não incluem.
-} O OCR é executado para os idiomas atuais, e o texto dos idiomas removidos é eliminado.
+processing-update-ocr-explanation = Ficheiros que precisam de OCR automático: { $count }. As páginas detetadas selecionam modelos instalados. A substituição completa remove as variantes anteriores.
 processing-update-ocr-runs = OCR e PDF pesquisáveis, depois a extração de entidades, a incorporação e a indexação do texto novo
 processing-update-ocr_detection-title = Deteção de OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } ficheiro não tem texto, escrita nem idioma detetados.
-   *[other] { $count } ficheiros não têm texto, escrita nem idioma detetados.
-} É examinada cada imagem e cada página selecionada para OCR. Um PDF envia no máximo 100 páginas. O texto de OCR não muda.
+processing-update-ocr_detection-explanation = Ficheiros sem deteção atual de texto, escrita ou idioma: { $count }. Cada imagem e página PDF elegível é examinada em lotes limitados.
 processing-update-ocr_detection-runs = Deteção, depois os atributos de pesquisa destes ficheiros
 processing-update-pdf_text-title = Texto dos PDF pesquisáveis
 processing-update-pdf_text-explanation = { $files ->
@@ -903,3 +897,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Indexação e verificação dos termos de filtro
+
+automatic-ocr-title = OCR automático
+automatic-ocr-refresh = Atualizar estado
+automatic-ocr-coverage = Cobertura das páginas
+automatic-ocr-pages = Páginas
+automatic-ocr-models = Modelos de OCR
+automatic-ocr-reason = Motivo
+automatic-ocr-truncated = A lista de diagnóstico está incompleta.
+automatic-ocr-presence = Tem texto OCR publicado
+automatic-ocr-policy = O OCR seleciona modelos instalados pela escrita e pelo idioma detetados de cada página elegível. O Tesseract é usado primeiro, com EasyOCR para escritas não cobertas.
+automatic-ocr-unknown = Não existe publicação atual registada. A deteção em falta e o processamento falhado não comprovam ausência.
+automatic-ocr-retry = Use atualizações de processamento para repetir trabalho incompleto ou falhado após corrigir a causa. A cobertura não suportada exige modelos instalados compatíveis.
+automatic-ocr-presence-help = Este filtro encontra apenas texto OCR publicado e verificado. A deteção e as tentativas de processamento não comprovam resultados publicados.
+automatic-ocr-state = { $state ->
+    [candidate] Pendente
+    [planned] Planeado
+    [failed] Falhou
+    [incomplete] Incompleto
+    [unsupported] Não suportado
+    [published] Publicado
+    [applied] Verificado
+    [ready] Texto detetado
+    [no_text] Sem texto detetado
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Entidades nomeadas
+processing-update-entities-explanation = Ficheiros que precisam de extração de entidades ou resultados pesquisáveis atuais: { $count }. Os resultados anteriores são substituídos após a inferência.
+processing-update-entities-runs = Extração de entidades nomeadas, atributos de texto e termos de entidades pesquisáveis
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Escrita não identificada
+    [tesseract_capabilities_unavailable] Cobertura do Tesseract indisponível
+    [detected_language] O modelo corresponde ao idioma detetado
+    [unknown_language_script_coverage] Idioma desconhecido. Foi selecionado um modelo de escrita.
+    [language_script_mismatch_script_coverage] O idioma e a escrita diferem. Foi selecionado um modelo de escrita.
+    [language_model_unavailable_script_coverage] Modelo de idioma indisponível. Foi selecionado um modelo de escrita.
+    [easyocr_capabilities_unavailable] Cobertura do EasyOCR indisponível
+    [tesseract_script_unavailable] O Tesseract não cobre a escrita. Foi selecionado EasyOCR.
+    [script_coverage_unavailable] Nenhum modelo instalado cobre esta escrita.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = O sistema está a calcular as atualizações. As contagens mudam quando o cálculo termina.

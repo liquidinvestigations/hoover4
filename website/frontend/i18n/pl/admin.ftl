@@ -863,20 +863,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Odczyt tabel, encje, sygnały, osadzenia i oba indeksy
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Około { $count } pliku nie ma tekstu OCR dla bieżących języków albo zachowuje tekst OCR języków, których ustawienia już nie obejmują.
-    [few] Około { $count } plików nie ma tekstu OCR dla bieżących języków albo zachowuje tekst OCR języków, których ustawienia już nie obejmują.
-    [many] Około { $count } plików nie ma tekstu OCR dla bieżących języków albo zachowuje tekst OCR języków, których ustawienia już nie obejmują.
-   *[other] Około { $count } pliku nie ma tekstu OCR dla bieżących języków albo zachowuje tekst OCR języków, których ustawienia już nie obejmują.
-} OCR zostanie uruchomiony dla bieżących języków, a tekst usuniętych języków zostanie usunięty.
+processing-update-ocr-explanation = Pliki wymagające automatycznego OCR: { $count }. Wykryte strony wybierają zainstalowane modele. Pełne zastąpienie usuwa poprzednie warianty.
 processing-update-ocr-runs = OCR i PDF-y z możliwością przeszukiwania, potem wyodrębnianie encji, embedding i indeksowanie nowego tekstu
 processing-update-ocr_detection-title = Wykrywanie OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } plik nie ma wykrytego tekstu, pisma ani języka.
-    [few] { $count } pliki nie mają wykrytego tekstu, pisma ani języka.
-    [many] { $count } plików nie ma wykrytego tekstu, pisma ani języka.
-   *[other] { $count } pliku nie ma wykrytego tekstu, pisma ani języka.
-} Badany jest każdy obraz i każda strona wybrana do OCR. PDF wysyła najwyżej 100 stron. Tekst OCR się nie zmienia.
+processing-update-ocr_detection-explanation = Pliki bez bieżącego wykrywania tekstu, pisma lub języka: { $count }. Każdy odpowiedni obraz i strona PDF są badane w ograniczonych partiach.
 processing-update-ocr_detection-runs = Wykrywanie, a potem atrybuty wyszukiwania tych plików
 processing-update-pdf_text-title = Tekst przeszukiwalnych plików PDF
 processing-update-pdf_text-explanation = { $files ->
@@ -937,3 +927,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Indeksowanie i weryfikacja haseł filtrów
+
+automatic-ocr-title = Automatyczny OCR
+automatic-ocr-refresh = Odśwież stan
+automatic-ocr-coverage = Pokrycie stron
+automatic-ocr-pages = Strony
+automatic-ocr-models = Modele OCR
+automatic-ocr-reason = Przyczyna
+automatic-ocr-truncated = Lista diagnostyczna jest niepełna.
+automatic-ocr-presence = Ma opublikowany tekst OCR
+automatic-ocr-policy = OCR wybiera zainstalowane modele według wykrytego pisma i języka każdej kwalifikującej się strony. Najpierw działa Tesseract, a EasyOCR obsługuje niepokryte pisma.
+automatic-ocr-unknown = Nie zarejestrowano bieżącej publikacji. Brak wykrywania i nieudane przetwarzanie nie potwierdzają nieobecności.
+automatic-ocr-retry = Po usunięciu przyczyny ponów niepełną lub nieudaną pracę przez aktualizacje przetwarzania. Nieobsługiwane pokrycie wymaga zgodnych zainstalowanych modeli.
+automatic-ocr-presence-help = Ten filtr znajduje tylko zweryfikowany opublikowany tekst OCR. Wykrywanie i próby przetwarzania nie potwierdzają publikacji.
+automatic-ocr-state = { $state ->
+    [candidate] Oczekuje
+    [planned] Zaplanowano
+    [failed] Niepowodzenie
+    [incomplete] Niepełne
+    [unsupported] Nieobsługiwane
+    [published] Opublikowano
+    [applied] Zweryfikowano
+    [ready] Wykryto tekst
+    [no_text] Nie wykryto tekstu
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Encje nazwane
+processing-update-entities-explanation = Pliki wymagające bieżącej ekstrakcji encji lub wyników wyszukiwania: { $count }. Poprzednie udane wyniki są zastępowane po zakończeniu inferencji.
+processing-update-entities-runs = Ekstrakcja encji nazwanych, atrybuty tekstu i wyszukiwalne terminy encji
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Nie rozpoznano pisma
+    [tesseract_capabilities_unavailable] Pokrycie Tesseract niedostępne
+    [detected_language] Model odpowiada wykrytemu językowi
+    [unknown_language_script_coverage] Nieznany język. Wybrano model pisma.
+    [language_script_mismatch_script_coverage] Język i pismo różnią się. Wybrano model pisma.
+    [language_model_unavailable_script_coverage] Model języka niedostępny. Wybrano model pisma.
+    [easyocr_capabilities_unavailable] Pokrycie EasyOCR niedostępne
+    [tesseract_script_unavailable] Tesseract nie obsługuje pisma. Wybrano EasyOCR.
+    [script_coverage_unavailable] Żaden zainstalowany model nie obsługuje tego pisma.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = Potok oblicza aktualizacje. Liczby zmienią się po zakończeniu obliczeń.

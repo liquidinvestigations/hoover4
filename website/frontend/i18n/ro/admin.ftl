@@ -854,18 +854,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Citirea tabelelor, entități, semnale, vectorizare și ambele indexuri
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Aproximativ { $count } fișier nu are text OCR pentru limbile curente sau păstrează text OCR pentru limbi pe care setările nu le mai includ.
-    [few] Aproximativ { $count } fișiere nu au text OCR pentru limbile curente sau păstrează text OCR pentru limbi pe care setările nu le mai includ.
-   *[other] Aproximativ { $count } de fișiere nu au text OCR pentru limbile curente sau păstrează text OCR pentru limbi pe care setările nu le mai includ.
-} OCR rulează pentru limbile curente, iar textul limbilor eliminate este șters.
+processing-update-ocr-explanation = Fișiere care necesită OCR automat: { $count }. Paginile detectate selectează modelele instalate. Rezultatele complete înlocuiesc și elimină variantele anterioare.
 processing-update-ocr-runs = OCR și PDF-uri cu text căutabil, apoi extragerea de entități, embedding și indexarea textului nou
 processing-update-ocr_detection-title = Detectare OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } fișier nu are text, scriere sau limbă detectate.
-    [few] { $count } fișiere nu au text, scriere sau limbă detectate.
-   *[other] { $count } de fișiere nu au text, scriere sau limbă detectate.
-} Fiecare imagine și fiecare pagină selectată pentru OCR sunt examinate. Un PDF trimite cel mult 100 de pagini. Textul OCR nu se schimbă.
+processing-update-ocr_detection-explanation = Fișiere fără detectare curentă de text, scriere sau limbă: { $count }. Fiecare imagine și pagină PDF eligibilă este examinată în loturi limitate.
 processing-update-ocr_detection-runs = Detectarea, apoi atributele de căutare ale acestor fișiere
 processing-update-pdf_text-title = Textul PDF-urilor căutabile
 processing-update-pdf_text-explanation = { $files ->
@@ -920,3 +912,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Indexarea și verificarea termenilor de filtrare
+
+automatic-ocr-title = OCR automat
+automatic-ocr-refresh = Actualizează starea
+automatic-ocr-coverage = Acoperirea paginilor
+automatic-ocr-pages = Pagini
+automatic-ocr-models = Modele OCR
+automatic-ocr-reason = Motiv
+automatic-ocr-truncated = Lista de diagnostic este incompletă.
+automatic-ocr-presence = Are text OCR publicat
+automatic-ocr-policy = OCR selectează modelele instalate după scrierea și limba detectate pe fiecare pagină eligibilă. Tesseract rulează primul, iar EasyOCR acoperă scrierile rămase compatibile.
+automatic-ocr-unknown = Nu există o publicare curentă înregistrată. Lipsa detectării și procesarea eșuată nu dovedesc absența textului.
+automatic-ocr-retry = Folosește actualizările de procesare pentru a relua lucrările incomplete sau eșuate după corectarea cauzei. Acoperirea neacceptată necesită modele instalate compatibile.
+automatic-ocr-presence-help = Acest filtru găsește numai text OCR publicat și verificat. Detectarea și încercările de procesare nu dovedesc un rezultat publicat.
+automatic-ocr-state = { $state ->
+    [candidate] În așteptare
+    [planned] Planificat
+    [failed] Eșuat
+    [incomplete] Incomplet
+    [unsupported] Neacceptat
+    [published] Publicat
+    [applied] Verificat
+    [ready] Text detectat
+    [no_text] Niciun text detectat
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Entități numite
+processing-update-entities-explanation = Fișiere care necesită extragere curentă de entități sau rezultate căutabile: { $count }. Rezultatele anterioare reușite sunt înlocuite după încheierea inferenței.
+processing-update-entities-runs = Extragerea entităților numite, atribute de text și termeni de entități căutabili
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Scriere neidentificată
+    [tesseract_capabilities_unavailable] Acoperirea Tesseract este indisponibilă
+    [detected_language] Modelul corespunde limbii detectate
+    [unknown_language_script_coverage] Limbă necunoscută. Este selectat un model de scriere.
+    [language_script_mismatch_script_coverage] Limba și scrierea diferă. Este selectat un model de scriere.
+    [language_model_unavailable_script_coverage] Modelul de limbă este indisponibil. Este selectat un model de scriere.
+    [easyocr_capabilities_unavailable] Acoperirea EasyOCR este indisponibilă
+    [tesseract_script_unavailable] Tesseract nu acoperă scrierea. Este selectat EasyOCR.
+    [script_coverage_unavailable] Niciun model instalat nu acoperă această scriere.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = Fluxul de procesare calculează actualizările. Numerele se schimbă la încheierea calculului.

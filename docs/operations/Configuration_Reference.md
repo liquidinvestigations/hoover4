@@ -113,11 +113,11 @@ endpoint stays out of rotation.
 
 ### Scanning and OCR
 
-`tesseract_languages` and `easyocr_languages` are the installation defaults of the OCR
-languages. A dataset uses its own value, else the collection default, else these values.
-The worker and the website both read them, and a change takes effect when the containers
-are created again. The Tesseract image installs every Debian language package, so any
-installed language works without a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
+`tesseract_languages` and `easyocr_languages` remain legacy configuration values for retained workflow histories and service defaults.
+New OCR work selects installed model coverage from detected script and language.
+Dataset and collection manual values do not control new automatic work.
+The Tesseract image installs Debian language models. EasyOCR reports its supported model inventory.
+`regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control. The scanner takes a slot
 before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `4G`)
 sets its container memory limit.

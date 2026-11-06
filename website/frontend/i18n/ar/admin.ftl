@@ -868,20 +868,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = قراءة الجداول والكيانات والإشارات والتضمين وكلا الفهرسين
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] نحو ملف واحد بلا نص OCR للغات الحالية، أو يحتفظ بنص OCR للغات لم تعد في الإعدادات.
-    [two] نحو ملفين بلا نص OCR للغات الحالية، أو يحتفظان بنص OCR للغات لم تعد في الإعدادات.
-    [few] نحو { $count } ملفات بلا نص OCR للغات الحالية، أو تحتفظ بنص OCR للغات لم تعد في الإعدادات.
-   *[other] نحو { $count } ملفًا بلا نص OCR للغات الحالية، أو تحتفظ بنص OCR للغات لم تعد في الإعدادات.
-} يُشغَّل OCR للغات الحالية، ويُحذف نص اللغات المُزالة.
+processing-update-ocr-explanation = الملفات التي تحتاج إلى OCR تلقائي: { $count }. تحدد الصفحات المكتشفة النماذج المثبتة. تزيل نتائج الاستبدال الكاملة النسخ المستبدلة.
 processing-update-ocr-runs = OCR وملفات PDF القابلة للبحث، ثم استخراج الكيانات والتضمين والفهرسة للنص الجديد
 processing-update-ocr_detection-title = اكتشاف OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] ملف واحد بلا نص أو خط كتابة أو لغة مكتشفة.
-    [two] ملفان بلا نص أو خط كتابة أو لغة مكتشفة.
-    [few] { $count } ملفات بلا نص أو خط كتابة أو لغة مكتشفة.
-   *[other] { $count } ملفًا بلا نص أو خط كتابة أو لغة مكتشفة.
-} تُفحص كل صورة وكل صفحة محددة لـ OCR. يرسل ملف PDF ما لا يزيد عن 100 صفحة. لا يتغير نص OCR.
+processing-update-ocr_detection-explanation = الملفات دون اكتشاف حالي للنص أو نظام الكتابة أو اللغة: { $count }. تُفحص كل صورة وصفحة PDF مؤهلة في دفعات محدودة.
 processing-update-ocr_detection-runs = الاكتشاف، ثم سمات البحث لهذه الملفات
 processing-update-pdf_text-title = نص ملفات PDF القابلة للبحث
 processing-update-pdf_text-explanation = { $files ->
@@ -948,3 +938,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = فهرسة مصطلحات التصفية والتحقق منها
+
+automatic-ocr-title = التعرف التلقائي على النص
+automatic-ocr-refresh = تحديث الحالة
+automatic-ocr-coverage = تغطية الصفحات
+automatic-ocr-pages = الصفحات
+automatic-ocr-models = نماذج التعرف على النص
+automatic-ocr-reason = السبب
+automatic-ocr-truncated = قائمة التشخيص غير مكتملة.
+automatic-ocr-presence = يحتوي على نص OCR منشور
+automatic-ocr-policy = يختار OCR النماذج المثبتة حسب نظام الكتابة واللغة المكتشفين لكل صفحة مؤهلة. يعمل Tesseract أولاً، ثم EasyOCR لأنظمة الكتابة التي لا يغطيها.
+automatic-ocr-unknown = لا توجد نتيجة نشر حالية مسجلة. غياب الاكتشاف وفشل المعالجة لا يثبتان غياب النص.
+automatic-ocr-retry = استخدم تحديثات المعالجة لإعادة العمل غير المكتمل أو الفاشل بعد تصحيح السبب. تتطلب التغطية غير المدعومة نماذج مثبتة متوافقة.
+automatic-ocr-presence-help = يطابق هذا المرشح نص OCR المنشور والمتحقق منه فقط. الاكتشاف ومحاولات المعالجة لا يثبتان وجود نتيجة منشورة.
+automatic-ocr-state = { $state ->
+    [candidate] قيد الانتظار
+    [planned] مخطط
+    [failed] فشل
+    [incomplete] غير مكتمل
+    [unsupported] غير مدعوم
+    [published] منشور
+    [applied] تم التحقق
+    [ready] تم اكتشاف نص
+    [no_text] لم يتم اكتشاف نص
+    *[other] { $state }
+    }
+
+processing-update-entities-title = الكيانات المسماة
+processing-update-entities-explanation = الملفات التي تحتاج إلى استخراج كيانات حالي أو نتائج قابلة للبحث: { $count }. تُستبدل النتائج الناجحة السابقة بعد اكتمال الاستدلال.
+processing-update-entities-runs = استخراج الكيانات المسماة وسمات النص ومصطلحات الكيانات القابلة للبحث
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] لم يتم تحديد نظام الكتابة
+    [tesseract_capabilities_unavailable] تغطية Tesseract غير متاحة
+    [detected_language] يطابق النموذج اللغة المكتشفة
+    [unknown_language_script_coverage] اللغة غير معروفة. تم اختيار نموذج لنظام الكتابة.
+    [language_script_mismatch_script_coverage] تختلف اللغة ونظام الكتابة. تم اختيار نموذج لنظام الكتابة.
+    [language_model_unavailable_script_coverage] نموذج اللغة غير متاح. تم اختيار نموذج لنظام الكتابة.
+    [easyocr_capabilities_unavailable] تغطية EasyOCR غير متاحة
+    [tesseract_script_unavailable] لا يغطي Tesseract نظام الكتابة. تم اختيار EasyOCR.
+    [script_coverage_unavailable] لا يغطي أي نموذج مثبت نظام الكتابة هذا.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = تحسب سلسلة المعالجة التحديثات. تتغير الأعداد عند اكتمال الحساب.

@@ -37,6 +37,11 @@ const RETIRED_SETTINGS: [(&str, &str); 5] = [
     ("chat_artifact_ttl_days", "Chat content is kept permanently. This setting no longer exists."),
 ];
 
+fn manual_ocr_setting(key: &str) -> bool {
+    matches!(key, "ocr.tesseract.languages" | "ocr.easyocr.languages" |
+        "ocr.default.tesseract.languages" | "ocr.default.easyocr.languages")
+}
+
 fn retired(key: &str) -> Option<&'static str> {
     RETIRED_SETTINGS.iter().find(|(k, _)| *k == key).map(|(_, why)| *why)
 }
@@ -73,7 +78,7 @@ pub async fn admin_list_settings(user: &CurrentUser) -> anyhow::Result<Vec<Serve
     let rows = settings::list_settings().await?;
     let mut items: Vec<ServerSettingItem> = rows
         .into_iter()
-        .filter(|r| retired(&r.key).is_none() && !INTERNAL_SETTINGS.contains(&r.key.as_str()))
+        .filter(|r| retired(&r.key).is_none() && !manual_ocr_setting(&r.key) && !INTERNAL_SETTINGS.contains(&r.key.as_str()))
         .map(|r| ServerSettingItem {
             key: r.key,
             value: r.value,
@@ -99,6 +104,7 @@ pub async fn admin_set_setting(
     value: String,
 ) -> anyhow::Result<()> {
     guard::require_admin(user)?;
+    if manual_ocr_setting(&key) { return Err(guard::RetiredOcrSetting.into()); }
     match key.as_str() {
         "session_expiration_seconds" => {
             let v: u64 = value.parse().map_err(|_| anyhow::anyhow!("must be a positive integer"))?;
@@ -137,4 +143,21 @@ pub async fn admin_set_setting(
         _ => {}
     }
     settings::set_setting(&key, &value).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn manual_ocr_defaults_are_retired_before_storage_access() {
+        let user = CurrentUser { username: "admin".into(), fullname: String::new(),
+            email: String::new(), is_admin: true, groups: vec![] };
+        for key in ["ocr.tesseract.languages", "ocr.easyocr.languages",
+            "ocr.default.tesseract.languages", "ocr.default.easyocr.languages"] {
+            let error = admin_set_setting(&user, key.into(), "eng".into()).await.unwrap_err();
+            assert!(error.is::<guard::RetiredOcrSetting>(), "{key}: {error}");
+        }
+        assert!(!manual_ocr_setting("chat_enabled"));
+    }
 }

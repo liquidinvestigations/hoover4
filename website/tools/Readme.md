@@ -101,9 +101,13 @@ It also records the source revision, copied-file identities, and email envelope 
 Document identifiers use SHA3-256. Provenance also records SHA-256.
 The preparation command rejects a copied file that differs from its source.
 
+[The automatic browser fixture helper](fixtures/release_browser_automatic.py) adds controlled OCR coverage and recorded-date inputs after the release document helper.
+Run it inside the processing container with disposable datastore configuration and current source.
+It changes no OCR routing policy and executes no models.
+
 The profile also reads `testdata_manualpdf`, which contains one original-only PDF.
-Its separate ingestion requires the global PDF provider set to `none`, then restoration of the prior provider.
-Ordinary preparation writes its source bytes but does not rescan this dataset under an OCR-enabled provider.
+The generated PDF has sufficient native text and no raster images.
+The production eligibility rule selects no OCR pages. Preparation changes no manual OCR setting or provider.
 Run `website/run-stack-tests.sh --slow slow_qa_pdf_sources` to verify PDF bytes, source-specific search, both source orders, and permissions.
 
 The profile command returns one when a required fixture is unmet.

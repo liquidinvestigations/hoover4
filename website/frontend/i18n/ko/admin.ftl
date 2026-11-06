@@ -836,14 +836,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = 표 읽기, 엔터티, 신호, 임베딩 및 두 인덱스
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-   *[other] 파일 약 { $count }개에 현재 언어의 OCR 텍스트가 없거나, 설정에서 더 이상 포함하지 않는 언어의 OCR 텍스트가 남아 있습니다.
-} 현재 언어로 OCR을 실행하고, 제거된 언어의 텍스트는 삭제합니다.
+processing-update-ocr-explanation = 자동 OCR이 필요한 파일 수: { $count }. 감지된 페이지가 설치된 모델을 선택합니다. 완전한 대체 결과가 이전 변형을 제거합니다.
 processing-update-ocr-runs = OCR 및 검색 가능한 PDF, 이후 새 텍스트의 개체 추출, 임베딩, 색인
 processing-update-ocr_detection-title = OCR 감지
-processing-update-ocr_detection-explanation = { $files ->
-   *[other] 파일 { $count }개에 감지된 텍스트, 문자 체계, 언어가 없습니다.
-} 각 이미지와 OCR 대상으로 선택된 각 페이지를 검사합니다. PDF 하나당 최대 100쪽을 보냅니다. OCR 텍스트는 바뀌지 않습니다.
+processing-update-ocr_detection-explanation = 현재 텍스트, 문자 체계 또는 언어 감지가 없는 파일 수: { $count }. 모든 대상 이미지와 PDF 페이지를 제한된 배치로 검사합니다.
 processing-update-ocr_detection-runs = 감지, 이후 해당 파일의 검색 속성
 processing-update-pdf_text-title = 검색 가능한 PDF 텍스트
 processing-update-pdf_text-explanation = { $files ->
@@ -886,3 +882,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = 필터 용어 인덱싱 및 검증
+
+automatic-ocr-title = 자동 OCR
+automatic-ocr-refresh = 상태 새로 고침
+automatic-ocr-coverage = 페이지 처리 범위
+automatic-ocr-pages = 페이지
+automatic-ocr-models = OCR 모델
+automatic-ocr-reason = 이유
+automatic-ocr-truncated = 진단 목록이 불완전합니다.
+automatic-ocr-presence = 게시된 OCR 텍스트 있음
+automatic-ocr-policy = OCR은 각 대상 페이지에서 감지한 문자 체계와 언어에 따라 설치된 모델을 선택합니다. Tesseract를 먼저 사용하고 나머지 지원 문자 체계에는 EasyOCR을 사용합니다.
+automatic-ocr-unknown = 현재 게시 결과가 기록되지 않았습니다. 감지 누락과 처리 실패는 텍스트 부재를 입증하지 않습니다.
+automatic-ocr-retry = 원인을 수정한 후 처리 업데이트로 불완전하거나 실패한 작업을 다시 시도하세요. 지원되지 않는 범위에는 호환되는 설치 모델이 필요합니다.
+automatic-ocr-presence-help = 이 필터는 검증된 게시 OCR 텍스트에만 일치합니다. 감지와 처리 시도는 게시 결과를 입증하지 않습니다.
+automatic-ocr-state = { $state ->
+    [candidate] 대기 중
+    [planned] 계획됨
+    [failed] 실패
+    [incomplete] 불완전
+    [unsupported] 지원되지 않음
+    [published] 게시됨
+    [applied] 검증됨
+    [ready] 텍스트 감지됨
+    [no_text] 텍스트 감지 안 됨
+    *[other] { $state }
+    }
+
+processing-update-entities-title = 개체명
+processing-update-entities-explanation = 현재 개체명 추출 또는 검색 가능한 결과가 필요한 파일 수: { $count }. 추론 완료 후 이전 성공 결과를 대체합니다.
+processing-update-entities-runs = 개체명 추출, 텍스트 속성 및 검색 가능한 개체명 용어
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] 문자 체계 식별 안 됨
+    [tesseract_capabilities_unavailable] Tesseract 지원 범위를 사용할 수 없음
+    [detected_language] 모델이 감지된 언어와 일치함
+    [unknown_language_script_coverage] 언어를 알 수 없습니다. 문자 체계 모델을 선택했습니다.
+    [language_script_mismatch_script_coverage] 언어와 문자 체계가 다릅니다. 문자 체계 모델을 선택했습니다.
+    [language_model_unavailable_script_coverage] 언어 모델을 사용할 수 없습니다. 문자 체계 모델을 선택했습니다.
+    [easyocr_capabilities_unavailable] EasyOCR 지원 범위를 사용할 수 없음
+    [tesseract_script_unavailable] Tesseract가 문자 체계를 지원하지 않습니다. EasyOCR을 선택했습니다.
+    [script_coverage_unavailable] 이 문자 체계를 지원하는 설치 모델이 없습니다.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = 파이프라인이 업데이트를 계산하고 있습니다. 계산이 끝나면 개수가 바뀝니다.

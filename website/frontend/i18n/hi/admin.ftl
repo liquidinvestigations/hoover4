@@ -845,16 +845,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = तालिका पठन, इकाइयाँ, संकेत, एम्बेडिंग और दोनों अनुक्रमणिकाएँ
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] लगभग { $count } फ़ाइल में वर्तमान भाषाओं का OCR टेक्स्ट नहीं है, या उन भाषाओं का OCR टेक्स्ट रखती है जो अब सेटिंग में नहीं हैं।
-   *[other] लगभग { $count } फ़ाइलों में वर्तमान भाषाओं का OCR टेक्स्ट नहीं है, या वे उन भाषाओं का OCR टेक्स्ट रखती हैं जो अब सेटिंग में नहीं हैं।
-} OCR वर्तमान भाषाओं के लिए चलता है, और हटाई गई भाषाओं का टेक्स्ट मिटा दिया जाता है।
+processing-update-ocr-explanation = स्वचालित OCR चाहने वाली फ़ाइलें: { $count }। पहचाने गए पृष्ठ स्थापित मॉडल चुनते हैं। पूर्ण प्रतिस्थापन पुराने संस्करण हटाता है।
 processing-update-ocr-runs = OCR और खोजने योग्य PDF, फिर नए टेक्स्ट का इकाई निष्कर्षण, एम्बेडिंग और इंडेक्सिंग
 processing-update-ocr_detection-title = OCR पहचान
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } फ़ाइल का कोई पहचाना गया पाठ, लिपि या भाषा नहीं है।
-   *[other] { $count } फ़ाइलों का कोई पहचाना गया पाठ, लिपि या भाषा नहीं है।
-} हर छवि और OCR के लिए चुने गए हर पृष्ठ की जाँच होती है। एक PDF अधिकतम 100 पृष्ठ भेजता है। OCR पाठ नहीं बदलता।
+processing-update-ocr_detection-explanation = वर्तमान पाठ, लिपि या भाषा पहचान के बिना फ़ाइलें: { $count }। हर पात्र चित्र और PDF पृष्ठ की सीमित बैच में जाँच होती है।
 processing-update-ocr_detection-runs = पहचान, फिर इन फ़ाइलों के खोज गुण
 processing-update-pdf_text-title = खोजने योग्य PDF का टेक्स्ट
 processing-update-pdf_text-explanation = { $files ->
@@ -903,3 +897,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = फ़िल्टर शब्दों का अनुक्रमण और सत्यापन
+
+automatic-ocr-title = स्वचालित OCR
+automatic-ocr-refresh = स्थिति ताज़ा करें
+automatic-ocr-coverage = पृष्ठ कवरेज
+automatic-ocr-pages = पृष्ठ
+automatic-ocr-models = OCR मॉडल
+automatic-ocr-reason = कारण
+automatic-ocr-truncated = निदान सूची अधूरी है।
+automatic-ocr-presence = प्रकाशित OCR पाठ है
+automatic-ocr-policy = OCR हर पात्र पृष्ठ की पहचानी गई लिपि और भाषा से स्थापित मॉडल चुनता है। पहले Tesseract चलता है और शेष समर्थित लिपियों के लिए EasyOCR चलता है।
+automatic-ocr-unknown = कोई वर्तमान प्रकाशन दर्ज नहीं है। अनुपस्थित पहचान और विफल प्रसंस्करण से पाठ की अनुपस्थिति सिद्ध नहीं होती।
+automatic-ocr-retry = कारण ठीक करने के बाद अधूरे या विफल कार्य को दोहराने के लिए प्रसंस्करण अपडेट उपयोग करें। असमर्थित कवरेज के लिए संगत स्थापित मॉडल चाहिए।
+automatic-ocr-presence-help = यह फ़िल्टर केवल सत्यापित प्रकाशित OCR पाठ से मेल खाता है। पहचान और प्रसंस्करण के प्रयास प्रकाशित परिणाम सिद्ध नहीं करते।
+automatic-ocr-state = { $state ->
+    [candidate] लंबित
+    [planned] नियोजित
+    [failed] विफल
+    [incomplete] अधूरा
+    [unsupported] असमर्थित
+    [published] प्रकाशित
+    [applied] सत्यापित
+    [ready] पाठ मिला
+    [no_text] पाठ नहीं मिला
+    *[other] { $state }
+    }
+
+processing-update-entities-title = नामित इकाइयाँ
+processing-update-entities-explanation = वर्तमान इकाई निष्कर्षण या खोज योग्य परिणाम चाहने वाली फ़ाइलें: { $count }। अनुमान पूरा होने के बाद पुराने सफल परिणाम बदले जाते हैं।
+processing-update-entities-runs = नामित इकाई निष्कर्षण, पाठ विशेषताएँ और खोज योग्य इकाई शब्द
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] लिपि की पहचान नहीं हुई
+    [tesseract_capabilities_unavailable] Tesseract कवरेज उपलब्ध नहीं
+    [detected_language] मॉडल पहचानी गई भाषा से मेल खाता है
+    [unknown_language_script_coverage] भाषा अज्ञात है। लिपि मॉडल चुना गया है।
+    [language_script_mismatch_script_coverage] भाषा और लिपि अलग हैं। लिपि मॉडल चुना गया है।
+    [language_model_unavailable_script_coverage] भाषा मॉडल उपलब्ध नहीं। लिपि मॉडल चुना गया है।
+    [easyocr_capabilities_unavailable] EasyOCR कवरेज उपलब्ध नहीं
+    [tesseract_script_unavailable] Tesseract लिपि को कवर नहीं करता। EasyOCR चुना गया है।
+    [script_coverage_unavailable] कोई स्थापित मॉडल इस लिपि को कवर नहीं करता।
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = पाइपलाइन अपडेट की गणना कर रही है। गणना पूरी होने पर संख्याएँ बदलेंगी।

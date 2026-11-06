@@ -253,7 +253,7 @@ pub struct AutomaticOcrStateCount {
     pub pages: u64,
 }
 
-/// Everything the dataset OCR panel renders, in one round trip.
+/// Automatic coverage and retained legacy audit fields in one response.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DatasetOcrPanel {
     #[serde(default)]
@@ -287,12 +287,9 @@ pub struct DatasetOcrPanel {
     /// First-use model downloads that failed, as `languages: error`.
     #[serde(default)]
     pub easyocr_failed_downloads: Vec<String>,
-    /// What the Tesseract image can actually serve, read from its `/health` rather than
-    /// from configuration. Empty when the tier did not answer. The form then says so
-    /// instead of offering a list it cannot stand behind.
+    /// Installed Tesseract coverage retained for audit. Empty when the service did not answer.
     pub tesseract_available: Vec<String>,
-    /// Whether an EasyOCR endpoint is configured at all. False renders that half of the
-    /// form disabled with the reason, rather than hiding it.
+    /// Whether an EasyOCR endpoint is configured. This audit value selects no new work.
     pub easyocr_configured: bool,
     /// Whether searchable PDFs are produced at all (`ocr_pdf_enabled`).
     pub ocr_pdf_configured: bool,

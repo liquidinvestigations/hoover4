@@ -282,13 +282,14 @@ body and not from its headers.
 
 ### Detected OCR language and Detected OCR script
 
-These two filters use the OCR detection of images and scanned pages. A short sample of each
-page is examined before and apart from OCR, so the value does not depend on the OCR languages
-of the dataset. Use them to find scans in a language or a writing system that the dataset does
-not cover. A document with several pages can have several values.
+The **OCR** category contains detected language, detected script, and **Has published OCR text**.
+The language and script filters use detection evidence from eligible images and PDF pages.
+Automatic planning examines every eligible page in bounded batches.
+A document with several pages can have several detected values.
 
-The **Metadata** tab of a document shows the same values at the top, in **OCR detection**, with
-the number of pages for each value. A page with few words can have no value.
+**Has published OCR text** selects verified published OCR output.
+Detection, attempted processing, missing publication, and failed processing do not establish published output.
+The **Metadata** tab shows detection evidence separately from stored OCR text sources.
 
 ### Text source
 
@@ -729,7 +730,7 @@ filter:
 
 An administrator can let you upload into a collection.
 The administrator turns on uploads for one or more datasets of the collection, and marks your group membership as uploader.
-Each upload dataset can have its own OCR languages.
+Each upload dataset uses automatic OCR planning.
 Then the breadcrumb bar of Storage shows **Upload** at its right end.
 Inside an upload dataset, **Upload** opens the upload page with that dataset and folder selected.
 

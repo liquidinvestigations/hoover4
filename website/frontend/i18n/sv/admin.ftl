@@ -845,16 +845,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Tabelläsning, entiteter, signaler, inbäddningar och båda indexen
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Ungefär { $count } fil saknar OCR-text för de nuvarande språken, eller behåller OCR-text för språk som inställningarna inte längre omfattar.
-   *[other] Ungefär { $count } filer saknar OCR-text för de nuvarande språken, eller behåller OCR-text för språk som inställningarna inte längre omfattar.
-} OCR körs för de nuvarande språken, och texten för de borttagna språken raderas.
+processing-update-ocr-explanation = Filer som behöver automatisk OCR: { $count }. Identifierade sidor väljer installerade modeller. Fullständiga ersättningsresultat tar bort tidigare varianter.
 processing-update-ocr-runs = OCR och sökbara PDF-filer, sedan entitetsextraktion, inbäddning och indexering av den nya texten
 processing-update-ocr_detection-title = OCR-identifiering
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } fil har ingen upptäckt text, skrift eller språk.
-   *[other] { $count } filer har ingen upptäckt text, skrift eller språk.
-} Varje bild och varje sida som valts för OCR undersöks. En PDF skickar högst 100 sidor. OCR-texten ändras inte.
+processing-update-ocr_detection-explanation = Filer utan aktuell identifiering av text, skriftsystem eller språk: { $count }. Varje lämplig bild och PDF-sida undersöks i begränsade grupper.
 processing-update-ocr_detection-runs = Identifiering, sedan sökattributen för dessa filer
 processing-update-pdf_text-title = Text i sökbara PDF-filer
 processing-update-pdf_text-explanation = { $files ->
@@ -903,3 +897,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Indexering och verifiering av filtertermer
+
+automatic-ocr-title = Automatisk OCR
+automatic-ocr-refresh = Uppdatera status
+automatic-ocr-coverage = Sidtäckning
+automatic-ocr-pages = Sidor
+automatic-ocr-models = OCR-modeller
+automatic-ocr-reason = Orsak
+automatic-ocr-truncated = Diagnoslistan är ofullständig.
+automatic-ocr-presence = Har publicerad OCR-text
+automatic-ocr-policy = OCR väljer installerade modeller från det identifierade skriftsystemet och språket på varje lämplig sida. Tesseract används först, EasyOCR täcker övriga skriftsystem som stöds.
+automatic-ocr-unknown = Ingen aktuell publicering är registrerad. Saknad identifiering och misslyckad bearbetning bevisar inte frånvaro.
+automatic-ocr-retry = Använd bearbetningsuppdateringar för att upprepa ofullständigt eller misslyckat arbete efter rättning. Täckning som inte stöds kräver kompatibla installerade modeller.
+automatic-ocr-presence-help = Filtret hittar endast verifierad publicerad OCR-text. Identifiering och bearbetningsförsök bevisar inte publicerade resultat.
+automatic-ocr-state = { $state ->
+    [candidate] Väntar
+    [planned] Planerad
+    [failed] Misslyckad
+    [incomplete] Ofullständig
+    [unsupported] Stöds inte
+    [published] Publicerad
+    [applied] Verifierad
+    [ready] Text identifierad
+    [no_text] Ingen text identifierad
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Namngivna entiteter
+processing-update-entities-explanation = Filer som behöver aktuell entitetsutvinning eller sökbara resultat: { $count }. Tidigare lyckade resultat ersätts efter inferensen.
+processing-update-entities-runs = Utvinning av namngivna entiteter, textattribut och sökbara entitetstermer
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Skriftsystem inte identifierat
+    [tesseract_capabilities_unavailable] Tesseract-täckning är inte tillgänglig
+    [detected_language] Modellen motsvarar det identifierade språket
+    [unknown_language_script_coverage] Okänt språk. En skriftsystemmodell har valts.
+    [language_script_mismatch_script_coverage] Språk och skriftsystem skiljer sig. En skriftsystemmodell har valts.
+    [language_model_unavailable_script_coverage] Språkmodell är inte tillgänglig. En skriftsystemmodell har valts.
+    [easyocr_capabilities_unavailable] EasyOCR-täckning är inte tillgänglig
+    [tesseract_script_unavailable] Tesseract täcker inte skriftsystemet. EasyOCR har valts.
+    [script_coverage_unavailable] Ingen installerad modell täcker detta skriftsystem.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = Pipelinen beräknar uppdateringarna. Antalen ändras när beräkningen är klar.

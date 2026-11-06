@@ -166,17 +166,25 @@ class DiscoveryTests(unittest.TestCase):
         self.assertTrue(any("manualpdf" in command for command in commands))
         self.assertTrue(all(command[4] == "add-disk-dataset" for command in commands))
 
-    def test_original_pdf_disables_dataset_ocr_before_submission(self) -> None:
+    def test_original_pdf_uses_native_eligibility_without_setting_mutations(self) -> None:
         events = []
         settings = Mock()
-        settings.set_dataset_setting.side_effect = lambda *args: events.append(("setting", args))
         with patch.dict(sys.modules, {"tasks.dataset_config": settings}), \
              patch.object(Path, "is_dir", return_value=True), \
-             patch.object(MODULE, "run", side_effect=lambda command: events.append(("ingest", command[6]))):
+             patch.object(MODULE, "run", side_effect=lambda command: events.append(command[6])):
             MODULE.ingest_local_datasets()
-        submission = events.index(("ingest", "manualpdf"))
-        for key in ("ocr.tesseract.languages", "ocr.easyocr.languages"):
-            self.assertLess(events.index(("setting", ("testdata_manualpdf", key, ""))), submission)
+        self.assertIn("manualpdf", events)
+        settings.set_dataset_setting.assert_not_called()
+
+    def test_original_pdf_has_native_text_and_no_eligible_ocr_pages(self) -> None:
+        from tasks.P3_parse_files.pdf_parts import page_needs
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "original.pdf"
+            path.write_bytes(MODULE.original_only_pdf())
+            result = subprocess.run(["pdftotext", str(path), "-"], capture_output=True, check=True)
+            text = result.stdout.decode()
+            self.assertIn("Original PDF fixture", text)
+            self.assertEqual(page_needs(str(path), 1, [text]), [])
 
     def test_original_cases_remain_incomplete(self) -> None:
         names = {item["name"] for item in MODULE.original_case_status()}

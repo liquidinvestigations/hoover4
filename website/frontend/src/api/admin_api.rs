@@ -71,6 +71,7 @@ admin_server_fn!(admin_set_collection_ocr_defaults, backend::api::admin::dataset
 admin_server_fn!(admin_list_dataset_mounts, backend::api::admin::dataset_ocr::admin_list_dataset_mounts, () -> Vec<DatasetMountOption>);
 admin_server_fn!(admin_list_dataset_folders, backend::api::admin::dataset_ocr::admin_list_dataset_folders, (collectionname: String, mount_name: String) -> Vec<DatasetFolderOption>);
 admin_server_fn!(admin_create_dataset, backend::api::admin::dataset_ocr::admin_create_dataset, (collectionname: String, mount_name: String, folder_name: String, new_folder: bool, dataset_name: String, tesseract_languages: String, easyocr_languages: String, accept_uploads: bool) -> String);
+admin_server_fn!(admin_create_dataset_automatic, backend::api::admin::dataset_ocr::admin_create_dataset_automatic, (collectionname: String, mount_name: String, folder_name: String, new_folder: bool, dataset_name: String, accept_uploads: bool) -> String);
 admin_server_fn!(admin_get_dataset_uploads, backend::api::admin::dataset_ocr::admin_get_dataset_uploads, (collection_dataset: String) -> DatasetUploadsSetting);
 admin_server_fn!(admin_set_dataset_uploads, backend::api::admin::dataset_ocr::admin_set_dataset_uploads, (collection_dataset: String, on: bool));
 

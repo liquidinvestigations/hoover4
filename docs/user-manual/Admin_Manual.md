@@ -68,28 +68,28 @@ now, and a table of where the processing time actually goes.
 A dataset's page shows its type and source path, when it was created, and its statistics:
 state, documents, size, indexed documents, errors, and finished plans.
 
-**OCR languages** sets the languages of the two OCR engines. Select Tesseract languages from
-the checklist, and type in the filter to find one. Turn EasyOCR on or off with **Enabled**,
-and select its languages. **Use the collection default** makes the dataset follow the
-collection default. Each value shows its source: this dataset, the collection default or
-the installation default from `hoover4.ini`. EasyOCR languages that the image did not
-preload download on first use. A failed download shows under the list. **Apply** saves the
-settings. When automatic updates are on, the OCR update then starts without a second click.
+**Automatic OCR** shows detected script and language, selected installed models, and page coverage.
+Tesseract runs first. EasyOCR covers supported scripts that Tesseract cannot cover.
+The panel separates planned, published, incomplete, unsupported, and failed work.
+Missing publication remains unknown. Refresh status reads the current stored results.
+OCR engine and language selection is automatic at every administrative scope.
 
 **Processing updates** lists the update steps of the dataset. Each step shows how many files
 it changes, its state, what it does and its last run. A step waits when new versions,
-settings or files leave stored results out of date. An interrupted ingestion and an OCR
-settings change are examples. Waiting, failed and cancelled steps are selected. Select
+settings or files leave stored results out of date. An interrupted ingestion and a changed OCR model inventory are examples. Waiting, failed and cancelled steps are selected. Select
 the steps to run and press **Update processing**. **Check again** asks the pipeline to count
 the steps now. When the counts changed since the page loaded, the request is refused, the
 new counts show, and nothing runs. A failed or cancelled step does not start again
 automatically. Start it with the button when the cause is fixed.
 
-The OCR step runs OCR for the current languages, deletes the text of removed languages and
-indexes the changed text. Saved OCR results provide their text without another OCR request.
-The OCR detection step examines images and pages selected for OCR that have no detection
-result. It stores text, script and language, and updates the OCR filters of search. OCR
-settings and OCR text do not change. It needs the Tesseract service.
+The OCR step selects installed models from each eligible page’s detected script and language.
+It preserves earlier output until replacement publication completes, then removes superseded normal variants.
+The OCR detection step examines every eligible image and PDF page in bounded batches.
+It stores detection evidence and updates search attributes independently of published OCR text.
+Use processing updates to retry failed or incomplete work after correcting its cause.
+Unsupported coverage requires compatible installed models.
+The named-entity step replaces earlier successful extraction after inference completes and verifies searchable output.
+
 The failed files step runs the failed stages again. The automatic run retries a file once
 for each new version of the stage that failed. **Retry** on the processing page also repeats
 failed files.
@@ -103,7 +103,6 @@ collection steps. The collection page also sets the vectors of the collection. W
 are off, the pipeline computes no new vectors and search does not use the stored vectors,
 which stay. When no value is set, the collection follows the installation.
 
-<a href="img/admin-dataset.png"><img src="img/admin-dataset.png" alt="Admin, one dataset" width="100%"></a>
 
 
 ## Errors and failures

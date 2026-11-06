@@ -67,7 +67,8 @@ The report table is [Capture report format](Capture_Report_Format.md).
 These wrappers copy tools into `hoover4-mcp-browser` and run a plain Chromium.
 They do not use that container's MCP endpoint, which refuses internal hosts.
 [website/tools/prepare_manual_qa.sh](../../website/tools/prepare_manual_qa.sh) also creates the original-only PDF dataset.
-It sets both dataset OCR language values to empty strings before ingestion.
+Its born-digital PDF has sufficient native text and no raster images.
+The production eligibility rule selects no OCR pages without manual settings.
 
 ## Static checks
 

@@ -845,16 +845,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Tabellen lezen, entiteiten, signalen, inbeddingen en beide indexen
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Ongeveer { $count } bestand heeft geen OCR-tekst voor de huidige talen, of bewaart OCR-tekst van talen die de instellingen niet meer bevatten.
-   *[other] Ongeveer { $count } bestanden hebben geen OCR-tekst voor de huidige talen, of bewaren OCR-tekst van talen die de instellingen niet meer bevatten.
-} OCR draait voor de huidige talen en de tekst van de verwijderde talen wordt gewist.
+processing-update-ocr-explanation = Bestanden die automatische OCR nodig hebben: { $count }. Gedetecteerde pagina’s bepalen de geïnstalleerde modellen. Volledige vervangende uitvoer verwijdert oude varianten.
 processing-update-ocr-runs = OCR en doorzoekbare PDF's, daarna entiteitsextractie, embedding en indexering van de nieuwe tekst
 processing-update-ocr_detection-title = OCR-detectie
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } bestand heeft geen gedetecteerde tekst, schrift of taal.
-   *[other] { $count } bestanden hebben geen gedetecteerde tekst, schrift of taal.
-} Elke afbeelding en elke voor OCR geselecteerde pagina wordt onderzocht. Een pdf stuurt maximaal 100 pagina’s. De OCR-tekst verandert niet.
+processing-update-ocr_detection-explanation = Bestanden zonder huidige tekst-, schrift- of taaldetectie: { $count }. Elke geschikte afbeelding en PDF-pagina wordt in begrensde batches onderzocht.
 processing-update-ocr_detection-runs = Detectie, daarna de zoekkenmerken van deze bestanden
 processing-update-pdf_text-title = Tekst van doorzoekbare pdf's
 processing-update-pdf_text-explanation = { $files ->
@@ -903,3 +897,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Filtertermen indexeren en verifiëren
+
+automatic-ocr-title = Automatische OCR
+automatic-ocr-refresh = Status vernieuwen
+automatic-ocr-coverage = Paginadekking
+automatic-ocr-pages = Pagina’s
+automatic-ocr-models = OCR-modellen
+automatic-ocr-reason = Reden
+automatic-ocr-truncated = De diagnoselijst is onvolledig.
+automatic-ocr-presence = Heeft gepubliceerde OCR-tekst
+automatic-ocr-policy = OCR kiest geïnstalleerde modellen op basis van het gedetecteerde schrift en de taal van elke geschikte pagina. Tesseract komt eerst, EasyOCR dekt overige ondersteunde schriften.
+automatic-ocr-unknown = Er is geen huidige publicatie vastgelegd. Ontbrekende detectie en mislukte verwerking bewijzen geen afwezigheid.
+automatic-ocr-retry = Gebruik verwerkingsupdates om onvolledig of mislukt werk opnieuw uit te voeren nadat de oorzaak is verholpen. Niet-ondersteunde dekking vereist geschikte geïnstalleerde modellen.
+automatic-ocr-presence-help = Dit filter vindt alleen geverifieerde gepubliceerde OCR-tekst. Detectie en verwerkingspogingen bewijzen geen gepubliceerde uitvoer.
+automatic-ocr-state = { $state ->
+    [candidate] In afwachting
+    [planned] Gepland
+    [failed] Mislukt
+    [incomplete] Onvolledig
+    [unsupported] Niet ondersteund
+    [published] Gepubliceerd
+    [applied] Geverifieerd
+    [ready] Tekst gedetecteerd
+    [no_text] Geen tekst gedetecteerd
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Benoemde entiteiten
+processing-update-entities-explanation = Bestanden die huidige entiteitsextractie of doorzoekbare uitvoer nodig hebben: { $count }. Eerdere geslaagde resultaten worden na de inferentie vervangen.
+processing-update-entities-runs = Extractie van benoemde entiteiten, tekstattributen en doorzoekbare entiteitstermen
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Schrift niet geïdentificeerd
+    [tesseract_capabilities_unavailable] Tesseract-dekking niet beschikbaar
+    [detected_language] Model past bij gedetecteerde taal
+    [unknown_language_script_coverage] Onbekende taal. Een schriftmodel is geselecteerd.
+    [language_script_mismatch_script_coverage] Taal en schrift verschillen. Een schriftmodel is geselecteerd.
+    [language_model_unavailable_script_coverage] Taalmodel niet beschikbaar. Een schriftmodel is geselecteerd.
+    [easyocr_capabilities_unavailable] EasyOCR-dekking niet beschikbaar
+    [tesseract_script_unavailable] Tesseract dekt het schrift niet. EasyOCR is geselecteerd.
+    [script_coverage_unavailable] Geen geïnstalleerd model dekt dit schrift.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = De pijplijn berekent de updates. De aantallen veranderen wanneer de berekening klaar is.

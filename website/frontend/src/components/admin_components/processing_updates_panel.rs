@@ -53,21 +53,41 @@ pub fn ProcessingUpdatesPanel(
             tick.set(next);
         }
     });
-    let kind_for_res = scope_kind.clone();
-    let view_res = use_resource(move || {
-        let _ = tick.read();
-        load(kind_for_res.clone(), scope_id.read().clone())
-    });
+    let scope_key = (scope_kind.clone(), scope_id());
+    let mut scope_generation = use_signal(|| 0u64);
+    let mut action_generation = use_signal(|| 0u64);
+    let mut submission_token = use_signal(|| 0u64);
+    let request_scope = (scope_key.0.clone(), scope_key.1.clone(), scope_generation());
+    let tick_value = tick();
+    let view_res = use_resource(use_reactive!(|request_scope, tick_value| async move {
+        let result = load(request_scope.0.clone(), request_scope.1.clone()).await;
+        (request_scope, result)
+    }));
     let mut selected = use_signal(Vec::<String>::new);
     let mut seeded_key = use_signal(String::new);
     let mut msg = use_signal(|| None::<String>);
     let mut error_msg = use_signal(|| None::<String>);
     let mut submitting = use_signal(|| false);
+    let mut active_scope = use_signal(|| scope_key.clone());
+    let seed_scope = scope_key.clone();
 
     // Select the waiting steps once for each set of fingerprints, so a poll does not undo
     // what the administrator chose. The hook runs on every render, see the OCR panel.
-    use_effect(move || {
-        let loaded = view_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
+    use_effect(use_reactive!(|seed_scope| {
+        if *active_scope.peek() != seed_scope {
+            active_scope.set(seed_scope.clone());
+            scope_generation += 1;
+            action_generation += 1;
+            submission_token.set(0);
+            selected.set(Vec::new());
+            seeded_key.set(String::new());
+            msg.set(None);
+            error_msg.set(None);
+            submitting.set(false);
+        }
+        let generation = scope_generation();
+        let loaded = view_res.read().as_ref().filter(|(key, _)| key == &(seed_scope.0.clone(), seed_scope.1.clone(), generation))
+            .and_then(|(_, result)| result.as_ref().ok()).cloned();
         if let Some((view, _)) = loaded {
             let key = format!(
                 "{}|{}",
@@ -85,14 +105,15 @@ pub fn ProcessingUpdatesPanel(
                 seeded_key.set(key);
             }
         }
-    });
+    }));
 
     let title = if scope_kind == "collection" { tr!("processing-updates-panel-collection-updates") } else { tr!("processing-updates-panel-processing-updates") };
-    let loaded = view_res.read().as_ref().map(|r| r.as_ref().map(|v| v.clone()).map_err(user_facing_message));
+    let loaded = view_res.read().as_ref().filter(|(key, _)| key == &request_scope)
+        .map(|(_, result)| result.as_ref().cloned().map_err(user_facing_message));
     let (view, datasets) = match loaded {
         None => {
             return rsx! {
-                div { class: "x-admin-module", style: MODULE,
+                div { class: "x-admin-module x-processing-updates", "data-update-scope": "{scope_key.1}", "data-update-generation": "{request_scope.2}", style: MODULE,
                     h2 { style: MODULE_CAPTION, "{title}" }
                     div { style: MODULE_BODY, {tr!("processing-updates-panel-loading-u")} }
                 }
@@ -100,7 +121,7 @@ pub fn ProcessingUpdatesPanel(
         }
         Some(Err(e)) => {
             return rsx! {
-                div { class: "x-admin-module", style: MODULE,
+                div { class: "x-admin-module x-processing-updates", "data-update-scope": "{scope_key.1}", "data-update-generation": "{request_scope.2}", style: MODULE,
                     h2 { style: MODULE_CAPTION, "{title}" }
                     div { style: MODULE_BODY, ErrorBar { message: tr!("processing-updates-panel-the-processing-updates-could-not", e: e.to_string()) } }
                 }
@@ -123,7 +144,7 @@ pub fn ProcessingUpdatesPanel(
     let steps_for_start = view.steps.clone();
 
     rsx! {
-        div { class: "x-admin-module x-processing-updates", style: MODULE,
+        div { class: "x-admin-module x-processing-updates", "data-update-scope": "{scope_key.1}", "data-update-generation": "{request_scope.2}", style: MODULE,
             h2 { style: MODULE_CAPTION, "{title}" }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 10px;",
                 if let Some(m) = msg.read().clone() { SuccessBar { message: m } }
@@ -167,7 +188,7 @@ pub fn ProcessingUpdatesPanel(
                                 let is_on = chosen.contains(&step.step_id);
                                 let unit = count_unit(step.pending, &step.unit);
                                 let texts = step_texts(&step);
-                                let state_label = if step.state == UpdateStepState::UpToDate { {tr!("processing-updates-panel-up-to-date-select-it")} } else { step.state.label().to_string() };
+                                let state_label = if step.state == UpdateStepState::UpToDate { {tr!("processing-updates-panel-up-to-date-select-it")} } else { step.state.label().shared() };
                                 let state_colour = match step.state {
                                     UpdateStepState::Failed => "var(--x-danger)",
                                     UpdateStepState::Waiting | UpdateStepState::Running => "var(--x-link)",
@@ -233,26 +254,34 @@ pub fn ProcessingUpdatesPanel(
                         disabled: !can_start,
                         onclick: move |_| {
                             let scope = scope_for_start.clone();
+                            let action_scope = active_scope.peek().clone();
+                            let scope_epoch = *scope_generation.peek();
+                            let action_token = *action_generation.peek() + 1;
+                            action_generation.set(action_token);
                             let kind = kind_for_start.clone();
                             let chosen = selected.read().clone();
                             let fingerprints: Vec<String> = chosen
                                 .iter()
                                 .map(|id| steps_for_start.iter().find(|s| &s.step_id == id).map(|s| s.fingerprint.clone()).unwrap_or_default())
                                 .collect();
+                            submission_token.set(action_token);
                             submitting.set(true);
+                            msg.set(None);
+                            error_msg.set(None);
                             spawn(async move {
-                                msg.set(None);
-                                error_msg.set(None);
                                 let started = if kind == "collection" {
                                     admin_start_collection_update(scope, chosen, fingerprints).await
                                 } else {
                                     admin_start_processing_update(scope, chosen, fingerprints).await
                                 };
+                                if *active_scope.peek() != action_scope || *scope_generation.peek() != scope_epoch { return; }
+                                // A newer Check again owns messages. This submission still owns its busy flag.
+                                if *submission_token.peek() == action_token { submitting.set(false); }
+                                if *action_generation.peek() != action_token { return; }
                                 match started {
                                     Ok(op_id) => msg.set(Some(tr!("processing-updates-panel-update-started", op_id: op_id.to_string()))),
                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
-                                submitting.set(false);
                             });
                         },
                         if scope_kind == "collection" { {tr!("processing-updates-panel-update-collection")} } else { {tr!("processing-updates-panel-update-processing")} }
@@ -262,10 +291,17 @@ pub fn ProcessingUpdatesPanel(
                         style: BTN,
                         onclick: move |_| {
                             let scope = scope_for_check.clone();
+                            let action_scope = active_scope.peek().clone();
+                            let scope_epoch = *scope_generation.peek();
+                            let action_token = *action_generation.peek() + 1;
+                            action_generation.set(action_token);
+                            msg.set(None);
+                            error_msg.set(None);
                             spawn(async move {
-                                error_msg.set(None);
-                                match admin_request_update_check(scope).await {
-                                    Ok(()) => msg.set(Some("The pipeline calculates the updates now. The counts change when it finishes.".to_string())),
+                                let result = admin_request_update_check(scope).await;
+                                if *active_scope.peek() != action_scope || *scope_generation.peek() != scope_epoch || *action_generation.peek() != action_token { return; }
+                                match result {
+                                    Ok(()) => msg.set(Some(tr!("processing-updates-check-requested"))),
                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
                             });
@@ -303,9 +339,9 @@ fn count_unit(count: u64, unit: &str) -> String {
 
 /// The steps of the pipeline registry (`P_admin/updates/registry.py`) that the catalog
 /// translates. Another step shows the English texts that the pipeline stored.
-const TRANSLATED_STEPS: [&str; 13] = [
+const TRANSLATED_STEPS: [&str; 14] = [
     "search_schema", "unfinished", "failed_files", "virus_scan", "tables", "ocr", "ocr_detection", "pdf_text",
-    "vectors", "folder_counts", "archive_members", "image_previews", "search_terms",
+    "vectors", "folder_counts", "archive_members", "image_previews", "search_terms", "entities",
 ];
 
 /// The title, the explanation and the runs of one step, in the interface language.

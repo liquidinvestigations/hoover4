@@ -828,14 +828,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = 表格读取、实体、信号、嵌入和两个索引
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-   *[other] 约有 { $count } 个文件缺少当前语言的 OCR 文本，或者保留着设置中已不再包含的语言的 OCR 文本。
-} 系统会按当前语言运行 OCR，并删除已移除语言的文本。
+processing-update-ocr-explanation = 需要自动 OCR 的文件数：{ $count }。检测到的页面决定使用哪些已安装模型。完整替换结果会移除被取代的版本。
 processing-update-ocr-runs = OCR 和可搜索 PDF，然后是新文本的实体提取、嵌入和索引
 processing-update-ocr_detection-title = OCR 检测
-processing-update-ocr_detection-explanation = { $files ->
-   *[other] 有 { $count } 个文件没有检测到的文本、文字系统或语言。
-} 系统会检查每张图片和每个选定进行 OCR 的页面。一个 PDF 最多发送 100 页。OCR 文本不会改变。
+processing-update-ocr_detection-explanation = 缺少当前文本、文字体系或语言检测的文件数：{ $count }。每个符合条件的图像和 PDF 页面都以有界批次检查。
 processing-update-ocr_detection-runs = 检测，然后是这些文件的搜索属性
 processing-update-pdf_text-title = 可搜索 PDF 的文本
 processing-update-pdf_text-explanation = { $files ->
@@ -878,3 +874,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = 筛选词索引和验证
+
+automatic-ocr-title = 自动 OCR
+automatic-ocr-refresh = 刷新状态
+automatic-ocr-coverage = 页面覆盖情况
+automatic-ocr-pages = 页面
+automatic-ocr-models = OCR 模型
+automatic-ocr-reason = 原因
+automatic-ocr-truncated = 诊断列表不完整。
+automatic-ocr-presence = 具有已发布的 OCR 文本
+automatic-ocr-policy = OCR 根据每个符合条件页面检测到的文字体系和语言选择已安装的模型。优先使用 Tesseract，其无法覆盖的文字体系由 EasyOCR 处理。
+automatic-ocr-unknown = 尚未记录当前发布结果。缺少检测或处理失败不代表没有文本。
+automatic-ocr-retry = 修正原因后，使用处理更新重试不完整或失败的工作。不支持的覆盖情况需要兼容的已安装模型。
+automatic-ocr-presence-help = 此筛选器仅匹配经过验证的已发布 OCR 文本。检测和处理尝试不代表已有发布结果。
+automatic-ocr-state = { $state ->
+    [candidate] 待处理
+    [planned] 已计划
+    [failed] 失败
+    [incomplete] 不完整
+    [unsupported] 不支持
+    [published] 已发布
+    [applied] 已验证
+    [ready] 检测到文本
+    [no_text] 未检测到文本
+    *[other] { $state }
+    }
+
+processing-update-entities-title = 命名实体
+processing-update-entities-explanation = 需要当前实体提取或可搜索结果的文件数：{ $count }。推理完成后替换先前的成功结果。
+processing-update-entities-runs = 命名实体提取、文本属性和可搜索的实体词条
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] 未识别文字体系
+    [tesseract_capabilities_unavailable] Tesseract 覆盖信息不可用
+    [detected_language] 模型匹配检测到的语言
+    [unknown_language_script_coverage] 语言未知。已选择文字体系模型。
+    [language_script_mismatch_script_coverage] 语言与文字体系不同。已选择文字体系模型。
+    [language_model_unavailable_script_coverage] 语言模型不可用。已选择文字体系模型。
+    [easyocr_capabilities_unavailable] EasyOCR 覆盖信息不可用
+    [tesseract_script_unavailable] Tesseract 不覆盖此文字体系。已选择 EasyOCR。
+    [script_coverage_unavailable] 没有已安装模型覆盖此文字体系。
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = 流水线正在计算更新。计算完成后，计数将会变化。

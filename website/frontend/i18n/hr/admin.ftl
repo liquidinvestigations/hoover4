@@ -854,18 +854,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Čitanje tablica, entiteti, signali, ugrađivanja i oba indeksa
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike ili zadržava OCR tekst jezika koje postavke više ne uključuju.
-    [few] Otprilike { $count } datoteke nemaju OCR tekst za trenutne jezike ili zadržavaju OCR tekst jezika koje postavke više ne uključuju.
-   *[other] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike ili zadržava OCR tekst jezika koje postavke više ne uključuju.
-} OCR se pokreće za trenutne jezike, a tekst uklonjenih jezika briše se.
+processing-update-ocr-explanation = Datoteke koje trebaju automatski OCR: { $count }. Otkrivene stranice odabiru instalirane modele. Potpuni zamjenski rezultati uklanjaju prethodne inačice.
 processing-update-ocr-runs = OCR i PDF-ovi s mogućnošću pretraživanja, zatim izdvajanje entiteta, ugrađivanje i indeksiranje novog teksta
 processing-update-ocr_detection-title = OCR otkrivanje
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } datoteka nema otkriveni tekst, pismo ni jezik.
-    [few] { $count } datoteke nemaju otkriveni tekst, pismo ni jezik.
-   *[other] { $count } datoteka nema otkriveni tekst, pismo ni jezik.
-} Pregledava se svaka slika i svaka stranica odabrana za OCR. PDF šalje najviše 100 stranica. OCR tekst se ne mijenja.
+processing-update-ocr_detection-explanation = Datoteke bez trenutačnog otkrivanja teksta, pisma ili jezika: { $count }. Svaka prikladna slika i PDF stranica pregledava se u ograničenim skupinama.
 processing-update-ocr_detection-runs = Otkrivanje, zatim atributi pretrage ovih datoteka
 processing-update-pdf_text-title = Tekst pretraživih PDF-ova
 processing-update-pdf_text-explanation = { $files ->
@@ -920,3 +912,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Indeksiranje i provjera pojmova filtara
+
+automatic-ocr-title = Automatski OCR
+automatic-ocr-refresh = Osvježi stanje
+automatic-ocr-coverage = Pokrivenost stranica
+automatic-ocr-pages = Stranice
+automatic-ocr-models = OCR modeli
+automatic-ocr-reason = Razlog
+automatic-ocr-truncated = Dijagnostički popis nije potpun.
+automatic-ocr-presence = Ima objavljen OCR tekst
+automatic-ocr-policy = OCR odabire instalirane modele prema otkrivenom pismu i jeziku svake prikladne stranice. Prvo radi Tesseract, a EasyOCR pokriva preostala podržana pisma.
+automatic-ocr-unknown = Nema zabilježene trenutačne objave. Nedostatak otkrivanja i neuspjela obrada ne dokazuju odsutnost.
+automatic-ocr-retry = Nakon ispravka uzroka upotrijebite ažuriranja obrade za ponavljanje nepotpunog ili neuspjelog rada. Nepodržana pokrivenost zahtijeva kompatibilne instalirane modele.
+automatic-ocr-presence-help = Ovaj filtar pronalazi samo provjeren objavljen OCR tekst. Otkrivanje i pokušaji obrade ne dokazuju objavljen rezultat.
+automatic-ocr-state = { $state ->
+    [candidate] Na čekanju
+    [planned] Planirano
+    [failed] Neuspjelo
+    [incomplete] Nepotpuno
+    [unsupported] Nepodržano
+    [published] Objavljeno
+    [applied] Provjereno
+    [ready] Otkriven tekst
+    [no_text] Tekst nije otkriven
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Imenovani entiteti
+processing-update-entities-explanation = Datoteke koje trebaju trenutačno izdvajanje entiteta ili pretražive rezultate: { $count }. Prethodni uspješni rezultati zamjenjuju se nakon zaključivanja.
+processing-update-entities-runs = Izdvajanje imenovanih entiteta, atributi teksta i pretraživi izrazi entiteta
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Pismo nije prepoznato
+    [tesseract_capabilities_unavailable] Pokrivenost Tesseracta nije dostupna
+    [detected_language] Model odgovara otkrivenom jeziku
+    [unknown_language_script_coverage] Nepoznat jezik. Odabran je model pisma.
+    [language_script_mismatch_script_coverage] Jezik i pismo razlikuju se. Odabran je model pisma.
+    [language_model_unavailable_script_coverage] Jezični model nije dostupan. Odabran je model pisma.
+    [easyocr_capabilities_unavailable] Pokrivenost EasyOCR-a nije dostupna
+    [tesseract_script_unavailable] Tesseract ne pokriva pismo. Odabran je EasyOCR.
+    [script_coverage_unavailable] Nijedan instalirani model ne pokriva ovo pismo.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = Cjevovod izračunava ažuriranja. Brojevi se mijenjaju nakon završetka izračuna.

@@ -85,6 +85,28 @@ def global_clickhouse(sql: str) -> list[dict[str, str]]:
     return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
 
 
+def original_only_pdf() -> bytes:
+    """Create native text above the OCR eligibility floor, without raster images."""
+    text = b"Original PDF fixture with sufficient native text for automatic OCR eligibility."
+    stream = b"BT /F1 12 Tf 40 760 Td (" + text + b") Tj ET\n"
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>",
+               b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+               b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+               b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+               b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"endstream"]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for number, value in enumerate(objects, 1):
+        offsets.append(len(output))
+        output.extend(str(number).encode() + b" 0 obj\n" + value + b"\nendobj\n")
+    xref = len(output)
+    output.extend(b"xref\n0 6\n0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode())
+    output.extend(f"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+    return bytes(output)
+
+
 def write_generated_sources(root: Path, leaf_root: Path, wide_root: Path) -> None:
     for destination, source in SOURCES.items():
         if not source.is_file():
@@ -100,7 +122,7 @@ def write_generated_sources(root: Path, leaf_root: Path, wide_root: Path) -> Non
     shutil.copyfile(tiny_pdf, target)
     ORIGINAL_PDF_ROOT.mkdir(parents=True, exist_ok=True)
     (ORIGINAL_PDF_ROOT / "original-only.pdf").write_bytes(
-        tiny_pdf.read_bytes() + b"\n% hoover4 original-only QA v1\n")
+        original_only_pdf())
     (root / "substitutes").mkdir(parents=True, exist_ok=True)
     (root / "substitutes/mail-search-substitute.txt").write_text(
         "jeff.hoover@enron.com\n" + "\n".join(
@@ -381,13 +403,6 @@ def ingest_local_datasets() -> None:
     if not DISKFILES_ROOT.is_dir():
         raise FileNotFoundError(DISKFILES_ROOT)
     for (dataset, _root), command in zip(LOCAL_INGEST, ingest_commands(), strict=True):
-        if dataset == "manualpdf":
-            if "/app" not in sys.path:
-                sys.path.insert(0, "/app")
-            from tasks.dataset_config import set_dataset_setting
-
-            set_dataset_setting("testdata_manualpdf", "ocr.tesseract.languages", "")
-            set_dataset_setting("testdata_manualpdf", "ocr.easyocr.languages", "")
         run(command)
 
 

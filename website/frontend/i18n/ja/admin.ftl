@@ -836,14 +836,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = テーブルの読み取り、エンティティ、シグナル、埋め込み、両方のインデックス
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-   *[other] 現在の言語のOCRテキストがない、または設定にもう含まれていない言語のOCRテキストが残っているファイルが、約 { $count } 個あります。
-} 現在の言語でOCRを実行し、削除された言語のテキストを削除します。
+processing-update-ocr-explanation = 自動 OCR が必要なファイル数：{ $count }。検出されたページがインストール済みモデルを選びます。完全な置換結果は旧版を削除します。
 processing-update-ocr-runs = OCRと検索可能なPDF、続いて新しいテキストのエンティティの抽出、埋め込み、インデックス作成
 processing-update-ocr_detection-title = OCR検出
-processing-update-ocr_detection-explanation = { $files ->
-   *[other] 検出されたテキスト、文字体系、言語がないファイルが { $count } 個あります。
-} 各画像とOCRの対象に選ばれた各ページを調べます。1つのPDFから送るのは最大100ページです。OCRテキストは変わりません。
+processing-update-ocr_detection-explanation = 現在のテキスト、文字体系、言語の検出がないファイル数：{ $count }。対象の全画像と PDF ページを上限のあるバッチで調べます。
 processing-update-ocr_detection-runs = 検出、続いてこれらのファイルの検索属性
 processing-update-pdf_text-title = 検索可能な PDF のテキスト
 processing-update-pdf_text-explanation = { $files ->
@@ -886,3 +882,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = フィルター語のインデックス作成と検証
+
+automatic-ocr-title = 自動 OCR
+automatic-ocr-refresh = 状態を更新
+automatic-ocr-coverage = ページの処理範囲
+automatic-ocr-pages = ページ
+automatic-ocr-models = OCR モデル
+automatic-ocr-reason = 理由
+automatic-ocr-truncated = 診断一覧は不完全です。
+automatic-ocr-presence = 公開済み OCR テキストがある
+automatic-ocr-policy = OCR は対象ページごとに検出した文字体系と言語からインストール済みモデルを選びます。Tesseract を優先し、未対応の文字体系には EasyOCR を使います。
+automatic-ocr-unknown = 現在の公開結果は記録されていません。検出の欠落や処理失敗はテキストの不在を示しません。
+automatic-ocr-retry = 原因を修正した後、処理更新で不完全または失敗した作業を再試行してください。未対応の処理範囲には互換性のあるインストール済みモデルが必要です。
+automatic-ocr-presence-help = このフィルターは検証済みの公開 OCR テキストだけに一致します。検出や処理の試行は公開結果を示しません。
+automatic-ocr-state = { $state ->
+    [candidate] 保留中
+    [planned] 計画済み
+    [failed] 失敗
+    [incomplete] 不完全
+    [unsupported] 未対応
+    [published] 公開済み
+    [applied] 検証済み
+    [ready] テキストを検出
+    [no_text] テキスト未検出
+    *[other] { $state }
+    }
+
+processing-update-entities-title = 固有表現
+processing-update-entities-explanation = 現在の固有表現抽出または検索可能な結果が必要なファイル数：{ $count }。推論完了後に以前の成功結果を置き換えます。
+processing-update-entities-runs = 固有表現抽出、テキスト属性、検索可能な固有表現用語
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] 文字体系を識別できません
+    [tesseract_capabilities_unavailable] Tesseract の対応範囲が利用できません
+    [detected_language] モデルは検出言語と一致します
+    [unknown_language_script_coverage] 言語が不明です。文字体系モデルを選択しました。
+    [language_script_mismatch_script_coverage] 言語と文字体系が異なります。文字体系モデルを選択しました。
+    [language_model_unavailable_script_coverage] 言語モデルを利用できません。文字体系モデルを選択しました。
+    [easyocr_capabilities_unavailable] EasyOCR の対応範囲が利用できません
+    [tesseract_script_unavailable] Tesseract は文字体系に未対応です。EasyOCR を選択しました。
+    [script_coverage_unavailable] この文字体系に対応するインストール済みモデルはありません。
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = パイプラインが更新を計算しています。計算が完了すると件数が変わります。

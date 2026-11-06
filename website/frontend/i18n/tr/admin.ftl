@@ -844,16 +844,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Tablo okuma, varlıklar, sinyaller, gömme ve her iki dizin
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Yaklaşık { $count } dosyada güncel diller için OCR metni yok ya da ayarların artık içermediği dillerin OCR metni duruyor.
-   *[other] Yaklaşık { $count } dosyada güncel diller için OCR metni yok ya da ayarların artık içermediği dillerin OCR metni duruyor.
-} OCR güncel diller için çalışır ve kaldırılan dillerin metni silinir.
+processing-update-ocr-explanation = Otomatik OCR gereken dosyalar: { $count }. Algılanan sayfalar kurulu modelleri seçer. Tam değiştirme çıktısı önceki sürümleri kaldırır.
 processing-update-ocr-runs = OCR ve aranabilir PDF'ler, ardından yeni metnin varlık çıkarma, gömme ve dizinlemesi
 processing-update-ocr_detection-title = OCR algılaması
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } dosyanın algılanan metni, yazı sistemi veya dili yok.
-   *[other] { $count } dosyanın algılanan metni, yazı sistemi veya dili yok.
-} Her görsel ve OCR için seçilen her sayfa incelenir. Bir PDF en fazla 100 sayfa gönderir. OCR metni değişmez.
+processing-update-ocr_detection-explanation = Güncel metin, yazı sistemi veya dil algılaması olmayan dosyalar: { $count }. Her uygun görüntü ve PDF sayfası sınırlı gruplarla incelenir.
 processing-update-ocr_detection-runs = Algılama, ardından bu dosyaların arama öznitelikleri
 processing-update-pdf_text-title = Aranabilir PDF metni
 processing-update-pdf_text-explanation = { $files ->
@@ -902,3 +896,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Filtre terimi dizinleme ve doğrulama
+
+automatic-ocr-title = Otomatik OCR
+automatic-ocr-refresh = Durumu yenile
+automatic-ocr-coverage = Sayfa kapsamı
+automatic-ocr-pages = Sayfalar
+automatic-ocr-models = OCR modelleri
+automatic-ocr-reason = Neden
+automatic-ocr-truncated = Tanı listesi eksik.
+automatic-ocr-presence = Yayımlanmış OCR metni var
+automatic-ocr-policy = OCR, her uygun sayfanın algılanan yazı sistemi ve diline göre kurulu modelleri seçer. Önce Tesseract, kapsayamadığı yazı sistemleri için EasyOCR kullanılır.
+automatic-ocr-unknown = Geçerli bir yayım kaydedilmemiş. Eksik algılama ve başarısız işleme, yokluğu kanıtlamaz.
+automatic-ocr-retry = Neden düzeltildikten sonra eksik veya başarısız işi işleme güncellemeleriyle yeniden deneyin. Desteklenmeyen kapsam, uyumlu kurulu modeller gerektirir.
+automatic-ocr-presence-help = Bu filtre yalnızca doğrulanmış yayımlanmış OCR metnini bulur. Algılama ve işleme girişimleri yayımlanmış çıktı olduğunu kanıtlamaz.
+automatic-ocr-state = { $state ->
+    [candidate] Bekliyor
+    [planned] Planlandı
+    [failed] Başarısız
+    [incomplete] Eksik
+    [unsupported] Desteklenmiyor
+    [published] Yayımlandı
+    [applied] Doğrulandı
+    [ready] Metin algılandı
+    [no_text] Metin algılanmadı
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Adlandırılmış varlıklar
+processing-update-entities-explanation = Güncel varlık çıkarımı veya aranabilir çıktı gereken dosyalar: { $count }. Önceki başarılı sonuçlar çıkarım tamamlandıktan sonra değiştirilir.
+processing-update-entities-runs = Adlandırılmış varlık çıkarımı, metin öznitelikleri ve aranabilir varlık terimleri
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Yazı sistemi belirlenemedi
+    [tesseract_capabilities_unavailable] Tesseract kapsamı kullanılamıyor
+    [detected_language] Model algılanan dille eşleşiyor
+    [unknown_language_script_coverage] Dil bilinmiyor. Yazı sistemi modeli seçildi.
+    [language_script_mismatch_script_coverage] Dil ve yazı sistemi farklı. Yazı sistemi modeli seçildi.
+    [language_model_unavailable_script_coverage] Dil modeli kullanılamıyor. Yazı sistemi modeli seçildi.
+    [easyocr_capabilities_unavailable] EasyOCR kapsamı kullanılamıyor
+    [tesseract_script_unavailable] Tesseract yazı sistemini kapsamıyor. EasyOCR seçildi.
+    [script_coverage_unavailable] Kurulu hiçbir model bu yazı sistemini kapsamıyor.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = İşlem hattı güncellemeleri hesaplıyor. Hesaplama bittiğinde sayılar değişir.

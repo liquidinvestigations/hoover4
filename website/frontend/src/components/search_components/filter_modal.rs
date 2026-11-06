@@ -129,7 +129,7 @@ impl FilterCategory {
             FilterCategory::Collections => &["collection_dataset"],
             FilterCategory::FileTypes => &["file_types"],
             FilterCategory::Language => &["language"],
-            FilterCategory::OcrLanguage => &["ocr_language", "ocr_script"],
+            FilterCategory::OcrLanguage => &["has_ocr_output", "ocr_language", "ocr_script"],
             // A selected source matches a document through its text from that source.
             FilterCategory::TextSource => &["extracted_by"],
             FilterCategory::FileLocation => &["file_paths"],
@@ -513,6 +513,11 @@ fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec
                     // `struct_flags` is a bitfield whose selected set is the enumeration
                     // of the values carrying one bit, one label covers all of them, and
                     // there is no term dictionary to look them up in.
+                    if *field == "has_ocr_output" {
+                        short.push(tr!("automatic-ocr-presence"));
+                        long.push(tr!("automatic-ocr-presence"));
+                        continue;
+                    }
                     if *field == "struct_flags" {
                         short.push(tr!("search-filter-modal-has-attachments"));
                         long.push(tr!("search-filter-modal-has-attachments"));
@@ -801,6 +806,7 @@ fn FilterModalDialog(
                                 }
                             },
                             FilterCategory::OcrLanguage => rsx! {
+                                PublishedOcrPresence { pending }
                                 div { class: "x-ocr-facets",
                                     div { class: "x-ocr-facet",
                                         h3 { {tr!("search-filter-modal-ocr-language")} }
@@ -1727,6 +1733,27 @@ fn FileLocationPane(pending: Signal<SearchQuery>) -> Element {
     }
 }
 
+/// Match verified published OCR text independently of detection and attempted work.
+#[component]
+fn PublishedOcrPresence(mut pending: Signal<SearchQuery>) -> Element {
+    let checked = pending.read().facet_filters.get("has_ocr_output")
+        .is_some_and(|values| values.contains(&FacetOriginalValue::Int(2)));
+    rsx! {
+        label { class: "x-filter-published-ocr", style: "display: flex; align-items: center; gap: 8px; margin-bottom: 8px;",
+            input { r#type: "checkbox", checked,
+                onchange: move |event| {
+                    let mut query = pending.write();
+                    if event.checked() {
+                        query.facet_filters.insert("has_ocr_output".into(), [FacetOriginalValue::Int(2)].into_iter().collect());
+                    } else { query.facet_filters.remove("has_ocr_output"); }
+                }
+            }
+            {tr!("automatic-ocr-presence")}
+        }
+        p { style: "color: var(--x-ink-muted); margin: 0 0 12px;", {tr!("automatic-ocr-presence-help")} }
+    }
+}
+
 /// The antivirus filter: documents whose effective antivirus verdict is `infected`
 /// (`virus_hit = 1` on their search rows).
 #[component]
@@ -2390,9 +2417,8 @@ mod tests {
         // the call site, and a chip row that knows nothing about it, giving a list of names
         // next to a chip of `#229645745`.
         for field in FilterCategory::ALL.iter().flat_map(|c| c.facet_fields()) {
-            // These facets store their values as strings, bits or the 0/1 scan flag, not as
-            // term ids.
-            let expected = !matches!(*field, "collection_dataset" | "struct_flags" | "extracted_by" | "virus_hit");
+            // These facets store canonical strings, bits, or presence values. They have no term IDs.
+            let expected = !matches!(*field, "collection_dataset" | "struct_flags" | "extracted_by" | "virus_hit" | "has_ocr_output");
             assert_eq!(
                 term_field_of(field).is_some(),
                 expected,

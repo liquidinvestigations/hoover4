@@ -455,6 +455,7 @@ pub fn facet_label(item: &common::search_result::SearchResultFacetItem) -> Strin
     let code = descriptor.code.as_str();
     match descriptor.kind.as_str() {
         "language" | "ocr_language" => language_facet_label(code),
+        "ocr_script" => script_facet_label(code),
         "filetype" => {
             if code == "other" { tr!("preview-source-selector-other") }
             else if common::file_type_icons::CANONICAL_FILE_TYPES.contains(&code) {
@@ -471,6 +472,16 @@ pub fn facet_label(item: &common::search_result::SearchResultFacetItem) -> Strin
         },
         _ => item.display_string.clone(),
     }
+}
+
+/// Localize known detected script names and retain future canonical codes.
+pub fn script_facet_label(code: &str) -> String {
+    const SCRIPTS: &[&str] = &["Latin", "Cyrillic", "Arabic", "Devanagari", "Greek", "Armenian", "Georgian",
+        "Bengali", "Tamil", "Telugu", "Kannada", "Malayalam", "Gujarati", "Gurmukhi", "Thai", "Hangul",
+        "Japanese", "Han", "Khmer", "Lao", "Myanmar", "Sinhala", "Hebrew", "Ethiopic", "Syriac", "Thaana",
+        "Canadian_Aboriginal", "Cherokee"];
+    if SCRIPTS.contains(&code) { translate(&format!("facet-script-{}", code.to_lowercase()), None) }
+    else { code.into() }
 }
 
 /// Catalog language names retain a raw code for an unknown future language.

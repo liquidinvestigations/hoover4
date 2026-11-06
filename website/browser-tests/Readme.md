@@ -110,3 +110,23 @@ The fixture controls only the internet-tool availability response for its board 
 
 A deletion request can tombstone the fixture dataset before operation admission fails.
 The deletion scenario records that error separately and verifies that the shared tree still removes the dataset.
+
+## Automatic OCR and actual-date fixtures
+
+Run [the automatic-status helper](../tools/fixtures/release_browser_automatic.py) after the release document helper in disposable datastores.
+It applies the current collection migration and search-schema update before writing controlled stored rows.
+The OCR rows represent planned, published, applied, failed, incomplete, and unsupported coverage.
+One failed replacement retains previously published text and positive presence.
+These fixtures verify readers and interface states. They do not execute OCR models or settle processing operations.
+The helper also retains manual installation values to verify their exclusion from editing controls.
+
+The chronology inputs include a document dated in 2000 and 2010, a document dated in 2005, an unknown date, and a pre-epoch date.
+The date scenarios verify the recorded-date gap, inclusive boundaries, unknown-only selection, and pre-epoch selection.
+The presence scenario selects only verified published text through canonical value 2.
+The automatic creation scenario changes its outgoing mount to an invalid fixture mount before sending the request.
+This verifies the registered endpoint and absent manual payload fields without creating a dataset or dispatching ingestion.
+The status translation scenario substitutes update-step registry metadata while reading OCR status from stored fixtures.
+
+The stale-status case retains delayed replies through A-to-B-to-A dataset navigation.
+It verifies fresh selections and progress, then resolves the older submission while the newer submission still owns its busy state.
+A newer Check again response owns the displayed message. The submitted-operation responses are controlled browser fixtures.

@@ -854,18 +854,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = קריאת טבלאות, ישויות, אותות, הטמעה ושני האינדקסים
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] בערך לקובץ אחד אין טקסט OCR לשפות הנוכחיות, או שנשאר בו טקסט OCR של שפות שההגדרות כבר אינן כוללות.
-    [two] בערך לשני קבצים אין טקסט OCR לשפות הנוכחיות, או שנשאר בהם טקסט OCR של שפות שההגדרות כבר אינן כוללות.
-   *[other] בערך ל-{ $count } קבצים אין טקסט OCR לשפות הנוכחיות, או שנשאר בהם טקסט OCR של שפות שההגדרות כבר אינן כוללות.
-} OCR רץ לשפות הנוכחיות, והטקסט של השפות שהוסרו נמחק.
+processing-update-ocr-explanation = קבצים שדורשים OCR אוטומטי: { $count }. העמודים שזוהו קובעים את המודלים המותקנים. פלט החלפה מלא מסיר גרסאות קודמות.
 processing-update-ocr-runs = OCR וקובצי PDF הניתנים לחיפוש, ואחריהם חילוץ ישויות, הטמעה ואינדוקס של הטקסט החדש
 processing-update-ocr_detection-title = זיהוי OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] לקובץ אחד אין טקסט, כתב או שפה שזוהו.
-    [two] לשני קבצים אין טקסט, כתב או שפה שזוהו.
-   *[other] ל-{ $count } קבצים אין טקסט, כתב או שפה שזוהו.
-} כל תמונה וכל עמוד שנבחר ל-OCR נבדקים. קובץ PDF שולח לכל היותר 100 עמודים. טקסט ה-OCR אינו משתנה.
+processing-update-ocr_detection-explanation = קבצים ללא זיהוי עדכני של טקסט, כתב או שפה: { $count }. כל תמונה ועמוד PDF מתאימים נבדקים בקבוצות מוגבלות.
 processing-update-ocr_detection-runs = זיהוי, ואחריו תכונות החיפוש של קבצים אלה
 processing-update-pdf_text-title = טקסט של קובצי PDF ניתנים לחיפוש
 processing-update-pdf_text-explanation = { $files ->
@@ -920,3 +912,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = אינדוקס ואימות של מונחי סינון
+
+automatic-ocr-title = זיהוי תווים אוטומטי
+automatic-ocr-refresh = רענון מצב
+automatic-ocr-coverage = כיסוי עמודים
+automatic-ocr-pages = עמודים
+automatic-ocr-models = מודלי OCR
+automatic-ocr-reason = סיבה
+automatic-ocr-truncated = רשימת האבחון אינה מלאה.
+automatic-ocr-presence = כולל טקסט OCR שפורסם
+automatic-ocr-policy = OCR בוחר מודלים מותקנים לפי הכתב והשפה שזוהו בכל עמוד מתאים. Tesseract פועל תחילה, ו-EasyOCR מטפל בכתבים שאינם מכוסים.
+automatic-ocr-unknown = לא נרשם פרסום נוכחי. זיהוי חסר ועיבוד שנכשל אינם מוכיחים היעדר.
+automatic-ocr-retry = השתמשו בעדכוני עיבוד כדי לנסות שוב עבודה חסרה או כושלת לאחר תיקון הסיבה. כיסוי לא נתמך דורש מודלים מותקנים תואמים.
+automatic-ocr-presence-help = המסנן מתאים רק לטקסט OCR שפורסם ואומת. זיהוי וניסיונות עיבוד אינם מוכיחים תוצאה שפורסמה.
+automatic-ocr-state = { $state ->
+    [candidate] בהמתנה
+    [planned] מתוכנן
+    [failed] נכשל
+    [incomplete] לא מלא
+    [unsupported] לא נתמך
+    [published] פורסם
+    [applied] אומת
+    [ready] זוהה טקסט
+    [no_text] לא זוהה טקסט
+    *[other] { $state }
+    }
+
+processing-update-entities-title = ישויות מזוהות
+processing-update-entities-explanation = קבצים שדורשים חילוץ ישויות או פלט ניתן לחיפוש עדכניים: { $count }. תוצאות מוצלחות קודמות מוחלפות לאחר השלמת ההסקה.
+processing-update-entities-runs = חילוץ ישויות מזוהות, מאפייני טקסט ומונחי ישויות לחיפוש
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] הכתב לא זוהה
+    [tesseract_capabilities_unavailable] כיסוי Tesseract אינו זמין
+    [detected_language] המודל תואם לשפה שזוהתה
+    [unknown_language_script_coverage] השפה אינה ידועה. נבחר מודל כתב.
+    [language_script_mismatch_script_coverage] השפה והכתב שונים. נבחר מודל כתב.
+    [language_model_unavailable_script_coverage] מודל השפה אינו זמין. נבחר מודל כתב.
+    [easyocr_capabilities_unavailable] כיסוי EasyOCR אינו זמין
+    [tesseract_script_unavailable] Tesseract אינו מכסה את הכתב. נבחר EasyOCR.
+    [script_coverage_unavailable] אין מודל מותקן שמכסה כתב זה.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = המערכת מחשבת את העדכונים. הספירות ישתנו כשהחישוב יסתיים.

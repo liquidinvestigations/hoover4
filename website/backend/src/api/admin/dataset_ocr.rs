@@ -475,7 +475,7 @@ pub async fn admin_get_dataset_ocr(
         )
         .collect();
 
-    // The value in force and its source, by the order that the worker applies.
+    // Retained compatibility fields describe legacy manual values. Automatic planning does not read them.
     let (tesseract, easyocr) = effective_ocr_languages(&collection_dataset, &collectionname).await?;
     let (inherited_tesseract, inherited_easyocr) = inherited_ocr_languages(&collectionname).await?;
     let inventory = easyocr_inventory().await;
@@ -508,13 +508,13 @@ pub async fn admin_get_dataset_ocr(
 /// Summarize current automatic publications without returning document payloads.
 async fn automatic_status(collectionname: &str, dataset: &str) -> anyhow::Result<common::admin_types::AutomaticOcrStatus> {
     let rows: Vec<(String, String, u64, u64)> = get_collection_client(collectionname)
-        .query("SELECT state, reason, count(), sum(pages) FROM (SELECT hash, argMax(state, revision) AS state, argMax(reason, revision) AS reason, argMax(expected_pages, revision) AS pages FROM automatic_ocr_plans WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) GROUP BY state, reason ORDER BY state, reason")
+        .query("SELECT current_state, current_reason, count(), sum(current_pages) FROM (SELECT hash, argMax(state, revision) AS current_state, argMax(reason, revision) AS current_reason, argMax(expected_pages, revision) AS current_pages FROM automatic_ocr_plans FINAL WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) GROUP BY current_state, current_reason ORDER BY current_state, current_reason")
         .bind(dataset).fetch_all().await?;
     let mut digests: Vec<String> = get_collection_client(collectionname)
-        .query("SELECT DISTINCT capability_digest FROM automatic_ocr_plans FINAL WHERE collection_dataset = ? ORDER BY capability_digest LIMIT 101")
+        .query("SELECT DISTINCT current_capability FROM (SELECT hash, argMax(capability_digest, revision) AS current_capability, argMax(state, revision) AS current_state FROM automatic_ocr_plans FINAL WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) ORDER BY current_capability LIMIT 101")
         .bind(dataset).fetch_all().await?;
     let mut decisions: Vec<(String, String, String, String, String, String, u64)> = get_collection_client(collectionname)
-        .query("SELECT JSONExtractString(page, 'script'), JSONExtractString(page, 'language'), JSONExtractString(page, 'status'), JSONExtractString(page, 'reason'), JSONExtractString(arrayElement(JSONExtractArrayRaw(page, 'passes'), 1), 'engine'), JSONExtractString(arrayElement(JSONExtractArrayRaw(page, 'passes'), 1), 'languages'), count() FROM (SELECT argMax(plan_json, revision) AS plan FROM automatic_ocr_plans WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) ARRAY JOIN JSONExtractArrayRaw(plan, 'pages') AS page GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1, 2, 3, 4, 5, 6 LIMIT 1025")
+        .query("SELECT JSONExtractString(page, 'script'), JSONExtractString(page, 'language'), JSONExtractString(page, 'status'), JSONExtractString(page, 'reason'), JSONExtractString(arrayElement(JSONExtractArrayRaw(page, 'passes'), 1), 'engine'), JSONExtractString(arrayElement(JSONExtractArrayRaw(page, 'passes'), 1), 'languages'), count() FROM (SELECT argMax(plan_json, revision) AS plan, argMax(state, revision) AS current_state FROM automatic_ocr_plans FINAL WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) ARRAY JOIN JSONExtractArrayRaw(plan, 'pages') AS page GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1, 2, 3, 4, 5, 6 LIMIT 1025")
         .bind(dataset).fetch_all().await?;
     let page_decisions_truncated = decisions.len() > 1024;
     let capability_digests_truncated = digests.len() > 100;

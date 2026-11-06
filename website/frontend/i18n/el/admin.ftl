@@ -845,16 +845,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Ανάγνωση πινάκων, οντότητες, σήματα, ενσωματώσεις και οι δύο δείκτες
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Περίπου { $count } αρχείο δεν έχει κείμενο OCR για τις τρέχουσες γλώσσες ή κρατά κείμενο OCR γλωσσών που οι ρυθμίσεις δεν περιλαμβάνουν πλέον.
-   *[other] Περίπου { $count } αρχεία δεν έχουν κείμενο OCR για τις τρέχουσες γλώσσες ή κρατούν κείμενο OCR γλωσσών που οι ρυθμίσεις δεν περιλαμβάνουν πλέον.
-} Το OCR εκτελείται για τις τρέχουσες γλώσσες και το κείμενο των γλωσσών που αφαιρέθηκαν διαγράφεται.
+processing-update-ocr-explanation = Αρχεία που χρειάζονται αυτόματο OCR: { $count }. Οι ανιχνευμένες σελίδες επιλέγουν εγκατεστημένα μοντέλα. Τα πλήρη νέα αποτελέσματα αφαιρούν προηγούμενες παραλλαγές.
 processing-update-ocr-runs = OCR και PDF με δυνατότητα αναζήτησης, έπειτα εξαγωγή οντοτήτων, embedding και ευρετηρίαση του νέου κειμένου
 processing-update-ocr_detection-title = Εντοπισμός OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] { $count } αρχείο δεν έχει εντοπισμένο κείμενο, γραφή ή γλώσσα.
-   *[other] { $count } αρχεία δεν έχουν εντοπισμένο κείμενο, γραφή ή γλώσσα.
-} Εξετάζεται κάθε εικόνα και κάθε σελίδα που επιλέχθηκε για OCR. Ένα PDF στέλνει το πολύ 100 σελίδες. Το κείμενο OCR δεν αλλάζει.
+processing-update-ocr_detection-explanation = Αρχεία χωρίς τρέχουσα ανίχνευση κειμένου, γραφής ή γλώσσας: { $count }. Κάθε επιλέξιμη εικόνα και σελίδα PDF εξετάζεται σε περιορισμένες παρτίδες.
 processing-update-ocr_detection-runs = Εντοπισμός, έπειτα τα χαρακτηριστικά αναζήτησης αυτών των αρχείων
 processing-update-pdf_text-title = Κείμενο αναζητήσιμων PDF
 processing-update-pdf_text-explanation = { $files ->
@@ -903,3 +897,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Ευρετηρίαση και επαλήθευση όρων φίλτρων
+
+automatic-ocr-title = Αυτόματο OCR
+automatic-ocr-refresh = Ανανέωση κατάστασης
+automatic-ocr-coverage = Κάλυψη σελίδων
+automatic-ocr-pages = Σελίδες
+automatic-ocr-models = Μοντέλα OCR
+automatic-ocr-reason = Αιτία
+automatic-ocr-truncated = Η λίστα διαγνωστικών είναι ελλιπής.
+automatic-ocr-presence = Έχει δημοσιευμένο κείμενο OCR
+automatic-ocr-policy = Το OCR επιλέγει εγκατεστημένα μοντέλα από τη γραφή και τη γλώσσα κάθε επιλέξιμης σελίδας. Πρώτα εκτελείται Tesseract και μετά EasyOCR για ακάλυπτες γραφές.
+automatic-ocr-unknown = Δεν έχει καταγραφεί τρέχουσα δημοσίευση. Η έλλειψη ανίχνευσης και η αποτυχία επεξεργασίας δεν αποδεικνύουν απουσία.
+automatic-ocr-retry = Χρησιμοποιήστε ενημερώσεις επεξεργασίας για επανάληψη ελλιπούς ή αποτυχημένης εργασίας μετά τη διόρθωση. Η μη υποστηριζόμενη κάλυψη απαιτεί συμβατά εγκατεστημένα μοντέλα.
+automatic-ocr-presence-help = Το φίλτρο βρίσκει μόνο επαληθευμένο δημοσιευμένο κείμενο OCR. Η ανίχνευση και οι απόπειρες επεξεργασίας δεν αποδεικνύουν δημοσίευση.
+automatic-ocr-state = { $state ->
+    [candidate] Σε αναμονή
+    [planned] Προγραμματισμένο
+    [failed] Αποτυχία
+    [incomplete] Ελλιπές
+    [unsupported] Δεν υποστηρίζεται
+    [published] Δημοσιευμένο
+    [applied] Επαληθευμένο
+    [ready] Εντοπίστηκε κείμενο
+    [no_text] Δεν εντοπίστηκε κείμενο
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Ονομαστικές οντότητες
+processing-update-entities-explanation = Αρχεία που χρειάζονται τρέχουσα εξαγωγή οντοτήτων ή αναζητήσιμα αποτελέσματα: { $count }. Τα προηγούμενα επιτυχή αποτελέσματα αντικαθίστανται μετά την εξαγωγή συμπερασμάτων.
+processing-update-entities-runs = Εξαγωγή ονομαστικών οντοτήτων, ιδιότητες κειμένου και αναζητήσιμοι όροι οντοτήτων
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Η γραφή δεν αναγνωρίστηκε
+    [tesseract_capabilities_unavailable] Μη διαθέσιμη κάλυψη Tesseract
+    [detected_language] Το μοντέλο αντιστοιχεί στην ανιχνευμένη γλώσσα
+    [unknown_language_script_coverage] Άγνωστη γλώσσα. Επιλέχθηκε μοντέλο γραφής.
+    [language_script_mismatch_script_coverage] Η γλώσσα και η γραφή διαφέρουν. Επιλέχθηκε μοντέλο γραφής.
+    [language_model_unavailable_script_coverage] Μη διαθέσιμο μοντέλο γλώσσας. Επιλέχθηκε μοντέλο γραφής.
+    [easyocr_capabilities_unavailable] Μη διαθέσιμη κάλυψη EasyOCR
+    [tesseract_script_unavailable] Το Tesseract δεν καλύπτει τη γραφή. Επιλέχθηκε EasyOCR.
+    [script_coverage_unavailable] Κανένα εγκατεστημένο μοντέλο δεν καλύπτει αυτή τη γραφή.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = Η διαδικασία υπολογίζει τις ενημερώσεις. Οι αριθμοί αλλάζουν όταν ολοκληρωθεί ο υπολογισμός.

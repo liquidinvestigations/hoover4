@@ -44,9 +44,8 @@ pub struct DateHistogram {
     /// The bars count MENTIONS rather than documents.
     ///
     /// A document naming three days inside one bin contributes three to it. The two
-    /// histograms this type serves answer different questions -- a document's own dates
-    /// are an interval it occupies, the dates it mentions are points -- and a reader
-    /// comparing the two axes without knowing which is which reads one of them wrong.
+    /// histograms use separate recorded values. Document bins count files with a recorded date
+    /// inside the bin. Mention bins count dates extracted from text.
     /// The pane labels its axis from this flag.
     #[serde(default)]
     pub counts_mentions: bool,

@@ -863,20 +863,10 @@ processing-update-tables-explanation = { $files ->
 
 processing-update-tables-runs = Чтение таблиц, сущности, сигналы, эмбеддинги и оба индекса
 processing-update-ocr-title = OCR
-processing-update-ocr-explanation = { $files ->
-    [one] Примерно у { $count } файла нет текста OCR для текущих языков либо остался текст OCR языков, которых больше нет в настройках.
-    [few] Примерно у { $count } файлов нет текста OCR для текущих языков либо остался текст OCR языков, которых больше нет в настройках.
-    [many] Примерно у { $count } файлов нет текста OCR для текущих языков либо остался текст OCR языков, которых больше нет в настройках.
-   *[other] Примерно у { $count } файлов нет текста OCR для текущих языков либо остался текст OCR языков, которых больше нет в настройках.
-} OCR выполняется для текущих языков, а текст удалённых языков удаляется.
+processing-update-ocr-explanation = Файлы, требующие автоматического OCR: { $count }. Обнаруженные страницы определяют установленные модели. Полные новые результаты удаляют заменённые варианты.
 processing-update-ocr-runs = OCR и PDF с текстовым слоем, затем извлечение сущностей, эмбеддинги и индексация нового текста
 processing-update-ocr_detection-title = Определение OCR
-processing-update-ocr_detection-explanation = { $files ->
-    [one] У { $count } файла нет обнаруженного текста, письменности и языка.
-    [few] У { $count } файлов нет обнаруженного текста, письменности и языка.
-    [many] У { $count } файлов нет обнаруженного текста, письменности и языка.
-   *[other] У { $count } файлов нет обнаруженного текста, письменности и языка.
-} Проверяются каждое изображение и каждая страница, выбранная для OCR. PDF отправляет не более 100 страниц. Текст OCR не меняется.
+processing-update-ocr_detection-explanation = Файлы без текущего обнаружения текста, письменности или языка: { $count }. Каждое подходящее изображение и страница PDF проверяются ограниченными пакетами.
 processing-update-ocr_detection-runs = Определение, затем поисковые атрибуты этих файлов
 processing-update-pdf_text-title = Текст PDF с поиском
 processing-update-pdf_text-explanation = { $files ->
@@ -937,3 +927,47 @@ processing-update-search_terms-explanation = { $files ->
     }
 
 processing-update-search_terms-runs = Индексирование и проверка терминов фильтров
+
+automatic-ocr-title = Автоматическое OCR
+automatic-ocr-refresh = Обновить состояние
+automatic-ocr-coverage = Охват страниц
+automatic-ocr-pages = Страницы
+automatic-ocr-models = Модели OCR
+automatic-ocr-reason = Причина
+automatic-ocr-truncated = Список диагностики неполон.
+automatic-ocr-presence = Есть опубликованный текст OCR
+automatic-ocr-policy = OCR выбирает установленные модели по обнаруженным письменности и языку каждой подходящей страницы. Сначала используется Tesseract, затем EasyOCR для неподдержанных письменностей.
+automatic-ocr-unknown = Текущая публикация не записана. Отсутствие обнаружения и ошибка обработки не доказывают отсутствие текста.
+automatic-ocr-retry = После устранения причины повторите неполную или неудачную работу через обновления обработки. Неподдерживаемый охват требует совместимых установленных моделей.
+automatic-ocr-presence-help = Фильтр находит только проверенный опубликованный текст OCR. Обнаружение и попытки обработки не доказывают наличие опубликованного результата.
+automatic-ocr-state = { $state ->
+    [candidate] Ожидает
+    [planned] Запланировано
+    [failed] Ошибка
+    [incomplete] Неполное
+    [unsupported] Не поддерживается
+    [published] Опубликовано
+    [applied] Проверено
+    [ready] Текст обнаружен
+    [no_text] Текст не обнаружен
+    *[other] { $state }
+    }
+
+processing-update-entities-title = Именованные сущности
+processing-update-entities-explanation = Файлы, требующие текущего извлечения сущностей или поисковых результатов: { $count }. Прежние успешные результаты заменяются после завершения инференса.
+processing-update-entities-runs = Извлечение именованных сущностей, атрибуты текста и поисковые термины сущностей
+
+automatic-ocr-reason-label = { $reason ->
+    [unknown_script] Письменность не определена
+    [tesseract_capabilities_unavailable] Охват Tesseract недоступен
+    [detected_language] Модель соответствует обнаруженному языку
+    [unknown_language_script_coverage] Язык неизвестен. Выбрана модель письменности.
+    [language_script_mismatch_script_coverage] Язык и письменность различаются. Выбрана модель письменности.
+    [language_model_unavailable_script_coverage] Языковая модель недоступна. Выбрана модель письменности.
+    [easyocr_capabilities_unavailable] Охват EasyOCR недоступен
+    [tesseract_script_unavailable] Tesseract не охватывает письменность. Выбран EasyOCR.
+    [script_coverage_unavailable] Ни одна установленная модель не охватывает эту письменность.
+    *[other] { $reason }
+    }
+
+processing-updates-check-requested = Конвейер рассчитывает обновления. Счётчики изменятся после завершения расчёта.

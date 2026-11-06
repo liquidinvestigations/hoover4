@@ -78,6 +78,7 @@ const SEARCH_FIELDS: &[&str] = &[
     "file_size_bytes",
     "struct_flags",
     "virus_hit",
+    "has_ocr_output",
     "primary_filename",
     "email_from",
     "email_to",
@@ -355,6 +356,14 @@ mod tests {
         for bad in ["no_such_field", "file_types); DROP TABLE x", "meta.file_types", "FILE_TYPES"] {
             assert!(search_field_name(bad).is_err(), "should reject {bad:?}");
         }
+    }
+
+    #[test]
+    fn published_ocr_filter_uses_verified_presence_value() {
+        let q = query("", &[("has_ocr_output", &[FacetOriginalValue::Int(2)])]);
+        let sql = build_sql_where_clause(&q, "testdata_1_pages").unwrap();
+        assert!(sql.contains("has_ocr_output IN (2)"), "{sql}");
+        assert!(!sql.contains("ocr_language"));
     }
 
     #[test]
