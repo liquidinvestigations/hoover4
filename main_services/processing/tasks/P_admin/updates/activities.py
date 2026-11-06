@@ -432,7 +432,7 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             selection = selectors.select(selectors.STEPS_BY_ID["entities"], ctx, client)
             if selection.count:
                 return False, f"{selection.count} files need complete named entity output."
-            from .entities import EntityUpdateParams, verify_index
+            from .entities import EntityUpdateParams, verify_index, verify_terms
             after = ""
             while True:
                 rows = client.query("SELECT DISTINCT file_hash FROM processing_output_receipts "
@@ -442,8 +442,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
                 if not rows:
                     break
                 hashes = [row[0] for row in rows]
-                verify_index(EntityUpdateParams(params.collectionname,scope_id,params.op_id,hashes))
+                verify_index(EntityUpdateParams(params.collectionname,scope_id,params.op_id,hashes,terms_at_end=True))
                 after = hashes[-1]
+            verify_terms(EntityUpdateParams(params.collectionname,scope_id,params.op_id))
             return True, "Named entities and searchable output are current."
         if step_id == "tables":
             selection = selectors.select_tables(client, ctx)

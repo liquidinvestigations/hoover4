@@ -109,10 +109,12 @@ def test_a_batch_of_an_entity_update_leaves_the_dataset_terms_to_the_end(monkeyp
     monkeypatch.setattr(entities, "completions", lambda *a: [])
     monkeypatch.setattr(entities, "rewrite_ner_attributes", lambda *a: None)
     monkeypatch.setattr(entities, "verify_index", lambda *a: None)
+    verified = []
+    monkeypatch.setattr(entities, "verify_terms", lambda params: verified.append(params))
     monkeypatch.setattr(entities, "contract", lambda: "c")
     monkeypatch.setattr(index, "index_entity_terms", lambda params: published.append(params))
     params = entities.EntityUpdateParams("c", "ds", "op", ["h"], terms_at_end=True)
     entities.finish_entity_update.__wrapped__(params)
     assert deleted == [] and published == []
     entities.finish_entity_terms.__wrapped__(params)
-    assert len(deleted) == 2 and len(published) == 1
+    assert len(deleted) == 2 and len(published) == 1 and len(verified) == 1

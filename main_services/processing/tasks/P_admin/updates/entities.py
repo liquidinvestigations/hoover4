@@ -154,6 +154,13 @@ def verify_index(params):
                     break
     if actual != expected:
         raise RuntimeError("NER search attributes are incomplete or stale")
+    if not params.terms_at_end:
+        verify_terms(params)
+
+
+def verify_terms(params):
+    """Compare the searchable terms of the whole dataset with the term dictionary."""
+    from database.clickhouse import get_collection_client
     from .selectors import ScopeContext, missing_search_terms
     with get_collection_client(params.collectionname) as client:
         if missing_search_terms(client, ScopeContext("dataset",params.collection_dataset,params.collectionname)):
@@ -213,8 +220,9 @@ def rewrite_ner_attributes(params, assignments):
 @activity.defn
 @with_heartbeat
 def finish_entity_terms(params: EntityUpdateParams) -> None:
-    """Write the entity terms of the dataset. Each call reads the whole dataset."""
+    """Write and verify the entity terms of the dataset. Each call reads the whole dataset."""
     _write_dataset_terms(params)
+    verify_terms(params)
 
 
 def _clear_unused_terms(client, params: EntityUpdateParams) -> None:
