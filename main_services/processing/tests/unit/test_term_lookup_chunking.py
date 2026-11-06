@@ -1,7 +1,7 @@
 """A term-id lookup must not put an unbounded amount of text in one query parameter.
 
-ClickHouse query parameters travel in the request's HTTP form fields, and a field over
-`http_max_field_value_size` (128 KiB by default) is rejected with
+ClickHouse query parameters travel URL-encoded in the request's HTTP form fields, and an
+encoded field over `http_max_field_value_size` (128 KiB by default) is rejected with
 `Code: 1000 ... HTML Form Exception: Field value too long`, an error that names neither
 the parameter nor the query.
 
@@ -13,6 +13,8 @@ produces megabytes and fails every time. That is why the chunking is here and no
 hash-keyed call sites.
 """
 
+from urllib.parse import quote_plus
+
 from tasks.P6_index_data.string_term_encodings import (
     _TERM_LOOKUP_BYTE_BUDGET,
     _chunk_by_bytes,
@@ -21,7 +23,7 @@ from tasks.P6_index_data.string_term_encodings import (
 
 def encoded_size(chunk):
     """What the chunk costs as an array literal, matching the chunker's own accounting."""
-    return sum(len(v.encode("utf-8", errors="surrogateescape")) + 3 for v in chunk)
+    return sum(len(quote_plus(v, errors="surrogateescape")) + 9 for v in chunk)
 
 
 def test_nothing_is_lost_or_duplicated():
@@ -35,6 +37,16 @@ def test_every_chunk_stays_within_the_budget():
     chunks = list(_chunk_by_bytes(values))
     assert len(chunks) > 1, "a 200 KB input must not go out as one parameter"
     assert all(encoded_size(c) <= _TERM_LOOKUP_BYTE_BUDGET for c in chunks)
+
+
+def test_hebrew_chunks_stay_under_the_server_field_limit_after_encoding():
+    # 65,530 UTF-8 bytes of these values encode to 175,965 bytes, and demo rejected that
+    # request. The limit counts the encoded field.
+    values = [f"אביגדור ליברמן {i}" for i in range(4000)]
+    chunks = list(_chunk_by_bytes(values))
+    literal = lambda chunk: "[" + ",".join(f"'{v}'" for v in chunk) + "]"
+    assert all(len(quote_plus(literal(c))) <= 131_072 for c in chunks)
+    assert [v for c in chunks for v in c] == values
 
 
 def test_the_budget_is_bytes_not_a_count():

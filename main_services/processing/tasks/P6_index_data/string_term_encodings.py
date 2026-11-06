@@ -2,6 +2,8 @@
 
 import hashlib
 import logging
+from urllib.parse import quote_plus
+
 log = logging.getLogger(__name__)
 
 from typing import Set, Dict
@@ -28,8 +30,9 @@ def hash_string_to_uint63(string_value: str) -> int:
 
 #: Byte budget for one lookup's worth of term values.
 #:
-#: Query PARAMETERS travel in the HTTP request's form fields, not its body, and
-#: ClickHouse caps a single field at `http_max_field_value_size` (128 KiB by default).
+#: Query PARAMETERS travel URL-encoded in the HTTP request's form fields, not its body, and
+#: ClickHouse caps the encoded field at `http_max_field_value_size` (128 KiB by default).
+#: A Hebrew letter takes 2 UTF-8 bytes and 6 encoded bytes.
 #: Over that it answers `Code: 1000 … HTML Form Exception: Field value too long`, which
 #: names neither the parameter nor the query and reads like a malformed request.
 #:
@@ -43,15 +46,15 @@ _TERM_LOOKUP_BYTE_BUDGET = 64 * 1024
 def _chunk_by_bytes(values, budget=_TERM_LOOKUP_BYTE_BUDGET):
     """Split `values` into lists whose encoded size stays under `budget`.
 
-    Sized by BYTES rather than by count: term values are arbitrary text, so a fixed
+    Sized by ENCODED bytes rather than by count: term values are arbitrary text, so a fixed
     count is only ever right for one corpus. A single value larger than the budget still
     goes out on its own, nothing here can make that one fit, and splitting it would
     change what is being looked up.
     """
     chunk, size = [], 0
     for value in values:
-        # +3 for the quotes and comma the array literal adds around each element.
-        cost = len(value.encode('utf-8', errors='surrogateescape')) + 3
+        # +9 for the encoded quotes and comma the array literal adds around each element.
+        cost = len(quote_plus(value, errors='surrogateescape')) + 9
         if chunk and size + cost > budget:
             yield chunk
             chunk, size = [], 0
