@@ -583,6 +583,20 @@ def _cancelled() -> bool:
     return activity.in_activity() and activity.is_cancelled()
 
 
+def settle_output_requirements(row, messages, decision):
+    """Apply a stored preparation result once before policy actions write their rows."""
+    from tasks.P_agent.control import output_requirements
+    opening = messages[0]
+    mine = control_of(opening)
+    preparation = (decision.get("facts") or {}).get("preparation") or {}
+    recognized = preparation.get("output_requirements")
+    if recognized and not mine.get("output_requirements_applied"):
+        mine["task_state"] = output_requirements.apply(mine["task_state"], recognized)
+        mine["task"] = TS.text_task(mine["task_state"])
+        mine["output_requirements_applied"] = True
+        write_control(row, opening, mine)
+
+
 def _apply(row, messages, decision, params) -> None:
     """Write each row of the decision that the thread does not hold yet."""
     from database import agent_runs
@@ -681,6 +695,8 @@ def _run_hook(params, samples):
     row = _read_row(params)
     if agent_runs.is_terminal(row):
         return ControlOutcome(closed=True, next_seq=row.next_seq)
+    if params.hook == "turn_started":
+        settle_output_requirements(row, messages, decision)
     _apply(row, messages, decision, params)
     if decision.get("status") != "applied":
         from tasks.P_agent.control.classifier import write_events

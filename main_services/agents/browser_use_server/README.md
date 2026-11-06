@@ -107,6 +107,13 @@ Route diagnostics record class, outcome, status, challenge detection, duration, 
 Diagnostics exclude request credentials and complete addresses.
 Existing direct and configured Tor routes retain their order and isolated contexts.
 
+Browser routing uses the run identity. Capture rows use the actual chat identity supplied by the caller.
+Retained reads use the user and chat identity, so a later turn can request the same version without navigation.
+The cache retains distinct text versions for concurrent runs and keeps PDF windows separate.
+Capture references retain their artifact IDs and object keys after proven historical ownership repair.
+The repair uses durable user/run mappings, a bounded cursor, and conflict verification before removing an old identity.
+Deleted-chat reads remain unavailable, including during repair, and the sweeper preserves objects referenced by a corrected live artifact.
+
 ## Image dependencies
 
 The image pins Playwright MCP and these extensions.

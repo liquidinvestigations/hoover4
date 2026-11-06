@@ -9,7 +9,7 @@ nothing left pointing at them and no way to find them again except a full prefix
 
 So the order is fixed and is the opposite of the intuitive order:
 
-1. find rows that are soft-deleted (the chat was deleted);
+1. find deleted artifacts and artifacts whose chat has a durable deletion record;
 2. delete their objects;
 3. **only then** hard-delete the rows.
 
@@ -74,13 +74,16 @@ def sweep() -> SweepResult:
         # 1. Rows to remove: tombstoned by a session delete. No row expires by age. The table
         #    is a ReplacingMergeTree with `is_deleted`, so FINAL hides a tombstoned artifact.
         #    The select groups the raw rows instead. A deleted session is never restored, so
-        #    one tombstone row marks the artifact.
+        #    one tombstone row marks the artifact. A corrected live identity protects its shared objects.
         rows = client.query(
             """
             SELECT artifact_id, max(session_id), max(username), max(thumb_key), max(body_key)
             FROM chat_artifacts
             GROUP BY artifact_id
-            HAVING max(is_deleted) = 1
+            HAVING (max(is_deleted) = 1 OR countIf((username,session_id) IN
+                (SELECT username,session_id FROM chat_sessions WHERE is_deleted=1)) > 0)
+              AND artifact_id NOT IN (SELECT artifact_id FROM chat_artifacts FINAL WHERE is_deleted = 0
+                AND (username,session_id) NOT IN (SELECT username,session_id FROM chat_sessions WHERE is_deleted=1))
             LIMIT 10000
             """
         ).result_rows

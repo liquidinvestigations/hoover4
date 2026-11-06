@@ -72,7 +72,8 @@ def test_an_old_live_artifact_stays_and_the_select_has_no_age_rule(monkeypatch):
     select = next(q for q in client.queries if "max(is_deleted) = 1" in q)
     assert "created_at" not in select and "INTERVAL" not in select
     # FINAL hides a tombstoned row of a ReplacingMergeTree with `is_deleted`.
-    assert "FINAL" not in select
+    assert "FROM chat_artifacts\n" in select
+    assert "NOT IN (SELECT artifact_id FROM chat_artifacts FINAL" in select
 
 
 def test_a_deleted_artifact_goes_but_an_object_that_a_live_artifact_shares_stays(monkeypatch):

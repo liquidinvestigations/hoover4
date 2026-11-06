@@ -1190,3 +1190,56 @@ fn deleted_collection_cleanup_preserves_committed_files_and_registry_errors_pres
     assert!(!service.space.batch_dir(&id).exists());
     assert_eq!(read_dest(&env, "/in/one"), Some(content(0, 4)));
 }
+
+
+#[test]
+fn abort_recovers_after_removal_terminal_write_and_datastore_failure() {
+    for point in ["abort.removed.0", "abort.removed.1", "abort.cancelled.before_rename", "store"] {
+        let env = Env::new(false);
+        let first = env.service();
+        let id = first.begin(USER, &request("abort-boundary", &[("one", 4), ("two", 4)])).unwrap().batch_id;
+        send_file(&first, &id, 0, &content(0, 4)).unwrap();
+        send_file(&first, &id, 1, &content(1, 4)).unwrap();
+        if point == "store" {
+            env.store.fail.store(true, Ordering::SeqCst);
+        } else {
+            first.faults.arm(point);
+        }
+        assert!(first.abort(USER, &id).is_err(), "{point}");
+        assert!(first.space.batch_dir(&id).join("intent-v1.json").exists());
+        env.store.fail.store(false, Ordering::SeqCst);
+        drop(first);
+        let recovered = env.service();
+        recovered.sweep_batch(&id, true).unwrap();
+        recovered.abort(USER, &id).unwrap();
+        assert!(read_dest(&env, "/in/one").is_none(), "{point}");
+        assert!(read_dest(&env, "/in/two").is_none(), "{point}");
+        assert!(!recovered.space.batch_dir(&id).exists());
+        assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::CANCELLED);
+        assert!(env.notifier.calls.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn partly_mirrored_deleted_collection_cleans_journal_after_datastore_recovery() {
+    let env = Env::new(false);
+    let first = env.service();
+    let id = first.begin(USER, &request("deleted-partial", &[("one", 4), ("two", 4)])).unwrap().batch_id;
+    send_file(&first, &id, 0, &content(0, 4)).unwrap();
+    first.tus_create(USER, &id, 1, 4).unwrap();
+    let manifest = journal::read_manifest(&first.space, &id).unwrap().unwrap();
+    let dirty = journal::read_file(&first.space, &manifest, 0).unwrap();
+    assert!(dirty.version > dirty.db_version);
+    env.store.fail.store(true, Ordering::SeqCst);
+    assert!(first.sweep_batch(&id, true).is_err());
+    assert!(first.space.batch_dir(&id).exists());
+    assert!(first.space.data(&id, 1).exists());
+    env.store.fail.store(false, Ordering::SeqCst);
+    env.store.collection_deleted.store(true, Ordering::SeqCst);
+    drop(first);
+    let recovered = env.service();
+    assert_eq!(recovered.sweep_batch(&id, true).unwrap(), commit::SweepOutcome::Removed);
+    assert!(!recovered.space.batch_dir(&id).exists());
+    assert_eq!(read_dest(&env, "/in/one"), Some(content(0, 4)));
+    assert!(env.notifier.calls.lock().unwrap().is_empty());
+}

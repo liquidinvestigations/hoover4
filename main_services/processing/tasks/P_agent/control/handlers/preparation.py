@@ -1,10 +1,14 @@
 """The `turn_started` handler: the source class, the skill picks and the named things.
 
-Three independent children can run. `ask` is one structured request that classifies the
+Four independent children can run. `ask` is one structured request that classifies the
 sources, the skills and the flags. `names` extracts the named things of the request and
 checks them in the indexes. The absence note and its records follow only a document source
 choice (`documents`, `both` or `overview`). `requirements` is a completion that lists answer
 conditions. It runs only when the definition enables it, because no live hook reads its result.
+
+The output child validates effective multilingual file requirements when local recognition is incomplete.
+Its stored result supplies counts and explicit names to later delivery checks.
+Active source restrictions constrain source classification and remain model instructions.
 
 Each child records a typed outcome in the facts (`children`): `ok`, `timeout`, `error`,
 `cancelled`, `skipped` or `disabled`. A child that returns a classifier result with
@@ -239,6 +243,10 @@ class Handler:
                 and asks_for_file(task, task_record(context))):
             picks.append(("report", 1.0))
             checks.append(CheckResult(event.id, "skill:report", "pass", None, (), "the task names a file"))
+        restrictions = [rule["text"] for rule in task_record(context).get("source_rules", [])
+                        if rule.get("status") == "active" and rule.get("effect") == "restrict"]
+        if restrictions:
+            actions.append(Action("append_note", "active-source-rules", freeze({"text": "\n".join(restrictions)})))
         if not parameters.get("classifier", True):
             facts["children"] = {"ask": {"status": "disabled"}, "names": {"status": "disabled"},
                                  "requirements": {"status": "disabled"}}
@@ -248,12 +256,18 @@ class Handler:
 
         sources = {k: v for k, v in (parameters.get("sources") or DEFAULT_SOURCES).items()
                    if k in context.capabilities and (k not in ("documents", "overview", "both") or context.collections)}
+        from tasks.P_agent.control import task_state, output_requirements
+        scope = task_state.source_scope(task_record(context))
+        if scope["web"] == "forbidden":
+            sources = {key: value for key, value in sources.items() if key not in ("web", "both", "browser")}
+        if scope["collections"] == "forbidden":
+            sources = {key: value for key, value in sources.items() if key not in ("documents", "both", "overview")}
         sources.setdefault("none", DEFAULT_SOURCES["none"])
         if "web" not in context.capabilities and "documents" in sources:
             sources["documents"] = "Search and read the selected document collections."
         available = [v for k, v in sources.items() if k != "none"]
         web_guidance = ("Choose web when the request requires public web sources or a named website. "
-                        if "web" in context.capabilities else "")
+                        if "web" in sources else "")
         instructions = ("An investigator sends the request below to a research agent. "
                         "Judge only what the request asks the agent to find or read. "
                         "Use the previous conversation to resolve references in the current request. "
@@ -309,7 +323,15 @@ class Handler:
             records = await check_names(found, context, services) if hasattr(services, "suggestions") else []
             return found, records, named
 
+        async def outputs():
+            record = task_record(context)
+            completed = await services.complete(output_requirements.PROMPT + json.dumps(
+                output_requirements.source_input(record), ensure_ascii=False), 1400)
+            return output_requirements.validate(completed.text, record, completed.status)
+
         children = {"ask": ask()}
+        if output_requirements.needed(task_record(context)):
+            children["outputs"] = outputs()
         if parameters.get("names", True):
             children["names"] = names()
         if parameters.get("requirements", False):
@@ -318,6 +340,10 @@ class Handler:
         for name in ("names", "requirements"):
             outcomes.setdefault(name, {"status": "disabled"})
         facts["children"] = outcomes
+        facts["output_requirements"] = (results.get("outputs") or output_requirements.validate("", task_record(context), "unavailable")) if output_requirements.needed(task_record(context)) else None
+        recognized_state = output_requirements.apply(task_record(context), facts["output_requirements"])
+        if parameters.get("report_skill", True) and "report" in context.listed_skills and asks_for_file(task, recognized_state):
+            picks.append(("report", 1.0))
 
         asked = results.get("ask")
         if asked is None:
@@ -326,6 +352,8 @@ class Handler:
         else:
             status = "pass" if asked.status == "ok" else ("skipped" if asked.status == "skipped" else "error")
             source = asked.answers.get("sources=")
+            if source and source.get("choice") not in sources:
+                source = {"choice": "documents" if "documents" in sources else "none", "probabilities": {"documents" if "documents" in sources else "none": 1.0}}
             facts["sources"] = ({"choice": source["choice"],
                                  "probabilities": dict(source.get("probabilities") or {})}
                                 if source else None)
@@ -354,13 +382,13 @@ class Handler:
             if (parameters.get("source_note", True) and choice in ("documents", "both")
                     and context.run_kind != "board"):
                 text = note(context.language, "note-sources-documents-before-web"
-                            if "web" in context.capabilities else "note-sources-documents")
+                            if "web" in context.capabilities and scope["web"] != "forbidden" else "note-sources-documents")
                 actions.append(Action("append_note", "sources", freeze({"text": text})))
             gates = parameters.get("source_skills") or {}
             for name, setting in candidates.items():
                 score = noul(asked, f"skill_{name}=")
                 threshold = float(setting.get("threshold", 0.9))
-                classes = set(gates.get(name) or []) & context.capabilities
+                classes = set(gates.get(name) or []) & context.capabilities & set(sources)
                 allowed = name not in gates or bool(classes) and (choice is None or choice in classes)
                 if score is not None and score >= threshold and allowed:
                     picks.append((name, score))

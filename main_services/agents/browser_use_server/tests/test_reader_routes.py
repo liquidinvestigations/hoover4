@@ -139,14 +139,14 @@ def test_explicit_capture_never_selects_another_parallel_tab(monkeypatch):
     monkeypatch.setattr(capture.artifacts, "write", lambda request: written.append(request) or request.session_id)
     async def run():
         return await asyncio.gather(*[
-            capture.capture(SimpleNamespace(session_id=f"run-{i}"), "read_page", f"user-{i}",
+            capture.capture(SimpleNamespace(session_id=f"run-{i}", artifact_session_id=f"chat-{i}"), "read_page", f"user-{i}",
                             tab=SimpleNamespace(url=f"https://page.example/{i}"))
             for i in range(2)
         ])
     results = asyncio.run(run())
-    assert {r.artifact_id for r in results} == {"run-0", "run-1"}
+    assert {r.artifact_id for r in results} == {"chat-0", "chat-1"}
     assert {(r.session_id, r.username, r.url) for r in written} == {
-        (f"run-{i}", f"user-{i}", f"https://page.example/{i}") for i in range(2)
+        (f"chat-{i}", f"user-{i}", f"https://page.example/{i}") for i in range(2)
     }
 
 
@@ -158,7 +158,7 @@ def test_reader_tool_uses_its_pool_without_starting_an_interactive_browser(monke
         pytest.fail("A page read requested the interactive browser.")
     async def read(reader, urls, goal, username, *args, **kwargs):
         assert reader.pool is server.router.reader
-        assert (reader.session_id, username) == ("run", "user")
+        assert (reader.session_id, username) == ("chat", "user")
         return read_page.ReadResult(pages=[read_page.PageRead(url=urls[0], full_text="Source text.")])
     monkeypatch.setattr(server.router, "ensure_reaper", no_reaper)
     monkeypatch.setattr(server.router, "get", forbidden)
@@ -227,3 +227,19 @@ def test_rate_limit_wait_precedes_next_route_and_cannot_extend_deadline(monkeypa
         assert starts[1] - starts[0] >= delay
     else:
         assert page.outcome == "rate_limited"
+
+
+def test_same_chat_retains_distinct_versions_across_runs_without_navigation(monkeypatch):
+    pool = SimpleNamespace(page_reads={})
+    first = Reader(pool, "owner", "chat")
+    key = ("https://page.example", True, 1)
+    first.page_reads[key] = (time.monotonic()+60, "Old", key[0], "old text", "old-version", "direct", None, {})
+    second = Reader(pool, "owner", "chat")
+    second.page_reads[key] = (time.monotonic()+60, "New", key[0], "new text", "new-version", "direct", None, {})
+    async def navigate(*args, **kwargs):
+        pytest.fail("An exact retained version navigated again")
+    monkeypatch.setattr(read_page, "_read_fresh", navigate)
+    old = asyncio.run(read_page.read(second, [key[0]], "", "owner", version="old-version"))
+    assert old.pages[0].full_text == "old text" and not old.pages[0].error
+    assert key not in Reader(pool, "other", "chat").page_reads
+    assert key not in Reader(pool, "owner", "other-chat").page_reads

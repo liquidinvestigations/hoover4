@@ -218,7 +218,7 @@ async def _capture(
     artifact_id = await asyncio.to_thread(
         artifacts.write,
         artifacts.ArtifactRequest(
-            session_id=chat.session_id,
+            session_id=getattr(chat, "artifact_session_id", chat.session_id),
             username=username,
             kind=artifacts.KIND_PAGE_CAPTURE,
             tool_name=tool_name,

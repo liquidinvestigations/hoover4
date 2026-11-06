@@ -23,7 +23,8 @@ that the record read, and each rule records the position of its message in `mess
 Every field holds the original words of a user message or of the structured board task, with
 its turn and its span. A computed value never becomes a requirement of the person.
 
-**Recognition.** Only the explicit forms below are recognized. The first message of a session
+**Recognition.** Local recognition uses the explicit forms below. Preparation can pin validated multilingual output requirements.
+The stored model result retains its version and original-input digest. Unknown results give no positive completion evidence. The first message of a session
 starts the objective. A later message that no rule recognizes is unresolved: it becomes an
 amendment with its original text, the active objective and its outputs stay, and the record
 supports no completion claim. So no handler presents an old restriction or an old objective
@@ -767,6 +768,23 @@ def _next_group_id(state: dict) -> int:
     return max(used, default=0) + 1
 
 
+def begin_objective(state, objective, turn):
+    """Replace the objective and end source permissions limited to the previous task."""
+    state.update(objective=objective, amendments=[], output_spec=_new_spec(),
+                 interpretation_state="resolved", unresolved=[])
+    state.pop("earlier_objective", None)
+    ended = set()
+    for rule in state["source_rules"]:
+        if (rule["status"] == "active" and rule.get("scope") == "task"
+                and rule.get("message") != objective.get("message")):
+            rule["status"], rule["superseded_by"] = "expired", turn
+            ended.add(rule.get("message"))
+    for rule in state["source_rules"]:
+        if rule["status"] == "suspended" and rule.get("suspended_by_message") in ended:
+            rule["status"] = "active"
+            rule.setdefault("reactivated", []).append(turn)
+
+
 def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
            source: str = "user") -> dict:
     """The record of a turn whose message is `request`, after the record `base` of the
@@ -782,19 +800,7 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
     objective = {"text": request, "turn": turn, "source": source, "message": message}
     if kind == NEW:
         objective["text"] = _bounded(state, "objective", request, MAX_OBJECTIVE_CHARS, turn)
-        state.update(objective=objective, amendments=[], output_spec=_new_spec(),
-                     interpretation_state="resolved", unresolved=[])
-        state.pop("earlier_objective", None)
-        ended = set()
-        for rule in state["source_rules"]:
-            if rule["status"] == "active" and rule.get("scope") == "task":
-                rule["status"], rule["superseded_by"] = "expired", turn
-                ended.add(rule.get("message"))
-        for rule in state["source_rules"]:
-            if rule["status"] == "suspended" and rule.get("suspended_by_message") in ended:
-                # The task of the request ended, so the suspended rule applies again.
-                rule["status"] = "active"
-                rule.setdefault("reactivated", []).append(turn)
+        begin_objective(state, objective, turn)
     if kind == UNRESOLVED:
         state["interpretation_state"] = "unresolved"
         state["unresolved"].append({"turn": turn, "text": request[:MAX_ITEM_CHARS],
@@ -1015,6 +1021,11 @@ def requirements(state: Optional[Mapping]) -> dict:
             "delivered_before": [d["name"] for d in spec.get("delivered_before") or []]}
 
 
+def spec_recognized_none(state):
+    recognition = (state or {}).get("output_spec", {}).get("recognition") or {}
+    return recognition.get("state") == "known" and recognition.get("version") == 1 and "input_digest" in recognition
+
+
 def delivery(state: Optional[Mapping], delivered: Iterable[str]) -> dict:
     """The requested outputs of the record compared with the names of the delivered files.
 
@@ -1029,7 +1040,7 @@ def delivery(state: Optional[Mapping], delivered: Iterable[str]) -> dict:
            "delivered": delivered, "missing": [], "groups": [], "evidence": False}
     complete = complete_interpretation(state)
     if not required["file"]:
-        out["state"] = "none" if complete and (state or {}).get("output_spec", {}).get("groups") else "unknown"
+        out["state"] = "none" if complete and ((state or {}).get("output_spec", {}).get("groups") or spec_recognized_none(state)) else "unknown"
         return out
     named = set(required["names"])
     out["missing"] = [n for n in required["names"] if n not in delivered]

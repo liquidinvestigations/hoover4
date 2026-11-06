@@ -40,6 +40,8 @@ class ScopedCache(MutableMapping):
 
     def __setitem__(self, key, entry):
         self.kept[(self.scope, key)] = entry
+        if len(key) == 3 and len(entry) > 4:
+            self.kept[(self.scope, (*key, entry[4]))] = entry
         now = time.monotonic()
         for old, stored in list(self.kept.items()):
             if stored[0] <= now:
@@ -62,7 +64,7 @@ class ScopedCache(MutableMapping):
 
 
 class Reader:
-    """Bind a shared reader pool to caller and run ownership."""
+    """Bind retained reads to their user and chat. Route contexts remain isolated."""
 
     def __init__(self, pool, username: str, session_id: str) -> None:
         self.pool = pool

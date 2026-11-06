@@ -632,12 +632,12 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         for old_url, stored in list(chat.page_reads.items()):
             if stored[0] <= now:
                 del chat.page_reads[old_url]
-        cached = chat.page_reads.get((url, links, page_start))
+        cached = (chat.page_reads.get((url, links, page_start, version)) if version else None) or chat.page_reads.get((url, links, page_start))
         kept_url = url
         if version and (not cached or cached[4] != version):
             # The final URL of a redirected read, with its version, names that kept read.
             alias = next((key for key, stored in chat.page_reads.items()
-                          if key[0] != url and key[1:] == (links, page_start)
+                          if key[0] != url and key[1:3] == (links, page_start)
                           and stored[2] == url and stored[4] == version), None)
             if alias is not None:
                 kept_url, cached = alias[0], chat.page_reads[alias]

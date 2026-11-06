@@ -570,6 +570,7 @@ impl Service {
                 FileState::Placed | FileState::Placing => {
                     if self.unplace(&manifest, &file)? {
                         removed.push(file.file_no);
+                        self.faults.hit(&format!("abort.removed.{}", file.file_no))?;
                     }
                     if let Some(placement) = file.placement.as_ref() {
                         if folder.is_none() {

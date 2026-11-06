@@ -650,8 +650,8 @@ def test_a_turn_closed_after_evaluation_preserves_request_samples(store, monkeyp
     outcome = _hook("turn_started", 0)
     assert outcome.closed
     assert len(recorded) == 1
-    # The skill request and the name request. No requirement request is made by default.
-    assert len(recorded[0]["classifier_events"]) == 2
+    # The skill, name, and structured output requests each retain one sample.
+    assert len(recorded[0]["classifier_events"]) == 3
     assert all(event["actions"] == 0 for event in recorded[0]["classifier_events"])
     assert store["chat"] == []
 
@@ -663,7 +663,7 @@ def test_a_completed_hook_writes_samples_once_across_a_retry(store, monkeypatch,
     _hook("turn_started", 0)
     _hook("turn_started", 0)
     assert len(recorded) == 1
-    assert len(recorded[0]["classifier_events"]) == 2
+    assert len(recorded[0]["classifier_events"]) == 3
     assert sum(event["actions"] for event in recorded[0]["classifier_events"]) == 1
 
 

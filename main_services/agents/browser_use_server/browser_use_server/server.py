@@ -156,6 +156,7 @@ class RoutedTool(Tool):
 
         try:
             chat = await router.get(session_id)
+            chat.artifact_session_id = _header(SESSION_HEADER)
         except router_mod.BrowserBusy as exc:
             log.warning("no browser for %r: %s", session_id, exc)
             return _busy(exc)
@@ -478,7 +479,7 @@ class ReadPageTool(Tool):
         username = _header(USER_HEADER)
 
         ceiling = page_share()
-        reader = Reader(router.reader, username, session_id)
+        reader = Reader(router.reader, username, _header(SESSION_HEADER))
         # The same mapping as the tests, so an emitted continuation object reads what the
         # tests read (`read_page.call_arguments`).
         called = read_page.call_arguments(arguments)

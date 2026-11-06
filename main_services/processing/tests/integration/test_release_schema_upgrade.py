@@ -26,8 +26,8 @@ def release_databases(monkeypatch):
     baseline = Path(os.getenv("HOOVER4_RELEASE_BASELINE", "/baseline")) / "main_services/processing/database"
     if not baseline.is_dir():
         pytest.skip("Mount the v0.1.0 migration snapshot at /baseline")
-    collection = "release_" + uuid.uuid4().hex[:12]
-    global_name = "release_global_" + uuid.uuid4().hex[:12]
+    collection = "release_a" + uuid.uuid4().hex[:12]
+    global_name = "release_global_a" + uuid.uuid4().hex[:12]
     cluster = clickhouse._cluster()
     for name, folder in ((collection, "db_collection_migrations"), (global_name, "db_global_migrations")):
         cluster.migrate(clickhouse.collection_db_name(name), str(baseline / folder),

@@ -59,7 +59,9 @@ pub async fn get_artifact(artifact_id: &str) -> anyhow::Result<Option<ChatArtifa
             "SELECT artifact_id, session_id, username, kind, tool_name, url, title, \
              thumb_key, body_key, body_bytes, thumb_bytes, status, detail, \
              created_at, updated_at, is_deleted \
-             FROM chat_artifacts FINAL WHERE artifact_id = ? AND is_deleted = 0 LIMIT 1",
+             FROM chat_artifacts FINAL WHERE artifact_id = ? AND is_deleted = 0 \
+             AND (username, session_id) NOT IN \
+             (SELECT username, session_id FROM chat_sessions WHERE is_deleted = 1) LIMIT 1",
         )
         .bind(artifact_id)
         .fetch_all::<ChatArtifactRow>()

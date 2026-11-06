@@ -14,7 +14,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def global_store(monkeypatch):
-    name = "agent_recovery_" + uuid.uuid4().hex[:12]
+    name = "agent_recovery_a" + uuid.uuid4().hex[:12]
     clickhouse._cluster().migrate(
         clickhouse.collection_db_name(name), clickhouse.GLOBAL_MIGRATIONS_PATH,
         cluster_name=None, create_db_if_no_exists=True, multi_statement=True)
@@ -88,3 +88,29 @@ def test_legacy_opening_persists_fallback_before_lost_write_response(global_stor
     monkeypatch.setattr(clickhouse, "insert_durable", original)
     monkeypatch.setattr(board, "explore_language", lambda *_: "de")
     assert board._opening_language(owner, "session", 1, turn) == "fr"
+
+
+def test_structured_output_classification_recovers_from_durable_control(global_store, monkeypatch):
+    from tasks.P_agent.control import coordinator, output_requirements, task_state
+    owner, session, run, thread = "owner", "chat", str(uuid.uuid4()), str(uuid.uuid4())
+    state = task_state.derive("Écris trois rapports.", 1)
+    recognized = output_requirements.validate(json.dumps({"schema_version": 1, "state": "known", "complete": True,
+        "interpretation": "new", "groups": [{"noun": "report", "count": 3, "names": [], "message": 1, "words": "Écris trois rapports."}]}), state)
+    message = agent_runs.RunMessageRow(0, "human", "Écris trois rapports.", usage_json=json.dumps({"control": {"task_state": state}}), run_id=run)
+    agent_runs.write_message(owner, session, thread, run, message)
+    row = SimpleNamespace(username=owner, session_id=session, thread_id=thread, run_id=run)
+    decision = {"facts": {"preparation": {"output_requirements": recognized}}}
+    original_write = coordinator.write_control
+    def lose_response(*args):
+        original_write(*args)
+        raise OSError("The durable classification write response was lost")
+    monkeypatch.setattr(coordinator, "write_control", lose_response)
+    with pytest.raises(OSError):
+        coordinator.settle_output_requirements(row, [message], decision)
+    monkeypatch.setattr(coordinator, "write_control", original_write)
+    recovered = agent_runs.read_messages(owner, session, thread)
+    coordinator.settle_output_requirements(row, recovered, decision)
+    stored = agent_runs.read_messages(owner, session, thread)[0].usage["control"]
+    assert stored["output_requirements_applied"]
+    assert task_state.delivery(stored["task_state"], ["one.md"])["state"] == "incomplete"
+    assert task_state.delivery(stored["task_state"], ["one.md", "two.md", "three.md"])["evidence"]
