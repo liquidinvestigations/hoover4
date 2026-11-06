@@ -35,7 +35,7 @@ most questions here are answered by opening one known file rather than by greppi
 | [processing/tests/](../../main_services/processing/tests) | unit tests that run without a stack, and integration tests that need one |
 | `agents/` | the MCP servers and research agents, plus `agent_common`, which is vendored into the server images |
 | `ops/` | operational procedures, the compose files and per-service Docker build contexts |
-| `ocr_tesseract/`, `ner_spacy/` | the CPU twins of GPU services, speaking the same HTTP contracts so callers need no branching |
+| `ocr_tesseract/` | the CPU twin of the GPU OCR service, speaking the same HTTP contract so callers need no branching |
 | `ocr_pdf/` | searchable-PDF assembly, writing under the blob store's derived prefix |
 | `regex_entity_scanner/` | the pattern-scanning service the entity stage calls; self-contained, with its own `README.md` and sub-documents |
 | `verify-stack.sh` | the end-to-end stack verification |

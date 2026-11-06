@@ -39,7 +39,7 @@ class _Response:
 
 
 GPU = ("gpu", "http://gpu.test/v1/extract-entities")
-CPU = ("spacy", "http://cpu.test/v1/extract-entities")
+SECOND = ("second", "http://second.test/v1/extract-entities")
 
 
 def test_connect_timeout_is_a_two_tuple_not_a_scalar(monkeypatch):
@@ -62,7 +62,7 @@ def test_connect_timeout_is_a_two_tuple_not_a_scalar(monkeypatch):
 
 def test_records_which_endpoint_actually_served(monkeypatch):
     monkeypatch.setattr(requests, "post", lambda *a, **kw: _Response({"data": []}))
-    result = remote.post_json([GPU, CPU], {})
+    result = remote.post_json([GPU, SECOND], {})
     assert result.provider == "gpu" and result.url == GPU[1]
 
 
@@ -73,25 +73,25 @@ def test_falls_back_to_the_cpu_twin_on_connect_failure(monkeypatch):
         return _Response({"data": ["cpu"]})
 
     monkeypatch.setattr(requests, "post", post)
-    result = remote.post_json([GPU, CPU], {})
-    assert result.provider == "spacy", "must degrade, not fail"
+    result = remote.post_json([GPU, SECOND], {})
+    assert result.provider == "second", "must degrade, not fail"
     assert result.data == {"data": ["cpu"]}
 
 
 def test_no_twin_configured_fails_fast_and_names_the_url(monkeypatch):
-    """With no CPU twin deployed, GPU_FALLBACK=true and nothing to fall back to
+    """With no SECOND twin deployed, GPU_FALLBACK=true and nothing to fall back to
     must fail fast with a clear message, not stall."""
     def post(url, **kwargs):
         raise requests.ConnectTimeout("no route to host")
 
     monkeypatch.setattr(requests, "post", post)
     with pytest.raises(remote.RemoteUnavailable) as excinfo:
-        remote.post_json([GPU, ("spacy", "")], {})
+        remote.post_json([GPU, ("second", "")], {})
     assert "gpu.test" in str(excinfo.value)
 
 
 def test_a_read_timeout_does_not_silently_downgrade(monkeypatch):
-    """A ReadTimeout means the host IS alive. Retrying on the CPU twin would
+    """A ReadTimeout means the host IS alive. Retrying on the SECOND twin would
     hide a real server-side problem behind a silently degraded provider."""
     calls = []
 
@@ -101,7 +101,7 @@ def test_a_read_timeout_does_not_silently_downgrade(monkeypatch):
 
     monkeypatch.setattr(requests, "post", post)
     with pytest.raises(remote.RemoteUnavailable):
-        remote.post_json([GPU, CPU], {})
+        remote.post_json([GPU, SECOND], {})
     assert calls == [GPU[1]], "must not try the twin after a read timeout"
 
 
@@ -121,7 +121,7 @@ def test_breaker_opens_and_stops_paying_the_connect_timeout(monkeypatch):
     monkeypatch.setattr(remote, "CIRCUIT_BREAK_SECONDS", 60.0)
 
     for _ in range(5):
-        remote.post_json([GPU, CPU], {})
+        remote.post_json([GPU, SECOND], {})
 
     gpu_attempts = [u for u in attempts if u == GPU[1]]
     assert len(gpu_attempts) == 2, (
@@ -132,7 +132,7 @@ def test_breaker_opens_and_stops_paying_the_connect_timeout(monkeypatch):
 
 def test_breaker_is_time_boxed_never_latching(monkeypatch):
     """A recovered GPU host must come back on its own -- a latching breaker
-    would silently pin everything to CPU forever."""
+    would silently pin everything to SECOND forever."""
     state = {"down": True}
 
     def post(url, **kwargs):
@@ -144,13 +144,13 @@ def test_breaker_is_time_boxed_never_latching(monkeypatch):
     monkeypatch.setattr(remote, "CIRCUIT_FAILURE_THRESHOLD", 1)
     monkeypatch.setattr(remote, "CIRCUIT_BREAK_SECONDS", 0.05)
 
-    assert remote.post_json([GPU, CPU], {}).provider == "spacy"
-    assert remote.post_json([GPU, CPU], {}).provider == "spacy"  # circuit open
+    assert remote.post_json([GPU, SECOND], {}).provider == "second"
+    assert remote.post_json([GPU, SECOND], {}).provider == "second"  # circuit open
 
     state["down"] = False
     import time
     time.sleep(0.08)
-    assert remote.post_json([GPU, CPU], {}).provider == "gpu", "breaker latched"
+    assert remote.post_json([GPU, SECOND], {}).provider == "gpu", "breaker latched"
 
 
 def test_gpu_fallback_false_never_uses_the_twin(monkeypatch):
@@ -162,20 +162,20 @@ def test_gpu_fallback_false_never_uses_the_twin(monkeypatch):
     monkeypatch.setattr(requests, "post", post)
     monkeypatch.setattr(remote, "GPU_FALLBACK", False)
     with pytest.raises(remote.RemoteUnavailable):
-        remote.post_json([GPU, CPU], {})
+        remote.post_json([GPU, SECOND], {})
 
 
 def test_http_errors_propagate_rather_than_falling_back(monkeypatch):
     """A 500 means the host is alive and broken. Failing the activity makes
-    Temporal retry it; degrading to CPU would mask the fault."""
+    Temporal retry it; degrading to SECOND would mask the fault."""
     monkeypatch.setattr(requests, "post", lambda *a, **kw: _Response(
         error=requests.HTTPError("boom"), status_code=500))
     with pytest.raises(requests.HTTPError):
-        remote.post_json([GPU, CPU], {})
+        remote.post_json([GPU, SECOND], {})
 
 
 def test_http_503_is_retryable_and_does_not_fall_back(monkeypatch):
-    """Queue-full is a live, busy GPU. Temporal retries; spaCy is not the answer."""
+    """Queue-full is a live, busy GPU. Temporal retries."""
     calls = []
 
     def post(url, **kwargs):
@@ -184,13 +184,13 @@ def test_http_503_is_retryable_and_does_not_fall_back(monkeypatch):
 
     monkeypatch.setattr(requests, "post", post)
     with pytest.raises(remote.RemoteBusy) as excinfo:
-        remote.post_json([GPU, CPU], {})
-    assert calls == [GPU[1]], "must not degrade to the CPU twin on 503"
+        remote.post_json([GPU, SECOND], {})
+    assert calls == [GPU[1]], "must not degrade to the SECOND twin on 503"
     assert excinfo.value.retry_after_seconds == 5
     assert not remote._BREAKER.is_open(GPU[1]), "503 must not open the breaker"
 
 
 def test_no_endpoint_configured_is_a_clear_error(monkeypatch):
     with pytest.raises(remote.RemoteUnavailable) as excinfo:
-        remote.post_json([("gpu", ""), ("spacy", "")], {})
+        remote.post_json([("gpu", ""), ("second", "")], {})
     assert "no endpoint is configured" in str(excinfo.value)

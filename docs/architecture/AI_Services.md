@@ -9,7 +9,7 @@ The GPU tier does not call the main services.
 
 | Capability | Configuration and behavior |
 |---|---|
-| Named entities | GPU, spaCy, both providers, or disabled. GPU connection failure can use an enabled spaCy fallback. |
+| Named entities | GPU or disabled. NER has no CPU path. |
 | Image OCR | Tesseract and EasyOCR have separate endpoints, language lists, and stored source identities. |
 | PDF OCR | The PDF builder requests the selected engine and stores engine-specific source parts. |
 | Embeddings | The configured GPU endpoint supplies vectors. An empty endpoint skips P5 chunking and embedding. No CPU embedding fallback exists. |
@@ -36,17 +36,15 @@ A read timeout or ordinary HTTP error does not select another provider.
 HTTP 503 requests a later retry and does not open the circuit breaker.
 Connect and read timeouts have separate settings.
 
-[The NER client](../../main_services/processing/tasks/P4_extract_entities/extract_ner_from_text.py) supplies the configured GPU and spaCy endpoints.
-The stored model identity records the provider that answered.
-The CPU service must be enabled for this fallback to exist.
-A disabled primary NER endpoint skips entity work before it contacts the fallback.
+[The NER client](../../main_services/processing/tasks/P4_extract_entities/extract_ner_from_text.py) supplies the configured GPU endpoint.
+An empty `NER_URL` skips entity work.
+The AI server does not load the NER model on a host without CUDA.
 
 ```mermaid
 flowchart TD
     accTitle: Capability-specific provider selection
-    accDescr: NER can use spaCy after a connection failure. OCR preserves its engine. Empty embedding configuration skips P5.
-    N[NER enabled] --> G[Configured NER endpoint]
-    G -->|Connection failure and fallback enabled| C[Configured spaCy endpoint]
+    accDescr: NER uses its GPU endpoint. OCR preserves its engine. Empty embedding configuration skips P5.
+    N[NER enabled] --> G[GPU endpoint]
     O[OCR target] --> E[Endpoint for the target engine]
     B[Embedding configuration] -->|Endpoint present| V[Create vectors]
     B -->|Endpoint empty| S[Skip chunking and embedding]

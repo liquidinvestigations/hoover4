@@ -96,7 +96,6 @@ retag_and_push "hoover4-worker" "hoover4-ops"
 # model twins
 push_tag "hoover4-tesseract-cpu" "$REPO_ROOT/main_services/ocr_tesseract" "Dockerfile"
 push_tag "hoover4-ocr-pdf" "$REPO_ROOT/main_services/ocr_pdf" "Dockerfile"
-push_tag "hoover4-ner-spacy" "$REPO_ROOT/main_services/ner_spacy" "Dockerfile"
 push_tag "hoover4-regex-entity-scanner" "$REPO_ROOT/main_services/regex_entity_scanner" "Dockerfile.release"
 
 # agent and MCP servers

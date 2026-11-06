@@ -143,11 +143,9 @@ it down.
 **The `serving` column names the hardware that answered, never the slot it sits in.**
 `serving_hardware` reads `cuda_available` out of the health body the endpoint returned; the
 CPU twins do not publish that field and are not credited with a GPU for its absence.
-`NER_URL` is a url and not a promise (a deployment with no GPU points it straight at
-`hoover4-ner-spacy`), so a row printing the name of its own variable claims a GPU on a host
-that has none, on the one page whose whole job is noticing that. For the same reason the
-NER row's model and detail come from whichever endpoint actually served, not from the main
-AI server's body.
+A row that prints the name of its own variable can claim a GPU on a host that has none.
+For the same reason the NER row's model and detail come from `NER_URL`'s own health answer,
+not from the main AI server's body.
 
 `ai_server_present` separates the two reasons the AI-server config fingerprint is blank. A
 deployment running without the GPU tier has no second fingerprint to compare and nothing is

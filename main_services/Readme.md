@@ -25,15 +25,13 @@ This directory contains the core data plane for Hoover4. It includes database in
   pages, sends each to the OCR tier above, and writes back a PDF with an invisible text
   layer. It owns no engine and no language data. See its Readme for the derived-prefix
   guard that keeps the ingest walker from re-ingesting what it writes.
-- [ner_spacy/](ner_spacy) - spaCy NER over HTTP (`hoover4-ner-spacy`). Enable it with `[main_services] ner_spacy_enabled` when the selected NER configuration requires it.
-  Verify model output against the intended corpus before selecting a provider.
 
 ### CPU services run with the main services.
 
-Tesseract OCR and spaCy NER run independently of the optional GPU tier.
-Their model and language data are packaged in their images.
+Tesseract OCR runs independently of the optional GPU tier.
+Its language data is packaged in its image.
 [The remote client](processing/tasks/remote.py) applies bounded timeouts and caller-supplied endpoint selection.
-The NER caller can supply an enabled spaCy fallback after its GPU endpoint.
+NER runs on the GPU only.
 OCR callers keep separate endpoints and source identities for each engine.
 An unconfigured OCR engine produces no variant.
 [AI architecture](../docs/architecture/AI_Services.md) describes disabled capabilities and fallback conditions.

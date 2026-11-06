@@ -224,7 +224,6 @@ DEFAULTS = {
     "main_services": {
         # which side of each capability the pipeline prefers
         "ner_provider": "gpu",
-        "ner_spacy_enabled": "false",
         "embeddings_provider": "gpu",
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
@@ -420,7 +419,6 @@ DEFAULTS = {
         "pdf_to_html_port": "21920",
         "tesseract_cpu_port": "21921",
         "ocr_pdf_port": "21922",
-        "ner_spacy_port": "21923",
         "embeddings_cpu_port": "21924",
         "regex_entity_scanner_port": "21925",
         "mcp_collections_port": "21930",
@@ -612,7 +610,6 @@ MAIN_OVERLAYS = [
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
     ("clamav_enabled", "compose/clamav.yaml", "hoover4-clamav"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
-    ("ner_spacy_enabled", "compose/ner-spacy.yaml", "hoover4-ner-spacy"),
     # Overrides hoover4-website's command; adds no service of its own.
     ("website_release_mode", "compose/website-release.yaml", None),
     # The renamed, opt-in privilege-escalation container. Off by default: see
@@ -667,7 +664,6 @@ MAIN_PUBLISHED = [
     ("hoover4-full-research-agent", "main_services", "full_research_agent_port"),
     ("hoover4-tesseract-cpu", "main_services", "tesseract_cpu_port"),
     ("hoover4-ocr-pdf", "main_services", "ocr_pdf_port"),
-    ("hoover4-ner-spacy", "main_services", "ner_spacy_port"),
     ("hoover4-regex-entity-scanner", "main_services", "regex_entity_scanner_port"),
 ]
 
@@ -1814,25 +1810,9 @@ def render_main_env(cfg):
     # Endpoints derived from the provider choices.
     ai_host = container_reachable_host(cfg.get("ai_services", "host"))
     ner_provider = cfg.get(m, "ner_provider")
-    spacy_twin = "http://hoover4-ner-spacy:8000/v1"   # CPU twin, same network
+    env["NER_URL"] = ""
     if ner_provider in ("gpu", "both") and _ai_tier_present(cfg):
         env["NER_URL"] = "http://%s:%s/v1" % (ai_host, cfg.get("ai_services", "ai_server_port"))
-    elif ner_provider == "spacy":
-        env["NER_URL"] = spacy_twin
-    else:
-        env["NER_URL"] = ""
-
-    # Where GPU_FALLBACK actually falls back to. tasks/remote.py walks the
-    # endpoint list in order and skips empty entries, so this stays empty when the
-    # twin is not running -- and an unreachable GPU then fails fast, naming the
-    # url, instead of stalling. Never point the fallback at the primary.
-    env["NER_URL_FALLBACK"] = (
-        spacy_twin
-        if ner_provider in ("gpu", "both") and _ai_tier_present(cfg)
-        and cfg.get(m, "gpu_fallback") == "true"
-        and _ner_spacy_twin_enabled(cfg)
-        else ""
-    )
 
     # The OCR tier, one endpoint per engine.
     #
@@ -2299,22 +2279,6 @@ server {
 # Compose invocation assembly
 # --------------------------------------------------------------------------------------
 
-def _ner_spacy_twin_enabled(cfg):
-    """Whether the CPU NER twin will actually be running.
-
-    One config key, which is also what selects the overlay that defines the service, so
-    "enabled" and "running" cannot drift apart. This used to grep the base compose file
-    for the string `hoover4-ner-spacy`, which was true whenever the string appeared
-    anywhere in it -- in a comment, in a volume name, in another service's depends_on --
-    and so was true unconditionally.
-
-    Announcing a fallback url for a container that does not exist is worse than having
-    none: tasks/remote.py would spend a connect timeout on it before failing, on every
-    single batch.
-    """
-    return cfg.get_bool("main_services", "ner_spacy_enabled")
-
-
 def selected_overlays(cfg, side):
     overlays = []
     if side == "ai":
@@ -2622,21 +2586,11 @@ def preflight_ports(cfg, side, rt):
         fail("ports already in use:\n%s" % detail)
 
 
-def preflight_ner_spacy(cfg, side):
-    """A setting that is rendered and never read is the failure to refuse rather than degrade.
-
-    `ner_provider = spacy` with `ner_spacy_enabled = false` asks for entities from a
-    service that will not be running. Silently producing no entities at all would look
-    exactly like a corpus with none in it.
-    """
-    if side == "ai":
-        return
-    if cfg.get("main_services", "ner_provider") != "spacy":
-        return
-    if not cfg.get_bool("main_services", "ner_spacy_enabled"):
-        fail("[main_services] ner_provider = spacy but ner_spacy_enabled = false. The "
-             "spaCy twin would not be running, so no entities would be extracted at "
-             "all. Set ner_spacy_enabled = true, or pick another ner_provider.")
+def preflight_ner_provider(cfg, side):
+    """Print the result of a setting that selects the removed CPU NER provider."""
+    if side != "ai" and cfg.get("main_services", "ner_provider") == "spacy":
+        print("warning: [main_services] ner_provider = spacy is removed, so NER is off. "
+              "NER runs on the GPU only. Set ner_provider = gpu or none.")
 
 
 def preflight_ai_enabled(cfg, side):
@@ -2799,7 +2753,7 @@ def run_preflights(cfg, side, rt, starting):
     preflight_ai_enabled(cfg, side)
     preflight_ner_gpu_without_tier(cfg, side)
     preflight_llm_selfhosted_without_tier(cfg, side)
-    preflight_ner_spacy(cfg, side)
+    preflight_ner_provider(cfg, side)
     preflight_compose_yaml(cfg, side)
     if starting:
         preflight_temporal_shards(cfg, side, rt)

@@ -166,7 +166,6 @@ compose network, on `8080`.
 | pdf-to-html | `http://localhost:21920` | the PDF renderer the document viewer calls |
 | tesseract-cpu | `localhost:21921` | the CPU OCR twin; `/health` lists the languages the image can actually serve |
 | ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row ([main_services/ocr_pdf/Readme.md](../ocr_pdf/Readme.md) explains what that absence prevents) |
-| ner-spacy | `localhost:21923` | the CPU NER twin, only when `[main_services] ner_spacy_enabled = true` (off by default) |
 | regex-entity-scanner | `localhost:21925` | the pattern scanner the P4 stage calls |
 | serena | `http://127.0.0.1:21940/mcp` | symbolic code navigation for the host-side agent, dev tooling only |
 

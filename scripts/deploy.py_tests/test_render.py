@@ -81,7 +81,6 @@ def _render(fixture_name):
             "gpu-on.ini",
             {
                 "NER_URL": "http://127.0.0.1:21961/v1",
-                "NER_URL_FALLBACK": "http://hoover4-ner-spacy:8000/v1",
                 "EMBEDDINGS_URL": "http://127.0.0.1:21961/v1",
                 "RERANK_URL": "http://127.0.0.1:21961/v1",
                 "OCR_EASYOCR_URL": "http://127.0.0.1:21962/ocr",
@@ -92,7 +91,6 @@ def _render(fixture_name):
             "gpu-off-leftovers.ini",
             {
                 "NER_URL": "",
-                "NER_URL_FALLBACK": "",
                 "EMBEDDINGS_URL": "",
                 "RERANK_URL": "",
                 "OCR_EASYOCR_URL": "",
@@ -106,7 +104,7 @@ def _render(fixture_name):
         ),
         pytest.param(
             "ner-spacy.ini",
-            {"NER_URL": "http://hoover4-ner-spacy:8000/v1"},
+            {"NER_URL": ""},
             id="ner-spacy",
         ),
         pytest.param(

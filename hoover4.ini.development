@@ -171,13 +171,7 @@ easyocr_languages  = en
 
 [main_services]
 # ---- which side of each capability the pipeline prefers -------------------------
-ner_provider          = none       ; gpu | spacy | both | none
-
-# spaCy is the CPU twin for NER. It is OFF by default and should stay off wherever a GPU
-# NER endpoint exists: its accuracy on this corpus is poor and its output is noisy enough
-# that the entity facets become unusable. Turning it on is a deliberate choice to prefer
-# noisy entities over none.
-ner_spacy_enabled     = false
+ner_provider          = none       ; gpu | both | none
 embeddings_provider   = gpu        ; gpu | cpu | none
 pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
 tesseract_cpu_enabled = true
@@ -473,7 +467,6 @@ elasticsearch_port        = 21913
 pdf_to_html_port          = 21920
 tesseract_cpu_port        = 21921   ; CPU OCR twin
 ocr_pdf_port              = 21922   ; searchable-PDF builder
-ner_spacy_port            = 21923   ; CPU NER twin
 embeddings_cpu_port       = 21924   ; CPU embeddings twin
 regex_entity_scanner_port = 21925   ; regex entity scanner
 

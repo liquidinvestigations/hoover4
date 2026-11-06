@@ -24,7 +24,7 @@ The contract implemented here
 -----------------------------
 ====================== ======================================================
 ``GPU_CONNECT_TIMEOUT_MS``  connect timeout on every ai-tier call (default 2000)
-``GPU_FALLBACK``            on connect failure, retry against the CPU twin
+``GPU_FALLBACK``            on connect failure, retry against the next endpoint
 ``GPU_CIRCUIT_BREAK_SECONDS`` after N consecutive connect failures, skip the GPU
                             endpoint entirely for this long
 ====================== ======================================================
@@ -96,7 +96,7 @@ class RemoteUnavailable(RuntimeError):
     """Every configured endpoint for a capability refused or was unreachable.
 
     Raised fast and with the URLs named: a plan that fails in two seconds with "GPU NER
-    unreachable at <url> and no CPU twin is enabled" names what broke, and one that stalls
+    unreachable at <url>" names what broke, and one that stalls
     for fifty minutes does not.
     """
 
@@ -178,8 +178,8 @@ def post_json(
     """POST ``payload`` to the first endpoint that answers.
 
     ``endpoints`` is an ordered list of ``(provider_name, url)`` -- the primary
-    first, the CPU twin after it. Entries with an empty url are skipped, so a
-    caller can pass a twin that is not deployed without branching.
+    first, the next endpoint after it. Entries with an empty url are skipped, so a
+    caller can pass an endpoint that is not deployed without branching.
 
     An endpoint is skipped without a request while its breaker is open. A
     connect failure moves to the next endpoint; a *read* failure or an HTTP
@@ -189,7 +189,7 @@ def post_json(
     HTTP 503 is the admission-control signal (queue full). It is retryable
     (Temporal reschedules the activity), and it is **not** a connect failure:
     the host is alive and busy. It does not open the circuit breaker and it
-    does not fall through to a CPU twin. spaCy is not the answer to a full GPU.
+    does not move the request to another endpoint.
 
     ``service`` names the capability for ``ai_service_telemetry`` (``ocr``, ``ner``,
     ``embeddings``). It is separate from ``provider`` because provider is *which endpoint

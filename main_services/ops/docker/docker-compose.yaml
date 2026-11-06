@@ -516,12 +516,6 @@ services:
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
       - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
       - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
-      # The CPU twin remote.py falls back to on a CONNECT failure. deploy.py renders
-      # this only when [main_services] ner_spacy_enabled is true, which is the same key
-      # that pulls in compose/ner-spacy.yaml -- announcing a fallback url for a
-      # container that does not exist would cost a connect timeout per batch before
-      # failing anyway. The key defaults to false.
-      - "NER_URL_FALLBACK=${NER_URL_FALLBACK:-}"
       # The full research agent, for an AgentRun in a thread with internet tools on. Same network.
       - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
       # The documents-only agent. A durable turn in a thread with internet tools off
@@ -821,7 +815,6 @@ services:
       - RERANK_URL=${RERANK_URL:-}
       - NER_PROVIDER=${NER_PROVIDER:-}
       - NER_URL=${NER_URL:-}
-      - NER_URL_FALLBACK=${NER_URL_FALLBACK:-}
       - PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
       - HOOVER4_BROWSER_MCP_URL=${HOOVER4_BROWSER_MCP_URL:-http://hoover4-mcp-browser:8087}

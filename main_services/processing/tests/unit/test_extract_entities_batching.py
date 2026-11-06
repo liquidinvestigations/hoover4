@@ -110,7 +110,6 @@ def _install_fakes(monkeypatch, text_rows, post):
     # stub server is injected the same way deploy.py injects the real one.
     monkeypatch.setenv("NER_URL", "http://ner.test/v1")
     monkeypatch.setenv("NER_PROVIDER", "gpu")
-    monkeypatch.delenv("NER_URL_FALLBACK", raising=False)
     monkeypatch.setattr(requests, "post", post)
     return fake_client
 
@@ -173,6 +172,31 @@ def test_ner_failure_propagates_and_writes_nothing(monkeypatch):
         nlp_activities.extract_entities_for_hashes(_params(3))
 
     assert fake_client.inserts == {}
+
+
+def test_a_failed_attempt_keeps_the_groups_that_it_saved(monkeypatch):
+    """A retry skips saved pages, so a long plan advances across activity timeouts."""
+    calls = []
+
+    def fake_post(url, json=None, **kwargs):
+        calls.append(json["input"])
+        if len(calls) == 3:
+            return _FakeResponse({}, error=requests.HTTPError("ner service down"))
+        return _FakeResponse({"data": [], "coverage_version": 2, "processed_inputs": len(json["input"])})
+
+    monkeypatch.setattr(nlp_activities, "NER_SAVE_BYTES", 1)
+    fake_client = _install_fakes(monkeypatch, _text_rows(4), fake_post)
+    monkeypatch.setattr("tasks.text_sources.fetch_text_batch", lambda _client, _dataset, batch: [
+        row for row in _text_rows(4) if (row["file_hash"], row["extracted_by"], row["page_id"]) in batch])
+    monkeypatch.setattr(nlp_activities, "fetch_text_batch", lambda _client, _dataset, batch: [
+        {**row, "text_version": 0} for row in _text_rows(4)
+        if (row["file_hash"], row["extracted_by"], row["page_id"]) in batch])
+
+    with pytest.raises(requests.HTTPError):
+        nlp_activities.extract_entities_for_hashes(_params(4))
+
+    saved = [row for table in fake_client.inserts["nlp_processed"] for row in table.to_pylist()]
+    assert sorted(row["file_hash"] for row in saved) == ["hash-0", "hash-1"]
 
 
 MIME_ENVELOPE = """Message-ID: <30795064.1075845@thyme.enron.com>

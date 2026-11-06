@@ -50,9 +50,9 @@ They do not define a general reporting export format.
 ## Select model capabilities through configuration.
 
 The main services can run without a GPU.
-Tesseract provides CPU OCR, and an enabled spaCy service provides CPU NER.
+Tesseract provides CPU OCR.
 OCR engines retain separate source identities.
-GPU NER can use a configured spaCy fallback after a connection failure.
+NER runs on the GPU only. Without a GPU tier, the pipeline extracts no named entities.
 Embeddings and reranking have no CPU fallback.
 An empty embedding endpoint skips chunking and embedding.
 

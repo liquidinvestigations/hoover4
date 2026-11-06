@@ -16,21 +16,18 @@ between P4 and P5 would move a number that existing rows already hold.
 ## Key Responsibilities
 
 - Read `text_content` for a plan's hashes, skipping only current `nlp_processed` rows with matching provider, stage version, source version, and source digest. The recorded `nlp_model` is the provider that **served
-  each batch** (`NLP_MODEL_BY_PROVIDER`: `gpu → ner-gpu-xlmr`,
-  `spacy → ner-spacy-xx`), not the configured one, under fallback the two
-  differ, and that difference is the only evidence an outage happened.
+  each batch** (`NLP_MODEL_BY_PROVIDER`: `gpu → ner-gpu-xlmr`).
+  Earlier rows can hold `ner-spacy-xx`, and readers keep that identity.
 - Send only the eligible source variants described below and drop the values that are
   debris rather than entities ([tasks/entity_stoplist.py](../entity_stoplist.py)).
 - Call the remote NER service in batches of `NLP_BATCH_TEXTS = 32` texts per
-  request (and `NLP_BATCH_CHARS = 250_000` characters), via `tasks.remote.post_json` over an ordered endpoint list
-  (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin, which is
-  rendered only when `[main_services] ner_spacy_enabled = true`, and off by default
-  because spaCy's accuracy on real corpora is poor and its noise makes the entity
-  facets unusable. With it off there is no fallback and an unreachable GPU fails
-  fast naming the url, which is the intent).
+  request (and `NLP_BATCH_CHARS = 250_000` characters), via `tasks.remote.post_json` over the GPU endpoint
+  (`NER_URL`).
+  NER has no CPU path, so an unreachable GPU tier fails fast and names the url.
   Calls use a `(connect, read)` timeout pair and a per-endpoint,
   time-boxed circuit breaker; a connect failure falls back, a read timeout
   does not (the host is alive, so degrading would mask a server-side fault).
+- Save results after each `NER_SAVE_BYTES = 8 MB` of text. A retry skips the saved pages, so a plan that outlasts the 30-minute activity timeout still advances.
 - Write `entity_hit` rows and populate the `ner` string-term dictionary. **Each
   entity row carries the `nlp_model` that served its text**, and `nlp_model` is
   part of `entity_hit`'s `ORDER BY`, so two providers' hits for the same
@@ -92,14 +89,6 @@ Their stored hits retain provider identity. The storage and indexing contracts r
    agree on most entities, and the same term id twice in a Manticore MVA inflates
    every facet count that includes it.
 
-The CPU twin maps spaCy's multilingual labels onto the GPU model's CoNLL-03
-vocabulary (`GPE → LOC`, `PERSON → PER`). Without that the same entity arrives
-under two different `entity_type` values depending on which provider served it,
-and the union above renders them as two facets, which reads as duplicate data
-rather than as one entity found twice.
-
-The NER caller can use an enabled spaCy fallback after a GPU connection failure.
-It records the provider that served the request.
 Read timeouts and busy responses retain their separate retry behavior.
 [The remote client](../remote.py) defines the connection and circuit-breaker conditions.
 - Write `nlp_processed` watermark rows, including `text_bytes`. The byte

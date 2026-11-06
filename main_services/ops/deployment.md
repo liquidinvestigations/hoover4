@@ -62,7 +62,7 @@ easyocr_enabled    = false      ; not implied by the others, see below
 llm_selfhosted     = false
 
 [main_services]
-ner_provider          = spacy       ; the CPU twin, in-network
+ner_provider          = none        ; NER runs on the GPU only
 embeddings_provider   = none        ; no vectors, no semantic search
 pdf_ocr_provider      = tesseract   ; CPU
 tesseract_cpu_enabled = true
@@ -106,8 +106,8 @@ Which gives the one-line test for "no GPU endpoints anywhere":
 ```
 
 `--print-env` renders and starts nothing, so run it before anything else and read it.
-For the configuration above it must show `NER_URL=http://hoover4-ner-spacy:8000/v1`, and
-`EMBEDDINGS_URL`, `RERANK_URL`, `OCR_EASYOCR_URL` and `NER_URL_FALLBACK` all **empty**.
+For the configuration above it must show `NER_URL`, `EMBEDDINGS_URL`, `RERANK_URL` and
+`OCR_EASYOCR_URL` all **empty**.
 
 ### Secrets
 
@@ -362,13 +362,6 @@ The two things that identify it are `RestartCount` climbing and
 `Memory cgroup out of memory` in `dmesg`. Check both before believing a network fault
 between two containers on the same network.
 
-`hoover4-ner-spacy` is the one to watch during a large ingest, and its growth is not a
-leak in the ordinary sense: a spaCy pipeline interns every distinct string it has ever
-seen and never evicts, so memory tracks the corpus's vocabulary rather than the current
-request. `NER_RECYCLE_CHARS` bounds it by rebuilding the pipeline on a character budget;
-`/health` reports `pipeline_reloads`, and that number staying at 0 through a long ingest
-means the bound is not being applied.
-
 ## What a configuration with no accelerator does not do
 
 Stated up front, because none of it is a fault to be diagnosed later:
@@ -379,7 +372,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **…which removes a memory risk** | `_vectors` HNSW tables are RAM-resident at roughly 2 KB per chunk. Not building them is one large thing the host does not have to hold. |
 | **No reranking** | Collection RAG and web search return RRF order with `rerank_applied: false`. |
 | **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
-| **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
+| **No named entities** | NER runs on the GPU only. `ner_provider = none` skips entity extraction. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
 | **The proxy's default identity is an administrator** | `proxy_username`/`proxy_groups` name the identity every request carries, and the default group is `admin`. Acceptable only behind a reverse proxy that authenticates, which is what `website_bind_ip` is enforcing. |
 | **A browser ships only when the internet-tools switch is on** | [compose/internet-tools.yaml](docker/compose/internet-tools.yaml) is selected by `internet_tools_enabled`. Off, `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and `hoover4-mcp-whois` do not start. On, the browser's URL checks are still strict (public http/https only, deny-list, PAC). |

@@ -47,9 +47,7 @@ fn fingerprint_local() -> String {
 /// What the endpoint that answered is **actually** running on.
 ///
 /// Read out of the health body, never out of the name of the slot the endpoint occupies.
-/// `NER_URL` is a url, not a promise: point it at the CPU twin (which is exactly what a
-/// deployment with no GPU does), and a row that prints its slot's name says `gpu` on a
-/// host that has no GPU at all. This page exists to make "configured versus actually
+/// A url is not a promise. This page exists to make "configured versus actually
 /// serving" legible, so the one thing it must not do is repeat the configuration back.
 ///
 /// `cuda_available` is published by the GPU server and absent from the CPU twins, so a
@@ -199,9 +197,8 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
         circuit_open_remaining_s: 0,
     });
 
-    // NER, GPU with CPU twin fallback
+    // NER, on the GPU only
     let ner_url = std::env::var("NER_URL").unwrap_or_default();
-    let ner_fallback = std::env::var("NER_URL_FALLBACK").unwrap_or_default();
     // The NER probe stands on its own, **never** `|| ai_ok`.
     //
     // That fallback made "NER is reachable" mean "the main AI server answered /health",
@@ -210,22 +207,8 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
     // while the process is perfectly healthy. The panel reported NER up in exactly the
     // situation it exists to report it down. If the endpoint's own /health does not
     // answer, that is what the row says.
-    let ner_primary = probe_ner(&ner_url).await;
-    // The fallback is probed only when the primary did not answer: it is what would
-    // serve, and probing it regardless would cost a round trip nobody reads.
-    let ner_secondary = match &ner_primary {
-        Some(_) => None,
-        None => probe_ner(&ner_fallback).await,
-    };
-    let ner_serving_body = ner_primary.clone().or_else(|| ner_secondary.clone());
-    let (ner_slot, ner_endpoint) = match (&ner_primary, &ner_secondary) {
-        (Some(_), _) => ("primary", ner_url.as_str()),
-        (None, Some(_)) => ("fallback", ner_fallback.as_str()),
-        (None, None) => ("none", ""),
-    };
-    // `serving` is what answered and what it runs on, never which slot it sits in: a
-    // deployment with no GPU points NER_URL straight at the CPU twin, and naming the slot
-    // there reports `gpu` on a host that has none.
+    let ner_serving_body = probe_ner(&ner_url).await;
+    // `serving` is what answered and what it runs on, never which slot it sits in.
     let ner_serving = match &ner_serving_body {
         Some(body) => serving_hardware(body).to_string(),
         None => "down".to_string(),
@@ -234,9 +217,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
         name: "ner".into(),
         configured_provider: std::env::var("NER_PROVIDER").unwrap_or_else(|_| "none".into()),
         serving_provider: ner_serving,
-        // From the endpoint that actually answered, not from the main AI server's body,
-        // when the twin is serving, the AI server's `ner_model` is a different process's
-        // model or nothing at all.
+        // From the endpoint that actually answered, not from the main AI server's body.
         serving_model: ner_serving_body
             .as_ref()
             .and_then(|body| body.get("ner_model").and_then(|v| v.as_str()))
@@ -244,7 +225,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
             .to_string(),
         reachable: ner_serving_body.is_some(),
         detail: format!(
-            "serving={ner_slot} {ner_endpoint}; primary={ner_url}; fallback={ner_fallback}"
+            "primary={ner_url}"
         ),
         circuit_open_remaining_s: 0,
     });
@@ -573,20 +554,13 @@ async fn probe_knn_dims(http: &reqwest::Client, manticore: &str, table: &str) ->
 mod tests {
     use super::*;
 
-    /// A CPU twin must never be reported as a GPU, whichever slot it was configured into.
-    ///
-    /// The bodies below are what the two servers actually publish. The twin's carries no
-    /// `cuda_available` at all, which is the whole signal: a deployment with no GPU points
-    /// `NER_URL` (the variable named "gpu" throughout this file), straight at the twin,
-    /// and a row that prints the name of the slot then claims a GPU on a host that has
-    /// none, on the one page whose subtitle promises to notice exactly that.
+    /// A body without `cuda_available` must never be reported as a GPU.
     #[test]
-    fn a_cpu_twin_is_not_reported_as_a_gpu() {
+    fn a_body_without_a_gpu_is_not_reported_as_a_gpu() {
         let twin = serde_json::json!({
             "status": "healthy",
             "ner_model_loaded": true,
-            "ner_model": "xx_ent_wiki_sm",
-            "nlp_model_id": "ner-spacy-xx",
+            "ner_model": "some-cpu-model",
         });
         assert_eq!(serving_hardware(&twin), "cpu");
 

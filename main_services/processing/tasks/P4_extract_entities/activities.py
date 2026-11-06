@@ -37,7 +37,7 @@ NLP_BATCH_TEXTS = 32
 # A count alone does not bound anything: a text may be up to the service's
 # NER_MAX_TEXT_CHARS (1 M), so 32 of them is up to 32 MB of text in one request, and the
 # NER server holds a parsed document for every text in the batch at once. On a corpus of
-# large plain-text files that drove the spaCy container past a 4 GB limit, then past a
+# large plain-text files that drove a NER container past a 4 GB limit, then past a
 # 12 GB one; the cgroup killed uvicorn and every in-flight activity failed with
 # `Connection refused` against a container that looked healthy by the time anyone looked.
 #
@@ -67,19 +67,69 @@ def batch_texts_by_chars(texts, max_texts=NLP_BATCH_TEXTS, max_chars=NLP_BATCH_C
         yield batch
 
 
+# Text between saves of one activity. A retry skips the pages that an earlier attempt saved,
+# so a plan that outlasts the activity timeout still advances. About 4 minutes of NER at
+# 4 activities on one GPU box.
+NER_SAVE_BYTES = 8 * 1024 * 1024
+
+
 def configured_nlp_model() -> str:
     """The ``nlp_model`` this worker *intends* to write.
 
-    Used for the left-anti join only. What actually gets written is whatever
-    provider served the request, which differs under fallback -- and that is the
-    designed behaviour, not a bug: segments processed on the CPU twin during a
-    GPU outage still have no GPU watermark, so they reprocess correctly under
-    ``ner-gpu-xlmr`` once the host returns. Both sets coexist by design.
+    Used for the left-anti join only. Earlier CPU rows have no GPU watermark, so they
+    reprocess under ``ner-gpu-xlmr``.
     """
     provider = (os.getenv("NER_PROVIDER") or "gpu").strip() or "gpu"
     if provider == "both":
         provider = "gpu"
     return NLP_MODEL_BY_PROVIDER.get(provider, f"ner-{provider}")
+
+
+def _save_entities(params: ExtractEntitiesParams, clickhouse_ner_rows: list[dict],
+                   processed_rows: list[dict], ner_values: set[str]) -> None:
+    """Write the entity rows, then the watermarks that let a retry skip these pages."""
+    # Populate the term dictionary here. The indexing stage calls the same
+    # function with the same values and gets cache hits; the ids are
+    # content-derived (hash_string_to_uint63), so there is no ordering dependency.
+    get_string_term_ids(params.collectionname, params.collection_dataset, 'ner', ner_values)
+
+    with get_collection_client(params.collectionname) as client:
+        # Inference completes before replacement. Exact provider keys preserve other output.
+        from .completion import replace_completed_groups
+        replace_completed_groups(client, params.collection_dataset, processed_rows)
+        if clickhouse_ner_rows:
+            tbl_ner = pa.table({
+                "collection_dataset": pa.array([row['collection_dataset'] for row in clickhouse_ner_rows], type=pa.string()),
+                "file_hash": pa.array([row['file_hash'] for row in clickhouse_ner_rows], type=pa.string()),
+                "extracted_by": pa.array([row['extracted_by'] for row in clickhouse_ner_rows], type=pa.string()),
+                "page_id": pa.array([row['page_id'] for row in clickhouse_ner_rows], type=pa.uint32()),
+                "nlp_model": pa.array([row['nlp_model'] for row in clickhouse_ner_rows], type=pa.string()),
+                "entity_type": pa.array([row['entity_type'] for row in clickhouse_ner_rows], type=pa.string()),
+                "entity_values": pa.array([row['entity_values'] for row in clickhouse_ner_rows], type=pa.list_(pa.string())),
+            })
+            insert_arrow_durable(client, "entity_hit", tbl_ner)
+
+        # Watermark rows, one per processed segment. text_bytes is the byte
+        # length of the cleaned text actually indexed - part 6's shard planner
+        # reads it from here. ClickHouse DateTime columns are naive UTC.
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        tbl_processed = pa.table({
+            "collection_dataset": pa.array([row['collection_dataset'] for row in processed_rows], type=pa.string()),
+            "file_hash": pa.array([row['file_hash'] for row in processed_rows], type=pa.string()),
+            "extracted_by": pa.array([row['extracted_by'] for row in processed_rows], type=pa.string()),
+            "page_id": pa.array([row['page_id'] for row in processed_rows], type=pa.uint32()),
+            # The provider that ACTUALLY served each text, never the configured
+            # one -- under fallback they differ, and that difference is the only
+            # record that a GPU outage happened at all. Segments no provider saw
+            # carry the configured model; see segment_models.
+            "nlp_model": pa.array([row['nlp_model'] for row in processed_rows], type=pa.string()),
+            "text_bytes": pa.array([row['text_bytes'] for row in processed_rows], type=pa.uint64()),
+            "processed_at": pa.array([now] * len(processed_rows), type=pa.timestamp("s")),
+            "stage_version": pa.array([row["stage_version"] for row in processed_rows], type=pa.uint16()),
+            "text_version": pa.array([row["text_version"] for row in processed_rows], type=pa.uint64()),
+            "text_digest": pa.array([row["text_digest"] for row in processed_rows], type=pa.string()),
+        })
+        insert_arrow_durable(client, "nlp_processed", tbl_processed)
 
 
 @activity.defn
@@ -165,17 +215,18 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
         }).to_pylist():
             variants_present[row['file_hash']] = set(row['variants'])
 
-    clickhouse_ner_rows = []
-    ner_values = set()
+    entity_groups = 0
     stopped_values = 0
-    processed_rows: list[dict] = []
     processed_by_ner = 0
     skipped_count = 0
     segment_batches = plan_text_batches([
         ((row['file_hash'], row['extracted_by'], row['page_id']), int(row['text_bytes']))
         for row in text_segments
-    ])
+    ], NER_SAVE_BYTES)
     for segment_batch in segment_batches:
+        clickhouse_ner_rows = []
+        ner_values = set()
+        processed_rows: list[dict] = []
         with get_collection_client(params.collectionname) as client:
             text_content = fetch_text_batch(client, collection_dataset, segment_batch)
         cleaned_texts = [clean_text(row['text']) for row in text_content]
@@ -231,58 +282,19 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
                 "text_digest": hashlib.sha256(text_row["text"].encode("utf-8")).hexdigest(),
             })
 
+        _save_entities(params, clickhouse_ner_rows, processed_rows, ner_values)
+        entity_groups += len(clickhouse_ner_rows)
+        heartbeat.beat(f"NER saved {processed_by_ner}/{len(text_segments)} texts")
+
     if skipped_count:
         log.info(
             f"{collection_dataset} (plan {plan_hash[:8]}): {skipped_count}/{len(text_segments)} "
             f"text segments are a redundant variant, not sending them to NER"
         )
 
-    # Populate the term dictionary here. The indexing stage calls the same
-    # function with the same values and gets cache hits; the ids are
-    # content-derived (hash_string_to_uint63), so there is no ordering dependency.
-    get_string_term_ids(params.collectionname, collection_dataset, 'ner', ner_values)
-
-    with get_collection_client(params.collectionname) as client:
-        # Inference completes before replacement. Exact provider keys preserve other output.
-        from .completion import replace_completed_groups
-        replace_completed_groups(client, collection_dataset, processed_rows)
-        if clickhouse_ner_rows:
-            tbl_ner = pa.table({
-                "collection_dataset": pa.array([row['collection_dataset'] for row in clickhouse_ner_rows], type=pa.string()),
-                "file_hash": pa.array([row['file_hash'] for row in clickhouse_ner_rows], type=pa.string()),
-                "extracted_by": pa.array([row['extracted_by'] for row in clickhouse_ner_rows], type=pa.string()),
-                "page_id": pa.array([row['page_id'] for row in clickhouse_ner_rows], type=pa.uint32()),
-                "nlp_model": pa.array([row['nlp_model'] for row in clickhouse_ner_rows], type=pa.string()),
-                "entity_type": pa.array([row['entity_type'] for row in clickhouse_ner_rows], type=pa.string()),
-                "entity_values": pa.array([row['entity_values'] for row in clickhouse_ner_rows], type=pa.list_(pa.string())),
-            })
-            insert_arrow_durable(client, "entity_hit", tbl_ner)
-
-        # Watermark rows, one per processed segment. text_bytes is the byte
-        # length of the cleaned text actually indexed - part 6's shard planner
-        # reads it from here. ClickHouse DateTime columns are naive UTC.
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        tbl_processed = pa.table({
-            "collection_dataset": pa.array([row['collection_dataset'] for row in processed_rows], type=pa.string()),
-            "file_hash": pa.array([row['file_hash'] for row in processed_rows], type=pa.string()),
-            "extracted_by": pa.array([row['extracted_by'] for row in processed_rows], type=pa.string()),
-            "page_id": pa.array([row['page_id'] for row in processed_rows], type=pa.uint32()),
-            # The provider that ACTUALLY served each text, never the configured
-            # one -- under fallback they differ, and that difference is the only
-            # record that a GPU outage happened at all. Segments no provider saw
-            # carry the configured model; see segment_models.
-            "nlp_model": pa.array([row['nlp_model'] for row in processed_rows], type=pa.string()),
-            "text_bytes": pa.array([row['text_bytes'] for row in processed_rows], type=pa.uint64()),
-            "processed_at": pa.array([now] * len(processed_rows), type=pa.timestamp("s")),
-            "stage_version": pa.array([row["stage_version"] for row in processed_rows], type=pa.uint16()),
-            "text_version": pa.array([row["text_version"] for row in processed_rows], type=pa.uint64()),
-            "text_digest": pa.array([row["text_digest"] for row in processed_rows], type=pa.string()),
-        })
-        insert_arrow_durable(client, "nlp_processed", tbl_processed)
-
     log.info(
         f"{collection_dataset} (plan {plan_hash[:8]}): extracted "
-        f"{len(clickhouse_ner_rows)} entity groups from {processed_by_ner} of "
+        f"{entity_groups} entity groups from {processed_by_ner} of "
         f"{len(text_segments)} text segments, dropping {stopped_values} stop-listed values"
     )
-    return ExtractEntitiesResult(text_segments=len(text_segments), entity_groups=len(clickhouse_ner_rows))
+    return ExtractEntitiesResult(text_segments=len(text_segments), entity_groups=entity_groups)

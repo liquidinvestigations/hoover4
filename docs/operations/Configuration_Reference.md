@@ -87,7 +87,7 @@ server itself.
 | credentials | `vllm_api_key_file`, `hf_token_file` | paths to files outside the repository, never values |
 
 `enabled = false` turns the GPU services off. Main services then clear each URL that points
-to the GPU tier. The CPU spaCy endpoint stays available through `ner_provider = spacy`.
+to the GPU tier. NER then has no endpoint, because NER runs on the GPU only.
 The per-service flags do not turn GPU services on.
 
 **`embeddings_dim` must match the model.** It is a stored column width, not a hint: changing
@@ -100,11 +100,12 @@ the model without it produces vectors the store rejects or silently truncates.
 ### Which provider serves what
 
 `ner_provider`, `embeddings_provider`, `pdf_ocr_provider`, and the twin switches
-`ner_spacy_enabled`, `tesseract_cpu_enabled`, `ocr_pdf_enabled`. These pick between the
+`tesseract_cpu_enabled`, `ocr_pdf_enabled`. These pick between the
 accelerated tier and the CPU twins on the main side. See
 [AI services](../architecture/AI_Services.md) for why the twins live there.
 
-`ner_provider` accepts `gpu`, `spacy`, `both`, and `none`. `none` leaves `NER_URL` empty.
+`ner_provider` accepts `gpu`, `both`, and `none`. `both` reads as `gpu`. `none` leaves `NER_URL` empty.
+The removed value `spacy` leaves `NER_URL` empty, and `./deploy` prints a warning.
 
 `gpu_fallback`, `gpu_connect_timeout_ms` and `gpu_circuit_break_seconds` are the fallback
 behaviour itself, read by [main_services/processing/tasks/remote.py](../../main_services/processing/tasks/remote.py): whether to retry
@@ -595,7 +596,7 @@ is the map back to the group above that explains it.
 
 ### `[main_services]`: everything else
 
-- `ner_provider`, `ner_spacy_enabled`, `embeddings_provider`, `pdf_ocr_provider`
+- `ner_provider`, `embeddings_provider`, `pdf_ocr_provider`
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
 - `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
 - `ocr_pdf_concurrency`, `ocr_pdf_queue_depth`
@@ -623,7 +624,7 @@ is the map back to the group above that explains it.
 - `garage_admin_port`, `redis_port`, `temporal_grpc_port`, `temporal_http_port`
 - `temporal_ui_port`, `clickhouse_monitoring_port`, `ch_ui_port`, `cassandra_port`
 - `elasticsearch_port`, `pdf_to_html_port`, `tesseract_cpu_port`, `ocr_pdf_port`
-- `ner_spacy_port`, `embeddings_cpu_port`, `regex_entity_scanner_port`, `mcp_collections_port`
+- `embeddings_cpu_port`, `regex_entity_scanner_port`, `mcp_collections_port`
 - `mcp_metasearch_port`, `mcp_browser_port`, `mcp_whois_port`, `mcp_todo_port`
 - `internal_search_agent_port`
 - `full_research_agent_port`, `cassandra_version`, `elasticsearch_version`, `temporal_version`

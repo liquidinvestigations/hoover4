@@ -310,7 +310,6 @@ provider="${provider:-gpu}"
 [ "$provider" = "both" ] && provider="gpu"
 case "$provider" in
     gpu) NLP_MODEL="ner-gpu-xlmr" ;;
-    spacy) NLP_MODEL="ner-spacy-xx" ;;
     *) NLP_MODEL="ner-${provider}" ;;
 esac
 missing_nlp=$(CH "SELECT count() FROM ${DB}.text_content t FINAL

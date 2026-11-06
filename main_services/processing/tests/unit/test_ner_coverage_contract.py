@@ -13,8 +13,10 @@ def test_old_or_partial_gpu_response_is_not_current(monkeypatch,body):
     with pytest.raises(RuntimeError,match="coverage"):
         client.extract_ner_from_texts(["first","second"])
 
-def test_cpu_keeps_its_supported_usage_contract_and_identity(monkeypatch):
-    monkeypatch.setattr(client,"post_json",lambda *_args,**_kwargs:SimpleNamespace(provider="spacy",data={"data":[],"usage":{"texts":2}}))
-    results,model=client.extract_ner_from_texts(["first","second"])
-    assert len(results)==2
-    assert model=="ner-spacy-xx"
+def test_ner_has_only_the_gpu_endpoint(monkeypatch):
+    monkeypatch.setenv("NER_URL","http://gpu/v1/")
+    assert client._endpoints()==[("gpu","http://gpu/v1/extract-entities")]
+
+def test_ner_has_no_url_without_a_gpu_endpoint(monkeypatch):
+    monkeypatch.setenv("NER_URL","")
+    assert client._endpoints()==[("gpu","")]
