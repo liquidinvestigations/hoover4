@@ -695,7 +695,10 @@ def reparse_update_tables(params: TablePlanParams) -> List[str]:
                 op_id=params.op_id, file_names=bounded_file_names(list(names or [])),
                 sniff_mime_type=authoritative, file_mime_type=file_mime or ""))
             if isinstance(outcome, dict) and outcome.get("status") == "failed":
-                raise RuntimeError(f"Table parsing failed for {file_hash}: {outcome.get('error', '')}")
+                # The reader recorded this failure. The file stays selected, and settlement
+                # reports it. The other files of the plan continue.
+                log.warning("[updates] Table parsing failed for %s: %s", file_hash, outcome.get("error", ""))
+                continue
             read.append(file_hash)
         with get_collection_client(params.collectionname) as client:
             prepare_table_text(client, TableReceiptParams(params.collectionname, params.collection_dataset,
@@ -796,7 +799,11 @@ def list_update_detection_plans(params: VirusPlansParams) -> List[str]:
 @activity.defn
 @with_heartbeat
 def detect_update_files(params: TablePlanParams) -> int:
-    """Examine the selected files of one plan, one at a time, and store their rows."""
+    """Examine the selected files of one plan, one at a time, and store their rows.
+
+    A file that the detector cannot process stays selected, and settlement reports it.
+    The other files of the plan continue.
+    """
     import shutil
 
     from database.clickhouse import get_collection_client
@@ -833,6 +840,8 @@ def detect_update_files(params: TablePlanParams) -> int:
                     file = BatchFile(item_hash=file_hash, file_path=path, source_kind=kind,
                                      routes=["image"] if kind == "image" else [])
                     ocr_detection._detect_file(scope, file)
+                except ocr_detection.NotDetectable as error:
+                    log.warning("[updates] %s has no OCR detection: %s", file_hash, error)
                 finally:
                     os.remove(path)
         finally:

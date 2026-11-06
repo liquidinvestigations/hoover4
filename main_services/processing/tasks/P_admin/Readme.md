@@ -37,6 +37,9 @@ exactly one source of truth in Python.
   in [updates/workflows.py](updates/workflows.py), the steps in [updates/registry.py](updates/registry.py), the counts and
   settlement reads in [updates/selectors.py](updates/selectors.py), and the stage versions in
   [tasks/stage_versions.py](../stage_versions.py)
+- A file that a table reader or the OCR detector cannot process stays selected by its update step,
+  and settlement reports it. The other files of its plan continue. A service failure keeps its
+  Temporal retry.
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in [activities.py](activities.py)

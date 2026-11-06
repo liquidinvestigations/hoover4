@@ -210,8 +210,7 @@ def test_failed_table_parse_remains_selectable_on_explicit_retry(collection, mon
                           column_names=["collection_dataset", "item_hash", "plan_hash"])
         params = TablePlanParams("table_retry", collection, "dataset", "plan")
         for _ in range(2):
-            with pytest.raises(RuntimeError, match="Table parsing failed"):
-                reparse_update_tables(params)
+            assert reparse_update_tables(params) == []
             with clickhouse.get_collection_client(collection) as client:
                 assert selectors.select_tables(client, selectors.ScopeContext("dataset", "dataset", collection)).count == 1
                 assert client.query("SELECT status FROM table_documents FINAL").result_rows == [("failed",)]

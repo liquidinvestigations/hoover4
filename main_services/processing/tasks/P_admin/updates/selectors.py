@@ -462,7 +462,16 @@ def missing_search_terms(client, ctx: ScopeContext) -> int:
             cursor.execute(f"SELECT id, term_field, term_id, term_display FROM {table} "
                            f"WHERE id IN ({ids}) LIMIT 500 OPTION max_matches=500")
             actual = {int(row[0]): (row[1], int(row[2]), row[3]) for row in cursor.fetchall()}
-            missing += sum(actual.get(row_id) != value for row_id, value in expected.items())
+            for row_id, value in expected.items():
+                if row_id not in actual:
+                    missing += 1
+                elif actual[row_id] != value:
+                    # Manticore 29.9.0 returned another term's text for a correct row in a
+                    # wide `id IN` read. A read of the one row decides the comparison.
+                    cursor.execute(f"SELECT term_field, term_id, term_display FROM {table} "
+                                   f"WHERE id = {row_id}")
+                    single = [(row[0], int(row[1]), row[2]) for row in cursor.fetchall()]
+                    missing += single != [value]
             after = (rows[-1][0], int(rows[-1][1]))
 
 

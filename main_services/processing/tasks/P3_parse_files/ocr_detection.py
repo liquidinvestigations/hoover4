@@ -6,6 +6,8 @@ Requests use bounded page batches and retain completed detection rows.
 An image under the OCR size gate stores a successful negative row.
 A render failure stores no negative result for its page.
 The update step selects missing current-version page identities.
+`NotDetectable` marks a file that a retry cannot change, so an update continues with the
+other files of its plan and the file stays selected.
 
 """
 
@@ -41,6 +43,10 @@ RENDER_TIMEOUT_SECONDS = 120
 KIND_IMAGE = "image"
 
 
+class NotDetectable(RuntimeError):
+    """The detector cannot process this file. Another try sends the same bytes."""
+
+
 def spaced_pages(pages: Sequence[int], limit: int = MAX_DETECTED_PAGES) -> List[int]:
     """At most `limit` evenly spaced values of `pages`, with the first value kept."""
     if len(pages) <= limit:
@@ -51,7 +57,7 @@ def spaced_pages(pages: Sequence[int], limit: int = MAX_DETECTED_PAGES) -> List[
 
 def _row(collection_dataset: str, file_hash: str, kind: str, page: int, found: Optional[dict]) -> dict:
     if found is None:
-        raise RuntimeError("OCR detector returned no processable result")
+        raise NotDetectable("OCR detector returned no processable result")
     return dict(collection_dataset=collection_dataset, hash=file_hash, source_kind=kind, page_id=page,
                 detector_version=OCR_DETECTION_VERSION, has_text=1 if found.get("has_text") else 0,
                 box_count=int(found.get("box_count") or 0), script=found.get("script") or "",
@@ -100,7 +106,7 @@ def render_page(path: str, page: int) -> Optional[bytes]:
             raise RuntimeError(f"OCR detection render timed out for page {page}")
         if result.returncode != 0 or not os.path.exists(out + ".jpg"):
             log.warning("[P3] page %d render failed for OCR detection: %s", page, path)
-            raise RuntimeError(f"OCR detection render failed for page {page}")
+            raise NotDetectable(f"OCR detection render failed for page {page}")
         with open(out + ".jpg", "rb") as handle:
             return handle.read()
 
@@ -111,7 +117,7 @@ def pdf_rows(collection_dataset: str, file_hash: str, kind: str, path: str, page
     for page in pages:
         rendered = render_page(path, page)
         if not rendered:
-            raise RuntimeError(f"OCR detection render returned no image for page {page}")
+            raise NotDetectable(f"OCR detection render returned no image for page {page}")
         rows.append(_row(collection_dataset, file_hash, kind, page, detect_text(rendered)))
     return rows
 
