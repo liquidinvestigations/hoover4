@@ -31,7 +31,7 @@ from tasks.text_sources import ENGINE_TESSERACT, MIN_OCR_IMAGE_PX
 log = logging.getLogger(__name__)
 
 #: The logical version of the stage output. `STAGE_VERSIONS["ocr_detection"]` reads it.
-OCR_DETECTION_VERSION = 3
+OCR_DETECTION_VERSION = 4
 #: The workflow patch that runs the stage in a new group.
 OCR_DETECTION_PATCH = "ocr-detection"
 #: The retained legacy sample limit. Automatic routing examines every eligible page.
@@ -58,11 +58,20 @@ def spaced_pages(pages: Sequence[int], limit: int = MAX_DETECTED_PAGES) -> List[
 def _row(collection_dataset: str, file_hash: str, kind: str, page: int, found: Optional[dict]) -> dict:
     if found is None:
         raise NotDetectable("OCR detector returned no processable result")
+    from tasks.automatic_ocr import LANGUAGE_SCRIPTS
+
+    script, model = found.get("script") or "", found.get("model") or ""
+    language = detected_language(model, found.get("text") or "")
+    if not script:
+        # The service reads an unresolved page with the Latin model. Only an identified
+        # Latin-script language confirms that sample.
+        if LANGUAGE_SCRIPTS.get(language) == "Latin":
+            script, model = "Latin", "Latin"
+        else:
+            language = "und"
     return dict(collection_dataset=collection_dataset, hash=file_hash, source_kind=kind, page_id=page,
                 detector_version=OCR_DETECTION_VERSION, has_text=1 if found.get("has_text") else 0,
-                box_count=int(found.get("box_count") or 0), script=found.get("script") or "",
-                model=found.get("model") or "",
-                language=detected_language(found.get("model") or "", found.get("text") or ""),
+                box_count=int(found.get("box_count") or 0), script=script, model=model, language=language,
                 run_time_ms=int(found.get("run_time_ms") or 0))
 
 

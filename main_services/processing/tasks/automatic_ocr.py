@@ -2,10 +2,11 @@
 
 import hashlib
 import json
+from collections import Counter
 from functools import lru_cache
 import time
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 AUTOMATIC_OCR_PATCH = "automatic-ocr-v1"
 PAGE_BATCH = 32
 ARTIFACT_SEGMENTATION_VERSION = 1
@@ -90,13 +91,31 @@ def capability_digest(installed: dict) -> str:
                        segmentation=PDF_SEGMENTATION_VERSION, pdf_text_layer=PDF_TEXT_LAYER_VERSION))
 
 
-def choose_pass(found: dict, installed: dict) -> dict:
-    """Choose one engine from successful detection without reading manual settings."""
+def resolved_script(found: dict) -> bool:
+    return (found.get("script") or "") not in ("", "Unknown", "Common", "NULL")
+
+
+def document_script(rows: list[dict]) -> dict:
+    """The most frequent script of the document's pages with one, as detection fields."""
+    counts = Counter((row["script"], row.get("model") or "", row.get("language") or "und")
+                     for row in rows if row.get("has_text") and resolved_script(row))
+    if not counts:
+        return dict(script="Latin", model="Latin", language="und")
+    script, model, language = counts.most_common(1)[0][0]
+    return dict(script=script, model=model, language=language)
+
+
+def choose_pass(found: dict, installed: dict, fallback: dict | None = None) -> dict:
+    """Choose one engine from successful detection without reading manual settings.
+
+    A page with text and no script takes `fallback`, so it cannot block its document.
+    """
     if not found.get("has_text"):
         return dict(status="no_text", reason="detected_no_text", passes=[])
+    if not resolved_script(found):
+        chosen = choose_pass({**found, **(fallback or dict(script="Latin", model="Latin", language="und"))}, installed)
+        return {**chosen, "reason": "unresolved_" + chosen["reason"]} if chosen["status"] == "ready" else chosen
     script, language = found.get("script") or "", found.get("language") or "und"
-    if not script or script in ("Unknown", "Common", "NULL"):
-        return dict(status="incomplete", reason="unknown_script", passes=[])
     if installed.get("tesseract_unavailable"):
         return dict(status="failed", reason="tesseract_capabilities_unavailable", passes=[])
     tesseract = set(installed.get("tesseract", []))
@@ -133,9 +152,10 @@ def make_plan(dataset: str, file_hash: str, source_revision: str, kind: str,
               rows: list[dict], installed: dict, segmentation: int) -> dict:
     """Build deterministic page decisions and a document publication identity."""
     pages = []
+    fallback = document_script(rows)
     for found in sorted(rows, key=lambda row: row["page_id"]):
         page = dict(page_id=found["page_id"], detector_version=found.get("detector_version", 0), detector_digest=digest(found),
-                    model=found.get("model", ""), script=found.get("script", ""), language=found.get("language", "und"), **choose_pass(found, installed))
+                    model=found.get("model", ""), script=found.get("script", ""), language=found.get("language", "und"), **choose_pass(found, installed, fallback))
         for item in page["passes"]:
             item["pass_id"] = digest(dict(page_id=page["page_id"], **item))
         page["page_digest"] = digest(page)

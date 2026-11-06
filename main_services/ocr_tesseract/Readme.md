@@ -45,9 +45,15 @@ An undecodable image keeps its original failure.
 
 `/detect` describes one image on the CPU in [text_detection.py](text_detection.py).
 A PP-OCRv6 tiny detector finds text boxes. An image has text with at least 3 boxes of a score of 0.6 or more.
-A line model names the script of the 6 longest lines, and the most frequent label decides.
-A line that stands on end turns to the side where the labels agree most. A line with light text is inverted.
+A line model labels the 12 longest lines and scores each one. A line with light text is inverted.
+Mean confidence selects the rotation. Sideways lines take the higher side.
+A flat page turns over when that side scores 0.05 higher on the 6 longest lines.
+Lines of 0.75 or more vote with their confidence as weight. `Common` lines do not vote.
+A script needs 2 voting lines, or every line of a shorter page, and 60 percent of the weight.
+Other pages keep `has_text`, return no script, and return a sample that the Latin model reads.
+The worker sets Latin when that sample has an identified Latin-script language.
 One Tesseract call reads up to 4 lines with the script model of that name, and the output goes back as `text`.
+A non-Latin result needs half of the sample letters in its own script, from at least 8 letters.
 The worker identifies the language from that text. The route shares the OCR slots and the `503` rule.
 An image without text returns after the detector.
 The models are local files, listed in [models/Readme.md](models/Readme.md).

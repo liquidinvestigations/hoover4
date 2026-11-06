@@ -57,6 +57,46 @@ def test_sideways_lines_give_the_same_script():
     assert text_detection.detect(output.getvalue(), lambda *_: "").script == "Latin"
 
 
+def evidence_of(*pairs):
+    return list(pairs)
+
+
+def test_a_low_confidence_vote_gives_no_script():
+    assert text_detection._decide_script(evidence_of(("Malayalam", 0.45), ("Malayalam", 0.5), ("Hebrew", 0.5))) == ("", [])
+
+
+def test_common_lines_do_not_vote_for_a_lone_rare_label():
+    lines = evidence_of(*[("Common", 0.9)] * 5, ("Cherokee", 0.8))
+    assert text_detection._decide_script(lines) == ("", [])
+
+
+def test_divided_confident_lines_give_no_script():
+    assert text_detection._decide_script(evidence_of(("Latin", 0.9), ("Hebrew", 0.9), ("Latin", 0.8), ("Hebrew", 0.8)))[0] == ""
+
+
+def test_confident_lines_decide_and_han_models_share_a_script():
+    assert text_detection._decide_script(evidence_of(("Hebrew", 0.9), ("Hebrew", 0.8), ("Latin", 0.3))) == ("Hebrew", [0, 1])
+    assert text_detection._decide_script(evidence_of(("HanS", 0.9), ("HanT", 0.8), ("HanT", 0.8)))[0] == "HanT"
+
+
+def test_a_short_page_can_decide_from_one_confident_line():
+    assert text_detection._decide_script(evidence_of(("Greek", 0.9)))[0] == "Greek"
+
+
+def test_a_sample_in_another_script_rejects_a_non_latin_result():
+    assert not text_detection._script_of_sample("Malayalam", "Resolution of the Board and the undersigned")
+    assert text_detection._script_of_sample("Malayalam", "മലയാളം ഭാഷ മനോഹരം ആകുന്നു")
+    assert text_detection._script_of_sample("Malayalam", "short")
+    assert text_detection._script_of_sample("Japanese", "ひらがな カタカナ 日本語の文章")
+
+
+def test_an_upside_down_page_gives_the_same_script():
+    with Image.open(io.BytesIO(page(LINES))) as image:
+        output = io.BytesIO()
+        image.rotate(180).save(output, format="PNG")
+    assert text_detection.detect(output.getvalue(), lambda *_: "").script == "Latin"
+
+
 def test_a_missing_script_model_skips_the_read():
     found = text_detection.detect(page(LINES), lambda *_: pytest.fail("no read"), available=["eng"])
     assert found.script == "Latin" and found.text == ""

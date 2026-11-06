@@ -45,6 +45,15 @@ def test_a_row_takes_the_script_and_the_language_of_the_result():
     assert (row["page_id"], row["has_text"], row["script"], row["language"]) == (7, 1, "Latin", "en")
 
 
+def test_an_unresolved_page_needs_an_identified_latin_language():
+    found = {"has_text": True, "box_count": 12, "script": "", "model": "",
+             "text": "The quarterly report of the company shows a rise in revenue"}
+    row = ocr_detection._row("c_ds", "h", "image", 1, found)
+    assert (row["script"], row["model"], row["language"]) == ("Latin", "Latin", "en")
+    row = ocr_detection._row("c_ds", "h", "image", 1, {**found, "text": "wvx qqz ~~ jjk"})
+    assert (row["script"], row["model"], row["language"]) == ("", "", "und")
+
+
 def test_an_image_under_the_size_gate_sends_no_request(monkeypatch):
     monkeypatch.setattr(ocr_detection, "image_dimensions", lambda data: (40, 40))
     monkeypatch.setattr(ocr_detection, "detect_text", lambda data: pytest.fail("no request"))

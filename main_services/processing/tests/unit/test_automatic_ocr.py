@@ -28,7 +28,7 @@ def test_unknown_easyocr_language_uses_a_compatible_script_group():
 
 
 @pytest.mark.parametrize("found,status", [({"has_text": False}, "no_text"),
-    ({"has_text": True, "script": ""}, "incomplete"), ({"has_text": True, "script": "Syriac"}, "unsupported")])
+    ({"has_text": True, "script": ""}, "unsupported"), ({"has_text": True, "script": "Syriac"}, "unsupported")])
 def test_negative_unknown_and_unsupported_states_are_distinct(found, status):
     assert choose_pass(found, dict(tesseract=[], easyocr=[]))["status"] == status
 
@@ -147,3 +147,23 @@ def test_rejected_image_input_keeps_the_existing_single_attempt_contract(monkeyp
             SimpleNamespace(item_hash="image", file_path="unused"), "tesseract", "eng", {})
     assert failure.value.non_retryable
     assert failure.value.type == "OcrInputUnsupported"
+
+
+def test_an_unresolved_page_takes_the_script_of_its_document():
+    from tasks.automatic_ocr import make_plan
+    rows = [dict(page_id=1, has_text=1, script="Hebrew", model="Hebrew", language="he", detector_version=4),
+            dict(page_id=2, has_text=1, script="", model="", language="und", detector_version=4),
+            dict(page_id=3, has_text=0, script="", model="", language="und", detector_version=4)]
+    plan = make_plan("d", "h", "r", "original", rows, dict(tesseract=["Hebrew", "heb", "Latin"], easyocr=[]), 1)
+    assert [(page["status"], page["reason"]) for page in plan["pages"]] == [
+        ("ready", "detected_language"), ("ready", "unresolved_detected_language"), ("no_text", "detected_no_text")]
+    assert plan["pages"][1]["passes"][0]["languages"] == "heb"
+
+
+def test_an_unresolved_document_uses_the_latin_script_model():
+    from tasks.automatic_ocr import make_plan
+    rows = [dict(page_id=1, has_text=1, script="", model="", language="und", detector_version=4)]
+    plan = make_plan("d", "h", "r", "image", rows, dict(tesseract=["Latin"], easyocr=[]), 1)
+    assert plan["pages"][0]["status"] == "ready"
+    assert plan["pages"][0]["reason"] == "unresolved_unknown_language_script_coverage"
+    assert plan["pages"][0]["passes"][0]["languages"] == "Latin"

@@ -1,8 +1,10 @@
 """Find text on one image, and name its script, with two small CPU models.
 
 A PP-OCRv6 tiny detector finds the text boxes. A Tesseract-style line model names the script
-of the longest lines. One Tesseract call then reads a stack of those lines with the script
-model, so the worker can identify the language from the output.
+of the longest lines and scores each line. The mean score selects the page rotation, and
+only confident lines vote. One Tesseract call then reads a stack of those lines with the
+script model. The worker identifies the language from the output. A page without enough
+evidence keeps `has_text` and has no script.
 
 The detector steps follow the PaddleOCR DB post-process as RapidOCR 3.10.0 packages it, and
 the line steps follow `modules/detection/script_detection.py` of ogkalu2/comic-translate.
@@ -14,11 +16,12 @@ and without this limit ONNX Runtime spends about 4 CPU seconds on one page.
 
 import json
 import os
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
@@ -43,7 +46,22 @@ MIN_CONFIDENT_BOXES = 3
 CONFIDENT_SCORE = 0.6
 
 #: Lines that vote on the script.
-SCRIPT_LINES = 6
+SCRIPT_LINES = 12
+#: A line votes with this mean confidence or more. Wrong labels on real scans have a median
+#: of 0.53, and correct Hebrew and Latin lines have 0.89 and 0.81.
+LINE_CONFIDENCE = 0.75
+#: Voting lines that a script needs, unless the page has fewer lines than this.
+MIN_SCRIPT_LINES = 2
+#: The share of the voting weight that a script needs.
+MIN_SCRIPT_SHARE = 0.6
+#: The longest lines that compare the two sides of a flat page.
+ROTATION_LINES = 6
+#: How much more mean confidence the opposite side of a flat page needs.
+ROTATION_MARGIN = 0.05
+#: The script share of a sample needs this many letters to count as evidence.
+MIN_SAMPLE_LETTERS = 8
+#: A non-Latin result needs this share of its own letters in the sample.
+MIN_OWN_LETTERS = 0.5
 #: Lines of the winning script that Tesseract reads.
 READ_LINES = 4
 #: Height of a line in the stack that Tesseract reads, in pixels.
@@ -59,6 +77,9 @@ NOT_SCRIPTS = {"Common", "Joined", "Broken", "NULL"}
 
 #: A script name for each script model where the two differ.
 SCRIPT_NAMES = {"HanS": "Han", "HanT": "Han", "Fraktur": "Latin", "Vietnamese": "Latin"}
+#: The first word of the Unicode names of a script, where it is not the upper-case script.
+SCRIPT_LETTERS: Dict[str, Tuple[str, ...]] = {
+    "Han": ("CJK",), "Japanese": ("CJK", "HIRAGANA", "KATAKANA"), "Canadian_Aboriginal": ("CANADIAN",)}
 
 
 @dataclass
@@ -148,6 +169,29 @@ def _crops(image: np.ndarray, boxes: Sequence[Tuple[np.ndarray, float]]) -> Tupl
     return [crop for _, crop in sorted(chosen, key=lambda item: -item[0])[:SCRIPT_LINES]], sideways
 
 
+def _best_side(crops: Sequence[np.ndarray], sideways: bool) -> Tuple[List[np.ndarray], List[Tuple[str, float]]]:
+    """The line images and evidence of the rotation with the most confident labels.
+
+    The model emits no upside down label, and upside down text receives other script labels.
+    Sideways lines have no stated side, so both sides are scored. A flat page reads as stated
+    unless the opposite side scores clearly higher on the longest lines. Mean confidence
+    selected the upright side on 168 of 168 clean pages.
+    """
+    if sideways:
+        sides = [[cv2.rotate(crop, side) for crop in crops]
+                 for side in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE)]
+        scored = [[line_evidence(crop) for crop in side] for side in sides]
+        chosen = 0 if _mean_confidence(scored[0]) >= _mean_confidence(scored[1]) else 1
+        return sides[chosen], scored[chosen]
+    stated = list(crops)
+    evidence = [line_evidence(crop) for crop in stated]
+    opposite = [cv2.rotate(crop, cv2.ROTATE_180) for crop in crops]
+    other = [line_evidence(crop) for crop in opposite[:ROTATION_LINES]]
+    if _mean_confidence(other) < _mean_confidence(evidence[:ROTATION_LINES]) + ROTATION_MARGIN:
+        return stated, evidence
+    return opposite, other + [line_evidence(crop) for crop in opposite[ROTATION_LINES:]]
+
+
 def _dark_on_light(crop: np.ndarray) -> np.ndarray:
     """Invert a line whose light pixels are the minority, so light text becomes dark text."""
     grey = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
@@ -198,25 +242,74 @@ def _script_input(crop: np.ndarray) -> np.ndarray:
     return ((grey.astype(np.float32) - black) / contrast - 1.0)[None, None, :, :].astype(np.float32)
 
 
-def line_script(crop: np.ndarray) -> str:
-    """The script label of one line, such as `Latin` or `Hebrew-dn`, or an empty string."""
+def line_evidence(crop: np.ndarray) -> Tuple[str, float]:
+    """The script label of one line, such as `Latin`, and its mean label confidence."""
     session, labels = _script_model()
     scores = session.run(None, {"image": _script_input(crop)})[0]
+    best_labels = scores.argmax(axis=1)
     counts: Counter = Counter()
     previous = SCRIPT_BLANK
-    for raw in scores.argmax(axis=1):
+    for raw in best_labels:
         index = int(raw)
         if index != SCRIPT_BLANK and index != previous:
             counts[index] += 1
         previous = index
+    emitted = (best_labels != SCRIPT_BLANK) & (best_labels != SCRIPT_NULL)
+    confidence = float(scores[emitted].max(axis=1).mean()) if emitted.any() else 0.0
     if not counts:
-        return ""
+        return "", confidence
     best = counts.most_common(1)[0][0]
-    return "" if best == SCRIPT_NULL else labels[best]
+    return ("" if best == SCRIPT_NULL else labels[best]), confidence
 
 
-def _agreement(labels: Sequence[str]) -> int:
-    return max(Counter(labels).values(), default=0)
+def line_script(crop: np.ndarray) -> str:
+    """The script label of one line, or an empty string."""
+    return line_evidence(crop)[0]
+
+
+def _mean_confidence(evidence: Sequence[Tuple[str, float]]) -> float:
+    return sum(score for _, score in evidence) / max(1, len(evidence))
+
+
+def _model_of(label: str) -> str:
+    model = _base_model(label)
+    return "Latin" if model == "Fraktur" else model
+
+
+def _voting_lines(evidence: Sequence[Tuple[str, float]]) -> List[int]:
+    return [index for index, (label, score) in enumerate(evidence)
+            if score >= LINE_CONFIDENCE and _model_of(label) and _model_of(label) not in NOT_SCRIPTS]
+
+
+def _decide_script(evidence: Sequence[Tuple[str, float]]) -> Tuple[str, List[int]]:
+    """The winning model and its lines, or an empty model when evidence is insufficient."""
+    voters = _voting_lines(evidence)
+    weights: Counter = Counter()
+    for index in voters:
+        model = _model_of(evidence[index][0])
+        weights[SCRIPT_NAMES.get(model, model)] += evidence[index][1]
+    if not weights:
+        return "", []
+    script, weight = weights.most_common(1)[0]
+    if len(voters) < min(MIN_SCRIPT_LINES, len(evidence)) or weight / sum(weights.values()) < MIN_SCRIPT_SHARE:
+        return "", []
+    members = [index for index in voters
+               if SCRIPT_NAMES.get(_model_of(evidence[index][0]), _model_of(evidence[index][0])) == script]
+    models: Counter = Counter()
+    for index in members:
+        models[_model_of(evidence[index][0])] += evidence[index][1]
+    model = models.most_common(1)[0][0]
+    return model, [index for index in members if _model_of(evidence[index][0]) == model]
+
+
+def _script_of_sample(script: str, text: str) -> bool:
+    """False when a sample has enough letters and too few of a non-Latin script."""
+    if script == "Latin":
+        return True
+    names = Counter(unicodedata.name(character, "?").split(" ")[0] for character in text if character.isalpha())
+    letters = sum(names.values())
+    own = sum(names[name] for name in SCRIPT_LETTERS.get(script, (script.upper(),)))
+    return letters < MIN_SAMPLE_LETTERS or own / letters >= MIN_OWN_LETTERS
 
 
 def _base_model(label: str) -> str:
@@ -271,25 +364,18 @@ def detect(image_bytes: bytes, read: Callable[[np.ndarray, str], str],
     crops, sideways = _crops(image, boxes)
     if not crops:
         return result
-    crops = [_dark_on_light(crop) for crop in crops]
-    if sideways:
-        turned = [[cv2.rotate(crop, side) for crop in crops]
-                  for side in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE)]
-        votes = [[line_script(crop) for crop in side] for side in turned]
-        chosen = 0 if _agreement(votes[0]) >= _agreement(votes[1]) else 1
-        crops, labels = turned[chosen], votes[chosen]
-    else:
-        labels = [line_script(crop) for crop in crops]
-    if sum(label.endswith("-dn") for label in labels) * 2 > len(labels):
-        crops = [cv2.rotate(crop, cv2.ROTATE_180) for crop in crops]
-    models = ["Latin" if _base_model(label) == "Fraktur" else _base_model(label) for label in labels]
-    votes_by_model = Counter(model for model in models if model and model not in NOT_SCRIPTS)
-    if not votes_by_model:
-        return result
-    result.model = votes_by_model.most_common(1)[0][0]
-    result.script = SCRIPT_NAMES.get(result.model, result.model)
-    if available is not None and result.model not in available:
-        return result
-    lines = [crop for crop, model in zip(crops, models) if model == result.model][:READ_LINES]
-    result.text = read(_stack(lines), result.model)
+    crops, evidence = _best_side([_dark_on_light(crop) for crop in crops], sideways)
+    model, winners = _decide_script(evidence)
+    if model:
+        result.model = model
+        result.script = SCRIPT_NAMES.get(model, model)
+        if available is not None and model not in available:
+            return result
+        result.text = read(_stack([crops[index] for index in winners][:READ_LINES]), model)
+        if _script_of_sample(result.script, result.text):
+            return result
+        result.script, result.model, result.text = "", "", ""
+    # The worker accepts this sample only when it identifies a Latin-script language.
+    if available is None or "Latin" in available:
+        result.text = read(_stack(crops[:READ_LINES]), "Latin")
     return result
