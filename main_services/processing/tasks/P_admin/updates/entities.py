@@ -16,6 +16,8 @@ class EntityUpdateParams:
     hashes: list[str] = field(default_factory=list)
     after: str = ""
     done: int = 0
+    #: The operation writes the dataset terms once, after its last batch.
+    terms_at_end: bool = False
 
 
 def indexed_page_is_current(stored: str, cleaned: str) -> bool:
@@ -210,6 +212,30 @@ def rewrite_ner_attributes(params, assignments):
 
 @activity.defn
 @with_heartbeat
+def finish_entity_terms(params: EntityUpdateParams) -> None:
+    """Write the entity terms of the dataset. Each call reads the whole dataset."""
+    _write_dataset_terms(params)
+
+
+def _clear_unused_terms(client, params: EntityUpdateParams) -> None:
+    # Retain terms referenced by every other provider and variant of this dataset.
+    for table in ("string_term_id_to_text", "string_term_text_to_id"):
+        client.command(f"DELETE FROM {table} WHERE collection_dataset={{cd:String}} AND term_field='ner' "
+            "AND term_value NOT IN (SELECT arrayJoin(entity_values) FROM entity_hit FINAL WHERE collection_dataset={cd:String}) "
+            "SETTINGS mutations_sync=2", parameters={"cd":params.collection_dataset})
+
+
+def _write_dataset_terms(params: EntityUpdateParams) -> None:
+    from database.clickhouse import get_collection_client
+    from tasks.P6_index_data.activities import index_entity_terms
+    from tasks.P6_index_data.params import BuildVfsNodesParams
+    with get_collection_client(params.collectionname) as client:
+        _clear_unused_terms(client, params)
+    index_entity_terms(BuildVfsNodesParams(params.collectionname, params.collection_dataset))
+
+
+@activity.defn
+@with_heartbeat
 def finish_entity_update(params: EntityUpdateParams) -> None:
     from database.clickhouse import get_collection_client, insert_durable
     from tasks.P6_index_data.activities import index_entity_terms
@@ -221,13 +247,11 @@ def finish_entity_update(params: EntityUpdateParams) -> None:
             parameters={"cd":params.collection_dataset,"hashes":params.hashes}).result_rows)
         if set(assignments) != set(params.hashes):
             raise RuntimeError("NER update awaits document index assignment")
-        # Retain terms referenced by every other provider and variant of this dataset.
-        for table in ("string_term_id_to_text", "string_term_text_to_id"):
-            client.command(f"DELETE FROM {table} WHERE collection_dataset={{cd:String}} AND term_field='ner' "
-                "AND term_value NOT IN (SELECT arrayJoin(entity_values) FROM entity_hit FINAL WHERE collection_dataset={cd:String}) "
-                "SETTINGS mutations_sync=2", parameters={"cd":params.collection_dataset})
+        if not params.terms_at_end:
+            _clear_unused_terms(client, params)
     rewrite_ner_attributes(params, assignments)
-    index_entity_terms(BuildVfsNodesParams(params.collectionname, params.collection_dataset))
+    if not params.terms_at_end:
+        index_entity_terms(BuildVfsNodesParams(params.collectionname, params.collection_dataset))
     verify_index(params)
     with get_collection_client(params.collectionname) as client:
         after = completions(client, params)

@@ -90,3 +90,29 @@ def test_the_work_limit_asks_for_pages_past_the_limit():
     assert keys == {("h", "raw_text", 300)}
     assert seen["limit"] == 75_000_000
     assert text_sources.pages_over_work_limit(None, "ds", []) == set()
+
+
+def test_a_batch_of_an_entity_update_leaves_the_dataset_terms_to_the_end(monkeypatch):
+    from contextlib import nullcontext
+
+    import database.clickhouse as clickhouse
+    from tasks.P6_index_data import activities as index
+    from tasks.P_admin.updates import entities
+
+    deleted, published = [], []
+    client = SimpleNamespace(
+        command=lambda *a, **k: deleted.append(a),
+        query=lambda *a, **k: SimpleNamespace(result_rows=[("h", "shard")]),
+    )
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: nullcontext(client))
+    monkeypatch.setattr(clickhouse, "insert_durable", lambda *a, **k: None)
+    monkeypatch.setattr(entities, "completions", lambda *a: [])
+    monkeypatch.setattr(entities, "rewrite_ner_attributes", lambda *a: None)
+    monkeypatch.setattr(entities, "verify_index", lambda *a: None)
+    monkeypatch.setattr(entities, "contract", lambda: "c")
+    monkeypatch.setattr(index, "index_entity_terms", lambda params: published.append(params))
+    params = entities.EntityUpdateParams("c", "ds", "op", ["h"], terms_at_end=True)
+    entities.finish_entity_update.__wrapped__(params)
+    assert deleted == [] and published == []
+    entities.finish_entity_terms.__wrapped__(params)
+    assert len(deleted) == 2 and len(published) == 1

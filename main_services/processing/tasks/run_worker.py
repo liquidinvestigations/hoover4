@@ -836,7 +836,7 @@ async def run_indexing_worker():
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
   from .P_admin.updates.activities import retire_cached_searches, stale_virus_attributes
-  from .P_admin.updates.entities import finish_entity_update
+  from .P_admin.updates.entities import finish_entity_terms, finish_entity_update
   from .P_admin.updates.page_text import rewrite_page_text
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
@@ -861,7 +861,7 @@ async def run_indexing_worker():
                   build_vfs_nodes, index_vfs_structure, compact_collection_shards,
                   resolve_canonical_file_type, index_entity_terms,
                   refresh_stale_document_locations, retire_cached_searches, stale_virus_attributes, finish_entity_update,
-                  rewrite_page_text],
+                  rewrite_page_text, finish_entity_terms],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

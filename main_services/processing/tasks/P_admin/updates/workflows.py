@@ -733,7 +733,13 @@ class UpdateDatasetEntities:
     async def run(self, params: EntityUpdateParams) -> int:
         hashes = await workflow.execute_activity(list_entity_update_hashes, params,
             start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        terms_at_end = workflow.patched("entity-terms-at-end")
         if not hashes:
+            if terms_at_end:
+                await workflow.execute_activity("finish_entity_terms",
+                    EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id),
+                    task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(hours=2),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
             return params.done
         await workflow.execute_activity("extract_entities_for_hashes",
             {"collectionname":params.collectionname,"collection_dataset":params.collection_dataset,
@@ -741,7 +747,8 @@ class UpdateDatasetEntities:
             task_queue="processing-nlp-queue", start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         await workflow.execute_activity(finish_entity_update,
-            EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id,hashes),
+            EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id,hashes,
+                               terms_at_end=terms_at_end),
             task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         workflow.continue_as_new(EntityUpdateParams(params.collectionname,params.collection_dataset,
