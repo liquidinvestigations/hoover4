@@ -122,7 +122,7 @@ def test_connection_failure_stays_retryable(tmp_path, monkeypatch):
         tika.parse_document(tika.RunTikaParams("c", "ds", "h", str(path), 1900))
 
 
-def test_metadata_and_type_are_stored_before_failure(monkeypatch):
+def test_a_parse_failure_stores_metadata_and_is_a_skip(monkeypatch):
     import database.clickhouse as db
     from tasks.P3_parse_files import word_binary, parse_common, temp_dirs
     metadata = {"Content-Type": "text/x-vcard; charset=windows-1252",
@@ -135,9 +135,9 @@ def test_metadata_and_type_are_stored_before_failure(monkeypatch):
     monkeypatch.setattr(tika, "parse_document", lambda p: answer)
     monkeypatch.setattr(db, "get_collection_client", lambda c: nullcontext(object()))
     monkeypatch.setattr(db, "insert_arrow_durable", lambda c, name, table: stored.append((name, table.to_pylist())))
-    with pytest.raises(ApplicationError) as caught:
-        tika.run_tika_and_store(tika.RunTikaParams("c", "ds", "h", "input", 1900))
-    assert caught.value.type == "TikaParseFailed"
+    outcome = tika.run_tika_and_store(tika.RunTikaParams("c", "ds", "h", "input", 1900))
+    assert isinstance(outcome, tika.SkippedOutcome)
+    assert outcome.value["mime_types"] == ["text/x-vcard"]
     assert [name for name, _ in stored] == ["text", "tika_metadata", "file_types"]
     assert "java parse error" in stored[1][1][0]["tika_metadata_json"]
     assert stored[2][1][0]["mime_type"] == ["text/x-vcard"]

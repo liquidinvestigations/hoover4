@@ -145,8 +145,6 @@ def test_ocr_skip_writer_uses_bracketed_task_and_op_id(monkeypatch):
 
 
 def test_table_without_reader_is_skipped(monkeypatch):
-    calls = []
-    monkeypatch.setattr(parse_table, "_record_skip", lambda *args: calls.append(args))
     monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: None)
     manifests = []
     from contextlib import nullcontext
@@ -167,7 +165,6 @@ def test_table_without_reader_is_skipped(monkeypatch):
 
     assert isinstance(result, SkippedOutcome)
     assert result.value == {"status": "skipped", "reason": "no reader for this file"}
-    assert calls == []
     # The empty manifest hides an earlier table of the hash for this dataset.
     assert manifests == ["empty"]
 
@@ -201,11 +198,9 @@ def test_non_table_releases_temporary_cells(monkeypatch):
     assert client.commands == []
 
 
-def test_table_reader_failure_records_op_id(monkeypatch):
+def test_table_reader_failure_is_a_skip_with_a_settled_manifest(monkeypatch):
     from tasks.P3_parse_files import table_readers
 
-    calls = []
-    monkeypatch.setattr(parse_table, "_record_skip", lambda *args: calls.append(args))
     monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: "reader")
     monkeypatch.setattr(parse_table, "table_format_for", lambda *_args: "format")
     monkeypatch.setattr(table_readers, "fallback_reader", lambda _reader: None)
@@ -227,30 +222,8 @@ def test_table_reader_failure_records_op_id(monkeypatch):
 
     result = parse_table.parse_table_and_store(params)
 
-    assert result["status"] == "failed"
-    assert calls[0][0] is params
-    assert params.op_id == "operation-4"
-
-
-def test_table_skip_writer_uses_op_id(monkeypatch):
-    from tasks.P2_execute_plan import activities
-
-    writes = []
-    monkeypatch.setattr(activities, "record_processing_errors", writes.append)
-    params = parse_table.ParseTableParams(
-        collectionname="collection",
-        collection_dataset="dataset",
-        file_hash="hash",
-        file_path="file.csv",
-        timeout_seconds=30,
-        op_id="operation-4",
-    )
-
-    parse_table._record_skip(params, 12, "table_reader_failed")
-
-    row = writes[0].errors[0]
-    assert row["task_name"] == "parse_table_and_store"
-    assert row["op_id"] == "operation-4"
+    assert isinstance(result, SkippedOutcome)
+    assert result.value["status"] == parse_table.TABLE_UNREADABLE
 
 
 @pytest.fixture(autouse=True)

@@ -11,6 +11,8 @@ from tasks.heartbeat import with_heartbeat
 from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
 )
+from tasks.P3_parse_files.parse_image import _NOT_MEDIA_MARKER, UndecodableMedia
+from tasks.task_timing import SkippedOutcome
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
     ]
     res = subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
     if res.returncode != 0:
+        if _NOT_MEDIA_MARKER in (res.stderr or b""):
+            raise UndecodableMedia(f"ffprobe failed: {res.stderr[:200]}", non_retryable=True)
         raise RuntimeError(f"ffprobe failed: {res.stderr[:200]} {res.stdout[:200]}")
     try:
         return json.loads((res.stdout or b"").decode("utf-8", errors="ignore"))
@@ -64,7 +68,7 @@ class ParseAudioParams:
 
 @activity.defn
 @with_heartbeat
-def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
+def parse_audio_metadata_and_store(params: ParseAudioParams) -> str | SkippedOutcome:
     from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
     from datetime import datetime, timezone
@@ -72,7 +76,11 @@ def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
     log.info("[P3] Parsing audio metadata for %s", params.file_path)
 
     # Timeout
-    meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
+    try:
+        meta = _run_ffprobe_json(params.file_path, int(params.timeout_seconds))
+    except UndecodableMedia as exc:
+        log.info("[P3] Audio %s is undecodable: %s", params.file_hash, exc)
+        return SkippedOutcome("audio_undecodable")
     duration = _duration_seconds(meta)
 
     processed_at = datetime.now(timezone.utc).replace(tzinfo=None)

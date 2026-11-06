@@ -53,6 +53,7 @@ def _qpdf_succeeded(res: subprocess.CompletedProcess) -> bool:
 #: "pdf", even when the other detectors disagree, so this is the expected shape for a
 #: document that a weaker detector mistyped: retrying does not change what qpdf reads.
 _NOT_A_PDF_MARKER = b"can't find PDF header"
+NOT_A_PDF = "NotAPdf"
 
 
 def _raise_qpdf_show_npages_error(res: subprocess.CompletedProcess) -> None:
@@ -61,6 +62,7 @@ def _raise_qpdf_show_npages_error(res: subprocess.CompletedProcess) -> None:
     if _NOT_A_PDF_MARKER in (res.stderr or b""):
         raise ApplicationError(
             f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}",
+            type=NOT_A_PDF,
             non_retryable=True,
         )
     raise ApplicationError(

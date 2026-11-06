@@ -113,7 +113,6 @@ def writes(monkeypatch, table_generation_commands):
     monkeypatch.setattr(db, "get_collection_client", lambda *a: nullcontext(client))
     monkeypatch.setattr(db, "insert_parser_arrow", lambda c, name, data: rows.append((name, data.to_pylist())))
     monkeypatch.setattr(db, "insert_arrow_durable", lambda c, name, data: rows.append((name, data.to_pylist())))
-    monkeypatch.setattr(table, "_record_skip", lambda *a: None)
     return rows
 
 

@@ -33,6 +33,9 @@ from asyncio import CancelledError as AsyncCancelledError
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.task_timing import SkippedOutcome
+
+#: Manifest status of a file that no reader opens. A new `READER_VERSION` reads it again.
+TABLE_UNREADABLE = "unreadable"
 from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
 )
@@ -682,28 +685,6 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
     writer(client, "table_documents", table)
 
 
-def _record_skip(params: ParseTableParams, run_time_ms: int, reason: str) -> None:
-    """Record a table reader Error without failing the activity."""
-    from tasks.P2_execute_plan.activities import (
-        RecordProcessingErrorsParams,
-        record_processing_errors,
-    )
-    from tasks.P3_parse_files.parse_common import direct_error_fields
-
-    record_processing_errors(RecordProcessingErrorsParams(
-        collectionname=params.collectionname,
-        errors=[{
-            "collection_dataset": params.collection_dataset,
-            "hash": params.file_hash,
-            "task_name": "parse_table_and_store",
-            **direct_error_fields(params, "parse_table_and_store", params.file_hash),
-            "run_time_ms": run_time_ms,
-            "error_logs": f"{reason}: {params.file_path}",
-            "op_id": params.op_id,
-        }],
-    ))
-
-
 def _existing_parse(client, file_hash: str, collection_dataset: str = ""):
     """A finished parse of this hash in any dataset of this collection, or None.
 
@@ -907,13 +888,13 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
             alternative = fallback_reader(reader)
             if not alternative:
                 run_time_ms = max(int((time.time() - started) * 1000), 0)
-                _write_manifest(client, params, status="failed", reader=reader,
+                _write_manifest(client, params, status=TABLE_UNREADABLE, reader=reader,
                                 table_format=table_format, parse_ms=run_time_ms,
                                 parse_error=f"{type(first_error).__name__}: {first_error}",
                                 generation=generation)
-                _record_skip(params, run_time_ms,
-                             f"table_read_failed ({reader}) {first_error}")
-                return {"status": "failed", "reader": reader, "error": str(first_error)}
+                log.info("[P3] Table %s is unreadable (%s): %s", params.file_hash, reader, first_error)
+                return SkippedOutcome({"status": TABLE_UNREADABLE, "reader": reader,
+                                       "error": str(first_error)})
             log.warning("[P3] table reader %s failed on %s (%s), falling back to %s",
                         reader, params.file_hash, first_error, alternative)
             attempted.append(alternative)
@@ -929,14 +910,14 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
             except BaseException as second_error:
                 collector.close()  # noqa: BLE001
                 run_time_ms = max(int((time.time() - started) * 1000), 0)
-                _write_manifest(client, params, status="failed", reader=alternative,
+                _write_manifest(client, params, status=TABLE_UNREADABLE, reader=alternative,
                                 table_format=table_format, parse_ms=run_time_ms,
                                 parse_error=f"{type(second_error).__name__}: {second_error}",
                                 generation=generation)
-                _record_skip(params, run_time_ms,
-                             f"table_read_failed ({' then '.join(attempted)}) {second_error}")
-                return {"status": "failed", "reader": alternative,
-                        "error": str(second_error)}
+                log.info("[P3] Table %s is unreadable (%s): %s", params.file_hash,
+                         " then ".join(attempted), second_error)
+                return SkippedOutcome({"status": TABLE_UNREADABLE, "reader": alternative,
+                                       "error": str(second_error)})
             reader = alternative
 
         json_cells = getattr(stream, "cells", None)

@@ -165,7 +165,7 @@ def _store_answer(params: RunTikaParams, answer: TikaAnswer) -> dict:
 
 @activity.defn
 @with_heartbeat
-def run_tika_and_store(params: RunTikaParams) -> dict:
+def run_tika_and_store(params: RunTikaParams) -> dict | SkippedOutcome:
     """Store binary Word text, then store the Tika result before reporting its failure."""
     from tasks.P3_parse_files.temp_dirs import require_input_file
     from tasks.P3_parse_files.word_binary import extract_binary_word_text
@@ -187,6 +187,9 @@ def run_tika_and_store(params: RunTikaParams) -> dict:
     answer = parse_document(params)
     result = _store_answer(params, answer)
     if answer.error:
+        if answer.error.type == TIKA_PARSE_FAILED:
+            log.info("[P3] Tika cannot parse %s: %s", params.file_hash, answer.error.message[:300])
+            return SkippedOutcome(result)
         raise answer.error
     return result
 

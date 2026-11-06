@@ -9,7 +9,10 @@ import re
 import tempfile
 from contextlib import contextmanager
 
+import logging
+
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from tasks.heartbeat import heartbeat_pump, with_heartbeat
 from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, FileResult, StageBatchParams, run_batch
@@ -18,6 +21,8 @@ from tasks.text_sources import (
     MIN_OCR_IMAGE_PX, OCR_PAGE_IMAGE_COVERAGE, OCR_PAGE_TEXT_FLOOR,
     OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION, PDF_TEXT_LAYER_VERSION, pdf_ocr_extracted_by,
 )
+
+log = logging.getLogger(__name__)
 
 PART_TARGET_BYTES = 25_000_000
 PART_MAX_PAGES = 100
@@ -185,7 +190,7 @@ def split_pdf(source: str, dest: str, first: int, last: int) -> None:
 def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = False, automatic: bool = False) -> dict | SkippedOutcome:
     from database.clickhouse import get_collection_client
     from database.s3 import collection_bucket, get_s3_client
-    from tasks.P3_parse_files.parse_pdf import _qpdf_show_npages, _pdftotext_pages, _insert_pdf_text_pages
+    from tasks.P3_parse_files.parse_pdf import NOT_A_PDF, _qpdf_show_npages, _pdftotext_pages, _insert_pdf_text_pages
     from tasks.P3_parse_files.insert_batch import current_batch
     cd, h, kind = params.collection_dataset, file.item_hash, file.source_kind
     with get_collection_client(params.collectionname) as client:
@@ -208,7 +213,13 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
                 if expected == count + 1:
                     return preparation_value(client, params, file, stored, count, list(needs), compact=compact, automatic=automatic)
         with source_file(client, params, file) as path, heartbeat_pump(f"PDF preparation {h[:8]}"):
-            count = file.page_count or _qpdf_show_npages(path, h)
+            try:
+                count = file.page_count or _qpdf_show_npages(path, h)
+            except ApplicationError as exc:
+                if exc.type != NOT_A_PDF:
+                    raise
+                log.info("[P3] %s is not a PDF: %s", h, exc)
+                return SkippedOutcome("pdf_not_a_pdf")
             size = os.path.getsize(path)
             pages = _pdftotext_pages(path)
             if len(pages) != count:

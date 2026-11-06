@@ -21,7 +21,6 @@ def writes(monkeypatch, tmp_path, table_generation_commands):
     monkeypatch.setattr(db, "get_collection_client", lambda *a: nullcontext(client))
     monkeypatch.setattr(db, "insert_parser_arrow", lambda c, name, data: rows.append((name, False, data.to_pylist())))
     monkeypatch.setattr(db, "insert_arrow_durable", lambda c, name, data: rows.append((name, True, data.to_pylist())))
-    monkeypatch.setattr(table, "_record_skip", lambda *a: None)
     monkeypatch.setattr(table, "INSERT_BATCH_CELLS", 3)
     return rows, tmp_path
 
@@ -75,7 +74,8 @@ def test_failed_stream_has_no_published_cells(writes, monkeypatch, fallback):
         assert isinstance(result, SkippedOutcome)
         assert [(name, batch[0]["status"]) for name, _, batch in rows] == [("table_documents", "empty")]
     else:
-        assert result["status"] == "failed" and not cells
+        assert isinstance(result, SkippedOutcome) and not cells
+        assert result.value["status"] == table.TABLE_UNREADABLE
 
 
 def test_below_threshold_stops_at_buffer_limit(writes, monkeypatch):

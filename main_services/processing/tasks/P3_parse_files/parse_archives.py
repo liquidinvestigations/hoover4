@@ -89,6 +89,13 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
             raise RuntimeError(f"{kind} reader returned no result") from exc
         if not entry_count:
             shutil.rmtree(out_dir, ignore_errors=True)
+            if details.get("partial_errors"):
+                from temporalio.exceptions import ApplicationError
+                raise ApplicationError(
+                    f"{kind} reader found no member: {short_name(details['partial_errors'][0])}",
+                    type=ARCHIVE_NOT_OPENED,
+                    non_retryable=True,
+                )
         return {"out_dir": out_dir, "entry_count": entry_count,
                 "partial_errors": [short_name(error) for error in details.get("partial_errors", [])[:20]],
                 "partial_error_count": int(details.get("partial_error_count", len(details.get("partial_errors", []))))}
@@ -467,13 +474,14 @@ def extract_archive_batch(params: StageBatchParams) -> BatchResult:
     goes through `split_step` first (see `split_volumes`). Its members belong to the
     entry volume, which the value names as `container_hash`.
     """
+    from temporalio.exceptions import ApplicationError
     from tasks.P3_parse_files.split_volumes import is_volume_name
     from tasks.task_timing import SkippedOutcome
 
     batch_hashes = {file.item_hash for file in params.files}
     extracted: set = set()
 
-    def step(file: BatchFile) -> Dict[str, Any]:
+    def read(file: BatchFile) -> Dict[str, Any]:
         if is_volume_name(file.file_names) or any(n.lower().endswith((".rar", ".zip")) for n in file.file_names):
             outcome = split_step(params.collectionname, params.collection_dataset, file, batch_hashes, extracted)
             if isinstance(outcome, SkippedOutcome):
@@ -502,6 +510,15 @@ def extract_archive_batch(params: StageBatchParams) -> BatchResult:
             archive_types=list(file.mime_types),
         ))
         return {**value, "member_count": count_member_files(value.get("out_dir") or "")}
+
+    def step(file: BatchFile) -> Dict[str, Any] | SkippedOutcome:
+        try:
+            return read(file)
+        except ApplicationError as exc:
+            if exc.type != ARCHIVE_NOT_OPENED:
+                raise
+            log.info("[P3] Archive %s does not open: %s", file.item_hash, exc)
+            return SkippedOutcome({"out_dir": "", "entry_count": 0})
 
     return run_batch("extract_archive_batch", params.files, key=lambda f: f.item_hash,
                      size=lambda f: f.file_size_bytes, step=step,

@@ -16,6 +16,7 @@ each reader produced the message this test asserts on.
 
 import subprocess
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 from temporalio.exceptions import ApplicationError
@@ -180,3 +181,38 @@ def test_ocr_other_http_error_stays_retryable(monkeypatch, tmp_path):
     http_error.response = _FakeResponse(500)
     with pytest.raises(requests.HTTPError):
         _run_ocr_activity(monkeypatch, tmp_path, http_error)
+
+
+def test_audio_of_unreadable_bytes_is_a_skip_and_not_an_error(monkeypatch):
+    from tasks.P3_parse_files import parse_audio
+    from tasks.task_timing import SkippedOutcome
+
+    monkeypatch.setattr(parse_audio.subprocess, "run", lambda *a, **k: SimpleNamespace(
+        returncode=1, stdout=b"", stderr=b"x: Invalid data found when processing input\n"))
+    params = parse_audio.ParseAudioParams("c", "c_d", "h", "/tmp/x", 30)
+    assert isinstance(parse_audio.parse_audio_metadata_and_store(params), SkippedOutcome)
+
+
+def test_a_file_without_a_pdf_header_has_its_own_error_type():
+    from tasks.P3_parse_files import parse_pdf
+
+    with pytest.raises(ApplicationError) as caught:
+        parse_pdf._raise_qpdf_show_npages_error(SimpleNamespace(
+            stderr=b"WARNING: x: can't find PDF header", stdout=b""))
+    assert caught.value.type == parse_pdf.NOT_A_PDF
+
+
+def test_an_archive_that_does_not_open_is_a_skip(monkeypatch):
+    from tasks.P3_parse_files import parse_archives
+
+    def refuse(_params):
+        raise ApplicationError("no", type=parse_archives.ARCHIVE_NOT_OPENED, non_retryable=True)
+
+    monkeypatch.setattr(parse_archives, "extract_archive_to_temp", refuse)
+    captured = {}
+    monkeypatch.setattr(parse_archives, "run_batch", lambda *a, **k: captured.update(k))
+    params = SimpleNamespace(collectionname="c", collection_dataset="c_d", files=[])
+    parse_archives.extract_archive_batch.__wrapped__(params)
+    file = SimpleNamespace(item_hash="h", file_names=["x.7z"], mime_types=[], file_path="/tmp/x")
+    outcome = captured["step"](file)
+    assert outcome.value == {"out_dir": "", "entry_count": 0}

@@ -416,9 +416,7 @@ def test_reconciliation_deletes_selected_older_rows_on_retry(monkeypatch):
     assert [row["event"] for row in events].count("still_failing") == 4
 
 
-def test_office_xml_direct_error_vetoes_same_execution_outcome(monkeypatch):
-    import database.clickhouse as clickhouse
-    import database.operation_ledger as ledger
+def test_office_xml_without_text_is_a_skip_with_no_error_row(monkeypatch):
     import tasks.P2_execute_plan.activities as error_writer
     import tasks.P3_parse_files.parse_office_xml as office
     import tasks.P3_parse_files.parse_common as parse_common
@@ -457,27 +455,13 @@ def test_office_xml_direct_error_vetoes_same_execution_outcome(monkeypatch):
         fn=office.parse_office_xml_and_store, args=[params], executor=None, headers={})
     result = asyncio.run(task_timing._TimingActivityInbound(Next()).execute_activity(input))
     assert isinstance(result, dict)
-    assert error_rows[0]["op_id"] == "op"
-    assert error_rows[0]["hash"] == "hash"
+    assert error_rows == []
     [run_row], outcomes = written[0]
     columns = dict(zip(task_timing._RUNS_COLUMNS, run_row))
-    assert columns["outcome"] == "ok"
+    assert columns["outcome"] == "skipped"
     assert columns["op_id"] == outcomes[0][0] == "op"
     assert (columns["workflow_run_id"], columns["activity_id"], columns["attempt"]) == \
         (outcomes[0][5], outcomes[0][6], outcomes[0][7])
-
-    client = _Client([("FROM processing_document_outcomes", [
-        ("hash", "parse_office_xml_and_store", "parse_office_xml_and_store")])])
-    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
-    pair = ("hash", "parse_office_xml_and_store")
-    monkeypatch.setattr(ledger, "pairs_with_event", lambda *_args: [pair])
-    monkeypatch.setattr(ledger, "delete_error_pairs", lambda *_args: None)
-    monkeypatch.setattr(ledger, "insert_error_events", lambda *_args: None)
-    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
-    counts = rerun_selection.reconcile_selected_errors(
-        ReconcileErrorsParams("op", "collection", "dataset"))
-    assert counts["recovered_errors"] == 0
-    assert counts["still_failing_errors"] == 1
 
 
 def _join_outcomes_to_runs(outcomes, runs):

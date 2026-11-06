@@ -407,7 +407,7 @@ bounds of a new table stay invisible, and so do removed sheets and removed colum
 
 A dataset keeps its published table readable while another attempt parses the same content.
 A successful empty parse publishes an `empty` manifest.
-A failed parse preserves an existing published table and remains eligible for retry.
+A failed parse preserves an existing published table. A file that no reader opens gets the `unreadable` manifest status, and a new reader version reads it again.
 
 [Generation commands](table_generations.py) allocate each attempt a distinct generation before its first cell write.
 The commands use the existing planner queue with one consumer.
@@ -542,6 +542,14 @@ rendered at 200 dpi in the worker. The worker sets the language from the script 
 Each successful image or page detection stores one `ocr_detection` row.
 An image under the OCR size gate stores a row without text.
 Corrupt images are skipped and do not count as errors. Image metadata records `image_undecodable` when ffprobe reports invalid data, and image OCR records `ocr_skipped_undecodable` after a 422 answer.
+Other files that do not open are also skipped outcomes with no `processing_errors` row:
+
+- A table that every reader refuses.
+- An Office file with no readable text part.
+- Audio that ffprobe reports as invalid data.
+- A file with no PDF header.
+- An archive or mail container that opens no member. A container that opens some members and loses others stays an error.
+- A Tika parse failure. Tika service failures and size failures stay errors.
 An image or rendered page that the service cannot decode stores a row without text and with `model` `undecodable`. The update step then selects it no more, and OCR sends no request for it.
 A PDF render failure raises a retryable error before detection rows are stored.
 The update step selects earlier detection versions and files without current output. The stage selects no OCR language and no OCR pass.

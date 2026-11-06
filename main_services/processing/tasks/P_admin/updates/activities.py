@@ -697,10 +697,10 @@ def reparse_update_tables(params: TablePlanParams) -> List[str]:
                 mime_types=list(mimes or []), mime_encodings=list(encodings or []),
                 op_id=params.op_id, file_names=bounded_file_names(list(names or [])),
                 sniff_mime_type=authoritative, file_mime_type=file_mime or ""))
-            if isinstance(outcome, dict) and outcome.get("status") == "failed":
-                # The reader recorded this failure. The file stays selected, and settlement
-                # reports it. The other files of the plan continue.
-                log.warning("[updates] Table parsing failed for %s: %s", file_hash, outcome.get("error", ""))
+            value = getattr(outcome, "value", outcome)
+            if isinstance(value, dict) and value.get("status") in ("failed", "unreadable"):
+                # An unreadable file has no table output. The other files of the plan continue.
+                log.warning("[updates] Table parsing failed for %s: %s", file_hash, value.get("error", ""))
                 continue
             read.append(file_hash)
         with get_collection_client(params.collectionname) as client:

@@ -491,34 +491,6 @@ class ParseOfficeXmlParams:
     op_id: str = ""
 
 
-def _record_skip(params: ParseOfficeXmlParams, run_time_ms: int, reason: str) -> None:
-    """Record what this extractor could not read, without failing the activity.
-
-    A .docx that is not a zip, or a zip with no part this understands, is a *data* fact
-    and must not consume retries. It must also not vanish: the whole reason this
-    extractor exists is that a silent extraction failure looks exactly like an empty
-    document. Same shape as `parse_ocr._record_skip`.
-    """
-    from tasks.P2_execute_plan.activities import (
-        RecordProcessingErrorsParams,
-        record_processing_errors,
-    )
-    from tasks.P3_parse_files.parse_common import direct_error_fields
-
-    record_processing_errors(RecordProcessingErrorsParams(
-        collectionname=params.collectionname,
-        errors=[{
-            "collection_dataset": params.collection_dataset,
-            "hash": params.file_hash,
-            "task_name": "parse_office_xml_and_store",
-            **direct_error_fields(params, "parse_office_xml_and_store", params.file_hash),
-            "run_time_ms": run_time_ms,
-            "error_logs": f"{reason}: {params.file_path}",
-            "op_id": params.op_id,
-        }],
-    ))
-
-
 @activity.defn
 @with_heartbeat
 def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any] | SkippedOutcome:
@@ -552,9 +524,9 @@ def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any] |
         return SkippedOutcome("office_xml_empty_document")
     if not result.ok:
         why = result.dropped[0] if result.dropped else "produced no text"
-        _record_skip(params, run_time_ms, f"office_xml_no_text ({result.kind or 'unknown'}) {why}")
-        return {"kind": result.kind, "chars": 0, "segments": 0,
-                "parts_read": result.parts_read, "dropped": result.dropped}
+        log.info("[P3] office_xml has no text for %s (%s): %s", params.file_hash, result.kind or "unknown", why)
+        return SkippedOutcome({"kind": result.kind, "chars": 0, "segments": 0,
+                               "parts_read": result.parts_read, "dropped": result.dropped})
 
     segments = insert_text_chunks(params.collectionname, params.collection_dataset,
                                   params.file_hash, OFFICE_XML_SOURCE, result.text)
