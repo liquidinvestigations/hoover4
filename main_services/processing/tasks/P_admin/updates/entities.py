@@ -18,6 +18,11 @@ class EntityUpdateParams:
     done: int = 0
 
 
+def indexed_copy(text: str) -> str:
+    """The page text as Manticore stores it. A stored string ends at its first NUL byte."""
+    return text.partition("\0")[0]
+
+
 def contract(target=None):
     from tasks.P4_extract_entities.completion import target as current_target
     from .registry import STEPS_BY_ID, fingerprint
@@ -172,7 +177,7 @@ def rewrite_ner_attributes(params, assignments):
                     bodies = { (row["file_hash"],row["extracted_by"],int(row["page_id"])): row["text"]
                                for row in fetch_text_batch(client,params.collection_dataset,keys) }
                 for row,key in zip(rows,keys):
-                    if key not in bodies or row["page_text"] != limit_encoded_runs(clean_text(bodies[key])):
+                    if key not in bodies or row["page_text"] != indexed_copy(limit_encoded_runs(clean_text(bodies[key]))):
                         raise RuntimeError("NER update awaits current indexed source text")
                     last = int(row["id"])
                     for column in _MVA_COLUMNS+_OCR_MVA_COLUMNS:

@@ -4,6 +4,7 @@ import pytest
 
 from tasks.P3_parse_files import ocr_detection
 from tasks.P_admin.updates import activities, selectors
+from tasks.P_admin.updates.entities import indexed_copy
 from tasks.P_admin.updates.params import TablePlanParams
 
 
@@ -134,3 +135,8 @@ def test_a_correct_row_with_wrong_text_in_a_wide_read_is_not_missing(monkeypatch
 def test_a_row_that_differs_alone_and_an_absent_row_are_missing(monkeypatch):
     stored = {"first": ("ner", 1, "stale")}
     assert compare(monkeypatch, stored, {"first": ("ner", 1, "stale")}) == 2
+
+
+def test_indexed_text_ends_at_the_first_nul_byte():
+    assert indexed_copy("before\0after\0end") == "before"
+    assert indexed_copy("no nul byte") == "no nul byte"
