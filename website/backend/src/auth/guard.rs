@@ -47,6 +47,7 @@ pub fn is_bad_request(err: &anyhow::Error) -> bool {
     err.chain().any(|cause| {
         cause.is::<crate::db_utils::manticore_match::MatchQueryError>()
             || cause.is::<InvalidInput>()
+            || cause.is::<RetiredOcrSetting>()
     })
 }
 
@@ -70,9 +71,27 @@ impl std::fmt::Display for InvalidInput {
 
 impl std::error::Error for InvalidInput {}
 
+/// A stale client tried to mutate retired manual OCR settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetiredOcrSetting;
+
+impl std::fmt::Display for RetiredOcrSetting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Manual OCR settings are retired. OCR selects installed models automatically.")
+    }
+}
+impl std::error::Error for RetiredOcrSetting {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_ocr_settings_are_typed_client_errors() {
+        let error: anyhow::Error = RetiredOcrSetting.into();
+        assert!(is_bad_request(&error));
+        assert!(error.is::<RetiredOcrSetting>());
+    }
 
     #[test]
     fn a_missing_resource_is_not_a_server_error() {

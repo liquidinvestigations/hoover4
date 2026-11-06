@@ -29,7 +29,7 @@ def test_every_page_and_the_filename_row_must_match(monkeypatch, rows, stale):
             return Cursor()
 
     monkeypatch.setattr(manticore, "get_manticore_client", lambda: nullcontext(Connection()))
-    monkeypatch.setattr(manticore, "table_has_column", lambda *_args: True)
+    monkeypatch.setattr(manticore, "table_has_column", lambda _table, column: column != "has_ocr_output")
     monkeypatch.setattr(location_refresh, "load_expected_page_keys", lambda *_args: {"file": {("text", 1)}})
     actual = location_refresh.load_indexed_ids("collection", "dataset", {"file": "collection_1"})
     assert (actual[3]["file"] != frozenset({4})) == stale
@@ -46,7 +46,7 @@ def test_a_missing_text_page_cannot_settle_current_attributes(monkeypatch):
         def cursor(self):
             return Cursor()
     monkeypatch.setattr(manticore, "get_manticore_client", lambda: nullcontext(Connection()))
-    monkeypatch.setattr(manticore, "table_has_column", lambda *_args: True)
+    monkeypatch.setattr(manticore, "table_has_column", lambda _table, column: column != "has_ocr_output")
     monkeypatch.setattr(location_refresh, "load_expected_page_keys",
                         lambda *_args: {"file": {("text", 1), ("text", 2)}})
     actual = location_refresh.load_indexed_ids("collection", "dataset", {"file": "collection_1"})

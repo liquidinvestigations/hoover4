@@ -204,7 +204,7 @@ def load_indexed_ids(
     """Read every indexed row and mark inconsistent or missing document attributes."""
     from database.manticore import get_manticore_client, shard_table_from_name, table_has_column
 
-    from .activities import FILENAME_EXTRACTED_BY
+    from .activities import FILENAME_EXTRACTED_BY, document_ocr_presence
 
     by_shard: dict[str, list[str]] = {}
     for file_hash, shard_name in assignments.items():
@@ -219,7 +219,14 @@ def load_indexed_ids(
         for shard_name, hashes in by_shard.items():
             table = shard_table_from_name(shard_name)
             has_ocr = table_has_column(table, "ocr_script")
+            has_presence = table_has_column(table, "has_ocr_output")
+            presence = {}
+            if has_presence:
+                from database.clickhouse import get_collection_client
+                with get_collection_client(collectionname) as client:
+                    presence = document_ocr_presence(client, collection_dataset, hashes)
             columns = "id, file_hash, extracted_by, page_id, file_paths, language" + (", ocr_script, ocr_language" if has_ocr else "")
+            columns += ", has_ocr_output" if has_presence else ""
             filenames, incomplete = set(), set()
             for i in range(0, len(hashes), PATHS_SCAN_PAGE):
                 chunk = hashes[i:i + PATHS_SCAN_PAGE]
@@ -240,6 +247,8 @@ def load_indexed_ids(
                     for row in rows:
                         after = int(row[0])
                         file_hash = row[1]
+                        if has_presence and int(row[-1]) != presence.get(file_hash, 0):
+                            incomplete.add(file_hash)
                         if row[2] == FILENAME_EXTRACTED_BY:
                             filenames.add(file_hash)
                         else:

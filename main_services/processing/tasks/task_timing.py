@@ -683,6 +683,8 @@ class SkippedOutcome:
 
 #: The `processing_errors` task name that a successful run of each task proves recovered.
 _OUTCOME_NAMES = {
+    "automatic_ocr": "automatic_ocr",
+    "detect_ocr_text": "detect_ocr_text",
     "run_tika_and_store": "tika_text_batch",
     "pdf_prepare": "pdf_process",
     "pdf_get_metadata_and_store": "pdf_process",

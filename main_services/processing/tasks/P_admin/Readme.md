@@ -141,10 +141,10 @@ The state is in five global tables of migration `00051`.
   the first record of the stage (`baseline`).
 
 The desired fingerprint of a step joins the step version, the versions of its stages,
-its settings (`target_key`) and, for `unfinished` and `failed_files` only, the input
-revision. The input revision is the newest terminal operation of the dataset or its
+its target (`target_key`) and the input revision for steps that declare this dependency.
+These steps include `unfinished`, `failed_files`, `ocr`, and `ocr_detection`. The input revision is the newest terminal operation of the dataset or its
 collection that is not an update. A new ingestion or an interrupted run therefore makes
-those two steps calculate again without a version change.
+these steps calculate again without a version change.
 
 The coordinator `ProcessingUpdates` (id `processing-updates`) compares the fingerprints
 every 2 minutes, and at once on a `request_check` signal. A settings save and "Check
@@ -253,3 +253,15 @@ a typed confirmation in the UI.
 The ETA collector skips collections without active operations.
 It counts the NER stage as complete when NER is disabled.
 Text byte totals use each segment's latest version.
+
+## Automatic OCR processing updates
+
+The OCR update uses detected pages and installed model capabilities.
+It completes unfinished plans before it selects automatic replacements.
+It processes at most 32 file descriptors in one workflow iteration.
+Each activity uses a private download directory.
+Stored page plans and request results remain outside workflow history.
+New ingestion verifies its operation-scoped prepared receipts after dependent indexing.
+The historical update verifies the exact returned plan identities after strict dependent stages.
+Both paths require durable output before they record applied state.
+Retired manual-setting workflows remain available only for recorded legacy histories.

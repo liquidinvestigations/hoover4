@@ -333,11 +333,16 @@ class RunProcessingUpdate:
                            "plans_run": counts.get("plans_run", 0), **reconciliation}, sort_keys=True)
 
     async def _ocr(self, params: RunUpdateParams, step: StepParams) -> str:
+        automatic = workflow.patched("automatic-ocr-v1")
+        arguments = {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                     "op_id": params.op_id}
+        if automatic:
+            arguments["automatic_mode"] = "languages" not in json.loads(step.step.detail or "{}")
         result = await workflow.execute_child_workflow(
-            "RerunOcr",
-            {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
-             "op_id": params.op_id},
+            "RerunOcr", arguments,
             id=f"update-ocr-{params.op_id}", **self._child(params))
+        if automatic and arguments["automatic_mode"]:
+            return json.dumps(result, sort_keys=True)
         obsolete = await workflow.execute_activity(obsolete_ocr_variants, step, start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         purged = {}

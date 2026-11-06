@@ -16,7 +16,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def collection(monkeypatch):
-    name = "publication_" + uuid.uuid4().hex[:12]
+    name = "publication_" + uuid.uuid4().hex[:12] + "a"
     clickhouse.migrate_collection(name)
     monkeypatch.setattr(table_generations, "send_command", table_generations.apply_table_generation_command)
     try:
@@ -212,3 +212,18 @@ def test_sqlite_text_copy_finishes_before_publication_and_recovers_missing_text(
     assert parse_table.parse_table_and_store(params("dataset_b"))["deduped"]
     with clickhouse.get_collection_client(collection) as client:
         table_receipts.write_receipts(client, receipt)
+
+
+@pytest.mark.parametrize("name,mime", [("ordinary.tsv", "text/plain"), ("download", "text/tab-separated-values")])
+def test_short_tsv_download_keeps_logical_delimiter(collection, tmp_path, name, mime):
+    from tasks.P3_parse_files.table_formats import READER_VERSION
+    path = tmp_path / "downloadedhash"
+    path.write_text("Tsvupgradeunique\tOrchid\nGamma\tMaple\nDelta\tCedar\n")
+    result = parse_table.parse_table_and_store(parse_table.ParseTableParams(
+        collection, "dataset", "tsv", str(path), 900, mime_types=[mime], file_names=[name]))
+    assert result["status"] == "ok"
+    with clickhouse.get_collection_client(collection) as client:
+        assert client.query("SELECT reader_version, row_count, column_count, status FROM table_documents FINAL").result_rows == [(READER_VERSION, 3, 2, "ok")]
+        generation = client.query("SELECT generation FROM table_documents FINAL").result_rows[0][0]
+        assert client.query("SELECT count() FROM table_cells FINAL WHERE generation = {g:UInt32}",
+                            parameters={"g": generation}).result_rows[0][0] == 6

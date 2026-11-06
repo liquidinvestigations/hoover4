@@ -288,7 +288,7 @@ async def run_common_worker():
     from .P3_parse_files.parse_mime import detect_mime_batch
     from .P3_parse_files.parse_pdf import pdf_metadata_batch, pdf_extract_batch
     from .P3_parse_files.pdf_parts import (
-        pdf_prepare_batch, pdf_ocr_finalize_batch, pdf_prepare_compact_batch, pdf_ocr_finalize_cursor,
+        pdf_prepare_batch, pdf_ocr_finalize_batch, pdf_prepare_compact_batch, pdf_ocr_finalize_cursor, pdf_prepare_automatic_batch,
     )
     from .P3_parse_files.pdf_cursor import PdfPartGroup
     from .P3_parse_files.parse_image import parse_image_metadata_batch
@@ -301,6 +301,7 @@ async def run_common_worker():
     from .P4_extract_entities.scan_regex_entities import scan_regex_entities_for_hashes
     from .P5_chunk_embed.workflows import ChunkEmbedForPlan
     from .P6_index_data.workflows import IndexDatasetPlan, RefreshDocumentLocations
+    from .P_admin.automatic_ocr import list_automatic_ocr_files, verify_automatic_ocr_files, verify_ingested_automatic_ocr
     from .P_admin.activities import (
         collect_eta_samples,
         drop_collection_database,
@@ -492,7 +493,7 @@ async def run_common_worker():
             UpdateDatasetVirusScan,
             UpdateDatasetOcrDetection,
           ],
-          activities=[
+          activities=[verify_ingested_automatic_ocr, list_automatic_ocr_files, verify_automatic_ocr_files,
             plan_folder_ranges,
             # The first version stays registered for histories recorded before the
             # `scan-folder-range-names` patch of `HandleFolders`.
@@ -535,7 +536,7 @@ async def run_common_worker():
             split_set_sizes,
             pdf_metadata_batch,
             pdf_extract_batch,
-            pdf_prepare_batch,
+            pdf_prepare_automatic_batch, pdf_prepare_batch,
             pdf_prepare_compact_batch,
             pdf_ocr_finalize_batch,
             pdf_ocr_finalize_cursor,
@@ -696,6 +697,8 @@ async def run_ocr_worker():
     # as many slots as the builder, so the worker never sends it more requests than it
     # runs. The image slots and the builder slots together must stay under the Tesseract
     # admission, which deploy.py checks.
+    from .P_admin.automatic_ocr import run_automatic_ocr_files
+    from .P3_parse_files.automatic_ocr import automatic_ocr_batch
     from .P3_parse_files.ocr_detection import detect_ocr_text_batch
     from .P3_parse_files.parse_ocr import run_ocr_batch
     from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_batch
@@ -724,7 +727,7 @@ async def run_ocr_worker():
           workflows=[],
           # run_ocr_pdf_batch stays on this queue for the batches that groups scheduled
           # here before the PDF queue existed, and for their retries.
-          activities=[run_ocr_batch, run_ocr_pdf_batch, detect_ocr_text_batch, detect_update_files],
+          activities=[run_automatic_ocr_files, automatic_ocr_batch, run_ocr_batch, run_ocr_pdf_batch, detect_ocr_text_batch, detect_update_files],
           activity_executor=image_executor,
           max_concurrent_activities=image_slots,
           max_concurrent_workflow_tasks=image_slots*2,

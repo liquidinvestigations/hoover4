@@ -114,23 +114,21 @@ STEPS: Tuple[UpdateStep, ...] = (
         explanation="{files} uncommon images have no preview. Their previews are created again.",
         runs="Image preview creation and verification"),
     UpdateStep(
-        step_id="ocr", scope=SCOPE_DATASET, version=1,
-        stages=("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf"),
-        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
-        title="OCR",
-        explanation="About {files} files have no OCR text for the current languages, or keep OCR text of "
-                    "languages that the settings no longer include. OCR runs for the current languages, and "
-                    "the text of the removed languages is deleted.",
-        runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
-    UpdateStep(
-        step_id="ocr_detection", scope=SCOPE_DATASET, version=2, stages=("ocr_detection",),
+        step_id="ocr_detection", scope=SCOPE_DATASET, version=3, stages=("ocr_detection",),
         automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
         title="OCR detection",
         explanation="{files} files have no detected text, script or language. Each image and each page "
-                    "selected for OCR is examined. A PDF sends at most 100 pages. OCR text does not change.",
+                    "selected for OCR is examined in bounded batches.",
         runs="Detection, then the search attributes of these files"),
     UpdateStep(
-        step_id="pdf_text", scope=SCOPE_DATASET, version=1, stages=("pdf_text_layer",),
+        step_id="ocr", scope=SCOPE_DATASET, version=2,
+        stages=("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf", "ocr_detection", "ocr_plan"),
+        automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
+        title="OCR",
+        explanation="{files} files need automatic OCR. Detected pages select installed models. Complete replacement output removes superseded variants.",
+        runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
+    UpdateStep(
+        step_id="pdf_text", scope=SCOPE_DATASET, version=2, stages=("pdf_text_layer",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Searchable PDF text",
         explanation="{files} files have searchable PDFs with an earlier text layer. That layer copied each "

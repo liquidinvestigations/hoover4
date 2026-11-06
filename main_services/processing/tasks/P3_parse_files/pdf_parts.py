@@ -182,7 +182,7 @@ def split_pdf(source: str, dest: str, first: int, last: int) -> None:
         raise RuntimeError(f"PDF split failed for pages {first}-{last}: {result.stderr[:200]!r}")
 
 
-def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = False) -> dict | SkippedOutcome:
+def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = False, automatic: bool = False) -> dict | SkippedOutcome:
     from database.clickhouse import get_collection_client
     from database.s3 import collection_bucket, get_s3_client
     from tasks.P3_parse_files.parse_pdf import _qpdf_show_npages, _pdftotext_pages, _insert_pdf_text_pages
@@ -206,7 +206,7 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
                 expected = part["last_page"] + 1
             else:
                 if expected == count + 1:
-                    return preparation_value(client, params, file, stored, count, list(needs), compact=compact)
+                    return preparation_value(client, params, file, stored, count, list(needs), compact=compact, automatic=automatic)
         with source_file(client, params, file) as path, heartbeat_pump(f"PDF preparation {h[:8]}"):
             count = file.page_count or _qpdf_show_npages(path, h)
             size = os.path.getsize(path)
@@ -246,17 +246,21 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
                     current_batch().flush()
             write_row(client, "ocr_page_needs", dict(collection_dataset=cd, hash=h,
                       source_kind=kind, rule_version=OCR_PAGE_RULE_VERSION, page_count=count, ocr_pages=needs))
-            return preparation_value(client, params, file, source_parts(client, cd, h, kind), count, needs, compact=compact)
+            return preparation_value(client, params, file, source_parts(client, cd, h, kind), count, needs, compact=compact, automatic=automatic)
 
 
 def preparation_value(client, params: StageBatchParams, file: BatchFile,
-                      parts: list[dict], count: int, needs: list[int], *, compact: bool = False) -> dict:
+                      parts: list[dict], count: int, needs: list[int], *, compact: bool = False, automatic: bool = False) -> dict:
     """Return legacy part jobs or compact source identities with completion flags."""
     rows = client.query(
         "SELECT DISTINCT engine FROM pdf_ocr_results FINAL "
         "WHERE collection_dataset = {cd:String} AND pdf_hash = {h:String} "
         "AND is_deleted = 0 AND text_complete = 0",
         parameters={"cd": params.collection_dataset, "h": file.item_hash}).result_rows
+    if compact and automatic:
+        return dict(segmentation=PDF_SEGMENTATION_VERSION, source_digest=source_digest(parts, count, needs),
+                    part_count=len(parts), page_count=count, source_kind=file.source_kind,
+                    has_ocr_pages=bool(needs), saved_engines=[], part_lists=4)
     if compact:
         from tasks.ocr_targets import language_settings, engine_passes
         from tasks.text_sources import OCR_ENGINES
@@ -615,3 +619,12 @@ def pdf_ocr_finalize_cursor(params: PdfPartCursorParams) -> FileResult:
         "pdf_ocr_finalize_batch", [file], key=lambda item: item.item_hash,
         size=lambda item: item.file_size_bytes, step=lambda item: complete_pdf(stage, item),
         task_name="run_ocr_pdf_and_store").results[0])
+
+
+@activity.defn
+@with_heartbeat
+def pdf_prepare_automatic_batch(params: StageBatchParams) -> BatchResult:
+    """Prepare automatic sources without resolving retired manual OCR settings."""
+    return run_batch("pdf_prepare_automatic_batch", params.files, key=lambda file: file.item_hash,
+                     size=lambda file: file.file_size_bytes,
+                     step=lambda file: prepare_pdf(params, file, compact=True, automatic=True), task_name="pdf_process")

@@ -47,7 +47,7 @@ class Temporal:
         monkeypatch.setattr(w, "execute_child_workflow", self.child)
         monkeypatch.setattr(w, "now", lambda: NOW)
         monkeypatch.setattr(w, "info", lambda: SimpleNamespace(run_id="run-1"))
-        monkeypatch.setattr(w, "patched", lambda name: parts if name in ("ocr-run-pdf-parts", "ocr-run-pdf-members") else self.patched)
+        monkeypatch.setattr(w, "patched", lambda name: False if name == "automatic-ocr-v1" else parts if name in ("ocr-run-pdf-parts", "ocr-run-pdf-members") else self.patched)
         monkeypatch.setattr(w, "continue_as_new", self.continue_as_new)
 
         async def wait(pending, **kwargs):
@@ -478,3 +478,10 @@ def test_member_cleanup_follows_legacy_phase_one_before_new_targets(monkeypatch)
     assert names.index("ExecutePlans") < names.index("remove_pdf_members") < names.index("record_ocr_run_targets")
     recorded = next(arg for kind, name, arg, options in env.calls if name == "record_ocr_run_targets")
     assert recorded.parts_version
+
+
+def test_automatic_phase_one_keeps_manual_targets_out_of_new_work(monkeypatch):
+    env = Temporal(monkeypatch, answers={"list_pending_plans": [], "count_new_blobs": 0})
+    completed = asyncio.run(admin_workflows.RerunOcr()._phase_one(params(), automatic=True))
+    assert completed.listed
+    assert "record_ocr_run_targets" not in env.names()

@@ -1,4 +1,7 @@
-"""The `RerunOcr` run of the OCR update step, and of the `rerun_ocr` operation of the CLI.
+"""Retain target helpers and payload defaults for legacy OCR workflow histories.
+
+New runs use automatic plans from `tasks.P_admin.automatic_ocr`.
+The target-based behavior below applies to legacy histories.
 
 One run brings every OCR target of the dataset under its current settings to done, and a
 second run on a finished dataset sends no OCR request. `tasks/ocr_targets.py` defines the
@@ -65,6 +68,8 @@ class RerunOcrParams:
     #: Plans that `ExecutePlans` ran in the first phase.
     phase_one_plans: int = 0
     parts_version: bool = False
+    automatic_mode: bool | None = None
+    automatic_files: int = 0
 
 
 @dataclass

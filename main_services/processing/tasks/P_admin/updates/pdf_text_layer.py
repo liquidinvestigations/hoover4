@@ -66,6 +66,14 @@ def layer_target(collection_dataset: str, collectionname: str) -> dict:
 
     target = ocr_target(collection_dataset, collectionname)
 
+    if "languages" not in target:
+        from database.clickhouse import get_collection_client
+        with get_collection_client(collectionname) as client:
+            rows = client.query("SELECT DISTINCT engine, languages, source_kind FROM pdf_ocr_results FINAL "
+                "WHERE collection_dataset = {cd:String} AND is_deleted = 0", parameters={"cd": collection_dataset}).result_rows
+        return {"image_pairs": sorted({f"{engine}|{languages}" for engine, languages, kind in rows if kind == "image"}),
+                "pdf_pairs": sorted({f"{engine}|{languages}" for engine, languages, kind in rows if kind != "image"})}
+
     def pairs(engines: List[str]) -> List[str]:
         return sorted(f"{e}|{p}" for e in engines for p in engine_passes(e, target["languages"].get(e, "")))
 

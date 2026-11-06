@@ -39,6 +39,7 @@ def test_pages_table_ddl_golden():
             page_text text,
             language multi64,
             red_flags multi64,
+            has_ocr_output int,
             ocr_script multi64,
             ocr_language multi64,
             ner_per multi64,

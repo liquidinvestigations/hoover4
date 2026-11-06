@@ -168,15 +168,16 @@ def insert_text_pages(
 
 
 def insert_text_sources(collectionname: str, collection_dataset: str, file_hash: str,
-                        sources: dict[str, Sequence[tuple]], *, min_chars: int = 2) -> int:
+                        sources: dict[str, Sequence[tuple]], *, min_chars: int = 2,
+                        languages: dict[str, str] | None = None) -> int:
     """Read prior pages once and queue source replacements before obsolete-page cleanup."""
     import pyarrow as pa
     from database.clickhouse import get_collection_client, insert_parser_arrow
     from tasks.P3_parse_files.insert_batch import current_batch
 
     from tasks.document_language import source_language
-    languages = {source: source_language(pages)
-                 for source, pages in sources.items()}
+    if languages is None:
+        languages = {source: source_language(pages) for source, pages in sources.items()}
     rows = []
     for source, pages in sources.items():
         for page_id, _ in pages:

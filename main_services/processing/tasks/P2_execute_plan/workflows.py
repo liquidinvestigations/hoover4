@@ -532,6 +532,14 @@ class ExecuteSinglePlan:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
 
+        if workflow.patched("automatic-ocr-v1"):
+            from tasks.P_admin.automatic_ocr import AutomaticOcrScope
+            await workflow.execute_activity(
+                "verify_ingested_automatic_ocr",
+                AutomaticOcrScope(params.collectionname, params.collection_dataset, params.op_id, hashes=plan_item_hashes),
+                start_to_close_timeout=timedelta(minutes=30), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+
         # 9) Mark finished
         await workflow.execute_activity(
             mark_plan_finished,
@@ -754,16 +762,17 @@ class ProcessItemsBatched:
                 preparation, variants = await run_pdf_chain(
                     sources, run_stage,
                     cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None,
-                    detect=workflow.patched(OCR_DETECTION_PATCH))
+                    detect=workflow.patched(OCR_DETECTION_PATCH),
+                    automatic=workflow.patched("automatic-ocr-v1"))
                 for i in indexes:
                     if files[i].item_hash in preparation:
                         put(i, "make_pdf_preview" if preparation[files[i].item_hash].task_name == "make_pdf_preview" else "pdf_process",
                             preparation[files[i].item_hash], ("pdf_prepare_batch", ""))
-                    for engine in OCR_ENGINES:
+                    for engine in (*OCR_ENGINES, "automatic"):
                         result = variants.get((files[i].item_hash, engine))
                         if result:
-                            put(i, ocr_pdf_error_name(engine), result,
-                                ("pdf_ocr_finalize_batch", engine), into=ocr_pdf_entries)
+                            put(i, "automatic_ocr" if engine == "automatic" else ocr_pdf_error_name(engine), result,
+                                ("automatic_ocr_batch" if engine == "automatic" else "pdf_ocr_finalize_batch", engine), into=ocr_pdf_entries)
                 return
             indexes = with_route("pdf")
             meta = await run_stage("pdf_metadata_batch", [files[i] for i in indexes])
@@ -850,6 +859,13 @@ class ProcessItemsBatched:
         async def image_chain() -> None:
             # OCR reads the preview of an uncommon image format, so it waits for it.
             await preview_stage("image")
+            if workflow.patched("automatic-ocr-v1"):
+                indexes = with_route("image")
+                items = [batch_file(i, mime_types=combined[i]["mime_types"], routes=["image"])
+                         for i in indexes]
+                for i, result in zip(indexes, await run_stage("automatic_ocr_batch", items)):
+                    put(i, "automatic_ocr", result, ("automatic_ocr_batch", ""))
+                return
             # The stage describes the image and changes no OCR pass. A failed file gets
             # no error row, and the update step selects it again.
             if workflow.patched(OCR_DETECTION_PATCH):

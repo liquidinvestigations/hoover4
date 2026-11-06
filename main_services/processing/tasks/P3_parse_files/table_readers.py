@@ -952,10 +952,10 @@ class _ClosingStream:
 
 def read_cells(path: str, reader: str, *, encodings: Sequence[str] = (),
                on_progress: Optional[Callable[[str, int], None]] = None,
-               time_limit_seconds: float = 300) -> CellStream:
+               time_limit_seconds: float = 300, delimiter: str = "") -> CellStream:
     """The one entry point: a stream of `(sheet_id, sheet_name, RawCell)` for `reader`."""
     if reader == READER_CSV:
-        return read_csv_cells(path, encodings=encodings, on_progress=on_progress)
+        return read_csv_cells(path, encodings=encodings, delimiter=delimiter, on_progress=on_progress)
     if reader == READER_XLSX_STREAM:
         return read_xlsx_cells(path, on_progress=on_progress)
     if reader == READER_ODS_STREAM:

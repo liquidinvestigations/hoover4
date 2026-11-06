@@ -1,24 +1,8 @@
-//! Per-dataset OCR settings, collection OCR defaults, and dataset creation.
+//! Read automatic OCR status and retain legacy settings for audit.
 //!
-//! The effective OCR languages of a dataset have one resolution order, which the worker
-//! applies too (`main_services/processing/tasks/dataset_config.py`): the dataset row,
-//! then the collection default row, then the installation default from `hoover4.ini`.
-//! Both runtimes test it with `tasks/ocr_resolution_cases.json`. The panel shows the
-//! value and its source.
-//!
-//! Rules that run through this module:
-//!
-//! * **A settings save starts the processing update, not an apply job.** Apply writes the
-//!   setting rows and signals the processing update coordinator. The OCR step of the
-//!   dataset then waits with its new languages, and the automatic run starts it. The
-//!   `change_ocr_languages` kind stays for the command line and for old rows.
-//! * **Any number of upload datasets per collection.** `uploads_enabled` is refused only for
-//!   a dataset that is not a disk dataset or whose folder is not beneath a writable mount.
-//!   Each upload dataset is a separate upload target.
-//! * **The creation form never takes a path.** It takes a mount name and a folder *name*.
-//!   The folder is validated against the listing of that mount and joined server-side. A
-//!   free-text path in a browser form is a way to point the ingest walker at any
-//!   directory the container can see. A new folder is created only in a writable mount.
+//! Manual OCR mutations return a typed retired-setting error.
+//! Dataset creation accepts empty compatibility fields and stores no OCR override.
+//! Dataset mounts and upload settings retain their existing access checks.
 
 use std::time::Duration;
 
@@ -496,7 +480,9 @@ pub async fn admin_get_dataset_ocr(
     let (inherited_tesseract, inherited_easyocr) = inherited_ocr_languages(&collectionname).await?;
     let inventory = easyocr_inventory().await;
 
+    let automatic_status = automatic_status(&collectionname, &collection_dataset).await?;
     Ok(DatasetOcrPanel {
+        automatic_status,
         collection_dataset: collection_dataset.clone(),
         collectionname,
         tesseract_languages: tesseract.value,
@@ -516,6 +502,30 @@ pub async fn admin_get_dataset_ocr(
         text_variants,
         pdf_variants,
         operation: latest_operation(&collection_dataset).await?,
+    })
+}
+
+/// Summarize current automatic publications without returning document payloads.
+async fn automatic_status(collectionname: &str, dataset: &str) -> anyhow::Result<common::admin_types::AutomaticOcrStatus> {
+    let rows: Vec<(String, String, u64, u64)> = get_collection_client(collectionname)
+        .query("SELECT state, reason, count(), sum(pages) FROM (SELECT hash, argMax(state, revision) AS state, argMax(reason, revision) AS reason, argMax(expected_pages, revision) AS pages FROM automatic_ocr_plans WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) GROUP BY state, reason ORDER BY state, reason")
+        .bind(dataset).fetch_all().await?;
+    let mut digests: Vec<String> = get_collection_client(collectionname)
+        .query("SELECT DISTINCT capability_digest FROM automatic_ocr_plans FINAL WHERE collection_dataset = ? ORDER BY capability_digest LIMIT 101")
+        .bind(dataset).fetch_all().await?;
+    let mut decisions: Vec<(String, String, String, String, String, String, u64)> = get_collection_client(collectionname)
+        .query("SELECT JSONExtractString(page, 'script'), JSONExtractString(page, 'language'), JSONExtractString(page, 'status'), JSONExtractString(page, 'reason'), JSONExtractString(arrayElement(JSONExtractArrayRaw(page, 'passes'), 1), 'engine'), JSONExtractString(arrayElement(JSONExtractArrayRaw(page, 'passes'), 1), 'languages'), count() FROM (SELECT argMax(plan_json, revision) AS plan FROM automatic_ocr_plans WHERE collection_dataset = ? AND state NOT IN ('candidate', 'superseded') GROUP BY hash) ARRAY JOIN JSONExtractArrayRaw(plan, 'pages') AS page GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 1, 2, 3, 4, 5, 6 LIMIT 1025")
+        .bind(dataset).fetch_all().await?;
+    let page_decisions_truncated = decisions.len() > 1024;
+    let capability_digests_truncated = digests.len() > 100;
+    decisions.truncate(1024);
+    digests.truncate(100);
+    Ok(common::admin_types::AutomaticOcrStatus {
+        page_decisions_truncated, capability_digests_truncated,
+        automatic: true, policy_version: 1, capability_digests: digests,
+        page_decisions: decisions.into_iter().map(|(script, language, status, reason, engine, languages, pages)|
+            common::admin_types::AutomaticOcrPageCount { script, language, status, reason, engine, languages, pages }).collect(),
+        states: rows.into_iter().map(|(state, reason, files, pages)| common::admin_types::AutomaticOcrStateCount { state, reason, files, pages }).collect(),
     })
 }
 
@@ -586,46 +596,7 @@ fn validate_codes(joined: &str, field: &str) -> anyhow::Result<String> {
     Ok(joined)
 }
 
-/// Refuse Tesseract codes that the image lacks and EasyOCR codes that the package does
-/// not support. A service that did not answer reports nothing, and its check stands
-/// down rather than blocking every change.
-async fn check_availability(tesseract: &str, easyocr: &str) -> anyhow::Result<()> {
-    let available = tesseract_languages_available().await;
-    if !available.is_empty() && !tesseract.is_empty() {
-        let missing: Vec<&str> = tesseract.split('+').filter(|code| !available.iter().any(|a| a == code)).collect();
-        if !missing.is_empty() {
-            return Err(guard::InvalidInput(format!(
-                "The Tesseract image has no language data for {}.",
-                missing.join(", ")
-            ))
-            .into());
-        }
-    }
-    let supported = easyocr_inventory().await.supported;
-    if !supported.is_empty() && !easyocr.is_empty() {
-        let missing: Vec<&str> = easyocr.split('+').filter(|code| !supported.iter().any(|a| a == code)).collect();
-        if !missing.is_empty() {
-            return Err(guard::InvalidInput(format!(
-                "The EasyOCR package does not support {}.",
-                missing.join(", ")
-            ))
-            .into());
-        }
-    }
-    Ok(())
-}
-
-/// Save a dataset's OCR languages and start its processing update.
-///
-/// `inherit_*` deletes the dataset row of that engine, so the dataset uses the
-/// collection default or the installation default again. Otherwise the value is the
-/// dataset's own, and an empty EasyOCR value turns EasyOCR off. An unchanged value writes
-/// nothing, so its setting version and the OCR errors under it stay current.
-///
-/// The save signals the processing update coordinator. The OCR step of the dataset then
-/// waits with the new languages, and the automatic run starts it without another click.
-/// A save that changes no effective value starts nothing. Returns a sentence for the
-/// page.
+/// Return a typed retired-setting error to stale dataset clients.
 pub async fn admin_apply_ocr_languages(
     user: &CurrentUser,
     collection_dataset: String,
@@ -635,37 +606,8 @@ pub async fn admin_apply_ocr_languages(
     inherit_easyocr: bool,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
-    let collectionname = collection_of(&collection_dataset).await?;
-    let tesseract = if inherit_tesseract {
-        String::new()
-    } else {
-        validate_languages(&tesseract_languages, "Tesseract languages")?
-    };
-    let easyocr = if inherit_easyocr { String::new() } else { validate_easyocr_languages(&easyocr_languages)? };
-    check_availability(&tesseract, &easyocr).await?;
-
-    let before = effective_ocr_languages(&collection_dataset, &collectionname).await?;
-    if inherit_tesseract {
-        delete_setting(&collection_dataset, KEY_TESSERACT_LANGUAGES).await?;
-    } else {
-        write_setting(&collection_dataset, KEY_TESSERACT_LANGUAGES, &tesseract).await?;
-    }
-    if inherit_easyocr {
-        delete_setting(&collection_dataset, KEY_EASYOCR_LANGUAGES).await?;
-    } else {
-        write_setting(&collection_dataset, KEY_EASYOCR_LANGUAGES, &easyocr).await?;
-    }
-    let after = effective_ocr_languages(&collection_dataset, &collectionname).await?;
-    if before.0.value == after.0.value && before.1.value == after.1.value {
-        return Ok("Saved. The OCR languages in force did not change, so no OCR runs.".to_string());
-    }
-    crate::api::admin::processing_updates::signal_check(&collection_dataset).await?;
-    let automatic = std::env::var("HOOVER4_PROCESSING_UPDATES_AUTOMATIC").map_or(true, |v| v.trim() != "false");
-    Ok(if automatic {
-        "Saved. The OCR update starts automatically. Its progress shows under Processing updates.".to_string()
-    } else {
-        "Saved. Automatic updates are off on this installation, so start the OCR update under Processing updates.".to_string()
-    })
+    let _ = (collection_dataset, tesseract_languages, easyocr_languages, inherit_tesseract, inherit_easyocr);
+    Err(guard::RetiredOcrSetting.into())
 }
 
 /// The collection's default languages and the languages that each service reports.
@@ -690,13 +632,7 @@ pub async fn admin_get_collection_ocr_defaults(
     })
 }
 
-/// Save the collection defaults and start the processing updates of the datasets that
-/// inherit them.
-///
-/// A dataset with its own row keeps its languages. Each inheriting dataset gets a new
-/// effective value, so its OCR step waits, and the save signals the coordinator, which
-/// runs the datasets one at a time. Returns the inheriting datasets whose languages
-/// changed. A save with unchanged values returns none and starts nothing.
+/// Return a typed retired-setting error to stale collection clients.
 pub async fn admin_set_collection_ocr_defaults(
     user: &CurrentUser,
     collectionname: String,
@@ -704,32 +640,8 @@ pub async fn admin_set_collection_ocr_defaults(
     easyocr_languages: String,
 ) -> anyhow::Result<Vec<String>> {
     guard::require_admin(user)?;
-    collection_db_name(&collectionname)?;
-    let tesseract = validate_languages(&tesseract_languages, "Tesseract languages")?;
-    let easyocr = validate_easyocr_languages(&easyocr_languages)?;
-    check_availability(&tesseract, &easyocr).await?;
-    let datasets: Vec<String> = get_global_client()
-        .query("SELECT collection_dataset FROM dataset FINAL WHERE collectionname = ? AND is_deleted = 0 ORDER BY collection_dataset")
-        .bind(&collectionname)
-        .fetch_all()
-        .await?;
-    let mut before = Vec::new();
-    for dataset in &datasets {
-        before.push(effective_ocr_languages(dataset, &collectionname).await?);
-    }
-    write_setting(&collectionname, KEY_DEFAULT_TESSERACT_LANGUAGES, &tesseract).await?;
-    write_setting(&collectionname, KEY_DEFAULT_EASYOCR_LANGUAGES, &easyocr).await?;
-    let mut changed = Vec::new();
-    for (dataset, old) in datasets.iter().zip(before) {
-        let new = effective_ocr_languages(dataset, &collectionname).await?;
-        if new.0.value != old.0.value || new.1.value != old.1.value {
-            changed.push(dataset.clone());
-        }
-    }
-    if !changed.is_empty() {
-        crate::api::admin::processing_updates::signal_check("*").await?;
-    }
-    Ok(changed)
+    let _ = (collectionname, tesseract_languages, easyocr_languages);
+    Err(guard::RetiredOcrSetting.into())
 }
 
 // ---------------------------------------------------------------------------
@@ -901,6 +813,21 @@ pub async fn admin_create_dataset_folder(
 /// mount must be writable. Other upload datasets of the collection do not matter. Without
 /// it, a stored `true` of an earlier dataset with the same id is written `false`.
 #[allow(clippy::too_many_arguments)]
+pub async fn admin_create_dataset_automatic(
+    user: &CurrentUser,
+    collectionname: String,
+    mount_name: String,
+    folder_name: String,
+    new_folder: bool,
+    dataset_name: String,
+    accept_uploads: bool,
+) -> anyhow::Result<String> {
+    admin_create_dataset(user, collectionname, mount_name, folder_name, new_folder,
+                         dataset_name, String::new(), String::new(), accept_uploads).await
+}
+
+/// Retain the creation signature for stale clients and reject manual OCR values.
+#[allow(clippy::too_many_arguments)]
 pub async fn admin_create_dataset(
     user: &CurrentUser,
     collectionname: String,
@@ -952,9 +879,9 @@ pub async fn admin_create_dataset(
         anyhow::bail!("dataset {collection_dataset} already exists");
     }
 
-    let tesseract = validate_languages(&tesseract_languages, "Tesseract languages")?;
-    let easyocr = validate_easyocr_languages(&easyocr_languages)?;
-    let (inherited_tesseract, inherited_easyocr) = inherited_ocr_languages(&collectionname).await?;
+    if !tesseract_languages.trim().is_empty() || !easyocr_languages.trim().is_empty() {
+        return Err(guard::RetiredOcrSetting.into());
+    }
 
     if new_folder {
         admin_create_dataset_folder(user, mount_name.clone(), folder_name.clone()).await?;
@@ -1004,19 +931,6 @@ pub async fn admin_create_dataset(
         .await?;
     insert.end().await?;
 
-    // A value equal to the inherited one writes no dataset row, so the dataset follows
-    // later changes of the collection default. A different value is the dataset's own.
-    // A stored row of an earlier dataset with the same id is deleted in that case.
-    if tesseract == inherited_tesseract.value {
-        delete_setting(&collection_dataset, KEY_TESSERACT_LANGUAGES).await?;
-    } else {
-        write_setting(&collection_dataset, KEY_TESSERACT_LANGUAGES, &tesseract).await?;
-    }
-    if easyocr == inherited_easyocr.value {
-        delete_setting(&collection_dataset, KEY_EASYOCR_LANGUAGES).await?;
-    } else {
-        write_setting(&collection_dataset, KEY_EASYOCR_LANGUAGES, &easyocr).await?;
-    }
     if accept_uploads {
         write_setting(&collection_dataset, KEY_UPLOADS_ENABLED, "true").await?;
     } else if read_setting(&collection_dataset, KEY_UPLOADS_ENABLED).await?.as_deref() == Some("true") {
@@ -1042,6 +956,15 @@ pub async fn admin_create_dataset(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn retired_mutations_return_before_storage_access() {
+        let user = CurrentUser { username: "admin".into(), fullname: String::new(), email: String::new(), is_admin: true, groups: vec![] };
+        let dataset_error = admin_apply_ocr_languages(&user, "dataset".into(), "eng".into(), "en".into(), false, false).await.unwrap_err();
+        assert!(dataset_error.is::<guard::RetiredOcrSetting>());
+        let collection_error = admin_set_collection_ocr_defaults(&user, "collection".into(), "eng".into(), "en".into()).await.unwrap_err();
+        assert!(collection_error.is::<guard::RetiredOcrSetting>());
+    }
 
     #[test]
     fn a_setting_version_is_above_the_row_it_replaces() {

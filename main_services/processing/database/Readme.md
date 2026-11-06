@@ -337,7 +337,7 @@ change the operation and Error tables, and add document outcomes. The Error repl
 preserves historical rows and creates `processing_errors_identity_ready` last.
 
 **The readiness sentinel names the table that the last table-creating migration creates**.
-It is `table_text_publication_ready`. Update both sentinel copies when a later table-creating migration
+It is `automatic_ocr_ready`. Update both sentinel copies when a later table-creating migration
 is added.
 
 ## Table generation ownership
@@ -372,3 +372,26 @@ Word forms require explicit alternatives. Sentence and paragraph searches cannot
 Addresses split into words, and CJK text is not indexed.
 Changing these settings requires rebuilding each affected page table from stored page text.
 That operation reads the full collection text and replaces its text index. This change does not alter table settings.
+
+## Automatic OCR publication
+
+`automatic_ocr_plans` stores versioned page decisions and document publication state.
+Its JSON contract pins source, detector, policy, capability, and page identities.
+`automatic_ocr_output` stores resumable request results under the plan digest.
+Plan states distinguish candidate, planned, failed, incomplete, unsupported, published, applied, and superseded output.
+Only verified published text determines OCR presence.
+A later failed replacement preserves prior published presence.
+Operation-scoped prepared receipts pin ingestion settlement to its exact plan digest.
+The detector also stores its script model beside language and script evidence.
+The existing metadata coordinator claims the first executable plan of each operation and document.
+It allocates a monotonic claim epoch in `processing_output_receipts`.
+Retries keep that plan when installed capabilities change.
+A later operation can publish another plan and supersede the prior normal output.
+Dataset purge removes owned automatic output and source prefixes before it deletes their records.
+It preserves borrowed source objects and other datasets.
+Candidate rows use revision zero and cannot replace later publication rows.
+Published-epoch receipts preserve the highest completed claim independently of replaceable plan metadata.
+An older retry of the same plan returns without changing that publication.
+Final text and PDF metadata mutations execute through that same serialized command.
+Staged artifact verification and language inference execute before that command.
+Applied-state commands recheck the published epoch after dependent verification.

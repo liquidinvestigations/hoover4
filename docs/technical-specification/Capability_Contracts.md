@@ -23,7 +23,7 @@ Source ownership uses [main_services/processing/tasks/P3_parse_files](../../main
 
 ## F-ingest-06
 
-Optically recognise text in images and scanned PDFs, in configured languages. Add invisible OCR overlays to selected source PDF pages while preserving content and geometry. Write the overlay text with a ToUnicode map and an embedded glyphless font, so copied text keeps every Unicode character and each character box has the height of its OCR word. The Searchable PDF text update step builds again each earlier part whose text has a black square, and skips the language passes with Windows-1252 alphabets. Return selected-page OCR text, including empty results. Build image PDFs from stored OCR words without another OCR request. Stream builder object input and output through temporary files. Retry a JPEG that Leptonica cannot decode as a lossless PNG when Pillow decodes the complete image. Keep both attempts within the original timeout. Read the JPEG preview of an image when it exists.
+Automatically recognise text in images and scanned PDFs from detected script coverage. Add invisible OCR overlays to selected source PDF pages while preserving content and geometry. Write the overlay text with a ToUnicode map and an embedded glyphless font, so copied text keeps every Unicode character and each character box has the height of its OCR word. The Searchable PDF text update step builds again each earlier part whose text has a black square, and skips the language passes with Windows-1252 alphabets. Return selected-page OCR text, including empty results. Build image PDFs from stored OCR words without another OCR request. Stream builder object input and output through temporary files. Retry a JPEG that Leptonica cannot decode as a lossless PNG when Pillow decodes the complete image. Keep both attempts within the original timeout. Read the JPEG preview of an image when it exists.
 
 Source ownership uses [main_services/ocr_tesseract](../../main_services/ocr_tesseract), [main_services/ocr_pdf](../../main_services/ocr_pdf), [main_services/processing/tasks/P3_parse_files/parse_ocr.py](../../main_services/processing/tasks/P3_parse_files/parse_ocr.py).
 
@@ -47,9 +47,23 @@ Source ownership uses [main_services/processing/tasks/task_timing.py](../../main
 
 ## F-ingest-21
 
-Store one source segmentation with consecutive ranges of at most 100 pages and an approximate 25 MB target. Borrow unchanged source objects. Persist part OCR text before explicit variant completion, including empty text. Recover stored raster results without another OCR request. Store no joined multipart PDF. Return compact preparation identities. Load at most 100 part jobs inside each cursor activity. Bound source lanes and continue child workflows at completed windows by history events and bytes. Preserve source and setting identities across continuations.
+Store legacy source ranges with at most 100 pages and an approximate 25 MB target. Automatic OCR artifact ranges contain at most 32 pages. Borrow unchanged source objects. Persist part OCR text before explicit variant completion, including empty text. Recover stored raster results without another OCR request. Store no joined multipart PDF. Return compact preparation identities. Load at most 100 part jobs inside each cursor activity. Bound source lanes and continue child workflows at completed windows by history events and bytes. Preserve source and setting identities across continuations.
 
 Source ownership uses [main_services/processing/tasks/P3_parse_files/pdf_parts.py](../../main_services/processing/tasks/P3_parse_files/pdf_parts.py), [main_services/processing/tasks/P3_parse_files/pdf_cursor.py](../../main_services/processing/tasks/P3_parse_files/pdf_cursor.py).
+
+## F-ingest-27
+
+Detect every eligible image and PDF page in bounded batches of 32.
+Store detector version, model, script, language, and successful text-presence decisions.
+Keep renderer and detector failures retryable.
+Choose installed Tesseract coverage first and supported EasyOCR groups when required.
+Use script coverage for unknown language and retain its reason.
+Keep unknown script incomplete and missing coverage unsupported.
+Publish complete plan identities and staged request output before retiring superseded normal variants.
+Retain diagnostic provenance.
+Index published output presence separately from detection.
+
+Source ownership uses [the planner](../../main_services/processing/tasks/automatic_ocr.py) and [automatic execution](../../main_services/processing/tasks/P3_parse_files/automatic_ocr.py).
 
 ## F-doc-05
 
@@ -279,7 +293,7 @@ Source ownership uses [main_services/agents/collection_search_server/collection_
 
 Complete unfinished plans, remove earlier PDF members, and run current preparation, preview, OCR, PDF variant, and index targets. Settle dependent targets after prerequisite failures. Execute newly available work in the same operation. Recover saved OCR text without another request. Read file descriptors in bounded pages after one recovery. Bound concurrent pages and separate their temporary directories. Verify exact index receipts for native PDF and both OCR text families. Preserve legacy activity target contracts. Fail while any target remains open, with bounded target identity samples. Repeat failed work through error retry.
 
-The OCR step of a processing update (`F-admin-39`) starts `RerunOcr` with the effective languages of the dataset. After the run, the step removes the variants of languages that the settings no longer include, and the searchable PDFs that no variant uses.
+The OCR step starts `RerunOcr` with automatic page planning. It retains prior output until replacement publication completes. It verifies durable dependent output before settlement. Legacy histories retain their earlier targets.
 
 Source ownership uses [main_services/processing/tasks/P_admin/ocr_rerun.py](../../main_services/processing/tasks/P_admin/ocr_rerun.py), [main_services/processing/tasks/ocr_targets.py](../../main_services/processing/tasks/ocr_targets.py).
 

@@ -103,7 +103,7 @@ READER_JSON = "json"
 #: table as an `empty` manifest. Version 5 stores a JSON `null` as an empty cell, and a
 #: nested JSON value as indented text when it fits the cell limit.
 #: Version 6 verifies owned generations, column coverage, and complete SQLite text publication.
-READER_VERSION = 6
+READER_VERSION = 7
 
 #: How a reader read row 1 of a sheet, as `table_sheets.header_state` stores it.
 HEADER_ESTABLISHED = "established"

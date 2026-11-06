@@ -13,7 +13,7 @@ def part_lists(items, limit: int):
     return [items[index::count] for index in range(count)] if count else []
 
 
-async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, detect=False):
+async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, detect=False, automatic=False):
     """Return preparation and variant outcomes without moving text through workflows.
 
     `detect` runs the OCR detection stage on the prepared sources that have OCR pages.
@@ -36,7 +36,7 @@ async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, 
     jobs = []
     list_limit = 4
     available = {}
-    prepare_stage = "pdf_prepare_compact_batch" if cursor_context else "pdf_prepare_batch"
+    prepare_stage = "pdf_prepare_automatic_batch" if automatic else "pdf_prepare_compact_batch" if cursor_context else "pdf_prepare_batch"
     for file, result in zip(sources, await run_stage(prepare_stage, sources)):
         preparation[file.item_hash] = result
         if result.status != "ok":
@@ -46,6 +46,12 @@ async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, 
         list_limit = int((result.value or {}).get("part_lists", 4))
         for part in (result.value or {}).get("parts", []):
             jobs.append(dataclasses.replace(file, **part))
+
+    if automatic:
+        results = await run_stage("automatic_ocr_batch", prepared)
+        for file, result in zip(prepared, results):
+            variants[file.item_hash, "automatic"] = result
+        return preparation, variants
 
     if detect:
         await run_stage("detect_ocr_text_batch",

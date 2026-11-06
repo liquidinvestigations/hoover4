@@ -16,20 +16,11 @@ the actual gate.
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in
   [main_services/processing/tasks/P_admin/](../../../../../main_services/processing/tasks/P_admin), and the website never computes ETAs in a
   request path).
-- [dataset_ocr.rs](dataset_ocr.rs), per-dataset OCR languages, the newest operation row a dataset
-  page shows, the collection OCR defaults and vectors switch, and dataset **creation**. The
-  effective OCR value of a dataset comes from `resolve_ocr_languages`: the dataset row, then
-  the collection default, then `TESSERACT_LANGUAGES` and `EASYOCR_LANGUAGES`. It mirrors the
-  Python resolver, and both test `ocr_resolution_cases.json`. Apply saves the rows and
-  signals the processing update coordinator. It starts no operation. The creation form takes
-  a mount name and a folder *name*, validated against the listing of that mount, never a
-  path. A new folder is created only in a writable mount.
-  [../../dataset_mounts.rs](../../dataset_mounts.rs) reads the mount list and opens every folder through a
-  directory descriptor that refuses symbolic links. The same module writes the dataset
-  setting `uploads_enabled` ("Accept uploads"). It refuses `true` for a dataset whose
-  folder is not beneath a writable mount, and while another live dataset of the collection
-  has it. The check and the write hold a process lock of the collection.
-  [../../db_auth/uploads.rs](../../db_auth/uploads.rs) holds the upload permission rules and their queries.
+- [dataset_ocr.rs](dataset_ocr.rs) returns automatic OCR status and retains compatibility readers for historical settings.
+  Manual language mutations return the typed retired-setting error.
+  Dataset creation accepts empty compatibility language fields and stores no OCR override.
+  Automatic status groups current publication states and page decisions without returning document text.
+
 - [processing_updates.rs](processing_updates.rs), the stored processing update state of a dataset or
   a collection, Check again, and Update processing. It reads stored rows only, so a page load
   runs no count query. A request carries the step ids and the fingerprints that the page

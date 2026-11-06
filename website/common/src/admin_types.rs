@@ -219,9 +219,45 @@ pub struct CollectionOcrDefaults {
     pub easyocr_configured: bool,
 }
 
+/// Read-only automatic OCR publication status. Missing publications remain unknown.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct AutomaticOcrStatus {
+    pub automatic: bool,
+    pub policy_version: u16,
+    pub capability_digests: Vec<String>,
+    pub states: Vec<AutomaticOcrStateCount>,
+    pub page_decisions: Vec<AutomaticOcrPageCount>,
+    pub page_decisions_truncated: bool,
+    pub capability_digests_truncated: bool,
+}
+
+/// Aggregated page decisions expose detected coverage and selected installed models.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct AutomaticOcrPageCount {
+    pub script: String,
+    pub language: String,
+    pub status: String,
+    pub reason: String,
+    pub engine: String,
+    pub languages: String,
+    pub pages: u64,
+}
+
+/// Counts for one current publication state and its diagnostic reason.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct AutomaticOcrStateCount {
+    pub state: String,
+    pub reason: String,
+    pub files: u64,
+    pub pages: u64,
+}
+
 /// Everything the dataset OCR panel renders, in one round trip.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DatasetOcrPanel {
+    #[serde(default)]
+    pub automatic_status: AutomaticOcrStatus,
     pub collection_dataset: String,
     pub collectionname: String,
     /// `+`-joined, exactly as stored. Order is significant to Tesseract, so it is never

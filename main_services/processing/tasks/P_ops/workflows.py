@@ -654,8 +654,7 @@ class Operation:
     async def _rerun_ocr(self, params: OperationParams) -> str:
         """Bring every OCR target of a dataset to done: the `rerun_ocr` kind of the CLI.
 
-        Progress counts the dataset's plans while unfinished plans run, then the OCR and
-        index targets that `RerunOcr` recorded.
+        Legacy runs count their OCR targets. Automatic runs report files and descriptor batches.
         """
         result = await workflow.execute_child_workflow(
             "RerunOcr",
@@ -669,6 +668,9 @@ class Operation:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
         progress = await self._sample_selector_counts(params, {}, result.get("execution_counts", {}))
+        if "files" in result:
+            return (f"Ran automatic OCR over {result['files']} files in {result['batches']} batches. "
+                    f"The operation kept {progress['failed_documents']} document failures.")
         return (f"Ran OCR over {result.get('plans', 0)} plans. "
                 f"The operation kept {progress['failed_documents']} document failures.")
 

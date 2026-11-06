@@ -32,8 +32,8 @@ def test_a_sample_of_lines_gets_a_language_under_the_source_limit():
     assert document_language.detected_language("Latin", sample) == "en"
 
 
-def test_a_row_without_a_result_is_a_decision_without_text():
-    row = ocr_detection._row("c_ds", "h", "image", 1, None)
+def test_a_successful_negative_result_is_a_decision_without_text():
+    row = ocr_detection._row("c_ds", "h", "image", 1, {"has_text": False})
     assert (row["has_text"], row["box_count"], row["script"], row["language"]) == (0, 0, "", "und")
     assert row["detector_version"] == ocr_detection.OCR_DETECTION_VERSION
 

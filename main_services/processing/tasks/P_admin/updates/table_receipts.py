@@ -21,6 +21,7 @@ class TableReceiptParams:
     hashes: list[str] = field(default_factory=list)
     stages: list[str] = field(default_factory=list)
     generations: dict[str, int] = field(default_factory=dict)
+    text_source: str = "table_text"
 
 
 def write_receipts(client, params: TableReceiptParams) -> None:
@@ -82,17 +83,17 @@ def prepare_table_text(client, params: TableReceiptParams) -> None:
             f"DELETE FROM {table} WHERE collection_dataset = {{cd:String}} "
             "AND file_hash IN {hashes:Array(String)} AND extracted_by = {source:String} "
             "SETTINGS mutations_sync = 2",
-            parameters={"cd": params.collection_dataset, "hashes": hashes, "source": TABLE_TEXT})
+            parameters={"cd": params.collection_dataset, "hashes": hashes, "source": params.text_source})
     write_receipts(client, TableReceiptParams(params.collectionname, params.collection_dataset,
                                             params.op_id, hashes, ["parse", "text"],
                                             {row[0]: int(row[1]) for row in pending}))
 
 
 def verify_stages(client, params: TableReceiptParams) -> None:
-    """Verify durable table text dependencies before recording their completion."""
+    """Verify durable text dependencies before recording their completion."""
     import os
     from tasks.text_sources import TABLE_TEXT
-    values = {"cd": params.collection_dataset, "hashes": params.hashes, "source": TABLE_TEXT}
+    values = {"cd": params.collection_dataset, "hashes": params.hashes, "source": params.text_source}
     text = client.query(
         "SELECT file_hash, page_id, max(version) FROM text_content "
         "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
@@ -104,7 +105,7 @@ def verify_stages(client, params: TableReceiptParams) -> None:
             "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
             "AND extracted_by = {source:String}", parameters=values).result_rows
         if not set(expected) <= {(file_hash, int(page)) for file_hash, page in rows}:
-            raise RuntimeError("Table entity extraction has incomplete stored output")
+            raise RuntimeError("Text entity extraction has incomplete stored output")
     if "regex" in params.stages:
         rows = client.query(
             "SELECT file_hash, page_id, argMax(text_version, scan_version) FROM signal_scanned "
@@ -112,13 +113,13 @@ def verify_stages(client, params: TableReceiptParams) -> None:
             "AND extracted_by = {source:String} GROUP BY file_hash, page_id", parameters=values).result_rows
         actual = {(file_hash, int(page)): int(version) for file_hash, page, version in rows}
         if any(actual.get(key) != version for key, version in expected.items()):
-            raise RuntimeError("Table signal extraction has incomplete stored output")
+            raise RuntimeError("Text signal extraction has incomplete stored output")
         rows = client.query(
             "SELECT file_hash, page_id FROM regex_scanned FINAL "
             "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
             "AND extracted_by = {source:String}", parameters=values).result_rows
         if not set(expected) <= {(file_hash, int(page)) for file_hash, page in rows}:
-            raise RuntimeError("Table pattern extraction has incomplete stored output")
+            raise RuntimeError("Text pattern extraction has incomplete stored output")
 
     if "embed" in params.stages:
         verify_table_embeddings(client, params, expected)
@@ -129,7 +130,7 @@ def verify_stages(client, params: TableReceiptParams) -> None:
             "AND extracted_by = {source:String} GROUP BY file_hash, page_id", parameters=values).result_rows
         actual = {(file_hash, int(page)): int(version) for file_hash, page, version in rows}
         if any(actual.get(key) != version for key, version in expected.items()):
-            raise RuntimeError("Table text indexing has incomplete stored output")
+            raise RuntimeError("Text indexing has incomplete stored output")
     if "index_vectors" in params.stages:
         verify_vector_index(client, params)
 
@@ -161,7 +162,7 @@ def verify_vector_index(client, params: TableReceiptParams) -> None:
                                               params.collection_dataset, hashes):
                 actual.update(row[0] for row in page)
     if actual != expected:
-        raise RuntimeError("Table vector indexing has incomplete stored output")
+        raise RuntimeError("Text vector indexing has incomplete stored output")
 
 
 def verify_table_embeddings(client, params, versions) -> None:
@@ -178,14 +179,14 @@ def verify_table_embeddings(client, params, versions) -> None:
         "SELECT file_hash, page_id, argMax(text_bytes, version) FROM text_content "
         "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
         "AND extracted_by = {source:String} GROUP BY file_hash, page_id",
-        parameters={"cd": params.collection_dataset, "hashes": params.hashes, "source": TABLE_TEXT}).result_rows
-    keys = [((file_hash, TABLE_TEXT, int(page)), int(size)) for file_hash, page, size in rows]
+        parameters={"cd": params.collection_dataset, "hashes": params.hashes, "source": params.text_source}).result_rows
+    keys = [((file_hash, params.text_source, int(page)), int(size)) for file_hash, page, size in rows]
     for batch in plan_text_batches(keys):
         expected = {}
         for row in fetch_text_batch(client, params.collection_dataset, batch):
             key = row["file_hash"], int(row["page_id"])
             if versions.get(key) != int(row["text_version"]):
-                raise RuntimeError("Table text changed during embedding verification")
+                raise RuntimeError("Text changed during embedding verification")
             for chunk in chunk_page_text(row["text"]):
                 if not non_linguistic_reason(chunk.text):
                     expected[row["file_hash"], row["extracted_by"], int(row["page_id"]), chunk.chunk_index] = chunk.text
@@ -203,4 +204,4 @@ def verify_table_embeddings(client, params, versions) -> None:
             parameters=values).result_rows
         identities = {(h, source, int(page), int(index)) for h, source, page, index in vectors}
         if actual != expected or identities != set(expected):
-            raise RuntimeError("Table embedding has incomplete stored output")
+            raise RuntimeError("Text embedding has incomplete stored output")

@@ -702,6 +702,9 @@ pub async fn dispatch_operation(
     rerun_of: &str,
     detail: &str,
 ) -> anyhow::Result<String> {
+    if kind == "change_ocr_languages" {
+        return Err(guard::RetiredOcrSetting.into());
+    }
     let Some((_, target_kind, _)) = kind_entry(kind) else {
         anyhow::bail!("unknown operation kind: {kind}");
     };

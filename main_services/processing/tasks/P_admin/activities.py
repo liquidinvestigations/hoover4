@@ -175,6 +175,17 @@ def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
                 "AND borrows_source = 0", parameters={"cd": params.collection_dataset}).result_rows:
                 if key:
                     owned.add((collection_bucket(params.collectionname), key))
+        if "automatic_ocr_plans" in tables:
+            storage = get_s3_client()
+            bucket = collection_bucket(params.collectionname)
+            if storage.bucket_exists(bucket):
+                from tasks.heartbeat import HeartbeatClock
+                clock = HeartbeatClock()
+                for root in ("derived/automatic-ocr", "derived/automatic-ocr-source"):
+                    prefix = f"{root}/{params.collection_dataset}/"
+                    for item in storage.list_objects(bucket, prefix=prefix, recursive=True):
+                        clock.beat("Removing owned automatic OCR objects")
+                        storage.remove_object(bucket, item.object_name)
         for bucket, key in sorted(owned):
             try:
                 get_s3_client().remove_object(bucket, key)

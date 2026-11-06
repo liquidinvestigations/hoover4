@@ -1,4 +1,4 @@
-"""Serialize short generation commands while table readers run concurrently."""
+"""Serialize generation commands and OCR plan claims while parsers run concurrently."""
 
 import asyncio
 from dataclasses import dataclass
@@ -28,7 +28,7 @@ class GenerationCommand:
 
 @workflow.defn
 class TableGenerationCommand:
-    """Run one generation command through the single consumer storage queue."""
+    """Run short generation and OCR plan commands through the single-consumer storage queue."""
 
     @workflow.run
     async def run(self, command: GenerationCommand) -> int:
@@ -57,7 +57,7 @@ def send_command(command: GenerationCommand, *, deadline_seconds: float = 120) -
                 while not task.done():
                     stop_if_worker_is_stopping()
                     if time.monotonic() >= deadline:
-                        raise TimeoutError("The table generation command exceeded its deadline")
+                        raise TimeoutError("The metadata command exceeded its deadline")
                     await asyncio.wait({task}, timeout=1)
                 return await task
             finally:
@@ -80,7 +80,7 @@ def send_command(command: GenerationCommand, *, deadline_seconds: float = 120) -
                         raise
                     except Exception:
                         stop_if_worker_is_stopping()
-            raise TimeoutError("The table generation command exceeded its deadline")
+            raise TimeoutError("The metadata command exceeded its deadline")
         except BaseException:
             if owned is not None:
                 try:
@@ -118,6 +118,12 @@ def apply_table_generation_command(command: GenerationCommand) -> int:
     from database.clickhouse import get_collection_client, insert_arrow_durable
 
     with get_collection_client(command.collectionname) as client:
+        if command.action == "claim_ocr_plan":
+            from tasks.P3_parse_files.automatic_ocr import claim_automatic_plan
+            return claim_automatic_plan(client, command)
+        if command.action in ("publish_ocr_plan", "fail_ocr_plan", "apply_ocr_plan"):
+            from tasks.P3_parse_files.automatic_ocr import apply_automatic_state_command
+            return apply_automatic_state_command(client, command)
         owners = client.query(
             "SELECT generation, attempt_token, owner_op, state FROM table_generation_owners FINAL "
             "WHERE file_hash = {hash:String}", parameters={"hash": command.file_hash}).result_rows

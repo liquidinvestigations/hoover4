@@ -1,10 +1,9 @@
 """Target keys and live selectors of the update steps.
 
-`target_key` returns the settings that a step depends on, as a string. It reads no
-collection table, so the coordinator can compare every scope with one pass of cheap
-reads. `select` counts the work of one step with bounded queries over the collection
-database, and returns the files as a SQL subquery too, so the totals of a scope count
-each file once across its steps.
+`target_key` returns the versioned target of a step.
+Automatic OCR includes installed capabilities and policy identities.
+Searchable PDF targets include current published engine and language pairs.
+`select` counts work through bounded collection queries and returns its hash subquery.
 
 Selector contracts, one for each step:
 
@@ -14,11 +13,9 @@ Selector contracts, one for each step:
   stage and a plan. The automatic count keeps only the stage versions that are not a
   baseline and have no retry claim for the dataset. Settlement: the selected pairs were
   reconciled.
-* `ocr` selects files with OCR history that lack a result, a skip or an OCR error of a
-  current language pass, and files that keep a variant of languages that the effective
-  settings no longer include. The count is an estimate, because an error of earlier
-  languages counts as settled here. `RerunOcr` computes the exact targets.
-  Settlement: `RerunOcr` verified every target and no obsolete variant remains.
+* `ocr` selects live image and PDF sources without a matching applied automatic plan.
+  Policy, detector, capability, stage, and input changes make prior output selectable.
+  Settlement verifies exact publication identities and durable dependent output.
 * `vectors` selects files with text and no vector of the served model, when the
   collection uses vectors. A file whose text has no passage worth a vector stays in the
   count after the run, so the count is an upper bound. Settlement: every selected plan
@@ -29,7 +26,7 @@ Selector contracts, one for each step:
   Settlement: the count is zero and every infected hash of the dataset has `virus_hit`
   set on its search rows.
 * `ocr_detection` selects, when the Tesseract service is configured, live images and live
-  PDF sources with OCR pages that have no `ocr_detection` row of the current version.
+  PDF sources with eligible page identities missing from current-version detection.
   Settlement: the count is zero.
 * `tables` selects earlier or failed table readings and missing JSON or delimited readings.
   A current publication remains selected until every matching downstream receipt exists.
@@ -81,20 +78,9 @@ class Selection:
 
 
 def ocr_target(collection_dataset: str, collectionname: str) -> dict:
-    """The effective OCR languages and configured engines of a dataset."""
-    from tasks.dataset_config import effective_ocr_settings
-    from tasks.ocr_client import engine_configured
-    from tasks.ocr_pdf_client import engines_for_provider, service_configured
-    from tasks.text_sources import OCR_ENGINES
-
-    settings = effective_ocr_settings(collection_dataset, collectionname)
-    pdf_engines = engines_for_provider() if service_configured() else []
-    return {
-        "languages": {engine: settings[engine].value for engine in OCR_ENGINES},
-        "sources": {engine: settings[engine].source for engine in OCR_ENGINES},
-        "image_engines": [e for e in OCR_ENGINES if engine_configured(e)],
-        "pdf_engines": list(pdf_engines),
-    }
+    """Return the automatic policy, detector, and installed-capability identity."""
+    from tasks.P_admin.automatic_ocr import target
+    return target()
 
 
 def vectors_target(collectionname: str) -> dict:
@@ -127,7 +113,7 @@ def target_key(step: UpdateStep, ctx: ScopeContext) -> Tuple[str, dict]:
     """The target key of a step for a scope, and the settings it names."""
     if step.step_id == "ocr":
         target = ocr_target(ctx.scope_id, ctx.collectionname)
-        key = {k: target[k] for k in ("languages", "image_engines", "pdf_engines")}
+        key = target
         return json.dumps(key, sort_keys=True), target
     if step.step_id == "vectors":
         target = vectors_target(ctx.collectionname)
@@ -279,6 +265,17 @@ def obsolete_ocr_outputs(client, collection_dataset: str, keep_languages: Sequen
 
 
 def select_ocr(client, ctx: ScopeContext, target: Optional[dict] = None) -> Selection:
+    from tasks.P_admin.automatic_ocr import hash_sql, target as automatic_target
+    selected = target or automatic_target()
+    if "languages" in selected:
+        return legacy_select_ocr(client, ctx, selected)
+    parameters = {"cd": ctx.scope_id, **selected}
+    sql = hash_sql()
+    files, size = _count(client, sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, sql if files else "", parameters, selected)
+
+
+def legacy_select_ocr(client, ctx: ScopeContext, target: Optional[dict] = None) -> Selection:
     from tasks.ocr_targets import engine_passes
 
     target = target or ocr_target(ctx.scope_id, ctx.collectionname)
@@ -498,11 +495,12 @@ def detection_hash_sql() -> Tuple[str, dict]:
     from tasks.stage_versions import STAGE_VERSIONS
 
     sql = (
-        f"SELECT hash FROM ({_LIVE}) WHERE (hash IN (SELECT image_hash FROM image "
-        "WHERE collection_dataset = {cd:String}) OR hash IN (SELECT hash FROM ocr_page_needs FINAL "
-        "WHERE collection_dataset = {cd:String} AND length(ocr_pages) > 0)) "
-        "AND hash NOT IN (SELECT hash FROM ocr_detection WHERE collection_dataset = {cd:String} "
-        "AND detector_version = {od_version:UInt16})")
+        "SELECT DISTINCT hash FROM (SELECT image_hash AS hash, 'image' AS kind, toUInt32(1) AS page "
+        "FROM image WHERE collection_dataset = {cd:String} UNION ALL "
+        "SELECT hash, source_kind AS kind, arrayJoin(ocr_pages) AS page FROM ocr_page_needs FINAL "
+        "WHERE collection_dataset = {cd:String}) WHERE hash IN (" + _LIVE + ") "
+        "AND (hash, kind, page) NOT IN (SELECT hash, source_kind, page_id FROM ocr_detection FINAL "
+        "WHERE collection_dataset = {cd:String} AND detector_version = {od_version:UInt16})")
     return sql, {"od_version": STAGE_VERSIONS["ocr_detection"]}
 
 

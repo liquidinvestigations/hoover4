@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def collection():
-    name = "bridge_" + uuid.uuid4().hex[:12]
+    name = "bridge_" + uuid.uuid4().hex[:12] + "a"
     clickhouse.migrate_collection(name)
     try:
         yield name
@@ -134,3 +134,62 @@ def test_parent_cancellation_stops_the_bridge_and_its_waiting_command(collection
                 await asyncio.sleep(0.05)
             assert description.status.name == "CANCELED"
     asyncio.run(run())
+
+
+def test_concurrent_automatic_plan_claims_pin_one_executable_candidate(collection):
+    import json
+    from tasks.automatic_ocr import make_plan
+    from tasks.P3_parse_files.automatic_ocr import write_plan, pinned_plan
+    plans = [make_plan("dataset", "ocr-source", "source", "image",
+                       [dict(page_id=1, has_text=True, script="Latin", language="und")],
+                       dict(tesseract=[model], easyocr=[]), 1) for model in ("Latin", "eng")]
+    # Both first claims use executable script coverage with different capability identities.
+    plans[1] = make_plan("dataset", "ocr-source", "source", "image",
+                        [dict(page_id=1, has_text=True, script="Latin", language="en")],
+                        dict(tesseract=["eng"], easyocr=[]), 1)
+    for plan in plans:
+        plan["source_parts"] = []
+        with clickhouse.get_collection_client(collection) as db:
+            write_plan(db, plan, "candidate")
+    def command(plan, op="ocr-operation"):
+        return GenerationCommand(collection, "ocr-source", "claim_ocr_plan", owner_op=op,
+            manifest=json.dumps(dict(dataset="dataset", plan_digest=plan["plan_digest"])).encode())
+    async def run():
+        client = await Client.connect(TEMPORAL_ADDRESS)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            async with common(client), planner(client, executor):
+                assert await asyncio.gather(*[asyncio.to_thread(send_command, command(plan)) for plan in plans]) == [1, 1]
+                with clickhouse.get_collection_client(collection) as db:
+                    chosen = pinned_plan(db, "dataset", "ocr-source", "ocr-operation")
+                    assert chosen["plan_digest"] in {plan["plan_digest"] for plan in plans}
+                    assert db.query("SELECT count() FROM processing_output_receipts FINAL WHERE stage = 'planned'").result_rows == [(1,)]
+                    assert chosen["claim_version"] == 1
+                await asyncio.to_thread(send_command, command(plans[1], "next-operation"))
+                with clickhouse.get_collection_client(collection) as db:
+                    assert pinned_plan(db, "dataset", "ocr-source", "next-operation")["claim_version"] == 2
+                from temporalio.worker import Replayer
+                from tasks.run_worker import sandboxed_runner
+                history = await client.get_workflow_handle(f"table-generation-{collection}-ocr-source").fetch_history()
+                await Replayer(workflows=[TableGenerationCommand], workflow_runner=sandboxed_runner()).replay_workflow(history)
+                import os
+                from pathlib import Path
+                if os.getenv("AUTOMATIC_CLAIM_HISTORY"):
+                    Path(os.environ["AUTOMATIC_CLAIM_HISTORY"]).write_text(json.dumps({"automatic-plan-claim": dict(
+                        workflow_id=history.workflow_id, workflow_type="TableGenerationCommand", history=json.loads(history.to_json()))}, indent=2))
+
+    asyncio.run(run())
+
+
+def test_non_executable_automatic_candidate_cannot_claim(collection):
+    import json
+    from tasks.automatic_ocr import make_plan
+    from tasks.P3_parse_files.automatic_ocr import write_plan
+    from temporalio.exceptions import ApplicationError
+    plan = make_plan("dataset", "blocked", "source", "image", [dict(page_id=1, has_text=True, script="", language="und")], {}, 1)
+    with clickhouse.get_collection_client(collection) as db:
+        write_plan(db, plan, "incomplete")
+    with pytest.raises(ApplicationError, match="not executable"):
+        apply_table_generation_command(GenerationCommand(collection, "blocked", "claim_ocr_plan", owner_op="operation",
+            manifest=json.dumps(dict(dataset="dataset", plan_digest=plan["plan_digest"])).encode()))
+    with clickhouse.get_collection_client(collection) as db:
+        assert db.query("SELECT count() FROM processing_output_receipts FINAL").result_rows == [(0,)]

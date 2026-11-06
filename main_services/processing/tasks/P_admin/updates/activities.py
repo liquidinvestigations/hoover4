@@ -403,6 +403,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             return (selection.count == 0,
                     f"{selection.detail.get('plans', 0)} plans and {selection.count} files are still unfinished.")
         if step_id == "ocr":
+            if "languages" not in _detail(params.step):
+                selection = selectors.select_ocr(client, ctx)
+                return selection.count == 0, f"{selection.count} automatic OCR publications remain incomplete."
             from tasks.dataset_config import effective_ocr_settings
 
             current = {e: s.value for e, s in effective_ocr_settings(scope_id, params.collectionname).items()}
@@ -808,18 +811,11 @@ def detect_update_files(params: TablePlanParams) -> int:
                     {"item_hash": file_hash, "file_size_bytes": int(size or 0), "s3_url": s3_path or "", "path": path}],
                     context=f"{cd}/{params.plan_hash}")
                 try:
-                    found = []
-                    for kind in ("original", "preview"):
-                        pages = ocr_detection.stored_pdf_pages(client, cd, file_hash, kind)
-                        if pages:
-                            file = BatchFile(item_hash=file_hash, file_path=path, source_kind=kind)
-                            with source_file(client, scope, file) as source:
-                                found = ocr_detection.pdf_rows(cd, file_hash, kind, source, pages)
-                            break
-                    if not found:
-                        found = ocr_detection.image_rows(
-                            cd, file_hash, ocr_detection.read_image(client, cd, file_hash, path))
-                    ocr_detection.store_rows(client, found)
+                    kind = next((kind for kind in ("original", "preview")
+                                 if ocr_detection.stored_pdf_pages(client, cd, file_hash, kind)), "image")
+                    file = BatchFile(item_hash=file_hash, file_path=path, source_kind=kind,
+                                     routes=["image"] if kind == "image" else [])
+                    ocr_detection._detect_file(scope, file)
                 finally:
                     os.remove(path)
         finally:

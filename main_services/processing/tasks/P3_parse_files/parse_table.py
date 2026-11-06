@@ -21,6 +21,7 @@ stops being visible for the dataset.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -887,6 +888,12 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
         collector = new_collector(reader)
         attempted = [reader]
         reader_limits = {"time_limit_seconds": max(1, params.timeout_seconds - 60)} if reader == "sqlite" else {}
+        if reader == "csv":
+            extension = os.path.splitext(file_name.lower())[1]
+            delimiter = {".tsv": "\t", ".tab": "\t", ".psv": "|"}.get(extension, "")
+            if not delimiter and "text/tab-separated-values" in (params.mime_types or []):
+                delimiter = "\t"
+            reader_limits["delimiter"] = delimiter
         stream = None
         try:
             stream = read_cells(params.file_path, reader,

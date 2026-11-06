@@ -218,6 +218,8 @@ class RerunOcr:
 
     @workflow.run
     async def run(self, params: "RerunOcrParams") -> dict:
+        if params.automatic_mode is not False and workflow.patched("automatic-ocr-v1"):
+            return await self._automatic(params)
         if not workflow.patched(RUN_OCR_TARGETS_PATCH):
             return await self._whole_plans(params)
         if not params.listed:
@@ -266,6 +268,29 @@ class RerunOcr:
             },
         }
 
+    async def _automatic(self, params):
+        """Process bounded automatic source pages and verify dependent output."""
+        from tasks.P_admin.automatic_ocr import AutomaticOcrScope
+        if not params.listed:
+            params = await self._phase_one(dataclasses.replace(params, parts_version=True), automatic=True)
+        scope = AutomaticOcrScope(params.collectionname, params.collection_dataset, params.op_id, params.after)
+        options = dict(start_to_close_timeout=timedelta(hours=6),
+                       retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+        files = await workflow.execute_activity("list_automatic_ocr_files", scope, heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+        if not files:
+            return {"plans": params.phase_one_plans, "files": params.automatic_files, "batches": params.plans,
+                    "execution_counts": {"plans_run": params.phase_one_plans, "failed_plans": params.failed_plans,
+                                         "failed_dataset_steps": params.failed_dataset_steps}}
+        hashes = [file["item_hash"] for file in files]
+        scope.hashes = hashes
+        scope.plans = await workflow.execute_activity("run_automatic_ocr_files", scope,
+                                        task_queue="processing-ocr-queue", heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+        plan = OcrRunPlanParams(params.collectionname, params.collection_dataset, params.op_id, hashes[0])
+        await OcrRunPlan()._text_steps(plan, hashes, suffix="-automatic", strict=True)
+        await workflow.execute_activity("verify_automatic_ocr_files", scope, heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+        workflow.continue_as_new(dataclasses.replace(params, after=hashes[-1], plans=params.plans + 1,
+                                                       automatic_files=params.automatic_files + len(hashes)))
+
     async def _whole_plans(self, params: "RerunOcrParams") -> dict:
         """The run of executions that started before the target-based run. Replay only."""
         reopened = await workflow.execute_activity(
@@ -291,7 +316,7 @@ class RerunOcr:
             )
         return {"plans": reopened, "execution_counts": execution_counts}
 
-    async def _phase_one(self, params: "RerunOcrParams") -> "RerunOcrParams":
+    async def _phase_one(self, params: "RerunOcrParams", automatic: bool = False) -> "RerunOcrParams":
         """Run the unfinished plans and the blobs without a plan, then record the targets."""
         # No operation id: this read only decides whether ExecutePlans runs, and an id
         # would record the listed plans against the operation a second time.
@@ -336,13 +361,14 @@ class RerunOcr:
                 start_to_close_timeout=timedelta(minutes=120),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
-        await workflow.execute_activity(
-            record_ocr_run_targets,
-            params,
-            start_to_close_timeout=timedelta(minutes=120),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
+        if not automatic:
+            await workflow.execute_activity(
+                record_ocr_run_targets,
+                params,
+                start_to_close_timeout=timedelta(minutes=120),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            )
         return dataclasses.replace(
             params,
             listed=True,
@@ -706,7 +732,7 @@ class OcrRunPlan:
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
-    async def _text_steps(self, params: "OcrRunPlanParams", hashes: list, suffix: str = "") -> None:
+    async def _text_steps(self, params: "OcrRunPlanParams", hashes: list, suffix: str = "", strict: bool = False) -> None:
         """P4 and P5 together, then P6, for the files whose OCR text is not indexed.
 
         Date resolution and the canonical type do not run: OCR text changes neither.
@@ -719,21 +745,21 @@ class OcrRunPlan:
                 ExtractEntitiesForPlanParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
+                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes, fail_on_errors=strict),
                 id=f"run-ocr-entities-{params.op_id}-{params.plan_hash}{suffix}", **common),
             workflow.execute_child_workflow(
                 ScanRegexEntitiesForPlan.run,
                 ScanRegexEntitiesForPlanParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
+                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes, fail_on_errors=strict),
                 id=f"run-ocr-regex-{params.op_id}-{params.plan_hash}{suffix}", **common),
             workflow.execute_child_workflow(
                 ChunkEmbedForPlan.run,
                 ChunkEmbedForPlanParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
+                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes, fail_on_errors=strict),
                 id=f"run-ocr-embed-{params.op_id}-{params.plan_hash}{suffix}", **common),
             return_exceptions=True,
         )
@@ -745,7 +771,7 @@ class OcrRunPlan:
             IndexDatasetPlanParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
+                plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes, fail_on_errors=strict),
             id=f"run-ocr-index-{params.op_id}-{params.plan_hash}{suffix}", **common)
 
 
@@ -766,6 +792,8 @@ class ChangeOcrLanguages:
 
     @workflow.run
     async def run(self, params: "ApplyOcrLanguagesParams") -> dict:
+        if workflow.patched("automatic-ocr-v1"):
+            raise ApplicationError("Manual OCR settings are retired", type="RetiredOcrSetting", non_retryable=True)
         async def progress(stage: str, extra: dict | None = None) -> None:
             await workflow.execute_activity(
                 report_ocr_language_progress,

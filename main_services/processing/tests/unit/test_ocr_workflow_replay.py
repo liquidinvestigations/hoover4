@@ -73,6 +73,15 @@ def test_folder_scan_histories_of_both_range_results_replay(entry):
     _replay_history(entry)
 
 
+_AUTOMATIC_FIXTURES = json.loads((Path(__file__).parent / "fixtures" /
+                                 "automatic_ocr_contract_histories.json").read_text())
+
+
+@pytest.mark.parametrize("entry", [pytest.param(entry, id=name) for name, entry in _AUTOMATIC_FIXTURES.items()])
+def test_automatic_ocr_restart_history_replays(entry):
+    _replay_history(entry)
+
+
 def _replay_history(entry):
     from temporalio.client import WorkflowHistory
     from temporalio.worker import Replayer
@@ -87,11 +96,12 @@ def _replay_history(entry):
     from tasks.P6_index_data.workflows import IndexDatasetPlan
     from tasks.P3_parse_files.pdf_cursor import PdfPartGroup
     from tasks.run_worker import sandboxed_runner
+    from tasks.P3_parse_files.table_generations import TableGenerationCommand
 
     replayer = Replayer(
         workflows=[RerunOcr, OcrRunPlan, ChangeOcrLanguages, Operation, IngestAndProcessDataset, IngestDiskDataset, HandleFolders, ComputePlans, ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched,
                    ExtractEntitiesForPlan, ScanRegexEntitiesForPlan, ChunkEmbedForPlan,
-                   IndexDatasetPlan, PdfPartGroup],
+                   IndexDatasetPlan, PdfPartGroup, TableGenerationCommand],
         workflow_runner=sandboxed_runner(),
     )
     history = WorkflowHistory.from_json(entry["workflow_id"], entry["history"])

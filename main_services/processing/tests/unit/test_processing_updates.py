@@ -55,8 +55,8 @@ def test_a_fingerprint_changes_with_version_target_and_input(monkeypatch):
     base = registry.fingerprint(ocr, "eng", "op-1")
     assert base == registry.fingerprint(ocr, "eng", "op-1")
     assert base != registry.fingerprint(ocr, "eng+deu", "op-1")
-    # OCR does not select unfinished work, so new input does not change its fingerprint.
-    assert base == registry.fingerprint(ocr, "eng", "op-2")
+    # Newly ingested sources require their own durable automatic completion verification.
+    assert base != registry.fingerprint(ocr, "eng", "op-2")
     assert registry.fingerprint(unfinished, "", "op-1") != registry.fingerprint(unfinished, "", "op-2")
     monkeypatch.setitem(STAGE_VERSIONS, "ocr_image", STAGE_VERSIONS["ocr_image"] + 1)
     assert base != registry.fingerprint(ocr, "eng", "op-1")
@@ -64,7 +64,7 @@ def test_a_fingerprint_changes_with_version_target_and_input(monkeypatch):
 
 def test_the_steps_of_a_scope_keep_registry_order():
     assert [s.step_id for s in registry.steps_of("dataset")] == [
-        "unfinished", "failed_files", "virus_scan", "tables", "archive_members", "image_previews", "ocr", "ocr_detection", "pdf_text", "vectors",
+        "unfinished", "failed_files", "virus_scan", "tables", "archive_members", "image_previews", "ocr_detection", "ocr", "pdf_text", "vectors",
         "search_terms", "folder_counts"]
     assert [s.step_id for s in registry.steps_of("collection")] == ["search_schema"]
 
@@ -200,6 +200,7 @@ class Temporal:
     """Answers workflow commands by name and records their order."""
 
     def __init__(self, monkeypatch, fail_children=(), unsettled=()):
+        monkeypatch.setattr(update_workflows.workflow, "patched", lambda name: False)
         self.calls = []
         self.fail_children = set(fail_children)
         self.unsettled = set(unsettled)

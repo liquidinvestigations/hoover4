@@ -162,6 +162,9 @@ EXPECTED_COLLECTION_TABLES = {
     "processing_output_receipts",
     "table_generation_owners",
     "table_text_publication_ready",
+    "automatic_ocr_ready",
+    "automatic_ocr_plans",
+    "automatic_ocr_output",
     "pdf_ocr_parts",
     "pdf_parts_ready",
 }

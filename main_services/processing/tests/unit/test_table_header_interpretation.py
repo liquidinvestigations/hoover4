@@ -96,7 +96,7 @@ def test_an_empty_file_has_no_sheet(tmp_path):
 
 def test_a_new_reading_has_a_new_reader_version():
     """A parse of the earlier version is not reused for another dataset (`_existing_parse`)."""
-    assert READER_VERSION == 6
+    assert READER_VERSION == 7
 
 
 def _reading(sheet):

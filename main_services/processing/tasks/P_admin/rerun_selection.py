@@ -40,6 +40,8 @@ _OUTCOME_NAME_ALIASES = {
 def recovery_activity(task_name: str) -> str | None:
     """Map an Error name to the activity that can prove its recovery."""
     direct = {
+        "automatic_ocr": "automatic_ocr",
+        "detect_ocr_text": "detect_ocr_text",
         "detector_error_tika": "run_tika_and_store",
         "parse_error_tika": "run_tika_and_store",
         "tika_text_batch": "run_tika_and_store",

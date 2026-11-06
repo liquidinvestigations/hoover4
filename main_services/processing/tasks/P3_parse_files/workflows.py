@@ -56,6 +56,7 @@ def _detector_results_for_error_capture(
 
 #: The parse tasks that extract the content of a file without Tika.
 _CONTENT_EXTRACTORS_BESIDE_TIKA = frozenset({
+    "automatic_ocr",
     "email_scan",
     "archive_scan",
     "extract_plaintext_chunks",

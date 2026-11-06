@@ -22,8 +22,8 @@ This stage parses downloaded files by type and writes structured content and met
 - Runner: [batch_runner.py](batch_runner.py), the shared loop of every stage activity
 - Routing and error names: the pure functions of [workflows.py](workflows.py)
 - Activities: `parse_*` modules (e.g., [parse_pdf.py](parse_pdf.py), [parse_email.py](parse_email.py), [parse_image.py](parse_image.py))
-- OCR: [parse_ocr.py](parse_ocr.py) (images -> `raw_ocr_results` + text) and [parse_ocr_pdf.py](parse_ocr_pdf.py)
-  (PDF sources -> part manifests, OCR text, and durable variant completion)
+- OCR uses [automatic_ocr.py](automatic_ocr.py) for new work.
+  [parse_ocr.py](parse_ocr.py) and [parse_ocr_pdf.py](parse_ocr_pdf.py) retain legacy activity contracts.
 - Tables: [parse_table.py](parse_table.py) (cells -> `table_cells` + `table_documents`/`table_sheets`/
   `table_columns`), with the format list in [table_formats.py](table_formats.py), the readers in
   [table_readers.py](table_readers.py) and the delimited-text sniff in [sniff_table.py](sniff_table.py)
@@ -81,59 +81,43 @@ qpdf exit status 3 returns usable output with warnings. Page-count parsing accep
 logs the warning with the file hash. Metadata JSON parsing accepts it. A page-count error
 records after one attempt.
 
-## Searchable PDFs preserve source pages.
+## Automatic OCR uses detected page coverage
 
-PDF preparation stores native text on the parent document with its original page numbers.
-It chooses consecutive source ranges with at most 100 pages and an approximate 25,000,000-byte target.
-Every source and OCR variant uses those same ranges.
-One-part sources reference their existing object or `blob_values` bytes.
+PDF preparation stores native text with its original page numbers.
+The existing eligibility rule selects pages with fewer than 20 native characters or sufficient displayed image coverage.
+Detection examines every eligible page in batches of 32.
+Renderer and service failures remain retryable errors.
+Successful negative detection, unknown script, and unsupported coverage have separate states.
 
-The page rule selects a page when native text has fewer than 20 characters.
-It also selects a page when an image covers at least 10% of its area and has a 129-pixel minimum edge.
-The builder adds invisible OCR overlays to those pages.
-It preserves the source page content and geometry.
-Parts without selected pages borrow their source object.
-A source without selected pages creates no new searchable variant.
+[The planner](../automatic_ocr.py) selects installed Tesseract models first.
+It uses supported EasyOCR script groups when Tesseract cannot cover the detected script.
+Unknown language uses installed script coverage and records its reason.
+Unknown script remains incomplete.
+Manual dataset and collection language settings do not control new work.
 
-Part text reaches durable storage before variant completion.
-Finalization writes one complete `pdfocr_<engine>_<languages>` source through `insert_text_pages`.
-The `text_complete` marker records successful empty text as well as stored text.
-Retries reuse saved part text and build missing parts only.
-Stored raster outputs receive parts and text from their saved PDF without another OCR request.
+[Automatic execution](automatic_ocr.py) stores complete page decisions in `automatic_ocr_plans`.
+The plan identity includes source, detector, policy, stage, and capability identities.
+The executor stores each request result in `automatic_ocr_output` before publication.
+Retries reuse these results and the operation's first executable plan.
+The metadata coordinator serializes plan claims, text and PDF publication, metadata cleanup, failure markers, and applied-state writes.
+Artifact verification and language inference run before publication enters the coordinator.
+Automatic PDF artifact ranges contain at most 32 pages, independently of legacy source ranges.
+The builder preserves source content and adds invisible OCR text.
+Image PDFs use stored OCR words and require at least five qualifying words.
 
-New preparation activities return source identities, counts, and completion flags.
-Part metadata and selected pages remain in storage.
-Each cursor activity reads and processes at most 100 source ranges.
-Its result carries a cursor, counters, and at most one document error.
-Each PDF group uses up to four source lanes per engine, within the configured batch count.
-Each lane processes one source at a time.
-The child workflow continues after a completed window at 2,000 history events or 4 MiB of history.
-Source digests and language setting versions remain fixed across continuations.
-A changed source or setting stops the cursor before another window.
-The workflow reports this change as an operation failure and leaves its targets open for a fresh run.
-Activity results use the installed converter to verify the 512 KiB payload limit.
-Legacy activities and workflow branches retain their earlier inputs, results, and heartbeat schemas.
+Publication verifies stored text and artifact sizes before it removes superseded normal variants.
+Diagnostic plans and request payloads remain stored.
+Entity extraction, signal extraction, embedding, and indexing run before the plan becomes applied.
+Settlement verifies the exact plan identity, page coverage, dependent watermarks, vectors, and index receipts.
+Published OCR presence has three index values, unknown `0`, absent `1`, and present `2`.
+A failed replacement preserves the presence of prior published output.
 
-Multipart results have an empty direct object key and a complete `pdf_ocr_parts` manifest.
-They have no stored joined PDF.
-Readers resolve borrowed objects through the matching `pdf_parts` row.
-A borrowed row with an empty source path reads the original `blob_values` bytes.
-Derived objects have no `blobs` or VFS row.
-Object deletion precedes manifest deletion and preserves borrowed source objects.
-
-Word, OpenDocument text, PowerPoint, and OpenDocument presentation files receive PDF previews.
-Office conversion runs on its own limited queue with a separate profile for each file.
-Preview preparation keeps the existing Office native text sources.
-Image Preview OCR uses saved word boxes and sends no new image OCR request.
-It requires at least five words with two letters or digits and a 129-pixel minimum image edge.
-Missing OCR results defer their image PDF variants without adding a dependent processing error or a permanent skip.
-Stored language variants can still complete. The target remains open unless its OCR prerequisite has a recorded error or skip.
-
-Known password and damage defects receive metadata and stop PDF work normally.
+Legacy workflow branches retain manual settings and their source ranges of at most 100 pages.
+They retain their recorded activity contracts for replay.
 New workflows create no PDF members.
-Earlier workflow branches and their activity inputs remain executable for retained histories.
-Run OCR removes earlier member paths after unfinished plan execution and before target selection.
+Run OCR completes unfinished plans and removes earlier PDF member paths before automatic selection.
 Selection and indexing require a current live path.
+Multipart readers use `pdf_ocr_parts` and assemble downloads without storing a joined object.
 
 ## Image previews are a derived object too
 

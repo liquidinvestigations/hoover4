@@ -59,7 +59,7 @@ class _Group:
                             lambda *a, **k: pytest.fail("the group started a child workflow"))
         monkeypatch.setattr(plan_workflows.workflow, "now", lambda: NOW)
         monkeypatch.setattr(plan_workflows.workflow, "patched", lambda name:
-                            False if name == "pdf-part-cursor-v1" else parts if name == "pdf-parts" else True)
+                            False if name in ("pdf-part-cursor-v1", "automatic-ocr-v1") else parts if name == "pdf-parts" else True)
         monkeypatch.setattr(plan_workflows.workflow, "info",
                             lambda: SimpleNamespace(run_id=run_id))
 

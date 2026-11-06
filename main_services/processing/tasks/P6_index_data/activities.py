@@ -205,7 +205,7 @@ def _row_scalars(row: dict) -> tuple:
     """The scalar columns of a pages row. `virus_hit` is written only when the writer put
     it on the row, which it does only for a shard table that has the column, so a writer
     never fails on a table that the search schema step has not updated yet."""
-    return _SCALAR_COLUMNS + (('virus_hit',) if 'virus_hit' in row else ())
+    return _SCALAR_COLUMNS + (('virus_hit',) if 'virus_hit' in row else ()) + (('has_ocr_output',) if 'has_ocr_output' in row else ())
 
 
 def pages_row_id(collection_dataset: str, file_hash: str, extracted_by: str, page_id: int) -> int:
@@ -399,7 +399,10 @@ def write_page_batches(client, table: str, collection_dataset: str,
     from database.manticore import table_has_column
     virus_column = table_has_column(table, 'virus_hit')
     ocr_columns = table_has_column(table, 'ocr_script')
+    presence_column = table_has_column(table, 'has_ocr_output')
     for row in rows:
+        if not presence_column:
+            row.pop('has_ocr_output', None)
         if not virus_column:
             row.pop('virus_hit', None)
         if not ocr_columns:
@@ -801,6 +804,16 @@ def document_languages(client, collection_dataset: str,
     return {file_hash: list(languages) for file_hash, languages in rows}
 
 
+def document_ocr_presence(client, collection_dataset: str, item_hashes: list[str] | None = None) -> dict[str, int]:
+    """Return unknown 0, published absent 1, or published present 2."""
+    limit = " AND hash IN {hashes:Array(String)}" if item_hashes is not None else ""
+    rows = client.query(
+        "SELECT hash, argMax(has_ocr_output, revision) FROM automatic_ocr_plans FINAL "
+        "WHERE collection_dataset = {cd:String} AND state IN ('published', 'applied')" + limit + " GROUP BY hash",
+        parameters={"cd": collection_dataset, "hashes": item_hashes or []}).result_rows
+    return {h: 2 if int(present) else 1 for h, present in rows}
+
+
 def document_ocr_attributes(client, collection_dataset: str, item_hashes: list[str] | None = None
                             ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """The detected OCR scripts and languages of each document, by file hash.
@@ -858,13 +871,14 @@ def empty_document_metadata() -> dict:
 
     row = {name: repr_manticore_tuple([]) for name in DOCUMENT_COLUMNS
            if name not in ('date_min', 'date_max', 'file_size_bytes', 'struct_flags',
-                           'primary_filename', 'virus_hit')}
+                           'primary_filename', 'virus_hit', 'has_ocr_output')}
     row.update({
         'date_min': DATE_UNKNOWN,
         'date_max': DATE_UNKNOWN,
         'file_size_bytes': SIZE_UNKNOWN,
         'struct_flags': 0,
         'virus_hit': 0,
+        'has_ocr_output': 0,
         'primary_filename': "",
         # Per segment rather than per document, so a document nothing is known about
         # supplies the "mentions nothing" state and each segment overwrites it.
@@ -1040,6 +1054,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         """, {"collection_dataset": collection_dataset}).to_pylist()
 
     with get_collection_client(params.collectionname) as client:
+        presence_by_hash = document_ocr_presence(client, collection_dataset, item_hashes)
         languages_by_hash = document_languages(client, collection_dataset, item_hashes)
         ocr_scripts_by_hash, ocr_languages_by_hash = document_ocr_attributes(
             client, collection_dataset, item_hashes)
@@ -1132,6 +1147,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             struct_flags |= STRUCT_FLAG_EMAIL_HAS_ATTACHMENTS
         basenames = sorted({os.path.basename(row['path']) for row in rows if row['path']})
         metadata[file_hash] = {
+            "has_ocr_output": presence_by_hash.get(file_hash, 0),
             "language": repr_manticore_tuple(sorted(language_ids[code] for code in languages_by_hash.get(file_hash, []))),
             "ocr_script": repr_manticore_tuple(sorted(ocr_script_ids[name] for name in ocr_scripts_by_hash.get(file_hash, []))),
             "ocr_language": repr_manticore_tuple(sorted(ocr_language_ids[code] for code in ocr_languages_by_hash.get(file_hash, []))),
