@@ -1750,7 +1750,6 @@ fn PublishedOcrPresence(mut pending: Signal<SearchQuery>) -> Element {
             }
             {tr!("automatic-ocr-presence")}
         }
-        p { style: "color: var(--x-ink-muted); margin: 0 0 12px;", {tr!("automatic-ocr-presence-help")} }
     }
 }
 

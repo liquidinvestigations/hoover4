@@ -909,7 +909,6 @@ automatic-ocr-presence = Har publisert OCR-tekst
 automatic-ocr-policy = OCR velger installerte modeller ut fra oppdaget skriftsystem og språk på hver egnet side. Tesseract brukes først, EasyOCR dekker andre støttede skriftsystemer.
 automatic-ocr-unknown = Ingen gjeldende publisering er registrert. Manglende deteksjon og mislykket behandling beviser ikke fravær.
 automatic-ocr-retry = Bruk behandlingsoppdateringer for å gjenta ufullstendig eller mislykket arbeid etter retting. Ikke-støttet dekning krever kompatible installerte modeller.
-automatic-ocr-presence-help = Dette filteret finner bare verifisert publisert OCR-tekst. Deteksjon og behandlingsforsøk beviser ikke publisert resultat.
 automatic-ocr-state = { $state ->
     [candidate] Venter
     [planned] Planlagt

@@ -909,7 +909,6 @@ automatic-ocr-presence = Heeft gepubliceerde OCR-tekst
 automatic-ocr-policy = OCR kiest geïnstalleerde modellen op basis van het gedetecteerde schrift en de taal van elke geschikte pagina. Tesseract komt eerst, EasyOCR dekt overige ondersteunde schriften.
 automatic-ocr-unknown = Er is geen huidige publicatie vastgelegd. Ontbrekende detectie en mislukte verwerking bewijzen geen afwezigheid.
 automatic-ocr-retry = Gebruik verwerkingsupdates om onvolledig of mislukt werk opnieuw uit te voeren nadat de oorzaak is verholpen. Niet-ondersteunde dekking vereist geschikte geïnstalleerde modellen.
-automatic-ocr-presence-help = Dit filter vindt alleen geverifieerde gepubliceerde OCR-tekst. Detectie en verwerkingspogingen bewijzen geen gepubliceerde uitvoer.
 automatic-ocr-state = { $state ->
     [candidate] In afwachting
     [planned] Gepland

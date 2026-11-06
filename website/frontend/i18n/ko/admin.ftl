@@ -894,7 +894,6 @@ automatic-ocr-presence = 게시된 OCR 텍스트 있음
 automatic-ocr-policy = OCR은 각 대상 페이지에서 감지한 문자 체계와 언어에 따라 설치된 모델을 선택합니다. Tesseract를 먼저 사용하고 나머지 지원 문자 체계에는 EasyOCR을 사용합니다.
 automatic-ocr-unknown = 현재 게시 결과가 기록되지 않았습니다. 감지 누락과 처리 실패는 텍스트 부재를 입증하지 않습니다.
 automatic-ocr-retry = 원인을 수정한 후 처리 업데이트로 불완전하거나 실패한 작업을 다시 시도하세요. 지원되지 않는 범위에는 호환되는 설치 모델이 필요합니다.
-automatic-ocr-presence-help = 이 필터는 검증된 게시 OCR 텍스트에만 일치합니다. 감지와 처리 시도는 게시 결과를 입증하지 않습니다.
 automatic-ocr-state = { $state ->
     [candidate] 대기 중
     [planned] 계획됨

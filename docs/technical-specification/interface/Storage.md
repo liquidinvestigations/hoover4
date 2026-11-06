@@ -45,7 +45,10 @@ Missing display names retain the canonical identifiers.
 One session resource shares the permitted tree across cards, filters, navigation, and document locations.
 Storage and permission edits invalidate that resource.
 Window focus and visibility changes refresh identity and permitted storage.
-The resource clears previous names and permissions before refresh.
+Same-user refreshes retain names until the current response arrives.
+An identity or access change discards the previous tree and any pending response.
+Search cards and document title bars resolve collection display names through dataset membership.
+These labels remain empty during the initial storage request.
 Collection icons use the database glyph, and dataset icons use the storage glyph.
 
 ## Upload routes

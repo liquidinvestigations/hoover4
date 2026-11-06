@@ -44,6 +44,11 @@ Record unrelated findings without implementing them. Stop adding work when the a
 
 ## How to write
 
+Interface text must help the person act, decide, or recover from a failure.
+Do not add implementation narration, repeated labels or context, generic reassurance, or paragraphs that explain compliance with a requirement.
+Show the required behavior through the interface. Put technical explanations in documentation.
+Use [designing-interfaces](.agents/skills/designing-interfaces/SKILL.md) for visible design and interface text changes.
+
 Write in **Simplified Technical English**: a controlled language, defined by **ASD-STE100**,
 that allows one approved word per meaning, keeps an instruction to 20 words and a description
 to 25, puts one instruction in a sentence, uses the active voice and simple tenses, and admits
@@ -190,6 +195,7 @@ Rules in [.agents/rules/](.agents/rules) apply beside the code they govern.
 | Diagnose a runtime failure. | Use `debugging-the-stack`. |
 | Deploy or restart an authorized service. | Use `deploying-the-stack`. |
 | Verify a page or interaction. | Use `driving-the-browser`. |
+| Design interface layout, behavior, or text. | Use `designing-interfaces`. |
 | Inspect stored data. | Use `querying-the-datastores`. |
 | Work on an authorized remote deployment. | Use `operating-remote-hosts`. |
 | Improve measured pipeline performance. | Use `tuning-the-pipeline`. |

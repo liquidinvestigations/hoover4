@@ -72,7 +72,7 @@ pub fn file_type_label(file_type: &str) -> &'static str {
     match file_type {
         "email" => "Email",
         "pdf" => "PDF",
-        "table" => "Spreadsheet (browsable)",
+        "table" => "Tables",
         "doc" => "Document",
         "xls" => "Spreadsheet",
         "ppt" => "Presentation",

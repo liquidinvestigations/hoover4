@@ -4,7 +4,7 @@ use common::{search_result::SearchResultDocumentItem, text_highlight::HighlightT
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::md_device_icons::MdStorage,
+    icons::go_icons::GoDatabase,
 };
 
 use crate::components::search_components::{
@@ -120,10 +120,10 @@ pub fn SearchResultItemCard(
                         flex: 1 1 auto;
                     ",
                 }
-                // Dataset icon.
+                // Collection icon.
                 CollectionIcon {}
 
-                // Dataset display name.
+                // Collection display name.
                 ComponentNameSection {collection_dataset}
             }
             // Row 2: TEXT SNIPPET - BUTTONS
@@ -270,7 +270,7 @@ fn CollectionIcon() -> Element {
                 flex-shrink: 0;
             ",
             Icon {
-                icon: MdStorage,
+                icon: GoDatabase,
                 style: "width: 15px; height: 15px;"
             }
         }
@@ -281,13 +281,10 @@ fn CollectionIcon() -> Element {
 fn ComponentNameSection(collection_dataset: String) -> Element {
     let tree = crate::components::session_context::use_storage_tree();
     let label = tree.read().as_ref().and_then(|result| result.as_ref().ok())
-        .map(|nodes| crate::components::session_context::dataset_label(nodes, &collection_dataset))
-        .unwrap_or_else(|| collection_dataset.clone());
+        .map(|nodes| crate::components::session_context::document_collection_label(nodes, &collection_dataset))
+        .unwrap_or_default();
     rsx! {
-        // Bounded, like the title beside it. A chat card can name several datasets for
-        // one document, and an unbounded comma-joined list pushes the
-        // card's header out of shape; the full value stays in `title`, which is the only
-        // place a truncated label can be read whole.
+        // Keep long collection names within the card header.
         span {
             style: "
                 font-size: var(--x-text-detail);
@@ -302,7 +299,8 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
                 white-space: nowrap;
                 flex-shrink: 1;
             ",
-            title: "{collection_dataset}",
+            class: "x-document-collection-name",
+            title: "{label}",
             "{label}"
         }
     }

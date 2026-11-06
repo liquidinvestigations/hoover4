@@ -886,7 +886,6 @@ automatic-ocr-presence = 具有已发布的 OCR 文本
 automatic-ocr-policy = OCR 根据每个符合条件页面检测到的文字体系和语言选择已安装的模型。优先使用 Tesseract，其无法覆盖的文字体系由 EasyOCR 处理。
 automatic-ocr-unknown = 尚未记录当前发布结果。缺少检测或处理失败不代表没有文本。
 automatic-ocr-retry = 修正原因后，使用处理更新重试不完整或失败的工作。不支持的覆盖情况需要兼容的已安装模型。
-automatic-ocr-presence-help = 此筛选器仅匹配经过验证的已发布 OCR 文本。检测和处理尝试不代表已有发布结果。
 automatic-ocr-state = { $state ->
     [candidate] 待处理
     [planned] 已计划

@@ -924,7 +924,6 @@ automatic-ocr-presence = Ima objavljen OCR tekst
 automatic-ocr-policy = OCR odabire instalirane modele prema otkrivenom pismu i jeziku svake prikladne stranice. Prvo radi Tesseract, a EasyOCR pokriva preostala podržana pisma.
 automatic-ocr-unknown = Nema zabilježene trenutačne objave. Nedostatak otkrivanja i neuspjela obrada ne dokazuju odsutnost.
 automatic-ocr-retry = Nakon ispravka uzroka upotrijebite ažuriranja obrade za ponavljanje nepotpunog ili neuspjelog rada. Nepodržana pokrivenost zahtijeva kompatibilne instalirane modele.
-automatic-ocr-presence-help = Ovaj filtar pronalazi samo provjeren objavljen OCR tekst. Otkrivanje i pokušaji obrade ne dokazuju objavljen rezultat.
 automatic-ocr-state = { $state ->
     [candidate] Na čekanju
     [planned] Planirano

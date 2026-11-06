@@ -921,7 +921,6 @@ automatic-ocr-presence = Hat veröffentlichten OCR-Text
 automatic-ocr-policy = OCR wählt installierte Modelle nach erkannter Schrift und Sprache jeder geeigneten Seite. Tesseract wird zuerst verwendet, EasyOCR für nicht abgedeckte Schriften.
 automatic-ocr-unknown = Es ist keine aktuelle Veröffentlichung erfasst. Fehlende Erkennung und fehlgeschlagene Verarbeitung belegen keine Abwesenheit.
 automatic-ocr-retry = Wiederholen Sie unvollständige oder fehlgeschlagene Arbeit nach der Fehlerbehebung über Verarbeitungsaktualisierungen. Nicht unterstützte Abdeckung erfordert passende installierte Modelle.
-automatic-ocr-presence-help = Dieser Filter findet nur verifizierten veröffentlichten OCR-Text. Erkennung und versuchte Verarbeitung belegen keine veröffentlichten Ergebnisse.
 automatic-ocr-state = { $state ->
     [candidate] Ausstehend
     [planned] Geplant

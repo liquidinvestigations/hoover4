@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use common::search_result::DocumentIdentifier;
 use dioxus_free_icons::{
     Icon,
-    icons::md_device_icons::MdStorage,
+    icons::go_icons::GoDatabase,
 };
 
 use crate::components::search_components::card_action_buttons::{
@@ -38,7 +38,7 @@ pub fn DocTitleBar(
             ",
 
             // COLLECTION AND FILENAME
-            DatasetAndFilenameSection {document_identifier: document_identifier()}
+            CollectionAndFilenameSection {document_identifier: document_identifier()}
             // SPACER
             div {
                 style:"flex-grow: 1;"
@@ -63,12 +63,12 @@ pub fn DocTitleBar(
 }
 
 #[component]
-fn DatasetAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
     let collection_dataset = document_identifier.read().clone().collection_dataset;
     let storage = crate::components::session_context::use_storage_tree();
     let label = storage.read().as_ref().and_then(|value| value.as_ref().ok())
-        .map(|nodes| crate::components::session_context::dataset_label(nodes, &collection_dataset))
-        .unwrap_or_else(|| collection_dataset.clone());
+        .map(|nodes| crate::components::session_context::document_collection_label(nodes, &collection_dataset))
+        .unwrap_or_default();
     rsx! {
         div {
             style: "
@@ -85,10 +85,11 @@ fn DatasetAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifier>
                 font-weight: 400;
             ",
 
-            DatasetIcon {  }
+            CollectionIcon {  }
             div {
                 style: "color: rgba(0, 0, 0, 0.8); font-style: italic; font-size: var(--x-text-detail); line-height: var(--x-line-detail);",
-                title: "{collection_dataset}",
+                class: "x-document-collection-name",
+                title: "{label}",
                 "{label}"
             }
             div {
@@ -101,7 +102,7 @@ fn DatasetAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifier>
 }
 
 #[component]
-fn DatasetIcon() -> Element {
+fn CollectionIcon() -> Element {
     rsx! {
         div {
             style: "
@@ -116,7 +117,7 @@ fn DatasetIcon() -> Element {
                 flex-shrink: 0;
             ",
             Icon {
-                icon: MdStorage,
+                icon: GoDatabase,
                 style: "width: 15px; height: 15px;"
             }
         }

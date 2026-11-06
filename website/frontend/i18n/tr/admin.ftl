@@ -908,7 +908,6 @@ automatic-ocr-presence = Yayımlanmış OCR metni var
 automatic-ocr-policy = OCR, her uygun sayfanın algılanan yazı sistemi ve diline göre kurulu modelleri seçer. Önce Tesseract, kapsayamadığı yazı sistemleri için EasyOCR kullanılır.
 automatic-ocr-unknown = Geçerli bir yayım kaydedilmemiş. Eksik algılama ve başarısız işleme, yokluğu kanıtlamaz.
 automatic-ocr-retry = Neden düzeltildikten sonra eksik veya başarısız işi işleme güncellemeleriyle yeniden deneyin. Desteklenmeyen kapsam, uyumlu kurulu modeller gerektirir.
-automatic-ocr-presence-help = Bu filtre yalnızca doğrulanmış yayımlanmış OCR metnini bulur. Algılama ve işleme girişimleri yayımlanmış çıktı olduğunu kanıtlamaz.
 automatic-ocr-state = { $state ->
     [candidate] Bekliyor
     [planned] Planlandı

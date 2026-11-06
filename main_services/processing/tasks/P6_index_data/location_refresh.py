@@ -220,16 +220,16 @@ def load_indexed_ids(
             table = shard_table_from_name(shard_name)
             has_ocr = table_has_column(table, "ocr_script")
             has_presence = table_has_column(table, "has_ocr_output")
-            presence = {}
-            if has_presence:
-                from database.clickhouse import get_collection_client
-                with get_collection_client(collectionname) as client:
-                    presence = document_ocr_presence(client, collection_dataset, hashes)
             columns = "id, file_hash, extracted_by, page_id, file_paths, language" + (", ocr_script, ocr_language" if has_ocr else "")
             columns += ", has_ocr_output" if has_presence else ""
             filenames, incomplete = set(), set()
             for i in range(0, len(hashes), PATHS_SCAN_PAGE):
                 chunk = hashes[i:i + PATHS_SCAN_PAGE]
+                presence = {}
+                if has_presence:
+                    from database.clickhouse import get_collection_client
+                    with get_collection_client(collectionname) as client:
+                        presence = document_ocr_presence(client, collection_dataset, chunk)
                 placeholders = ",".join(["%s"] * len(chunk))
                 expected_pages = load_expected_page_keys(collectionname, collection_dataset, chunk)
                 observed_pages = {}

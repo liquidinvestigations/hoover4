@@ -51,3 +51,36 @@ def test_a_missing_text_page_cannot_settle_current_attributes(monkeypatch):
                         lambda *_args: {"file": {("text", 1), ("text", 2)}})
     actual = location_refresh.load_indexed_ids("collection", "dataset", {"file": "collection_1"})
     assert actual[3]["file"] != frozenset({4})
+
+
+def test_presence_queries_use_bounded_hash_batches(monkeypatch):
+    from database import clickhouse
+    from tasks.P6_index_data import activities
+
+    hashes = [f"{index:064x}" for index in range(2001)]
+    batches = []
+
+    class Cursor:
+        def execute(self, sql, parameters):
+            pass
+
+        def fetchall(self):
+            return []
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    def presence(_client, dataset, selected):
+        assert dataset == "dataset"
+        assert len(selected) <= 1000
+        batches.extend(selected)
+        return {}
+
+    monkeypatch.setattr(manticore, "get_manticore_client", lambda: nullcontext(Connection()))
+    monkeypatch.setattr(manticore, "table_has_column", lambda *_args: True)
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda *_args: nullcontext(object()))
+    monkeypatch.setattr(activities, "document_ocr_presence", presence)
+    monkeypatch.setattr(location_refresh, "load_expected_page_keys", lambda *_args: {})
+    location_refresh.load_indexed_ids("collection", "dataset", dict.fromkeys(hashes, "collection_1"))
+    assert batches == hashes

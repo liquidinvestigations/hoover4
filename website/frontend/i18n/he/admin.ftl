@@ -924,7 +924,6 @@ automatic-ocr-presence = כולל טקסט OCR שפורסם
 automatic-ocr-policy = OCR בוחר מודלים מותקנים לפי הכתב והשפה שזוהו בכל עמוד מתאים. Tesseract פועל תחילה, ו-EasyOCR מטפל בכתבים שאינם מכוסים.
 automatic-ocr-unknown = לא נרשם פרסום נוכחי. זיהוי חסר ועיבוד שנכשל אינם מוכיחים היעדר.
 automatic-ocr-retry = השתמשו בעדכוני עיבוד כדי לנסות שוב עבודה חסרה או כושלת לאחר תיקון הסיבה. כיסוי לא נתמך דורש מודלים מותקנים תואמים.
-automatic-ocr-presence-help = המסנן מתאים רק לטקסט OCR שפורסם ואומת. זיהוי וניסיונות עיבוד אינם מוכיחים תוצאה שפורסמה.
 automatic-ocr-state = { $state ->
     [candidate] בהמתנה
     [planned] מתוכנן
