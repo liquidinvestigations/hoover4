@@ -6,7 +6,9 @@ import re
 from tasks.P_agent.control.model import digest, plain
 
 PROMPT = '''Read the original user messages and established file requirements below. Return one JSON object only.
-Use schema_version 1. state is known or unknown. complete is true only if every message is understood.
+Include every top-level key from this response example. The schema_version key is required and must equal 1.
+{"schema_version":1,"state":"known","complete":true,"interpretation":"new","groups":[{"noun":"file","count":3,"names":[],"message":1,"words":"exact quote from the source message"}]}
+Replace the example values with the actual requirements. state is known or unknown. complete is true only if every message is understood.
 interpretation is new, amendment, continuation, or unknown for the latest message.
 Return the effective required workspace files after all amendments and cancellations in groups.
 Each group has noun (file, report, memo, document, spreadsheet), count (exact positive integer, or null when uncertain),
@@ -28,6 +30,11 @@ def source_input(state):
                          for index, item in enumerate(messages)],
             "established": state.get("output_spec", {}).get("groups", []),
             "request": state.get("request"), "omissions": state.get("omissions", [])}
+
+
+def prompt_for(state):
+    """Keep equivalent stored and reconstructed inputs identical on the classifier route."""
+    return PROMPT + json.dumps(source_input(state), ensure_ascii=False, sort_keys=True)
 
 
 def needed(state):

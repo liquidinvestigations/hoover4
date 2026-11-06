@@ -325,8 +325,7 @@ class Handler:
 
         async def outputs():
             record = task_record(context)
-            completed = await services.complete(output_requirements.PROMPT + json.dumps(
-                output_requirements.source_input(record), ensure_ascii=False), 1400)
+            completed = await services.complete(output_requirements.prompt_for(record), 1400)
             return output_requirements.validate(completed.text, record, completed.status)
 
         children = {"ask": ask()}
