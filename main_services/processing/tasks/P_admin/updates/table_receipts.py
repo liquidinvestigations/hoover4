@@ -13,6 +13,21 @@ def contract() -> str:
     return fingerprint(STEPS_BY_ID["tables"], "")
 
 
+def accepted_contracts() -> list[str]:
+    """Keep unchanged table dependencies when the separate NER step changes coverage."""
+    import hashlib
+    import json
+    from tasks.P_admin.updates.registry import STEPS_BY_ID, step_version
+    step = STEPS_BY_ID["tables"]
+    version = step_version(step)
+    contracts = [contract()]
+    if "entities=2," in version:
+        legacy = json.dumps({"step": "tables", "version": version.replace("entities=2,", "entities=1,"),
+                             "target_key": "", "input_revision": ""}, sort_keys=True)
+        contracts.append(hashlib.sha256(legacy.encode()).hexdigest()[:24])
+    return contracts
+
+
 @dataclass
 class TableReceiptParams:
     collectionname: str
@@ -71,9 +86,9 @@ def prepare_table_text(client, params: TableReceiptParams) -> None:
         "AND hash IN {hashes:Array(String)} AND status IN ('ok', 'empty') "
         "AND (hash, toString(generation)) NOT IN (SELECT file_hash, output_identity "
         "FROM processing_output_receipts WHERE collection_dataset = {cd:String} "
-        "AND output_kind = 'table' AND fingerprint = {fingerprint:String} AND stage = 'parse')",
+        "AND output_kind = 'table' AND fingerprint IN {fingerprints:Array(String)} AND stage = 'parse')",
         parameters={"cd": params.collection_dataset, "hashes": params.hashes,
-                    "fingerprint": contract()}).result_rows
+                    "fingerprints": accepted_contracts()}).result_rows
     hashes = [row[0] for row in pending]
     if not hashes:
         return
@@ -100,11 +115,16 @@ def verify_stages(client, params: TableReceiptParams) -> None:
         "AND extracted_by = {source:String} GROUP BY file_hash, page_id", parameters=values).result_rows
     expected = {(file_hash, int(page)): int(version) for file_hash, page, version in text}
     if "entities" in params.stages and (os.getenv("NER_URL") or "").strip():
+        from tasks.P4_extract_entities.completion import NER_STAGE_VERSION
+        from tasks.P4_extract_entities.activities import configured_nlp_model
         rows = client.query(
-            "SELECT file_hash, page_id FROM nlp_processed FINAL "
+            "SELECT file_hash, page_id, text_version FROM nlp_processed FINAL "
             "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
-            "AND extracted_by = {source:String}", parameters=values).result_rows
-        if not set(expected) <= {(file_hash, int(page)) for file_hash, page in rows}:
+            "AND extracted_by = {source:String} AND stage_version = {ner_version:UInt16} "
+            "AND nlp_model = {ner_model:String}",
+            parameters={**values,"ner_version":NER_STAGE_VERSION,"ner_model":configured_nlp_model()}).result_rows
+        actual = {(file_hash,int(page),int(version)) for file_hash,page,version in rows}
+        if any((*key,version) not in actual for key,version in expected.items()):
             raise RuntimeError("Text entity extraction has incomplete stored output")
     if "regex" in params.stages:
         rows = client.query(

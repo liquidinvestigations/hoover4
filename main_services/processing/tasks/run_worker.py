@@ -355,6 +355,7 @@ async def run_common_worker():
     from .P3_parse_files.table_generations import TableGenerationCommand
     from .P3_parse_files.archive_reconciliation import reconcile_archive_descendants
     from .P_admin.updates.archive_members import restore_archive_members, finish_archive_members
+    from .P_admin.updates.entities import list_entity_update_hashes
     from .P_admin.updates.table_receipts import record_table_update_receipts
     from .P_admin.updates.activities import (
         apply_search_schema,
@@ -383,6 +384,7 @@ async def run_common_worker():
         RunProcessingUpdate,
         UpdateDatasetVectors,
         UpdateDatasetTables,
+        UpdateDatasetEntities,
         UpdateDatasetImagePreviews,
         UpdateDatasetArchiveMembers,
         UpdateDatasetVirusScan,
@@ -487,6 +489,7 @@ async def run_common_worker():
             RunProcessingUpdate,
             UpdateDatasetVectors,
             UpdateDatasetTables,
+            UpdateDatasetEntities,
             UpdateDatasetImagePreviews,
             UpdateDatasetArchiveMembers,
             TableGenerationCommand,
@@ -609,6 +612,7 @@ async def run_common_worker():
             finish_archive_members,
             prepare_table_update,
             record_table_update_receipts,
+            list_entity_update_hashes,
             list_update_virus_plans,
             list_update_detection_plans,
             scan_pdf_text_layers,
@@ -826,6 +830,7 @@ async def run_indexing_worker():
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
   from .P_admin.updates.activities import retire_cached_searches, stale_virus_attributes
+  from .P_admin.updates.entities import finish_entity_update
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
@@ -848,7 +853,7 @@ async def run_indexing_worker():
                   index_text_pages_with_receipts, index_vectors,
                   build_vfs_nodes, index_vfs_structure, compact_collection_shards,
                   resolve_canonical_file_type, index_entity_terms,
-                  refresh_stale_document_locations, retire_cached_searches, stale_virus_attributes],
+                  refresh_stale_document_locations, retire_cached_searches, stale_virus_attributes, finish_entity_update],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

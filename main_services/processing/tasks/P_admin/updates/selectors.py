@@ -16,6 +16,8 @@ Selector contracts, one for each step:
 * `ocr` selects live image and PDF sources without a matching applied automatic plan.
   Policy, detector, capability, stage, and input changes make prior output selectable.
   Settlement verifies exact publication identities and durable dependent output.
+* `entities` selects earlier provider completion, changed source identities, or missing verified search publication.
+  Settlement verifies current completion, text attributes, and searchable terms.
 * `vectors` selects files with text and no vector of the served model, when the
   collection uses vectors. A file whose text has no passage worth a vector stays in the
   count after the run, so the count is an upper bound. Settlement: every selected plan
@@ -115,6 +117,10 @@ def target_key(step: UpdateStep, ctx: ScopeContext) -> Tuple[str, dict]:
         target = ocr_target(ctx.scope_id, ctx.collectionname)
         key = target
         return json.dumps(key, sort_keys=True), target
+    if step.step_id == "entities":
+        from tasks.P4_extract_entities.completion import target as entity_target
+        target = entity_target()
+        return json.dumps(target, sort_keys=True), target
     if step.step_id == "vectors":
         target = vectors_target(ctx.collectionname)
         return json.dumps(target, sort_keys=True), target
@@ -380,14 +386,14 @@ def tables_hash_sql() -> Tuple[str, dict]:
     table_candidates = ("SELECT hash FROM file_types WHERE collection_dataset = {cd:String} "
                        "AND (hasAny(mime_type, {tj_mimes:Array(String)}) "
                        "OR hasAny(extensions, {tj_exts:Array(String)}))")
-    from tasks.P_admin.updates.table_receipts import STAGES, contract
+    from tasks.P_admin.updates.table_receipts import STAGES, accepted_contracts
     sql = (
         "SELECT hash FROM ("
         "SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
         "AND status IN ('ok', 'empty') AND (hash, toString(generation)) NOT IN ("
         "SELECT file_hash, output_identity FROM processing_output_receipts "
         "WHERE collection_dataset = {cd:String} AND output_kind = 'table' "
-        "AND fingerprint = {tr_contract:String} AND stage IN {tr_stages:Array(String)} "
+        "AND fingerprint IN {tr_contracts:Array(String)} AND stage IN {tr_stages:Array(String)} "
         "GROUP BY file_hash, output_identity HAVING uniqExact(stage) = {tr_count:UInt8}) "
         "UNION ALL SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
         "AND (reader_version < {tj_version:UInt16} OR status = 'failed') "
@@ -398,7 +404,7 @@ def tables_hash_sql() -> Tuple[str, dict]:
     return sql, {"tj_mimes": sorted(TABLE_MIMES),
                  "tj_exts": sorted(JSON_EXTENSIONS | DELIMITED_EXTENSIONS),
                  "tj_version": READER_VERSION, "tj_limit": LIMIT_COLUMNS_PER_SHEET,
-                 "tr_contract": contract(), "tr_stages": list(STAGES), "tr_count": len(STAGES)}
+                 "tr_contracts": accepted_contracts(), "tr_stages": list(STAGES), "tr_count": len(STAGES)}
 
 
 def select_tables(client, ctx: ScopeContext) -> Selection:
@@ -578,6 +584,16 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_image_previews(client, ctx)
     if step.step_id == "ocr":
         return select_ocr(client, ctx, target)
+    if step.step_id == "entities":
+        from tasks.P4_extract_entities.completion import target as entity_target
+        from .entities import pending_sql
+        wanted = target or entity_target()
+        if not wanted["enabled"]:
+            return Selection(detail=wanted)
+        sql, values = pending_sql(wanted)
+        parameters = {"cd": ctx.scope_id, **values}
+        count, size = _count(client, sql, parameters, ctx.scope_id)
+        return Selection(count, size, count, sql if count else "", parameters, wanted)
     if step.step_id == "vectors":
         return select_vectors(client, ctx, target)
     if step.step_id == "virus_scan":

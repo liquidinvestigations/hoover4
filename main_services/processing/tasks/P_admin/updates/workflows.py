@@ -75,6 +75,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P_admin.updates.archive_members import restore_archive_members, finish_archive_members
     from tasks.P_admin.updates.table_receipts import TableReceiptParams, record_table_update_receipts
+    from tasks.P_admin.updates.entities import EntityUpdateParams, list_entity_update_hashes, finish_entity_update
     from tasks.P_admin.updates.registry import SCOPE_DATASET
     from tasks.P6_index_data.params import RefreshDocumentLocationsParams, RefreshDocumentLocationsResult
     from tasks.visibility import dataset_search_attributes
@@ -281,6 +282,12 @@ class RunProcessingUpdate:
                 VirusPlansParams(params.op_id, params.collectionname, params.collection_dataset),
                 id=f"update-detection-{params.op_id}", **self._child(params))
             return json.dumps(result, sort_keys=True)
+        if step_id == "entities":
+            done = await workflow.execute_child_workflow(
+                UpdateDatasetEntities.run,
+                EntityUpdateParams(params.collectionname, params.collection_dataset, params.op_id),
+                id=f"update-entities-{params.op_id}", **self._child(params))
+            return f"updated named entities for {done} files"
         if step_id == "tables":
             done = await workflow.execute_child_workflow(
                 UpdateDatasetTables.run,
@@ -656,3 +663,25 @@ class UpdateDatasetArchiveMembers:
             finish_archive_members, params, start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         return params.done
+
+
+@workflow.defn
+class UpdateDatasetEntities:
+    """Rewrite bounded NER pages without repeating regex or embedding work."""
+    @workflow.run
+    async def run(self, params: EntityUpdateParams) -> int:
+        hashes = await workflow.execute_activity(list_entity_update_hashes, params,
+            start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not hashes:
+            return params.done
+        await workflow.execute_activity("extract_entities_for_hashes",
+            {"collectionname":params.collectionname,"collection_dataset":params.collection_dataset,
+             "plan_hash":"entity-update","hashes":hashes,"op_id":params.op_id},
+            task_queue="processing-nlp-queue", start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        await workflow.execute_activity(finish_entity_update,
+            EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id,hashes),
+            task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        workflow.continue_as_new(EntityUpdateParams(params.collectionname,params.collection_dataset,
+            params.op_id,after=hashes[-1],done=params.done + len(hashes)))

@@ -270,6 +270,8 @@ class RerunOcr:
 
     async def _automatic(self, params):
         """Process bounded automatic source pages and verify dependent output."""
+        if workflow.patched("automatic-ocr-file-progress-v2"):
+            return await self._automatic_progress(params)
         from tasks.P_admin.automatic_ocr import AutomaticOcrScope
         if not params.listed:
             params = await self._phase_one(dataclasses.replace(params, parts_version=True), automatic=True)
@@ -290,6 +292,51 @@ class RerunOcr:
         await workflow.execute_activity("verify_automatic_ocr_files", scope, heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
         workflow.continue_as_new(dataclasses.replace(params, after=hashes[-1], plans=params.plans + 1,
                                                        automatic_files=params.automatic_files + len(hashes)))
+
+    async def _automatic_progress(self, params):
+        """Finish independent files before reporting the operation's failed files."""
+        from tasks.P_admin.automatic_ocr import AutomaticOcrScope
+        from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
+        from tasks.failure_chain import is_cancellation
+        from tasks.workflow_window import run_with_window
+        if not params.listed:
+            params = await self._phase_one(dataclasses.replace(params, parts_version=True), automatic=True)
+        scope = AutomaticOcrScope(params.collectionname, params.collection_dataset, params.op_id, params.after)
+        options = dict(start_to_close_timeout=timedelta(hours=6),
+                       retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+        files = await workflow.execute_activity("list_automatic_ocr_files", scope, heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+        if not files:
+            if params.automatic_failed_files:
+                raise ApplicationError(f"{params.automatic_failed_files} automatic OCR files failed", non_retryable=True)
+            return {"plans":params.phase_one_plans,"files":params.automatic_files,"batches":params.plans,
+                    "execution_counts":{"plans_run":params.phase_one_plans,"failed_plans":params.failed_plans,
+                                        "failed_dataset_steps":params.failed_dataset_steps}}
+        hashes = [file["item_hash"] for file in files]
+        started = workflow.now()
+        async def one(file_hash):
+            pinned = dataclasses.replace(scope, hashes=[file_hash])
+            pinned.plans = await workflow.execute_activity("run_automatic_ocr_files", pinned,
+                task_queue="processing-ocr-queue", heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+            plan = OcrRunPlanParams(params.collectionname, params.collection_dataset, params.op_id, file_hash)
+            await OcrRunPlan()._text_steps(plan, [file_hash], suffix="-automatic", strict=True)
+            await workflow.execute_activity("verify_automatic_ocr_files", pinned, heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+        results = await run_with_window([lambda h=h: one(h) for h in hashes], 4)
+        failed = []
+        failed_hashes = []
+        for file_hash, result in zip(hashes, results):
+            if isinstance(result, BaseException):
+                if is_cancellation(result):
+                    raise result
+                failed.append(result)
+                failed_hashes.append(file_hash)
+        await record_errors_from_results(failed,
+            source_execution_ids=[source_execution_id(workflow.info().run_id,"automatic-ocr-file",index) for index in range(len(failed))],
+            task_ids=["run_automatic_ocr_files"]*len(failed), starts=[started]*len(failed),
+            collectionname=params.collectionname,collection_dataset=params.collection_dataset,
+            item_hashes=failed_hashes,op_id=params.op_id)
+        workflow.continue_as_new(dataclasses.replace(params, after=hashes[-1],plans=params.plans+1,
+            automatic_files=params.automatic_files+len(hashes)-len(failed),
+            automatic_failed_files=params.automatic_failed_files+len(failed)))
 
     async def _whole_plans(self, params: "RerunOcrParams") -> dict:
         """The run of executions that started before the target-based run. Replay only."""

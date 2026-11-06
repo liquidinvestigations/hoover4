@@ -197,25 +197,8 @@ pub fn sort_order_by(sort: &SortSpec) -> String {
     format!("ORDER BY {column} {direction}, collection_dataset ASC, file_hash ASC")
 }
 
-/// A range predicate over one indexed field.
-///
-/// **Dates are an interval-overlap test, not `ANY(dates) BETWEEN`.** The predicate is
-/// the same shape the scalar bounds are stored for, and it is what every sort and every
-/// histogram bin already reads, so the filter and the picture of it agree by
-/// construction.
-///
-/// The predicate is `date_min <= hi AND date_max >= lo`: the document's date SPAN
-/// overlaps the requested range. For the ordinary document (one date, or several within
-/// a few days) this is exactly "any date in range". It differs only for a document whose
-/// dates STRADDLE the range with none inside it: a file created in 2007 and modified in
-/// 2020 matches a 2013–2016 filter. The error is one-sided (a superset, never a subset),
-/// which is the right direction for a search filter: a user can see and dismiss an extra
-/// result, and cannot see one that was silently withheld. The viewer's Dates section
-/// shows every date with its provenance, so the extra result explains itself.
-///
-/// The unknown sentinel is tested on `date_min` alone: an undated document has
-/// `date_min = date_max = DATE_UNKNOWN`, which is below every real bound, so the overlap
-/// test excludes it automatically.
+/// Match one actual date against both inclusive bounds.
+/// Unknown document dates retain their separate scalar sentinel predicate.
 fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Option<String>> {
     if !filter.is_active() {
         return Ok(None);
@@ -230,20 +213,7 @@ fn range_predicate(field_name: &str, filter: &RangeFilter) -> anyhow::Result<Opt
     // Every bound is an i64. See `RangeFilter`. Nothing here is user-supplied text.
     let (lo, hi) = (filter.min.unwrap_or(i64::MIN + 1), filter.max.unwrap_or(i64::MAX));
     let ranged = match field_name {
-        // Interval overlap; see the doc comment for why this is not `ANY(dates)`.
-        // The DATE_UNKNOWN sentinel is i64::MIN, so an undated document fails
-        // `date_max >= lo` for every real `lo` and drops out here rather than needing
-        // an extra clause.
-        "dates" => Some(format!("date_min <= {hi} AND date_max >= {lo}")),
-        // NOT the `dates` arm, and copying it here is the single most likely way to get
-        // this feature wrong.
-        //
-        // A document's own dates are an interval it occupies: created in 1990, modified
-        // in 2020, and every year between is a year the file existed in. The dates it
-        // *mentions* are points. A document that names 1936 and 2020 occupies neither
-        // 2005 nor anything between them, and interval overlap would match it for every
-        // year in that span. `mentioned_dates` is an MVA, so `ANY(...)` asks the right
-        // question: is any single mention inside the range.
+        "dates" => Some(format!("date_min != {DATE_UNKNOWN} AND ANY(dates) BETWEEN {lo} AND {hi}")),
         "mentioned_dates" => Some(format!("ANY(mentioned_dates) BETWEEN {lo} AND {hi}")),
         "file_size_bytes" => {
             // A document with no vfs_files row carries SIZE_UNKNOWN (-1), which would
@@ -549,20 +519,17 @@ mod tests {
         normalize(&build_sql_where_clause(&query, "testdata_1_pages").unwrap())
     }
 
-    /// The predicate is an interval-overlap test rather than `ANY(dates) BETWEEN`. See
-    /// `range_predicate`'s doc comment; the substitution is deliberate and one-sided
-    /// (a superset), and this pins the shape so it is not "fixed" into something that
-    /// disagrees with the histogram drawn over the same bounds.
+    /// Both inclusive bounds must match one actual date.
     #[test]
-    fn a_date_range_is_an_interval_overlap_over_the_scalar_bounds() {
+    fn a_date_range_matches_one_actual_recorded_date() {
         let sql = ranged("dates", RangeFilter { min: Some(1356998400), max: Some(1483228799), include_unknown: false });
         assert!(
             sql.contains(
-                "AND date_min <= 1483228799 AND date_max >= 1356998400"
+                "ANY(dates) BETWEEN 1356998400 AND 1483228799"
             ),
             "{sql}"
         );
-        assert!(!sql.contains("ANY("), "the bounds are scalars, not an MVA test: {sql}");
+        assert!(sql.contains("ANY(dates)"), "the bounds apply to one MVA value: {sql}");
     }
 
     /// Mentioned dates are POINTS, and a filter over them must not become an interval.
@@ -614,11 +581,12 @@ mod tests {
     }
 
     #[test]
-    fn an_undated_document_falls_out_of_every_range_without_an_extra_clause() {
-        // DATE_UNKNOWN is i64::MIN, so `date_max >= lo` is false for every real lo.
+    fn document_date_ranges_explicitly_exclude_the_unknown_sentinel() {
+        // DATE_UNKNOWN is i64::MIN and remains below every real lower bound.
         assert!(DATE_UNKNOWN < 0);
         let sql = ranged("dates", RangeFilter { min: Some(0), max: Some(i64::MAX), include_unknown: false });
-        assert!(sql.contains("date_max >= 0"), "{sql}");
+        assert!(sql.contains("ANY(dates) BETWEEN 0 AND 9223372036854775807"), "{sql}");
+        assert!(sql.contains(&format!("date_min != {DATE_UNKNOWN}")), "{sql}");
     }
 
     #[test]
@@ -634,7 +602,7 @@ mod tests {
         let sql = ranged("dates", RangeFilter { min: Some(0), max: Some(100), include_unknown: true });
         assert!(
             sql.contains(&format!(
-                "AND (date_min <= 100 AND date_max >= 0                  OR date_min = {DATE_UNKNOWN})"
+                "AND (date_min != {DATE_UNKNOWN} AND ANY(dates) BETWEEN 0 AND 100                  OR date_min = {DATE_UNKNOWN})"
             ).replace("                 ", "")),
             "{sql}"
         );

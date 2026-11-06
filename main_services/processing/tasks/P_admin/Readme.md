@@ -118,6 +118,7 @@ are in [updates/registry.py](updates/registry.py), in run order.
 | `image_previews` | dataset | Live uncommon images without a published preview, including historical converter skips | Create and read each missing preview without repeating settled OCR | No selected preview remains missing. |
 | `ocr` | dataset | Files without OCR text for the effective languages, and text of removed languages | `RerunOcr`, then the purge of dropped variants and orphaned searchable PDFs | No variant of a removed language remains. |
 | `pdf_text` | dataset | Files with a searchable PDF part of text layer version 1 for a current language pass that the PDF builder can build | `scan_pdf_text_layers` gives version 2 to the parts of language passes with Windows-1252 alphabets, to borrowed parts, and to parts whose `pdftotext` text has no black square. It removes the other parts, sets their variant to `text_complete = 0` and the `overlay` form, then `RerunOcr` builds the removed parts again. | No part of version 1 remains, and no removed part is without a new part. |
+| `entities` | dataset | Earlier provider completion, missing current text coverage, or missing searchable publication | `UpdateDatasetEntities` processes bounded hash pages and replaces NER attributes and terms | Current source completion and verified search receipts exist. |
 | `vectors` | dataset | Files with text and no vectors of the served embedding model | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time | Each selected plan ran. |
 | `folder_counts` | dataset | Folders without counts, or every folder when the stage version is newer than the applied one | `build_vfs_nodes` | No folder lacks counts. |
 | `search_terms` | dataset | The applied term-index version is absent or earlier. | `index_entity_terms` publishes the current filter terms. | Each expected term has its current identity and value in the search table. |
@@ -265,3 +266,21 @@ New ingestion verifies its operation-scoped prepared receipts after dependent in
 The historical update verifies the exact returned plan identities after strict dependent stages.
 Both paths require durable output before they record applied state.
 Retired manual-setting workflows remain available only for recorded legacy histories.
+
+## Independent entity updates
+
+The named-entity update follows table, archive, and OCR text-producing updates.
+Existing recorded snapshots retain their stored step order during replay.
+Provider enablement, model identity, and coverage contract form the desired target.
+Entity stage version 2 selects earlier successful output without manual invalidation.
+Failed indexing remains selected after successful inference.
+
+Compatible table receipts preserve unchanged text, regex, signal, and embedding output during this independent NER correction.
+The compatibility rule changes only the earlier NER coverage version.
+An earlier table reader remains selected for its table rewrite.
+
+Automatic OCR schedules each file independently within a four-file window.
+Each activity retains its retry policy and pinned publication plan.
+Valid files complete their dependent stages before the operation reports failed files.
+Unsupported or failed files remain selectable and retain per-document errors.
+The workflow records accumulated failures across bounded pages and continues after worker replacement.

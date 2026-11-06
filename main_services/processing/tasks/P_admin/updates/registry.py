@@ -138,6 +138,12 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "page gets a new OCR request.",
         runs="Searchable PDF parts, then OCR text indexing of the rebuilt PDFs"),
     UpdateStep(
+        step_id="entities", scope=SCOPE_DATASET, version=1,
+        stages=("entities", "index_text", "index_terms"), automatic=True, uses_input_revision=True,
+        prerequisites=("search_schema",), requires=(), title="Named entities",
+        explanation="{files} files need complete current entity extraction or searchable output. Earlier successful results are replaced after inference completes.",
+        runs="Named entity extraction, text attributes, and searchable entity terms"),
+    UpdateStep(
         step_id="vectors", scope=SCOPE_DATASET, version=1, stages=("embed", "index_vectors"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Vectors",

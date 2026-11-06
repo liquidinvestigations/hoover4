@@ -181,12 +181,11 @@ in the file distinguishes the two. Those dates are indexed because a wrong-ish d
 more useful than none for narrowing a corpus, and the viewer names the source so the user
 can discount it.
 
-**A date range is an interval-overlap test.** The filter compiles to
-`date_min <= hi AND date_max >= lo`, not `ANY(dates) BETWEEN lo AND hi`. Manticore 14.1.0
-cannot evaluate `ANY(mva)` across the pages⋈meta join in any spelling (see
-`search_sql.rs::range_predicate`). A document whose dates STRADDLE the range with none
-inside it therefore matches: created 2007, modified 2020, filtered 2013–2016. The error is
-one-sided (a superset, never a subset), and the viewer explains each result.
+A document-date range requires `ANY(dates) BETWEEN lo AND hi`.
+Both inclusive bounds apply to one actual date.
+A separate `date_min != DATE_UNKNOWN` condition excludes unknown documents from ordinary ranges.
+Unknown-only and range-plus-unknown selections retain their scalar sentinel predicate.
+Dates outside the range do not establish a matching date between them.
 
 **Three range shapes, one filter.** `RangeFilter`'s bounds are `Option`s and an absent one
 compiles to an open end, so a low-pass (`before X`), a high-pass (`after X`) and a
@@ -211,8 +210,14 @@ zero outside. The bars the cutoffs cover are drawn in the accent, so the picture
    out of Manticore for. There is no histogram, date-bucket or date-truncate function to
    use instead, and `date_min` is a signed `bigint` rather than a `timestamp` precisely
    because the timestamp type is 32-bit unsigned and cannot hold a 1936 date.
-2. **Count the bins.** One `INTERVAL(date_min, e0, e1, …)` + `GROUP BY` per shard. The
-   same shape as the size facet, with up to thirty edges instead of three.
+2. Count actual dates in each bin through the shared search predicate.
+   Each shard reads grouped hashes through a cursor in batches of 1,000.
+   The backend sums those counts without retaining all hashes.
+   Repeated text pages within a shard do not increase the count.
+   Occurrences in separate shards retain the result list and total-count semantics.
+   A document can contribute to more than one bin when it has dates in those bins.
+   Queries disable automatic cutoff and require accurate aggregation.
+
 
 Bins are computed, not fixed: a per-year bucket is unreadable for a corpus spanning a week
 and useless for one spanning four centuries. The width is chosen off a ladder of durations

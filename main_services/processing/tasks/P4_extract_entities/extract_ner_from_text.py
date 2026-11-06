@@ -49,6 +49,14 @@ def extract_ner_from_texts(texts: list[str]) -> tuple[list[dict[str, list[str]]]
         "include_confidence": False,
         "entity_types": None,
     }, service="ner")
+    if result.provider == "gpu":
+        if result.data.get("coverage_version") != 2 or result.data.get("processed_inputs") != len(texts):
+            raise RuntimeError("NER service has no complete current input coverage")
+    elif result.provider == "spacy":
+        if result.data.get("usage", {}).get("texts") != len(texts):
+            raise RuntimeError("CPU NER service has incomplete input coverage")
+    else:
+        raise RuntimeError("NER service returned an unsupported provider")
     entities_by_text = _group_entities_by_text(result.data["data"], len(texts))
     nlp_model = NLP_MODEL_BY_PROVIDER.get(result.provider, f"ner-{result.provider}")
     logger.debug("extracted entities from %d texts via %s", len(texts), nlp_model)

@@ -35,3 +35,23 @@ def test_a_value_that_is_not_a_number_gives_the_default_with_a_warning(monkeypat
     with caplog.at_level(logging.WARNING):
         assert indexing_worker_processes() == 4
     assert "HOOVER4_INDEXING_WORKERS is not a number" in caplog.text
+
+
+def test_indexing_worker_registers_entity_publication_on_its_queue(monkeypatch):
+    import asyncio
+    from tasks import run_worker, visibility
+    from tasks.P_admin.updates.entities import finish_entity_update
+    captured = {}
+    async def ignore(*args, **kwargs):
+        return object()
+    def worker(*args, **kwargs):
+        captured.update(kwargs)
+        return object()
+    monkeypatch.setattr(run_worker.Client, "connect", ignore)
+    monkeypatch.setattr(visibility, "ensure_search_attributes", ignore)
+    monkeypatch.setattr(run_worker, "_probe_embeddings_at_startup", ignore)
+    monkeypatch.setattr(run_worker, "run_until_signalled", ignore)
+    monkeypatch.setattr(run_worker, "Worker", worker)
+    asyncio.run(run_worker.run_indexing_worker())
+    assert captured["task_queue"] == "processing-indexing-queue"
+    assert finish_entity_update in captured["activities"]

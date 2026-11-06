@@ -52,6 +52,9 @@ class _FakeCHClient:
             ])
         return _FakeQueryResult(self._text_rows)
 
+    def command(self, *_args, **_kwargs):
+        return None
+
     def insert_arrow(self, table, tbl, **kwargs):
         self.inserts.setdefault(table, []).append(tbl)
 
@@ -123,7 +126,7 @@ def test_ner_requests_are_batched_and_reassembled_in_order(monkeypatch, n):
             {"text_index": j, "label": "PER", "text": f"ent:{text}"}
             for j, text in enumerate(batch)
         ]
-        return _FakeResponse({"data": entities})
+        return _FakeResponse({"data": entities, "coverage_version": 2, "processed_inputs": len(json["input"])})
 
     fake_client = _install_fakes(monkeypatch, _text_rows(n), fake_post)
 
@@ -216,7 +219,7 @@ def _stub_ner_post(url, json=None, **kwargs):
     for index, text in enumerate(json["input"]):
         for label, value in _STUB_ENTITIES[text.strip()]:
             entities.append({"text_index": index, "label": label, "text": value})
-    return _FakeResponse({"data": entities})
+    return _FakeResponse({"data": entities, "coverage_version": 2, "processed_inputs": len(json["input"])})
 
 
 class TestEmailEnvelopesDoNotBecomeEntities:
@@ -237,7 +240,7 @@ class TestEmailEnvelopesDoNotBecomeEntities:
         _, entity_rows, _ = self._run(monkeypatch)
         assert not [
             r for r in entity_rows
-            if r["file_hash"] == "mail-1" and r["extracted_by"] == "raw_text"
+            if r["file_hash"] == "mail-1" and r["extracted_by"] == "raw_text" and r["entity_values"]
         ]
 
     def test_no_header_name_survives_anywhere(self, monkeypatch):

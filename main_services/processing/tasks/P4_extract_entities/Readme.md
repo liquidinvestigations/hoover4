@@ -15,9 +15,7 @@ between P4 and P5 would move a number that existing rows already hold.
 
 ## Key Responsibilities
 
-- Read `text_content` for a plan's hashes, skipping segments already present in
-  `nlp_processed` for the current `nlp_model` (left-anti join, the stage is
-  cheaply re-runnable). The recorded `nlp_model` is the provider that **served
+- Read `text_content` for a plan's hashes, skipping only current `nlp_processed` rows with matching provider, stage version, source version, and source digest. The recorded `nlp_model` is the provider that **served
   each batch** (`NLP_MODEL_BY_PROVIDER`: `gpu → ner-gpu-xlmr`,
   `spacy → ner-spacy-xx`), not the configured one, under fallback the two
   differ, and that difference is the only evidence an outage happened.
@@ -212,3 +210,18 @@ Run `uv run main.py scan-signals-collection <collectionname>` to scan the collec
 The command uses the existing Temporal scan workflow and waits for each plan.
 Run reindex-collection after the scan to apply current calibration.
 Failed-file retry clears signal rows, watermarks, and clusters with regex state.
+
+## Historical entity replacement
+
+Entity stage version 2 selects earlier successful completion through the `entities` processing update.
+GPU responses must report coverage version 2 and the exact input count.
+The CPU provider retains its separate model identity and complete-input usage contract.
+A disabled provider selects no work. Enabling it changes the desired fingerprint and selects missing output.
+
+Inference completes before existing provider groups are replaced.
+Replacement preserves other providers, datasets, and unchanged variants.
+Current source versions and digests prevent changed text from satisfying completion.
+The update changes only NER search attributes and searchable terms after inference.
+It preserves indexed text, other search attributes, signals, regex output, and embeddings.
+Missing index publication keeps the update selected after model inference completes.
+Current stored completion and searchable output are verified before settlement.

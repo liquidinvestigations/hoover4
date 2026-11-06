@@ -163,6 +163,7 @@ EXPECTED_COLLECTION_TABLES = {
     "table_generation_owners",
     "table_text_publication_ready",
     "automatic_ocr_ready",
+    "ner_completion_ready",
     "automatic_ocr_plans",
     "automatic_ocr_output",
     "pdf_ocr_parts",

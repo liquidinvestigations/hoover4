@@ -18,6 +18,7 @@ and its version.
 
 from typing import Dict, Optional
 
+from tasks.P4_extract_entities.completion import NER_STAGE_VERSION
 from tasks.P3_parse_files.ocr_detection import OCR_DETECTION_VERSION
 from tasks.P3_parse_files.scan_virus import SCAN_VERSION
 from tasks.P3_parse_files.table_formats import READER_VERSION
@@ -48,7 +49,7 @@ STAGE_VERSIONS: Dict[str, int] = {
     "pdf_text_layer": PDF_TEXT_LAYER_VERSION,
     "audio": 1,
     "video": 1,
-    "entities": 1,
+    "entities": NER_STAGE_VERSION,
     "regex": 1,
     "embed": 1,
     "index_text": 3,

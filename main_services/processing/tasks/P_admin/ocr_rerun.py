@@ -70,6 +70,7 @@ class RerunOcrParams:
     parts_version: bool = False
     automatic_mode: bool | None = None
     automatic_files: int = 0
+    automatic_failed_files: int = 0
 
 
 @dataclass

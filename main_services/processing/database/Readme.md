@@ -337,7 +337,7 @@ change the operation and Error tables, and add document outcomes. The Error repl
 preserves historical rows and creates `processing_errors_identity_ready` last.
 
 **The readiness sentinel names the table that the last table-creating migration creates**.
-It is `automatic_ocr_ready`. Update both sentinel copies when a later table-creating migration
+It is `ner_completion_ready`. Update both sentinel copies when a later table-creating migration
 is added.
 
 ## Table generation ownership
@@ -395,3 +395,12 @@ An older retry of the same plan returns without changing that publication.
 Final text and PDF metadata mutations execute through that same serialized command.
 Staged artifact verification and language inference execute before that command.
 Applied-state commands recheck the published epoch after dependent verification.
+
+## NER completion identities
+
+`nlp_processed` records the entity stage version, stored text version, and source SHA-256 digest.
+Earlier completion defaults to stage version 1 and remains selectable for replacement.
+Provider identities remain separate.
+The `entities` processing update stores verified search publication in `processing_output_receipts`.
+Its identity includes provider, extractor, page, source version, and digest.
+The collection readiness sentinel is `ner_completion_ready`.

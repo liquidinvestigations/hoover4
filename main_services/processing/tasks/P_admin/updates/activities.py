@@ -428,6 +428,23 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
         if step_id == "image_previews":
             selection = selectors.select_image_previews(client, ctx)
             return selection.count == 0, f"{selection.count} files still have no image preview."
+        if step_id == "entities":
+            selection = selectors.select(selectors.STEPS_BY_ID["entities"], ctx, client)
+            if selection.count:
+                return False, f"{selection.count} files need complete named entity output."
+            from .entities import EntityUpdateParams, verify_index
+            after = ""
+            while True:
+                rows = client.query("SELECT DISTINCT file_hash FROM processing_output_receipts "
+                    "WHERE collection_dataset={cd:String} AND output_kind='entities' AND op_id={op:String} "
+                    "AND file_hash>{after:String} ORDER BY file_hash LIMIT 100",
+                    parameters={"cd":scope_id,"op":params.op_id,"after":after}).result_rows
+                if not rows:
+                    break
+                hashes = [row[0] for row in rows]
+                verify_index(EntityUpdateParams(params.collectionname,scope_id,params.op_id,hashes))
+                after = hashes[-1]
+            return True, "Named entities and searchable output are current."
         if step_id == "tables":
             selection = selectors.select_tables(client, ctx)
             return selection.count == 0, f"{selection.count} files still have an earlier table reading."

@@ -332,9 +332,9 @@ are spread over time, and **clicking a bar filters to that period**.
 
 <img src="crops/filter-date-unknown-only-and-1-more.png" align="right" width="40%" alt="Red frames mark Unknown only and Mentioned Date.">
 
-A document matches when its earliest-to-latest confirmed date interval overlaps the selected range.
-For example, confirmed dates in 2000 and 2010 make the document match a range in 2005.
-This does not establish that the document contains an individual date in 2005.
+A document matches when at least one confirmed date is inside the selected range.
+Both range boundaries are included.
+Confirmed dates in 2000 and 2010 do not match a range in 2005.
 **Unknown only** selects documents without a confirmed document date.
 **Mentioned Date** filters dates extracted from document text and uses separate entity values.
 

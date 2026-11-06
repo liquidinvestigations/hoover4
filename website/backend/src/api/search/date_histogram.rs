@@ -15,11 +15,9 @@
 //!   rest of the query narrows to; the selection is drawn on top of them. A histogram
 //!   that filtered itself would be one solid block inside the cutoffs and zero outside.
 //!
-//! Manticore does the aggregation with the same `INTERVAL()` + `GROUP BY` shape the size
-//! facet uses, just with up to thirty edges instead of three. There is no histogram or
-//! date-bucketing function in Manticore 14.1.0 to use instead, and `date_min` is a signed
-//! `bigint` rather than a `timestamp` precisely because the timestamp type is 32-bit
-//! unsigned and cannot hold a 1936 date at all.
+//! Each bin uses the same actual-date predicate as search.
+//! Per-shard distinct counts retain the ordinary result and total-count semantics.
+//! Scalar date bounds determine the axis and retain pre-epoch dates.
 
 use crate::api::search::fanout::{self, FanoutTarget};
 use crate::api::search::search_sql::sql_options_clause;
@@ -31,6 +29,7 @@ use common::{
     search_query::{DATE_UNKNOWN, SearchQuery},
 };
 use serde::{Deserialize, Serialize};
+use common::search_query::RangeFilter;
 
 /// Bins aimed for. The upper bound is the one that is enforced; the target is what the
 /// width is derived from.
@@ -75,6 +74,9 @@ struct BucketRow {
     bucket: i64,
     doc_count: u64,
 }
+
+#[derive(Debug, Deserialize)]
+struct DateDocumentRow { file_hash: String }
 
 /// The measured extent of the dated documents, `[start, end)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,6 +126,11 @@ pub async fn search_date_histogram(
     }
 
     let (domain, unknown_count) = probe_domain(&query, targets.clone()).await?;
+    let unknown_count = if unknown_count > 0 {
+        let mut unknown_query = query.clone();
+        unknown_query.range_filters.insert("dates".into(), RangeFilter { include_unknown: true, ..Default::default() });
+        count_matching_documents(&unknown_query, targets.clone()).await?
+    } else { 0 };
     let Some(domain) = domain else {
         // Every matching document is undated. There is nothing to bin, and saying so is
         // more useful than an axis over an invented range.
@@ -142,10 +149,7 @@ pub async fn search_date_histogram(
         .map(|(index, pair)| DateHistogramBucket {
             start: pair[0],
             end: pair[1],
-            // `INTERVAL(x, e0, e1, …)` returns 0 for `x < e0`, so the bin between `e0`
-            // and `e1` is index 1, not 0. Off by one here is a histogram shifted by one
-            // bar, which looks plausible and is wrong.
-            count: counts.totals.get(index + 1).copied().unwrap_or(0),
+            count: counts.totals.get(index).copied().unwrap_or(0),
         })
         .collect();
 
@@ -252,52 +256,49 @@ async fn probe_domain(
 }
 
 struct BucketCounts {
-    /// Indexed by `INTERVAL()` result, so index 0 is "below the first edge".
+    /// Counts follow the adjacent edge pairs.
     totals: Vec<u64>,
 }
 
-async fn count_buckets(
-    query: &SearchQuery,
-    targets: Vec<FanoutTarget>,
-    edges: &[i64],
-) -> anyhow::Result<BucketCounts> {
-    let edge_list = edges.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(",");
+/// Count grouped documents with bounded pages in each shard.
+async fn count_matching_documents(query: &SearchQuery, targets: Vec<FanoutTarget>) -> anyhow::Result<u64> {
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();
-        let edge_list = edge_list.clone();
         async move {
+            const PAGE_ROWS: usize = 1000;
             let parts = fanout::shard_query_parts(&target, &query).await?;
-            let from_clause = &parts.from_clause;
-            let where_clause = &parts.where_clause;
-            let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1000);
-            let sql = format!(
-                "
-                SELECT INTERVAL(date_min, {edge_list}) AS bucket,
-                       count(distinct file_hash) AS doc_count
-                {from_clause}
-                {where_clause}
-                AND date_min != {DATE_UNKNOWN}
-                GROUP BY bucket
-                ORDER BY bucket ASC
-                LIMIT {}
-                {options_clause}
-                ;",
-                HISTOGRAM_MAX_BUCKETS + 4
-            );
-            manticore_search_sql::<BucketRow>(sql, &parts.salt).await
-        }
-    })
-    .await?;
-
-    let mut totals = vec![0_u64; edges.len() + 1];
-    for (_, response) in &outcome {
-        for hit in &response.hits.hits {
-            if let Ok(index) = usize::try_from(hit._source.bucket)
-                && index < totals.len()
-            {
-                totals[index] += hit._source.doc_count;
+            let options = format!("{},cutoff=0,accurate_aggregation=1", sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, PAGE_ROWS as u64));
+            let mut after: Option<String> = None;
+            let mut count = 0u64;
+            loop {
+                // The computed expression avoids columnar string-filter cursor errors.
+                let (projection, condition) = if let Some(value) = &after {
+                    let quoted = crate::db_utils::manticore_match::quoted_manticore_string(value);
+                    (format!(",(file_hash > {quoted}) AS after_key"), " AND after_key=1")
+                } else { (String::new(), "") };
+                let sql = format!("SELECT file_hash{projection} {} {}{condition} GROUP BY file_hash ORDER BY file_hash ASC LIMIT {PAGE_ROWS} {options}", parts.from_clause, parts.where_clause);
+                let response = manticore_search_sql::<DateDocumentRow>(sql, &parts.salt).await?;
+                let rows = response.hits.hits;
+                count += rows.len() as u64;
+                if rows.len() < PAGE_ROWS { break; }
+                let next = rows.last().unwrap()._source.file_hash.clone();
+                anyhow::ensure!(after.as_ref().is_none_or(|previous| next > *previous), "The date document cursor did not advance.");
+                after = Some(next);
             }
+            Ok::<u64,anyhow::Error>(count)
         }
+    }).await?;
+    Ok(outcome.into_iter().map(|(_,count)|count).sum())
+}
+
+async fn count_buckets(query: &SearchQuery, targets: Vec<FanoutTarget>, edges: &[i64]) -> anyhow::Result<BucketCounts> {
+    let mut totals = vec![0; edges.len().saturating_sub(1)];
+    for (index, pair) in edges.windows(2).enumerate() {
+        let mut bin_query = query.clone();
+        bin_query.range_filters.insert("dates".into(), RangeFilter {
+            min: Some(pair[0]), max: Some(pair[1].saturating_sub(1)), include_unknown: false,
+        });
+        totals[index] = count_matching_documents(&bin_query, targets.clone()).await?;
     }
     Ok(BucketCounts { totals })
 }
@@ -310,8 +311,7 @@ fn ceil_div(a: i64, b: i64) -> i64 {
 /// The bin edges tiling `domain`, with every in-range cutoff landing exactly on one.
 ///
 /// Returns `n + 1` edges for `n` bins: `edges[0] == domain.start`, `edges[n] ==
-/// domain.end`, strictly increasing. Interpolated into `INTERVAL()`, they yield bin `i`
-/// as `[edges[i-1], edges[i])` at `INTERVAL` result `i`.
+/// domain.end`, strictly increasing. Each adjacent pair defines one half-open bin.
 ///
 /// The width is one value off [`WIDTH_LADDER`] for the whole domain, not per segment, so
 /// the three intervals a band-pass creates are drawn at the same scale. The point of the

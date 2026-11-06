@@ -1,13 +1,12 @@
-"""NLP stage activities: named-entity extraction over parsed text content.
+"""Extract named entities with versioned source completion.
 
-Runs on ``processing-nlp-queue``. Failure policy: NER errors are NOT swallowed.
-An exception fails the activity so Temporal retries it; only after the retries
-are exhausted does the workflow record the failure in ``processing_errors``.
-A document with no entities must be visible as a failure, never as a silently
-empty result.
+Transport and incomplete-coverage errors propagate to Temporal retries.
+A complete provider response can contain no entity values.
+Publication replaces only that provider's successfully inferred groups.
 """
 
 import logging
+import hashlib
 import os
 from datetime import datetime, timezone
 
@@ -22,6 +21,7 @@ from tasks.plan_utils import clean_text
 from tasks.text_sources import fetch_text_batch, ner_reads_variant, plan_text_batches
 from tasks.P6_index_data.string_term_encodings import get_string_term_ids
 
+from .completion import NER_STAGE_VERSION
 from .extract_ner_from_text import NLP_MODEL_BY_PROVIDER, extract_ner_from_texts
 from .params import ExtractEntitiesParams, ExtractEntitiesResult
 
@@ -88,11 +88,9 @@ def configured_nlp_model() -> str:
 def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitiesResult:
     """Run NER over the plan's text segments and write entity_hit + watermark rows.
 
-    Segments already present in ``nlp_processed`` for this ``nlp_model`` are
-    skipped (left-anti join), which makes the stage cheaply re-runnable.
+    Current provider completions skip only matching stage versions and exact source identities.
 
-    Not every stored segment is worth reading: ``text_sources.ner_reads_variant``
-    drops a variant that is a worse copy of another variant of the same document
+    ``text_sources.ner_reads_variant`` skips redundant text variants of the same document
     (a mail file's MIME envelope beside its parsed body). What survives is
     filtered again by ``entity_stoplist``, which rejects the debris the model
     labels as confidently as a name. Both are write-time decisions, so every
@@ -119,24 +117,31 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             SELECT t.file_hash, t.extracted_by, t.page_id, t.text_bytes
             FROM (
                 SELECT collection_dataset, file_hash, extracted_by, page_id,
-                       argMax(text_bytes, version) AS text_bytes
+                       argMax(text_bytes, version) AS text_bytes, max(version) AS text_version,
+                       lower(hex(SHA256(argMax(text, version)))) AS text_digest
                 FROM text_content
                 WHERE collection_dataset = {collection_dataset:String}
                   AND file_hash IN {item_hashes:Array(String)}
                 GROUP BY collection_dataset, file_hash, extracted_by, page_id
             ) AS t
-            LEFT ANTI JOIN nlp_processed AS n
+            LEFT ANTI JOIN (SELECT * FROM nlp_processed FINAL WHERE stage_version = {stage_version:UInt16}
+                AND (collection_dataset,file_hash,extracted_by,page_id,nlp_model) IN (
+                    SELECT collection_dataset,file_hash,extracted_by,page_id,nlp_model FROM entity_hit FINAL
+                    GROUP BY collection_dataset,file_hash,extracted_by,page_id,nlp_model
+                    HAVING uniqExact(entity_type) = 4)) AS n
                 ON n.collection_dataset = t.collection_dataset
                 AND n.file_hash = t.file_hash
                 AND n.extracted_by = t.extracted_by
                 AND n.page_id = t.page_id
                 AND n.nlp_model = {nlp_model:String}
+                AND n.text_version = t.text_version AND n.text_digest = t.text_digest
             WHERE t.collection_dataset = {collection_dataset:String}
             AND t.file_hash IN {item_hashes:Array(String)}
         """, {
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes,
             "nlp_model": nlp_model,
+            "stage_version": NER_STAGE_VERSION,
         }).to_pylist()
 
         if not text_segments:
@@ -185,6 +190,8 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
         for batch in batch_texts_by_chars(ner_texts):
             stop_if_worker_is_stopping(f"NER {processed_by_ner + len(ner_results)}/{len(text_segments)} texts")
             batch_results, batch_model = extract_ner_from_texts(batch)
+            if len(batch_results) != len(batch):
+                raise RuntimeError("NER service returned incomplete text results")
             ner_results.extend(batch_results)
             served_models.extend([batch_model] * len(batch))
             heartbeat.beat(f"NER {processed_by_ner + len(ner_results)}/{len(text_segments)} texts")
@@ -198,7 +205,8 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
         model_by_index: dict[int, str] = dict(zip(ner_indices, served_models))
         segment_models = [model_by_index.get(i, nlp_model) for i in range(len(text_content))]
         for i, (text_row, served_model) in enumerate(zip(text_content, segment_models)):
-            for entity_type, raw_values in result_by_index.get(i, {}).items():
+            for entity_type in ("PER", "ORG", "LOC", "MISC"):
+                raw_values = result_by_index.get(i, {}).get(entity_type, [])
                 entity_values = filter_entity_values(raw_values)
                 stopped_values += len(raw_values) - len(entity_values)
                 clickhouse_ner_rows.append({
@@ -218,6 +226,9 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
                 "page_id": text_row['page_id'],
                 "nlp_model": served_model,
                 "text_bytes": len(cleaned_texts[i].encode('utf-8')),
+                "stage_version": NER_STAGE_VERSION,
+                "text_version": int(text_row.get("text_version", 0)),
+                "text_digest": hashlib.sha256(text_row["text"].encode("utf-8")).hexdigest(),
             })
 
     if skipped_count:
@@ -232,6 +243,9 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     get_string_term_ids(params.collectionname, collection_dataset, 'ner', ner_values)
 
     with get_collection_client(params.collectionname) as client:
+        # Inference completes before replacement. Exact provider keys preserve other output.
+        from .completion import replace_completed_groups
+        replace_completed_groups(client, collection_dataset, processed_rows)
         if clickhouse_ner_rows:
             tbl_ner = pa.table({
                 "collection_dataset": pa.array([row['collection_dataset'] for row in clickhouse_ner_rows], type=pa.string()),
@@ -260,6 +274,9 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             "nlp_model": pa.array([row['nlp_model'] for row in processed_rows], type=pa.string()),
             "text_bytes": pa.array([row['text_bytes'] for row in processed_rows], type=pa.uint64()),
             "processed_at": pa.array([now] * len(processed_rows), type=pa.timestamp("s")),
+            "stage_version": pa.array([row["stage_version"] for row in processed_rows], type=pa.uint16()),
+            "text_version": pa.array([row["text_version"] for row in processed_rows], type=pa.uint64()),
+            "text_digest": pa.array([row["text_digest"] for row in processed_rows], type=pa.string()),
         })
         insert_arrow_durable(client, "nlp_processed", tbl_processed)
 
