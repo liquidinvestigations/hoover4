@@ -63,6 +63,23 @@ A request above active and waiting capacity receives HTTP 503 with `Retry-After`
 Inference runs outside the request event loop so health requests can still proceed.
 A busy response does not establish that a model endpoint is unreachable.
 
+## Extract entities from complete input.
+
+NER processes every token window of each input with overlap between adjacent windows.
+The window limit is the smallest configured sequence, tokenizer, or model limit.
+The overlap is one quarter of its content capacity, capped at 128 tokens.
+`OPTIMAL_BATCH_SIZE` bounds the number of windows in each model batch.
+The tokenizer must support source offsets and overflowing windows.
+Startup refuses a tokenizer that cannot provide this contract.
+
+Transformers merges overlapping entity spans and preserves offsets within the original input.
+Multiple inputs retain their separate `text_index` values.
+The response contains results only after every input window succeeds.
+A failed window fails the request, so callers cannot record partial coverage as complete.
+Successful responses include `coverage_version: 2` and the number of `processed_inputs`.
+Callers can verify these fields before recording completion under the current entity stage version.
+[Window tests](tests/test_ner_windowing.py) verify this behavior without downloading a model.
+
 ## Build and run through deployment.
 
 [The Dockerfile](Dockerfile) builds the runtime environment from the service requirements.

@@ -61,6 +61,7 @@ app.add_middleware(
 model = None
 reranker = None
 ner_model = None
+ner_stride = None
 
 # Model ids come from the environment, rendered by deploy.py from hoover4.ini
 # ([ai_services] embeddings_model / reranker_model). Never hardcode them here: a
@@ -133,6 +134,23 @@ MAX_SEQUENCE_LENGTH = int(os.getenv("MAX_SEQUENCE_LENGTH", "512"))  # Max tokens
 ENABLE_HALF_PRECISION = os.getenv("ENABLE_HALF_PRECISION", "true").lower() == "true"
 ENABLE_TORCH_COMPILE = os.getenv("ENABLE_TORCH_COMPILE", "true").lower() == "true"  # PyTorch 2.0+
 
+
+def configure_ner_windowing(loaded_model):
+    """Bound model windows and retain overlapping tokens for complete input coverage."""
+    tokenizer = loaded_model.tokenizer
+    if not tokenizer.is_fast:
+        raise ValueError("Complete NER coverage requires a fast tokenizer")
+    limits = [MAX_SEQUENCE_LENGTH, tokenizer.model_max_length]
+    model_limit = getattr(loaded_model.model.config, "max_position_embeddings", None)
+    if model_limit is not None:
+        limits.append(model_limit)
+    window = min(limits)
+    usable = window - tokenizer.num_special_tokens_to_add(pair=False)
+    if usable < 2:
+        raise ValueError("NER token windows must contain at least two content tokens")
+    tokenizer.model_max_length = window
+    return min(128, max(1, usable // 4))
+
 class EmbeddingRequest(BaseModel):
     input: Union[str, List[str], List[List[int]]] = Field(..., description="Text, list of texts, or list of token arrays to embed")
     model: Optional[str] = Field(default=model_name, description="Model to use for embeddings")
@@ -194,6 +212,8 @@ class NERResponse(BaseModel):
     data: List[EntityInfo]
     model: str
     usage: dict
+    coverage_version: int = 2
+    processed_inputs: int
 
 
 def get_detailed_instruct(task_description: str, query: str) -> str:
@@ -269,7 +289,7 @@ async def widen_the_blocking_thread_limiter():
 @app.on_event("startup")
 async def load_models():
     """Load the enabled models on startup; a disabled capability stays unloaded."""
-    global model, reranker, ner_model
+    global model, reranker, ner_model, ner_stride
     logger.info(
         "Loading models (embeddings=%s ner=%s reranker=%s)...",
         ENABLE_EMBEDDINGS, ENABLE_NER, ENABLE_RERANKER,
@@ -336,6 +356,7 @@ async def load_models():
                         # Enable model optimizations
                         torch_dtype=torch.float16 if ENABLE_HALF_PRECISION and device == "cuda" else torch.float32
                     )
+                    ner_stride = configure_ner_windowing(ner_model)
                     logger.info("Hugging Face NER model loaded successfully!")
                 except Exception as e:
                     logger.error(f"Could not load {ner_model_name}: {e}")
@@ -621,23 +642,15 @@ def extract_entities(request: NERRequest):
         total_tokens = 0
 
         def _ner_infer():
-            if len(texts) == 1:
-                ner_results = ner_model(texts[0])
-                return [ner_results] if isinstance(ner_results, list) else [[ner_results]]
-            try:
-                ner_results = ner_model(texts)
-                if isinstance(ner_results[0], dict):
-                    return [[result] for result in ner_results]
-                return ner_results
-            except Exception as e:
-                logger.warning(f"Batch NER processing failed, falling back to sequential: {e}")
-                text_results = []
-                for text in texts:
-                    result = ner_model(text)
-                    text_results.append(result if isinstance(result, list) else [result])
-                return text_results
+            if ner_stride is None:
+                raise RuntimeError("NER token windows are not configured")
+            # The pipeline preserves source offsets and merges overlapping spans.
+            # It returns only after every window of every input succeeds.
+            return ner_model(texts, stride=ner_stride, batch_size=OPTIMAL_BATCH_SIZE)
 
         text_results = _run_on_gate(_ner_gate, _ner_infer)
+        if len(text_results) != len(texts):
+            raise RuntimeError("NER returned incomplete input coverage")
         
         # Process results from all texts
         for text_idx, text_ner_results in enumerate(text_results):
@@ -678,6 +691,7 @@ def extract_entities(request: NERRequest):
         response = NERResponse(
             data=all_entities,
             model=model_used,
+            processed_inputs=len(texts),
             usage={
                 "prompt_tokens": total_tokens,
                 "total_tokens": total_tokens
