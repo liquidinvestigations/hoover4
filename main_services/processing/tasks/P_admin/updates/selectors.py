@@ -526,16 +526,19 @@ def select_ocr_detection(client, ctx: ScopeContext) -> Selection:
     parameters = {"cd": ctx.scope_id, **extra}
     files, size = _count(client, hash_sql, parameters, ctx.scope_id)
     from tasks.P_admin.updates.registry import fingerprint
+    from tasks.P6_index_data.location_refresh import PATHS_SCAN_PAGE
     step = STEPS_BY_ID["ocr_detection"]
     target, _ = target_key(step, ctx)
     applied = ctx.applied.get("ocr_detection", {}).get("applied_fingerprint")
     if applied != fingerprint(step, target):
         from tasks.P6_index_data.location_refresh import list_stale_location_hashes
         stale, _, _ = list_stale_location_hashes(ctx.collectionname, ctx.scope_id)
-        if stale:
-            parameters["d_stale"] = stale
-            hash_sql = f"SELECT hash FROM ({hash_sql} UNION ALL SELECT arrayJoin({{d_stale:Array(String)}}) AS hash)"
-            files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+        # Stale hashes need a location refresh and no detection, so they join the count
+        # only. One query parameter holds about 1,795 hashes after URL encoding.
+        extra_sql = f"SELECT hash FROM (SELECT arrayJoin({{d_stale:Array(String)}}) AS hash) WHERE hash NOT IN ({hash_sql})"
+        for start in range(0, len(stale), PATHS_SCAN_PAGE):
+            extra = _count(client, extra_sql, {**parameters, "d_stale": stale[start:start + PATHS_SCAN_PAGE]}, ctx.scope_id)
+            files, size = files + extra[0], size + extra[1]
     return Selection(files, size, files, hash_sql if files else "", parameters, {"ocr_detection": "on"})
 
 

@@ -29,6 +29,9 @@ from .operations import TERMINAL_STATES, UPDATE_KINDS, VERSION_BITS, VERSION_MAS
 ATTEMPT_TERMINAL = ("succeeded", "failed", "cancelled", "skipped")
 _UPDATE_KINDS_SQL = ", ".join(f"'{kind}'" for kind in UPDATE_KINDS)
 _TERMINAL_SQL = ", ".join(f"'{state}'" for state in TERMINAL_STATES)
+#: How long an automatic operation that failed before a step began holds that step. The
+#: limit retries a passing database fault daily, and it ends the hold on its own.
+UNSTARTED_STEP_HOLD_HOURS = 24
 
 
 def _now() -> datetime:
@@ -117,7 +120,43 @@ def attempts_at(scope_ids: Iterable[str] = ()) -> Dict[Tuple[str, str, str], Lis
     for row in rows:
         row["effective_state"] = effective_attempt_state(row["state"], row["operation_state"] or "")
         keyed.setdefault((row["scope_id"], row["step_id"], row["desired_fingerprint"]), []).append(row)
+    for row in unstarted_steps(scope_ids):
+        key = (row["scope_id"], row["step_id"], row["desired_fingerprint"])
+        keyed[key] = sorted(keyed.get(key, []) + [row], key=lambda item: item["started_at"], reverse=True)
     return keyed
+
+
+def unstarted_steps(scope_ids: Iterable[str] = ()) -> List[dict]:
+    """Failed attempts for the steps of recent automatic operations that never began.
+
+    A failure before `begin_update_step` writes no attempt, for example in the snapshot.
+    Without this row the coordinator starts the same operation again at once.
+    """
+    from tasks.P_admin.updates.registry import AUTOMATIC_USER
+
+    from .clickhouse import get_global_client
+
+    wanted = set(scope_ids)
+    with get_global_client() as client:
+        operations = client.query(
+            "SELECT op_id, collectionname, collection_dataset, detail, started_at FROM operations FINAL "
+            f"WHERE kind IN ({_UPDATE_KINDS_SQL}) AND state = 'errored' AND user_id = {{user:String}} "
+            "AND started_at > now() - toIntervalHour({hours:UInt32})",
+            parameters={"user": AUTOMATIC_USER, "hours": UNSTARTED_STEP_HOLD_HOURS}).result_rows
+        started = {tuple(row) for row in client.query(
+            "SELECT DISTINCT op_id, step_id FROM processing_update_attempts").result_rows} if operations else set()
+    rows = []
+    for op_id, collectionname, collection_dataset, detail, started_at in operations:
+        scope_id = collection_dataset or collectionname
+        if wanted and scope_id not in wanted:
+            continue
+        for step_id, fingerprint in (json.loads(detail or "{}").get("fingerprints") or {}).items():
+            if (op_id, step_id) not in started:
+                rows.append({"scope_id": scope_id, "step_id": step_id, "op_id": op_id,
+                             "desired_fingerprint": fingerprint, "automatic": 1, "state": "failed",
+                             "error": "The operation failed before this step began.", "started_at": started_at,
+                             "ended_at": started_at, "operation_state": "errored", "effective_state": "failed"})
+    return rows
 
 
 def _keyed(sql: str, scope_ids: Iterable[str]) -> Dict[Tuple[str, str], dict]:

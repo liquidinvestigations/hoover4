@@ -92,6 +92,7 @@ def verify_index(params):
     from database.manticore import get_manticore_client, shard_table_from_name
     from tasks.P6_index_data.activities import union_entities_by_segment, pages_row_id
     from tasks.P6_index_data.string_term_encodings import fetch_string_term_ids
+    from tasks.P6_index_data.activities import FILENAME_EXTRACTED_BY
     from tasks.P6_index_data.location_refresh import parse_mva_ids
     from tasks.entity_stoplist import filter_entity_values
     with get_collection_client(params.collectionname) as client:
@@ -123,14 +124,17 @@ def verify_index(params):
             while True:
                 stop_if_worker_is_stopping()
                 cur = connection.cursor()
-                cur.execute(f"SELECT id,ner_per,ner_org,ner_loc,ner_misc FROM {shard_table_from_name(shard)} "
+                # Manticore 29.9.0 dropped text rows for `extracted_by != 'filename_index'`,
+                # so the filename rows leave here.
+                cur.execute(f"SELECT id,ner_per,ner_org,ner_loc,ner_misc,extracted_by FROM {shard_table_from_name(shard)} "
                     f"WHERE collection_dataset=%s AND file_hash IN ({','.join(['%s']*len(hashes))}) "
-                    "AND extracted_by != 'filename_index' AND id > %s ORDER BY id ASC LIMIT 1000 OPTION max_matches=1000",
+                    "AND id > %s ORDER BY id ASC LIMIT 1000 OPTION max_matches=1000",
                     (params.collection_dataset,*hashes,last))
                 page = cur.fetchall() or []
                 for row in page:
-                    actual[int(row[0])] = tuple(parse_mva_ids(value) for value in row[1:])
                     last = int(row[0])
+                    if row[5] != FILENAME_EXTRACTED_BY:
+                        actual[last] = tuple(parse_mva_ids(value) for value in row[1:5])
                 if len(page) < 1000:
                     break
     if actual != expected:
@@ -147,6 +151,7 @@ def rewrite_ner_attributes(params, assignments):
     from database.manticore import get_manticore_client, shard_table_from_name, manticore_execute, limit_encoded_runs
     from tasks.P6_index_data.activities import union_entities_by_segment, pages_replace_sql, pages_replace_params, _MVA_COLUMNS, _OCR_MVA_COLUMNS, repr_manticore_tuple
     from tasks.P6_index_data.string_term_encodings import get_string_term_ids
+    from tasks.P6_index_data.activities import FILENAME_EXTRACTED_BY
     from tasks.P6_index_data.location_refresh import parse_mva_ids
     from tasks.text_sources import fetch_text_batch
     from tasks.plan_utils import clean_text
@@ -167,11 +172,13 @@ def rewrite_ner_attributes(params, assignments):
                 stop_if_worker_is_stopping()
                 cur = connection.cursor()
                 cur.execute(f"SELECT * FROM {table} WHERE collection_dataset=%s "
-                    f"AND file_hash IN ({','.join(['%s']*len(hashes))}) AND extracted_by != 'filename_index' "
+                    f"AND file_hash IN ({','.join(['%s']*len(hashes))}) "
                     "AND id>%s ORDER BY id ASC LIMIT 32 OPTION max_matches=32",(params.collection_dataset,*hashes,last))
-                rows = [dict(zip(cur.column_names,row)) for row in cur.fetchall()]
-                if not rows:
+                page = [dict(zip(cur.column_names,row)) for row in cur.fetchall()]
+                if not page:
                     break
+                last = int(page[-1]["id"])
+                rows = [row for row in page if row["extracted_by"] != FILENAME_EXTRACTED_BY]
                 keys = [(row["file_hash"],row["extracted_by"],int(row["page_id"])) for row in rows]
                 with get_collection_client(params.collectionname) as client:
                     bodies = { (row["file_hash"],row["extracted_by"],int(row["page_id"])): row["text"]
@@ -179,7 +186,6 @@ def rewrite_ner_attributes(params, assignments):
                 for row,key in zip(rows,keys):
                     if key not in bodies or row["page_text"] != indexed_copy(limit_encoded_runs(clean_text(bodies[key]))):
                         raise RuntimeError("NER update awaits current indexed source text")
-                    last = int(row["id"])
                     for column in _MVA_COLUMNS+_OCR_MVA_COLUMNS:
                         if column in row:
                             row[column] = repr_manticore_tuple(sorted(parse_mva_ids(row[column])))
@@ -187,7 +193,7 @@ def rewrite_ner_attributes(params, assignments):
                         row[f"ner_{kind.lower()}"] = repr_manticore_tuple(sorted({ids[value] for value in filter_entity_values(groups.get(key,{}).get(kind,[]))}))
                     manticore_execute(connection,pages_replace_sql(table,row),pages_replace_params(params.collection_dataset,row))
                 connection.commit()
-                if len(rows)<32:
+                if len(page)<32:
                     break
 
 

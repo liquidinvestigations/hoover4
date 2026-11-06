@@ -234,6 +234,14 @@ def test_failed_child_history_read_keeps_what_it_has():
     assert not any(n.task_name == "extract_plaintext_chunks" for n in result.nodes)
 
 
+def test_history_body_with_a_dropped_list_inside_an_activity_input_is_repaired():
+    from tasks.operation_failure_capture import loads_temporal_http_json
+
+    body = '{"history":{"events":[{"input":[{"after":"a","hashes":"op_id":"op","plans":{}}]}]}}'
+    payload = loads_temporal_http_json(body)
+    assert payload["history"]["events"][0]["input"][0] == {"after": "a", "hashes": None, "op_id": "op", "plans": {}}
+
+
 def test_temporal_http_json_drops_invalid_workflow_input():
     from tasks.operation_failure_capture import loads_temporal_http_json
 

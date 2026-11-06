@@ -297,6 +297,8 @@ def _describe_parent(workflow_id: str, run_id: str) -> Optional[Tuple[str, str]]
     return None
 
 
+#: A key whose empty list the encoder dropped, so the next key follows at once.
+_MISSING_VALUE_RE = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)":(?=("[A-Za-z_][A-Za-z0-9_]*":|\}))')
 _INPUT_PAYLOAD_RE = re.compile(
     r'"input":\[.*?\],"workflowRunTimeout"',
     re.DOTALL,
@@ -308,14 +310,14 @@ def loads_temporal_http_json(text: str) -> dict:
 
     The HTTP history encoder can emit a missing input field as two keys in a row,
     which is not JSON. Failure events do not need that input, so it is replaced
-    with an empty list and the rest of the body is kept.
+    with an empty list and the rest of the body is kept. The same encoder drops an empty
+    list inside an activity input, and each such key receives a null value.
     """
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        repaired = _INPUT_PAYLOAD_RE.sub(
-            '"input":[],"workflowRunTimeout"', text)
-        return json.loads(repaired)
+        repaired = _INPUT_PAYLOAD_RE.sub('"input":[],"workflowRunTimeout"', text)
+        return json.loads(_MISSING_VALUE_RE.sub(r'"\1":null,', repaired).replace(":null,}", ":null}"))
 
 
 def _fetch_history_http(

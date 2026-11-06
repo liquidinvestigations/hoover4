@@ -140,3 +140,90 @@ def test_a_row_that_differs_alone_and_an_absent_row_are_missing(monkeypatch):
 def test_indexed_text_ends_at_the_first_nul_byte():
     assert indexed_copy("before\0after\0end") == "before"
     assert indexed_copy("no nul byte") == "no nul byte"
+
+
+def test_a_text_row_is_verified_without_a_string_inequality_filter(monkeypatch):
+    from tasks.P_admin.updates import entities
+
+    statements = []
+
+    class Pages:
+        def fetchall(self):
+            return [(1, "()", "()", "()", "()", "filename_index"), (2, "()", "()", "()", "()", "raw_text")]
+
+        def execute(self, sql, _parameters=None):
+            statements.append(sql)
+
+    class Stored:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def query_arrow(self, *_a, **_k):
+            class Empty:
+                def to_pylist(self):
+                    return []
+            return Empty()
+
+        def query(self, sql, parameters=None):
+            return Result([("hash", "raw_text", 1)] if "text_content" in sql else [("hash", "shard_1")])
+
+    monkeypatch.setattr("database.clickhouse.get_collection_client", lambda _name: Stored())
+    monkeypatch.setattr("database.manticore.get_manticore_client", lambda: Connection(Pages()))
+    monkeypatch.setattr("database.manticore.shard_table_from_name", lambda name: name)
+    monkeypatch.setattr("tasks.P6_index_data.activities.pages_row_id", lambda *_a: 2)
+    monkeypatch.setattr(entities, "completions", lambda *_a: [])
+    monkeypatch.setattr(selectors, "missing_search_terms", lambda *_a: 0)
+    entities.verify_index(entities.EntityUpdateParams("collection", "dataset", "op", ["hash"]))
+    assert "extracted_by !=" not in statements[0]
+
+
+def test_stale_hashes_stay_under_the_field_limit(monkeypatch):
+    sizes = []
+
+    def count(_client, sql, parameters, _dataset):
+        if "d_stale" not in sql:
+            return 5, 50
+        sizes.append(len(parameters["d_stale"]))
+        return len(parameters["d_stale"]) - 1, 10
+
+    monkeypatch.setattr(selectors, "_count", count)
+    monkeypatch.setattr(selectors, "detection_target", lambda: {"ocr_detection": "on"})
+    monkeypatch.setattr(selectors, "target_key", lambda *_a: ("", {}))
+    monkeypatch.setattr("tasks.P_admin.updates.registry.fingerprint", lambda *_a: "current")
+    monkeypatch.setattr("tasks.P6_index_data.location_refresh.list_stale_location_hashes",
+                        lambda *_a: ([f"{index:064d}" for index in range(2500)], 0, "affected-documents"))
+    selection = selectors.select_ocr_detection(None, CTX)
+    assert sizes == [1000, 1000, 500]
+    assert (selection.count, selection.bytes) == (5 + 2497, 80)
+    assert "d_stale" not in selection.parameters and "d_stale" not in selection.hash_sql
+
+
+def test_a_step_that_never_began_counts_as_failed_at_its_fingerprint(monkeypatch):
+    import json
+    from datetime import datetime
+
+    from database import processing_updates as updates
+
+    earlier = datetime(2026, 11, 6, 8)
+
+    class Global:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def query(self, sql, parameters=None):
+            if "state = 'errored'" in sql:
+                detail = json.dumps({"fingerprints": {"tables": "t1", "ocr": "o1"}})
+                return Result([("op", "ehud", "ehud_ehud", detail, earlier)])
+            return Result([("op", "ocr")])
+
+    monkeypatch.setattr("database.clickhouse.get_global_client", lambda: Global())
+    rows = updates.unstarted_steps()
+    assert [(row["scope_id"], row["step_id"], row["desired_fingerprint"], row["effective_state"]) for row in rows] == [
+        ("ehud_ehud", "tables", "t1", "failed")]
+    assert updates.unstarted_steps(["other"]) == []
