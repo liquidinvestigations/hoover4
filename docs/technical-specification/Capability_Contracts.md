@@ -182,6 +182,7 @@ Run versioned chat checks at the turn start and after each tool batch. A turn st
 Source ownership uses [main_services/processing/tasks/P_agent/control](../../main_services/processing/tasks/P_agent/control).
 
 Preparation validates a versioned multilingual output structure when local recognition is incomplete.
+Recognition accepts a plain JSON object or one complete JSON code block.
 It pins exact counts, explicit file names, original source quotes, and an input digest in the durable decision.
 A retry uses that decision. Invalid, incomplete, unsupported, or timed-out recognition gives no positive completion evidence.
 New objectives use the existing objective and source-rule transitions.

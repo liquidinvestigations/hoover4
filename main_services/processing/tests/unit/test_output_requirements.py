@@ -53,6 +53,29 @@ def test_named_outputs_reject_invented_names_counts_and_stale_input():
     assert output.apply(newer, result) == newer
 
 
+@pytest.mark.parametrize("language", ["json", ""])
+def test_complete_json_code_block_preserves_grounded_multilingual_requirements(language):
+    message = "Écris trois rapports: one.md, two.md et three.md."
+    names = ["one.md", "two.md", "three.md"]
+    state = TS.derive(message, 1)
+    response = f"```{language}\n{answer(message, names)}\n```"
+    result = output.validate(response, state)
+    assert result["state"] == "known"
+    assert result["groups"][0]["names"] == names
+    assert TS.delivery(output.apply(state, result), names)["evidence"]
+    assert not TS.delivery(output.apply(state, result), names[:1])["evidence"]
+
+
+@pytest.mark.parametrize("wrapper", ["Explanation\n```json\n{}\n```", "```json\n{}\n```\nMore text", "```python\n{}\n```", "```json\n{}"])
+def test_partial_or_surrounded_code_blocks_provide_no_completion_evidence(wrapper):
+    message = REQUESTS[3]
+    state = TS.derive(message, 1)
+    response = wrapper.format(answer(message))
+    result = output.validate(response, state)
+    assert result["state"] == "unknown"
+    assert not TS.delivery(output.apply(state, result), ["one.md"])["evidence"]
+
+
 def test_unknown_source_mention_does_not_grant_web_permission():
     state = TS.derive("Use only the selected documents. Do not use the web. Write a report.", 1)
     state = TS.derive("What about the web archives?", 2, state)

@@ -1,6 +1,7 @@
 """Validate and pin multilingual output requirements without changing source permissions."""
 import copy
 import json
+import re
 
 from tasks.P_agent.control.model import digest, plain
 
@@ -41,6 +42,9 @@ def validate(text, state, status="ok"):
     if status != "ok" or source["omissions"] or not (state.get("reconstruction") or {}).get("complete", True):
         return result
     try:
+        fenced = re.fullmatch(r"```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```", text.strip())
+        if fenced:
+            text = fenced.group(1)
         value = json.loads(text)
         if (type(value.get("schema_version")) is not int or value.get("schema_version") != 1 or value.get("state") != "known" or value.get("complete") is not True
                 or value.get("interpretation") not in ("new", "amendment", "continuation")):
