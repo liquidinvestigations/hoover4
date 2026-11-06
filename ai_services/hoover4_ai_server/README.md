@@ -65,6 +65,7 @@ A busy response does not establish that a model endpoint is unreachable.
 
 ## Extract entities from complete input.
 
+NER runs on the GPU only. A host without CUDA does not load the NER model, and the endpoint answers 503.
 NER processes every token window of each input with overlap between adjacent windows.
 The window limit is the smallest configured sequence, tokenizer, or model limit.
 The overlap is one quarter of its content capacity, capped at 128 tokens.
@@ -79,6 +80,8 @@ A failed window fails the request, so callers cannot record partial coverage as 
 Successful responses include `coverage_version: 2` and the number of `processed_inputs`.
 Callers can verify these fields before recording completion under the current entity stage version.
 [Window tests](tests/test_ner_windowing.py) verify this behavior without downloading a model.
+`EntityTokenPipeline` builds Python records only for entity tokens and one `O` token after each entity.
+Its output equals the stock pipeline output, and [pipeline tests](tests/test_ner_pipeline.py) compare the two.
 
 ## Build and run through deployment.
 

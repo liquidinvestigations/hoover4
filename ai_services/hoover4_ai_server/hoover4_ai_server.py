@@ -29,6 +29,7 @@ except ImportError:
 # Import transformers for NER (Named Entity Recognition) - required
 try:
     from transformers import pipeline
+    from ner_pipeline import EntityTokenPipeline
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
@@ -341,7 +342,10 @@ async def load_models():
             logger.info("Reranker disabled (AI_SERVER_ENABLE_RERANKER=false)")
 
         # Load the NER model
-        if ENABLE_NER:
+        if ENABLE_NER and device != "cuda":
+            # NER runs on the GPU only. The endpoint answers 503 and /health reports no NER model.
+            logger.error("NER needs CUDA, and this host has no usable GPU. NER is not loaded.")
+        elif ENABLE_NER:
             if TRANSFORMERS_AVAILABLE:
                 logger.info(f"Loading NER model: {ner_model_name}")
                 try:
@@ -349,12 +353,13 @@ async def load_models():
                         "ner",
                         model=ner_model_name,
                         tokenizer=ner_model_name,
+                        pipeline_class=EntityTokenPipeline,
                         aggregation_strategy="simple",
-                        device=0 if device == "cuda" else -1,
+                        device=0,
                         # Optimization: process multiple texts efficiently
                         batch_size=OPTIMAL_BATCH_SIZE,
                         # Enable model optimizations
-                        torch_dtype=torch.float16 if ENABLE_HALF_PRECISION and device == "cuda" else torch.float32
+                        torch_dtype=torch.float16 if ENABLE_HALF_PRECISION else torch.float32
                     )
                     ner_stride = configure_ner_windowing(ner_model)
                     logger.info("Hugging Face NER model loaded successfully!")
