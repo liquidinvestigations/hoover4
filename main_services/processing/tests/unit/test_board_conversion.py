@@ -49,6 +49,20 @@ def test_the_request_offers_only_the_fact_function_with_a_named_choice():
         assert f"- {kind}:" in body["messages"][0]["content"]
 
 
+def test_a_long_fact_is_kept_in_full():
+    fact = "Approved [D1]. " + "x" * (conversion.MAX_FACT_CHARS + 500)
+    args = conversion.parse_reply(call_reply({"fact": fact, "kind": "sourced"}))
+    assert args["fact"] == fact.strip()
+
+
+def test_a_prompt_cuts_a_long_fact_and_keeps_a_short_one():
+    from tasks.P_board.prompts import PROMPT_FACT_CHARS, clip_fact
+
+    assert clip_fact("short") == "short"
+    cut = clip_fact("y" * (PROMPT_FACT_CHARS + 10))
+    assert cut.startswith("y" * PROMPT_FACT_CHARS) and cut.endswith("[cut: the finding has more text]")
+
+
 def test_a_valid_call_is_read_and_a_malformed_call_is_refused():
     args = conversion.parse_reply(call_reply({"fact": "Approved [D1].", "kind": "sourced",
                                               "open_questions": ["Who paid?"]}))

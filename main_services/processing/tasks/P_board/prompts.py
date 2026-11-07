@@ -45,6 +45,15 @@ def _sources(fact_id: str, citations: list) -> str:
 
 #: Words of a fact that a brief shows when the fact has no label.
 SHORT_FACT_WORDS = 40
+#: Characters of one fact that a board prompt shows. The stored fact keeps its full text.
+PROMPT_FACT_CHARS = 40000
+
+
+def clip_fact(text: str) -> str:
+    """`text`, cut to `PROMPT_FACT_CHARS` characters with a marker when it is longer."""
+    if len(text) <= PROMPT_FACT_CHARS:
+        return text
+    return text[:PROMPT_FACT_CHARS].rstrip() + " [cut: the finding has more text]"
 
 
 def short_fact(fact, label) -> str:
@@ -59,14 +68,14 @@ def fact_block(facts: list, citations: list, rejected: set, full: set | None = N
                labels: dict | None = None) -> str:
     """One line per live fact, labels removed, sources listed. With `full`, only the facts
     whose id it holds and the background have their full text, and the others have their
-    label from `labels` (`short_fact`)."""
+    label from `labels` (`short_fact`). A full text longer than `PROMPT_FACT_CHARS` is cut."""
     lines = []
     for fact in facts:
         if fact.fact_id in rejected or fact.kind == m.GOAL:
             continue
         sources = _sources(fact.fact_id, citations)
         if full is None or fact.fact_id in full or fact.kind == m.ORIGIN:
-            text = strip_labels(fact.text).replace("\n", " ")
+            text = clip_fact(strip_labels(fact.text).replace("\n", " "))
         else:
             text = short_fact(fact, (labels or {}).get(fact.fact_id))
         lines.append(f"- {fact.fact_id} ({fact.kind}): {text}" + (f" {sources}" if sources else ""))
@@ -111,7 +120,7 @@ def render_brief(board, facts, citations, hints, intent, collections, steps: int
     `internet` is the effective web setting of the board. An empty `collections` list gives the
     brief of a web-only board."""
     rejected = rejected or {}
-    rejected_lines = [f"- {f.fact_id}: {strip_labels(f.text)} Rejected because: {rejected[f.fact_id] or 'no reason given'}"
+    rejected_lines = [f"- {f.fact_id}: {clip_fact(strip_labels(f.text))} Rejected because: {rejected[f.fact_id] or 'no reason given'}"
                       for f in facts if f.fact_id in rejected]
     hint_lines = "\n".join(f"- {h}" for h in reversed(hints)) or "- none"
     sources = ", ".join(intent.from_facts) or "origin"
@@ -202,7 +211,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
     answer_ids = [f.fact_id for f in live if f.kind in (m.SOURCED, m.NOT_FOUND)]
     other_ids = [f.fact_id for f in live if f.kind not in (m.GOAL, m.SOURCED, m.NOT_FOUND)]
     questions = open_question_keys(folded, facts)
-    rejected_lines = [f"- {f.fact_id}: {strip_labels(f.text)} Rejected because: {folded.rejected[f.fact_id] or 'no reason given'}"
+    rejected_lines = [f"- {f.fact_id}: {clip_fact(strip_labels(f.text))} Rejected because: {folded.rejected[f.fact_id] or 'no reason given'}"
                       for f in facts if f.fact_id in folded.rejected]
     stall_text = ("\nThe board is stalled: the last explores found no new sourced fact. Propose a "
                   "different kind of direction, or answer the goals with a statement of what was "

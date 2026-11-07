@@ -455,8 +455,10 @@ version for the conversion.
 pinned report version and its verified citations, and offers only the `submit_board_fact`
 function with a named tool choice ([P_board/conversion.py](../../main_services/processing/tasks/P_board/conversion.py)). The request holds no
 narration, earlier draft, tool row or reasoning. The function takes the fact with inline
-handles, its kind, at most 3 open questions and an optional slug candidate. A reply without
-a valid call fails the attempt, and Temporal sends the request once more. The second
+handles, its kind, at most 3 open questions and an optional slug candidate. The schema asks
+for a fact of at most 40,000 characters, but the check keeps a longer fact in full. A board
+prompt that shows the full text of a fact cuts it to 40,000 characters and marks the cut
+(`prompts.clip_fact`). A reply without a valid call fails the attempt, and Temporal sends the request once more. The second
 request turns off the reasoning phase of the model, because a reply that reaches the token
 limit usually ran out in its reasoning. A provider that refuses that hint gets the request
 without it. The first request keeps reasoning, because it gives the more accurate kind. The activity

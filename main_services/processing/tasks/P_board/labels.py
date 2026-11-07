@@ -41,7 +41,7 @@ from temporalio import activity
 from tasks.heartbeat import with_heartbeat
 from tasks.P_board import model as m
 from tasks.P_board.contracts import cut_words, parse_board_summary, parse_labels, slug_words
-from tasks.P_board.prompts import goals_of, strip_labels
+from tasks.P_board.prompts import clip_fact, goals_of, strip_labels
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ def label_nodes(facts, folded) -> list[Node]:
         nodes.append(Node(intent.intent_id, "intent", source, body, intent.created_at))
     for fact in facts:
         if fact.kind in _FACT_KIND_WORDS:
-            body = strip_labels(fact.text)
+            body = clip_fact(strip_labels(fact.text))
             nodes.append(Node(fact.fact_id, "fact", f"{_FACT_KIND_WORDS[fact.kind]}\n\n{body}", body,
                               fact.created_at))
         elif fact.kind == m.CORRECTION:
