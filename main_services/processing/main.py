@@ -977,6 +977,22 @@ def worker(worker_type: str | None = None):
     # rows that the other run wrote. The common and index process counts are keys, see
     # tasks/run_worker.py:common_worker_processes and indexing_worker_processes.
     from tasks.run_worker import common_worker_processes, indexing_worker_processes
+
+    # The catalog holds the context window that the compaction trigger of agent turns
+    # divides by. Refresh it at each start, so a model change in hoover4.ini reaches the
+    # catalog without an admin action. A failed refresh keeps the stored rows.
+    def refresh_llm_catalog_once():
+        try:
+            from tasks.llm_catalog import refresh_catalog
+            for result in refresh_catalog():
+                if not result.ok:
+                    log.warning("LLM catalog refresh of %s failed: %s", result.provider, result.error)
+        except Exception:
+            log.exception("LLM catalog refresh failed")
+
+    import threading
+    threading.Thread(target=refresh_llm_catalog_once, name="llm-catalog", daemon=True).start()
+
     common_count = common_worker_processes()
     indexing_count = indexing_worker_processes()
     log.info("Spawning %d common workers and %d index workers", common_count, indexing_count)

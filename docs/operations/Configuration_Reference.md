@@ -535,7 +535,10 @@ neither. Empty quality keys take the second model server of the GPU tier when
 `[ai_services] chat_llm_selfhosted` is true. Requests to the quality endpoint carry the key of
 this provider, or a placeholder when it has none. The worker and both
 agent services apply the rule ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py), [research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)), and
-`main.py refresh-llm-catalog` lists the quality endpoint as a provider of its own.
+both catalog refreshes list the quality endpoint as a provider of its own. The worker runs
+`main.py refresh-llm-catalog` once at start, and the admin LLM page runs the website refresh.
+Compaction of agent turns divides by the context window of that catalog row, so a model
+without a row is never compacted.
 
 `vision_models` names the models of the selfhosted provider that read images, comma
 separated. Empty names the quality model. Both catalog refreshes mark the named models

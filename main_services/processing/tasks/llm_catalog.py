@@ -15,8 +15,9 @@ provider, on the request path. This module is therefore:
 * **stale-tolerant**: `fetched_at` marks rows as stale, and callers serve stale rows
   rather than waiting.
 
-It never blocks a request path itself: it is invoked from the CLI and from a background
-task, and readers query `llm_models` directly.
+It never blocks a request path itself. The CLI runs it, and the worker supervisor runs it
+once in a background thread at start (`main.py worker`). Readers query `llm_models`
+directly.
 """
 
 import logging

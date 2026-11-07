@@ -310,6 +310,10 @@ fn vision_models(list: &str) -> std::collections::HashSet<&str> {
     list.split(',').map(str::trim).filter(|name| !name.is_empty()).collect()
 }
 
+/// Refresh the base endpoint and, when `LLM_QUALITY_BASE_URL` is set, the quality endpoint.
+/// The quality endpoint serves the model of agent turns, and the compaction trigger reads its
+/// context window from this table. The Python writer (`tasks/llm_catalog.py`) lists the
+/// quality endpoint under the same provider name.
 async fn refresh_catalog_now() -> anyhow::Result<()> {
     let base = std::env::var("LLM_BASE_URL")
         .map_err(|_| anyhow::anyhow!("LLM_BASE_URL unset"))?
@@ -319,14 +323,29 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
         anyhow::bail!("LLM_BASE_URL empty");
     }
     let api_key = read_llm_api_key();
-    let provider = provider_name_from_url(&base);
+    let result = refresh_endpoint(&base, provider_name_from_url(&base), &api_key).await;
+    let quality = std::env::var("LLM_QUALITY_BASE_URL")
+        .unwrap_or_default()
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    if !quality.is_empty() {
+        if let Err(e) = refresh_endpoint(&quality, endpoint_label(&quality), &api_key).await {
+            tracing::warn!("catalog refresh of the quality endpoint failed: {e:#}");
+        }
+    }
+    result
+}
+
+/// List one endpoint's models into `llm_models` under `provider`.
+async fn refresh_endpoint(base: &str, provider: String, api_key: &str) -> anyhow::Result<()> {
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(3))
         .timeout(Duration::from_secs(5))
         .build()?;
     let mut req = client.get(format!("{base}/models"));
     if !api_key.is_empty() {
-        req = req.bearer_auth(&api_key);
+        req = req.bearer_auth(api_key);
     }
     let resp = req.send().await?;
     if !resp.status().is_success() {
@@ -482,7 +501,7 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
 /// A registrable domain is named by its second-to-last label: `api.moonshot.ai` is
 /// `moonshot`. An address literal has no such label, and taking one anyway names the
 /// provider after an octet of its IP (`192.0.2.10:21960` becomes `2`), so the host and
-/// its port are kept whole. Every place that names a provider goes through this,
+/// its port are kept whole. Every place that names the base provider goes through this,
 /// including the placeholder row for a configured endpoint whose catalog is still empty:
 /// two spellings of one endpoint render as two providers, one of them permanently empty.
 pub(crate) fn provider_name_from_url(base: &str) -> String {
@@ -491,6 +510,13 @@ pub(crate) fn provider_name_from_url(base: &str) -> String {
             return name;
         }
     }
+    endpoint_label(base)
+}
+
+/// The name of an endpoint from its host alone. `LLM_PROVIDER_NAME` names only the base
+/// endpoint, so the quality endpoint is always named this way, as `provider_label` does in
+/// `tasks/llm_catalog.py`.
+fn endpoint_label(base: &str) -> String {
     let host = base
         .trim_start_matches("https://")
         .trim_start_matches("http://")
