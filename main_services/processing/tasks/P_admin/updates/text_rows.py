@@ -40,10 +40,12 @@ def rewrite_text_rows(params: TablePlanParams) -> int:
     """Replace the old text rows of a plan, and remove the output that read them.
 
     Derived rows go first. A retry then still selects the source, because its text keeps
-    the earlier `segment_version` until the new rows replace it.
+    the earlier `segment_version` until the new rows replace it. Old rows beside rows of
+    the current split are deleted and not split again, because the current rows already
+    hold the complete source.
     """
     from database.clickhouse import get_collection_client
-    from tasks.P3_parse_files.parse_common import insert_text_sources
+    from tasks.P3_parse_files.parse_common import _delete_obsolete_pages, insert_text_sources
     from tasks.P_admin.ocr_languages import EXTRACTED_BY_TABLES
     from tasks.P_admin.updates.selectors import text_rows_hash_sql
 
@@ -57,6 +59,7 @@ def rewrite_text_rows(params: TablePlanParams) -> int:
             return 0
         grouped: Dict[Tuple[str, str], List[Tuple[int, str]]] = {}
         languages: Dict[Tuple[str, str], str] = {}
+        current = set()
         for file_hash, source, page_id, text, language, written in client.query(
                 "SELECT file_hash, extracted_by, page_id, argMax(text, version), argMax(language, version), "
                 "argMax(segment_version, version) FROM text_content WHERE collection_dataset = {cd:String} "
@@ -66,9 +69,14 @@ def rewrite_text_rows(params: TablePlanParams) -> int:
             if int(written) < int(extra["tr_version"]):
                 grouped.setdefault((file_hash, source), []).append((int(page_id), text))
                 languages[file_hash, source] = language
+            else:
+                current.add((file_hash, source))
             activity.heartbeat()
-        pairs = [pair for pair, rows in grouped.items()
-                 if len(rows) > 1 or (_is_pdf_source(pair[1]) and rows[0][0] > 1)]
+        # Rows of the current split hold the complete source, so old rows beside them are leftovers.
+        leftovers = {pair: [page for page, _ in rows] for pair, rows in grouped.items() if pair in current}
+        pairs = [pair for pair, rows in grouped.items() if pair not in leftovers
+                 and (len(rows) > 1 or (_is_pdf_source(pair[1]) and rows[0][0] > 1))]
+        pairs += list(leftovers)
         for table in EXTRACTED_BY_TABLES:
             if table != "text_content" and pairs:
                 client.command(
@@ -77,7 +85,12 @@ def rewrite_text_rows(params: TablePlanParams) -> int:
                     "SETTINGS mutations_sync = 2",
                     parameters={"cd": params.collection_dataset, "pairs": pairs})
                 activity.heartbeat()
+        for (file_hash, source), pages in leftovers.items():
+            _delete_obsolete_pages(client, params.collection_dataset, file_hash, source, set(pages))
+            activity.heartbeat()
         for file_hash, source in pairs:
+            if (file_hash, source) in leftovers:
+                continue
             rows = split_again(client, params.collection_dataset, file_hash, source, grouped[file_hash, source])
             insert_text_sources(params.collectionname, params.collection_dataset, file_hash, {source: rows},
                                 languages={source: languages[file_hash, source]})

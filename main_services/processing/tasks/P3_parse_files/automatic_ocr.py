@@ -384,6 +384,17 @@ def apply_automatic_state_command(client, command):
     return 1
 
 
+def publication_rows(client, dataset, file_hash, source_kind, sources):
+    """The `text_content` rows of each OCR source: the pages of an image, or one row for each PDF part."""
+    if source_kind == "image":
+        return sources
+    from tasks.P3_parse_files.parse_common import pdf_text_rows
+    from tasks.P3_parse_files.pdf_parts import source_parts, source_ranges
+    ranges = [(part["first_page"], part["last_page"]) for part in source_parts(client, dataset, file_hash, source_kind)]
+    ranges = ranges or source_ranges(max((int(page) for pages in sources.values() for page, _ in pages), default=0), 1)
+    return {source: pdf_text_rows(pages, ranges) for source, pages in sources.items()}
+
+
 def _publish_serialized(client, params, file, plan, outputs, source_languages):
     """Publish complete text and PDF manifests before retiring obsolete normal variants."""
     from tasks.P3_parse_files.parse_common import insert_text_sources
@@ -399,13 +410,7 @@ def _publish_serialized(client, params, file, plan, outputs, source_languages):
     for (engine, languages), values in groups.items():
         extractor = ocr_extracted_by if plan["source_kind"] == "image" else pdf_ocr_extracted_by
         sources[extractor(engine, languages)] = sorted((int(page), text) for value in values for page, text in value["pages"])
-    if plan["source_kind"] != "image":
-        from tasks.P3_parse_files.parse_common import pdf_text_rows
-        from tasks.P3_parse_files.pdf_parts import source_parts, source_ranges
-        ranges = [(part["first_page"], part["last_page"]) for part in source_parts(
-            client, params.collection_dataset, file.item_hash, plan["source_kind"])]
-        ranges = ranges or source_ranges(max((int(page) for pages in sources.values() for page, _ in pages), default=0), 1)
-        sources = {source: pdf_text_rows(pages, ranges) for source, pages in sources.items()}
+    sources = publication_rows(client, params.collection_dataset, file.item_hash, plan["source_kind"], sources)
     states = client.query("SELECT state, has_ocr_output FROM automatic_ocr_plans FINAL WHERE collection_dataset = {cd:String} "
         "AND hash = {h:String} AND plan_digest = {p:String}",
         parameters={"cd": params.collection_dataset, "h": file.item_hash, "p": plan["plan_digest"]}).result_rows

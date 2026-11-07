@@ -524,16 +524,19 @@ def text_rows_hash_sql() -> Tuple[str, dict]:
 
     A source of one row with an unpaged split needs no change. `table_text` keeps its cell
     aware split. A PDF source of one row can start after page 1, and the row then needs
-    empty places for the pages before it.
+    empty places for the pages before it. A source with rows of both splits kept old rows
+    that a replacement did not delete.
     """
     from tasks.P3_parse_files.parse_common import TEXT_SEGMENT_VERSION
 
+    old = "written < {tr_version:UInt16}"
     sql = ("SELECT DISTINCT file_hash AS hash FROM (SELECT file_hash, extracted_by, page_id, "
            "argMax(segment_version, version) AS written FROM text_content "
            "WHERE collection_dataset = {cd:String} AND extracted_by != 'table_text' "
-           "GROUP BY file_hash, extracted_by, page_id) WHERE written < {tr_version:UInt16} "
-           "GROUP BY file_hash, extracted_by HAVING count() > 1 OR (min(page_id) > 1 AND "
-           "(extracted_by = 'pdftotext' OR startsWith(extracted_by, 'pdfocr_')))")
+           f"GROUP BY file_hash, extracted_by, page_id) GROUP BY file_hash, extracted_by "
+           f"HAVING countIf({old}) > 0 AND (countIf({old}) > 1 OR countIf(NOT ({old})) > 0 "
+           f"OR (minIf(page_id, {old}) > 1 AND "
+           "(extracted_by = 'pdftotext' OR startsWith(extracted_by, 'pdfocr_'))))")
     return f"SELECT hash FROM ({sql}) WHERE hash IN ({_LIVE})", {"tr_version": TEXT_SEGMENT_VERSION}
 
 

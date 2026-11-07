@@ -172,3 +172,23 @@ def test_an_unresolved_document_uses_the_latin_script_model():
     assert plan["pages"][0]["status"] == "ready"
     assert plan["pages"][0]["reason"] == "unresolved_unknown_language_script_coverage"
     assert plan["pages"][0]["passes"][0]["languages"] == "Latin"
+
+
+def test_publication_check_compares_one_row_for_each_pdf_part(monkeypatch):
+    from types import SimpleNamespace
+    from tasks.P3_parse_files import automatic_ocr, pdf_parts
+    from tasks.P3_parse_files.parse_common import stored_page_bodies
+    monkeypatch.setattr(pdf_parts, "source_parts", lambda *_: [dict(first_page=1, last_page=2), dict(first_page=3, last_page=3)])
+    pages = [(1, "alpha"), (2, "beta"), (3, "gamma")]
+    rows = automatic_ocr.publication_rows(None, "d", "h", "original", {"pdfocr_x": pages})
+    assert rows == {"pdfocr_x": [(1, "alpha\fbeta"), (3, "gamma")]}
+    assert automatic_ocr.publication_rows(None, "d", "h", "image", {"ocr_x": pages}) == {"ocr_x": pages}
+
+    class Client:
+        def query(self, sql, parameters):
+            return SimpleNamespace(result_rows=stored_page_bodies(rows["pdfocr_x"]))
+
+    params = SimpleNamespace(collection_dataset="d")
+    automatic_ocr.verify_text_publication(Client(), params, "h", rows)
+    with pytest.raises(RuntimeError, match="incomplete durable replacement"):
+        automatic_ocr.verify_text_publication(Client(), params, "h", {"pdfocr_x": pages})

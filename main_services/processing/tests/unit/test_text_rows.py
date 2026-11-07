@@ -118,3 +118,29 @@ def test_a_batch_of_an_entity_update_leaves_the_dataset_terms_to_the_end(monkeyp
     assert deleted == [] and published == []
     entities.finish_entity_terms.__wrapped__(params)
     assert len(deleted) == 2 and len(published) == 1 and len(verified) == 1
+
+
+def test_old_rows_beside_current_rows_are_deleted_and_not_split_again(monkeypatch):
+    from contextlib import nullcontext
+
+    import database.clickhouse as clickhouse
+    from tasks.P_admin.updates import text_rows
+
+    stored = [("h", "pdftotext", 1, "a\fb\fc", "en", 1), ("h", "pdftotext", 2, "b", "en", 0),
+              ("h", "pdftotext", 3, "c", "en", 0), ("h", "raw_text", 1, "one ", "en", 0),
+              ("h", "raw_text", 2, "two", "en", 0)]
+
+    def query(sql, parameters=None):
+        return SimpleNamespace(result_rows=[("h",)] if "processing_plan_hits" in sql else stored)
+
+    commands, removed, written = [], [], []
+    client = SimpleNamespace(query=query, command=lambda *a, **k: commands.append(k["parameters"]))
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: nullcontext(client))
+    monkeypatch.setattr(text_rows.activity, "heartbeat", lambda *a: None)
+    monkeypatch.setattr(common, "_delete_obsolete_pages", lambda _c, _d, h, source, pages: removed.append((h, source, pages)))
+    monkeypatch.setattr(common, "insert_text_sources", lambda _n, _d, h, sources, **_: written.append((h, sources)))
+    params = SimpleNamespace(collectionname="c", collection_dataset="d", plan_hash="p")
+    assert text_rows.rewrite_text_rows.__wrapped__(params) == 2
+    assert removed == [("h", "pdftotext", {2, 3})]
+    assert written == [("h", {"raw_text": [(1, "one two")]})]
+    assert all(sorted(c["pairs"]) == [("h", "pdftotext"), ("h", "raw_text")] for c in commands)

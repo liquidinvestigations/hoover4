@@ -106,7 +106,8 @@ def run_automatic_ocr_files(params: AutomaticOcrScope) -> dict[str, str]:
 def verify_automatic_ocr_files(params: AutomaticOcrScope) -> None:
     """Verify durable dependencies and pin the exact completed automatic plan."""
     from database.clickhouse import get_collection_client
-    from tasks.P3_parse_files.automatic_ocr import write_plan, read_outputs, verify_text_publication, verify_artifacts
+    from tasks.P3_parse_files.automatic_ocr import (write_plan, read_outputs, publication_rows,
+        verify_text_publication, verify_artifacts)
     from tasks.P_admin.updates.table_receipts import TableReceiptParams, verify_stages
     from tasks.ocr_targets import _index_states
     from tasks.text_sources import ocr_extracted_by, pdf_ocr_extracted_by
@@ -146,6 +147,7 @@ def verify_automatic_ocr_files(params: AutomaticOcrScope) -> None:
             bodies = {}
             for item in output.values():
                 bodies.setdefault(extractor(item["engine"], item["languages"]), []).extend(item["pages"])
+            bodies = publication_rows(client, params.collection_dataset, h, plan["source_kind"], bodies)
             verify_text_publication(client, params, h, bodies)
             verify_artifacts(params.collectionname, output.values())
             verify_vector_index(client, TableReceiptParams(params.collectionname, params.collection_dataset, params.op_id, [h]))
