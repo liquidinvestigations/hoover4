@@ -18,6 +18,8 @@ class EntityUpdateParams:
     done: int = 0
     #: The operation writes the dataset terms once, after its last batch.
     terms_at_end: bool = False
+    #: Files that one listing returns.
+    limit: int = 100
 
 
 def indexed_page_is_current(stored: str, cleaned: str) -> bool:
@@ -79,8 +81,8 @@ def list_entity_update_hashes(params: EntityUpdateParams) -> list[str]:
         return []
     sql, values = pending_sql(wanted)
     with get_collection_client(params.collectionname) as client:
-        rows = client.query(f"SELECT hash FROM ({sql}) WHERE hash > {{after:String}} ORDER BY hash LIMIT 100",
-            parameters={**values, "cd": params.collection_dataset, "after": params.after}).result_rows
+        rows = client.query(f"SELECT hash FROM ({sql}) WHERE hash > {{after:String}} ORDER BY hash LIMIT {{limit:UInt32}}",
+            parameters={**values, "cd": params.collection_dataset, "after": params.after, "limit": params.limit}).result_rows
     return [row[0] for row in rows]
 
 

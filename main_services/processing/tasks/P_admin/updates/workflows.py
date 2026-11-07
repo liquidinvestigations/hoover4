@@ -26,6 +26,7 @@ failed.
 """
 
 import asyncio
+import dataclasses
 import json
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -726,11 +727,21 @@ class UpdateDatasetArchiveMembers:
         return params.done
 
 
+#: Files in one NER batch of an entity update.
+ENTITY_UPDATE_BATCH = 100
+#: Batches that one entity update run lists before it continues as new.
+ENTITY_UPDATE_BATCHES_PER_RUN = 16
+#: Batches in flight at once. It matches the default NER slots of the NLP worker.
+ENTITY_UPDATE_WINDOW = 4
+
+
 @workflow.defn
 class UpdateDatasetEntities:
     """Rewrite bounded NER pages without repeating regex or embedding work."""
     @workflow.run
     async def run(self, params: EntityUpdateParams) -> int:
+        if workflow.patched("entity-update-window"):
+            return await self._windowed(params)
         hashes = await workflow.execute_activity(list_entity_update_hashes, params,
             start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         terms_at_end = workflow.patched("entity-terms-at-end")
@@ -751,5 +762,41 @@ class UpdateDatasetEntities:
                                terms_at_end=terms_at_end),
             task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        workflow.continue_as_new(EntityUpdateParams(params.collectionname,params.collection_dataset,
+            params.op_id,after=hashes[-1],done=params.done + len(hashes)))
+
+    async def _windowed(self, params: EntityUpdateParams) -> int:
+        """Run batches of 100 files with up to `ENTITY_UPDATE_WINDOW` in flight.
+
+        One batch at a time left the GPU idle while a batch read text and saved results.
+        Each batch writes the rows of its own files only. The dataset terms follow the last batch.
+        """
+        from tasks.workflow_window import run_with_window
+        listed = dataclasses.replace(params, limit=ENTITY_UPDATE_BATCH * ENTITY_UPDATE_BATCHES_PER_RUN)
+        hashes = await workflow.execute_activity(list_entity_update_hashes, listed,
+            start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not hashes:
+            await workflow.execute_activity("finish_entity_terms",
+                EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id),
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(hours=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            return params.done
+
+        async def batch(chunk):
+            await workflow.execute_activity("extract_entities_for_hashes",
+                {"collectionname":params.collectionname,"collection_dataset":params.collection_dataset,
+                 "plan_hash":"entity-update","hashes":chunk,"op_id":params.op_id},
+                task_queue="processing-nlp-queue", start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            await workflow.execute_activity(finish_entity_update,
+                EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id,chunk,terms_at_end=True),
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+
+        chunks = [hashes[start:start + ENTITY_UPDATE_BATCH] for start in range(0, len(hashes), ENTITY_UPDATE_BATCH)]
+        results = await run_with_window([lambda chunk=chunk: batch(chunk) for chunk in chunks], ENTITY_UPDATE_WINDOW)
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
         workflow.continue_as_new(EntityUpdateParams(params.collectionname,params.collection_dataset,
             params.op_id,after=hashes[-1],done=params.done + len(hashes)))
