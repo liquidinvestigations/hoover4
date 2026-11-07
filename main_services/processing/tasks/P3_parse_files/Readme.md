@@ -554,7 +554,7 @@ rendered at 200 dpi in the worker. The worker sets the language from the script 
 
 Each successful image or page detection stores one `ocr_detection` row.
 An image under the OCR size gate stores a row without text.
-Corrupt images are skipped and do not count as errors. Image metadata records `image_undecodable` when ffprobe reports invalid data, and image OCR records `ocr_skipped_undecodable` after a 422 answer.
+Corrupt images are skipped and do not count as errors. Image metadata records `image_undecodable` when ffprobe reports invalid data, and image OCR and automatic OCR record `ocr_skipped_undecodable` after a 422 answer. Automatic OCR then publishes the image as one page without text, so its update step completes.
 Other files that do not open are also skipped outcomes with no `processing_errors` row:
 
 - A table that every reader refuses.

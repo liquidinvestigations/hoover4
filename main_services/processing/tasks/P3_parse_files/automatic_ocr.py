@@ -11,6 +11,9 @@ from tasks.automatic_ocr import capabilities, digest, make_plan
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.P3_parse_files.batch_runner import BatchResult, StageBatchParams, run_batch
 
+# The `ocr_skips` reason of an image that the OCR service refuses (422). The normal OCR stage uses it too.
+OCR_INPUT_UNDECODABLE = "ocr_skipped_undecodable"
+
 
 def write_plan(client, plan, state, reason="", presence=0):
     from database.clickhouse import insert_durable
@@ -270,8 +273,14 @@ def image_output(params, file, engine, languages, plan):
     except Exception as exc:
         import requests
         if isinstance(exc, requests.HTTPError) and getattr(exc.response, "status_code", None) == 422:
-            from temporalio.exceptions import ApplicationError
-            raise ApplicationError("OCR service rejected the image input", type="OcrInputUnsupported", non_retryable=True) from exc
+            # The OCR service read the bytes and found no image it can process. A retry gets
+            # the same 422. Like the normal OCR stage, store a skip and publish an empty page.
+            from tasks.ocr_targets import STAGE_IMAGE, record_ocr_skips
+            with get_collection_client(params.collectionname) as client:
+                record_ocr_skips(client, params.collection_dataset, file.item_hash, STAGE_IMAGE,
+                                 engine, [languages], OCR_INPUT_UNDECODABLE, getattr(params, "op_id", ""))
+            return dict(engine=engine, languages=languages, pages=[(1, "")], raw_json="",
+                        skipped=OCR_INPUT_UNDECODABLE)
         raise
     if outcome.engine != engine or outcome.languages != languages:
         raise RuntimeError("OCR service changed the pinned pass identity")

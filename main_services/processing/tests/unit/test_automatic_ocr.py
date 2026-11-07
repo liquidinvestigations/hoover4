@@ -135,23 +135,25 @@ def test_searchable_pdf_availability_changes_the_publication_target(monkeypatch)
     assert before != capability_digest({"tesseract": ["eng"]})
 
 
-def test_rejected_image_input_keeps_the_existing_single_attempt_contract(monkeypatch):
+def test_rejected_image_input_is_skipped_with_an_empty_page(monkeypatch):
     from contextlib import nullcontext
     from types import SimpleNamespace
     import requests
     from database import clickhouse
-    from tasks import ocr_client
+    from tasks import ocr_client, ocr_targets
     from tasks.P3_parse_files import automatic_ocr
-    from temporalio.exceptions import ApplicationError
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda name: nullcontext(None))
     monkeypatch.setattr(ocr_detection, "read_image", lambda *args: b"unreadable")
     error = requests.HTTPError(response=SimpleNamespace(status_code=422))
     monkeypatch.setattr(ocr_client, "run_ocr", lambda *args: (_ for _ in ()).throw(error))
-    with pytest.raises(ApplicationError) as failure:
-        automatic_ocr.image_output(SimpleNamespace(collectionname="collection", collection_dataset="dataset"),
-            SimpleNamespace(item_hash="image", file_path="unused"), "tesseract", "eng", {})
-    assert failure.value.non_retryable
-    assert failure.value.type == "OcrInputUnsupported"
+    skips = []
+    monkeypatch.setattr(ocr_targets, "record_ocr_skips", lambda *args: skips.append(args[1:]))
+    output = automatic_ocr.image_output(
+        SimpleNamespace(collectionname="collection", collection_dataset="dataset", op_id="op"),
+        SimpleNamespace(item_hash="image", file_path="unused"), "tesseract", "eng", {})
+    assert skips == [("dataset", "image", "image", "tesseract", ["eng"], "ocr_skipped_undecodable", "op")]
+    assert output["pages"] == [(1, "")]
+    assert "blob_key" not in output
 
 
 def test_an_unresolved_page_takes_the_script_of_its_document():
