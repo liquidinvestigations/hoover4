@@ -708,7 +708,7 @@ admin-failures-show = दिखाएँ
 admin-settings-web-session-lifetime-in-seconds = वेब सत्र की अवधि सेकंड में (डिफ़ॉल्ट: 604800 = 1 सप्ताह)
 admin-settings-turns-every-new-chat-turn = false होने पर हर नया चैट टर्न बंद कर देता है (डिफ़ॉल्ट: true)। चल रहा टर्न पूरा होता है। अगले भेजने से प्रभावी, डिप्लॉय दोबारा करने की आवश्यकता नहीं।
 admin-settings-written-by-main-py-probe = `main.py probe-embeddings` द्वारा लिखा जाता है, और यह वही है जो एंडपॉइंट वास्तव में सेवा में देता है। इसे हाथ से बदलने से सर्वर नहीं बदलता।
-admin-settings-the-folder-whose-subfolders-the = वह फ़ोल्डर जिसके सबफ़ोल्डर डेटासेट फ़ॉर्म सूचीबद्ध करता है। इसे बदलने पर दोबारा डिप्लॉय करना पड़ता है।
+admin-settings-the-folder-whose-subfolders-the = वह फ़ोल्डर जिसके सबफ़ोल्डर डेटासेट फ़ॉर्म इस माउंट के लिए सूचीबद्ध करता है। hoover4.ini में इसे बदलने पर दोबारा डिप्लॉय करना पड़ता है।
 admin-settings-from-hoover4-ini-changing-it = hoover4.ini से। इसे बदलने पर दोबारा डिप्लॉय करना पड़ता है।
 admin-feedback-bug = बग
 admin-operations-state-name = { $state ->

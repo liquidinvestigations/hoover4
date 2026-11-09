@@ -708,7 +708,7 @@ admin-failures-show = Prikaži
 admin-settings-web-session-lifetime-in-seconds = Trajanje web sesije u sekundama (zadano: 604800 = 1 tjedan)
 admin-settings-turns-every-new-chat-turn = Isključuje svaki novi krug razgovora kad je false (zadano: true). Krug u tijeku završava. Stupa na snagu pri sljedećem slanju, bez ponovnog postavljanja.
 admin-settings-written-by-main-py-probe = Zapisuje `main.py probe-embeddings`, a to je ono što krajnja točka STVARNO poslužuje. Ručno uređivanje ovoga ne mijenja poslužitelj.
-admin-settings-the-folder-whose-subfolders-the = Mapa čije podmape navodi obrazac skupa podataka. Promjena zahtijeva ponovno postavljanje.
+admin-settings-the-folder-whose-subfolders-the = Mapa čije podmape obrazac skupa podataka navodi za ovu točku montiranja. Promjena u hoover4.ini zahtijeva ponovno postavljanje.
 admin-settings-from-hoover4-ini-changing-it = Iz hoover4.ini. Promjena zahtijeva ponovno postavljanje.
 admin-feedback-bug = Pogreška
 admin-operations-state-name = { $state ->

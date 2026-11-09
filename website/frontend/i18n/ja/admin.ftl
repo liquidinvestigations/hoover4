@@ -708,7 +708,7 @@ admin-failures-show = 表示
 admin-settings-web-session-lifetime-in-seconds = ウェブセッションの有効期間 (秒、既定値: 604800 = 1週間)
 admin-settings-turns-every-new-chat-turn = falseにすると、新しいチャットのターンがすべてオフになります (既定値: true)。実行中のターンは完了します。次の送信から有効になり、再デプロイは不要です。
 admin-settings-written-by-main-py-probe = `main.py probe-embeddings` が書き込む値で、エンドポイントが実際に提供している内容です。手で編集しても、サーバーは変わりません。
-admin-settings-the-folder-whose-subfolders-the = データセットのフォームに、そのサブフォルダーを一覧表示するフォルダーです。変更には再デプロイが必要です。
+admin-settings-the-folder-whose-subfolders-the = このマウントについて、データセットのフォームにサブフォルダーを一覧表示するフォルダーです。hoover4.iniで変更するには再デプロイが必要です。
 admin-settings-from-hoover4-ini-changing-it = hoover4.iniの値です。変更には再デプロイが必要です。
 admin-feedback-bug = 不具合
 admin-operations-state-name = { $state ->

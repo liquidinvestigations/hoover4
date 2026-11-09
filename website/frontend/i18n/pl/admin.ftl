@@ -708,7 +708,7 @@ admin-failures-show = Pokaż
 admin-settings-web-session-lifetime-in-seconds = Czas życia sesji webowej w sekundach (domyślnie: 604800 = 1 tydzień)
 admin-settings-turns-every-new-chat-turn = Gdy wartość to false, wyłącza każdą nową turę czatu (domyślnie: true). Tura w toku kończy się normalnie. Zmiana działa od następnego wysłania, bez ponownego wdrożenia.
 admin-settings-written-by-main-py-probe = Zapisuje to `main.py probe-embeddings`. Wartość odpowiada temu, co endpoint FAKTYCZNIE obsługuje. Ręczna edycja nie zmienia serwera.
-admin-settings-the-folder-whose-subfolders-the = Folder, którego podfoldery wyświetla formularz zbioru danych. Zmiana wymaga ponownego wdrożenia.
+admin-settings-the-folder-whose-subfolders-the = Folder, którego podfoldery formularz zbioru danych wyświetla dla tego punktu montowania. Zmiana w hoover4.ini wymaga ponownego wdrożenia.
 admin-settings-from-hoover4-ini-changing-it = Z hoover4.ini. Zmiana wymaga ponownego wdrożenia.
 admin-feedback-bug = Błąd
 admin-operations-state-name = { $state ->

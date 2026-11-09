@@ -708,7 +708,7 @@ admin-failures-show = Einblenden
 admin-settings-web-session-lifetime-in-seconds = Lebensdauer der Websitzung in Sekunden (Standard: 604800 = 1 Woche)
 admin-settings-turns-every-new-chat-turn = Schaltet jede neue Chat-Runde aus, wenn der Wert false ist (Standard: true). Eine laufende Runde wird beendet. Gilt ab dem nächsten Senden, ohne erneute Bereitstellung.
 admin-settings-written-by-main-py-probe = Geschrieben von `main.py probe-embeddings`. Der Wert gibt an, was der Endpunkt TATSÄCHLICH bereitstellt. Eine manuelle Änderung ändert den Server nicht.
-admin-settings-the-folder-whose-subfolders-the = Der Ordner, dessen Unterordner das Datensatzformular auflistet. Eine Änderung erfordert eine erneute Bereitstellung.
+admin-settings-the-folder-whose-subfolders-the = Der Ordner, dessen Unterordner das Datensatzformular für diesen Mount auflistet. Eine Änderung in hoover4.ini erfordert eine erneute Bereitstellung.
 admin-settings-from-hoover4-ini-changing-it = Aus hoover4.ini. Eine Änderung erfordert eine erneute Bereitstellung.
 admin-feedback-bug = Fehler
 admin-operations-state-name =

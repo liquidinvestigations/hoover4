@@ -707,7 +707,7 @@ admin-failures-show = Göster
 admin-settings-web-session-lifetime-in-seconds = Saniye cinsinden web oturumu ömrü (varsayılan: 604800 = 1 hafta)
 admin-settings-turns-every-new-chat-turn = Değer false ise her yeni sohbet turunu kapatır (varsayılan: true). Devam eden bir tur biter. Bir sonraki gönderimde geçerli olur, yeniden dağıtım gerekmez.
 admin-settings-written-by-main-py-probe = `main.py probe-embeddings` tarafından yazılır ve uç noktanın FİİLEN sunduğu değerdir. Bunu elle düzenlemek sunucuyu değiştirmez.
-admin-settings-the-folder-whose-subfolders-the = Veri kümesi formunun alt klasörlerini listelediği klasör. Değiştirmek yeniden dağıtım gerektirir.
+admin-settings-the-folder-whose-subfolders-the = Veri kümesi formunun bu bağlama noktası için alt klasörlerini listelediği klasör. hoover4.ini dosyasında değiştirmek yeniden dağıtım gerektirir.
 admin-settings-from-hoover4-ini-changing-it = hoover4.ini dosyasından. Değiştirmek yeniden dağıtım gerektirir.
 admin-feedback-bug = Hata
 admin-operations-state-name = { $state ->

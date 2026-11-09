@@ -708,7 +708,7 @@ admin-failures-show = عرض
 admin-settings-web-session-lifetime-in-seconds = مدة جلسة الويب بالثواني (الافتراضي: 604800 = أسبوع واحد)
 admin-settings-turns-every-new-chat-turn = يعطّل كل دور محادثة جديد إذا كانت القيمة false (الافتراضي: true). ينتهي الدور الجاري. يسري عند الإرسال التالي دون إعادة نشر.
 admin-settings-written-by-main-py-probe = يكتبه `main.py probe-embeddings`، وهو ما تخدمه نقطة النهاية فعلًا. لا يغيّر تعديله يدويًا شيئًا في الخادم.
-admin-settings-the-folder-whose-subfolders-the = المجلد الذي يعرض نموذج مجموعة البيانات مجلداته الفرعية. يتطلب تغييره إعادة نشر.
+admin-settings-the-folder-whose-subfolders-the = المجلد الذي يعرض نموذج مجموعة البيانات مجلداته الفرعية لنقطة التركيب هذه. يتطلب تغييره في hoover4.ini إعادة نشر.
 admin-settings-from-hoover4-ini-changing-it = من hoover4.ini. يتطلب تغييره إعادة نشر.
 admin-feedback-bug = خطأ برمجي
 admin-operations-state-name = { $state ->

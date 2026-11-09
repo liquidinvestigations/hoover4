@@ -25,11 +25,10 @@ fn setting_description(key: &str) -> String {
 
 /// Deployment keys are rendered read-only, so the page has to say where they are changed.
 fn deployment_description(key: &str) -> String {
-    match key {
-        "datasets_mount_path" => {
-            tr!("admin-settings-the-folder-whose-subfolders-the")
-        }
-        _ => tr!("admin-settings-from-hoover4-ini-changing-it"),
+    if key.starts_with("[dataset_mount.") {
+        tr!("admin-settings-the-folder-whose-subfolders-the")
+    } else {
+        tr!("admin-settings-from-hoover4-ini-changing-it")
     }
 }
 

@@ -708,7 +708,7 @@ admin-failures-show = Afficher
 admin-settings-web-session-lifetime-in-seconds = Durée de vie de la session web en secondes (par défaut : 604800 = 1 semaine)
 admin-settings-turns-every-new-chat-turn = Désactive chaque nouveau tour de chat quand la valeur est false (par défaut : true). Un tour en cours se termine. Prend effet au prochain envoi, sans redéploiement.
 admin-settings-written-by-main-py-probe = Écrit par `main.py probe-embeddings`, et c’est ce que le point d’accès sert RÉELLEMENT. Le modifier à la main ne change pas le serveur.
-admin-settings-the-folder-whose-subfolders-the = Le dossier dont le formulaire de jeu de données liste les sous-dossiers. Le modifier exige un redéploiement.
+admin-settings-the-folder-whose-subfolders-the = Le dossier dont le formulaire de jeu de données liste les sous-dossiers pour ce montage. Le modifier dans hoover4.ini exige un redéploiement.
 admin-settings-from-hoover4-ini-changing-it = Vient de hoover4.ini. Le modifier exige un redéploiement.
 admin-feedback-bug = Bug
 admin-operations-state-name = { $state ->

@@ -708,7 +708,7 @@ admin-failures-show = Εμφάνιση
 admin-settings-web-session-lifetime-in-seconds = Διάρκεια ζωής της συνεδρίας ιστού σε δευτερόλεπτα (προεπιλογή: 604800 = 1 εβδομάδα)
 admin-settings-turns-every-new-chat-turn = Απενεργοποιεί κάθε νέο γύρο συνομιλίας όταν είναι false (προεπιλογή: true). Ένας γύρος σε εξέλιξη ολοκληρώνεται. Ισχύει από την επόμενη αποστολή, χωρίς νέα ανάπτυξη.
 admin-settings-written-by-main-py-probe = Γράφεται από το `main.py probe-embeddings` και είναι αυτό που εξυπηρετεί ΠΡΑΓΜΑΤΙΚΑ το endpoint. Η χειροκίνητη επεξεργασία του δεν αλλάζει τον διακομιστή.
-admin-settings-the-folder-whose-subfolders-the = Ο φάκελος του οποίου τους υποφακέλους εμφανίζει η φόρμα συνόλου δεδομένων. Η αλλαγή του απαιτεί νέα ανάπτυξη.
+admin-settings-the-folder-whose-subfolders-the = Ο φάκελος του οποίου τους υποφακέλους εμφανίζει η φόρμα συνόλου δεδομένων για αυτό το σημείο προσάρτησης. Η αλλαγή του στο hoover4.ini απαιτεί νέα ανάπτυξη.
 admin-settings-from-hoover4-ini-changing-it = Από το hoover4.ini. Η αλλαγή του απαιτεί νέα ανάπτυξη.
 admin-feedback-bug = Σφάλμα
 admin-operations-state-name = { $state ->

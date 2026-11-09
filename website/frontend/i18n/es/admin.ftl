@@ -708,7 +708,7 @@ admin-failures-show = Mostrar
 admin-settings-web-session-lifetime-in-seconds = Duración de la sesión web en segundos (predeterminado: 604800 = 1 semana)
 admin-settings-turns-every-new-chat-turn = Desactiva todos los turnos de chat nuevos cuando es false (predeterminado: true). Un turno en curso termina. Surte efecto en el siguiente envío, sin volver a desplegar.
 admin-settings-written-by-main-py-probe = Lo escribe `main.py probe-embeddings`, y es lo que el endpoint REALMENTE sirve. Editarlo a mano no cambia el servidor.
-admin-settings-the-folder-whose-subfolders-the = La carpeta cuyas subcarpetas lista el formulario de conjuntos de datos. Cambiarla requiere volver a desplegar.
+admin-settings-the-folder-whose-subfolders-the = La carpeta cuyas subcarpetas lista el formulario de conjuntos de datos para este montaje. Cambiarla en hoover4.ini requiere volver a desplegar.
 admin-settings-from-hoover4-ini-changing-it = Procede de hoover4.ini. Cambiarlo requiere volver a desplegar.
 admin-feedback-bug = Error
 admin-operations-state-name = { $state ->

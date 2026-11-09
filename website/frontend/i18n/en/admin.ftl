@@ -706,7 +706,7 @@ admin-failures-show = Show
 admin-settings-web-session-lifetime-in-seconds = Web session lifetime in seconds (default: 604800 = 1 week)
 admin-settings-turns-every-new-chat-turn = Turns every new chat turn off when false (default: true). An in-flight turn finishes. Takes effect on the next send, with no redeploy.
 admin-settings-written-by-main-py-probe = Written by `main.py probe-embeddings`, and it is what the endpoint ACTUALLY serves. Editing this by hand does not change the server.
-admin-settings-the-folder-whose-subfolders-the = The folder whose subfolders the dataset form lists. Changing it needs a redeploy.
+admin-settings-the-folder-whose-subfolders-the = The folder whose subfolders the dataset form lists for this mount. Changing it in hoover4.ini needs a redeploy.
 admin-settings-from-hoover4-ini-changing-it = From hoover4.ini. Changing it needs a redeploy.
 admin-feedback-bug = Bug
 admin-operations-state-name = { $state ->

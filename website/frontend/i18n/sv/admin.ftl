@@ -708,7 +708,7 @@ admin-failures-show = Visa
 admin-settings-web-session-lifetime-in-seconds = Webbsessionens livslängd i sekunder (standard: 604800 = 1 vecka)
 admin-settings-turns-every-new-chat-turn = Stänger av varje nytt chattvarv när värdet är false (standard: true). Ett varv som pågår blir klart. Gäller från nästa sändning, utan ny driftsättning.
 admin-settings-written-by-main-py-probe = Skrivs av `main.py probe-embeddings` och anger vad slutpunkten FAKTISKT serverar. Att ändra det för hand ändrar inte servern.
-admin-settings-the-folder-whose-subfolders-the = Mappen vars undermappar datamängdsformuläret listar. En ändring kräver ny driftsättning.
+admin-settings-the-folder-whose-subfolders-the = Mappen vars undermappar datamängdsformuläret listar för den här monteringspunkten. En ändring i hoover4.ini kräver ny driftsättning.
 admin-settings-from-hoover4-ini-changing-it = Från hoover4.ini. En ändring kräver ny driftsättning.
 admin-feedback-bug = Fel
 admin-operations-state-name = { $state ->

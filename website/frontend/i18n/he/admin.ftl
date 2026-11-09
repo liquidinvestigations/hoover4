@@ -708,7 +708,7 @@ admin-failures-show = הצגה
 admin-settings-web-session-lifetime-in-seconds = משך חיי סשן אינטרנט בשניות (ברירת מחדל: 604800 = שבוע)
 admin-settings-turns-every-new-chat-turn = כשהערך false, כל תור צ'אט חדש כבוי (ברירת מחדל: true). תור שכבר רץ מסתיים. נכנס לתוקף בשליחה הבאה, בלי פריסה מחדש.
 admin-settings-written-by-main-py-probe = נכתב על ידי `main.py probe-embeddings`, והוא מה שנקודת הקצה משרתת בפועל. עריכה ידנית של הערך הזה אינה משנה את השרת.
-admin-settings-the-folder-whose-subfolders-the = התיקייה שתיקיות המשנה שלה מופיעות בטופס מערך הנתונים. שינוי שלה דורש פריסה מחדש.
+admin-settings-the-folder-whose-subfolders-the = התיקייה שתיקיות המשנה שלה מופיעות בטופס מערך הנתונים עבור נקודת העיגון הזו. שינוי שלה ב-hoover4.ini דורש פריסה מחדש.
 admin-settings-from-hoover4-ini-changing-it = מתוך hoover4.ini. שינוי שלו דורש פריסה מחדש.
 admin-feedback-bug = תקלה
 admin-operations-state-name = { $state ->

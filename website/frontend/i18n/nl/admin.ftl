@@ -708,7 +708,7 @@ admin-failures-show = Tonen
 admin-settings-web-session-lifetime-in-seconds = Levensduur van de websessie in seconden (standaard: 604800 = 1 week)
 admin-settings-turns-every-new-chat-turn = Schakelt elke nieuwe chatbeurt uit bij false (standaard: true). Een beurt die bezig is, wordt afgemaakt. Werkt vanaf het volgende verzenden, zonder nieuwe implementatie.
 admin-settings-written-by-main-py-probe = Geschreven door `main.py probe-embeddings`, en het is wat het endpoint DAADWERKELIJK aanbiedt. Als je dit met de hand wijzigt, verandert de server niet.
-admin-settings-the-folder-whose-subfolders-the = De map waarvan de submappen in het datasetformulier staan. Een wijziging vereist een nieuwe implementatie.
+admin-settings-the-folder-whose-subfolders-the = De map waarvan de submappen voor deze mount in het datasetformulier staan. Een wijziging in hoover4.ini vereist een nieuwe implementatie.
 admin-settings-from-hoover4-ini-changing-it = Uit hoover4.ini. Een wijziging vereist een nieuwe implementatie.
 admin-feedback-bug = Bug
 admin-operations-state-name = { $state ->

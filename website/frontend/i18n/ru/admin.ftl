@@ -708,7 +708,7 @@ admin-failures-show = Показать
 admin-settings-web-session-lifetime-in-seconds = Срок жизни веб-сеанса в секундах (по умолчанию: 604800 = 1 неделя)
 admin-settings-turns-every-new-chat-turn = При значении false отключает каждый новый ход чата (по умолчанию: true). Выполняющийся ход завершается. Действует со следующей отправки, без повторного развёртывания.
 admin-settings-written-by-main-py-probe = Записывается командой `main.py probe-embeddings` и показывает то, что конечная точка РЕАЛЬНО обслуживает. Ручное изменение не меняет сервер.
-admin-settings-the-folder-whose-subfolders-the = Папка, подпапки которой перечисляет форма набора данных. Для изменения нужно повторное развёртывание.
+admin-settings-the-folder-whose-subfolders-the = Папка, подпапки которой форма набора данных перечисляет для этой точки монтирования. Для изменения в hoover4.ini нужно повторное развёртывание.
 admin-settings-from-hoover4-ini-changing-it = Из hoover4.ini. Для изменения нужно повторное развёртывание.
 admin-feedback-bug = Ошибка
 admin-operations-state-name = { $state ->

@@ -52,23 +52,20 @@ fn retired(key: &str) -> Option<&'static str> {
 /// would give new nodes ids that the stored nodes can already have.
 const INTERNAL_SETTINGS: [&str; 1] = ["board_node_identity_version"];
 
-/// Deployment configuration the page shows but cannot change: these come from
-/// `hoover4.ini` through the container's environment, so a form field for them would be a
-/// control that silently does nothing. They are listed because the alternative (a key
-/// that decides what the dataset-creation form can reach, visible nowhere in the UI) is
-/// how a setting becomes unreachable.
-const DEPLOYMENT_KEYS: [(&str, &str); 1] = [("datasets_mount_path", "DATASETS_MOUNT_PATH")];
-
-/// `(key, value)` for every deployment key, read from the environment.
+/// Deployment configuration the page shows but cannot change: the container path of each
+/// `[dataset_mount.<name>]` section of `hoover4.ini`, read from `HOOVER4_DATASET_MOUNTS`.
+/// A form field for them would be a control that does nothing, because only a redeploy
+/// changes them. The page lists them because they decide which folders the dataset form
+/// can reach.
 pub async fn admin_list_deployment_config(
     user: &CurrentUser,
 ) -> anyhow::Result<Vec<ServerSettingItem>> {
     guard::require_admin(user)?;
-    Ok(DEPLOYMENT_KEYS
-        .iter()
-        .map(|(key, env)| ServerSettingItem {
-            key: (*key).to_string(),
-            value: std::env::var(env).unwrap_or_default(),
+    Ok(crate::dataset_mounts::dataset_mounts()?
+        .into_iter()
+        .map(|mount| ServerSettingItem {
+            key: format!("[dataset_mount.{}] container_path", mount.name),
+            value: mount.path,
         })
         .collect())
 }

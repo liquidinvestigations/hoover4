@@ -708,7 +708,7 @@ admin-failures-show = Vis
 admin-settings-web-session-lifetime-in-seconds = Levetid for nettøkter i sekunder (standard: 604800 = 1 uke)
 admin-settings-turns-every-new-chat-turn = Slår av alle nye chat-omganger når verdien er false (standard: true). En omgang som pågår, fullføres. Gjelder fra neste sending, uten ny distribusjon.
 admin-settings-written-by-main-py-probe = Skrives av `main.py probe-embeddings`, og er det endepunktet FAKTISK leverer. Å redigere dette for hånd endrer ikke tjeneren.
-admin-settings-the-folder-whose-subfolders-the = Mappen hvis undermapper datasettskjemaet viser. En endring krever ny distribusjon.
+admin-settings-the-folder-whose-subfolders-the = Mappen hvis undermapper datasettskjemaet viser for denne monteringen. En endring i hoover4.ini krever ny distribusjon.
 admin-settings-from-hoover4-ini-changing-it = Fra hoover4.ini. En endring krever ny distribusjon.
 admin-feedback-bug = Feil
 admin-operations-state-name = { $state ->

@@ -708,7 +708,7 @@ admin-failures-show = 표시
 admin-settings-web-session-lifetime-in-seconds = 웹 세션 유지 시간(초) (기본값: 604800 = 1주)
 admin-settings-turns-every-new-chat-turn = false이면 모든 새 채팅 턴을 끕니다 (기본값: true). 진행 중인 턴은 끝까지 실행됩니다. 다음 전송부터 적용되며 다시 배포할 필요가 없습니다.
 admin-settings-written-by-main-py-probe = `main.py probe-embeddings`가 기록하며, 엔드포인트가 실제로 제공하는 값입니다. 직접 수정해도 서버는 바뀌지 않습니다.
-admin-settings-the-folder-whose-subfolders-the = 데이터셋 양식이 하위 폴더를 나열하는 폴더입니다. 변경하려면 다시 배포해야 합니다.
+admin-settings-the-folder-whose-subfolders-the = 이 마운트에 대해 데이터셋 양식이 하위 폴더를 나열하는 폴더입니다. hoover4.ini에서 변경하려면 다시 배포해야 합니다.
 admin-settings-from-hoover4-ini-changing-it = hoover4.ini에서 가져온 값입니다. 변경하려면 다시 배포해야 합니다.
 admin-feedback-bug = 버그
 admin-operations-state-name = { $state ->

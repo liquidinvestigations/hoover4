@@ -708,7 +708,7 @@ admin-failures-show = Afișează
 admin-settings-web-session-lifetime-in-seconds = Durata de viață a sesiunii web în secunde (implicit: 604800 = 1 săptămână)
 admin-settings-turns-every-new-chat-turn = Dezactivează orice rundă nouă de conversație când valoarea este false (implicit: true). O rundă în curs se termină. Se aplică la următoarea trimitere, fără repunere în funcțiune.
 admin-settings-written-by-main-py-probe = Scris de `main.py probe-embeddings` și reprezintă ceea ce serviciul oferă ÎN REALITATE. Editarea manuală a acestei valori nu schimbă serverul.
-admin-settings-the-folder-whose-subfolders-the = Folderul ale cărui subfoldere le listează formularul setului de date. Schimbarea lui necesită repunerea în funcțiune.
+admin-settings-the-folder-whose-subfolders-the = Folderul ale cărui subfoldere le listează formularul setului de date pentru acest punct de montare. Schimbarea lui în hoover4.ini necesită repunerea în funcțiune.
 admin-settings-from-hoover4-ini-changing-it = Din hoover4.ini. Schimbarea lui necesită repunerea în funcțiune.
 admin-feedback-bug = Eroare
 admin-operations-state-name = { $state ->

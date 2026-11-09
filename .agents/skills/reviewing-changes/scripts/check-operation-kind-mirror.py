@@ -2,7 +2,8 @@
 """Compare the operation kind and input registries in Python and Rust.
 
 Also compare the `[operations]` cap keys of `DEFAULTS` in `deploy.py` with `KINDS`:
-each kind has one key named `<kind>_cap`, in `KINDS` order.
+each kind has one key named `<kind>_cap`, in `KINDS` order. A kind has no key when
+`REMOVED_SETTINGS` in `deploy.py` refuses its `<kind>_cap` key.
 """
 
 import ast
@@ -63,6 +64,12 @@ def deploy_cap_keys(path: Path) -> list[str]:
     raise ParseError(f"cannot parse DEFAULTS['operations'] in {path}")
 
 
+def removed_cap_keys(path: Path) -> set[str]:
+    """The `[operations]` keys that the `REMOVED_SETTINGS` literal in `deploy.py` refuses."""
+    settings = python_assignment(path, "REMOVED_SETTINGS")
+    return {key for section, key in settings if section == "operations" and key}
+
+
 def rust_array(source: str, name: str) -> str:
     match = re.search(rf"const {name}:.*?=\s*&\[(.*?)\];", source, re.DOTALL)
     if match is None or not match.group(1).strip():
@@ -99,6 +106,7 @@ def main() -> int:
         python_inputs = python_assignment(PYTHON_INPUTS, "INPUT_KEYS")
         rust_kinds, rust_driven, rust_inputs = parse_rust(RUST_OPERATIONS.read_text())
         cap_keys = deploy_cap_keys(DEPLOY)
+        removed_caps = removed_cap_keys(DEPLOY)
     except (OSError, ParseError) as error:
         print(error)
         return 2
@@ -125,7 +133,9 @@ def main() -> int:
             differences.append(f"inputs: {kind} {key} only in python")
         for key in sorted(rust_keys - python_keys):
             differences.append(f"inputs: {kind} {key} only in rust")
-    expected_caps = [f"{name}_cap" for name in python_kinds]
+    expected_caps = [
+        f"{name}_cap" for name in python_kinds if f"{name}_cap" not in removed_caps
+    ]
     for key in expected_caps:
         if key not in cap_keys:
             differences.append(f"caps: {key} missing from deploy.py DEFAULTS['operations']")
