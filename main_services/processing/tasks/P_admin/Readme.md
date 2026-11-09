@@ -57,7 +57,8 @@ exactly one source of truth in Python.
 - Queue: `processing-common-queue`
 - CLI: `main.py ensure-collection <collectionname>`, `main.py purge-dataset
   <collectionname> <collection_dataset> [--apply]`, `main.py retry-failed-files
-  <collectionname> [--dataset X] [--task T] [--apply]`
+  <collectionname> [--dataset X] [--task T] [--apply]`, `main.py assess-ocr-recovery
+  <collectionname>` (see "Historical OCR assessment")
 - Website: every workflow here is reached as the child of an operation:
   `EnsureCollectionDatabase` and `DropCollectionDatabase` under the collection-lifecycle
   kinds, `PurgeDataset` under `purge_dataset` and `delete_dataset`, `ChangeOcrLanguages`
@@ -66,6 +67,41 @@ exactly one source of truth in Python.
   `change_ocr_languages` and `rerun_ocr`. The kinds stay for the CLI and for history. Each run therefore carries the operation's timestamped id,
   which is what makes a second click run again: a reused id makes it a no-op, and two
   language changes are two different runs with two different before/after states.
+
+## Historical OCR assessment
+
+`main.py assess-ocr-recovery` counts the work that the recovery of historical OCR output
+needs in one collection. It reads rows and object metadata, and changes nothing.
+[ocr_assessment.py](ocr_assessment.py) reads the evidence of each live image, PDF and
+Office preview. [tasks/ocr_recovery.py](../ocr_recovery.py) classifies it. The OCR
+processing update uses the same classifier, so the two counts agree.
+
+```
+python main.py assess-ocr-recovery <collectionname> [--dataset <collection_dataset>]...
+    [--after <hash>] [--page-size 100] [--max-files N] [--contract upgrade|current]
+    [--capabilities models.json] [--check-objects N] [--read-raster N] [--samples 5]
+    [--output report.json]
+```
+
+- The command reads files in pages of `--page-size` hashes for each dataset. `--max-files`
+  stops the run, and the report gives `next_after` for each dataset. Give that hash to
+  `--after` to continue.
+- `--contract upgrade` accepts an applied automatic plan only when its pass for a page is
+  the pass that the planner chooses now. Use it before a stage version change.
+  `--contract current` accepts an applied plan whose policy and capability identity are
+  current.
+- Without `--capabilities`, the command reads the installed models from the health answers
+  of the OCR services. It sends no OCR or detection request.
+- `--check-objects` reads the metadata of at most N artifacts that the decisions use.
+  `--read-raster` reads the page texts of at most N saved raster PDFs in a temporary folder.
+  An unread raster PDF is unresolved evidence, not new OCR.
+- The report gives files, eligible pages and bytes for each primary action. Primary actions
+  do not overlap. `overlapping` counts work that a page can have together with its action,
+  for example text publication and PDF reconstruction. `unknown` counts files without a
+  physical page list. `retired_compatible` counts pages whose matching historical result a
+  later publication already replaced. Recovery policy 1 does not adopt those results.
+- The command creates no schema, row, object, operation or capability cache entry.
+  Detection that is missing, earlier or failed stays `require_detection`.
 
 ## Run OCR
 

@@ -563,6 +563,57 @@ def scan_signals_collection(collectionname: str):
     asyncio.run(scan())
 
 
+@cli.command(name="assess-ocr-recovery")
+@click.argument("collectionname", type=str)
+@click.option("--dataset", "datasets", multiple=True, help="A collection_dataset to read. Default: every dataset.")
+@click.option("--after", default="", help="Start after this content hash, to continue an earlier run.")
+@click.option("--page-size", default=100, show_default=True, type=click.IntRange(1, 1000),
+              help="Files read with one query for each table.")
+@click.option("--max-files", default=None, type=click.IntRange(1), help="Stop after this many files.")
+@click.option("--contract", type=click.Choice(["upgrade", "current"]), default="upgrade", show_default=True,
+              help="upgrade: an applied plan counts as current only when its pass equals the pass chosen now.")
+@click.option("--capabilities", "capabilities_file", type=click.Path(exists=True, dir_okay=False), default=None,
+              help="A JSON file of installed models. Default: read the OCR services' health answers.")
+@click.option("--check-objects", default=0, show_default=True, type=click.IntRange(0),
+              help="Read the metadata of at most this many artifacts that the decisions use.")
+@click.option("--read-raster", default=0, show_default=True, type=click.IntRange(0),
+              help="Read the page texts of at most this many saved raster PDFs in a temporary folder.")
+@click.option("--samples", default=5, show_default=True, type=click.IntRange(0),
+              help="Sample pages for each action and reason.")
+@click.option("--output", type=click.Path(dir_okay=False, writable=True), default=None,
+              help="Write the JSON report to this file. Default: standard output.")
+def assess_ocr_recovery(collectionname, datasets, after, page_size, max_files, contract, capabilities_file,
+                        check_objects, read_raster, samples, output):
+    """Count the historical OCR recovery work of a collection. Change nothing.
+
+    The command classifies each live image, PDF and Office preview with the classifier of
+    the OCR processing update. It sends no OCR or detection request and writes no row or
+    object. See tasks/P_admin/ocr_assessment.py.
+    """
+    import json
+    from database.clickhouse import validate_collectionname
+    from tasks.P_admin.ocr_assessment import assess
+
+    try:
+        validate_collectionname(collectionname)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    capabilities = None
+    if capabilities_file:
+        with open(capabilities_file) as handle:
+            capabilities = json.load(handle)
+    report = assess(collectionname, list(datasets) or None, after=after, page_size=page_size,
+                    max_files=max_files, contract=contract, capabilities=capabilities,
+                    check_objects=check_objects, read_raster=read_raster, samples=samples)
+    text = json.dumps(report, indent=1, sort_keys=True, ensure_ascii=False)
+    if output:
+        with open(output, "w") as handle:
+            handle.write(text + "\n")
+        click.echo(f"{report['files_examined']} files, complete={report['complete']}: {output}")
+    else:
+        click.echo(text)
+
+
 #: The most hashes one `refresh_document_locations` operation carries. A hash takes
 #: about 67 bytes in the JSON input, so a batch stays near 335 KB, below the 512 KB
 #: payload limit of `tasks/payload_guard.py`.

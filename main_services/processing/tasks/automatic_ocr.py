@@ -46,29 +46,38 @@ EASY_SCRIPT_GROUPS = {
 }
 
 
+def read_installed(engine: str) -> list[str]:
+    """Read the installed models of one engine from its health answer. Store nothing.
+
+    An engine without an endpoint has no models. An unavailable service raises.
+    """
+    import requests
+    from tasks.ocr_client import _endpoints_for
+    endpoints = [url for _, url in _endpoints_for(engine) if url]
+    if not endpoints:
+        return []
+    response = requests.get(endpoints[0].removesuffix("/ocr") + "/health", timeout=(10, 30))
+    response.raise_for_status()
+    health = response.json()
+    if health.get("status") != "healthy":
+        raise RuntimeError(f"OCR capability service is unavailable: {engine}")
+    field = "languages_supported" if engine == "easyocr" else "languages_available"
+    supported = sorted(set(health.get(field) or []))
+    if not supported:
+        raise RuntimeError(f"OCR capability service returned no supported models: {engine}")
+    return supported
+
+
 @lru_cache(maxsize=1)
 def _capabilities(_window: int) -> dict:
     """Read installed models and retain optional engine availability failures."""
     import requests
-    from tasks.ocr_client import _endpoints_for
     result = {}
     for engine in ("tesseract", "easyocr"):
-        endpoints = [url for _, url in _endpoints_for(engine) if url]
-        if not endpoints:
-            result[engine] = []
-            continue
         try:
-            response = requests.get(endpoints[0].removesuffix("/ocr") + "/health", timeout=(10, 30))
-            response.raise_for_status()
-            health = response.json()
-            if health.get("status") != "healthy":
-                raise RuntimeError(f"OCR capability service is unavailable: {engine}")
-            field = "languages_supported" if engine == "easyocr" else "languages_available"
-            supported = sorted(set(health.get(field) or []))
-            if not supported:
-                raise RuntimeError(f"OCR capability service returned no supported models: {engine}")
-            _KNOWN_CAPABILITIES[engine] = supported
-            result[engine] = supported
+            result[engine] = read_installed(engine)
+            if result[engine]:
+                _KNOWN_CAPABILITIES[engine] = result[engine]
         except (requests.RequestException, ValueError, RuntimeError):
             result[engine] = _KNOWN_CAPABILITIES.get(engine, [])
             result[engine + "_unavailable"] = True
