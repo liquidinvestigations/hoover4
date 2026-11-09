@@ -179,7 +179,7 @@ this file.
 This directory provides Docker Compose configuration and runtime overrides for the processing stack and its dependencies, including Temporal, ClickHouse, Manticore, Garage, Redis, and supporting UIs.
 
 Configuration lives in `hoover4.ini` at the repository root, and the two shipped
-templates are `hoover4.ini.release` and `hoover4.ini.development`.
+samples are `hoover4.ini.release` and `hoover4.ini.development`.
 [deploy.py](../../deploy.py) renders it into a generated `.env` in this directory, never edit that file
 by hand. Deploy from the repo root with `./deploy` (see the root [Readme.md](../../Readme.md)); the base
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays

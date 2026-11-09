@@ -9,7 +9,7 @@ use common::chat_gate::{
     CHAT_ENABLED_SETTING,
 };
 
-use crate::api::admin::llm::{agent_model, provider_name_from_url, read_llm_api_key};
+use crate::api::admin::llm::agent_model;
 use crate::db_auth::settings;
 
 /// Return whether this deployment permits internet tools.
@@ -18,7 +18,7 @@ pub fn internet_tools_enabled() -> bool {
         .is_ok_and(|value| value.trim().eq_ignore_ascii_case("true"))
 }
 
-/// Evaluate the live process: env, the key file, and `server_settings`.
+/// Evaluate the live process: the model environment and `server_settings`.
 pub async fn evaluate_live_chat_gate() -> ChatGate {
     let stored = match settings::get_setting(CHAT_ENABLED_SETTING).await {
         Ok(value) => value,
@@ -31,14 +31,10 @@ pub async fn evaluate_live_chat_gate() -> ChatGate {
     let base_url = std::env::var("LLM_BASE_URL").unwrap_or_default();
     let env_model = std::env::var("LLM_MODEL").unwrap_or_default();
     let default_model = agent_model();
-    let provider_name = provider_name_from_url(&base_url);
-    let api_key = read_llm_api_key();
     evaluate_chat_gate(ChatGateInputs {
         base_url: &base_url,
         env_model: &env_model,
         default_chat_model: &default_model,
-        provider_name: &provider_name,
-        api_key: &api_key,
         chat_enabled,
     })
 }

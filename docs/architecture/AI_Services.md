@@ -14,7 +14,7 @@ The GPU tier does not call the main services.
 | PDF OCR | The PDF builder requests the selected engine and stores engine-specific source parts. |
 | Embeddings | The GPU endpoint supplies vectors from the model constant of the AI server. `[ai_services] embeddings_enabled` turns it off. An empty endpoint skips P5 chunking and embedding. No CPU embedding fallback exists. |
 | Reranking | The reranker shares the embedding service base URL. No CPU reranker fallback exists. |
-| Chat | The selected provider supplies chat models. A configured self-hosted model service is optional. |
+| Chat | The self-hosted model servers on the GPU tier supply the chat models. `[ai_services] llm_enabled` turns them on. Without them, chat is unavailable. |
 
 Disabled model capabilities do not prevent full-text search over parsed and indexed text.
 Disabling embeddings also removes the prerequisite for vector-based tool retrieval.

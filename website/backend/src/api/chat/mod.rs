@@ -22,8 +22,8 @@
 //! * stopping a turn is a Temporal cancellation, not a flag another task polls;
 //! * the admin live-run list is a Temporal visibility query, so it cannot show a run
 //!   this process forgot about or hide one it never knew about;
-//! * a new turn is refused by [`gate`] when no provider is configured, when a
-//!   non-self-hosted provider has an empty API key, or when `chat_enabled` is false.
+//! * a new turn is refused by [`gate`] when no model server is configured or when
+//!   `chat_enabled` is false.
 //!   An in-flight turn is left to finish.
 
 pub mod gate;

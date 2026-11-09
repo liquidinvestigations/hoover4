@@ -1,273 +1,144 @@
-# =============================================================================
-# hoover4.ini.release — the single source of truth for BOTH stacks, release sample.
-#
-# This is the sample a public deployment starts from: no privilege-escalation
-# container, so a person who follows the basic instructions never runs one. A
-# second sample, `hoover4.ini.development`, turns that container on; the two files
-# differ in exactly one key, `development_auth_backdoor_enabled` under
-# `[main_services]`.
-#
-# Copy whichever sample matches this deployment to `hoover4.ini` (gitignored) and
-# edit. The SAME file is copied by hand to both hosts (the GPU host and the main
-# host); deploy.py renders it into the generated .env files next to each compose
-# file and shells out to `docker compose`.
-#
-#   cp hoover4.ini.release hoover4.ini        # a public or shared deployment
-#   cp hoover4.ini.development hoover4.ini    # a single-person development box
-#
-#   ./deploy                    main_services only
-#   ./deploy --ai-services      ai_services only
-#   ./deploy --print-env        render and show the .env file, start nothing
-#   ./deploy --print-command    show the docker compose invocation, run nothing
-#   ./deploy --build            build images first
-#   ./deploy --down             compose down for the selected side
-#   ./deploy --reset            down + empty the volume folders (model caches preserved)
-#   ./deploy --reset --reset-caches
-#                               also empty the model caches (tens of GB re-download)
-#   ./deploy --reset-temporal   drop Temporal's history/visibility stores only
-#
-# SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
-# NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only
-# protection. An exposed hoover4-vllm is a free GPU for the internet; an exposed
-# EasyOCR endpoint is a free DoS surface. bind_ip below exists so you can bind to the
-# private interface only — use it.
-#
-# SECRETS: *_file keys hold host PATHS to key files, never values. deploy.py turns
-# each into a read-only bind mount (/run/secrets/<name>); a container learns the path,
-# never the value. The files must exist, must be chmod 600, and must live OUTSIDE the
-# repository checkout — deploy.py refuses otherwise (keys inside the checkout leak
-# into build contexts and commits).
-# =============================================================================
+# This file is the release sample. Copy it to hoover4.ini on both hosts and edit the copy.
+# Run `./deploy --check` after each change. docs/operations/Configuration_Reference.md describes each key.
 
 [storage]
-# Mandatory. The absolute host folder that holds the data of every container. deploy.py
-# creates it and its parents, and one folder in it for each volume, named as the volume.
-# deploy.py then gives each folder the owner its service writes as. It refuses an empty
-# or relative value. Each host sets its own value, for example /srv/hoover4-volumes.
-volumes_path       =
+# This required absolute host folder holds one folder for each volume.
+volumes_path =
+# Garage declares this size for its store and reports the store full above it.
+garage_capacity = 300G
+
+# The worker and the website mount host_path at container_path.
+[dataset_mount.testdata]
+host_path = /opt/hoover4-testdata
+container_path = /testdata
+writable = false
 
 [ai_services]
-# The whole GPU tier is optional. False turns the whole tier off on both sides and clears
-# the GPU URLs that main_services dials.
-enabled            = false
+# This switch controls the GPU tier on both hosts. False starts no GPU service and clears the GPU addresses.
+enabled = false
+# The main-host containers reach the GPU host at this address.
+host = 127.0.0.1
+# The GPU services bind to this interface. Use the private-network address.
+bind_ip = 0.0.0.0
 
-# How main_services reaches this box (ignored on the GPU host itself). Must be an
-# address the worker/website CONTAINERS can route to: on a two-host setup the GPU
-# box's private-network IP; on a single-box dev setup the machine's LAN IP — NOT
-# 127.0.0.1, which inside a container is the container itself.
-host               = 127.0.0.1
+# ---- language models: dgemma, its structured server, and ornith ----
 
-# Interface the GPU services bind to. MUST be a private-network address in any real
-# two-host deployment (see SECURITY above). 0.0.0.0 is only tolerable on a single-box
-# trusted setup.
-bind_ip            = 0.0.0.0
-
-# ---- local LLM ------------------------------------------------------------------
-# The agent model, served OpenAI-compatible. Off by default; a cloud provider serves
-# the stack until this is turned on.
-llm_selfhosted     = false
-vllm_port          = 21960
-; The structured server of the same container. It is published on bind_ip, and it asks
-; for the same API key as vllm_port.
+# True starts the three model servers. The research agents start only when this is true.
+llm_enabled = false
+vllm_port = 21960
 vllm_structured_port = 21963
-; The image takes its support files and its entrypoint from this Git repository at this
-; commit. deploy.py pins the vLLM release that the image starts from.
-vllm_build_repo    = https://github.com/mmastrac/djev-spark.git
-vllm_build_ref     = 08b708e51bb8d9f4eba0e85b61dab0be7093d20e
-; The checkpoint. deploy.py downloads it once into the dgemma_model folder under
-; [storage] volumes_path before the first start. The checkpoint is not gated.
-vllm_model         = nvidia/diffusiongemma-26B-A4B-it-NVFP4
-; The model name that clients send. [llm_provider.selfhosted] model defaults to it.
-vllm_served_name   = dgemma
-; A fraction of the WHOLE device, shared with every other model server on the box.
-; On unified-memory hardware it is taken against total system memory, so a value
-; tuned for a discrete card overcommits.
-vllm_gpu_fraction  = 0.60
-vllm_max_model_len = 262144
-; The sequences vLLM runs at once. More requests wait in vLLM's own queue.
-; 4, because at 8 one stream decodes below 30 tokens a second.
-vllm_max_num_seqs  = 4
-; The KV cache in GiB. The start-up log line "Maximum concurrency for 262,144 tokens
-; per request" must read at least vllm_max_num_seqs.
-vllm_kv_cache_gb   = 28
-; The entrypoint refuses to start when MemAvailable is below the weights, the KV cache,
-; the start-up transient and this headroom, all in GiB.
-vllm_headroom_gb   = 4
-; The sampler copies that the start-up transient budgets for.
-vllm_transient_copies = 2
-vllm_torch_mem_fraction = 0.85
-; The container's memory limit.
-vllm_mem_limit     = 97g
-vllm_attention_backend = TRITON_ATTN
-; The diffusion canvas in tokens, its schedule by batch size, and the samples of the
-; structured server.
-vllm_canvas        = 256
-vllm_canvas_schedule = [[1, 2, 256], [3, 6, 128], [7, 32, 64]]
-vllm_max_samples   = 32
-vllm_tool_parser   = gemma4
-; Moves the thinking text out of `content` into its own field.
-vllm_reasoning_parser = gemma4
-; Image input, with the soft tokens of one image and the images of one prompt.
-vllm_image_input   = true
-vllm_mm_max_soft_tokens = 1120
-vllm_mm_image_limit = 7
-; Thinking is on when a request does not say. The agents send their own value.
-vllm_default_thinking = true
-; Empty omits --load-format.
-vllm_load_format   = fastsafetensors
-; A chat template path inside the container. Empty keeps the model's own template.
-vllm_chat_template =
-; host path to a file containing ONLY the vLLM API key (chmod 600, outside the repo)
-vllm_api_key_file  =
+chat_vllm_port = 21964
+# This host path names a chmod-600 file outside the repository with the API key of the model servers.
+vllm_api_key_file =
 
-# ---- second model server for agent turns ----------------------------------------
-; `vllm serve` of chat_vllm_model in the image of hoover4-vllm, with the key of
-; vllm_api_key_file. [llm_provider.selfhosted] quality_base_url and quality_model default
-; to this server when it is on.
-chat_llm_selfhosted     = false
-chat_vllm_port          = 21964
-chat_vllm_model         = ornith-ai/Ornith-1.5-35B-A3B-NVFP4
-chat_vllm_served_name   = ornith
-; A fraction of the WHOLE device, as vllm_gpu_fraction.
-chat_vllm_gpu_fraction  = 0.30
-chat_vllm_max_model_len = 262144
-chat_vllm_max_num_seqs  = 4
-chat_vllm_mem_limit     = 48g
-; More `vllm serve` arguments, split on spaces, so no JSON value holds a space.
-chat_vllm_args          = --kv-cache-dtype fp8 --enable-prefix-caching --enable-chunked-prefill --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder --speculative-config {"method":"mtp","num_speculative_tokens":3}
+# ---- NER, embeddings and reranking ----
 
-# ---- GPU NER + embeddings -------------------------------------------------------
-ai_server_enabled  = true
-ai_server_port     = 21961
-ner_enabled        = true
+ai_server_enabled = true
+ai_server_port = 21961
+ner_enabled = true
 embeddings_enabled = true
-embeddings_model   = intfloat/multilingual-e5-small
-; knn_dims on a Manticore _vectors table is fixed at creation and cannot be altered:
-; changing this model means dropping and rebuilding every _vectors shard.
-embeddings_dim     = 384
-reranker_enabled   = true
-; Multilingual cross-encoder (the corpus is not English-only). Same calibre as the
-; English-only cross-encoder/ms-marco-MiniLM-L-6-v2.
-reranker_model     = cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
-half_precision     = true
-; torch.compile costs minutes of startup for a modest gain and has been the most
-; common cause of "the AI server never becomes healthy" — keep false.
-torch_compile      = false
-; Concurrent in-flight inferences per capability. NER saturates at 4; embeddings
-; still scale at 8. The server sheds load with 503 + Retry-After past
-; concurrency + queue depth; /health does not wait for a model slot.
-ai_server_ner_concurrency    = 4
-ai_server_embed_concurrency  = 8
+reranker_enabled = true
+# Each value limits the requests in progress for one model. Above it and the queue, the server returns 503.
+ai_server_ner_concurrency = 4
+ai_server_embed_concurrency = 8
 ai_server_rerank_concurrency = 4
-; host path to a HuggingFace token file, only for gated models (usually empty)
-hf_token_file      =
 
-# ---- GPU OCR --------------------------------------------------------------------
-easyocr_enabled    = true
-easyocr_port       = 21962
-easyocr_languages  = en
+# ---- GPU OCR ----
+
+easyocr_enabled = true
+easyocr_port = 21962
 
 [main_services]
-# ---- which side of each capability the pipeline prefers -------------------------
-ner_provider          = none       ; gpu | both | none
-embeddings_provider   = gpu        ; gpu | cpu | none
-pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
+# ---- OCR ----
+
+# This key selects the OCR engines of searchable PDFs: easyocr, tesseract, both or none.
+pdf_ocr_provider = tesseract
 tesseract_cpu_enabled = true
-tesseract_languages   = eng
-ocr_pdf_enabled       = true
-; Required memory limits for the text and vector Manticore containers. Each start
-; replays its binlog inside this limit.
-manticore_mem_limit         = 32G
+ocr_pdf_enabled = true
+
+# ---- memory limits of the datastores ----
+
+# This value is required. Each Manticore start replays its binlog inside this limit.
+manticore_mem_limit = 32G
 manticore_vectors_mem_limit = 32G
-; The ClickHouse server cap follows 80 percent of this container limit.
+# The ClickHouse server uses at most clickhouse_server_memory_ratio of this limit.
 clickhouse_mem_limit = 19000M
+clickhouse_server_memory_ratio = 0.7
 clickhouse_ui_mem_limit = 6000M
 clickhouse_monitoring_mem_limit = 6000M
-; The searchable-PDF service uses one child process for each admitted request.
-; Empty is the larger of 8000M and 2048M plus 512M for each ocr_pdf_concurrency slot.
+# Empty is the larger of 8000M and 2048M plus 512M for each ocr_pdf_concurrency slot.
 ocr_pdf_mem_limit =
 
-# ---- regex entity scanning ------------------------------------------------------
-# Always running: there is no twin to fall back to and no provider to choose between,
-# so the only question is how much of the box it may use. Scanning measures at about
-# 0.85 MB/s per thread. The queue is what a burst waits in; past it the service answers
-# 503 with a Retry-After, which the pipeline already treats as retryable.
-regex_scanner_threads     = 10
+# ---- regex entity scanning ----
+
+# One thread scans about 0.85 MB/s.
+regex_scanner_threads = 10
+# Above this queue depth, the scanner returns 503.
 regex_scanner_queue_depth = 32
-regex_scanner_mem_limit   = 4G             ; The scanner requires at least 4 GiB.
+# The value must be at least 4G.
+regex_scanner_mem_limit = 4G
 
-# ---- how the website is served --------------------------------------------------
-# false: `dx serve` — hot rebuilds, and the development loop this repo is built around.
-# true:  `dx build --release` once at boot, then serve the binary. That is what a
-#        visitor should get: `dx serve` bakes "Your app is being rebuilt." into every
-#        page, adds `access-control-allow-origin: *` of its own, and 500s every route
-#        for the length of a rebuild after a container recreate.
-# The first boot after switching this on is a cold release build — watch it.
-website_release_mode  = false
+# ---- the website ----
 
-# ---- search limits (both optional; empty = the backend's own defaults) -----------
-; How many Manticore queries the website may have in flight AT ONCE, across the whole
-; process — not per request. Size it to the Manticore daemon (roughly its worker-thread
-; count, which follows the host's cores); more in flight than it has threads only
-; deepens its queue. Default 8. A box with many cores wants this raised.
+# True serves a release build. False runs `dx serve`, which is for development only.
+website_release_mode = true
+
+# ---- search limits ----
+
+# This value limits the Manticore queries in progress across the website. Empty is 8.
 search_max_parallelism =
-; Seconds one SHARD query may take before it is a failure, applied twice: as Manticore's
-; own max_query_time and as the HTTP client's timeout. A timed-out shard fails the
-; request rather than returning short counts, so this is a correctness knob as much as a
-; latency one. Default 30.
+# A shard query that runs longer than this many seconds fails the request. Empty is 30.
 search_timeout_seconds =
-; Page queries expand at most this many wildcard terms per shard. Zero disables the limit.
+# One shard query expands at most this many wildcard terms. Zero removes the limit.
 manticore_expansion_limit = 5000
 
-# ---- worker fleet ---------------------------------------------------------------
-; The pipeline tiers stay empty: each default is a measurement of what that tier
-; waits on. The three chat keys are set, because a slot is a turn in flight and
-; those numbers are chosen rather than measured.
-; The two that decide the parse burst's load, and they multiply. More processes
-; with fewer slots each beats the reverse -- same admission width, less contention
-; inside any one interpreter. NOT derived from the core count: the fleet's cost is
-; memory, and a core-derived number busts worker_mem_limit on a large host.
-common_workers        =            ; common-worker processes (default 10)
-common_concurrency    =            ; activity slots per common worker (default 3)
-; Cached workflow runs in each common worker. Each one keeps its state in memory.
+# ---- worker fleet: an empty value keeps the measured default of the tier ----
+
+# This value sets the common-worker processes. Empty is 10.
+common_workers =
+# Each common worker has this many activity slots. Empty is 3.
+common_concurrency =
+# Each common worker keeps this many workflow runs in memory.
 common_max_cached_workflows = 100
-worker_mem_limit      =            ; hard ceiling for the worker container (default 29000M)
-tika_concurrency      =            ; empty uses the parser process count
-tika_mem_limit        = 6G
-tika_parse_processes  = 4
-tika_parse_heap       = 1g
-ocr_concurrency       =            ; default 4
-ocr_pdf_concurrency   =            ; searchable PDFs at once, empty follows tesseract_cpu_concurrency
-ocr_pdf_queue_depth   =            ; searchable PDFs that wait in the builder, empty follows ocr_pdf_concurrency
-ocr_pdf_files_per_batch = 4        ; part activity lists for each engine and group
-pdf_preview_concurrency = 2        ; Office PDF conversions at once
-nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
-embed_concurrency     =            ; default 6, under ai_server_embed_concurrency
-indexing_concurrency  =            ; default 1
-; Index-worker processes, one activity slot each by default. The email graph runs in one
-; process of its own, so an index process holds one writer chunk or one dataset-wide step.
-indexing_workers      = 8          ; default 4
-; Activity slots for the model calls of chat turns. One slot is one model call in flight.
-; It bounds the model calls that this deployment sends to the model server. Empty is 3.
+# This value limits the memory of the worker container.
+worker_mem_limit = 29000M
+# Empty uses tika_parse_processes.
+tika_concurrency =
+tika_mem_limit = 6G
+tika_parse_processes = 4
+tika_parse_heap = 1g
+# This value sets the image OCR slots. Empty is 4.
+ocr_concurrency =
+# Empty uses tesseract_cpu_concurrency.
+ocr_pdf_concurrency =
+# Empty uses ocr_pdf_concurrency.
+ocr_pdf_queue_depth =
+ocr_pdf_files_per_batch = 4
+pdf_preview_concurrency = 2
+# Empty is 4.
+nlp_concurrency =
+# Empty is 6.
+embed_concurrency =
+# Empty is 1.
+indexing_concurrency =
+# This value sets the index-worker processes. Empty is 4.
+indexing_workers = 8
+# This value limits the model calls of chat turns in progress. Empty is 3.
 chat_model_concurrency = 3
-; Activity slots for chat writes, todo reads and session titles. A title is one short model
-; request outside the two tracks, because it is not a chat. The model server queues it with
-; the other requests.
+# This value limits the chat writes, todo reads and session titles in progress. Empty is 8.
 chat_low_latency_concurrency = 4
-; Activity slots for the tool calls of every agent run. One slot is one tool call in
-; flight. Empty is 16.
+# This value limits the tool calls of all agent runs in progress. Empty is 16.
 agent_tool_concurrency = 16
-; Concurrently-held chat polls per user. A held poll waits up to 15 s. Past this
-; cap a poll returns immediately and the client asks again after 500 ms. Eight
-; covers twelve tabs of one user, eight hold and four take the 500 ms floor.
+# This value limits the chat polls that one user holds at once. Above it, a poll returns at once.
 max_held_polls_per_user = 8
-; Chat-poll requests per minute per user, flat across every window. One tab
-; while content flows is 120 per minute. Twelve tabs at that floor are 1440.
-; 1800 is that figure plus a quarter of headroom.
+# This value limits the chat polls that one user sends in one minute.
 rate_chat_poll_per_minute = 1800
-; Live Chromium processes on the browser MCP server, one per chat. Sixteen
-; times about 500 MB is 8 GB of chat browsers plus the template. The container
-; memory limit below is what stops that from filling the host.
+
+# ---- internet tools ----
+
+# True starts the browser, metasearch and whois MCP servers.
+internet_tools_enabled = false
+# The browser MCP server runs at most this many Chromium processes, one for each chat.
 browser_max_contexts = 16
 browser_reader_tabs = 4
 browser_search_tabs = 2
@@ -278,375 +149,198 @@ web_search_concurrency = 4
 web_search_queue_limit = 16
 web_search_queue_wait_seconds = 60
 web_search_fetch_budget_seconds = 60
-web_tor_enabled = false
+# This switch starts private Tor clients for web reads when internet_tools_enabled is true.
+web_tor_enabled = true
 web_tor_mem_limit = 512M
-; Hard memory ceiling for hoover4-mcp-browser. Sixteen live chats at 500 MB
-; plus the template fit in 24 GB with room.
 mcp_browser_mem_limit = 24G
-; Tool packs of a chat run: a comma list of pack names, or all.
-; The packs are catalogue, collections, conversation, web and browser.
-agent_packs_chat = all
-; The catalogue match count, which the probe selects. It is from 6 to 12, and empty
-; means 6. The results of one model step share 24,000 bytes, divided equally.
-agent_catalogue_match_count =
-; The step limits of an agent run, in whole seconds. An agent run has no time limit of
-; its own: 600 model steps bound it. Empty keeps the code defaults.
-; agent_queue_wait_seconds: the wait of one model step or one tool call for a free slot.
-;   A model step that waits longer fails the run. Empty is no limit.
-; title_request_timeout_seconds: the title request. Empty is 30. The title activity
-;   allows two requests and 30 s more.
-; board_reason_request_seconds: one board assessment request. Empty is 600. Temporal
-;   sends the request once more after a transport failure.
-; llm_request_timeout_seconds: the read timeout of one model call of the agent and of
-;   its compaction summary, and the limit of one model step in the worker. When set, the
-;   model client does not retry. Empty keeps the client default (600 s and 2 retries),
-;   180 s for the summary and 3,600 s for the model step.
-agent_queue_wait_seconds = 5400
-title_request_timeout_seconds = 120
-board_reason_request_seconds = 600
-llm_request_timeout_seconds = 3600
-; The output cap of one agent model request, in tokens. Without a cap a request can
-; decode to the end of the context window, which no timeout above bounds. Empty sends
-; no cap.
-agent_max_output_tokens = 32768
-; Token streaming of the agent's model calls: true or false. Empty is true.
-llm_streaming =
-; Uvicorn worker processes on hoover4-full-research-agent. Each worker holds
-; its own graph cache and MCP connections. The citation handle table lives in
-; the collections MCP server, so these workers do not split it.
-full_research_agent_workers = 4
-; Three internet-facing MCP servers: hoover4-mcp-browser, hoover4-mcp-metasearch,
-; hoover4-mcp-whois. Off means those containers do not start. An absent or empty
-; value is off. Turning this off on a workstation also removes the developer
-; harness tools those containers publish.
-internet_tools_enabled = false
-
-# How long a worker being shut down may keep its in-flight activities before they are
-# cancelled. ONE key, because the container's own stop grace period is derived from it:
-# a graceful period inside the SDK that outlives the container's grace period is a lie,
-# and two hand-kept numbers drift the first time anyone edits one of them. deploy.py
-# renders the container's grace period as this plus a fixed margin for the cancelled
-# activities to unwind.
-worker_graceful_shutdown_seconds = 60
-
-# ---- the operations container ---------------------------------------------------
-# Backups, restores, re-indexes and every other long operation a person can start run
-# here rather than in the pipeline fleet, with a budget of their own, so that a restore
-# cannot take capacity from ingestion. The split is enforced by the runtime rather than
-# by the queues being trusted to behave.
-ops_mem_limit  = 4000M
-ops_cpus       = 4
-; Host directory for backups, mounted read-write. Empty uses the folder
-; <volumes_path>/ops_backups.
-ops_backup_dir =
-; Read bytes per second a ClickHouse backup may spend. 0 leaves it unthrottled. The
-; only throttle that does anything: `backup_threads` is an obsolete setting that is
-; accepted and ignored.
-ops_backup_bandwidth_bytes = 0
-; Bytes written to one object volume before the next one opens. Empty uses the code's
-; own default (8 GiB). Set only to prove the roll across several volumes on a corpus
-; too small to reach 8 GiB. Must be empty or at least 1048576 (1 MiB); deploy.py refuses
-; anything smaller, including 0, at render time.
-ops_backup_object_volume_bytes =
-; Base URL of the admin UI, used only to tell a detached CLI where to watch its
-; operation. Empty prints the operation id and the command that shows it, with no URL.
-admin_base_url =
-
-# Failures are unavoidable on a real corpus, so the operations page does not treat every
-# error as an alarm: it calls out only the task types failing above this rate, which are
-# the candidates for a genuine tooling limitation rather than for a messy input. It is a
-# judgement that will be revised, which is why it is configuration and not a number
-# buried in the page.
-error_rate_alert_percent = 5
-
-# ---- runtime behaviour when the GPU host is unreachable -------------------------
-gpu_fallback            = true     ; try the GPU endpoint, fall back to the CPU twin
-gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipeline
-gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight to CPU
-
-# ---- chat context compaction ----------------------------------------------------
-; When the next model request of a run reaches a fraction of the model's stated context
-; window, the agent replaces one older prefix of steps with one summary. It plans the list
-; to a third of that size before the call. The summary starts with lists that code writes:
-; the searches, the documents and pages read, the continuation handles, the citation
-; labels, and the skill and tool texts that left the list. A model writes the rest. The user's messages and the newest steps
-; stay in the list. The transcript is never edited, so the user scrolling back sees every
-; result in full.
-;
-; The fraction is a fraction of what the provider says its window is. A model whose
-; window the provider never states is never compacted, because there is no
-; denominator and guessing one loses evidence silently.
-agent_compaction_fraction   = 0.80
-; Model that writes the summary. Summarising a transcript is not the task the
-; conversation model was chosen for, so it can be a cheaper or faster one. Blank means
-; the model that is answering.
-agent_compaction_model =
-
-# ---- dev tooling ----------------------------------------------------------------
-; Serena MCP server for the host-side coding agent. Dev tool only, never
-; part of the deployed stack; published on 127.0.0.1 only. Resets never touch it.
-serena_enabled     = true
-serena_port        = 21940
-
-# ---- development-only privilege escalation ---------------------------------------
-; Turns on hoover4-development-auth-backdoor, a container that asserts a FIXED
-; identity (proxy_username / proxy_groups below) on every request, with no
-; authentication of its own. Anyone who can reach the published port is that
-; identity. DEFAULT OFF: a deployment that copies hoover4.ini.release, or omits
-; this key, never runs it. hoover4.ini.development turns it on. When it is on,
-; this container publishes the website's port instead of the website itself,
-; because the two cannot both bind it.
-development_auth_backdoor_enabled = false
-
-# ---- demo / data ----------------------------------------------------------------
-; Identity a header-setting proxy in front of the website asserts on every
-; request, as X-Forwarded-User and X-Forwarded-Preferred-Username. Read by
-; hoover4-development-auth-backdoor when the flag above turns it on. A real
-; deployment puts its own identity-asserting proxy in front instead, such as
-; oauth2-proxy, which asserts a real identity the same way and ignores these
-; two keys.
-proxy_username     = admin
-; Groups the proxy asserts, as X-Forwarded-Groups. Comma-separated, no space,
-; matching what oauth2-proxy sends. A group named admin or superuser makes the
-; asserted user an administrator.
-proxy_groups       = admin
-; The host folder and the container path of the inferred dataset mount, named testdata.
-; They apply only when this file has no [dataset_mount.*] section. The worker mounts the
-; folder read-write and the website read-only. The host folder must exist. Empty
-; testdata_dir means the in-repository testdata/. With [dataset_mount.*] sections, both
-; keys must be empty or equal to the values of one section.
-testdata_dir       =
-datasets_mount_path = /testdata
-; shared bearer token between the research agents and the MCP servers (host path to
-; a chmod-600 file outside the repo; empty = MCP servers serve unauthenticated)
-mcp_shared_secret_file =
-; Host folder with custom chat policy handlers and definitions, mounted read-only in
-; the worker at /control (absolute path of an existing folder). Empty = the built-in
-; handlers and definitions only.
-chat_control_dir =
-; API key for metasearch's published-fact-check source (host path to a chmod-600 file
-; outside the repo). Empty = that source is not registered and the model is never told
-; about it, which is the intended state for a deployment without a key.
+# This host path names a chmod-600 file with the fact-check API key. Empty removes that source.
 factcheck_api_key_file =
 
-# ---- which interfaces the published ports answer on ------------------------------
-; Address 12345 is published on. In release mode the website itself binds it, and the
-; website accepts X-Forwarded-User from whoever connects. Anyone who reaches this port
-; is therefore the user they name, so only the identity provider in front of it may
-; reach it. 127.0.0.1 covers a provider on the same host. A provider on another host
-; needs the single private address it dials, and never 0.0.0.0 on a public interface.
-website_bind_ip    = 127.0.0.1
-; Address the infrastructure ports (ClickHouse, Manticore, Garage, the admin UIs,
-; pdf-to-html) are published on. These services are unauthenticated or carry default
-; credentials, so loopback plus an ssh tunnel is the only setting a deployment needs.
-; Never 0.0.0.0. The services already bound to loopback in the
-; compose file (Temporal, Cassandra, Elasticsearch, Redis, the CPU twins, every MCP
-; server and agent) ignore this and stay on loopback.
-infra_bind_ip      = 127.0.0.1
+# ---- agent runs ----
 
-# ---- ports ----------------------------------------------------------------------
-; Every service port is an ini key. The one exception is the website, which stays
-; hardcoded on 12345 in the compose file — it is the one URL humans type.
-clickhouse_http_port      = 21900
-clickhouse_native_port    = 21901
-manticore_sql_port        = 21902
-manticore_http_port       = 21903
-manticore_vectors_sql_port  = 21914
+# This value is a comma list of catalogue, collections, conversation, web and browser, or all.
+agent_packs_chat = all
+# One catalogue search returns this many matches, from 6 to 12. Empty is 6.
+agent_catalogue_match_count =
+# A model step or a tool call waits at most this many seconds for a slot. Empty sets no limit.
+agent_queue_wait_seconds = 5400
+# This value is the read timeout of a title request in seconds. Empty is 30.
+title_request_timeout_seconds = 120
+# This value is the read timeout of one board assessment request in seconds. Empty is 600.
+board_reason_request_seconds = 600
+# This value limits one model call in seconds. When it is set, the model client does not retry.
+llm_request_timeout_seconds = 3600
+# This value limits the output tokens of one agent model request. Empty sends no limit.
+agent_max_output_tokens = 32768
+# This switch streams the tokens of agent model calls. Empty is true.
+llm_streaming =
+# hoover4-full-research-agent runs this many uvicorn processes.
+full_research_agent_workers = 4
+# Compaction starts at this fraction of the context window of the model.
+agent_compaction_fraction = 0.80
+# This absolute host folder holds custom chat policy handlers. Empty uses the built-in handlers.
+chat_control_dir =
+# This host path names a chmod-600 file with the token between the agents and the MCP servers.
+mcp_shared_secret_file =
+
+# ---- GPU host failures ----
+
+# A short connect timeout stops a failed GPU host from blocking the pipeline.
+gpu_connect_timeout_ms = 2000
+# After consecutive failures, requests skip that endpoint for this many seconds.
+gpu_circuit_break_seconds = 60
+
+# ---- worker shutdown ----
+
+# In-progress activities get this many seconds at shutdown. The container waits 30 s more.
+worker_graceful_shutdown_seconds = 60
+
+# ---- the operations container ----
+
+ops_mem_limit = 4000M
+ops_cpus = 4
+# This host folder holds backups. Empty uses <volumes_path>/ops_backups.
+ops_backup_dir =
+# A ClickHouse backup reads at most this many bytes per second. 0 sets no limit.
+ops_backup_bandwidth_bytes = 0
+# One backup object volume holds this many bytes. Empty is 8 GiB, and the minimum is 1048576.
+ops_backup_object_volume_bytes =
+# A detached CLI prints this admin address. Empty prints the operation id only.
+admin_base_url =
+# The operations page marks a task type when its failure rate is above this percent.
+error_rate_alert_percent = 5
+
+# ---- development tools ----
+
+# This switch starts the Serena MCP server for a coding agent on this host, on 127.0.0.1 only.
+serena_enabled = false
+serena_port = 21940
+# True starts a container that signs in every request as proxy_username. Use it only for development.
+development_auth_backdoor_enabled = false
+proxy_username = admin
+# Write a comma list without spaces. The group admin or superuser makes the user an administrator.
+proxy_groups = admin
+
+# ---- bind addresses ----
+
+# The website accepts X-Forwarded-User from any caller. Only the identity proxy may reach it.
+website_bind_ip = 127.0.0.1
+# The infrastructure ports have no authentication. Keep 127.0.0.1 and use an ssh tunnel.
+infra_bind_ip = 127.0.0.1
+
+# ---- ports: the website always uses 12345 ----
+
+clickhouse_http_port = 21900
+clickhouse_native_port = 21901
+manticore_sql_port = 21902
+manticore_http_port = 21903
+manticore_vectors_sql_port = 21914
 manticore_vectors_http_port = 21915
-garage_s3_port            = 21904   ; S3 API
-garage_admin_port         = 21905   ; admin API, bound to 127.0.0.1 only
-redis_port                = 21906
-temporal_grpc_port        = 21907
-temporal_http_port        = 21908
-temporal_ui_port          = 21909
+garage_s3_port = 21904
+# This port binds to 127.0.0.1 only.
+garage_admin_port = 21905
+redis_port = 21906
+temporal_grpc_port = 21907
+temporal_http_port = 21908
+temporal_ui_port = 21909
 clickhouse_monitoring_port = 21910
-ch_ui_port                = 21911
-cassandra_port            = 21912
-elasticsearch_port        = 21913
-
-pdf_to_html_port          = 21920
-tesseract_cpu_port        = 21921   ; CPU OCR twin
-ocr_pdf_port              = 21922   ; searchable-PDF builder
-embeddings_cpu_port       = 21924   ; CPU embeddings twin
-regex_entity_scanner_port = 21925   ; regex entity scanner
-
-mcp_collections_port      = 21930
-mcp_metasearch_port       = 21931
-mcp_browser_port          = 21932
-mcp_whois_port            = 21934
-mcp_todo_port             = 21935
+ch_ui_port = 21911
+cassandra_port = 21912
+elasticsearch_port = 21913
+pdf_to_html_port = 21920
+tesseract_cpu_port = 21921
+ocr_pdf_port = 21922
+regex_entity_scanner_port = 21925
+mcp_collections_port = 21930
+mcp_metasearch_port = 21931
+mcp_browser_port = 21932
+mcp_whois_port = 21934
+mcp_todo_port = 21935
 internal_search_agent_port = 21936
-full_research_agent_port  = 21937
+full_research_agent_port = 21937
 
-# ---- image pins -----------------------------------------------------------------
-cassandra_version      = 3.11.9
-elasticsearch_version  = 7.17.27
-temporal_version       = 1.23.1
-temporal_ui_version    = 2.26.2
-# Temporal history shards: a single-writer queue each, and their number caps
-# every workflow-history write in the deployment. The image default of 4 holds
-# the pipeline to about a dozen activity dispatches a second no matter how many
-# workers run. FIXED once the store is initialised -- changing it needs
-# `./deploy --reset-temporal`, which drops workflow history and nothing else.
+# ---- Temporal history ----
+
+# This value is fixed after the first start. A change needs `./deploy --reset-temporal`.
 temporal_history_shards = 128
 
-# Garage, the S3 blob store. Pinned by tag AND manifest-LIST digest -- a
-# platform digest makes the image unresolvable on an aarch64 host.
-garage_version         = v2.3.0
-garage_image_digest    = sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
-# Declared, not measured: Garage sizes its partitions from this and reports the
-# store full past it. Getting it wrong surfaces as ingest errors hours in.
-garage_capacity        = 300G
+# ---- Temporal and its Cassandra ----
 
-# ---- Temporal and its Cassandra -------------------------------------------------
-# deploy.py refuses a cassandra_mem_limit below cassandra_heap plus
-# cassandra_direct_memory plus 3G of native memory. It refuses a cassandra_cpus,
-# temporal_cpus or tesseract_cpu_cpus above the CPU count of the host.
-cassandra_mem_limit      = 16000M
-cassandra_cpus           = 8
-cassandra_heap           = 8G     ; MAX_HEAP_SIZE
-cassandra_heap_new       =        ; HEAP_NEWSIZE; empty is 100M for each of cassandra_cpus
-cassandra_direct_memory  = 2G     ; -XX:MaxDirectMemorySize
-cassandra_malloc_arenas  =        ; MALLOC_ARENA_MAX; empty keeps the image default of 4
-cassandra_chunk_cache_mb = 512    ; file_cache_size_in_mb in cassandra.yaml
-temporal_mem_limit       = 8000M
-temporal_ui_mem_limit    = 6000M
-temporal_cpus            = 8
-; How long Temporal keeps a closed workflow. deploy.py sets it on the default
-; namespace after each start.
-temporal_retention       = 168h
-; Persistence rate limits in queries a second. Empty keeps Temporal's own default.
-temporal_history_persistence_qps  =
+# The value must be at least cassandra_heap plus cassandra_direct_memory plus 3G.
+cassandra_mem_limit = 16000M
+cassandra_cpus = 8
+cassandra_heap = 8G
+# Empty is 100M for each CPU of cassandra_cpus.
+cassandra_heap_new =
+cassandra_direct_memory = 2G
+# Empty keeps 4.
+cassandra_malloc_arenas =
+cassandra_chunk_cache_mb = 512
+temporal_mem_limit = 8000M
+temporal_ui_mem_limit = 6000M
+temporal_cpus = 8
+# Temporal keeps a closed workflow for this time.
+temporal_retention = 168h
+# Each value limits persistence queries per second. Empty keeps the Temporal default.
+temporal_history_persistence_qps =
 temporal_frontend_persistence_qps =
 temporal_matching_persistence_qps =
 
-# ---- Tesseract CPU OCR ----------------------------------------------------------
-; Parallel OCR requests. The request queue holds 4 times this value. deploy.py warns
-; when ocr_concurrency is lower, and when ocr_concurrency plus ocr_pdf_concurrency is
-; above 5 times this value.
-tesseract_cpu_concurrency  = 2
-tesseract_threads_per_page =      ; OMP_THREAD_LIMIT; empty leaves it unset
-tesseract_cpu_cpus         =      ; CPU limit; empty is no limit
-tesseract_cpu_mem_limit    =      ; empty is 4096M plus 1024M for each tesseract_cpu_concurrency
+# ---- Tesseract CPU OCR ----
 
-# ---- ClamAV antivirus scan ------------------------------------------------------
-; Each file is scanned before parsing. Off records each file as skipped and starts
-; no scanner container. The image holds the signatures of its build time.
-clamav_enabled           = true
-clamav_update_signatures = true   ; run freshclam in the container
-clamav_concurrency       = 4      ; scans at once in clamd and in the worker tier
-clamav_mem_limit         = 4G
+# This value limits the OCR requests in progress. The queue holds 4 times this value.
+tesseract_cpu_concurrency = 2
+# This value sets OMP_THREAD_LIMIT. Empty leaves it unset.
+tesseract_threads_per_page =
+# This value is the CPU limit. Empty sets no limit.
+tesseract_cpu_cpus =
+# Empty is 4096M plus 1024M for each tesseract_cpu_concurrency slot.
+tesseract_cpu_mem_limit =
 
-# ---- container logs -------------------------------------------------------------
-; Rotation of every hoover4 container log, in the json-file driver's units.
-container_log_max_size  = 100m
+# ---- ClamAV ----
+
+# False records each file as not scanned and starts no scanner.
+clamav_enabled = true
+clamav_update_signatures = true
+clamav_concurrency = 4
+clamav_mem_limit = 4G
+
+# ---- container logs ----
+
+container_log_max_size = 100m
 container_log_max_files = 5
 
-; A dataset mount: a host folder that the worker and the website mount at the same
-; container path. The admin dataset form lists the folders directly beneath it. The
-; name after the dot matches [a-z0-9_]{1,32}. writable = false mounts it read-only in
-; both services. writable = true mounts it read-write in both, and the form can create a
-; new folder in it. See docs/operations/Configuration_Reference.md for the rules.
-; [dataset_mount.corpus]
-; host_path      = /srv/hoover4-corpus
-; container_path = /testdata
-; writable       = false
-
 [operations]
-; The most running operations of each kind, counted across the deployment. An
-; operation over its cap waits as `queued`, with no time limit, and starts when a slot
-; of its kind is free, oldest first. A queued operation holds its dataset or collection
-; like a running one. Each value is a whole number of at least 1.
-add_dataset_cap                 = 2
-rescan_dataset_cap              = 2
-compute_plans_cap               = 2
-execute_plans_cap               = 2
-purge_dataset_cap               = 2
-delete_dataset_cap              = 2
-change_ocr_languages_cap        = 2
-rerun_ocr_cap                   = 2
-reindex_collection_cap          = 2
-refresh_document_locations_cap  = 2
-retry_failed_files_cap          = 2
-ensure_collection_cap           = 2
-drop_collection_database_cap    = 2
-export_collection_cap           = 2
-import_collection_cap           = 2
+# Each cap limits the running operations of one kind. Other operations of that kind wait as queued.
+add_dataset_cap = 2
+rescan_dataset_cap = 2
+compute_plans_cap = 2
+execute_plans_cap = 2
+purge_dataset_cap = 2
+delete_dataset_cap = 2
+rerun_ocr_cap = 2
+reindex_collection_cap = 2
+refresh_document_locations_cap = 2
+retry_failed_files_cap = 2
+ensure_collection_cap = 2
+drop_collection_database_cap = 2
+export_collection_cap = 2
+import_collection_cap = 2
 purge_unattributed_entities_cap = 2
-backfill_vectors_cap            = 2
-; The upload ingestion. hoover4-ops ignores this key until the upload ingestion
-; operation exists.
-ingest_upload_cap               = 2
-; The processing updates. The coordinator starts one automatic operation at a time, so
-; these caps limit the manual operations beside it.
-update_dataset_cap              = 2
-update_collection_cap           = 2
+backfill_vectors_cap = 2
+ingest_upload_cap = 2
+update_dataset_cap = 2
+update_collection_cap = 2
 
 [processing_updates]
-; true starts the processing updates automatically: after a deployment that changes a
-; stage version, after a settings change and after new input. One automatic operation
-; runs at a time. false stops the automatic operations on this installation. The admin
-; pages still show the waiting updates, and Update processing still starts them.
+# True starts processing updates after a deployment, a settings change or new input.
 automatic = true
 
 [uploads]
-; The limits of one upload. The upload page and the begin route check them before any
-; byte is sent.
-max_batch_files    = 10000
-max_batch_bytes    = 10737418240
-max_file_bytes     = 10737418240
-; The bytes of one PATCH request. Keep it below the body limit of every proxy in front
-; of the website.
-chunk_bytes        = 786432
-; A batch with no transfer for this many hours is committed with the files that
-; arrived. 0 commits every idle batch at the next hourly sweep.
-abandon_hours      = 24
-
-# ---- LLM providers --------------------------------------------------------------
-# Repeatable by name, several active at once. main_services talks to the selfhosted
-# one when llm_selfhosted = true, otherwise the first enabled cloud provider.
-# api_key_file: host path to a file containing ONLY the key (chmod 600, outside the
-# repo). model: empty keeps the provider's default (the model registry discovers it).
-
-[llm_provider.selfhosted]
-enabled      = false
-base_url     =           ; empty = http://<ai_services.host>:<vllm_port>/v1
-model        =           ; empty = vllm_served_name
-api_key_file =
-; false: every model request leaves `temperature` out, because the server rejects it.
-send_temperature = false
-; The structured server of the chat policy checks. Empty = derived from the host of
-; base_url and [ai_services] vllm_structured_port.
-decision_url     =
-; A second endpoint for agent turns, and the model it serves. When set, every agent turn
-; uses this model, and the short calls keep `model`. Set both or neither. Requests to it carry the API key of
-; this provider. Empty: [ai_services] chat_vllm_port and chat_vllm_served_name when
-; chat_llm_selfhosted is true.
-quality_base_url =
-quality_model    =
-; The models of this provider that read images, comma separated. The catalog marks them
-; supports_vision, and agent turns then send the images of tool results. Empty: the
-; quality model.
-vision_models    =
-
-[llm_provider.nvidia]
-; The only LLM provider the live tests exercise — vLLM is parked.
-enabled      = true
-base_url     = https://integrate.api.nvidia.com/v1
-model        = nvidia/nemotron-3-super-120b-a12b
-api_key_file =           ; e.g. /root/secrets/nvidia-nim.txt
-send_temperature = true
-
-[llm_provider.moonshot]
-enabled      = false
-base_url     = https://api.moonshot.ai/v1
-model        =
-api_key_file =
-send_temperature = true
-
-# ---- the local Nomad cluster's image registry ------------------------------------
-# Pass 6 pushes hoover4's built images here, and a Nomad docker job pulls from
-# here. Empty on a checkout with no local cluster. Set it to the cluster's own
-# real address. Never commit that address. Commit only this placeholder.
-[cluster]
-registry_address =           ; e.g. 192.0.2.10:5050
+max_batch_files = 10000
+max_batch_bytes = 10737418240
+max_file_bytes = 10737418240
+# This value limits the bytes of one PATCH request. Keep it below the body limit of each proxy.
+chunk_bytes = 786432
+# A batch without a transfer for this many hours is committed with the files it has.
+abandon_hours = 24

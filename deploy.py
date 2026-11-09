@@ -132,10 +132,11 @@ RESET_TEMPORAL_CLASSES = ("temporal",)
 CDI_SPEC = "/etc/cdi/nvidia.yaml"
 
 # --------------------------------------------------------------------------------------
-# Defaults. Every value here is overridable in hoover4.ini; hoover4.ini.release and
-# hoover4.ini.development are fully commented renderings of this table. Ports are ini
-# keys, never code literals. The single exception is the website's 12345, which
-# humans type.
+# Defaults. Every value here is overridable in hoover4.ini. hoover4.ini.release and
+# hoover4.ini.development set every key of this table, with at most one comment line for
+# each key. The render tests list the sample values that differ from these defaults.
+# Ports are ini keys, never code literals. The single exception is the website's 12345,
+# which humans type.
 # --------------------------------------------------------------------------------------
 
 DEFAULTS = {
@@ -255,7 +256,9 @@ DEFAULTS = {
         "web_search_queue_limit": "16",
         "web_search_queue_wait_seconds": "60",
         "web_search_fetch_budget_seconds": "60",
-        "web_tor_enabled": "false",
+        # Private Tor clients for web reads. They start only when internet_tools_enabled
+        # is true as well (web_tor_enabled()).
+        "web_tor_enabled": "true",
         "web_tor_mem_limit": "512M",
         # Tool packs of a chat run: a comma list of pack names, or `all`.
         "agent_packs_chat": "all",
@@ -715,9 +718,11 @@ DATASET_MOUNT_SECTION_PREFIX = "dataset_mount."
 DATASET_MOUNT_NAME = re.compile(r"[a-z0-9_]{1,32}")
 DATASET_MOUNT_KEYS = ("host_path", "container_path", "writable")
 
-#: This pattern matches a space or a tab and then `;` or `#`. In a value, the match starts an
-#: old inline comment. The parser does not remove it, so the value would include the comment.
-INLINE_COMMENT = re.compile(r"\s[;#]")
+#: This pattern matches `;` or `#` at the start of a value, or after a space or a tab. The
+#: match starts an old inline comment. The parser removes the spaces after `=`, so a key with
+#: only a comment has a value that starts with the mark. The parser does not remove the
+#: comment, so the value would include it.
+INLINE_COMMENT = re.compile(r"(?:^|\s)[;#]")
 
 
 def _removed_setting_problem(label, replacement):

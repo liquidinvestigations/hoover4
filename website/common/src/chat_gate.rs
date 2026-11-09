@@ -19,7 +19,6 @@ pub enum ChatGate {
 #[serde(rename_all = "snake_case")]
 pub enum ChatGateClosed {
     NoProvider,
-    MissingApiKey,
     SwitchedOff,
     Unevaluable,
 }
@@ -29,8 +28,6 @@ pub struct ChatGateInputs<'a> {
     pub base_url: &'a str,
     pub env_model: &'a str,
     pub default_chat_model: &'a str,
-    pub provider_name: &'a str,
-    pub api_key: &'a str,
     /// `Ok(true)` chat is on, `Ok(false)` an administrator switched it off,
     /// `Err(())` the setting could not be read.
     pub chat_enabled: Result<bool, ()>,
@@ -51,11 +48,10 @@ impl ChatGate {
 }
 
 impl ChatGateClosed {
-    /// First sentence on the overlay: which of the three reasons applies.
+    /// First sentence on the overlay: the reason that applies.
     pub fn overlay_lead(self) -> &'static str {
         match self {
             Self::NoProvider => "No LLM provider is configured.",
-            Self::MissingApiKey => "A provider is configured but its API key is missing.",
             Self::SwitchedOff => "Chat is switched off by an administrator.",
             Self::Unevaluable => "The server could not evaluate whether chat is available.",
         }
@@ -66,9 +62,6 @@ impl ChatGateClosed {
         match self {
             Self::NoProvider => {
                 "An administrator sets a provider under /admin/llm."
-            }
-            Self::MissingApiKey => {
-                "An administrator sets the provider key file and redeploys."
             }
             Self::SwitchedOff => {
                 "An administrator turns it on under /admin/settings (chat_enabled)."
@@ -90,7 +83,6 @@ impl ChatGateClosed {
     pub fn code(self) -> &'static str {
         match self {
             Self::NoProvider => "no_provider",
-            Self::MissingApiKey => "missing_api_key",
             Self::SwitchedOff => "switched_off",
             Self::Unevaluable => "unevaluable",
         }
@@ -109,7 +101,8 @@ pub fn chat_enabled_from_stored(value: Option<&str>) -> Result<bool, ()> {
     }
 }
 
-/// Close the gate when any of the three conditions holds. Self-hosted needs no API key.
+/// Close the gate when chat is switched off, the switch cannot be read, or no model server
+/// is configured. The self-hosted model servers need no API key in the gate.
 pub fn evaluate_chat_gate(inputs: ChatGateInputs<'_>) -> ChatGate {
     match inputs.chat_enabled {
         Err(()) => return ChatGate::Closed(ChatGateClosed::Unevaluable),
@@ -122,13 +115,6 @@ pub fn evaluate_chat_gate(inputs: ChatGateInputs<'_>) -> ChatGate {
     if !base_ok || !model_ok {
         return ChatGate::Closed(ChatGateClosed::NoProvider);
     }
-    let self_hosted = inputs
-        .provider_name
-        .trim()
-        .eq_ignore_ascii_case("selfhosted");
-    if !self_hosted && inputs.api_key.trim().is_empty() {
-        return ChatGate::Closed(ChatGateClosed::MissingApiKey);
-    }
     ChatGate::Open
 }
 
@@ -136,32 +122,24 @@ pub fn evaluate_chat_gate(inputs: ChatGateInputs<'_>) -> ChatGate {
 mod tests {
     use super::*;
 
-    fn inputs<'a>(
-        base: &'a str,
-        model: &'a str,
-        provider: &'a str,
-        key: &'a str,
-        enabled: Result<bool, ()>,
-    ) -> ChatGateInputs<'a> {
+    fn inputs<'a>(base: &'a str, model: &'a str, enabled: Result<bool, ()>) -> ChatGateInputs<'a> {
         ChatGateInputs {
             base_url: base,
             env_model: model,
             default_chat_model: "",
-            provider_name: provider,
-            api_key: key,
             chat_enabled: enabled,
         }
     }
 
     #[test]
     fn no_base_url_closes_as_no_provider() {
-        let gate = evaluate_chat_gate(inputs("", "a-model", "nvidia", "secret", Ok(true)));
+        let gate = evaluate_chat_gate(inputs("", "a-model", Ok(true)));
         assert_eq!(gate, ChatGate::Closed(ChatGateClosed::NoProvider));
     }
 
     #[test]
     fn no_model_closes_as_no_provider() {
-        let gate = evaluate_chat_gate(inputs("http://example/v1", "", "nvidia", "secret", Ok(true)));
+        let gate = evaluate_chat_gate(inputs("http://example/v1", "", Ok(true)));
         assert_eq!(gate, ChatGate::Closed(ChatGateClosed::NoProvider));
     }
 
@@ -171,58 +149,26 @@ mod tests {
             base_url: "http://example/v1",
             env_model: "",
             default_chat_model: "stored-model",
-            provider_name: "nvidia",
-            api_key: "secret",
             chat_enabled: Ok(true),
         });
         assert_eq!(gate, ChatGate::Open);
     }
 
     #[test]
-    fn empty_key_on_a_cloud_provider_closes_as_missing_api_key() {
-        let gate = evaluate_chat_gate(inputs(
-            "http://example/v1",
-            "a-model",
-            "nvidia",
-            "",
-            Ok(true),
-        ));
-        assert_eq!(gate, ChatGate::Closed(ChatGateClosed::MissingApiKey));
-    }
-
-    #[test]
-    fn selfhosted_opens_with_no_api_key() {
-        let gate = evaluate_chat_gate(inputs(
-            "http://example/v1",
-            "a-model",
-            "selfhosted",
-            "",
-            Ok(true),
-        ));
+    fn a_configured_model_server_opens_the_gate() {
+        let gate = evaluate_chat_gate(inputs("http://example/v1", "a-model", Ok(true)));
         assert_eq!(gate, ChatGate::Open);
     }
 
     #[test]
     fn switch_off_closes_even_when_the_provider_is_complete() {
-        let gate = evaluate_chat_gate(inputs(
-            "http://example/v1",
-            "a-model",
-            "nvidia",
-            "secret",
-            Ok(false),
-        ));
+        let gate = evaluate_chat_gate(inputs("http://example/v1", "a-model", Ok(false)));
         assert_eq!(gate, ChatGate::Closed(ChatGateClosed::SwitchedOff));
     }
 
     #[test]
     fn a_setting_read_error_closes_as_unevaluable() {
-        let gate = evaluate_chat_gate(inputs(
-            "http://example/v1",
-            "a-model",
-            "nvidia",
-            "secret",
-            Err(()),
-        ));
+        let gate = evaluate_chat_gate(inputs("http://example/v1", "a-model", Err(())));
         assert_eq!(gate, ChatGate::Closed(ChatGateClosed::Unevaluable));
     }
 
@@ -240,9 +186,6 @@ mod tests {
         assert!(ChatGateClosed::NoProvider
             .overlay_text()
             .starts_with("No LLM provider is configured."));
-        assert!(ChatGateClosed::MissingApiKey
-            .overlay_text()
-            .starts_with("A provider is configured but its API key is missing."));
         assert!(ChatGateClosed::SwitchedOff
             .overlay_text()
             .starts_with("Chat is switched off by an administrator."));

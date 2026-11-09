@@ -10,9 +10,12 @@ The fixtures in [fixtures/schema/](fixtures/schema) test the configuration schem
 The `--check` tests set `INI_PATH` to a fixture, so they never read the operator `hoover4.ini`.
 They replace each command, file write, folder creation and network call with a mock that fails the test.
 
-The tests that read `hoover4.ini.release` or `hoover4.ini.development` read a copy without inline `;` comments.
-The copy also omits each section and key of `REMOVED_SETTINGS` in [deploy.py](../../deploy.py).
-A copy without a `[dataset_mount.<name>]` section receives `[dataset_mount.testdata]`, because deploy.py requires a mount section.
+The tests read `hoover4.ini.release` and `hoover4.ini.development` directly.
+The sample tests check that each section and key is in the schema of [deploy.py](../../deploy.py) and that no removed setting remains.
+They check that each sample sets every key at its default or at a listed sample value.
+They check that the samples differ only in the three development keys.
+They also check the comment layout: full-line `#` comments, no `;` character, and at most one comment line above a key.
+The `--check` tests copy each sample with `volumes_path` set.
 
 [fixtures/schema/removed-model-settings.ini](fixtures/schema/removed-model-settings.ini) sets every removed model setting.
 [fixtures/schema/retired-cloud-provider.ini](fixtures/schema/retired-cloud-provider.ini) is an earlier cloud-provider file.

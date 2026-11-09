@@ -68,7 +68,7 @@ GPU services also require compatible NVIDIA drivers and the configured GPU runti
 Resource requirements depend on document content, stored data, enabled models, and concurrency.
 Measure the intended workload before selecting hardware.
 
-Copy one public configuration template to the local configuration file.
+Copy one public configuration sample to the local configuration file.
 
 ```sh
 cp hoover4.ini.release hoover4.ini
@@ -76,8 +76,8 @@ $EDITOR hoover4.ini
 ./deploy
 ```
 
-[The development template](hoover4.ini.development) enables development tooling.
-[The release template](hoover4.ini.release) describes release configuration.
+[The development sample](hoover4.ini.development) enables development tooling.
+[The release sample](hoover4.ini.release) describes release configuration.
 The local `hoover4.ini` is the single source of truth.
 Deployment generates environment files, which must not be edited by hand.
 Store credential file paths in configuration and credential values in files outside the checkout.

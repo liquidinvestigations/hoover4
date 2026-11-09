@@ -10,8 +10,8 @@ publishes what, and what each one is protecting against. What a particular deplo
 actually uses is in `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and
 gitignored: this file is public, and no hostname, address or credential belongs in it.
 
-The shape assumed throughout is a host with one interface reachable from the internet and one
-private one, no accelerator, and a hosted model endpoint.
+The shape assumed throughout is a host with one interface reachable from the internet, one
+private interface and no accelerator.
 
 ## The two bind keys
 
@@ -53,23 +53,29 @@ placeholders; the real ones are in `INFRASTRUCTURE_INVENTORY.md`.
 
 ```ini
 [ai_services]
-enabled            = false      ; the GPU tier does not exist on this host
+# The GPU tier does not exist on this host.
+enabled            = false
 ai_server_enabled  = false
 ner_enabled        = false
 embeddings_enabled = false
 reranker_enabled   = false
-easyocr_enabled    = false      ; not implied by the others, see below
+# The other switches do not turn this one off. See below.
+easyocr_enabled    = false
 llm_enabled        = false
 
 [main_services]
-pdf_ocr_provider      = tesseract   ; CPU
+# Tesseract runs on the CPU.
+pdf_ocr_provider      = tesseract
 tesseract_cpu_enabled = true
 ocr_pdf_enabled       = true
 
-website_release_mode  = true        ; a visitor must not get `dx serve`
-serena_enabled        = false       ; dev tooling, not a deployed service
+# A visitor must not get `dx serve`.
+website_release_mode  = true
+# Serena is development tooling.
+serena_enabled        = false
 
-website_bind_ip       = <private-ip>    ; the private address the proxy reaches
+# The reverse proxy reaches this private address.
+website_bind_ip       = <private-ip>
 infra_bind_ip         = 127.0.0.1
 
 mcp_shared_secret_file = <secrets-dir>/mcp-shared-secret.txt
@@ -130,8 +136,10 @@ placeholders, and the real ones are in `INFRASTRUCTURE_INVENTORY.md`.
 
 ```ini
 [ai_services]
-enabled            = true       ; the tier exists, on the other host
-host               = <gpu-private-ip>   ; an address the CONTAINERS here can route to
+# The tier exists on the other host.
+enabled            = true
+# The containers of this host can route to this address.
+host               = <gpu-private-ip>
 ai_server_enabled  = true
 ner_enabled        = true
 embeddings_enabled = true

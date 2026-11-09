@@ -1,14 +1,14 @@
 # Configuration reference
 
-`hoover4.ini` at the repository root is the single source of configuration. Every key here is
-in the two annotated templates, `hoover4.ini.release` and `hoover4.ini.development`, which
-carry the defaults and the reasoning per key, and this page is the map of what each group
-decides and which code reads it.
+`hoover4.ini` at the repository root is the single source of configuration. This page explains
+what each group of keys decides and which code reads it.
 
 ## Contents
 
 - [How configuration flows](#how-configuration-flows)
+- [Start from a sample.](#start-from-a-sample)
 - [Check the file before a deployment.](#check-the-file-before-a-deployment)
+- [Replace a removed key.](#replace-a-removed-key)
 - [Store credential file paths in configuration.](#store-credential-file-paths-in-configuration)
 - [`[storage]`](#storage)
 - [`[ai_services]`](#ai_services)
@@ -37,6 +37,33 @@ project; `[main_services]` feeds everything else. The two hosts hold **identical
 this file, copied by hand, which is why the stack verification compares a configuration
 fingerprint between them: it will drift.
 
+## Start from a sample.
+
+Two tracked samples are at the repository root. Copy one of them to `hoover4.ini` and edit the copy.
+
+- `hoover4.ini.release` is for a deployment that other people use.
+- `hoover4.ini.development` is for a host that only its developer can reach.
+
+Each sample sets every key that an operator can set. A value is the default of
+[deploy.py](../../deploy.py), or a value that both samples choose, for example the agent timeouts.
+A key has at most one full-line `#` comment above it. This page holds the longer explanations.
+The samples differ only in these keys of `[main_services]`.
+
+| Key | Release sample | Development sample |
+|---|---|---|
+| `website_release_mode` | `true` | `false` |
+| `serena_enabled` | `false` | `true` |
+| `development_auth_backdoor_enabled` | `false` | `true` |
+
+Both samples set `internet_tools_enabled = false` and `web_tor_enabled = true`. Tor therefore
+starts only after you turn on the internet tools. Both samples have the dataset mount
+`[dataset_mount.testdata]` with the host folder `/opt/hoover4-testdata`. Create that folder, or
+change the section, before the first deployment. `[storage] volumes_path` is empty in both
+samples, and a deployment refuses it until you set an absolute host folder.
+
+[The render tests](../../scripts/deploy.py_tests/Readme.md) check the keys, the values and the
+comment layout of both samples.
+
 ## Check the file before a deployment.
 
 [deploy.py](../../deploy.py) reads the file before every command, including `--print-env` and
@@ -47,14 +74,14 @@ fingerprint between them: it will drift.
 - A key that its section does not have.
 - A removed key or section. The message names the setting that replaces it, or states that no
   setting replaces it.
-- A value with a space or a tab and then `;` or `#`. The parser removes no comment after a
-  value, so write each comment on its own line above its key.
+- A value that starts with `;` or `#`, or that has a space or a tab and then `;` or `#`. The
+  parser removes no comment after a value, so write each comment on its own line above its key.
 - A `[dataset_mount.<name>]` section with a name that is not 1 to 32 characters of `a-z`,
   `0-9` and `_`, or with a key other than `host_path`, `container_path` and `writable`.
 - A repeated section, or a repeated key in one section.
 
 The message names the section and the key of each problem, and it does not show the value.
-A `;` or `#` with no space before it stays part of the value. A key that the file does not
+A `;` or `#` inside a value with no space before it stays part of the value. A key that the file does not
 set keeps its default. The file must set `[storage] volumes_path`, `manticore_mem_limit` and
 `manticore_vectors_mem_limit`, and it must have at least one `[dataset_mount.<name>]` section.
 
@@ -74,13 +101,33 @@ the secret files, the CPU count of the host and the dataset mount folders. They 
 GPU, its CDI specification, free ports and the compose files. Two more read the Temporal
 shard count and probe each writable dataset mount.
 
+## Replace a removed key.
+
+A file that sets a removed key or section is refused. The message names the replacement, or
+states that no setting replaces it. `REMOVED_SETTINGS` in [deploy.py](../../deploy.py) is the
+complete list.
+
+| Removed setting | Action |
+|---|---|
+| `[llm_provider.*]` sections, `[ai_services] llm_selfhosted` and `chat_llm_selfhosted` | Delete them and set `[ai_services] llm_enabled`. |
+| `[ai_services]` model and capacity keys `vllm_*` and `chat_vllm_*`, other than the three ports and `vllm_api_key_file` | Delete them. [deploy.py](../../deploy.py) sets these values for the supported model servers. |
+| `[ai_services] hf_token_file`, `embeddings_model`, `embeddings_dim`, `reranker_model`, `half_precision` and `torch_compile` | Delete them. The model servers and the AI server use fixed models. |
+| `[main_services] ner_provider` and `embeddings_provider` | Use `[ai_services] ner_enabled` and `embeddings_enabled`. |
+| `[main_services] testdata_dir` and `datasets_mount_path` | Add a `[dataset_mount.<name>]` section. |
+| `[main_services] garage_capacity` | Move the key to `[storage]`. |
+| `[main_services] tesseract_languages`, `[ai_services] easyocr_languages` and `[operations] change_ocr_languages_cap` | Delete them. Automatic OCR selects the languages of each page. |
+| `[main_services] cassandra_version`, `elasticsearch_version`, `temporal_version`, `temporal_ui_version`, `garage_version` and `garage_image_digest` | Delete them. The compose files hold the versions. |
+| `[main_services] embeddings_cpu_port`, `gpu_fallback` and `agent_compaction_model` | Delete them. |
+| `[main_services] agent_packs_planner`, `agent_packs_organizer`, `agent_packs_subagent`, `agent_plan_run_budget`, `research_concurrency`, `agent_max_page_tokens` and `agent_completion_reserve_tokens` | Delete them. |
+| `[cluster]` | Delete the section. Give the registry address to [publish-images.sh](../../main_services/ops/publish-images.sh) as its first argument. |
+
 ## Store credential file paths in configuration.
 
 **A key that is rendered and read by nothing is false.** Several have reached a worker's
 environment with no consumer, and the feature they named silently did not exist.
 
 When adding a key, grep for its consumer **in the same change**, or record it here as
-not-yet-implemented. [website/tools/check-spec-drift.sh](../../website/tools/check-spec-drift.sh) reports keys in the template that
+not-yet-implemented. [website/tools/check-spec-drift.sh](../../website/tools/check-spec-drift.sh) reports keys in the release sample that
 this page does not name, and keys that nothing in the tree reads.
 
 **Ports are keys, not literals.** A connection refused against a hard-coded number is usually
@@ -126,6 +173,10 @@ server itself.
 | OCR | `easyocr_enabled`, `easyocr_port` | the accelerated OCR service. Its language groups are constants of [the EasyOCR server](../../ai_services/easyocr_server/README.md) |
 | credentials | `vllm_api_key_file` | the path of the API key file of both model servers, never the value |
 
+NER, embeddings, reranking and EasyOCR have no authentication. The model servers accept only
+the key of `vllm_api_key_file`. Connect the two hosts through a private network, and set
+`bind_ip` to the private address of the GPU host.
+
 `enabled = false` turns the GPU services off. Main services then clear each URL that points
 to the GPU tier. NER then has no endpoint, because NER runs on the GPU only.
 The per-service flags do not turn GPU services on.
@@ -157,6 +208,19 @@ selects OCR languages. `./deploy` refuses the removed keys `[main_services]
 tesseract_languages`, `[ai_services] easyocr_languages` and `[operations]
 change_ocr_languages_cap`. The Tesseract image installs Debian language models. The EasyOCR
 image installs a fixed set of language groups and reports them.
+
+The `ocr` step of a processing update keeps earlier OCR text of a page when the stored
+recognition languages include the detected language of the page. It publishes that text under
+the detected language without a new OCR request. It builds the image PDF or the searchable PDF
+part again from the stored pages. Entity extraction, embedding and indexing then run again for
+the file. Only pages without a compatible earlier result get new OCR. A page with an unknown
+detected language keeps its earlier output under its original identity.
+When detection succeeds and finds no text on a page, the step replaces earlier OCR text of
+that page with the empty result. It retires the earlier text only after it publishes the empty
+result. When detection is missing or fails, the file stays incomplete and keeps its earlier
+output. [The parse stage guide](../../main_services/processing/tasks/P3_parse_files/Readme.md#earlier-ocr-output-is-reconciled-before-new-ocr)
+describes the rules.
+
 `regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control. The scanner takes a slot
 before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `4G`)
@@ -229,7 +293,8 @@ Zero disables the limit. Structure searches do not use it.
 The website and collection tools use the same expansion limit and search time budget.
 A limit can exclude documents that contain only less frequent matching terms.
 
-`website_release_mode` picks between the development server and a release build.
+`website_release_mode` picks between the development server and a release build. The code
+default is `false`. The release sample sets `true`, and the development sample sets `false`.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults. `max_held_polls_per_user` is how many chat polls one user
 may hold at once. `rate_chat_poll_per_minute` is the flat poll ceiling per user.
@@ -274,7 +339,7 @@ means the default, except the three agent keys, which are set. `ocr_concurrency`
 image OCR on `processing-ocr-queue`. `ocr_pdf_concurrency` sizes the builder and the
 worker slots of `processing-ocr-pdf-queue` together. A slot of
 `chat_model_concurrency` is one model call in flight, and a slot
-of `agent_tool_concurrency` is one tool call in flight. The templates set 3, 4 and 16.
+of `agent_tool_concurrency` is one tool call in flight. The samples set 3, 4 and 16.
 An empty key gives 3 for `chat_model_concurrency` and 8 for
 `chat_low_latency_concurrency` and 16 for `agent_tool_concurrency`.
 
@@ -282,7 +347,7 @@ An empty key gives 3 for `chat_model_concurrency` and 8 for
 common-worker process keeps in memory. The SDK default is 1000.
 
 `indexing_workers` is the number of index-worker processes on `processing-indexing-queue`.
-Empty gives 4, and the release template sets 8. Each process has `indexing_concurrency`
+Empty gives 4, and both samples set 8. Each process has `indexing_concurrency`
 slots, 1 by default. The email graph runs in one more process of its own, on
 `processing-email-graph-queue` with one slot, and no key changes that count.
 
@@ -301,7 +366,7 @@ Page reads and metasearch source fetches use separate shared browsers and bounde
 | `web_search_queue_limit` | `16` | This setting limits waiting web-search calls. |
 | `web_search_queue_wait_seconds` | `60` | This setting bounds the web-search queue wait. |
 | `web_search_fetch_budget_seconds` | `60` | This setting bounds source fetching across all queries in one call. |
-| `web_tor_enabled` | `false` | This setting enables private Tor clients when internet tools are enabled. |
+| `web_tor_enabled` | `true` | This setting enables private Tor clients when internet tools are enabled. |
 | `web_tor_mem_limit` | `512M` | This setting limits Tor container memory. |
 
 Create a private, nonempty token file before enabling browser-backed search sources.
@@ -328,16 +393,16 @@ value.
 The timeout keys set the step limits of an agent run, in whole seconds. An empty key keeps the
 code default. An agent run has no time limit of its own: 600 model steps bound it.
 `agent_queue_wait_seconds` is how long one model step or one tool call may wait for a free
-slot. A model step that waits longer fails the run, and empty sets no limit. The templates
+slot. A model step that waits longer fails the run, and empty sets no limit. The samples
 set 5400. `title_request_timeout_seconds` (empty: 30) is the read timeout of the
 conversation title request, and the title activity allows two requests and 30 s more.
 `board_reason_request_seconds` (empty: 600) is the read timeout of one board assessment
-request. Temporal sends the request once more after a transport failure. The templates set
+request. Temporal sends the request once more after a transport failure. The samples set
 600.
 `llm_request_timeout_seconds` is the read timeout of one agent model call and of the
 compaction summary, and the worker's limit of one model step. When it is set, the model
 client does not retry. Empty keeps the client default of 600 s and 2 retries, 180 s for the
-summary and 3,600 s for the model step. The templates set 3600. `./deploy` refuses a value
+summary and 3,600 s for the model step. The samples set 3600. `./deploy` refuses a value
 that is not a whole number of at least 1. The worker's limits that have no key are in
 [tasks/P_agent/model_timeouts.py](../../main_services/processing/tasks/P_agent/model_timeouts.py): 300 s for a tool call, a 30 s heartbeat limit for each
 step, 600 model steps, and a continue-as-new every 250 model steps. The other liveness
@@ -346,12 +411,12 @@ read of the agent stream and the website's 180 s stall window.
 
 `agent_compaction_fraction` is the fraction of the model's stated context window at which
 the agent compacts the context of a model call, to a third of that size. It replaces one
-older prefix of steps with one summary. The templates and the code default set 0.80. An
+older prefix of steps with one summary. The samples and the code default set 0.80. An
 empty key keeps the code default. The compacted list is kept for the later calls of the
 conversation. The answering model writes the summary.
 
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
-`max_completion_tokens`. Empty sends no cap, and the templates set 32768. The agent also
+`max_completion_tokens`. Empty sends no cap, and the samples set 32768. The agent also
 reserves this many tokens of the context window for the reply when it sizes a request. With
 no cap, it reserves an estimate of 8,192 tokens and records that the reserve is an estimate.
 `llm_streaming` is token streaming of the agent's model calls, and empty is `true`.
@@ -364,6 +429,8 @@ before each agent model call. The title call and the compaction summary always s
 off on a workstation also removes the developer harness tools those containers publish.
 `hoover4-full-research-agent` then receives the tools of its available packs. Capture wrappers
 refuse when the key is off.
+`factcheck_api_key_file` names the key file of the metasearch fact-check source. Empty
+registers no such source.
 
 `hoover4-internal-search-agent` and `hoover4-full-research-agent` start only when
 `[ai_services] llm_enabled` and `[ai_services] enabled` are true (see [Model endpoints](#model-endpoints)).
@@ -383,13 +450,34 @@ decisions within one execution, so a fan-out driven from a single parent is a la
 that no fleet size moves: [.agents/skills/tuning-the-pipeline/](../../.agents/skills/tuning-the-pipeline) has the measurement that
 distinguishes the two cases.
 
+`worker_graceful_shutdown_seconds` (default `60`) is the time that a worker keeps its
+in-progress activities at shutdown before it cancels them. [deploy.py](../../deploy.py)
+sets the stop grace period of the container to this value plus 30 s, so the cancelled
+activities can finish. `hoover4-ops` uses the same value.
+
+### The operations container
+
+`hoover4-ops` runs backups, restores, re-indexes and the other operations that a person
+starts. It has its own memory and CPU limits, so an operation cannot take capacity from
+ingestion.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `ops_mem_limit` | `4000M` | The memory limit of `hoover4-ops`. |
+| `ops_cpus` | `4` | The CPU limit of `hoover4-ops`. |
+| `ops_backup_dir` | Empty. | The host folder for backups, mounted read-write. The folder must exist. Empty uses `<volumes_path>/ops_backups`, which [deploy.py](../../deploy.py) creates. |
+| `ops_backup_bandwidth_bytes` | `0` | The read bytes per second of a ClickHouse backup. `0` sets no limit. |
+| `ops_backup_object_volume_bytes` | Empty. | The bytes of one backup object volume before the next volume opens. Empty is 8 GiB. [deploy.py](../../deploy.py) refuses a value below 1048576, including `0`. |
+| `admin_base_url` | Empty. | The admin address that a detached CLI prints. Empty prints the operation id and the command that shows it. |
+| `error_rate_alert_percent` | `5` | The operations page marks a task type when its failure rate is above this percent. |
+
 ### Bind addresses and ports
 
 `website_bind_ip` and `infra_bind_ip` decide which interface each half publishes on. **Which
 address a given deployment uses is not in this tree**. It is in
 `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and gitignored.
 
-**Neither key is ever set to `0.0.0.0`.** Both templates and [deploy.py](../../deploy.py)'s own defaults use
+**Neither key is ever set to `0.0.0.0`.** Both samples and [deploy.py](../../deploy.py)'s own defaults use
 `127.0.0.1`. `website_bind_ip` carries the whole access boundary in release mode, because the
 website accepts `X-Forwarded-User` from whoever connects, so a caller that reaches port
 `12345` directly is the user it names. The infrastructure ports carry no authentication at
@@ -454,7 +542,8 @@ object store are literals of [the main compose file](../../main_services/ops/doc
 pinned by digest as well as tag. No `hoover4.ini` key selects a version.
 
 `serena_enabled` and `serena_port` control the symbol-navigation server, which is development
-tooling and is published on loopback only.
+tooling and is published on loopback only. The code default of `serena_enabled` is `true`. The
+release sample sets `false`, and the development sample sets `true`.
 
 ## `[dataset_mount.*]`
 
@@ -496,7 +585,7 @@ The last rule runs after the services start. The others run before any compose c
 One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
 operations of that kind that run at once across the deployment. No key covers a group of
 kinds. [deploy.py](../../deploy.py) refuses a value below 1 and an unknown key in the
-section. It renders the 20 values into one variable, `HOOVER4_OPERATION_CAPS`, in
+section. It renders the 19 values into one variable, `HOOVER4_OPERATION_CAPS`, in
 `hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` limits the
 `ingest_upload` operations that the upload queues start, one queue for each upload dataset.
 `update_dataset_cap` and `update_collection_cap` limit the processing update operations.
@@ -556,6 +645,9 @@ The models and their Hugging Face checkpoint commits are constants of [deploy.py
 served names, parsers and capacity values are constants too, so a change of the model set is
 a code change.
 [The model servers](../../ai_services/README.md) lists them.
+Before the first start, `./deploy --ai-services` downloads each checkpoint at its pinned commit
+into the weights folder of its server. It downloads again when a file of the folder names another
+commit, and it stops when the folder does not match the pinned commit after the download.
 
 [deploy.py](../../deploy.py) renders these variables for the main services from `[ai_services] host`
 and the three ports.
@@ -602,8 +694,7 @@ them is recorded in `INFRASTRUCTURE_INVENTORY.md`, by location, never by value.
 ## Every key, by section
 
 The drift check joins on key names, so every key in `hoover4.ini.release` appears here
-literally. The templates carry each one's default and the reasoning behind it. This index
-is the map back to the group above that explains it.
+literally. This index maps each key to the group above that explains it.
 
 ### `[storage]`: the volume folders
 
@@ -660,6 +751,14 @@ is the map back to the group above that explains it.
 - `temporal_mem_limit`, `temporal_cpus`, `temporal_retention`
 - `temporal_history_persistence_qps`, `temporal_frontend_persistence_qps`, `temporal_matching_persistence_qps`
 - `container_log_max_size`, `container_log_max_files`
+- `regex_scanner_mem_limit`, `clickhouse_ui_mem_limit`, `clickhouse_monitoring_mem_limit`, `temporal_ui_mem_limit`
+- `ocr_pdf_files_per_batch`, `pdf_preview_concurrency`
+- `tika_mem_limit`, `tika_parse_processes`, `tika_parse_heap`
+- `browser_reader_tabs`, `browser_search_tabs`, `browser_queue_limit`, `browser_read_timeout_seconds`, `browser_fetch_token_file`
+- `web_search_concurrency`, `web_search_queue_limit`, `web_search_queue_wait_seconds`, `web_search_fetch_budget_seconds`
+- `web_tor_enabled`, `web_tor_mem_limit`, `factcheck_api_key_file`
+- `agent_compaction_fraction`, `worker_graceful_shutdown_seconds`
+- `ops_mem_limit`, `ops_cpus`, `ops_backup_dir`, `ops_backup_bandwidth_bytes`, `admin_base_url`, `error_rate_alert_percent`
 
 The `clickhouse_server_memory_ratio` key sets the server memory fraction of its container limit.
 It defaults to `0.7` and must be above zero and at most one.

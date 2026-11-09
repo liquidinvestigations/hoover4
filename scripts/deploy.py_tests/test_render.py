@@ -1,12 +1,12 @@
 """Render tests for the deployment configuration."""
 
 import builtins
+import configparser
 import importlib.util
 import json
 import os
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -28,47 +28,12 @@ def _load_deploy():
 
 deploy = _load_deploy()
 
-#: Copies of the tracked samples, written once for this test run.
-SAMPLE_COPIES = Path(tempfile.mkdtemp(prefix="hoover4-samples-"))
-
-
-def _without_removed_settings(text):
-    """Return the sample text without the sections and keys of deploy.REMOVED_SETTINGS."""
-    kept, section = [], None
-    for line in text.splitlines(keepends=True):
-        header = re.match(r"^\[([^\]]+)\]", line)
-        if header:
-            section = header.group(1)
-        removed_section = (section, None) in deploy.REMOVED_SETTINGS
-        key = re.match(r"^([A-Za-z0-9_]+)\s*=", line)
-        if removed_section or (key and (section, key.group(1).lower()) in
-                               deploy.REMOVED_SETTINGS):
-            continue
-        kept.append(line)
-    return "".join(kept)
-
-
-#: The mount section that a sample copy receives when the sample has none.
-SAMPLE_DATASET_MOUNT = ("\n[dataset_mount.testdata]\nhost_path = /opt/hoover4-testdata\n"
-                        "container_path = /testdata\nwritable = false\n")
+SAMPLES = ("hoover4.ini.release", "hoover4.ini.development")
 
 
 def _template(name="hoover4.ini.development"):
-    """Return the Config of a copy of a tracked sample without inline `;` comments and
-    without removed settings.
-
-    The strict parser refuses an inline comment and a removed setting, and the samples
-    still have them. The copy keeps every other value."""
-    copy = SAMPLE_COPIES / name
-    if not copy.exists():
-        text = (REPO_ROOT / name).read_text(encoding="utf-8")
-        text = re.sub(r"(?m)^([^#;\n][^\n]*?)[ \t]+;[^\n]*$", r"\1", text)
-        text = _without_removed_settings(text)
-        if "[dataset_mount." not in re.sub(r"(?m)^[#;].*$", "", text):
-            # deploy.py requires a mount section, and a sample can lack one.
-            text += SAMPLE_DATASET_MOUNT
-        copy.write_text(text, encoding="utf-8")
-    return deploy.Config(copy)
+    """Return the Config of a tracked sample."""
+    return deploy.Config(REPO_ROOT / name)
 
 
 @pytest.mark.parametrize("same_image", [True, False])
@@ -315,12 +280,12 @@ def test_selfhosted_llm_requires_ai_tier():
     fail.assert_not_called()
 
 
-def test_the_llm_preflight_refuses_a_check_of_the_main_side(capsys):
+def test_the_llm_preflight_refuses_a_check_of_the_main_side(capsys, tmp_path):
     cfg_path = FIXTURES / "llm-selfhosted.ini"
     text = cfg_path.read_text(encoding="utf-8").replace(
         "[main_services]\n",
         "[main_services]\nmanticore_mem_limit = 32G\nmanticore_vectors_mem_limit = 16G\n")
-    path = SAMPLE_COPIES / "llm-without-tier.ini"
+    path = tmp_path / "llm-without-tier.ini"
     path.write_text(text + "\n[storage]\nvolumes_path = /srv/hoover4-volumes\n",
                     encoding="utf-8")
     code, out, err = _run(["--check"], path, capsys)
@@ -2282,6 +2247,8 @@ def _refusal(path):
         pytest.param("inline-comment.ini", [
             "[main_services] proxy_username has a comment after its value.",
             "[main_services] proxy_groups has a comment after its value.",
+            "[main_services] tika_concurrency has a comment after its value.",
+            "[main_services] ocr_concurrency has a comment after its value.",
         ], id="inline-comment"),
         pytest.param("several-problems.ini", [
             "[DEFAULT] is not a known section.",
@@ -2301,7 +2268,7 @@ def test_the_parser_names_every_structural_problem(fixture_name, expected):
     assert "%d configuration problem" % len(expected) in message
     for line in expected:
         assert line in message, line
-    for value in ("value-e81c", "alice", "note-7f3a", "note-9b21", "note-4c1d", "%zz"):
+    for value in ("value-e81c", "alice", "note-7f3a", "note-9b21", "note-4c1d", "note-c41d", "note-d52e", "%zz"):
         assert value not in message
 
 
@@ -2313,10 +2280,10 @@ def test_the_problems_keep_the_order_of_the_file():
     assert positions == sorted(positions)
 
 
-def test_a_default_section_does_not_fill_the_other_sections():
+def test_a_default_section_does_not_fill_the_other_sections(tmp_path):
     with pytest.raises(deploy.DeployError):
         deploy.Config(SCHEMA / "several-problems.ini")
-    path = SAMPLE_COPIES / "default-only.ini"
+    path = tmp_path / "default-only.ini"
     path.write_text("[DEFAULT]\nvolumes_path = /srv/x\n\n[storage]\n", encoding="utf-8")
     assert "[DEFAULT] is not a known section." in _refusal(path)
 
@@ -2441,10 +2408,9 @@ def test_check_accepts_a_valid_configuration(fixture_name, capsys):
 
 @pytest.mark.parametrize("name", ["hoover4.ini.release", "hoover4.ini.development"])
 def test_check_accepts_a_sample_with_a_volumes_path(name, capsys, tmp_path):
-    _template(name)
     path = tmp_path / "hoover4.ini"
-    path.write_text(re.sub(r"(?m)^volumes_path *=.*$", "volumes_path = /srv/hoover4-volumes",
-                           (SAMPLE_COPIES / name).read_text(encoding="utf-8")),
+    path.write_text(re.sub(r"(?m)^volumes_path =$", "volumes_path = /srv/hoover4-volumes",
+                           (REPO_ROOT / name).read_text(encoding="utf-8")),
                     encoding="utf-8")
     code, out, err = _run(["--check"], path, capsys)
     assert (code, out) == (0, "configuration valid\n"), err
@@ -2522,3 +2488,102 @@ def test_print_modes_refuse_an_invalid_schema(argv, capsys):
         _run(argv, SCHEMA / "several-problems.ini", capsys)
     assert "[main_services] mystery_key is not a known key." in str(refused.value)
     assert "[search_tuning] is not a known section." in str(refused.value)
+
+
+# ---- the tracked samples ------------------------------------------------------------
+
+#: The values that both samples set over DEFAULTS.
+SAMPLE_VALUES_OVER_DEFAULTS = {
+    ("main_services", "manticore_mem_limit"): "32G",
+    ("main_services", "manticore_vectors_mem_limit"): "32G",
+    ("main_services", "indexing_workers"): "8",
+    ("main_services", "chat_model_concurrency"): "3",
+    ("main_services", "chat_low_latency_concurrency"): "4",
+    ("main_services", "agent_tool_concurrency"): "16",
+    ("main_services", "agent_queue_wait_seconds"): "5400",
+    ("main_services", "title_request_timeout_seconds"): "120",
+    ("main_services", "board_reason_request_seconds"): "600",
+    ("main_services", "llm_request_timeout_seconds"): "3600",
+    ("main_services", "agent_max_output_tokens"): "32768",
+    ("main_services", "agent_compaction_fraction"): "0.80",
+}
+
+#: The keys in which the development sample differs from the release sample, as
+#: (release value, development value).
+DEVELOPMENT_DIFFERENCES = {
+    ("main_services", "website_release_mode"): ("true", "false"),
+    ("main_services", "serena_enabled"): ("false", "true"),
+    ("main_services", "development_auth_backdoor_enabled"): ("false", "true"),
+}
+
+SAMPLE_DIVIDER = re.compile(r"# ---- .+ ----")
+SAMPLE_KEY_LINE = re.compile(r"[a-z0-9_]+ =( \S.*)?")
+SAMPLE_SECTION_LINE = re.compile(r"\[[a-z0-9_.]+\]")
+
+
+def _sample_values(name):
+    """Every (section, key) of a sample with its value, read as Config reads it."""
+    parser = configparser.ConfigParser(inline_comment_prefixes=None, default_section="\n",
+                                       interpolation=None)
+    with open(REPO_ROOT / name, "r", encoding="utf-8") as fh:
+        parser.read_file(fh)
+    return {(section, key): parser.get(section, key).strip()
+            for section in parser.sections() for key in parser.options(section)}
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_a_sample_uses_only_full_line_comments_and_one_comment_for_each_key(name):
+    lines = (REPO_ROOT / name).read_text(encoding="utf-8").splitlines()
+    assert ";" not in "\n".join(lines)
+    for number, line in enumerate(lines, 1):
+        assert (line == "" or line.startswith("# ") or SAMPLE_SECTION_LINE.fullmatch(line)
+                or SAMPLE_KEY_LINE.fullmatch(line)), (number, line)
+        if SAMPLE_KEY_LINE.fullmatch(line):
+            assert "#" not in line, (number, line)
+        if SAMPLE_KEY_LINE.fullmatch(line) or SAMPLE_SECTION_LINE.fullmatch(line):
+            comments = 0
+            while number - 2 - comments >= 0 and lines[number - 2 - comments].startswith("#"):
+                comments += 1
+            assert comments <= 1, (number, line)
+        if SAMPLE_DIVIDER.fullmatch(line):
+            # A blank line follows a divider, so the divider is not the comment of a key.
+            assert number < len(lines) and lines[number] == "", (number, line)
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_every_sample_section_and_key_is_in_the_schema(name):
+    values = _sample_values(name)
+    sections = sorted({section for section, _key in values})
+    for section in sections:
+        assert deploy.Config._section_problem(section) is None, section
+    for section, key in values:
+        assert deploy.Config._key_problem(section, key) is None, (section, key)
+    assert not [setting for setting in deploy.REMOVED_SETTINGS
+                if setting in values or (setting[1] is None and setting[0] in sections)]
+    mounts = [s for s in sections if s.startswith(deploy.DATASET_MOUNT_SECTION_PREFIX)]
+    assert mounts == ["dataset_mount.testdata"]
+    assert {key: values[(mounts[0], key)] for key in deploy.DATASET_MOUNT_KEYS} == {
+        "host_path": "/opt/hoover4-testdata", "container_path": "/testdata",
+        "writable": "false"}
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_a_sample_sets_every_key_of_the_schema(name):
+    values = _sample_values(name)
+    expected = {(section, key): value for section, keys in deploy.DEFAULTS.items()
+                for key, value in keys.items()}
+    expected.update(SAMPLE_VALUES_OVER_DEFAULTS)
+    for setting, pair in DEVELOPMENT_DIFFERENCES.items():
+        expected[setting] = pair[SAMPLES.index(name)]
+    assert {setting: value for setting, value in values.items()
+            if not setting[0].startswith(deploy.DATASET_MOUNT_SECTION_PREFIX)} == expected
+    assert values[("main_services", "internet_tools_enabled")] == "false"
+    assert values[("main_services", "web_tor_enabled")] == "true"
+    assert values[("storage", "volumes_path")] == ""
+
+
+def test_the_samples_differ_only_in_the_development_keys():
+    release, development = (_sample_values(name) for name in SAMPLES)
+    assert set(release) == set(development)
+    assert {setting: (release[setting], development[setting]) for setting in release
+            if release[setting] != development[setting]} == DEVELOPMENT_DIFFERENCES
