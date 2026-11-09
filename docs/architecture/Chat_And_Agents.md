@@ -138,7 +138,10 @@ and a quote with small gaps verifies as the source span that holds its words.
 
 Cited claims go into a workspace report (see [Reports and workspace files](#reports-and-workspace-files)).
 The workspace tools check each handle of a report before they store it. No harness round
-asks the model to repeat an answer. Each answer stores its citation status and tool scope in
+asks the model to repeat an answer. The prompt and the `citation` skill ask the model to cite
+each document that an answer names, lists or describes, because a path, a file hash or a
+title does not open the document. No check after the answer finds a named document without a
+handle. Each answer stores its citation status and tool scope in
 its usage metadata. The status of a report answer describes the report version. The status
 of a chat answer without a report is `invalid` when a handle does not resolve or names two
 documents, and the check uses the citation results of the current and earlier turns. Earlier
@@ -184,7 +187,7 @@ The agent writes each requested report, list, table or draft, and each answer wi
 as a text file in the workspace of the conversation. The `report` skill of the research agent
 holds the rule, and the system prompt of every run holds its routing text, so compaction
 cannot remove it. An ordinary question that needs no citation and no document gets a chat
-answer.
+answer. A request to find documents is a request for a list.
 
 The session tool server serves three file tools, with the names of the Hermes agent file
 tools. `read_file` reads a file with a `N|` line gutter, or lists the files. `write_file`

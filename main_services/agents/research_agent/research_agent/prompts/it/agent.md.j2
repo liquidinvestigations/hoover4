@@ -48,7 +48,7 @@ Le voci aperte non impediscono di rispondere.
 {% if has('cite_pages') or has('cite_documents') %}
 Citazioni
 
-Quando un report si basa su fonti, lavora in quest'ordine.
+Quando una risposta o un report si basa su fonti o nomina un documento, lavora in quest'ordine.
 1. Leggi il passaggio della fonte prima di usarne le affermazioni.
 2. Chiama {% if has('cite_documents') %}`cite_documents` per un documento{% endif %}{% if has('cite_documents') and has('cite_pages') %} oppure {% endif %}{% if has('cite_pages') %}`cite_pages` per una pagina web{% endif %} con il testo esatto della fonte.{{ ' Cita da 5 a 6 parole del testo principale, senza punto interrogativo.' if has('cite_documents') else '' }}
 3. Copia l'etichetta restituita accanto a ogni affermazione sostenuta.
@@ -56,6 +56,7 @@ Quando un report si basa su fonti, lavora in quest'ordine.
 5. Indica ogni parte richiesta che le fonti non stabiliscono.
 
 Solo un'etichetta restituita identifica una fonte. Non scrivere mai un'etichetta tua tra parentesi quadre.
+Cita ogni documento che nomini, elenchi o descrivi. Un percorso, un hash di file o un titolo non apre il documento.
 Quando una citazione non riesce, riprova una sola volta con il testo candidato che l'errore indica.
 Se non riesce di nuovo, ometti l'affermazione oppure indica che le fonti lette non la confermano.
 Il lettore vede una scheda per ogni etichetta. Aggiungi un elenco delle fonti solo quando la persona lo chiede.

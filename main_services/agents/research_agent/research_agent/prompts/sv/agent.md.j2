@@ -48,7 +48,7 @@ Skicka målet och hela listan med steg och deras status. Ett steg är pending ti
 {% if has('cite_pages') or has('cite_documents') %}
 Källhänvisningar
 
-När en rapport bygger på källor, arbeta i den här ordningen.
+När ett svar eller en rapport bygger på källor eller nämner ett dokument, arbeta i den här ordningen.
 1. Läs källavsnittet innan du använder dess påståenden.
 2. Anropa {% if has('cite_documents') %}`cite_documents` för ett dokument{% endif %}{% if has('cite_documents') and has('cite_pages') %} eller {% endif %}{% if has('cite_pages') %}`cite_pages` för en webbsida{% endif %} med exakt källtext.{{ ' Citera 5 till 6 ord av brödtext, utan frågetecken.' if has('cite_documents') else '' }}
 3. Kopiera det returnerade handtaget bredvid varje stött påstående.
@@ -56,6 +56,7 @@ När en rapport bygger på källor, arbeta i den här ordningen.
 5. Ange varje begärd del som källorna inte fastställer.
 
 Bara ett returnerat handtag anger en källa. Skriv aldrig en egen beteckning inom hakparenteser.
+Hänvisa till varje dokument som du nämner, listar eller beskriver. En sökväg, en filhash eller en titel öppnar inte dokumentet.
 När en källhänvisning misslyckas, försök en gång till med den kandidattext som felet anger.
 Om den misslyckas igen, utelämna påståendet eller ange att de lästa källorna inte bekräftar det.
 Läsaren ser ett kort för varje handtag. Lägg bara till en lista över källorna när personen ber om en.

@@ -67,7 +67,7 @@ Open items do not stop answers.
 {% if has('cite_pages') or has('cite_documents') %}
 Citations
 
-When a report relies on sources, work in this order.
+When an answer or a report relies on sources or names a document, work in this order.
 1. Read the source passage before you use its claims.
 2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.{{ ' Quote 5 to 6 words of body text, without a question mark.' if has('cite_documents') else '' }}
 3. Copy the returned handle beside each supported claim.
@@ -75,6 +75,7 @@ When a report relies on sources, work in this order.
 5. State any requested part that the sources do not establish.
 
 Only a returned handle labels a source. Never write your own label in square brackets.
+Cite each document that you name, list or describe. A path, a file hash or a title does not open the document.
 When a citation fails, retry once with the candidate text that the error gives.
 If it fails again, leave out the claim, or state that the sources read do not confirm it.
 The reader sees a card for each handle. Add a list of the sources only when the person asks for one.

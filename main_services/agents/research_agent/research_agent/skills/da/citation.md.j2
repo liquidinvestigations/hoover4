@@ -9,8 +9,9 @@ Tekst med kildehenvisninger skrives i en arbejdsfil. Færdigheden `report` beskr
 {% if has('cite_documents') %}
 Når din rapport bygger på {% if web_enabled %}et internt{% else %}et{% endif %} dokument, kald {{ tool('cite_documents') }}.
 Angiv hvert dokument, der understøtter en påstand eller et citat. Brug det returnerede mærke ved siden af den påstand.
-Brug et mærke ved siden af en påstand, der bygger på et internt dokument. Du kan også nævne et
-dokument for at identificere det eller beskrive et søgeresultat.
+Brug et mærke ved siden af en påstand, der bygger på et internt dokument.
+Når du nævner, opregner eller beskriver et internt dokument, så henvis til det, og skriv dets mærke der.
+En sti, en filhash eller en titel er ikke en kildehenvisning. Personen åbner kun et dokument via dets mærke.
 Ét kald tager højst 12 kildehenvisninger. Henvis til det, du har brugt, ikke til alt, en søgning returnerede.
 Når en søgning eller en læsning returnerede dokumenter, der understøtter en påstand, så henvis til dem.
 

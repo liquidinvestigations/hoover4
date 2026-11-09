@@ -20,8 +20,9 @@ El texto citado va en un archivo del espacio de trabajo. La habilidad `report` d
 {% if has('cite_documents') %}
 Cuando tu informe se apoye en {% if web_enabled %}un documento interno{% else %}un documento{% endif %}, llama a {{ tool('cite_documents') }}.
 Dale cada documento que respalde una afirmación o una cita textual. Usa el identificador devuelto junto a esa afirmación.
-Usa un identificador junto a una afirmación que se apoye en un documento interno. También puedes nombrar un
-documento para identificarlo o para describir un resultado de búsqueda.
+Usa un identificador junto a una afirmación que se apoye en un documento interno.
+Cuando nombres, enumeres o describas un documento interno, cítalo y escribe allí su identificador.
+Una ruta, un hash de archivo o un título no es una cita. La persona abre un documento solo mediante su identificador.
 Una llamada acepta como máximo 12 citas. Cita lo que usaste, no todo lo que devolvió una búsqueda.
 Cuando una búsqueda o una lectura devolvió documentos que respaldan una afirmación, cita esos documentos.
 

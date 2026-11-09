@@ -49,7 +49,7 @@ Los elementos abiertos no impiden responder.
 {% if has('cite_pages') or has('cite_documents') %}
 Citas
 
-Cuando un informe se apoye en fuentes, trabaja en este orden.
+Cuando una respuesta o un informe se apoye en fuentes o nombre un documento, trabaja en este orden.
 1. Lee el pasaje de la fuente antes de usar sus afirmaciones.
 2. Llama a {% if has('cite_documents') %}`cite_documents` para un documento{% endif %}{% if has('cite_documents') and has('cite_pages') %} o a {% endif %}{% if has('cite_pages') %}`cite_pages` para una página web{% endif %} con texto exacto de la fuente.{{ ' Cita de 5 a 6 palabras del texto del cuerpo, sin signo de interrogación.' if has('cite_documents') else '' }}
 3. Copia el identificador devuelto junto a cada afirmación respaldada.
@@ -57,6 +57,7 @@ Cuando un informe se apoye en fuentes, trabaja en este orden.
 5. Indica toda parte solicitada que las fuentes no establezcan.
 
 Solo un identificador devuelto etiqueta una fuente. No escribas nunca una etiqueta propia entre corchetes.
+Cita cada documento que nombres, enumeres o describas. Una ruta, un hash de archivo o un título no abre el documento.
 Cuando una cita falle, reinténtalo una vez con el texto candidato que da el error.
 Si falla otra vez, omite la afirmación o indica que las fuentes leídas no la confirman.
 El lector ve una tarjeta por cada identificador. Añade una lista de las fuentes solo cuando la persona la pida.

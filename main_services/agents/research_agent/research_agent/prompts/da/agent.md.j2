@@ -48,7 +48,7 @@ Send målet og hele listen af trin med deres statusser. Et trin er pending, indt
 {% if has('cite_pages') or has('cite_documents') %}
 Kildehenvisninger
 
-Når en rapport bygger på kilder, skal du arbejde i denne rækkefølge.
+Når et svar eller en rapport bygger på kilder eller nævner et dokument, skal du arbejde i denne rækkefølge.
 1. Læs kildepassagen, før du bruger dens påstande.
 2. Kald {% if has('cite_documents') %}`cite_documents` for et dokument{% endif %}{% if has('cite_documents') and has('cite_pages') %} eller {% endif %}{% if has('cite_pages') %}`cite_pages` for en webside{% endif %} med nøjagtig kildetekst.{{ ' Citér 5 til 6 ord af brødteksten, uden spørgsmålstegn.' if has('cite_documents') else '' }}
 3. Kopiér det returnerede mærke ved siden af hver understøttet påstand.
@@ -56,6 +56,7 @@ Når en rapport bygger på kilder, skal du arbejde i denne rækkefølge.
 5. Angiv enhver ønsket del, som kilderne ikke fastslår.
 
 Kun et returneret mærke betegner en kilde. Skriv aldrig din egen betegnelse i kantede parenteser.
+Henvis til hvert dokument, som du nævner, opregner eller beskriver. En sti, en filhash eller en titel åbner ikke dokumentet.
 Når en kildehenvisning mislykkes, prøv én gang igen med den kandidattekst, som fejlen giver.
 Hvis den mislykkes igen, så udelad påstanden, eller angiv, at de læste kilder ikke bekræfter den.
 Læseren ser et kort for hvert mærke. Tilføj en liste over kilderne kun, når personen beder om en.

@@ -9,8 +9,9 @@ O texto citado vai para um ficheiro do espaço de trabalho. A competência `repo
 {% if has('cite_documents') %}
 Quando o teu relatório se apoia em {% if web_enabled %}um documento interno{% else %}um documento{% endif %}, chama {{ tool('cite_documents') }}.
 Indica cada documento que sustenta uma afirmação ou uma citação. Usa o identificador devolvido junto a essa afirmação.
-Usa um identificador junto a uma afirmação que se apoia num documento interno. Podes também indicar um
-documento para o identificar ou para descrever um resultado de pesquisa.
+Usa um identificador junto a uma afirmação que se apoia num documento interno.
+Quando nomeias, enumeras ou descreves um documento interno, cita-o e escreve aí o seu identificador.
+Um caminho, um hash de ficheiro ou um título não é uma citação. A pessoa abre um documento apenas através do seu identificador.
 Uma chamada aceita no máximo 12 citações. Cita o que usaste, não tudo o que uma pesquisa devolveu.
 Quando uma pesquisa ou uma leitura devolveu documentos que sustentam uma afirmação, cita esses documentos.
 

@@ -48,7 +48,7 @@ Otvorene stavke ne sprječavaju odgovor.
 {% if has('cite_pages') or has('cite_documents') %}
 Citati
 
-Kad se izvješće oslanja na izvore, radi ovim redoslijedom.
+Kad se odgovor ili izvješće oslanja na izvore ili imenuje dokument, radi ovim redoslijedom.
 1. Pročitaj odsječak izvora prije nego što iskoristiš njegove tvrdnje.
 2. Pozovi {% if has('cite_documents') %}`cite_documents` za dokument{% endif %}{% if has('cite_documents') and has('cite_pages') %} ili {% endif %}{% if has('cite_pages') %}`cite_pages` za web stranicu{% endif %} s točnim tekstom izvora.{{ ' Navedi 5 do 6 riječi iz tijela teksta, bez upitnika.' if has('cite_documents') else '' }}
 3. Kopiraj vraćenu oznaku citata uz svaku potkrijepljenu tvrdnju.
@@ -56,6 +56,7 @@ Kad se izvješće oslanja na izvore, radi ovim redoslijedom.
 5. Navedi svaki traženi dio koji izvori ne potvrđuju.
 
 Samo vraćena oznaka citata označava izvor. Nikad ne piši vlastitu oznaku u uglatim zagradama.
+Citiraj svaki dokument koji imenuješ, navodiš ili opisuješ. Putanja, hash datoteke ili naslov ne otvaraju dokument.
 Kad citat ne uspije, pokušaj još jednom s tekstom kandidata koji navodi pogreška.
 Ako ne uspije ni drugi put, izostavi tvrdnju ili navedi da pročitani izvori ne potvrđuju tvrdnju.
 Čitatelj vidi karticu za svaku oznaku. Dodaj popis izvora samo kad ga osoba zatraži.

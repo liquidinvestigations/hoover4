@@ -9,8 +9,9 @@ Belegter Text kommt in eine Arbeitsbereichsdatei. Der Skill `report` erklärt, w
 {% if has('cite_documents') %}
 Wenn Ihr Bericht sich auf {% if web_enabled %}ein internes{% else %}ein{% endif %} Dokument stützt, rufen Sie {{ tool('cite_documents') }} auf.
 Geben Sie jedes Dokument an, das eine Aussage oder ein Zitat stützt. Setzen Sie die zurückgegebene Belegkennung neben diese Aussage.
-Setzen Sie eine Belegkennung neben eine Aussage, die sich auf ein internes Dokument stützt. Sie können
-ein Dokument auch nennen, um es zu identifizieren oder ein Suchergebnis zu beschreiben.
+Setzen Sie eine Belegkennung neben eine Aussage, die sich auf ein internes Dokument stützt.
+Wenn Sie ein internes Dokument nennen, auflisten oder beschreiben, belegen Sie es und setzen Sie dort seine Belegkennung.
+Ein Pfad, ein Datei-Hash oder ein Titel ist kein Beleg. Die Person öffnet ein Dokument nur über seine Belegkennung.
 Ein Aufruf nimmt höchstens 12 Belege an. Belegen Sie, was Sie verwendet haben, nicht alles, was eine Suche geliefert hat.
 Wenn eine Suche oder ein Lesevorgang Dokumente geliefert hat, die eine Aussage stützen, belegen Sie diese Dokumente.
 

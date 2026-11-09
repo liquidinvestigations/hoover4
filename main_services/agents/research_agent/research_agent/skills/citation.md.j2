@@ -20,8 +20,9 @@ Cited text goes into a workspace file. The `report` skill says how to write and 
 {% if has('cite_documents') %}
 When your {{ citation_artefact }} relies on {% if web_enabled %}an internal{% else %}a{% endif %} document, call {{ tool('cite_documents') }}.
 Give it each document that supports a claim or quote. Use the returned handle beside that claim.
-Use a handle beside a claim that relies on an internal document. You can also name a
-document to identify it or describe a search result.
+Use a handle beside a claim that relies on an internal document.
+When you name, list or describe an internal document, cite it and write its handle there.
+A path, a file hash or a title is not a citation. The person opens a document only through its handle.
 One call takes at most 12 citations. Cite what you used, not everything a search returned.
 When a search or read returned documents that support a claim, cite those documents.
 

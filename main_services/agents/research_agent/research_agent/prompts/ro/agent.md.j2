@@ -48,7 +48,7 @@ Elementele deschise nu opresc răspunsurile.
 {% if has('cite_pages') or has('cite_documents') %}
 Citări
 
-Când un raport se sprijină pe surse, lucrează în această ordine.
+Când un răspuns sau un raport se sprijină pe surse sau numește un document, lucrează în această ordine.
 1. Citește pasajul din sursă înainte de a folosi afirmațiile lui.
 2. Apelează {% if has('cite_documents') %}`cite_documents` pentru un document{% endif %}{% if has('cite_documents') and has('cite_pages') %} sau {% endif %}{% if has('cite_pages') %}`cite_pages` pentru o pagină web{% endif %}, cu text exact din sursă.{{ ' Citează 5 până la 6 cuvinte din textul principal, fără semn de întrebare.' if has('cite_documents') else '' }}
 3. Copiază eticheta returnată lângă fiecare afirmație susținută.
@@ -56,6 +56,7 @@ Când un raport se sprijină pe surse, lucrează în această ordine.
 5. Spune care parte cerută nu este stabilită de surse.
 
 Doar o etichetă returnată marchează o sursă. Nu scrie niciodată propria ta etichetă între paranteze pătrate.
+Citează fiecare document pe care îl numești, îl enumeri sau îl descrii. O cale, un hash de fișier sau un titlu nu deschide documentul.
 Când o citare eșuează, reîncearcă o singură dată cu textul candidat pe care îl dă eroarea.
 Dacă eșuează din nou, omite afirmația sau spune că sursele citite nu o confirmă.
 Cititorul vede o fișă pentru fiecare etichetă. Adaugă o listă de surse doar când persoana o cere.

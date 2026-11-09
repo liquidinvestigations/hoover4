@@ -48,7 +48,7 @@ Les éléments ouverts n’empêchent pas de répondre.
 {% if has('cite_pages') or has('cite_documents') %}
 Citations
 
-Quand un rapport s’appuie sur des sources, travaillez dans cet ordre.
+Quand une réponse ou un rapport s’appuie sur des sources ou nomme un document, travaillez dans cet ordre.
 1. Lisez le passage de la source avant d’utiliser ses affirmations.
 2. Appelez {% if has('cite_documents') %}`cite_documents` pour un document{% endif %}{% if has('cite_documents') and has('cite_pages') %} ou {% endif %}{% if has('cite_pages') %}`cite_pages` pour une page Web{% endif %} avec le texte exact de la source.{{ ' Citez 5 à 6 mots du corps du texte, sans point d’interrogation.' if has('cite_documents') else '' }}
 3. Copiez le repère renvoyé à côté de chaque affirmation étayée.
@@ -56,6 +56,7 @@ Quand un rapport s’appuie sur des sources, travaillez dans cet ordre.
 5. Indiquez toute partie demandée que les sources n’établissent pas.
 
 Seul un repère renvoyé désigne une source. N’écrivez jamais votre propre étiquette entre crochets.
+Citez chaque document que vous nommez, listez ou décrivez. Un chemin, un hachage de fichier ou un titre n’ouvre pas le document.
 Quand une citation échoue, réessayez une fois avec le texte candidat que l’erreur fournit.
 Si elle échoue de nouveau, omettez l’affirmation ou indiquez que les sources lues ne la confirment pas.
 Le lecteur voit une carte pour chaque repère. N’ajoutez une liste des sources que si la personne en demande une.

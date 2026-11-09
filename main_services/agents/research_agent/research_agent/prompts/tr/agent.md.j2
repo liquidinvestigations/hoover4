@@ -49,7 +49,7 @@ Açık maddeler yanıt vermeyi engellemez.
 {% if has('cite_pages') or has('cite_documents') %}
 Atıflar
 
-Bir rapor kaynaklara dayanıyorsa şu sırayla çalış.
+Bir yanıt ya da rapor kaynaklara dayanıyorsa ya da bir belgeyi adlandırıyorsa şu sırayla çalış.
 1. Kaynak pasajını, iddialarını kullanmadan önce oku.
 2. Tam kaynak metniyle {% if has('cite_documents') %}bir belge için `cite_documents`{% endif %}{% if has('cite_documents') and has('cite_pages') %} ya da {% endif %}{% if has('cite_pages') %}bir web sayfası için `cite_pages`{% endif %} çağır.{{ ' Gövde metninden 5 ila 6 sözcük alıntıla, soru işareti olmadan.' if has('cite_documents') else '' }}
 3. Dönen etiketi, desteklenen her iddianın yanına kopyala.
@@ -57,6 +57,7 @@ Bir rapor kaynaklara dayanıyorsa şu sırayla çalış.
 5. Kaynakların kanıtlamadığı her istenen kısmı belirt.
 
 Bir kaynağı yalnızca dönen bir etiket adlandırır. Köşeli parantez içinde kendi etiketini asla yazma.
+Adlandırdığın, listelediğin ya da betimlediğin her belgeye atıf yap. Bir yol, bir dosya hash'i ya da bir başlık belgeyi açmaz.
 Bir atıf başarısız olursa, hatanın verdiği aday metinle bir kez yeniden dene.
 Yine başarısız olursa iddiayı çıkar ya da okunan kaynakların onu doğrulamadığını belirt.
 Okuyucu her etiket için bir kart görür. Kaynak listesini yalnızca kişi isterse ekle.

@@ -9,8 +9,9 @@ Atıf yapılan metin bir çalışma alanı dosyasına gider. `report` becerisi o
 {% if has('cite_documents') %}
 Raporun {% if web_enabled %}bir iç belgeye{% else %}bir belgeye{% endif %} dayanıyorsa {{ tool('cite_documents') }} aracını çağır.
 Ona, bir iddiayı ya da alıntıyı destekleyen her belgeyi ver. Dönen etiketi o iddianın yanında kullan.
-Bir iç belgeye dayanan iddianın yanında bir etiket kullan. Bir belgeyi tanıtmak ya da bir arama sonucunu
-betimlemek için de onu adlandırabilirsin.
+Bir iç belgeye dayanan iddianın yanında bir etiket kullan.
+Bir iç belgeyi adlandırdığında, listelediğinde ya da betimlediğinde ona atıf yap ve etiketini oraya yaz.
+Bir yol, bir dosya hash'i ya da bir başlık atıf değildir. Kişi bir belgeyi yalnızca etiketiyle açar.
 Bir çağrı en fazla 12 atıf alır. Kullandığına atıf yap, bir aramanın döndürdüğü her şeye değil.
 Bir arama ya da okuma, bir iddiayı destekleyen belgeler döndürdüyse o belgelere atıf yap.
 

@@ -48,7 +48,7 @@ Send målet og hele listen over trinn med statusene deres. Et trinn er pending t
 {% if has('cite_pages') or has('cite_documents') %}
 Kildehenvisninger
 
-Når en rapport bygger på kilder, arbeid i denne rekkefølgen.
+Når et svar eller en rapport bygger på kilder eller nevner et dokument, arbeid i denne rekkefølgen.
 1. Les kildeutdraget før du bruker påstandene i det.
 2. Kall {% if has('cite_documents') %}`cite_documents` for et dokument{% endif %}{% if has('cite_documents') and has('cite_pages') %} eller {% endif %}{% if has('cite_pages') %}`cite_pages` for en nettside{% endif %} med nøyaktig kildetekst.{{ ' Siter 5 til 6 ord av brødteksten, uten spørsmålstegn.' if has('cite_documents') else '' }}
 3. Kopier det returnerte henvisningsmerket ved siden av hver påstand det støtter.
@@ -56,6 +56,7 @@ Når en rapport bygger på kilder, arbeid i denne rekkefølgen.
 5. Oppgi hver forespurt del som kildene ikke fastslår.
 
 Bare et returnert henvisningsmerke merker en kilde. Skriv aldri din egen merkelapp i hakeparenteser.
+Henvis til hvert dokument som du navngir, lister opp eller beskriver. En sti, en filhash eller en tittel åpner ikke dokumentet.
 Når en kildehenvisning mislykkes, prøv én gang til med kandidatteksten som feilen gir.
 Hvis den mislykkes igjen, utelat påstanden, eller oppgi at kildene du har lest, ikke bekrefter den.
 Leseren ser et kort for hvert henvisningsmerke. Legg til en kildeliste bare når personen ber om det.

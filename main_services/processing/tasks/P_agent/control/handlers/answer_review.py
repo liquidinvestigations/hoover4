@@ -1,8 +1,9 @@
 """The `answer_drafted` handler: citation findings and semantic checks of one draft.
 
-Deterministic findings come from code. The coordinator runs the existing citation check
-(`citations.needs_repair`) and gives its result in `context.turn["citation"]`. This handler
-adds one more code rule: a bracketed word such as `[newspaste]` at the end of a sentence,
+No built-in definition names this handler, and `AgentRun` does not fire the `answer_drafted`
+hook, so no turn runs it now. A custom definition can still name it, and it validates.
+
+Deterministic findings come from code. One code rule applies: a bracketed word such as `[newspaste]` at the end of a sentence,
 which looks like a source marker and is not a handle that a citation returned. A bracket
 that holds a link, a number or more than one word is ordinary text.
 

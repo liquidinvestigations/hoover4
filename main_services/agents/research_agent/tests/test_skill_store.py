@@ -250,7 +250,8 @@ def test_the_search_and_citation_skills_hold_the_new_lines():
         assert line in search
     citation = render_skill("citation", context("internal_search", NARROW_TOOLS))
     assert CITATION_LINE.format(artefact="answer") in citation
-    assert "You can also name a" in citation
+    assert "When you name, list or describe an internal document, cite it" in citation
+    assert "You can also name a" not in citation
 
 
 # ------------------------------------------------ the technique and stumble skills

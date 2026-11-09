@@ -9,8 +9,9 @@ Textul citat intră într-un fișier din spațiul de lucru. Abilitatea `report` 
 {% if has('cite_documents') %}
 Când raportul tău se sprijină pe {% if web_enabled %}un document intern{% else %}un document{% endif %}, apelează {{ tool('cite_documents') }}.
 Dă-i fiecare document care susține o afirmație sau un citat. Folosește eticheta returnată lângă acea afirmație.
-Folosește o etichetă lângă o afirmație care se sprijină pe un document intern. Poți numi și un
-document pentru a-l identifica sau pentru a descrie un rezultat de căutare.
+Folosește o etichetă lângă o afirmație care se sprijină pe un document intern.
+Când numești, enumeri sau descrii un document intern, citează-l și scrie acolo eticheta lui.
+O cale, un hash de fișier sau un titlu nu este o citare. Persoana deschide un document doar prin eticheta lui.
 Un apel primește cel mult 12 citări. Citează ce ai folosit, nu tot ce a returnat o căutare.
 Când o căutare sau o citire a returnat documente care susțin o afirmație, citează acele documente.
 

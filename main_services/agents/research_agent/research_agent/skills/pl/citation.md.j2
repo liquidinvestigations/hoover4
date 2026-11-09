@@ -9,8 +9,9 @@ Cytowany tekst trafia do pliku w przestrzeni roboczej. Umiejętność `report` m
 {% if has('cite_documents') %}
 Gdy raport opiera się na {% if web_enabled %}dokumencie wewnętrznym{% else %}dokumencie{% endif %}, wywołaj {{ tool('cite_documents') }}.
 Podaj każdy dokument, który potwierdza twierdzenie lub cytat. Użyj zwróconej sygnatury obok tego twierdzenia.
-Użyj sygnatury obok twierdzenia, które opiera się na dokumencie wewnętrznym. Możesz też nazwać
-dokument, aby go określić albo opisać wynik wyszukiwania.
+Użyj sygnatury obok twierdzenia, które opiera się na dokumencie wewnętrznym.
+Gdy nazywasz, wymieniasz lub opisujesz dokument wewnętrzny, zacytuj go i wpisz tam jego sygnaturę.
+Ścieżka, hash pliku ani tytuł nie są cytowaniem. Osoba otwiera dokument tylko przez jego sygnaturę.
 Jedno wywołanie przyjmuje najwyżej 12 cytowań. Cytuj to, czego użyłeś, a nie wszystko, co zwróciło wyszukiwanie.
 Gdy wyszukiwanie lub odczyt zwróciły dokumenty, które potwierdzają twierdzenie, zacytuj te dokumenty.
 
