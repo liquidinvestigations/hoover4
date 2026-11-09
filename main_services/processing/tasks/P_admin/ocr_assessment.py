@@ -258,8 +258,14 @@ class Batch:
         plans = [plan for plan in self.plans[h] if plan["state"] in CURRENT_PLAN_STATES]
         return max(plans, key=lambda plan: plan["revision"]) if plans else None
 
-    def evidence(self, h: str, kind: str, raster_reader=None) -> tuple:
-        """Return the file evidence and a description of each candidate for the report."""
+    def evidence(self, h: str, kind: str, raster_reader=None, payloads: dict | None = None,
+                 read_retired: bool = True) -> tuple:
+        """Return the file evidence and a description of each candidate for the report.
+
+        When `payloads` is a dict, it receives `candidate_id -> dict(pages, words)` with the
+        recovered page texts and the stored word boxes. Reconciliation publishes these values.
+        With `read_retired` false, a retired saved raster PDF is not downloaded.
+        """
         from tasks.P3_parse_files.pdf_parts import source_digest
         detection_kind = kind
         parts = self.parts.get((h, kind), [])
@@ -294,7 +300,9 @@ class Batch:
                  for page in plan.get("pages", [])})
         candidates, described = [], {}
 
-        def add(candidate, **extra):
+        def add(candidate, texts=None, words=None, **extra):
+            if payloads is not None:
+                payloads[candidate.candidate_id] = dict(pages=dict(texts or {}), words=words)
             candidates.append(candidate)
             described[candidate.candidate_id] = dict(form=candidate.form, record=candidate.record,
                 engine=candidate.engine, languages=candidate.languages, retired=candidate.retired,
@@ -322,7 +330,9 @@ class Batch:
                 engine=engine, languages=languages, source_kind="image",
                 pages=[] if problem else [recovery.PageText.of(1, raw.get("text") or "")],
                 retired=superseded_by_automatic, word_boxes=isinstance(raw.get("words"), list) and bool(raw.get("words")),
-                artifacts=tuple(image_artifacts.get((engine, languages), ())), recovery=problem))
+                artifacts=tuple(image_artifacts.get((engine, languages), ())), recovery=problem),
+                texts={} if problem else {1: raw.get("text") or ""},
+                words=raw.get("words") if isinstance(raw.get("words"), list) else None)
         variants = defaultdict(list)
         for part in self.ocr_parts.get(h, []):
             variants[(part["source_kind"], part["engine"], part["languages"], part["segmentation"],
@@ -330,10 +340,11 @@ class Batch:
         part_identities = set()
         for (source_kind, engine, languages, segmentation, deleted), members in sorted(variants.items()):
             part_identities.add((source_kind, engine, languages))
-            pages, artifacts = {}, []
+            pages, artifacts, texts = {}, [], {}
             for part in sorted(members, key=lambda item: item["part_index"]):
                 for number, text in zip(part["page_numbers"], part["page_texts"]):
                     pages[int(number)] = recovery.PageText.of(int(number), text)
+                    texts[int(number)] = text
                 if part["blob_key"]:
                     artifacts.append(_artifact(self.bucket, self.cd, h, part["blob_key"], part["first_page"],
                                                part["last_page"], part["size_bytes"], part["text_layer"]))
@@ -342,7 +353,7 @@ class Batch:
             add(recovery.make_candidate(form=recovery.FORM_PDF_PARTS,
                 record=f"pdf_ocr_parts|{segmentation}|{'tombstone' if deleted else 'live'}",
                 engine=engine, languages=languages, source_kind=source_kind, pages=list(pages.values()),
-                retired="tombstone" if deleted else "", artifacts=tuple(artifacts)))
+                retired="tombstone" if deleted else "", artifacts=tuple(artifacts)), texts=texts)
         for row in self.results.get(h, []):
             if row["source_kind"] == "image" or row["form"] != "raster" and \
                     (row["source_kind"], row["engine"], row["languages"]) in part_identities:
@@ -351,8 +362,8 @@ class Batch:
             artifact = _artifact(self.bucket, self.cd, h, row["blob_key"], 1, max(1, int(row["page_count"] or 1)),
                                  row["size_bytes"]) if row["blob_key"] else None
             if row["form"] == "raster":
-                pages, problem = [], "raster_not_read"
-                if artifact is not None and raster_reader is not None:
+                pages, problem, texts = [], "raster_not_read", None
+                if artifact is not None and raster_reader is not None and (read_retired or not retired):
                     texts, problem = raster_reader(self.bucket, row["blob_key"], self.needs.get((h, row["source_kind"])))
                     pages = [recovery.PageText.of(index, text) for index, text in enumerate(texts or [], 1)]
                     if texts is not None and artifact is not None:
@@ -361,7 +372,8 @@ class Batch:
                     problem = "raster_without_object"
                 add(recovery.make_candidate(form=recovery.FORM_RASTER_PDF, record="pdf_ocr_results|raster",
                     engine=row["engine"], languages=row["languages"], source_kind=row["source_kind"], pages=pages,
-                    retired=retired, artifacts=(artifact,) if artifact else (), recovery=problem))
+                    retired=retired, artifacts=(artifact,) if artifact else (), recovery=problem),
+                    texts={index: text for index, text in enumerate(texts or [], 1)} if not problem else {})
             else:
                 add(recovery.make_candidate(form=recovery.FORM_OVERLAY_PDF, record="pdf_ocr_results|overlay",
                     engine=row["engine"], languages=row["languages"], source_kind=row["source_kind"],
@@ -371,13 +383,14 @@ class Batch:
                 retired = "" if current is not None and plan["plan_digest"] == current["plan_digest"] else "superseded"
             else:
                 retired = "superseded" if plan["state"] == "superseded" else ""
-            by_identity = defaultdict(lambda: dict(pages={}, artifacts=[], words=False))
+            by_identity = defaultdict(lambda: dict(pages={}, artifacts=[], words=False, texts={}, boxes=None))
             for _, output in sorted(self.outputs.get((h, plan["plan_digest"]), []), key=lambda item: item[0]):
                 if "engine" not in output or "languages" not in output:
                     continue
                 entry = by_identity[(output["engine"], output["languages"])]
                 for number, text in output.get("pages") or []:
                     entry["pages"][int(number)] = recovery.PageText.of(int(number), text)
+                    entry["texts"][int(number)] = text
                 part = output.get("part") or dict(first_page=1, last_page=1)
                 if output.get("blob_key"):
                     layer = next((item["text_layer"] for item in self.ocr_parts.get(h, [])
@@ -386,16 +399,18 @@ class Batch:
                                                         part["last_page"], output.get("size_bytes"), layer))
                 if output.get("raw_json"):
                     try:
-                        entry["words"] = isinstance(json.loads(output["raw_json"]).get("words"), list)
+                        boxes = json.loads(output["raw_json"]).get("words")
+                        entry["words"] = isinstance(boxes, list)
+                        entry["boxes"] = boxes if isinstance(boxes, list) else None
                     except (ValueError, AttributeError):
                         pass
             source_kind = plan["plan"].get("source_kind", kind)
             for (engine, languages), entry in sorted(by_identity.items()):
                 add(recovery.make_candidate(form=recovery.FORM_AUTOMATIC,
-                    record=f"automatic_ocr_output|{plan['plan_digest']}|{plan['state']}", engine=engine,
+                    record=f"automatic_ocr_output|{plan['plan_digest']}", engine=engine,
                     languages=languages, source_kind=source_kind, pages=list(entry["pages"].values()),
                     retired=retired, word_boxes=entry["words"], artifacts=tuple(entry["artifacts"]),
-                    plan_digest=plan["plan_digest"]), plan_state=plan["state"])
+                    plan_digest=plan["plan_digest"]), texts=entry["texts"], words=entry["boxes"], plan_state=plan["state"])
         evidence = recovery.FileEvidence(self.cd, h, kind, revision, eligible, tuple(detections), tuple(candidates),
                                          applied, tuple(sorted(self.published.get(h, ()))), ranges)
         return evidence, described

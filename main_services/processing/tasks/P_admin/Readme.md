@@ -308,6 +308,15 @@ The historical update verifies the exact returned plan identities after strict d
 Both paths require durable output before they record applied state.
 Retired manual-setting workflows remain available only for recorded legacy histories.
 
+The selector counts live sources without an applied plan of the current policy and an accepted capability digest.
+The accepted digests are the current digest and the digests of the earlier `ocr_plan` versions in `COMPATIBLE_PLAN_VERSIONS`.
+`ocr_plan` version 2 adds the reconciliation record, and version 1 plans hold the same output.
+So the version change selects no applied file.
+Files without an applied plan stay selected, which includes historical OCR output and an incomplete reconciliation.
+A change of another stage version in the capability digest selects every applied file again.
+Execution then reconciles each file and requests OCR only for pages without a current compatible result.
+The raised `ocr_plan` version also retries files with an `ocr_plan` error once through the failed files step.
+
 ## Independent entity updates
 
 The named-entity update follows table, archive, and OCR text-producing updates.

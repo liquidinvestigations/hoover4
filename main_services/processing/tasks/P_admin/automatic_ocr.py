@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from temporalio import activity
 
-from tasks.automatic_ocr import POLICY_VERSION, capabilities, digest, capability_digest
+from tasks.automatic_ocr import POLICY_VERSION, accepted_capability_digests, capabilities, capability_digest
 from tasks.heartbeat import with_heartbeat
 
 
@@ -22,19 +22,27 @@ class AutomaticOcrScope:
 
 
 def hash_sql():
-    """Select live OCR sources without a matching applied automatic manifest."""
+    """Select live OCR sources without a matching applied automatic manifest.
+
+    An applied plan matches when its policy is current and its capability digest is the
+    current digest or the digest of a compatible earlier plan version
+    (`COMPATIBLE_PLAN_VERSIONS`). A file without an applied plan stays selected, which
+    includes historical OCR output and an incomplete reconciliation.
+    """
     return ("SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND is_deleted = 0 "
         "AND (hash IN (SELECT image_hash FROM image WHERE collection_dataset = {cd:String}) "
         "OR hash IN (SELECT hash FROM pdf_metadata WHERE collection_dataset = {cd:String} AND ifNull(defect, '') = '') "
         "OR hash IN (SELECT hash FROM pdf_previews WHERE collection_dataset = {cd:String})) "
         "AND hash NOT IN (SELECT hash FROM automatic_ocr_plans FINAL WHERE collection_dataset = {cd:String} "
         "GROUP BY hash HAVING argMax(state, revision) = 'applied' AND argMax(policy_version, revision) = {policy:UInt16} "
-        "AND argMax(capability_digest, revision) = {cap:String})")
+        "AND argMax(capability_digest, revision) IN {caps:Array(String)})")
 
 
 def target():
     from tasks.P3_parse_files.ocr_detection import OCR_DETECTION_VERSION
-    return dict(policy=POLICY_VERSION, cap=capability_digest(capabilities()), detector=OCR_DETECTION_VERSION)
+    installed = capabilities()
+    return dict(policy=POLICY_VERSION, cap=capability_digest(installed), caps=accepted_capability_digests(installed),
+                detector=OCR_DETECTION_VERSION)
 
 
 @activity.defn
@@ -107,7 +115,7 @@ def verify_automatic_ocr_files(params: AutomaticOcrScope) -> None:
     """Verify durable dependencies and pin the exact completed automatic plan."""
     from database.clickhouse import get_collection_client
     from tasks.P3_parse_files.automatic_ocr import (write_plan, read_outputs, publication_rows,
-        verify_text_publication, verify_artifacts)
+        verify_text_publication, verify_artifacts, plan_sources)
     from tasks.P_admin.updates.table_receipts import TableReceiptParams, verify_stages
     from tasks.ocr_targets import _index_states
     from tasks.text_sources import ocr_extracted_by, pdf_ocr_extracted_by
@@ -142,7 +150,7 @@ def verify_automatic_ocr_files(params: AutomaticOcrScope) -> None:
             if any(values.get(h) == frozenset({-1}) for values in indexed):
                 raise RuntimeError("Automatic OCR has incomplete indexed page coverage or attributes")
             extractor = ocr_extracted_by if plan["source_kind"] == "image" else pdf_ocr_extracted_by
-            sources = {extractor(item["engine"], item["languages"]) for page in plan["pages"] for item in page["passes"]}
+            sources = plan_sources(plan)
             output = read_outputs(client, plan)
             bodies = {}
             for item in output.values():

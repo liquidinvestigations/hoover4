@@ -65,6 +65,21 @@ def expected_outputs(plan, parts):
     return jobs
 
 
+def expected_identities(plan, parts):
+    """The identities of every staged output that a complete publication of the plan needs."""
+    from tasks.P3_parse_files.ocr_reconciliation import adoption_jobs
+    recognition = expected_outputs(plan, parts)
+    return {job[0] for job in recognition} | {job["identity"] for job in adoption_jobs(plan, parts, recognition)}
+
+
+def plan_sources(plan):
+    """The OCR text sources that the plan publishes: new recognition passes and adopted results."""
+    from tasks.text_sources import ocr_extracted_by, pdf_ocr_extracted_by
+    extractor = ocr_extracted_by if plan["source_kind"] == "image" else pdf_ocr_extracted_by
+    return ({extractor(item["engine"], item["languages"]) for page in plan["pages"] for item in page["passes"]}
+            | {extractor(item["engine"], item["languages"]) for page in plan["pages"] for item in page.get("adopted", [])})
+
+
 def pinned_plan(client, dataset, h, op_id):
     """Read the operation's serialized first executable plan claim."""
     receipts = client.query("SELECT output_identity, receipt_version FROM processing_output_receipts FINAL "
@@ -168,6 +183,10 @@ def _execute_file(params, file):
             if [row["page_id"] for row in rows] != sorted(expected):
                 raise RuntimeError("Automatic OCR detection does not cover every eligible page")
             plan = make_plan(cd, h, revision, kind, rows, capabilities(), PDF_SEGMENTATION_VERSION)
+            from tasks.P3_parse_files.ocr_reconciliation import bounded_ranges, reconcile_plan
+            # Earlier output is classified before any recognition request, so a capability
+            # failure blocks only the pages without an accepted earlier result.
+            plan = reconcile_plan(client, params, file, kind, plan, [(1, 1)] if kind == "image" else bounded_ranges(parts))
             blocked = [page for page in plan["pages"] if page["status"] in ("incomplete", "unsupported", "failed")]
             if blocked:
                 write_plan(client, plan, blocked[0]["status"], blocked[0]["reason"])
@@ -197,6 +216,8 @@ def _execute_file(params, file):
             return plan["plan_digest"]
         outputs = read_outputs(client, plan)
         jobs = expected_outputs(plan, parts)
+        from tasks.P3_parse_files.ocr_reconciliation import adoption_jobs
+        adoptions = adoption_jobs(plan, parts, jobs)
         clock = HeartbeatClock()
         for identity, engine, languages, part, pages in jobs:
             clock.beat(f"Automatic OCR {h[:8]} {part['part_index']}")
@@ -211,10 +232,26 @@ def _execute_file(params, file):
                               blob_key=part["s3_path"].split("/", 3)[-1], size_bytes=part["size_bytes"])
             save_output(client, plan, identity, output)
             outputs[identity] = output
-        if set(outputs) != {job[0] for job in jobs}:
+        pending = [job for job in adoptions if job["identity"] not in outputs]
+        if pending:
+            stage_adoptions(client, params, file, plan, pending, outputs, clock)
+        if set(outputs) != {job[0] for job in jobs} | {job["identity"] for job in adoptions}:
             raise RuntimeError("Automatic OCR staged output does not cover the pinned plan")
         publish(client, params, file, plan, outputs)
     return plan["plan_digest"]
+
+
+def stage_adoptions(client, params, file, plan, pending, outputs, clock):
+    """Stage adopted earlier results after recognition output. No OCR request runs."""
+    import tempfile
+    from tasks.P3_parse_files.ocr_reconciliation import adoption_output, load_payloads
+    with tempfile.TemporaryDirectory(prefix="hoover4-ocr-adoption-") as folder:
+        payloads, candidates = load_payloads(client, params, file, plan, folder)
+        for job in pending:
+            clock.beat(f"Automatic OCR adoption {file.item_hash[:8]} {job['part']['part_index']}")
+            output = adoption_output(client, params, file, plan, job, payloads, candidates, outputs, folder)
+            save_output(client, plan, job["identity"], output)
+            outputs[job["identity"]] = output
 
 
 def execute_file(params, file):
@@ -384,7 +421,7 @@ def apply_automatic_state_command(client, command):
         raise RuntimeError("Automatic OCR publication metadata is absent")
     metadata = json.loads(metadata[0][0])
     outputs = read_outputs(client, plan)
-    if set(outputs) != {job[0] for job in expected_outputs(plan, plan["source_parts"])}:
+    if set(outputs) != expected_identities(plan, plan["source_parts"]):
         raise RuntimeError("Automatic OCR publication has incomplete staged requests")
     if metadata["output_digest"] != values["output_digest"] or digest(dict(outputs=outputs, languages=metadata["languages"])) != values["output_digest"]:
         raise RuntimeError("Automatic OCR staged output changed before publication")
@@ -445,23 +482,19 @@ def _publish_serialized(client, params, file, plan, outputs, source_languages):
     verify_text_publication(client, params, file.item_hash, sources)
     for (engine, languages), values in groups.items():
         with_engine = dataclasses.replace(params, engine=engine)
-        if plan["source_kind"] == "image":
-            value = values[0]
-            if "blob_key" not in value:
-                continue
-            parts = [dict(part_index=1, first_page=1, last_page=1)]
-        else:
-            parts = [value["part"] for value in values]
-        for value, part in zip(values, parts):
+        rows = artifact_rows(plan["source_kind"], values)
+        if not rows:
+            continue
+        for value, part, pages in rows:
             part_file = dataclasses.replace(file, source_kind=plan["source_kind"],
                 part_index=part["part_index"], first_page=part["first_page"], last_page=part["last_page"])
-            store_part(client, with_engine, part_file, languages, key=value["blob_key"],
-                       size=value["size_bytes"], pages=value["pages"], borrowed=value.get("borrowed", False))
+            store_part(client, with_engine, part_file, languages, key=value.get("blob_key", ""),
+                       size=value.get("size_bytes", 0), pages=pages, borrowed=value.get("borrowed", False))
         write_row(client, "pdf_ocr_results", dict(collection_dataset=params.collection_dataset,
             pdf_hash=file.item_hash, engine=engine, languages=languages, source_kind=plan["source_kind"],
-            form="overlay", blob_key=values[0]["blob_key"] if len(values) == 1 else "", blob_hash="",
-            page_count=max(part["last_page"] for part in parts), size_bytes=sum(value["size_bytes"] for value in values),
-            run_time_ms=0, part_count=len(parts), text_complete=1))
+            form="overlay", blob_key=rows[0][0].get("blob_key", "") if len(rows) == 1 else "", blob_hash="",
+            page_count=max(part["last_page"] for _, part, _ in rows), size_bytes=sum(value.get("size_bytes", 0) for value, _, _ in rows),
+            run_time_ms=0, part_count=len(rows), text_complete=1))
     from tasks.P_admin.ocr_languages import EXTRACTED_BY_TABLES
     for table in EXTRACTED_BY_TABLES:
         if table != "text_content":
@@ -475,6 +508,31 @@ def _publish_serialized(client, params, file, plan, outputs, source_languages):
     pdf_pairs = {(item["engine"], item["languages"]) for item in outputs.values() if item.get("blob_key")}
     retire_superseded(client, params, file.item_hash, set(sources), pdf_pairs)
     supersede_prior_plans(client, plan)
+
+
+def artifact_rows(source_kind, values):
+    """One `(artifact output, part, pages)` row for each part of one `(engine, languages)` pair.
+
+    A part with a recognition output and an adoption output has one artifact: the
+    assembled adoption artifact, else the recognition artifact. Its pages join the pages of
+    both outputs. An image without a searchable PDF has no row.
+    """
+    if source_kind == "image":
+        value = next((item for item in values if item.get("blob_key")), None)
+        if value is None:
+            return []
+        pages = sorted((int(page), text) for item in values for page, text in item["pages"])
+        return [(value, dict(part_index=1, first_page=1, last_page=1), pages)]
+    parts = {}
+    for value in values:
+        parts.setdefault(value["part"]["part_index"], []).append(value)
+    rows = []
+    for _, members in sorted(parts.items()):
+        final = (next((item for item in members if item.get("assembled")), None)
+                 or next((item for item in members if item.get("blob_key")), members[0]))
+        pages = sorted((int(page), text) for item in members for page, text in item["pages"])
+        rows.append((final, final["part"], pages))
+    return rows
 
 
 def supersede_prior_plans(client, plan):

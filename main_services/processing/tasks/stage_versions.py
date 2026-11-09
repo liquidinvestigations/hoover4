@@ -46,7 +46,8 @@ STAGE_VERSIONS: Dict[str, int] = {
     "ocr_image": 2,
     "ocr_pdf": 2,
     "ocr_detection": OCR_DETECTION_VERSION,
-    "ocr_plan": 1,
+    # Version 2 adds the historical OCR reconciliation manifest. `COMPATIBLE_PLAN_VERSIONS` keeps version 1 plans.
+    "ocr_plan": 2,
     "pdf_text_layer": PDF_TEXT_LAYER_VERSION,
     "audio": 1,
     "video": 1,

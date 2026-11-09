@@ -15,6 +15,7 @@ Selector contracts, one for each step:
   reconciled.
 * `ocr` selects live image and PDF sources without a matching applied automatic plan.
   Policy, detector, capability, stage, and input changes make prior output selectable.
+  An applied plan of a compatible earlier `ocr_plan` version stays current.
   Settlement verifies exact publication identities and durable dependent output.
 * `entities` selects earlier provider completion, changed source identities, or missing verified search publication.
   Settlement verifies current completion, text attributes, and searchable terms.

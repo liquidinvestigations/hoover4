@@ -62,8 +62,17 @@ Keep unknown script incomplete and missing coverage unsupported.
 Publish complete plan identities and staged request output before retiring superseded normal variants.
 Retain diagnostic provenance.
 Index published output presence separately from detection.
+Classify stored OCR output with the historical OCR classifier before any recognition request.
+Publish earlier text whose language set contains the detected language under the detected-language identity, without OCR.
+Keep each engine's compatible result. Keep earlier output under its original identity when the language is unknown.
+Replace earlier text with an empty result when detection finds no text.
+Do not restore output that an earlier automatic publication retired.
+Fail a file and keep its earlier output when a required page text or artifact cannot be recovered.
+Build searchable PDFs of adopted pages from stored word boxes or stored PDF pages without OCR.
+Pin the adopted candidates, their content digests and the recovery policy version in the claimed plan.
+Reject adopted output after a later source or output stage change.
 
-Source ownership uses [the planner](../../main_services/processing/tasks/automatic_ocr.py) and [automatic execution](../../main_services/processing/tasks/P3_parse_files/automatic_ocr.py).
+Source ownership uses [the planner](../../main_services/processing/tasks/automatic_ocr.py), [automatic execution](../../main_services/processing/tasks/P3_parse_files/automatic_ocr.py) and [reconciliation](../../main_services/processing/tasks/P3_parse_files/ocr_reconciliation.py).
 
 ## F-doc-05
 

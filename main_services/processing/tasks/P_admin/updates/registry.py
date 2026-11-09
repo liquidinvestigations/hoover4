@@ -121,11 +121,13 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "selected for OCR is examined in bounded batches.",
         runs="Detection, then the search attributes of these files"),
     UpdateStep(
-        step_id="ocr", scope=SCOPE_DATASET, version=2,
+        step_id="ocr", scope=SCOPE_DATASET, version=3,
         stages=("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf", "ocr_detection", "ocr_plan"),
         automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
         title="OCR",
-        explanation="{files} files need automatic OCR. Detected pages select installed models. Complete replacement output removes superseded variants.",
+        explanation="{files} files need automatic OCR. Earlier OCR text that contains the detected language is kept "
+                    "without a new OCR request. Other pages get OCR with the installed model of the detected language. "
+                    "Superseded variants are removed after the replacement is complete.",
         runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
     UpdateStep(
         step_id="pdf_text", scope=SCOPE_DATASET, version=2, stages=("pdf_text_layer",),

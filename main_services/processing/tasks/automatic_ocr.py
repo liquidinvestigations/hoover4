@@ -89,15 +89,56 @@ def capabilities() -> dict:
     return _capabilities(int(time.monotonic() // 60))
 
 
-def capability_digest(installed: dict) -> str:
+#: Earlier `ocr_plan` versions whose applied plans satisfy the current output contract.
+#: Version 1 plans ran new OCR for each page. Version 2 adds the reconciliation manifest
+#: and keeps the same text and artifacts for the same detection, capabilities and stages.
+COMPATIBLE_PLAN_VERSIONS = (1,)
+#: The stages, besides `ocr_plan`, whose versions name the stored OCR output contract.
+OUTPUT_STAGES = ("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf_preview", "pdf", "index_text")
+
+
+def _contract_fields(plan_version: int | None = None) -> dict:
     from tasks.P3_parse_files.ocr_detection import OCR_DETECTION_VERSION
     from tasks.text_sources import PDF_SEGMENTATION_VERSION, PDF_TEXT_LAYER_VERSION
     from tasks.stage_versions import STAGE_VERSIONS
     from tasks.ocr_pdf_client import service_configured
-    versions = {stage: STAGE_VERSIONS[stage] for stage in
-                ("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf_preview", "pdf", "ocr_plan", "index_text")}
-    return digest(dict(searchable_pdf=service_configured(), artifact_segmentation=ARTIFACT_SEGMENTATION_VERSION, artifact_page_batch=PAGE_BATCH, stages=versions, engines={engine: installed.get(engine, []) for engine in ("tesseract", "easyocr")}, detector=OCR_DETECTION_VERSION,
-                       segmentation=PDF_SEGMENTATION_VERSION, pdf_text_layer=PDF_TEXT_LAYER_VERSION))
+    versions = {stage: STAGE_VERSIONS[stage] for stage in OUTPUT_STAGES}
+    versions["ocr_plan"] = STAGE_VERSIONS["ocr_plan"] if plan_version is None else plan_version
+    return dict(searchable_pdf=service_configured(), artifact_segmentation=ARTIFACT_SEGMENTATION_VERSION,
+                artifact_page_batch=PAGE_BATCH, stages=versions, detector=OCR_DETECTION_VERSION,
+                segmentation=PDF_SEGMENTATION_VERSION, pdf_text_layer=PDF_TEXT_LAYER_VERSION)
+
+
+def capability_digest(installed: dict, plan_version: int | None = None) -> str:
+    """The plan identity of installed models and stage versions. `plan_version` replaces the `ocr_plan` version."""
+    return digest(dict(_contract_fields(plan_version),
+                       engines={engine: installed.get(engine, []) for engine in ("tesseract", "easyocr")}))
+
+
+def accepted_capability_digests(installed: dict) -> list[str]:
+    """The current capability digest, then the digests of compatible earlier plan versions."""
+    return [capability_digest(installed)] + [capability_digest(installed, version) for version in COMPATIBLE_PLAN_VERSIONS]
+
+
+def output_contract() -> str:
+    """The stored output contract without installed models and without the plan version."""
+    fields = _contract_fields()
+    fields["stages"] = {stage: version for stage, version in fields["stages"].items() if stage != "ocr_plan"}
+    return digest(fields)
+
+
+def plan_output_contract(plan: dict) -> str:
+    """The output contract of a stored plan, or an empty string when it cannot be proved.
+
+    A plan of version 2 records its contract. An earlier plan proves the current contract
+    only when its capability digest equals a compatible digest of its own installed models.
+    """
+    if plan.get("output_contract"):
+        return plan["output_contract"]
+    installed = plan.get("capabilities") or {}
+    if any(capability_digest(installed, version) == plan.get("capability_digest") for version in COMPATIBLE_PLAN_VERSIONS):
+        return output_contract()
+    return ""
 
 
 def resolved_script(found: dict) -> bool:
@@ -175,4 +216,18 @@ def make_plan(dataset: str, file_hash: str, source_revision: str, kind: str,
                 capability_digest=capability_digest(installed), capabilities=installed, pages=pages, expected_pages=len(pages),
                 page_digest=digest([page["page_digest"] for page in pages]))
     plan["plan_digest"] = digest(plan)
+    return plan
+
+
+def seal_plan(plan: dict) -> dict:
+    """Recompute the page digests and the plan digest after a change to the page decisions.
+
+    `source_parts` stays outside the digest, as in `make_plan`. The reconciliation
+    diagnostics stay outside too, because they do not change the output.
+    """
+    for page in plan["pages"]:
+        page.pop("page_digest", None)
+        page["page_digest"] = digest(page)
+    plan["page_digest"] = digest([page["page_digest"] for page in plan["pages"]])
+    plan["plan_digest"] = digest({key: value for key, value in plan.items() if key not in ("plan_digest", "source_parts", "reconciliation_diagnostics")})
     return plan

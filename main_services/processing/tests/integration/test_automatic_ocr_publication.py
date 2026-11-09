@@ -155,7 +155,9 @@ def test_new_failed_plan_retains_previously_published_presence(collection, tmp_p
         seed(client)
     automatic.execute_file(scope, file)
     scope.op_id = "replacement-operation"
-    monkeypatch.setattr(automatic, "capabilities", lambda: {"tesseract": ["eng", "Latin", "ron"], "easyocr": []})
+    # A stage version change rejects the published output, so the next plan needs new OCR.
+    from tasks import stage_versions
+    monkeypatch.setitem(stage_versions.STAGE_VERSIONS, "ocr_image", stage_versions.STAGE_VERSIONS["ocr_image"] + 1)
     monkeypatch.setattr(automatic, "image_output", lambda *args: (_ for _ in ()).throw(RuntimeError("service unavailable")))
     with pytest.raises(RuntimeError, match="service unavailable"):
         automatic.execute_file(scope, file)
@@ -362,6 +364,9 @@ def test_distinct_operation_can_replace_a_pinned_plan_and_fences_old_retry(colle
     first = automatic.execute_file(scope, file)
     scope.op_id = "next-operation"
     monkeypatch.setattr(automatic, "capabilities", lambda: {"tesseract": [], "easyocr": ["en"]})
+    # A stage version change rejects the published output, so the next plan needs new OCR.
+    from tasks import stage_versions
+    monkeypatch.setitem(stage_versions.STAGE_VERSIONS, "ocr_image", stage_versions.STAGE_VERSIONS["ocr_image"] + 1)
     second = automatic.execute_file(scope, file)
     assert first != second
     assert calls == [("tesseract", "Latin"), ("easyocr", "en")]
@@ -381,9 +386,14 @@ def test_same_plan_retry_cannot_lower_the_published_epoch(collection, tmp_path, 
     first = automatic.execute_file(scope, file)
     scope.op_id = "second-operation"
     monkeypatch.setattr(automatic, "capabilities", lambda: {"tesseract": [], "easyocr": ["en"]})
+    from tasks import stage_versions
+    version = stage_versions.STAGE_VERSIONS["ocr_image"]
+    # A stage version change rejects the published output, so the second plan needs new OCR.
+    monkeypatch.setitem(stage_versions.STAGE_VERSIONS, "ocr_image", version + 1)
     second = automatic.execute_file(scope, file)
     assert first != second
     scope.op_id = "third-operation"
+    monkeypatch.setitem(stage_versions.STAGE_VERSIONS, "ocr_image", version)
     monkeypatch.setattr(automatic, "capabilities", lambda: {"tesseract": ["eng", "Latin"], "easyocr": ["en"]})
     assert automatic.execute_file(scope, file) == first
     scope.op_id = "operation"
@@ -448,6 +458,9 @@ def test_paused_old_publication_cannot_overwrite_a_newer_plan(collection, tmp_pa
                 old = asyncio.create_task(asyncio.to_thread(automatic.execute_file, scope, file))
                 assert await asyncio.to_thread(entered.wait, 15), "The old writer did not reach its mutation boundary"
                 monkeypatch.setattr(automatic, "capabilities", lambda: {"tesseract": [], "easyocr": ["en"]})
+                # A stage version change rejects the staged output of the paused plan.
+                from tasks import stage_versions
+                monkeypatch.setitem(stage_versions.STAGE_VERSIONS, "ocr_image", stage_versions.STAGE_VERSIONS["ocr_image"] + 1)
                 import dataclasses
                 new_scope = dataclasses.replace(scope, op_id="new-operation")
                 new = asyncio.create_task(asyncio.to_thread(automatic.execute_file, new_scope, file))
@@ -485,7 +498,7 @@ def test_automatic_selection_preserves_known_pdf_defect_skips(collection):
                       column_names=["collection_dataset", "container_hash", "path", "hash"])
         client.insert("pdf_metadata", [["dataset", "encrypted", "password"], ["dataset", "healthy", None]],
                       column_names=["collection_dataset", "hash", "defect"])
-        assert client.query(hash_sql(), parameters={"cd": "dataset", "policy": 1, "cap": "current"}).result_rows == [("healthy",)]
+        assert client.query(hash_sql(), parameters={"cd": "dataset", "policy": 1, "cap": "current", "caps": ["current"]}).result_rows == [("healthy",)]
 
 
 def test_direct_automatic_run_prepares_an_uncommon_image_before_detection(collection, monkeypatch):

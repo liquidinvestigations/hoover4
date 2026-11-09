@@ -118,6 +118,32 @@ Automatic PDF artifact ranges contain at most 32 pages, independently of legacy 
 The builder preserves source content and adds invisible OCR text.
 Image PDFs use stored OCR words and require at least five qualifying words.
 
+## Earlier OCR output is reconciled before new OCR
+
+[Reconciliation](ocr_reconciliation.py) runs after the planner and before the plan is claimed.
+It reads the stored OCR output of the file with the reader of `assess-ocr-recovery` and calls [the classifier](../ocr_recovery.py).
+A page keeps earlier text when the stored language set contains the detected language.
+The text is published under the detected-language identity, for example `eng+deu` with German as `tesseract` `deu`.
+The plan records the original engine and language set, the reason, and the candidate content digest.
+A page with unknown language keeps earlier output under its original identity.
+Each engine keeps its own compatible result.
+Successful detection without text replaces earlier OCR text with an empty result.
+Output that an earlier automatic publication retired is reported and not restored.
+Only the pages without a compatible earlier result request OCR.
+
+Adopted text is staged in `automatic_ocr_output` with its own request identity.
+An image PDF is built again from stored word boxes.
+A PDF part is assembled with qpdf from stored OCR pages and source pages, so native text and pages without OCR stay.
+When a pass also has new OCR in the same part, the part is assembled from the new artifact and the stored pages.
+A stored part that covers the whole part with the same identity is referenced without a copy.
+Automatic publication deletes no object, so a referenced object stays.
+
+A file fails without a change when a compatible page text or artifact cannot be recovered.
+Missing or failed detection fails the file and keeps earlier output.
+Earlier automatic output becomes stale after a source revision change or an output stage version change.
+Earlier output outside automatic plans becomes stale when an OCR or image PDF stage version changes.
+The plan digest excludes diagnostic lists, so the same decisions give the same plan identity.
+
 Publication verifies stored text and artifact sizes before it removes superseded normal variants.
 Diagnostic plans and request payloads remain stored.
 Entity extraction, signal extraction, embedding, and indexing run before the plan becomes applied.
