@@ -9,8 +9,8 @@ Contract
                       "failed_downloads", ...}``
 
 Byte-for-byte the same contract as ``main_services/ocr_tesseract``, because
-``tasks/ocr_client.py`` builds one request shape and posts it to whichever engine a
-dataset asked for. It parses `psm` off the request and ignores it: page segmentation is
+``tasks/ocr_client.py`` builds one request shape and posts it to the engine that the
+automatic OCR plan chose. It parses `psm` off the request and ignores it: page segmentation is
 a Tesseract concept with no EasyOCR equivalent, and rejecting a field the shared client
 always sends would make the two engines un-substitutable at the call site for no gain.
 
@@ -51,6 +51,8 @@ from fastapi import FastAPI, HTTPException, Response
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from language_groups import installed_languages, loadable_languages
+
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 log = logging.getLogger("easyocr_server")
 
@@ -66,11 +68,6 @@ OCR_QUEUE_DEPTH = int(os.getenv("OCR_QUEUE_DEPTH", "8"))
 
 #: How many distinct language sets keep a warm Reader. Each one holds GPU memory.
 OCR_READER_CACHE_SIZE = int(os.getenv("OCR_READER_CACHE_SIZE", "3"))
-
-#: Language sets baked into the image, and the ones /health advertises. The models for
-#: anything else are fetched on first use, which is why this is also what the deploy
-#: configures: an unlisted language works, but pays a download on the first page.
-EASYOCR_LANGUAGES = os.getenv("EASYOCR_LANGUAGES", "en")
 
 #: Where the model weights live. The compose overlay bind-mounts a host folder here, so
 #: a reset that preserves caches also preserves these. The mount hides the weights that
@@ -142,18 +139,14 @@ FAILED_DOWNLOADS_LIMIT = 20
 _failed_downloads: "OrderedDict[str, str]" = OrderedDict()
 
 
-def _supported_languages() -> List[str]:
-    """Return the language codes that the installed easyocr package can read.
-
-    The list comes from the package, so it includes languages whose models the image did
-    not preload. Those download on first use.
-    """
+def _package_languages() -> set:
+    """The language codes that the installed easyocr package lists, or an empty set."""
     try:
         from easyocr.config import all_lang_list
     except Exception:
         log.warning("easyocr language list is not importable", exc_info=True)
-        return []
-    return sorted(set(all_lang_list))
+        return set()
+    return set(all_lang_list)
 
 
 def _record_failed_download(key: tuple, exc: Exception) -> None:
@@ -206,8 +199,8 @@ def _get_reader(codes: List[str]):
             # no download was tried.
             raise
         except Exception as exc:
-            # The models of a language that the image did not preload download here. A
-            # host without internet access fails at this point.
+            # A model file that is absent from the cache folder downloads here. A host
+            # without internet access fails at this point.
             log.warning("EasyOCR reader for %s failed to build", key, exc_info=True)
             _record_failed_download(key, exc)
             raise ReaderBuildError(f"the models for {'+'.join(key)} could not be loaded or downloaded: {exc}") from exc
@@ -304,13 +297,15 @@ def health():
         log.warning("easyocr is not importable", exc_info=True)
         gpu = False
         status = "unhealthy"
+    known = _package_languages()
     return {
         "status": status,
         "engine": "easyocr",
-        # Preloaded in the image. These work without internet access.
-        "languages_available": _split_languages(EASYOCR_LANGUAGES),
-        # Readable by the installed package. The others download on first use.
-        "languages_supported": _supported_languages(),
+        # The codes whose weights the image holds. These work without internet access.
+        "languages_available": [code for code in loadable_languages() if code in known],
+        # The installed groups (language_groups.py). The planner reads this list, and it
+        # is part of the identity of each automatic OCR plan.
+        "languages_supported": [code for code in installed_languages() if code in known],
         "failed_downloads": [
             {"languages": languages, "error": error}
             for languages, error in list(_failed_downloads.items())
@@ -351,6 +346,10 @@ def ocr(request: OcrRequest, response: Response):
         codes = _split_languages(request.languages)
         if not codes:
             raise HTTPException(status_code=400, detail="languages is empty")
+        unusable = sorted(set(codes) - set(loadable_languages()))
+        if unusable:
+            raise HTTPException(status_code=400,
+                                detail=f"the image has no models for {'+'.join(unusable)}")
 
         started = time.time()
         try:

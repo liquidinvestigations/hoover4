@@ -16,10 +16,14 @@ singleton, rather than as part of ingestion.
 - Select historical Error rows for retry, then reconcile those rows after plan execution
   ([failed_file_retry.py](failed_file_retry.py)).
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
-- Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
-  settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
-  the change dropped, from ClickHouse, then Manticore, then Garage. The order is the
-  point; [ocr_languages.py](ocr_languages.py)'s module docstring says why each step cannot move.
+- Keep the retired OCR language change (`ChangeOcrLanguages`) for Temporal histories that
+  started it before the `automatic-ocr-v1` patch. Such a run writes the settings, reopens
+  the plans holding OCR candidates, re-runs them, then purges the variants the change
+  dropped, from ClickHouse, then Manticore, then Garage. A new run fails with the
+  non-retryable `RetiredOcrSetting` error, and the website refuses to start one. The
+  activities, their argument types and the operation kind stay until no stored history
+  needs them. [ocr_languages.py](ocr_languages.py)'s module docstring says why each step
+  cannot move.
 - Bring every OCR target of a dataset to done with unchanged settings (`RerunOcr`). The
   OCR step of a processing update runs it. See "Run OCR" below.
 - Bring the stored results of each dataset and collection up to date after a version,
@@ -64,7 +68,7 @@ exactly one source of truth in Python.
   kinds, `PurgeDataset` under `purge_dataset` and `delete_dataset`, `ChangeOcrLanguages`
   under `change_ocr_languages`, `RerunOcr` under `rerun_ocr`, and `RunProcessingUpdate`
   under `update_dataset` and `update_collection`. The admin pages no longer start
-  `change_ocr_languages` and `rerun_ocr`. The kinds stay for the CLI and for history. Each run therefore carries the operation's timestamped id,
+  `change_ocr_languages` and `rerun_ocr`. The kinds stay for history, and `rerun_ocr` also for the CLI. Each run therefore carries the operation's timestamped id,
   which is what makes a second click run again: a reused id makes it a no-op, and two
   language changes are two different runs with two different before/after states.
 

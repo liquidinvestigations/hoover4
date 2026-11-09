@@ -54,7 +54,7 @@ An apply command with no orphan rows starts no purge operation.
 The dispatcher writes the row as `pending`, with `started_at` set to the dispatch time.
 The **workflow** first asks `admit_operation` for a slot of its kind. The cap of each kind is
 a key of the `[operations]` section, rendered into `HOOVER4_OPERATION_CAPS`, with a default
-of 2. When the running operations of the kind and the older `pending` or `queued` rows of the
+of 2. The retired `change_ocr_languages` kind has no key and keeps the default. When the running operations of the kind and the older `pending` or `queued` rows of the
 kind fill the cap, the row becomes `queued` and the workflow asks again every 30 s, with no
 time limit. An older row that waits for a running operation of its own target does not count,
 because it cannot take a slot now (`admission_counts`). Among the rows that can run, the oldest
@@ -97,7 +97,7 @@ terminal row. A progress sample reads the row before counting and stops if it is
 shard tables from its finished plans; `refresh_document_locations` rewrites page-row folder
 attributes for documents whose locations changed, without extraction; `ensure_collection` and `drop_collection_database`
 provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
-`change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
+`change_ocr_languages` (retired, see [P_admin/](../P_admin/Readme.md)) and `retry_failed_files` each drive their own child workflow or
 chain of them; `ingest_upload` drives `IngestUploadBatches` over the batch ids of its detail
 ([P_upload/](../P_upload/Readme.md)); `export_collection` writes a backup (below);
 `update_dataset` and `update_collection` drive `RunProcessingUpdate` over the step ids and

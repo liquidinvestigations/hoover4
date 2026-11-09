@@ -1,13 +1,11 @@
-//! Read automatic OCR status and retain legacy settings for audit.
+//! Read automatic OCR status, create datasets, and set the upload and vector switches.
 //!
-//! Manual OCR mutations return a typed retired-setting error.
-//! Dataset creation accepts empty compatibility fields and stores no OCR override.
-//! Dataset mounts and upload settings retain their existing access checks.
-
-use std::time::Duration;
+//! Manual OCR language mutations remain for stale clients and return a typed
+//! retired-setting error. Dataset creation accepts empty compatibility fields and stores
+//! no OCR override. Dataset mounts and upload settings retain their existing access checks.
 
 use common::admin_types::{
-    CollectionOcrDefaults, DatasetFolderOption, DatasetMountOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
+    DatasetFolderOption, DatasetMountOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
     DatasetTextVariant, DatasetUploadsSetting,
 };
 use common::current_user::CurrentUser;
@@ -21,17 +19,6 @@ use crate::db_auth::uploads::{self, KEY_UPLOADS_ENABLED};
 use crate::db_utils::clickhouse_utils::{
     collection_db_name, get_collection_client, get_global_client,
 };
-
-/// Setting keys, mirroring `tasks/dataset_config.py`. The duplication is the same
-/// deliberate one as `extracted_by`: a key that is simultaneously a storage key and a
-/// form field must not be spelled by only one runtime.
-const KEY_TESSERACT_LANGUAGES: &str = "ocr.tesseract.languages";
-const KEY_EASYOCR_LANGUAGES: &str = "ocr.easyocr.languages";
-/// Collection-level defaults a newly created dataset inherits. A dataset's own row always
-/// wins; these only fill in what was never set.
-const KEY_DEFAULT_TESSERACT_LANGUAGES: &str = "ocr.default.tesseract.languages";
-const KEY_DEFAULT_EASYOCR_LANGUAGES: &str = "ocr.default.easyocr.languages";
-
 
 fn format_ts(unix_seconds: i64) -> String {
     if unix_seconds <= 0 {
@@ -145,101 +132,6 @@ async fn latest_setting(collection_dataset: &str, key: &str) -> anyhow::Result<O
     Ok(rows.into_iter().next())
 }
 
-/// The source names of a resolved OCR value, as the worker names them.
-pub const SOURCE_DATASET: &str = "dataset";
-pub const SOURCE_COLLECTION: &str = "collection";
-pub const SOURCE_INSTALLATION: &str = "installation";
-
-/// One stored setting row, as the resolver reads it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct StoredSetting {
-    pub value: String,
-    pub is_deleted: bool,
-    pub version_us: u64,
-}
-
-/// One resolved OCR value, its source, and the newest version that resolution read.
-#[derive(Debug, Clone, PartialEq)]
-pub struct EffectiveLanguages {
-    pub value: String,
-    pub source: &'static str,
-    pub version_us: u64,
-}
-
-/// The effective languages of one engine: the dataset row, the collection default row,
-/// then the installation default. A deleted row is a tombstone. Mirrors
-/// `resolve_ocr_languages` in `tasks/dataset_config.py`.
-pub fn resolve_ocr_languages(
-    dataset: Option<&StoredSetting>,
-    collection: Option<&StoredSetting>,
-    installation: &str,
-) -> EffectiveLanguages {
-    let read: Vec<&StoredSetting> = [dataset, collection].into_iter().flatten().collect();
-    let version_us = read.iter().map(|row| row.version_us).max().unwrap_or(0);
-    let mut chosen = (installation.to_string(), SOURCE_INSTALLATION);
-    for (row, source) in [(dataset, SOURCE_DATASET), (collection, SOURCE_COLLECTION)] {
-        if let Some(row) = row {
-            if !row.is_deleted {
-                chosen = (row.value.clone(), source);
-                break;
-            }
-        }
-    }
-    // A collection row counts only when the dataset row is absent or deleted.
-    let version_us = match dataset {
-        Some(row) if !row.is_deleted => row.version_us,
-        _ => version_us,
-    };
-    EffectiveLanguages { value: chosen.0, source: chosen.1, version_us }
-}
-
-/// The installation defaults, `(tesseract, easyocr)`, from the environment that
-/// `deploy.py` renders from `hoover4.ini`.
-pub fn installation_ocr_defaults() -> (String, String) {
-    let read = |name: &str, fallback: &str| {
-        let value = std::env::var(name).unwrap_or_default().trim().to_string();
-        if value.is_empty() { fallback.to_string() } else { value }
-    };
-    (read("TESSERACT_LANGUAGES", "eng"), read("EASYOCR_LANGUAGES", "en"))
-}
-
-async fn stored_setting(key_owner: &str, key: &str) -> anyhow::Result<Option<StoredSetting>> {
-    Ok(latest_setting(key_owner, key).await?.map(|row| StoredSetting {
-        value: row.value,
-        is_deleted: row.is_deleted != 0,
-        version_us: row.setting_version_us,
-    }))
-}
-
-/// The effective `(tesseract, easyocr)` languages of a dataset.
-pub async fn effective_ocr_languages(
-    collection_dataset: &str,
-    collectionname: &str,
-) -> anyhow::Result<(EffectiveLanguages, EffectiveLanguages)> {
-    let (tesseract_default, easyocr_default) = installation_ocr_defaults();
-    let tesseract = resolve_ocr_languages(
-        stored_setting(collection_dataset, KEY_TESSERACT_LANGUAGES).await?.as_ref(),
-        stored_setting(collectionname, KEY_DEFAULT_TESSERACT_LANGUAGES).await?.as_ref(),
-        &tesseract_default,
-    );
-    let easyocr = resolve_ocr_languages(
-        stored_setting(collection_dataset, KEY_EASYOCR_LANGUAGES).await?.as_ref(),
-        stored_setting(collectionname, KEY_DEFAULT_EASYOCR_LANGUAGES).await?.as_ref(),
-        &easyocr_default,
-    );
-    Ok((tesseract, easyocr))
-}
-
-/// The value that a dataset of the collection inherits: the collection default, else the
-/// installation default.
-async fn inherited_ocr_languages(collectionname: &str) -> anyhow::Result<(EffectiveLanguages, EffectiveLanguages)> {
-    let (tesseract_default, easyocr_default) = installation_ocr_defaults();
-    Ok((
-        resolve_ocr_languages(None, stored_setting(collectionname, KEY_DEFAULT_TESSERACT_LANGUAGES).await?.as_ref(), &tesseract_default),
-        resolve_ocr_languages(None, stored_setting(collectionname, KEY_DEFAULT_EASYOCR_LANGUAGES).await?.as_ref(), &easyocr_default),
-    ))
-}
-
 async fn read_setting(collection_dataset: &str, key: &str) -> anyhow::Result<Option<String>> {
     Ok(latest_setting(collection_dataset, key)
         .await?
@@ -297,136 +189,6 @@ async fn write_setting(collection_dataset: &str, key: &str, value: &str) -> anyh
     Ok(())
 }
 
-/// Delete a setting with a tombstone row, so resolution continues at the next level. An
-/// absent or deleted row writes nothing.
-async fn delete_setting(collection_dataset: &str, key: &str) -> anyhow::Result<()> {
-    #[derive(clickhouse::Row, serde::Serialize)]
-    struct SettingRow<'a> {
-        collection_dataset: &'a str,
-        key: &'a str,
-        value: &'a str,
-        #[serde(with = "clickhouse::serde::time::datetime")]
-        updated_at: time::OffsetDateTime,
-        is_deleted: u8,
-        setting_version_us: u64,
-        version_is_precise: u8,
-    }
-    let Some(latest) = latest_setting(collection_dataset, key).await? else {
-        return Ok(());
-    };
-    if latest.is_deleted != 0 {
-        return Ok(());
-    }
-    let now = time::OffsetDateTime::now_utc();
-    let now_us = u64::try_from(now.unix_timestamp_nanos() / 1_000)?;
-    let mut insert = get_global_client().insert::<SettingRow>("dataset_settings").await?;
-    insert
-        .write(&SettingRow {
-            collection_dataset,
-            key,
-            value: &latest.value,
-            updated_at: now,
-            is_deleted: 1,
-            setting_version_us: next_setting_version(now_us, Some(latest.setting_version_us)),
-            version_is_precise: 1,
-        })
-        .await?;
-    insert.end().await?;
-    Ok(())
-}
-
-/// What the EasyOCR service reports: the languages the installed package supports, the
-/// preloaded languages, and the language sets whose first-use model download failed.
-#[derive(Debug, Default, Clone)]
-pub struct EasyOcrInventory {
-    pub supported: Vec<String>,
-    pub preloaded: Vec<String>,
-    pub failed_downloads: Vec<String>,
-}
-
-async fn easyocr_inventory() -> EasyOcrInventory {
-    let url = env_url("OCR_EASYOCR_URL");
-    if url.is_empty() {
-        return EasyOcrInventory::default();
-    }
-    let health = format!("{}/health", url.trim_end_matches("/ocr"));
-    let Ok(client) = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(Duration::from_secs(5))
-        .build()
-    else {
-        return EasyOcrInventory::default();
-    };
-    let Ok(response) = client.get(&health).send().await else {
-        return EasyOcrInventory::default();
-    };
-    let Ok(body) = response.json::<serde_json::Value>().await else {
-        return EasyOcrInventory::default();
-    };
-    let strings = |key: &str| -> Vec<String> {
-        body.get(key)
-            .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-            .unwrap_or_default()
-    };
-    let failed_downloads = body
-        .get("failed_downloads")
-        .and_then(|v| v.as_array())
-        .map(|a| {
-            a.iter()
-                .map(|entry| {
-                    format!(
-                        "{}: {}",
-                        entry.get("languages").and_then(|v| v.as_str()).unwrap_or_default(),
-                        entry.get("error").and_then(|v| v.as_str()).unwrap_or_default()
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    EasyOcrInventory {
-        supported: strings("languages_supported"),
-        preloaded: strings("languages_available"),
-        failed_downloads,
-    }
-}
-
-/// The languages the Tesseract image can actually serve.
-///
-/// Read from the tier's `/health`, never from configuration: `languages_available` comes
-/// from `tesseract --list-langs`, and a dataset configured for a language whose
-/// traineddata is not installed fails per file, hours after the form was submitted. An
-/// unreachable tier returns an empty list, and the form says so rather than offering one
-/// it cannot stand behind.
-async fn tesseract_languages_available() -> Vec<String> {
-    let url = env_url("OCR_TESSERACT_URL");
-    if url.is_empty() {
-        return Vec::new();
-    }
-    let health = format!("{}/health", url.trim_end_matches("/ocr"));
-    let Ok(client) = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(Duration::from_secs(5))
-        .build()
-    else {
-        return Vec::new();
-    };
-    let Ok(response) = client.get(&health).send().await else {
-        return Vec::new();
-    };
-    let Ok(body) = response.json::<serde_json::Value>().await else {
-        return Vec::new();
-    };
-    body.get("languages_available")
-        .and_then(|v| v.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 pub async fn admin_get_dataset_ocr(
     user: &CurrentUser,
     collection_dataset: String,
@@ -475,28 +237,11 @@ pub async fn admin_get_dataset_ocr(
         )
         .collect();
 
-    // Retained compatibility fields describe legacy manual values. Automatic planning does not read them.
-    let (tesseract, easyocr) = effective_ocr_languages(&collection_dataset, &collectionname).await?;
-    let (inherited_tesseract, inherited_easyocr) = inherited_ocr_languages(&collectionname).await?;
-    let inventory = easyocr_inventory().await;
-
     let automatic_status = automatic_status(&collectionname, &collection_dataset).await?;
     Ok(DatasetOcrPanel {
         automatic_status,
         collection_dataset: collection_dataset.clone(),
         collectionname,
-        tesseract_languages: tesseract.value,
-        easyocr_languages: easyocr.value,
-        tesseract_source: tesseract.source.to_string(),
-        easyocr_source: easyocr.source.to_string(),
-        inherited_tesseract: inherited_tesseract.value,
-        inherited_tesseract_source: inherited_tesseract.source.to_string(),
-        inherited_easyocr: inherited_easyocr.value,
-        inherited_easyocr_source: inherited_easyocr.source.to_string(),
-        easyocr_supported: inventory.supported,
-        easyocr_preloaded: inventory.preloaded,
-        easyocr_failed_downloads: inventory.failed_downloads,
-        tesseract_available: tesseract_languages_available().await,
         easyocr_configured: !env_url("OCR_EASYOCR_URL").is_empty(),
         ocr_pdf_configured: !env_url("OCR_PDF_URL").is_empty(),
         text_variants,
@@ -539,63 +284,6 @@ pub async fn admin_get_dataset_operation(
     latest_operation(&collection_dataset).await
 }
 
-/// A language string as the pipeline stores it: `+`-joined, deduplicated, order kept.
-///
-/// Order is preserved rather than sorted because Tesseract treats the first language as
-/// the primary one: `eng+ron` and `ron+eng` are genuinely different requests and
-/// therefore genuinely different variants. Mirrors `join_languages` in
-/// `tasks/text_sources.py`.
-pub fn normalise_languages(raw: &str) -> String {
-    let mut seen: Vec<&str> = Vec::new();
-    for code in raw.split('+') {
-        let code = code.trim();
-        if !code.is_empty() && !seen.contains(&code) {
-            seen.push(code);
-        }
-    }
-    seen.join("+")
-}
-
-/// Reject anything that is not a plain language code before it reaches a storage key.
-///
-/// `extracted_by` is built from this string and becomes a ClickHouse value, a Manticore
-/// value and part of a blob-store object key. Restricting it to `[a-z_]` costs nothing
-/// (Tesseract's own codes are `eng`, `ron`, `chi_sim`), and removes a whole class of
-/// question about where the value ends up.
-fn validate_languages(raw: &str, field: &str) -> anyhow::Result<String> {
-    let joined = normalise_languages(raw);
-    if joined.is_empty() {
-        anyhow::bail!("{field} must list at least one language");
-    }
-    validate_codes(&joined, field)
-}
-
-/// The EasyOCR value: an empty value turns EasyOCR off, which `easyocr_language_groups`
-/// in the worker reads as no pass.
-fn validate_easyocr_languages(raw: &str) -> anyhow::Result<String> {
-    let joined = normalise_languages(raw);
-    if joined.is_empty() {
-        return Ok(joined);
-    }
-    validate_codes(&joined, "EasyOCR languages")
-}
-
-fn validate_codes(joined: &str, field: &str) -> anyhow::Result<String> {
-    let joined = joined.to_string();
-    if joined.len() > 200 {
-        anyhow::bail!("{field} is too long");
-    }
-    for code in joined.split('+') {
-        if !code
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-        {
-            anyhow::bail!("{field}: {code:?} is not a language code (lowercase letters, digits and underscore only)");
-        }
-    }
-    Ok(joined)
-}
-
 /// Return a typed retired-setting error to stale dataset clients.
 pub async fn admin_apply_ocr_languages(
     user: &CurrentUser,
@@ -608,28 +296,6 @@ pub async fn admin_apply_ocr_languages(
     guard::require_admin(user)?;
     let _ = (collection_dataset, tesseract_languages, easyocr_languages, inherit_tesseract, inherit_easyocr);
     Err(guard::RetiredOcrSetting.into())
-}
-
-/// The collection's default languages and the languages that each service reports.
-///
-/// The defaults fall back to the same values `tasks/dataset_config.py` falls back to, so
-/// the form shows what a new dataset would actually get.
-pub async fn admin_get_collection_ocr_defaults(
-    user: &CurrentUser,
-    collectionname: String,
-) -> anyhow::Result<CollectionOcrDefaults> {
-    guard::require_admin(user)?;
-    collection_db_name(&collectionname)?;
-    let (tesseract, easyocr) = inherited_ocr_languages(&collectionname).await?;
-    let (inventory, tesseract_available) = tokio::join!(easyocr_inventory(), tesseract_languages_available());
-    Ok(CollectionOcrDefaults {
-        tesseract_languages: tesseract.value,
-        easyocr_languages: easyocr.value,
-        tesseract_available,
-        easyocr_supported: inventory.supported,
-        easyocr_preloaded: inventory.preloaded,
-        easyocr_configured: !env_url("OCR_EASYOCR_URL").is_empty(),
-    })
 }
 
 /// Return a typed retired-setting error to stale collection clients.
@@ -974,62 +640,6 @@ mod tests {
         // whole-second time that rounds up past the writer's clock.
         assert_eq!(next_setting_version(1_000_000, Some(1_000_000)), 1_000_001);
         assert_eq!(next_setting_version(1_000_000, Some(2_000_000)), 2_000_001);
-    }
-
-    #[test]
-    fn languages_keep_their_order_and_lose_duplicates() {
-        // `eng+ron` and `ron+eng` are different Tesseract requests and therefore
-        // different variants, so neither may be sorted into the other.
-        assert_eq!(normalise_languages(" eng + ron "), "eng+ron");
-        assert_eq!(normalise_languages("ron+eng"), "ron+eng");
-        assert_eq!(normalise_languages("eng+eng+ron"), "eng+ron");
-        assert_eq!(normalise_languages("++"), "");
-    }
-
-    #[test]
-    fn ocr_resolution_matches_the_pipeline_cases() {
-        let text = crate::db_utils::processing_tasks_file("ocr_resolution_cases.json")
-            .expect("ocr_resolution_cases.json is not reachable from this test");
-        let file: serde_json::Value = serde_json::from_str(&text).unwrap();
-        let row = |spec: &serde_json::Value, engine: &str| -> Option<StoredSetting> {
-            spec.get(engine).map(|r| StoredSetting {
-                value: r[0].as_str().unwrap().to_string(),
-                is_deleted: r[1].as_bool().unwrap(),
-                version_us: r[2].as_u64().unwrap(),
-            })
-        };
-        for case in file["cases"].as_array().unwrap() {
-            for engine in ["tesseract", "easyocr"] {
-                let resolved = resolve_ocr_languages(
-                    row(&case["dataset"], engine).as_ref(),
-                    row(&case["collection"], engine).as_ref(),
-                    file["installation"][engine].as_str().unwrap(),
-                );
-                let expected = &case["expected"][engine];
-                assert_eq!(
-                    (resolved.value.as_str(), resolved.source, resolved.version_us),
-                    (expected[0].as_str().unwrap(), expected[1].as_str().unwrap(), expected[2].as_u64().unwrap()),
-                    "{} / {engine}", case["name"]
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn an_empty_easyocr_value_turns_easyocr_off() {
-        assert_eq!(validate_easyocr_languages("").unwrap(), "");
-        assert_eq!(validate_easyocr_languages(" en + ru ").unwrap(), "en+ru");
-        assert!(validate_easyocr_languages("EN").is_err());
-        assert!(validate_languages("", "Tesseract languages").is_err());
-    }
-
-    #[test]
-    fn a_language_code_may_not_carry_anything_else_into_a_storage_key() {
-        assert!(validate_languages("eng+ron", "x").is_ok());
-        assert!(validate_languages("chi_sim", "x").is_ok());
-        for bad in ["", "  ", "ENG", "eng ron", "eng/../x", "eng;drop"] {
-            assert!(validate_languages(bad, "x").is_err(), "{bad:?} was accepted");
-        }
     }
 
     #[test]

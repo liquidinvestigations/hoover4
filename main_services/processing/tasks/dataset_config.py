@@ -1,28 +1,33 @@
 """Per-dataset settings, read **per activity** rather than at import.
 
-A language change saved on the dataset admin page has to reach activities that are
-already running, and a module-level constant read once at worker start would silently
-ignore it until the next restart.
+A setting saved on the admin page has to reach activities that are already running,
+and a module-level constant read once at worker start would ignore it until the next
+restart.
 
-The OCR languages of a dataset have one resolution order, which the website applies too
-(`website/backend/src/api/admin/dataset_ocr.rs`):
+The OCR language settings are retired. New ingestion and new processing updates use
+automatic OCR (`tasks/automatic_ocr.py`), which reads no language setting, and the
+website refuses a new language change. The readers below remain only for work that
+Temporal histories still run on their earlier branches: workflows without the
+`automatic-ocr-v1` patch, the `ChangeOcrLanguages` apply job, and recorded OCR update
+steps with a `languages` detail. Remove them only when no stored history and no
+retained data needs them.
+
+The OCR languages of such work have one resolution order:
 
 1. the dataset's own row (`ocr.<engine>.languages`), which can hold an empty EasyOCR
    value that turns EasyOCR off,
 2. the collection default row (`ocr.default.<engine>.languages`, stored under the
    collection name),
-3. the installation default from `hoover4.ini` (`TESSERACT_LANGUAGES` and
-   `EASYOCR_LANGUAGES`).
+3. the fixed installation defaults in `DEFAULTS`, which are the defaults of the
+   removed `hoover4.ini` settings `tesseract_languages` and `easyocr_languages`.
 
 A deleted row is a tombstone and resolution continues with the next level.
-`resolve_ocr_languages` returns the value, its source and a version. Both runtimes test
-it with `tasks/ocr_resolution_cases.json`.
+`resolve_ocr_languages` returns the value, its source and a version, and
+`tasks/ocr_resolution_cases.json` tests it.
 
 The cost of reading per activity is one ClickHouse query per file, which is why there is
 a short process-local cache: `_CACHE_SECONDS` turns it into one query per activity burst
-while still picking a change up within seconds. Do not raise it to "one minute, nobody
-will notice". The processing update coordinator calculates the OCR step soon after a
-save, and it must read the new value.
+while still picking a change up within seconds.
 """
 
 import logging
@@ -52,15 +57,12 @@ KEY_DEFAULT_EASYOCR_LANGUAGES = "ocr.default.easyocr.languages"
 #: an embeddings endpoint is configured.
 KEY_FEATURE_VECTORS = "features.vectors"
 
-#: Stack-wide defaults, from hoover4.ini via the worker environment. A dataset without a
-#: row of its own and without a collection default uses these.
-#:
-#: Read at import rather than per activity on purpose: this is deployment configuration,
-#: which cannot change without recreating the container anyway. The per-*dataset* values
-#: below it are the ones that must be re-read live.
+#: The installation OCR defaults of the earlier branches. A dataset without a row of its
+#: own and without a collection default uses these. They are constants, because no
+#: setting sets them now.
 DEFAULTS: Dict[str, str] = {
-    KEY_TESSERACT_LANGUAGES: (os.getenv("TESSERACT_LANGUAGES") or "eng").strip() or "eng",
-    KEY_EASYOCR_LANGUAGES: (os.getenv("EASYOCR_LANGUAGES") or "en").strip() or "en",
+    KEY_TESSERACT_LANGUAGES: "eng",
+    KEY_EASYOCR_LANGUAGES: "en",
 }
 
 #: The source names of a resolved OCR value. The website shows them.
@@ -163,7 +165,7 @@ def resolve_ocr_languages(dataset_rows: Dict[str, SettingRow],
 
 
 def installation_ocr_defaults() -> Dict[str, str]:
-    """The `hoover4.ini` OCR languages of each engine."""
+    """The fixed installation OCR languages of each engine."""
     return {engine: DEFAULTS[dataset_key] for engine, (dataset_key, _) in OCR_KEYS.items()}
 
 

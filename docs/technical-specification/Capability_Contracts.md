@@ -57,6 +57,7 @@ Detect every eligible image and PDF page in bounded batches of 32.
 Store detector version, model, script, language, and successful text-presence decisions.
 Keep renderer and detector failures retryable.
 Choose installed Tesseract coverage first and supported EasyOCR groups when required.
+Read the EasyOCR groups from the fixed list that the EasyOCR image installs and reports. No setting selects OCR languages.
 Use script coverage for unknown language and retain its reason.
 Keep unknown script incomplete and missing coverage unsupported.
 Publish complete plan identities and staged request output before retiring superseded normal variants.

@@ -1,8 +1,12 @@
-"""Select Error rows whose failed stage is enabled for the dataset."""
+"""Select Error rows whose failed stage is enabled for the dataset.
+
+An OCR stage is off only when its service has no endpoint. A retried file runs automatic
+OCR, which chooses the engine of each page, so a retired OCR language setting turns no
+stage off.
+"""
 
 import os
 
-from tasks.dataset_config import easyocr_passes, tesseract_languages
 from tasks.ocr_client import engine_configured
 from tasks.ocr_pdf_client import engines_for_provider, service_configured
 
@@ -43,14 +47,6 @@ KNOWN_TASK_NAMES = frozenset(
 )
 
 
-def _ocr_has_languages(engine: str, collection_dataset: str) -> bool:
-    if engine == "tesseract":
-        return bool(tesseract_languages(collection_dataset).strip())
-    if engine == "easyocr":
-        return bool(easyocr_passes(collection_dataset))
-    return False
-
-
 def _task_engine(task_name: str, prefix: str) -> str:
     if not task_name.startswith(prefix) or not task_name.endswith("]"):
         return ""
@@ -71,18 +67,12 @@ def stage_is_off(task_name: str, collection_dataset: str) -> bool:
 
     engine = _task_engine(task_name, "run_ocr_and_store[")
     if engine in ("tesseract", "easyocr"):
-        return not engine_configured(engine) or not _ocr_has_languages(
-            engine, collection_dataset
-        )
+        return not engine_configured(engine)
 
     engine = _task_engine(task_name, "make_image_pdf[")
     if engine in ("tesseract", "easyocr"):
-        return not service_configured() or not engine_configured(engine) or not _ocr_has_languages(engine, collection_dataset)
+        return not service_configured() or not engine_configured(engine)
     engine = _task_engine(task_name, "run_ocr_pdf_and_store[")
     if engine in ("tesseract", "easyocr"):
-        return (
-            not service_configured()
-            or engine not in engines_for_provider()
-            or not _ocr_has_languages(engine, collection_dataset)
-        )
+        return not service_configured() or engine not in engines_for_provider()
     return False

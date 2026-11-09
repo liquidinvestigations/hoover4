@@ -201,24 +201,6 @@ pub struct DatasetPdfVariant {
     pub total_bytes: u64,
 }
 
-/// The OCR languages of the dataset create form: the collection defaults that the form
-/// starts with, and the languages that each service reports.
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
-pub struct CollectionOcrDefaults {
-    /// `+`-joined, in the stored order.
-    pub tesseract_languages: String,
-    /// `+`-joined. Empty turns EasyOCR off.
-    pub easyocr_languages: String,
-    /// From the Tesseract `/health`. Empty when the service did not answer.
-    pub tesseract_available: Vec<String>,
-    /// From the EasyOCR `/health`. Empty when the service did not report them.
-    pub easyocr_supported: Vec<String>,
-    /// The EasyOCR languages whose models the image preloads.
-    pub easyocr_preloaded: Vec<String>,
-    /// Whether an EasyOCR endpoint is configured.
-    pub easyocr_configured: bool,
-}
-
 /// Read-only automatic OCR publication status. Missing publications remain unknown.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -253,43 +235,14 @@ pub struct AutomaticOcrStateCount {
     pub pages: u64,
 }
 
-/// Automatic coverage and retained legacy audit fields in one response.
+/// Automatic OCR coverage and the stored OCR output of one dataset.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DatasetOcrPanel {
     #[serde(default)]
     pub automatic_status: AutomaticOcrStatus,
     pub collection_dataset: String,
     pub collectionname: String,
-    /// `+`-joined, exactly as stored. Order is significant to Tesseract, so it is never
-    /// normalised on the way through.
-    pub tesseract_languages: String,
-    pub easyocr_languages: String,
-    /// Where each value comes from: `dataset`, `collection` or `installation`.
-    #[serde(default)]
-    pub tesseract_source: String,
-    #[serde(default)]
-    pub easyocr_source: String,
-    /// The value that the dataset gets without its own row, and its source.
-    #[serde(default)]
-    pub inherited_tesseract: String,
-    #[serde(default)]
-    pub inherited_tesseract_source: String,
-    #[serde(default)]
-    pub inherited_easyocr: String,
-    #[serde(default)]
-    pub inherited_easyocr_source: String,
-    /// The EasyOCR languages that the installed package supports, from the service.
-    #[serde(default)]
-    pub easyocr_supported: Vec<String>,
-    /// The EasyOCR languages whose models the image preloads. Others download on first use.
-    #[serde(default)]
-    pub easyocr_preloaded: Vec<String>,
-    /// First-use model downloads that failed, as `languages: error`.
-    #[serde(default)]
-    pub easyocr_failed_downloads: Vec<String>,
-    /// Installed Tesseract coverage retained for audit. Empty when the service did not answer.
-    pub tesseract_available: Vec<String>,
-    /// Whether an EasyOCR endpoint is configured. This audit value selects no new work.
+    /// Whether an EasyOCR endpoint is configured.
     pub easyocr_configured: bool,
     /// Whether searchable PDFs are produced at all (`ocr_pdf_enabled`).
     pub ocr_pdf_configured: bool,

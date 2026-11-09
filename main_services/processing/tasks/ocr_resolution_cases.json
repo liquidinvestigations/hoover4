@@ -1,5 +1,5 @@
 {
-  "comment": "The effective OCR languages of a dataset. Order: the dataset row, the collection default row, the installation default. A deleted row is a tombstone. The version is the newest row read, tombstones included, and 0 without a row. Read by tests/unit/test_ocr_resolution.py and by the dataset_ocr tests of the website backend. A row is [value, deleted, version_us].",
+  "comment": "The effective OCR languages of a dataset. Order: the dataset row, the collection default row, the installation default. A deleted row is a tombstone. The version is the newest row read, tombstones included, and 0 without a row. Read by tests/unit/test_ocr_resolution.py. Only work of earlier workflow branches resolves these settings. A row is [value, deleted, version_us].",
   "installation": {"tesseract": "eng+deu", "easyocr": "en"},
   "cases": [
     {

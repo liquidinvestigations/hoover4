@@ -52,18 +52,24 @@ RUN $VENV_PATH/bin/pip install --no-cache-dir --upgrade pip \
 # that fails in a way the health check cannot report. The compose overlay bind-mounts a
 # host folder over this path, and that mount hides what the image has there. The runtime
 # stage therefore keeps a second copy at EASYOCR_BAKED_DIR, and the server copies it into
-# the cache folder at start. Anything not listed here still works and is downloaded on
-# first use.
-ARG EASYOCR_LANGUAGES="en"
+# the cache folder at start. language_groups.py lists the language sets that are loaded
+# here, and /health reports the same groups.
 ENV EASYOCR_MODEL_DIR=/root/.EasyOCR
+COPY language_groups.py /tmp/language_groups.py
 RUN $VENV_PATH/bin/python - <<'PY'
 import os
+import sys
+
 import easyocr
 
-languages = [c.strip() for c in os.environ["EASYOCR_LANGUAGES"].split("+") if c.strip()]
-easyocr.Reader(languages, gpu=False, model_storage_directory=os.environ["EASYOCR_MODEL_DIR"],
-               user_network_directory=os.environ["EASYOCR_MODEL_DIR"],
-               download_enabled=True, verbose=False)
+sys.path.insert(0, "/tmp")
+from language_groups import BAKED_READERS
+
+for languages in BAKED_READERS:
+    easyocr.Reader(list(languages), gpu=False,
+                   model_storage_directory=os.environ["EASYOCR_MODEL_DIR"],
+                   user_network_directory=os.environ["EASYOCR_MODEL_DIR"],
+                   download_enabled=True, verbose=False)
 PY
 
 # ------------------------------------------------------------------ runtime
@@ -103,7 +109,7 @@ COPY --from=builder /root/.EasyOCR /opt/easyocr-baked
 ENV EASYOCR_BAKED_DIR=/opt/easyocr-baked
 
 WORKDIR /app
-COPY easyocr_server.py /app/easyocr_server.py
+COPY easyocr_server.py language_groups.py /app/
 
 EXPOSE 8000
 

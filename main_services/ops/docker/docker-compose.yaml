@@ -531,10 +531,6 @@ services:
       - "EMBEDDINGS_URL=${EMBEDDINGS_URL:-}"
       - "RERANK_URL=${RERANK_URL:-}"
       - "PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}"
-      # Installation language defaults. A dataset uses its own dataset_settings row, then
-      # the default row of its collection, then these (tasks/dataset_config.py).
-      - "TESSERACT_LANGUAGES=${TESSERACT_LANGUAGES:-eng}"
-      - "EASYOCR_LANGUAGES=${EASYOCR_LANGUAGES:-en}"
       # [processing_updates] automatic. false stops automatic update operations.
       - "HOOVER4_PROCESSING_UPDATES_AUTOMATIC=${HOOVER4_PROCESSING_UPDATES_AUTOMATIC:-true}"
       # The container path of the first dataset mount, for readers that know one mount.
@@ -751,17 +747,12 @@ services:
       # list from HOOVER4_DATASET_MOUNTS (compose/generated-dataset-mounts.yaml) and uses
       # this value only when that list is empty or absent.
       - DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}
-      # The OCR tier, read-only from here: the dataset OCR panel lists the languages
-      # Tesseract can actually serve (from its /health, not from configuration) and
-      # renders the EasyOCR half disabled when there is no endpoint for it. Offering a
-      # language whose traineddata is not in the image would fail per file, hours later.
+      # The OCR tier, read-only from here. The AI status page reads the Tesseract
+      # /health, and the dataset OCR panel reports whether EasyOCR and searchable PDFs
+      # have an endpoint.
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
       - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}
       - OCR_PDF_URL=${OCR_PDF_URL:-}
-      # The installation OCR language defaults, the last level of the resolution order
-      # that the worker applies too, so the panel shows the value that the worker uses.
-      - TESSERACT_LANGUAGES=${TESSERACT_LANGUAGES:-eng}
-      - EASYOCR_LANGUAGES=${EASYOCR_LANGUAGES:-en}
       # The explainer proxy's upstream. A card that cannot be fetched degrades the
       # details view; it never fails a search.
       - REGEX_SCANNER_URL=${REGEX_SCANNER_URL:-http://hoover4-regex-entity-scanner:19705}

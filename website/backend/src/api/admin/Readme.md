@@ -16,7 +16,7 @@ the actual gate.
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in
   [main_services/processing/tasks/P_admin/](../../../../../main_services/processing/tasks/P_admin), and the website never computes ETAs in a
   request path).
-- [dataset_ocr.rs](dataset_ocr.rs) returns automatic OCR status and retains compatibility readers for historical settings.
+- [dataset_ocr.rs](dataset_ocr.rs) returns automatic OCR status and the stored OCR text and PDF variants. It reads no OCR language setting.
   Manual language mutations return the typed retired-setting error.
   Dataset creation accepts empty compatibility language fields and stores no OCR override.
   Automatic status groups current publication states and page decisions without returning document text.

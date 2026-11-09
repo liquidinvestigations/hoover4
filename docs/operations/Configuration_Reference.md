@@ -114,7 +114,7 @@ Deployment creates each daemon's authentication file when it is absent and prese
 
 ## `[ai_services]`
 
-Nineteen keys. Read by [deploy.py](../../deploy.py), by the tier's compose overlays, and by the model
+Eighteen keys. Read by [deploy.py](../../deploy.py), by the tier's compose overlays, and by the model
 server itself.
 
 | group | keys | decides |
@@ -123,7 +123,7 @@ server itself.
 | language models | `llm_enabled`, `vllm_port`, `vllm_structured_port`, `chat_vllm_port` | whether the self-hosted model servers run, and the ports of dgemma, its structured server and ornith. The models, their checkpoint commits and their capacity are constants of [deploy.py](../../deploy.py) ([the model servers](../../ai_services/README.md)) |
 | model server | `ai_server_enabled`, `ai_server_port`, `*_concurrency` | the embeddings, reranking and entity service, and how many of each it will do at once |
 | capabilities | `ner_enabled`, `embeddings_enabled`, `reranker_enabled` | which capabilities load, and which endpoints the main side receives. The models, the embedding dimension and the precision are constants of [the model server](../../ai_services/hoover4_ai_server/README.md) |
-| OCR | `easyocr_enabled`, `easyocr_port`, `easyocr_languages` | the accelerated OCR service |
+| OCR | `easyocr_enabled`, `easyocr_port` | the accelerated OCR service. Its language groups are constants of [the EasyOCR server](../../ai_services/easyocr_server/README.md) |
 | credentials | `vllm_api_key_file` | the path of the API key file of both model servers, never the value |
 
 `enabled = false` turns the GPU services off. Main services then clear each URL that points
@@ -152,10 +152,11 @@ endpoint stays out of rotation. Each capability has one endpoint, so a call has 
 
 ### Scanning and OCR
 
-`tesseract_languages` and `easyocr_languages` remain legacy configuration values for retained workflow histories and service defaults.
-New OCR work selects installed model coverage from detected script and language.
-Dataset and collection manual values do not control new automatic work.
-The Tesseract image installs Debian language models. EasyOCR reports its supported model inventory.
+OCR selects the installed model of each page from its detected script and language. No key
+selects OCR languages. `./deploy` refuses the removed keys `[main_services]
+tesseract_languages`, `[ai_services] easyocr_languages` and `[operations]
+change_ocr_languages_cap`. The Tesseract image installs Debian language models. The EasyOCR
+image installs a fixed set of language groups and reports them.
 `regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control. The scanner takes a slot
 before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `4G`)
@@ -619,12 +620,12 @@ is the map back to the group above that explains it.
 - `ai_server_enabled`, `ai_server_port`
 - `ner_enabled`, `embeddings_enabled`, `reranker_enabled`
 - `ai_server_ner_concurrency`, `ai_server_embed_concurrency`, `ai_server_rerank_concurrency`
-- `easyocr_enabled`, `easyocr_port`, `easyocr_languages`
+- `easyocr_enabled`, `easyocr_port`
 
 ### `[main_services]`: everything else
 
 - `pdf_ocr_provider`
-- `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
+- `tesseract_cpu_enabled`, `ocr_pdf_enabled`, `regex_scanner_threads`
 - `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
 - `ocr_pdf_concurrency`, `ocr_pdf_queue_depth`
 - `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
@@ -667,7 +668,7 @@ Deployment renders this value into the server override XML.
 ### `[operations]`: the operation caps
 
 - `add_dataset_cap`, `rescan_dataset_cap`, `compute_plans_cap`, `execute_plans_cap`
-- `purge_dataset_cap`, `delete_dataset_cap`, `change_ocr_languages_cap`, `rerun_ocr_cap`, `reindex_collection_cap`
+- `purge_dataset_cap`, `delete_dataset_cap`, `rerun_ocr_cap`, `reindex_collection_cap`
 - `refresh_document_locations_cap`, `retry_failed_files_cap`, `ensure_collection_cap`
 - `drop_collection_database_cap`, `export_collection_cap`, `import_collection_cap`
 - `purge_unattributed_entities_cap`, `backfill_vectors_cap`, `ingest_upload_cap`

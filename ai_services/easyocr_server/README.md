@@ -14,7 +14,7 @@ GET  /health -> {"status", "engine", "languages_available", "languages_supported
 
 This is the same request and response shape the Tesseract twin serves, because
 [`tasks/ocr_client.py`](../../main_services/processing/tasks/ocr_client.py) builds one
-payload and posts it to whichever engine a dataset asked for. `psm` is accepted and
+payload and posts it to the engine that the automatic OCR plan chose. `psm` is accepted and
 ignored: page segmentation is a Tesseract concept, and rejecting a field the shared
 client always sends would make the two engines un-substitutable at the call site for no
 gain.
@@ -46,30 +46,39 @@ with noise.
 
 ## Models
 
-Weights for the languages named in the `EASYOCR_LANGUAGES` build arg are baked into the
-image, the way the Tesseract twin bakes its traineddata: a service that must reach the
-internet before answering its first request fails in a way the health check cannot
-report. The compose overlay bind-mounts the host folder `easyocr_models_cache` over
+[`language_groups.py`](language_groups.py) lists the installed language groups. One group
+is one Reader, because EasyOCR cannot mix scripts in one Reader. The image build loads a
+Reader of each group and a Reader of `en` alone, which uses the English model. The
+weights of all of them are in the image, the way the Tesseract twin bakes its
+traineddata, so they work without internet access. No setting changes the groups.
+
+easyocr 1.7.2 lists `sa`, `bgc`, `mni` and `ta`, but a Reader with one of them cannot load
+(`UNLOADABLE`). The package has no character file for the first three, and the published
+Tamil model does not match the Tamil character file. The build leaves them out of each
+group, and `/ocr` refuses a request that names one of them, or a code outside the groups,
+with status 400.
+
+The compose overlay bind-mounts the host folder `easyocr_models_cache` over
 `/root/.EasyOCR`, and that mount hides what the image has there. The image therefore
 keeps a second copy of the weights at `EASYOCR_BAKED_DIR`. At start, before it serves,
 the server copies each file from there into `EASYOCR_MODEL_DIR` when that file is absent,
 and it logs the count. It never overwrites a file, so a second start copies 0 files. A
 copy error stops the start, and the health check does not pass.
 
-A language that is *not* baked in still works. It is downloaded on first use, and pays
-for that on the first page. `/health` reports three lists. `languages_available` is the
-baked set, which works without internet access. `languages_supported` is every code that
-the installed `easyocr` package can read. `failed_downloads` holds the last Reader build
-error of each language set that could not load or download its models, for example on a
-host without internet access. A later successful build removes the entry. The admin OCR
-form shows the supported list and the failed downloads. A host without internet access
-must bake every language it uses through the build argument `EASYOCR_LANGUAGES`.
+`/health` reports two sorted lists. `languages_supported` is every code of the installed
+groups that the `easyocr` package lists. `languages_available` is the same list without
+the unloadable codes. The automatic OCR planner reads `languages_supported` as the
+installed capability. That list is part of the identity of each automatic OCR plan, so a
+change to it selects every applied file for the OCR processing update again. The
+unloadable codes stay in it for this reason. `failed_downloads` holds
+the last Reader build error of each language set whose models could not load, for example
+a model file that is absent from the cache folder on a host without internet access. A
+later successful build removes the entry.
 
-Adding a language in a new script is the main cost lever in the pipeline: it adds a full
-OCR pass **and** a complete set of downstream NER, chunk, embed and index rows. See
-`easyocr_language_groups` in
-[`tasks/text_sources.py`](../../main_services/processing/tasks/text_sources.py) for how a
-requested language set is split into script-compatible passes.
+The worker keeps the same groups in `EASY_SCRIPT_GROUPS` of
+[`tasks/automatic_ocr.py`](../../main_services/processing/tasks/automatic_ocr.py). The
+image build context is this folder only, so the two files are copies, and
+`tests/test_language_groups.py` fails when they differ.
 
 ## Image
 
@@ -89,10 +98,23 @@ place that shows it before a dataset takes a day.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EASYOCR_LANGUAGES` | `en` | `+`-joined codes advertised by `/health`; also the build arg that decides what is baked in |
 | `EASYOCR_MODEL_DIR` | `/root/.EasyOCR` | Where weights live. The cache folder is bind-mounted here |
 | `EASYOCR_BAKED_DIR` | `/opt/easyocr-baked` in the image | The baked weights, copied into `EASYOCR_MODEL_DIR` at start. Empty or absent means no copy |
 | `OCR_CONCURRENCY` | `1` | See above, a correctness bound |
 | `OCR_QUEUE_DEPTH` | `8` | Requests that may wait before the service sheds load |
 | `OCR_READER_CACHE_SIZE` | `3` | Warm `Reader`s kept; each holds GPU memory, and the key is caller-supplied |
 | `OCR_MAX_IMAGE_BYTES` | `67108864` | Ceiling on one decoded image |
+
+## Tests
+
+The tests run in a throwaway container of the worker image, which has the same `easyocr`
+version, with the checkout mounted read-only. Set `EASYOCR_TEST_MODEL_DIR` to a folder
+with the baked weights to run the load test too.
+
+```sh
+docker run --rm -v "$PWD:/repo:ro" -e PYTHONDONTWRITEBYTECODE=1 -e REPO_ROOT=/repo \
+    --entrypoint sh localhost/hoover4_hoover4-worker:latest -c \
+    'uv pip install -q --python /opt/pysetup/.venv/bin/python fastapi &&
+     cd /repo/ai_services/easyocr_server &&
+     PYTHONPATH=. /opt/pysetup/.venv/bin/python -m pytest tests -q -p no:cacheprovider'
+```

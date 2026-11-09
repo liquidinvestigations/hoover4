@@ -1304,6 +1304,30 @@ def test_every_removed_service_setting_is_refused_with_its_replacement():
     assert "temporal_history_shards" in deploy.DEFAULTS["main_services"]
 
 
+#: The OCR language settings that automatic OCR replaces, with the start of each text.
+REMOVED_OCR_SETTINGS = {
+    "[main_services] tesseract_languages": "Automatic OCR chooses the Tesseract model",
+    "[ai_services] easyocr_languages": "Automatic OCR chooses the EasyOCR languages",
+    "[operations] change_ocr_languages_cap": "A new OCR language change is refused",
+}
+
+
+def test_the_ocr_language_settings_are_refused_and_not_rendered():
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.Config(SCHEMA / "removed-ocr-settings.ini")
+    message = str(refused.value)
+    assert "has %d configuration problems" % len(REMOVED_OCR_SETTINGS) in message
+    for label, text in REMOVED_OCR_SETTINGS.items():
+        assert "%s is removed. %s" % (label, text) in message
+    for value in ("en+ru", "eng+deu"):
+        assert value not in message
+    for source in ("settings-defaults.ini", "gpu-on.ini"):
+        env = _env(source)
+        assert "TESSERACT_LANGUAGES" not in env and "EASYOCR_LANGUAGES" not in env
+        assert "change_ocr_languages=" not in env["HOOVER4_OPERATION_CAPS"]
+        assert "EASYOCR_LANGUAGES" not in deploy.render_ai_env(_config(source))
+
+
 def test_the_moved_garage_capacity_is_rendered_from_storage():
     cfg = _config("settings-defaults.ini")
     assert _env("settings-defaults.ini")["GARAGE_CAPACITY"] == "300G"

@@ -173,12 +173,10 @@ DEFAULTS = {
         # GPU OCR
         "easyocr_enabled": "true",
         "easyocr_port": "21962",
-        "easyocr_languages": "en",
     },
     "main_services": {
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
-        "tesseract_languages": "eng",
         # The antivirus scan before parsing (hoover4-clamav). The image holds the
         # signatures of its build time. clamav_update_signatures runs freshclam in the
         # container. clamav_concurrency sets the scans that run at once, in clamd and in
@@ -423,7 +421,8 @@ DEFAULTS = {
         "container_log_max_files": "5",
     },
     # The most running operations of each kind across the deployment, one key for each
-    # kind of KINDS in database/operations.py, in that order. An operation over its cap
+    # kind of KINDS in database/operations.py, in that order. change_ocr_languages has no
+    # key, because a new run of it is refused. An operation over its cap
     # waits as `queued` with no time limit, and it holds its dataset or collection while
     # it waits. Rendered into HOOVER4_OPERATION_CAPS for hoover4-ops.
     "operations": {
@@ -433,7 +432,6 @@ DEFAULTS = {
         "execute_plans_cap": "2",
         "purge_dataset_cap": "2",
         "delete_dataset_cap": "2",
-        "change_ocr_languages_cap": "2",
         "rerun_ocr_cap": "2",
         "reindex_collection_cap": "2",
         "refresh_document_locations_cap": "2",
@@ -538,6 +536,15 @@ REMOVED_SETTINGS = {
     ("main_services", "garage_version"): None,
     ("main_services", "garage_image_digest"): None,
     ("main_services", "garage_capacity"): "Use [storage] garage_capacity.",
+    # Automatic OCR detects the language of each page and chooses the installed model.
+    ("main_services", "tesseract_languages"): (
+        "Automatic OCR chooses the Tesseract model of each page from its detected "
+        "language. Delete it."),
+    ("ai_services", "easyocr_languages"): (
+        "Automatic OCR chooses the EasyOCR languages of each page, and the EasyOCR "
+        "image installs a fixed set of language groups. Delete it."),
+    ("operations", "change_ocr_languages_cap"): (
+        "A new OCR language change is refused, so the operation needs no cap. Delete it."),
     # publish-images.sh takes the registry address as its first argument.
     ("cluster", None): (
         "Give the registry address to main_services/ops/publish-images.sh as its first "
@@ -1996,16 +2003,8 @@ def render_main_env(cfg, reachable_host=None):
 
     # Pipeline switches, rendered unconditionally so the worker can pick up a new one
     # without a deploy.py change.
-    for key in ("pdf_ocr_provider", "tesseract_languages",
-                "gpu_connect_timeout_ms", "gpu_circuit_break_seconds"):
+    for key in ("pdf_ocr_provider", "gpu_connect_timeout_ms", "gpu_circuit_break_seconds"):
         env[key.upper()] = cfg.get(m, key)
-
-    # The two language settings are the stack-wide DEFAULTS a dataset inherits until the
-    # admin page writes a `dataset_settings` row for it, after which that row wins.
-    # EasyOCR's lives in the
-    # [ai_services] section because that is where its server is configured, but the
-    # worker is what needs it -- it decides how many passes to run.
-    env["EASYOCR_LANGUAGES"] = cfg.get("ai_services", "easyocr_languages")
 
     # Worker fleet sizing. Rendered only when set: an empty value would reach the worker
     # as the string "" and every tier has a default it is better off keeping.
@@ -2227,7 +2226,6 @@ def render_ai_env(cfg):
     env["AI_SERVER_NER_CONCURRENCY"] = cfg.get(a, "ai_server_ner_concurrency")
     env["AI_SERVER_EMBED_CONCURRENCY"] = cfg.get(a, "ai_server_embed_concurrency")
     env["AI_SERVER_RERANK_CONCURRENCY"] = cfg.get(a, "ai_server_rerank_concurrency")
-    env["EASYOCR_LANGUAGES"] = cfg.get(a, "easyocr_languages")
 
     # Log rotation, read by the x-logging field of each file in ai_services/compose/. The
     # GPU tier uses the same two [main_services] keys as the main stack.

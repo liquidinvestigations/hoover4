@@ -68,3 +68,15 @@ def test_the_target_ledger_uses_the_same_resolution(monkeypatch):
     assert settings["tesseract"].value == "ron"
     assert settings["tesseract"].version == ocr_targets.SettingVersion(90, True)
     assert settings["easyocr"].value == dataset_config.DEFAULTS["ocr.easyocr.languages"]
+
+
+def test_the_installation_defaults_are_fixed(monkeypatch):
+    """No setting renders them, so an earlier environment value changes nothing."""
+    import importlib.util
+
+    monkeypatch.setenv("TESSERACT_LANGUAGES", "fra")
+    monkeypatch.setenv("EASYOCR_LANGUAGES", "ru")
+    spec = importlib.util.spec_from_file_location("dataset_config_copy", dataset_config.__file__)
+    copy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(copy)
+    assert copy.installation_ocr_defaults() == {"tesseract": "eng", "easyocr": "en"}

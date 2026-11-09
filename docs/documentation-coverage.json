@@ -2989,10 +2989,12 @@
       "source": [
         "main_services/processing/tasks/P3_parse_files/ocr_detection.py",
         "main_services/ocr_tesseract/text_detection.py",
-        "main_services/processing/tasks/P3_parse_files/ocr_reconciliation.py"
+        "main_services/processing/tasks/P3_parse_files/ocr_reconciliation.py",
+        "ai_services/easyocr_server/language_groups.py"
       ],
       "docs": [
         "docs/architecture/Pipeline_Stages.md",
+        "ai_services/easyocr_server/README.md",
         "docs/technical-specification/Features.md",
         "docs/technical-specification/Capability_Contracts.md#f-ingest-27",
         "main_services/processing/tasks/P3_parse_files/Readme.md#earlier-ocr-output-is-reconciled-before-new-ocr"

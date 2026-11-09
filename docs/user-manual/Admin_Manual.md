@@ -83,6 +83,7 @@ new counts show, and nothing runs. A failed or cancelled step does not start aga
 automatically. Start it with the button when the cause is fixed.
 
 The OCR step selects installed models from each eligible page’s detected script and language.
+Earlier OCR text in the detected language stays, and no new OCR runs for it.
 It preserves earlier output until replacement publication completes, then removes superseded normal variants.
 The OCR detection step examines every eligible image and PDF page in bounded batches.
 It stores detection evidence and updates search attributes independently of published OCR text.
