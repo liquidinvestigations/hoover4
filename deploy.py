@@ -464,11 +464,23 @@ DEFAULTS = {
     },
 }
 
+def _after_llm(flag):
+    """The switch of an overlay that makes a GPU service wait for the healthy model
+    server: the model server and the service are both enabled."""
+    return lambda cfg: (cfg.get_bool("ai_services", "llm_enabled")
+                        and cfg.get_bool("ai_services", flag))
+
+
 # Compose overlays per side, in order, with the ini flag that enables them.
 AI_OVERLAYS = [
     ("llm_enabled", "compose/vllm.yaml", "hoover4-vllm"),
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
+    # The model server cannot start while the other GPU services hold memory. These
+    # overlays add `depends_on` the healthy model server to a service that the file
+    # list holds. They add no service of their own.
+    (_after_llm("ai_server_enabled"), "compose/ai-server-after-llm.yaml", None),
+    (_after_llm("easyocr_enabled"), "compose/easyocr-after-llm.yaml", None),
 ]
 #: Settings that hoover4 no longer reads, with the text that tells the operator what to
 #: do instead. `(section, key)` names one key. `(section, None)` names a whole section.
@@ -619,6 +631,8 @@ AI_PUBLISHED = {
     "compose/vllm.yaml": ("vllm_port",),
     "compose/ai-server.yaml": ("ai_server_port",),
     "compose/easyocr.yaml": ("easyocr_port",),
+    "compose/ai-server-after-llm.yaml": (),
+    "compose/easyocr-after-llm.yaml": (),
 }
 
 # Services that request the GPU on the ai side (for the GPU/CDI preflights).
@@ -2695,7 +2709,10 @@ def compose_up(cfg, side, rt, build):
         up_args = ["up", "-d", "--force-recreate"]
     else:
         up_args = ["up", "-d"]
-    run_or_fail(compose_command(cfg, side, rt, up_args))
+    if side == "ai" and "compose/vllm.yaml" in selected_overlays(cfg, "ai"):
+        start_model_server_first(cfg, rt, up_args)
+    else:
+        run_or_fail(compose_command(cfg, side, rt, up_args))
     if side == "main":
         stop_disabled_internet_tools(cfg, rt)
         stop_disabled_research_agents(cfg, rt)
@@ -2705,6 +2722,136 @@ def compose_up(cfg, side, rt, build):
         apply_temporal_retention(cfg, rt)
         report_worker_stop_timeout(cfg, rt)
         verify_writable_dataset_mounts(cfg, rt)
+
+
+#: The seconds that the model server has to answer /health after its start. A first start
+#: downloads the checkpoint and compiles the kernels. The health check of
+#: ai_services/compose/vllm.yaml allows the same time.
+MODEL_SERVER_START_SECONDS = 3600
+#: The seconds of smoke test attempts after /health answers.
+MODEL_SERVER_SMOKE_SECONDS = 60
+#: The seconds between two probes of the model server.
+MODEL_SERVER_PROBE_SECONDS = 5
+#: The smoke test request and the word that a correct answer holds.
+MODEL_SERVER_SMOKE_QUESTION = "What is the capital of France?"
+MODEL_SERVER_SMOKE_ANSWER = "paris"
+#: Every GPU service of the ai side, in the order of AI_OVERLAYS.
+AI_SERVICES = tuple(svc for _flag, _rel, svc in AI_OVERLAYS if svc)
+
+
+def model_server_address(cfg):
+    """The base address of the model server from the GPU host itself: bind_ip, or the
+    loopback address when the port binds every interface."""
+    host = cfg.get("ai_services", "bind_ip").strip()
+    if host in ("", "0.0.0.0", "::"):
+        host = "127.0.0.1"
+    return "http://%s:%s" % (host, cfg.get("ai_services", "vllm_port"))
+
+
+def _model_server_key(cfg):
+    path = cfg.get("ai_services", "vllm_api_key_file").strip()
+    if not path:
+        return ""
+    try:
+        return Path(path).read_text().strip()
+    except OSError as exc:
+        fail("cannot read [ai_services] vllm_api_key_file: %s" % exc.strerror)
+
+
+def _http(url, key, body=None, timeout=30):
+    """(status, decoded JSON or None, error text) of one request. Never raises."""
+    import urllib.error
+    import urllib.request
+
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = "Bearer " + key
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    request = urllib.request.Request(url, data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read()
+            status = response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code, None, "HTTP %d" % exc.code
+    except (OSError, ValueError) as exc:
+        return 0, None, type(exc).__name__
+    try:
+        return status, json.loads(raw.decode("utf-8") or "null"), ""
+    except ValueError:
+        return status, None, ""
+
+
+def smoke_answer(payload):
+    """The answer text of a chat completion, or empty."""
+    try:
+        return str(payload["choices"][0]["message"]["content"] or "")
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def wait_for_model_server(cfg, rt, clock=time.monotonic, sleep=time.sleep):
+    """Wait until the model server answers /health, then until it answers the smoke
+    test. Fail when the container stops, when /health does not answer within
+    MODEL_SERVER_START_SECONDS, or when no smoke answer names Paris within
+    MODEL_SERVER_SMOKE_SECONDS."""
+    base = model_server_address(cfg)
+    key = _model_server_key(cfg)
+    started = clock()
+    reported = started
+    print("model server: waiting for %s/health (at most %d s)" % (base, MODEL_SERVER_START_SECONDS))
+    while True:
+        state = rt.run(["inspect", "--format", "{{.State.Status}}", "hoover4-vllm"],
+                       capture_output=True, text=True)
+        status = (state.stdout or "").strip()
+        if state.returncode != 0 or status in ("exited", "dead"):
+            fail("hoover4-vllm is %s before it became healthy. Read its log with: "
+                 "docker logs --tail 200 hoover4-vllm" % (status or "absent"))
+        code, _payload, _error = _http(base + "/health", key, timeout=10)
+        if code == 200:
+            break
+        if clock() - started > MODEL_SERVER_START_SECONDS:
+            fail("hoover4-vllm did not answer /health within %d s" % MODEL_SERVER_START_SECONDS)
+        if clock() - reported >= 60:
+            reported = clock()
+            print("model server: not healthy after %d s" % int(reported - started))
+        sleep(MODEL_SERVER_PROBE_SECONDS)
+    print("model server: healthy after %d s" % int(clock() - started))
+    body = {"model": QWEN_FLASH_ENV["LLM_SERVED_NAME"],
+            "messages": [{"role": "user", "content": MODEL_SERVER_SMOKE_QUESTION}],
+            "max_tokens": 32, "temperature": 0,
+            "chat_template_kwargs": {"enable_thinking": False}}
+    smoke_started = clock()
+    last = ""
+    while True:
+        code, payload, error = _http(base + "/v1/chat/completions", key, body, timeout=60)
+        answer = smoke_answer(payload) if code == 200 else ""
+        if MODEL_SERVER_SMOKE_ANSWER in answer.lower():
+            print("model server: smoke test answered %r" % answer.strip()[:80])
+            return
+        last = error or ("HTTP %d" % code if code != 200 else "answer %r" % answer.strip()[:80])
+        if clock() - smoke_started >= MODEL_SERVER_SMOKE_SECONDS:
+            fail("hoover4-vllm failed the smoke test for %d s. Last result: %s"
+                 % (MODEL_SERVER_SMOKE_SECONDS, last))
+        sleep(MODEL_SERVER_PROBE_SECONDS)
+
+
+def start_model_server_first(cfg, rt, up_args):
+    """Start the ai side with the model server alone first.
+
+    The model server cannot start while the other GPU services hold memory, and its load
+    takes more memory than its steady state. So every GPU container stops, the model
+    server starts alone and passes its health check and the smoke test, and only then do
+    the other selected services start."""
+    for name in AI_SERVICES:
+        rt.run(["stop", name], capture_output=True)
+    run_or_fail(compose_command(cfg, "ai", rt, up_args + ["--no-deps", "hoover4-vllm"]))
+    wait_for_model_server(cfg, rt)
+    selected = selected_overlays(cfg, "ai")
+    others = [svc for _flag, rel, svc in AI_OVERLAYS
+              if svc and svc != "hoover4-vllm" and rel in selected]
+    if others:
+        run_or_fail(compose_command(cfg, "ai", rt, up_args + ["--no-deps"] + others))
 
 
 def stop_disabled_internet_tools(cfg, rt):

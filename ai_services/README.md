@@ -40,6 +40,22 @@ From the repo root, with `hoover4.ini` in place (`[ai_services] enabled = true`)
 ./deploy --ai-services --print-command # show what would run
 ```
 
+When `llm_enabled` is true, [deploy.py](../deploy.py) starts the tier in stages, because the model server
+cannot start while the other GPU services hold memory, and its load takes more memory than
+its steady state.
+
+1. It stops every GPU container of the tier.
+2. It starts `hoover4-vllm` alone and waits until `/health` answers, for at most 3,600 s.
+   It stops with an error when the container exits first.
+3. It asks "What is the capital of France?" with thinking off. It stops with an error when
+   no answer names Paris within 60 s of attempts.
+4. It starts the other enabled services.
+
+The overlays `ai-server-after-llm.yaml` and `easyocr-after-llm.yaml` make `compose up` start
+those services only after `hoover4-vllm` is healthy. The Docker daemon restarts containers
+after a host restart by their restart policy, and it does not read `depends_on`. Run
+`./deploy --ai-services` after a host restart to get the staged order.
+
 [deploy.py](../deploy.py) preflights the GPU before anything starts: `nvidia-smi` must work, and on
 podman a CDI spec must exist (`sudo nvidia-ctk cdi generate
 --output=/etc/cdi/nvidia.yaml` if not). It also prunes stale CDI mounts. A partial

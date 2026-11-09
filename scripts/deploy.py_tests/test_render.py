@@ -657,6 +657,8 @@ def test_every_service_rotates_its_logs():
     ai_checked = 0
     for name, document in _ai_compose_documents():
         for service, definition in (document.get("services") or {}).items():
+            if "image" not in definition and "build" not in definition:
+                continue  # an override of a service another file defines
             assert definition.get("logging") == expected, "%s: %s" % (name, service)
             ai_checked += 1
     assert ai_checked == 3
@@ -2346,3 +2348,108 @@ def test_the_samples_differ_only_in_the_development_keys():
     assert set(release) == set(development)
     assert {setting: (release[setting], development[setting]) for setting in release
             if release[setting] != development[setting]} == DEVELOPMENT_DIFFERENCES
+
+
+# ---- the staged start of the ai side --------------------------------------------------
+
+
+def test_the_gpu_services_wait_for_the_model_server_only_when_it_is_enabled():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(enabled="true", llm_enabled="true", ai_server_enabled="true",
+                                     easyocr_enabled="true")
+    overlays = deploy.selected_overlays(cfg, "ai")
+    assert overlays[0] == "compose/vllm.yaml"
+    assert {"compose/ai-server-after-llm.yaml", "compose/easyocr-after-llm.yaml"} <= set(overlays)
+    cfg.values["ai_services"]["llm_enabled"] = "false"
+    assert not [o for o in deploy.selected_overlays(cfg, "ai") if o.endswith("-after-llm.yaml")]
+    documents = dict(_ai_compose_documents())
+    for name, service in (("ai-server-after-llm.yaml", "hoover4-ai-server"),
+                          ("easyocr-after-llm.yaml", "hoover4-easyocr-gpu")):
+        assert documents["ai_services/" + name]["services"][service]["depends_on"] == {
+            "hoover4-vllm": {"condition": "service_healthy"}}
+
+
+def test_the_ai_server_prints_the_python_stack_of_a_crash():
+    service = dict(_ai_compose_documents())["ai_services/ai-server.yaml"]["services"]["hoover4-ai-server"]
+    assert "PYTHONFAULTHANDLER=1" in service["environment"]
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def _vllm_cfg():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(enabled="true", llm_enabled="true", ai_server_enabled="true",
+                                     easyocr_enabled="true", vllm_api_key_file="")
+    return cfg
+
+
+def _running_rt(status="running"):
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 0, status + "\n", "")
+    return rt
+
+
+def test_the_model_server_starts_alone_and_the_others_start_after_its_smoke_test(monkeypatch):
+    cfg = _vllm_cfg()
+    calls = []
+    rt = _running_rt()
+    rt.run.side_effect = lambda cmd, **kw: (calls.append(("rt", cmd[0], cmd[-1])),
+                                            subprocess.CompletedProcess(cmd, 0, "running\n", ""))[1]
+    monkeypatch.setattr(deploy, "compose_command", lambda c, side, r, args: args)
+    monkeypatch.setattr(deploy, "run_or_fail", lambda cmd, env=None: calls.append(("compose", tuple(cmd))))
+    monkeypatch.setattr(deploy, "wait_for_model_server", lambda c, r: calls.append(("wait",)))
+    deploy.start_model_server_first(cfg, rt, ["up", "-d"])
+    assert calls[:3] == [("rt", "stop", "hoover4-vllm"), ("rt", "stop", "hoover4-ai-server"),
+                         ("rt", "stop", "hoover4-easyocr-gpu")]
+    assert calls[3:] == [("compose", ("up", "-d", "--no-deps", "hoover4-vllm")), ("wait",),
+                         ("compose", ("up", "-d", "--no-deps", "hoover4-ai-server",
+                                      "hoover4-easyocr-gpu"))]
+
+
+def test_the_smoke_test_passes_on_an_answer_that_names_paris(monkeypatch):
+    clock = _Clock()
+    answers = iter([(503, None, "HTTP 503"), (200, {}, ""),
+                    (200, {"choices": [{"message": {"content": "Paris."}}]}, "")])
+    sent = []
+
+    def http(url, key, body=None, timeout=30):
+        sent.append((url, body))
+        return next(answers)
+    monkeypatch.setattr(deploy, "_http", http)
+    deploy.wait_for_model_server(_vllm_cfg(), _running_rt(), clock=clock, sleep=clock.sleep)
+    assert sent[0][0] == "http://127.0.0.1:21960/health"
+    body = sent[-1][1]
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert body["messages"][0]["content"] == "What is the capital of France?"
+
+
+def test_a_smoke_test_that_fails_for_a_minute_stops_the_deploy(monkeypatch):
+    clock = _Clock()
+
+    def http(url, key, body=None, timeout=30):
+        if url.endswith("/health"):
+            return 200, None, ""
+        return 200, {"choices": [{"message": {"content": "Lyon"}}]}, ""
+    monkeypatch.setattr(deploy, "_http", http)
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.wait_for_model_server(_vllm_cfg(), _running_rt(), clock=clock, sleep=clock.sleep)
+    assert "smoke test" in str(refused.value) and "Lyon" in str(refused.value)
+    assert 60 <= clock.now <= 70
+
+
+def test_a_model_server_that_exits_while_loading_stops_the_deploy(monkeypatch):
+    clock = _Clock()
+    monkeypatch.setattr(deploy, "_http", lambda *a, **k: (0, None, "ConnectionRefusedError"))
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.wait_for_model_server(_vllm_cfg(), _running_rt("exited"), clock=clock,
+                                     sleep=clock.sleep)
+    assert "exited" in str(refused.value)

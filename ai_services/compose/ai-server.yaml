@@ -52,6 +52,9 @@ services:
       # can compare what host B was told against what host A runs.
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # A segmentation fault prints the Python stack of every thread, which names the
+      # capability and the library that failed.
+      - PYTHONFAULTHANDLER=1
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:

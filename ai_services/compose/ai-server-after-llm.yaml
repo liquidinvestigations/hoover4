@@ -1,0 +1,12 @@
+# Optional overlay: hoover4-ai-server starts only after the model server is healthy. deploy.py
+# selects this file when [ai_services] llm_enabled and ai_server_enabled are both true.
+#
+# The model server cannot start while the other GPU services hold memory, and its load
+# takes more memory than its steady state. `compose up` therefore starts hoover4-ai-server after
+# hoover4-vllm passes its health check. ./deploy --ai-services also starts the model
+# server first and waits for its smoke test.
+services:
+  hoover4-ai-server:
+    depends_on:
+      hoover4-vllm:
+        condition: service_healthy
