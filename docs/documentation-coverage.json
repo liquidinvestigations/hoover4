@@ -2782,6 +2782,19 @@
       "scenario": "website/browser-tests/612-admin-collection-detail.ini"
     },
     {
+      "id": "F-admin-41",
+      "source": [
+        "deploy.py",
+        "scripts/deploy.py_tests/test_render.py"
+      ],
+      "docs": [
+        "docs/operations/Configuration_Reference.md#check-the-file-before-a-deployment",
+        "docs/operations/Deploying.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature is a command-line check of the deployment configuration. It has no interface state."
+    },
+    {
       "id": "F-auth-01",
       "source": [
         "website/backend/src/auth/route_policy.rs"

@@ -1,9 +1,12 @@
 """Render tests for the deployment configuration."""
 
+import builtins
 import importlib.util
 import json
 import os
+import re
 import subprocess
+import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -24,6 +27,22 @@ def _load_deploy():
 
 
 deploy = _load_deploy()
+
+#: Copies of the tracked samples, written once for this test run.
+SAMPLE_COPIES = Path(tempfile.mkdtemp(prefix="hoover4-samples-"))
+
+
+def _template(name="hoover4.ini.development"):
+    """Return the Config of a copy of a tracked sample without inline `;` comments.
+
+    The strict parser refuses an inline comment, and the samples still have them. The
+    copy keeps every value."""
+    copy = SAMPLE_COPIES / name
+    if not copy.exists():
+        text = (REPO_ROOT / name).read_text(encoding="utf-8")
+        copy.write_text(re.sub(r"(?m)^([^#;\n][^\n]*?)[ \t]+;[^\n]*$", r"\1", text),
+                        encoding="utf-8")
+    return deploy.Config(copy)
 
 
 @pytest.mark.parametrize("same_image", [True, False])
@@ -248,7 +267,7 @@ def test_selfhosted_llm_requires_ai_tier():
     ],
 )
 def test_disabled_template_skips_gpu_ner(template_name):
-    cfg = deploy.Config(REPO_ROOT / template_name)
+    cfg = _template(template_name)
 
     with mock.patch.object(deploy, "fail") as fail:
         deploy.preflight_ner_gpu_without_tier(cfg, "main")
@@ -310,13 +329,6 @@ def test_a_narrowed_agent_pack_value_is_rendered_and_an_empty_one_is_all(capsys)
     assert "agent_packs_subagent" not in capsys.readouterr().err
 
 
-def test_an_old_subagent_pack_key_warns_and_is_not_rendered(capsys):
-    env = _env("agent-packs-subagent.ini")
-    assert "AGENT_PACKS_SUBAGENT" not in env
-    assert ("warning: [main_services] agent_packs_subagent is ignored"
-            in capsys.readouterr().err)
-
-
 def test_both_research_agents_receive_the_pack_keys():
     agents = dict(_compose_documents())["research-agents.yaml"]["services"]
     for name in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
@@ -343,12 +355,8 @@ def test_no_research_agent_receives_a_retired_agent_key():
                                         "AGENT_COMPLETION_RESERVE_TOKENS=")), (name, line)
 
 
-def test_the_retired_plan_budget_is_not_rendered_and_a_set_value_warns(capsys):
+def test_the_retired_plan_budget_is_not_rendered():
     assert "AGENT_PLAN_RUN_BUDGET" not in _env("settings-defaults.ini")
-    assert "agent_plan_run_budget" not in capsys.readouterr().err
-    env = _env("agent-budgets.ini")
-    assert "AGENT_PLAN_RUN_BUDGET" not in env
-    assert "agent_plan_run_budget is ignored" in capsys.readouterr().err
 
 
 def test_the_worker_receives_no_plan_budget():
@@ -638,7 +646,7 @@ def test_cassandra_service_settings():
 
 @pytest.mark.parametrize("template_name", ["hoover4.ini.development", "hoover4.ini.release"])
 def test_templates_render_the_new_settings(template_name):
-    cfg = deploy.Config(REPO_ROOT / template_name)
+    cfg = _template(template_name)
     with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
         env = deploy.render_main_env(cfg)
 
@@ -1002,15 +1010,6 @@ def test_the_probe_keys_are_rendered():
     assert [env[key] for key in PROBE_KEYS] == ["8"]
 
 
-def test_a_retired_result_page_key_is_ignored_with_a_warning(capsys):
-    cfg = deploy.Config(FIXTURES / "agent-probe-keys.ini")
-    env = deploy.agent_probe_env(cfg)
-    assert "AGENT_MAX_PAGE_TOKENS" not in env
-    warnings = capsys.readouterr().err
-    assert "agent_max_page_tokens is ignored" in warnings
-    assert "agent_completion_reserve_tokens is ignored" in warnings
-
-
 @pytest.mark.parametrize("key, value", [
     ("agent_catalogue_match_count", "5"),
     ("agent_catalogue_match_count", "13"),
@@ -1167,7 +1166,7 @@ def test_the_worker_receives_the_chat_classifier_and_the_control_folder():
 
 @pytest.mark.parametrize("template_name", ["hoover4.ini.development", "hoover4.ini.release"])
 def test_the_templates_carry_the_slots_and_the_provider_temperature_rule(template_name):
-    cfg = deploy.Config(REPO_ROOT / template_name)
+    cfg = _template(template_name)
     main = cfg.values["main_services"]
     assert [main[f"{tier}_concurrency"] for tier in
             ("chat_model", "chat_low_latency", "agent_tool")] == ["3", "4", "16"]
@@ -1242,8 +1241,9 @@ VLLM_DEFAULT_EXTRA_ARGS = (
 @pytest.mark.parametrize("source", ["settings-defaults.ini", "hoover4.ini.development",
                                     "hoover4.ini.release"])
 def test_the_model_server_keys_render_their_defaults(source):
-    path = FIXTURES / source if source == "settings-defaults.ini" else REPO_ROOT / source
-    env = deploy.render_ai_env(deploy.Config(path))
+    cfg = (deploy.Config(FIXTURES / source) if source == "settings-defaults.ini"
+           else _template(source))
+    env = deploy.render_ai_env(cfg)
 
     assert {key: env[key] for key in VLLM_DEFAULT_ENV} == VLLM_DEFAULT_ENV
     assert env["VLLM_EXTRA_ARGS"] == VLLM_DEFAULT_EXTRA_ARGS
@@ -1598,10 +1598,6 @@ def _mount_sections(cfg, sections):
     return cfg
 
 
-def _template(name="hoover4.ini.development"):
-    return deploy.Config(REPO_ROOT / name)
-
-
 @pytest.mark.parametrize("testdata_dir", ["", "/srv/hoover4-corpus"])
 def test_an_ini_without_mount_sections_renders_the_old_lines(testdata_dir):
     cfg = _template()
@@ -1929,3 +1925,278 @@ def test_the_processing_updates_are_automatic_by_default(source):
     assert "update_dataset=2" in caps and "update_collection=2" in caps
     cfg.values["processing_updates"]["automatic"] = "false"
     assert not cfg.get_bool("processing_updates", "automatic")
+
+
+# ---- configuration schema and the dry run -------------------------------------------
+
+SCHEMA = FIXTURES / "schema"
+
+
+def _refusal(path):
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.Config(path)
+    return str(refused.value)
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected"),
+    [
+        pytest.param("unknown-section.ini", ["[search_tuning] is not a known section."],
+                     id="unknown-section"),
+        pytest.param("unknown-key.ini", ["[main_services] mystery_key is not a known key.",
+                                         "[uploads] max_folder_depth is not a known key."],
+                     id="unknown-key"),
+        pytest.param("removed-key.ini", [
+            "[main_services] research_concurrency is removed. No setting replaces it.",
+            "[main_services] agent_packs_subagent is removed. No setting replaces it.",
+            "[main_services] agent_max_page_tokens is removed. No setting replaces it.",
+        ], id="removed-key"),
+        pytest.param("malformed-mount.ini", [
+            "[dataset_mount] is not a valid dataset mount section.",
+            "[dataset_mount.Bad-Name] is not a valid dataset mount section.",
+        ], id="malformed-mount"),
+        pytest.param("unknown-mount-key.ini",
+                     ["[dataset_mount.corpus] mode is not a dataset mount key."],
+                     id="unknown-mount-key"),
+        pytest.param("inline-comment.ini", [
+            "[main_services] proxy_username has a comment after its value.",
+            "[main_services] proxy_groups has a comment after its value.",
+        ], id="inline-comment"),
+        pytest.param("several-problems.ini", [
+            "[DEFAULT] is not a known section.",
+            "[main_services] mystery_key is not a known key.",
+            "[main_services] research_concurrency is removed.",
+            "[main_services] proxy_groups has a comment after its value.",
+            "[search_tuning] is not a known section.",
+            "[dataset_mount.corpus] mode is not a dataset mount key.",
+        ], id="several-problems"),
+        pytest.param("interpolation.ini",
+                     ["[main_services] admin_base_url has a % sign that is not written as %%."],
+                     id="interpolation"),
+    ],
+)
+def test_the_parser_names_every_structural_problem(fixture_name, expected):
+    message = _refusal(SCHEMA / fixture_name)
+    assert "%d configuration problem" % len(expected) in message
+    for line in expected:
+        assert line in message, line
+    for value in ("value-e81c", "alice", "note-7f3a", "note-9b21", "note-4c1d", "%zz"):
+        assert value not in message
+
+
+def test_the_problems_keep_the_order_of_the_file():
+    message = _refusal(SCHEMA / "several-problems.ini")
+    positions = [message.index(text) for text in (
+        "[DEFAULT]", "mystery_key", "research_concurrency", "proxy_groups",
+        "[search_tuning]", "[dataset_mount.corpus] mode")]
+    assert positions == sorted(positions)
+
+
+def test_a_default_section_does_not_fill_the_other_sections():
+    with pytest.raises(deploy.DeployError):
+        deploy.Config(SCHEMA / "several-problems.ini")
+    path = SAMPLE_COPIES / "default-only.ini"
+    path.write_text("[DEFAULT]\nvolumes_path = /srv/x\n\n[storage]\n", encoding="utf-8")
+    assert "[DEFAULT] is not a known section." in _refusal(path)
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected"),
+    [
+        pytest.param("duplicate-key.ini", "option 'redis_port' in section 'main_services' "
+                     "already exists", id="duplicate-key"),
+        pytest.param("duplicate-section.ini", "section 'main_services' already exists",
+                     id="duplicate-section"),
+    ],
+)
+def test_a_duplicate_is_a_parse_error(fixture_name, expected):
+    message = _refusal(SCHEMA / fixture_name)
+    assert message.startswith("cannot parse ")
+    assert expected in message
+
+
+def test_full_line_comments_and_marks_inside_a_value_are_accepted():
+    cfg = deploy.Config(SCHEMA / "valid-gpu-off.ini")
+    assert cfg.get("main_services", "admin_base_url") == (
+        "https://hoover.example.test/admin#ops;view=all")
+
+
+def test_an_omitted_key_keeps_its_default():
+    cfg = deploy.Config(SCHEMA / "valid-gpu-off.ini")
+    assert cfg.get("main_services", "agent_compaction_model") == ""
+    assert cfg.get("main_services", "factcheck_api_key_file") == ""
+    assert cfg.get("cluster", "registry_address") == ""
+
+
+class _Boundaries:
+    """Replaces every boundary that changes the host or reaches a service. Each call is
+    recorded and fails the run."""
+
+    def __init__(self):
+        self.calls = []
+        self._real_open = builtins.open
+
+    def _forbid(self, name):
+        def record(*args, **kwargs):
+            self.calls.append(name)
+            raise AssertionError("dry run called %s" % name)
+        return record
+
+    def _open(self, file, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in "wax+"):
+            self.calls.append("open(%s, %s)" % (file, mode))
+            raise AssertionError("dry run opened %s for writing" % file)
+        return self._real_open(file, mode, *args, **kwargs)
+
+    def patches(self):
+        targets = [
+            (deploy.subprocess, "run"), (deploy.subprocess, "Popen"),
+            (deploy.subprocess, "check_output"), (deploy.subprocess, "call"),
+            (deploy.shutil, "which"), (deploy.shutil, "rmtree"),
+            (deploy.socket, "socket"), (deploy.socket, "create_connection"),
+            (deploy.socket, "getaddrinfo"),
+            (deploy.os, "makedirs"), (deploy.os, "mkdir"), (deploy.os, "chown"),
+            (deploy.os, "chmod"), (deploy.os, "remove"), (deploy.os, "unlink"),
+            (deploy.os, "system"),
+            (Path, "mkdir"), (Path, "write_text"), (Path, "write_bytes"), (Path, "touch"),
+            (Path, "unlink"),
+            (deploy, "Runtime"), (deploy, "_write_if_changed"), (deploy, "write_env_file"),
+            (deploy, "create_volume_folders"), (deploy, "write_dataset_mounts_overlay"),
+            (deploy, "set_volume_owners"), (deploy, "ensure_network"),
+            (deploy, "compose_up"), (deploy, "compose_down"), (deploy, "run_or_fail"),
+            (deploy, "container_reachable_host"), (deploy, "local_ip_addresses"),
+        ]
+        patches = [mock.patch.object(owner, name, side_effect=self._forbid(name))
+                   for owner, name in targets]
+        patches.append(mock.patch("urllib.request.urlopen",
+                                  side_effect=self._forbid("urlopen")))
+        patches.append(mock.patch.object(builtins, "open", self._open))
+        return patches
+
+
+#: The files that a deployment renders. A dry run creates and changes none of them.
+GENERATED = (
+    deploy.MAIN_COMPOSE_DIR / ".env",
+    deploy.AI_COMPOSE_DIR / ".env",
+    deploy.DATASET_MOUNTS_OVERLAY,
+    deploy.TEMPORAL_DYNAMIC_CONFIG_GENERATED,
+    deploy.MAIN_COMPOSE_DIR / "nginx-proxy.conf",
+    deploy.MAIN_COMPOSE_DIR / "clickhouse-server-config-override.xml",
+    deploy.MAIN_COMPOSE_DIR / "tika" / "tika-config.json",
+)
+
+
+def _generated_state():
+    return {path: (path.stat().st_mtime_ns if path.exists() else None) for path in GENERATED}
+
+
+def _run(argv, ini_path, capsys):
+    """Run deploy.main with `ini_path` as hoover4.ini and every boundary replaced."""
+    boundaries = _Boundaries()
+    before = _generated_state()
+    with mock.patch.object(deploy, "INI_PATH", Path(ini_path)):
+        patches = boundaries.patches()
+        for patch in patches:
+            patch.start()
+        try:
+            try:
+                code = deploy.main(argv)
+            except SystemExit as exc:
+                code = exc.code
+        finally:
+            for patch in reversed(patches):
+                patch.stop()
+    assert boundaries.calls == []
+    assert _generated_state() == before
+    out = capsys.readouterr()
+    return code, out.out, out.err
+
+
+@pytest.mark.parametrize("fixture_name", ["valid-gpu-off.ini", "valid-gpu-on.ini"])
+def test_check_accepts_a_valid_configuration(fixture_name, capsys):
+    code, out, err = _run(["--check"], SCHEMA / fixture_name, capsys)
+    assert (code, out) == (0, "configuration valid\n"), err
+
+
+@pytest.mark.parametrize("name", ["hoover4.ini.release", "hoover4.ini.development"])
+def test_check_accepts_a_sample_with_a_volumes_path(name, capsys, tmp_path):
+    _template(name)
+    path = tmp_path / "hoover4.ini"
+    path.write_text(re.sub(r"(?m)^volumes_path *=.*$", "volumes_path = /srv/hoover4-volumes",
+                           (SAMPLE_COPIES / name).read_text(encoding="utf-8")),
+                    encoding="utf-8")
+    code, out, err = _run(["--check"], path, capsys)
+    assert (code, out) == (0, "configuration valid\n"), err
+
+
+def test_check_accepts_a_valid_configuration_from_the_gpu_host(capsys):
+    code, out, _err = _run(["--check", "--ai-services"], SCHEMA / "valid-gpu-on.ini", capsys)
+    assert (code, out) == (0, "configuration valid\n")
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected"),
+    [
+        pytest.param("several-problems.ini", [
+            "[DEFAULT] is not a known section.",
+            "[main_services] mystery_key is not a known key.",
+            "[main_services] research_concurrency is removed.",
+            "[main_services] proxy_groups has a comment after its value.",
+            "[search_tuning] is not a known section.",
+            "[dataset_mount.corpus] mode is not a dataset mount key.",
+        ], id="several-problems"),
+        pytest.param("unknown-section.ini", ["[search_tuning] is not a known section."],
+                     id="unknown-section"),
+        pytest.param("duplicate-key.ini", ["redis_port"], id="duplicate-key"),
+        pytest.param("bad-boolean.ini", ["[main_services] ocr_pdf_enabled must be a boolean"],
+                     id="bad-boolean"),
+        pytest.param("bad-port.ini", ["[main_services] redis_port must be a port"],
+                     id="bad-port"),
+        pytest.param("missing-manticore.ini", ["[main_services] manticore_mem_limit is required"],
+                     id="missing-manticore"),
+    ],
+)
+def test_check_returns_1_and_names_each_problem(fixture_name, expected, capsys):
+    code, out, err = _run(["--check"], SCHEMA / fixture_name, capsys)
+    assert code == 1
+    assert "configuration valid" not in out
+    for line in expected:
+        assert line in err, line
+
+
+def test_check_collects_problems_of_separate_steps(capsys, tmp_path):
+    path = tmp_path / "hoover4.ini"
+    path.write_text((SCHEMA / "valid-gpu-off.ini").read_text(encoding="utf-8")
+                    .replace("volumes_path = /srv/hoover4-volumes", "volumes_path =")
+                    + "proxy_username =\n", encoding="utf-8")
+    code, _out, err = _run(["--check"], path, capsys)
+    assert code == 1
+    assert "has 2 configuration problems" in err
+    assert "[storage] volumes_path is empty" in err
+    assert "[main_services] proxy_username is empty" in err
+
+
+def test_check_needs_hoover4_ini_and_reads_no_sample(capsys, tmp_path):
+    with mock.patch.object(deploy, "Config", side_effect=AssertionError("Config read")):
+        code, out, err = _run(["--check"], tmp_path / "hoover4.ini", capsys)
+    assert code == 1
+    assert out == ""
+    assert "hoover4.ini not found" in err
+
+
+@pytest.mark.parametrize("flag", ["--print-env", "--print-command", "--build", "--down",
+                                  "--reset", "--reset-caches", "--reset-temporal"])
+def test_check_refuses_another_action(flag, capsys):
+    code, out, err = _run(["--check", flag], SCHEMA / "valid-gpu-off.ini", capsys)
+    assert code == 2
+    assert out == ""
+    assert "--check cannot be used with %s" % flag in err
+
+
+@pytest.mark.parametrize("argv", [["--print-env"], ["--print-command"],
+                                  ["--print-env", "--ai-services"]])
+def test_print_modes_refuse_an_invalid_schema(argv, capsys):
+    with pytest.raises(deploy.DeployError) as refused:
+        _run(argv, SCHEMA / "several-problems.ini", capsys)
+    assert "[main_services] mystery_key is not a known key." in str(refused.value)
+    assert "[search_tuning] is not a known section." in str(refused.value)

@@ -8,6 +8,7 @@ decides and which code reads it.
 ## Contents
 
 - [How configuration flows](#how-configuration-flows)
+- [Check the file before a deployment.](#check-the-file-before-a-deployment)
 - [Store credential file paths in configuration.](#store-credential-file-paths-in-configuration)
 - [`[storage]`](#storage)
 - [`[ai_services]`](#ai_services)
@@ -35,6 +36,43 @@ The two sides render separately. `[ai_services]` feeds the accelerated tier's co
 project; `[main_services]` feeds everything else. The two hosts hold **identical copies** of
 this file, copied by hand, which is why the stack verification compares a configuration
 fingerprint between them: it will drift.
+
+## Check the file before a deployment.
+
+[deploy.py](../../deploy.py) reads the file before every command, including `--print-env` and
+`--print-command`. It refuses the file when it finds one of these problems:
+
+- A section that this page does not describe. A `[DEFAULT]` section is such a section, and
+  its keys do not go into the other sections.
+- A key that its section does not have.
+- A removed key or section. The message names the setting that replaces it, or states that no
+  setting replaces it.
+- A value with a space or a tab and then `;` or `#`. The parser removes no comment after a
+  value, so write each comment on its own line above its key.
+- A `[dataset_mount.<name>]` section with a name that is not 1 to 32 characters of `a-z`,
+  `0-9` and `_`, or with a key other than `host_path`, `container_path` and `writable`.
+- A repeated section, or a repeated key in one section.
+
+The message names the section and the key of each problem, and it does not show the value.
+A `;` or `#` with no space before it stays part of the value. A key that the file does not
+set keeps its default. The file must set `[storage] volumes_path`, `manticore_mem_limit` and
+`manticore_vectors_mem_limit`.
+
+`./deploy --check` validates the file and stops. It needs `hoover4.ini` and does not read a
+sample in its place. It renders the environment of both sides in memory. It validates the
+boolean, number, port and size values that the two renders read. It also runs the refusals
+that depend only on the file. A file with `[ai_services] enabled = false` can be valid.
+The command prints `configuration valid` and exits with status 0. Otherwise it prints the
+problems and exits with status 1. It writes no file, creates no folder, runs no command and
+contacts no service. It cannot be used with another action flag.
+
+A file with a structural problem gets no value check. Each later check reports only its
+first problem.
+
+Some refusals need the host or a running service, so only a deployment runs them. They check
+the secret files, the CPU count of the host and the dataset mount folders. They also check the
+GPU, its CDI specification, free ports and the compose files. Two more read the Temporal
+shard count and probe each writable dataset mount.
 
 ## Store credential file paths in configuration.
 
@@ -275,12 +313,12 @@ Live source requests must verify circuit availability separately.
 `agent_packs_chat` selects chat tool packs as a comma-separated list or `all`.
 The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
 Every chat receives the `skills` pack.
-Removed research configuration keys produce a deployment warning and have no effect.
+[deploy.py](../../deploy.py) refuses the removed research configuration keys.
 The agent service sends all
 available tools with each model call and refuses an unknown pack name.
 The results of one model step share 24,000 bytes, and each call gets an equal part. No key
-changes that. `./deploy` prints a warning for an `agent_max_page_tokens` or
-`agent_completion_reserve_tokens` key and ignores it. `agent_catalogue_match_count` is how
+changes that. `./deploy` refuses the removed keys `agent_max_page_tokens` and
+`agent_completion_reserve_tokens`. `agent_catalogue_match_count` is how
 many names one `search_agent_tools` call returns, from 6 to 12. Empty means 6. `./deploy`
 refuses a value that is not a whole number in range. The tool limit probe selects this
 value.
@@ -460,7 +498,7 @@ The last rule runs after the services start. The others run before any compose c
 
 One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
 operations of that kind that run at once across the deployment. No key covers a group of
-kinds. [deploy.py](../../deploy.py) refuses a value below 1, and prints a warning for an unknown key in the
+kinds. [deploy.py](../../deploy.py) refuses a value below 1 and an unknown key in the
 section. It renders the 20 values into one variable, `HOOVER4_OPERATION_CAPS`, in
 `hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` limits the
 `ingest_upload` operations that the upload queues start, one queue for each upload dataset.
@@ -500,7 +538,7 @@ again.
 | `abandon_hours` | `24` | A batch with no acknowledged chunk for this many hours is committed with the files that arrived. `0` commits every idle batch at the next hourly sweep. |
 
 Each value is a whole number. [deploy.py](../../deploy.py) refuses a value below 1, except `abandon_hours`,
-which may be 0, and prints a warning for an unknown key. The path limits are fixed: 64 names, 255
+which may be 0. It refuses an unknown key. The path limits are fixed: 64 names, 255
 bytes for one name, and 1,024 bytes for a destination path. The `begin` body is at most 16 MiB.
 
 The upload scenarios ran at the defaults with these sizes:

@@ -251,7 +251,10 @@ DEFAULTS = {
         "search_timeout_seconds": "",
         "manticore_expansion_limit": "5000",
         "ocr_pdf_enabled": "true",
-        # Datastore memory limits. The Manticore limits are mandatory values in the ini.
+        # Datastore memory limits. The two Manticore limits are mandatory: an empty value
+        # is refused (required_size).
+        "manticore_mem_limit": "",
+        "manticore_vectors_mem_limit": "",
         "clickhouse_mem_limit": "19000M",
         "clickhouse_server_memory_ratio": "0.7",
         "clickhouse_ui_mem_limit": "6000M",
@@ -321,6 +324,9 @@ DEFAULTS = {
         "agent_max_output_tokens": "",
         # Token streaming of the agent's model calls. Empty is true.
         "llm_streaming": "",
+        # Empty compaction keys keep the trigger fraction and the model of the agent.
+        "agent_compaction_fraction": "",
+        "agent_compaction_model": "",
         "mcp_browser_mem_limit": "24G",
         "full_research_agent_workers": "4",
         # Three internet-facing MCP servers: browser, metasearch, whois. Off means
@@ -388,6 +394,8 @@ DEFAULTS = {
         "datasets_mount_path": "/testdata",
         # shared bearer token between the research agents and the MCP servers
         "mcp_shared_secret_file": "",
+        # The key file of the one key-gated metasearch source. Empty registers no source.
+        "factcheck_api_key_file": "",
         # An absolute host folder with custom chat policy handlers and definitions,
         # mounted read-only in the worker. Empty: the worker uses its built-in ones.
         "chat_control_dir": "",
@@ -533,6 +541,10 @@ DEFAULTS = {
         # arrived.
         "abandon_hours": "24",
     },
+    # Read only by main_services/ops/publish-images.sh, which pushes images by hand.
+    "cluster": {
+        "registry_address": "",
+    },
     "llm_provider.selfhosted": {
         "enabled": "false",
         "base_url": "",  # empty = derived: http://<ai_services.host>:<vllm_port>/v1
@@ -577,10 +589,22 @@ AI_OVERLAYS = [
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
-#: The `[main_services]` keys of the removed deep research. A host ini can still hold them.
-REMOVED_DEEP_RESEARCH_KEYS = ("agent_packs_planner", "agent_packs_organizer",
-                              "agent_packs_subagent", "agent_plan_run_budget",
-                              "research_concurrency")
+#: Settings that hoover4 no longer reads, with the text that tells the operator what to
+#: do instead. `(section, key)` names one key. `(section, None)` names a whole section.
+#: A text of None means that no setting replaces it. The schema check refuses a file that
+#: sets one of them (Config.problems). A change that removes the reader of a setting adds
+#: the setting here.
+REMOVED_SETTINGS = {
+    # Deep research is removed.
+    ("main_services", "agent_packs_planner"): None,
+    ("main_services", "agent_packs_organizer"): None,
+    ("main_services", "agent_packs_subagent"): None,
+    ("main_services", "agent_plan_run_budget"): None,
+    ("main_services", "research_concurrency"): None,
+    # The agent divides a fixed batch target among the calls of a reply.
+    ("main_services", "agent_max_page_tokens"): None,
+    ("main_services", "agent_completion_reserve_tokens"): None,
+}
 
 
 def research_agents_enabled(cfg):
@@ -708,28 +732,107 @@ FULL_RESEARCH_MCP_SERVERS_OFF = (
 # Config loading
 # --------------------------------------------------------------------------------------
 
+#: The prefix of each dataset mount section, `[dataset_mount.<name>]`.
+DATASET_MOUNT_SECTION_PREFIX = "dataset_mount."
+DATASET_MOUNT_NAME = re.compile(r"[a-z0-9_]{1,32}")
+DATASET_MOUNT_KEYS = ("host_path", "container_path", "writable")
+
+#: This pattern matches a space or a tab and then `;` or `#`. In a value, the match starts an
+#: old inline comment. The parser does not remove it, so the value would include the comment.
+INLINE_COMMENT = re.compile(r"\s[;#]")
+
+
+def _removed_setting_problem(label, replacement):
+    if replacement is None:
+        return "%s is removed. No setting replaces it. Delete it." % label
+    return "%s is removed. %s" % (label, replacement)
+
+
 class Config:
+    """The settings of one ini file over DEFAULTS.
+
+    The file must use only the sections and keys of DEFAULTS and the
+    `[dataset_mount.<name>]` sections. Construction refuses any other section or key, a
+    removed setting and a value with an inline comment, and names every problem in one
+    message. A key that the file omits keeps its default.
+    """
+
     def __init__(self, ini_path):
         self.values = {section: dict(keys) for section, keys in DEFAULTS.items()}
-        self.extra = {}  # ini keys unknown to DEFAULTS, kept for forward compat
         self.explicit = set()  # (section, key) of every key the ini file sets
-        if ini_path is not None:
-            parser = configparser.ConfigParser(inline_comment_prefixes=(";",))
-            try:
-                with open(ini_path, "r", encoding="utf-8") as fh:
-                    parser.read_file(fh)
-            except configparser.Error as exc:
-                fail("cannot parse %s: %s" % (ini_path, exc))
-            for section in parser.sections():
-                if section not in self.values:
-                    self.values[section] = {}
-                    self.extra[section] = []
-                for key, value in parser.items(section):
-                    value = value.strip()
-                    if section in DEFAULTS and key not in DEFAULTS[section]:
-                        self.extra.setdefault(section, []).append(key)
-                    self.values[section][key] = value
-                    self.explicit.add((section, key))
+        if ini_path is None:
+            return
+        # The parser keeps a `;` or `#` after a value as part of the value, and the loop
+        # below refuses a value with an inline comment. The default section has a name that
+        # no section header can have. A `[DEFAULT]` section is then an unknown section, and
+        # its keys stay out of the other sections.
+        parser = configparser.ConfigParser(inline_comment_prefixes=None,
+                                           default_section="\n")
+        try:
+            with open(ini_path, "r", encoding="utf-8") as fh:
+                parser.read_file(fh)
+        except configparser.Error as exc:
+            fail("cannot parse %s: %s" % (ini_path, exc))
+        problems = []
+        for section in parser.sections():
+            problem = self._section_problem(section)
+            if problem:
+                problems.append(problem)
+                continue
+            self.values.setdefault(section, {})
+            for key in parser.options(section):
+                label = "[%s] %s" % (section, key)
+                problem = self._key_problem(section, key)
+                if problem:
+                    problems.append(problem)
+                    continue
+                if INLINE_COMMENT.search(parser.get(section, key, raw=True)):
+                    problems.append("%s has a comment after its value. Move the comment "
+                                    "to its own line above the key." % label)
+                    continue
+                try:
+                    value = parser.get(section, key)
+                except configparser.InterpolationError:
+                    problems.append("%s has a %% sign that is not written as %%%%." % label)
+                    continue
+                self.values[section][key] = value.strip()
+                self.explicit.add((section, key))
+        if problems:
+            fail("%s has %d configuration %s:\n    %s"
+                 % (ini_path, len(problems), "problem" if len(problems) == 1 else "problems",
+                    "\n    ".join(problems)))
+
+    @staticmethod
+    def _section_problem(section):
+        """Why the file cannot have this section, or None."""
+        if section in DEFAULTS:
+            return None
+        if (section, None) in REMOVED_SETTINGS:
+            return _removed_setting_problem("[%s]" % section,
+                                            REMOVED_SETTINGS[(section, None)])
+        if section.startswith(DATASET_MOUNT_SECTION_PREFIX) or section == "dataset_mount":
+            name = section[len(DATASET_MOUNT_SECTION_PREFIX):]
+            if DATASET_MOUNT_NAME.fullmatch(name):
+                return None
+            return ("[%s] is not a valid dataset mount section. Name it "
+                    "[dataset_mount.<name>], where the name has 1 to 32 characters "
+                    "from a-z, 0-9 and _." % section)
+        return "[%s] is not a known section." % section
+
+    @staticmethod
+    def _key_problem(section, key):
+        """Why a known section cannot have this key, or None."""
+        if section in DEFAULTS:
+            if key in DEFAULTS[section]:
+                return None
+            if (section, key) in REMOVED_SETTINGS:
+                return _removed_setting_problem("[%s] %s" % (section, key),
+                                                REMOVED_SETTINGS[(section, key)])
+            return "[%s] %s is not a known key." % (section, key)
+        if key in DATASET_MOUNT_KEYS:
+            return None
+        return ("[%s] %s is not a dataset mount key. The keys are %s."
+                % (section, key, ", ".join(DATASET_MOUNT_KEYS)))
 
     def get(self, section, key):
         try:
@@ -864,18 +967,10 @@ AGENT_PROBE_KEYS = (
     ("agent_catalogue_match_count", "AGENT_CATALOGUE_MATCH_COUNT", 6, 12),
 )
 
-#: Keys that no reader has now. A value set for one of them prints a warning.
-RETIRED_AGENT_KEYS = ("agent_max_page_tokens", "agent_completion_reserve_tokens")
-
-
 def agent_probe_env(cfg):
     """The probe key for both agent services, validated. An empty key renders as empty,
     which keeps six catalogue matches. The result pages of one model reply share a fixed
     byte target in the agent service, and no key changes it."""
-    for key in RETIRED_AGENT_KEYS:
-        if key in cfg.extra.get("main_services", []):
-            print("warning: [main_services] %s is ignored. The agent divides a fixed batch "
-                  "target among the calls of a reply" % key, file=sys.stderr)
     env = {}
     for key, name, low, high in AGENT_PROBE_KEYS:
         raw = cfg.get("main_services", key)
@@ -956,14 +1051,20 @@ def whole_number(cfg, key, minimum=1, section="main_services"):
     return value
 
 
+def port_number(cfg, section, key):
+    """A TCP port key, from 1 to 65535."""
+    value = whole_number(cfg, key, minimum=1, section=section)
+    if value > 65535:
+        fail("[%s] %s must be a port from 1 to 65535, got %d" % (section, key, value))
+    return value
+
+
 def operation_caps_value(cfg):
     """The `[operations]` caps as `kind=value` pairs joined by commas, in key order.
 
-    Each cap is a whole number of at least 1. A key in `[operations]` that is not a cap
-    of DEFAULTS prints a warning that names it, and the render goes on without it.
+    Each cap is a whole number of at least 1. Config refuses a key in `[operations]`
+    that is not a cap of DEFAULTS.
     """
-    for key in cfg.extra.get("operations", []):
-        print("warning: [operations] %s is not a known key, so it is ignored" % key)
     pairs = []
     for key in DEFAULTS["operations"]:
         value = whole_number(cfg, key, minimum=1, section="operations")
@@ -1038,8 +1139,6 @@ DATASET_MOUNTS_OVERLAY = MAIN_COMPOSE_DIR / "compose" / "generated-dataset-mount
 #: The two services that mount every dataset mount.
 DATASET_MOUNT_SERVICES = ("hoover4-worker", "hoover4-website")
 
-DATASET_MOUNT_NAME = re.compile(r"[a-z0-9_]{1,32}")
-
 #: Container paths that a dataset mount must neither contain nor fall beneath. They hold
 #: the service code, scratch folders, secrets, mirrors of other source trees, and system
 #: folders of the two images. A unit test verifies that every other mount target of the
@@ -1093,10 +1192,10 @@ def _explicit_dataset_mount(cfg, section):
         fail("[%s] the mount name %r must match [a-z0-9_]{1,32}" % (section, name))
     keys = cfg.values[section]
     for key in sorted(keys):
-        if key not in ("host_path", "container_path", "writable"):
+        if key not in DATASET_MOUNT_KEYS:
             fail("[%s] %s is not a dataset mount field. The fields are host_path, "
                  "container_path and writable." % (section, key))
-    for key in ("host_path", "container_path", "writable"):
+    for key in DATASET_MOUNT_KEYS:
         if not keys.get(key, "").strip():
             fail("[%s] %s is missing or empty" % (section, key))
     return DatasetMount(name, keys["host_path"].strip(), keys["container_path"].strip(),
@@ -1107,7 +1206,7 @@ def dataset_mounts(cfg):
     """Return the validated dataset mounts, sorted by name. Refuses an unusable configuration
     with a message that names the section and the field. The existence of each host
     folder is checked separately, by dataset_mount_refusals, so `--down` still runs."""
-    sections = sorted(s for s in cfg.values if s.startswith("dataset_mount."))
+    sections = sorted(s for s in cfg.values if s.startswith(DATASET_MOUNT_SECTION_PREFIX))
     if not sections:
         mounts = [_inferred_dataset_mount(cfg)]
     else:
@@ -1280,8 +1379,6 @@ def upload_env(cfg):
         minimum = 0 if key == "abandon_hours" else 1
         env["HOOVER4_UPLOAD_" + key.upper()] = str(
             whole_number(cfg, key, minimum=minimum, section="uploads"))
-    for key in cfg.extra.get("uploads", []):
-        print("warning: [uploads] %s is not a known key, so it is ignored" % key)
     return env
 
 
@@ -1747,10 +1844,14 @@ def render_tika_config(cfg):
     return json.dumps(config, indent=2) + "\n"
 
 
-def render_main_env(cfg):
+def render_main_env(cfg, reachable_host=None):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini, and no port
     literal appears here except 12345 (which is not rendered at all. It stays in the
-    compose file where humans read it)."""
+    compose file where humans read it).
+
+    `reachable_host` maps `[ai_services] host` to the name a container dials. The default
+    is container_reachable_host, which runs `ip`. The dry run gives a function that
+    returns the host unchanged, so it runs no command."""
     m = "main_services"
     env = {}
     render_tika_config(cfg)
@@ -1766,6 +1867,7 @@ def render_main_env(cfg):
 
     for key in DEFAULTS[m]:
         if key.endswith("_port") and key != "website_port":
+            port_number(cfg, m, key)
             env[key.upper()] = cfg.get(m, key)
     env["SERENA_PORT"] = cfg.get(m, "serena_port")
 
@@ -1808,7 +1910,7 @@ def render_main_env(cfg):
     env["CONTAINER_LOG_MAX_FILES"] = str(whole_number(cfg, "container_log_max_files"))
 
     # Endpoints derived from the provider choices.
-    ai_host = container_reachable_host(cfg.get("ai_services", "host"))
+    ai_host = (reachable_host or container_reachable_host)(cfg.get("ai_services", "host"))
     ner_provider = cfg.get(m, "ner_provider")
     env["NER_URL"] = ""
     if ner_provider in ("gpu", "both") and _ai_tier_present(cfg):
@@ -1826,12 +1928,12 @@ def render_main_env(cfg):
         # Same network, so the container name and its internal port -- never the
         # published one. The published port exists for humans and verify-stack.
         "http://hoover4-tesseract-cpu:8000/ocr"
-        if cfg.get(m, "tesseract_cpu_enabled") == "true"
+        if cfg.get_bool(m, "tesseract_cpu_enabled")
         else ""
     )
     env["OCR_EASYOCR_URL"] = (
         "http://%s:%s/ocr" % (ai_host, cfg.get("ai_services", "easyocr_port"))
-        if _ai_tier_present(cfg) and cfg.get("ai_services", "easyocr_enabled") == "true"
+        if _ai_tier_present(cfg) and cfg.get_bool("ai_services", "easyocr_enabled")
         else ""
     )
 
@@ -1849,7 +1951,7 @@ def render_main_env(cfg):
     # here means the pipeline produces no OCR'd-PDF variants at all.
     env["OCR_PDF_URL"] = (
         "http://hoover4-ocr-pdf:8000/ocr-pdf"
-        if cfg.get(m, "ocr_pdf_enabled") == "true"
+        if cfg.get_bool(m, "ocr_pdf_enabled")
         else ""
     )
 
@@ -1867,7 +1969,7 @@ def render_main_env(cfg):
     # RERANK_URL follows EMBEDDINGS_URL. This keeps the two URLs in one condition.
     env["RERANK_URL"] = (
         env["EMBEDDINGS_URL"]
-        if env["EMBEDDINGS_URL"] and cfg.get("ai_services", "reranker_enabled") == "true"
+        if env["EMBEDDINGS_URL"] and cfg.get_bool("ai_services", "reranker_enabled")
         else ""
     )
 
@@ -2065,10 +2167,6 @@ def render_main_env(cfg):
     routes = "tor-1=hoover4-web-tor:9050,tor-2=hoover4-web-tor:9051" if web_tor_enabled(cfg) else ""
     env["METASEARCH_TOR_ROUTES"] = routes
     env["READ_PAGE_TOR_PROXIES"] = routes
-    for key in REMOVED_DEEP_RESEARCH_KEYS:
-        if key in cfg.extra.get(m, []):
-            print("warning: [main_services] %s is ignored. Deep research is removed." % key,
-                  file=sys.stderr)
     env["AGENT_PACKS_CHAT"] = cfg.get(m, "agent_packs_chat") or "all"
     env.update(agent_probe_env(cfg))
     env.update(agent_model_env(cfg))
@@ -2158,6 +2256,9 @@ def render_ai_env(cfg):
     env["HOOVER4_CONFIG_FINGERPRINT"] = cfg.ai_fingerprint()
     env["AI_BIND_IP"] = cfg.get(a, "bind_ip")
 
+    for key in ("vllm_port", "ai_server_port", "easyocr_port", "vllm_structured_port",
+                "chat_vllm_port"):
+        port_number(cfg, a, key)
     for key in ("vllm_port", "ai_server_port", "easyocr_port"):
         env[key.upper()] = cfg.get(a, key)
     for key in ("chat_vllm_port", "chat_vllm_served_name", "chat_vllm_gpu_fraction",
@@ -2174,6 +2275,9 @@ def render_ai_env(cfg):
         env["VLLM_API_KEY_FILE_HOST"] = cfg.get(a, "vllm_api_key_file")
     # hf_token_file is read by ensure_dgemma_weights only, so it renders no variable.
 
+    for key in ("half_precision", "torch_compile", "ner_enabled", "embeddings_enabled",
+                "reranker_enabled"):
+        cfg.get_bool(a, key)
     env["AI_SERVER_ENABLE_HALF_PRECISION"] = cfg.get(a, "half_precision")
     env["AI_SERVER_ENABLE_TORCH_COMPILE"] = cfg.get(a, "torch_compile")
     env["AI_SERVER_ENABLE_NER"] = cfg.get(a, "ner_enabled")
@@ -3189,6 +3293,55 @@ def run_or_fail(cmd, env=None):
 # CLI
 # --------------------------------------------------------------------------------------
 
+def check_configuration(cfg):
+    """Return the problems and the warnings of the `--check` dry run.
+
+    It renders both sides in memory and runs the refusals that depend only on the
+    configuration. It writes no file, creates no folder, runs no command, starts no
+    container runtime and contacts no service.
+
+    Some checks read the state of the host or of a running service, so only a deployment
+    runs them. They check the secret files, the CPU count and the dataset mount folders.
+    They also check the GPU, the CDI specification, free ports and the compose YAML files.
+    Two more read the Temporal shard count and probe each writable dataset mount.
+
+    Each step stops at its first problem, so one step reports at most one problem.
+    """
+    problems = []
+    warnings = []
+
+    def step(function, *args):
+        try:
+            function(*args)
+        except DeployError as exc:
+            if str(exc) not in problems:
+                problems.append(str(exc))
+
+    problem = volumes_path_problem(cfg)
+    if problem:
+        problems.append(problem)
+    step(render_main_env, cfg, lambda host: host)
+    step(render_ai_env, cfg)
+    step(render_tika_config, cfg)
+    step(render_clickhouse_config, cfg)
+    step(render_nginx_proxy_conf, cfg)
+    step(render_temporal_dynamic_config, cfg)
+    step(lambda: render_dataset_mounts_overlay(dataset_mounts(cfg)))
+    for side in ("main", "ai"):
+        step(selected_overlays, cfg, side)
+        step(side_volumes, cfg, side)
+    # The refusals of the main side that need no runtime. The GPU tier may be off: the
+    # refusal of a disabled tier applies only to an `--ai-services` start.
+    step(preflight_ner_gpu_without_tier, cfg, "main")
+    step(preflight_llm_selfhosted_without_tier, cfg, "main")
+    if not problems:
+        warning = ocr_concurrency_warning(cfg)
+        if warning:
+            warnings.append(warning)
+        preflight_ner_provider(cfg, "main")
+    return problems, warnings
+
+
 def load_config(args):
     if INI_PATH.exists():
         return Config(INI_PATH)
@@ -3203,11 +3356,34 @@ def load_config(args):
          "    cp hoover4.ini.development hoover4.ini && $EDITOR hoover4.ini")
 
 
+def run_check(args):
+    """`--check`: print `configuration valid` and return 0, or print the problems and
+    return 1. It needs hoover4.ini and does not read a sample in its place."""
+    try:
+        cfg = load_config(args)
+    except DeployError as exc:
+        print("deploy: error: %s" % exc, file=sys.stderr)
+        return 1
+    problems, warnings = check_configuration(cfg)
+    for warning in warnings:
+        print(warning, file=sys.stderr)
+    if problems:
+        print("deploy: error: %s has %d configuration %s:\n    %s"
+              % (INI_PATH, len(problems), "problem" if len(problems) == 1 else "problems",
+                 "\n    ".join(problems)), file=sys.stderr)
+        return 1
+    print("configuration valid")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Deploy hoover4 from hoover4.ini.")
     parser.add_argument("--ai-services", action="store_true",
                         help="deploy the ai_services side instead of main_services")
+    parser.add_argument("--check", action="store_true",
+                        help="validate hoover4.ini for both sides and stop; changes "
+                             "nothing and starts nothing")
     parser.add_argument("--print-env", action="store_true",
                         help="render and show the .env files, start nothing")
     parser.add_argument("--print-command", action="store_true",
@@ -3225,6 +3401,15 @@ def main(argv=None):
                              "keeping ClickHouse/Garage/Manticore; required to change "
                              "temporal_history_shards")
     args = parser.parse_args(argv)
+    if args.check:
+        others = [flag for flag, on in (
+            ("--print-env", args.print_env), ("--print-command", args.print_command),
+            ("--build", args.build), ("--down", args.down), ("--reset", args.reset),
+            ("--reset-caches", args.reset_caches),
+            ("--reset-temporal", args.reset_temporal)) if on]
+        if others:
+            parser.error("--check cannot be used with %s" % " or ".join(others))
+        return run_check(args)
 
     side = "ai" if args.ai_services else "main"
     cfg = load_config(args)
