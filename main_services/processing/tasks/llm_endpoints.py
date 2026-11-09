@@ -1,21 +1,22 @@
 """The language-model endpoint of each model name.
 
-The selfhosted provider can have a second, quality endpoint beside its base endpoint.
-`LLM_BASE_URL` serves `LLM_MODEL` and every short call: titles, summaries and board labels.
-`LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, the model of agent turns, board
-assessments and report conversions when it is set (`chat_model`). A request goes to the quality endpoint when it names the quality
-model, and to the base endpoint otherwise.
+The self-hosted model servers have a base endpoint and a quality endpoint.
+`LLM_BASE_URL` serves `LLM_MODEL` (dgemma) and every short call: titles, summaries and
+board labels. `LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL` (ornith), the model of
+agent turns, board assessments and report conversions when it is set (`chat_model`). A
+request goes to the quality endpoint when it names the quality model, and to the base
+endpoint otherwise.
 
 The research agent applies the same rule in `research_agent/endpoints.py`. Both read the
-variables that `deploy.py` renders from `[llm_provider.selfhosted]`.
+variables that `deploy.py` renders from `[ai_services]` when `llm_enabled` is true.
 """
 
 import os
 import re
 from dataclasses import dataclass
 
-#: The bearer token sent to a quality endpoint when the provider has no API key. The
-#: OpenAI clients refuse an empty key, and a server without login ignores this one.
+#: The bearer token sent to a quality endpoint when the model servers have no API key.
+#: The OpenAI clients refuse an empty key, and a server without login ignores this one.
 QUALITY_PLACEHOLDER_KEY = "unused"
 
 
@@ -69,7 +70,8 @@ def base_api_key() -> str:
 
 
 def endpoint_for(model: str) -> Endpoint:
-    """The endpoint that serves `model`. An empty base URL means no provider."""
+    """The endpoint that serves `model`. An empty base URL means that the model servers
+    are off."""
     quality = quality_model()
     if quality and (model or "").strip() == quality:
         base = (os.getenv("LLM_QUALITY_BASE_URL") or "").strip().rstrip("/")

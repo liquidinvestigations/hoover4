@@ -1,11 +1,11 @@
 """The request parameters that every model call of this service sends.
 
-This module is the one owner of the provider rule in the agent service. Each variable is
+This module is the one owner of the model request rule in the agent service. Each variable is
 rendered by `deploy.py` into both agent services.
 
 | variable | key | empty or unset means |
 |---|---|---|
-| `LLM_SEND_TEMPERATURE` | `[llm_provider.*] send_temperature` | true: send `temperature` |
+| `LLM_SEND_TEMPERATURE` | always `false`, because the model servers reject it | true: send `temperature` |
 | `AGENT_MAX_OUTPUT_TOKENS` | `[main_services] agent_max_output_tokens` | no output cap |
 | `LLM_REQUEST_TIMEOUT_SECONDS` | `[main_services] llm_request_timeout_seconds` | the client defaults |
 
@@ -26,8 +26,8 @@ CONNECT_TIMEOUT_SECONDS = 10.0
 def send_temperature() -> bool:
     """`LLM_SEND_TEMPERATURE`. Empty or unset is true.
 
-    A provider whose section sets `send_temperature = false` rejects `temperature`, so a
-    request to it leaves the parameter out.
+    The self-hosted model servers reject `temperature`, so `deploy.py` renders `false` and
+    a request leaves the parameter out.
     """
     raw = (os.getenv("LLM_SEND_TEMPERATURE") or "").strip().lower()
     return raw not in ("0", "false", "no", "off")

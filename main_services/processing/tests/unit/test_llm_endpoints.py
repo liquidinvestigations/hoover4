@@ -56,6 +56,22 @@ def test_the_catalog_lists_the_quality_endpoint_as_a_provider(monkeypatch):
     assert providers[1].name == "10.0.0.8:12008"
 
 
+def test_the_catalog_names_the_base_endpoint_selfhosted(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.delenv("LLM_API_KEY_FILE", raising=False)
+    assert llm_catalog.providers_from_env()[0].name == "selfhosted"
+
+
+def test_disabled_model_servers_give_no_endpoint_and_no_catalog_provider(monkeypatch):
+    # deploy.py renders every LLM_* endpoint empty when [ai_services] llm_enabled is false.
+    for name in ("LLM_BASE_URL", "LLM_MODEL", "LLM_PROVIDER_NAME", "LLM_QUALITY_BASE_URL",
+                 "LLM_QUALITY_MODEL"):
+        monkeypatch.setenv(name, "")
+    assert llm_catalog.providers_from_env() == []
+    endpoint = endpoint_for("ornith")
+    assert endpoint.base_url == "" and endpoint.label == "unknown"
+
+
 def test_a_llama_cpp_listing_states_its_window_inside_meta():
     assert llm_catalog._context_window({"id": "m", "meta": {"n_ctx": 262144}}) == 262144
     assert llm_catalog._context_window({"max_model_len": 4096, "meta": {"n_ctx": 8}}) == 4096

@@ -32,16 +32,33 @@ deploy = _load_deploy()
 SAMPLE_COPIES = Path(tempfile.mkdtemp(prefix="hoover4-samples-"))
 
 
-def _template(name="hoover4.ini.development"):
-    """Return the Config of a copy of a tracked sample without inline `;` comments.
+def _without_removed_settings(text):
+    """Return the sample text without the sections and keys of deploy.REMOVED_SETTINGS."""
+    kept, section = [], None
+    for line in text.splitlines(keepends=True):
+        header = re.match(r"^\[([^\]]+)\]", line)
+        if header:
+            section = header.group(1)
+        removed_section = (section, None) in deploy.REMOVED_SETTINGS
+        key = re.match(r"^([A-Za-z0-9_]+)\s*=", line)
+        if removed_section or (key and (section, key.group(1).lower()) in
+                               deploy.REMOVED_SETTINGS):
+            continue
+        kept.append(line)
+    return "".join(kept)
 
-    The strict parser refuses an inline comment, and the samples still have them. The
-    copy keeps every value."""
+
+def _template(name="hoover4.ini.development"):
+    """Return the Config of a copy of a tracked sample without inline `;` comments and
+    without removed settings.
+
+    The strict parser refuses an inline comment and a removed setting, and the samples
+    still have them. The copy keeps every other value."""
     copy = SAMPLE_COPIES / name
     if not copy.exists():
         text = (REPO_ROOT / name).read_text(encoding="utf-8")
-        copy.write_text(re.sub(r"(?m)^([^#;\n][^\n]*?)[ \t]+;[^\n]*$", r"\1", text),
-                        encoding="utf-8")
+        text = re.sub(r"(?m)^([^#;\n][^\n]*?)[ \t]+;[^\n]*$", r"\1", text)
+        copy.write_text(_without_removed_settings(text), encoding="utf-8")
     return deploy.Config(copy)
 
 
@@ -136,9 +153,13 @@ def _render(fixture_name):
             id="llm-selfhosted",
         ),
         pytest.param(
-            "llm-cloud.ini",
-            {"LLM_BASE_URL": "https://api.example.test/v1"},
-            id="llm-cloud",
+            "llm-selfhosted-tier.ini",
+            {
+                "LLM_BASE_URL": "http://127.0.0.1:21960/v1",
+                "LLM_MODEL": "dgemma",
+                "LLM_PROVIDER_NAME": "selfhosted",
+            },
+            id="llm-selfhosted-tier",
         ),
     ],
 )
@@ -254,9 +275,27 @@ def test_gpu_embeddings_do_not_require_ai_tier():
 
 def test_selfhosted_llm_requires_ai_tier():
     with mock.patch.object(deploy, "fail") as fail:
-        deploy.preflight_llm_selfhosted_without_tier(_config("llm-selfhosted.ini"), "main")
+        deploy.preflight_llm_without_tier(_config("llm-selfhosted.ini"), "main")
 
     fail.assert_called_once()
+    assert "[ai_services] llm_enabled = true but [ai_services] enabled = false" in \
+        fail.call_args.args[0]
+    with mock.patch.object(deploy, "fail") as fail:
+        deploy.preflight_llm_without_tier(_config("llm-selfhosted-tier.ini"), "main")
+    fail.assert_not_called()
+
+
+def test_the_llm_preflight_refuses_a_check_of_the_main_side(capsys):
+    cfg_path = FIXTURES / "llm-selfhosted.ini"
+    text = cfg_path.read_text(encoding="utf-8").replace(
+        "[main_services]\n",
+        "[main_services]\nmanticore_mem_limit = 32G\nmanticore_vectors_mem_limit = 16G\n")
+    path = SAMPLE_COPIES / "llm-without-tier.ini"
+    path.write_text(text + "\n[storage]\nvolumes_path = /srv/hoover4-volumes\n",
+                    encoding="utf-8")
+    code, out, err = _run(["--check"], path, capsys)
+    assert code == 1
+    assert "[ai_services] llm_enabled = true but [ai_services] enabled = false" in out + err
 
 
 @pytest.mark.parametrize(
@@ -433,6 +472,11 @@ def test_research_agents_follow_the_llm_provider(fixture_name, agents, internet)
     assert "compose/agents.yaml" in overlays
     with mock.patch.object(deploy, "fail", side_effect=AssertionError):
         deploy.preflight_compose_yaml(cfg, "main")
+
+
+def test_research_agents_need_the_gpu_tier_with_the_model_servers():
+    assert not deploy.research_agents_enabled(_config("llm-selfhosted.ini"))
+    assert deploy.research_agents_enabled(_config("llm-selfhosted-tier.ini"))
 
 
 def test_research_agents_are_removed_with_no_provider():
@@ -1103,36 +1147,98 @@ def test_llm_streaming_renders_true_unless_turned_off(value, rendered):
     assert env["LLM_STREAMING"] == rendered
 
 
-def test_the_selfhosted_provider_sends_no_temperature():
-    cfg = _config("llm-selfhosted.ini")
-    cfg.values["ai_services"]["enabled"] = "true"
+LLM_ENABLED_ENV = {
+    "LLM_PROVIDER_NAME": "selfhosted",
+    "LLM_BASE_URL": "http://10.9.9.9:21960/v1",
+    "LLM_MODEL": "dgemma",
+    "LLM_SEND_TEMPERATURE": "false",
+    "CHAT_CLASSIFIER_URL": "http://10.9.9.9:21963",
+    "LLM_QUALITY_BASE_URL": "http://10.9.9.9:21964/v1",
+    "LLM_QUALITY_MODEL": "ornith",
+    "LLM_VISION_MODELS": "ornith",
+    "LLM_API_KEY_FILE_HOST": "/srv/keys/vllm",
+}
+
+
+def _llm_cfg(enabled, tier):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(enabled=tier, llm_enabled=enabled, host="10.9.9.9",
+                                     vllm_api_key_file="/srv/keys/vllm")
+    return cfg
+
+
+def test_enabled_model_servers_render_every_endpoint_from_ai_services():
     with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
-        env = deploy.render_main_env(cfg)
-    assert env["LLM_PROVIDER_NAME"] == "selfhosted"
+        env = deploy.render_main_env(_llm_cfg("true", "true"))
+    assert {key: env[key] for key in LLM_ENABLED_ENV} == LLM_ENABLED_ENV
+
+
+def test_the_ports_of_ai_services_move_the_endpoints():
+    cfg = _llm_cfg("true", "true")
+    cfg.values["ai_services"].update(vllm_port="9001", vllm_structured_port="9002",
+                                     chat_vllm_port="9003")
+    env = deploy.render_llm_env(cfg)
+    assert env["LLM_BASE_URL"] == "http://10.9.9.9:9001/v1"
+    assert env["CHAT_CLASSIFIER_URL"] == "http://10.9.9.9:9002"
+    assert env["LLM_QUALITY_BASE_URL"] == "http://10.9.9.9:9003/v1"
+
+
+@pytest.mark.parametrize(("enabled", "tier"), [("false", "true"), ("false", "false"),
+                                               ("true", "false")])
+def test_disabled_model_servers_render_no_endpoint(enabled, tier):
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(_llm_cfg(enabled, tier))
+    for name in deploy.LLM_ENDPOINT_VARS:
+        assert env[name] == "", name
     assert env["LLM_SEND_TEMPERATURE"] == "false"
+    assert "LLM_API_KEY_FILE_HOST" not in env
+    assert not any(value.startswith("https://") for value in env.values()
+                   if isinstance(value, str))
 
 
-def test_a_cloud_provider_sends_temperature():
-    env = _env("llm-cloud.ini")
-    assert env["LLM_PROVIDER_NAME"] == "nvidia"
-    assert env["LLM_SEND_TEMPERATURE"] == "true"
-
-
-def test_the_chat_classifier_is_the_structured_server_of_the_selfhosted_provider():
-    cfg = _config("llm-selfhosted-tier.ini")
-    cfg.values["ai_services"]["vllm_structured_port"] = "4321"
-    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
-        env = deploy.render_main_env(cfg)
-    assert env["CHAT_CLASSIFIER_URL"] == "http://127.0.0.1:4321"
-    cfg.values["llm_provider.selfhosted"]["base_url"] = "http://gpu.example.test:9/v1"
-    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
-        env = deploy.render_main_env(cfg)
-    assert env["CHAT_CLASSIFIER_URL"] == "http://gpu.example.test:4321"
-
-
-@pytest.mark.parametrize("fixture_name", ["llm-cloud.ini", "llm-selfhosted.ini", "provider-off.ini"])
-def test_no_hosted_or_absent_provider_gets_a_chat_classifier(fixture_name):
+@pytest.mark.parametrize("fixture_name", ["llm-selfhosted.ini", "provider-off.ini"])
+def test_no_model_servers_get_no_chat_classifier(fixture_name):
     assert _env(fixture_name)["CHAT_CLASSIFIER_URL"] == ""
+
+
+def test_a_retired_cloud_provider_file_is_refused():
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.Config(SCHEMA / "retired-cloud-provider.ini")
+    message = str(refused.value)
+    assert "[ai_services] llm_selfhosted is removed. Use [ai_services] llm_enabled." in message
+    assert "[llm_provider.nvidia] is removed. hoover4 uses only its self-hosted model " \
+        "servers." in message
+    assert "test-cloud-model" not in message and "api.example.test" not in message
+
+
+#: The removed model settings of plan table D2, D2a and G9, with the text each one gets.
+REMOVED_MODEL_SETTINGS = {
+    "[ai_services] llm_selfhosted": "Use [ai_services] llm_enabled.",
+    "[ai_services] chat_llm_selfhosted": "Use [ai_services] llm_enabled.",
+    "[ai_services] hf_token_file": "No setting replaces it. Delete it.",
+    "[llm_provider.selfhosted]": "Use [ai_services] llm_enabled.",
+    "[llm_provider.nvidia]": "hoover4 uses only its self-hosted model servers.",
+    "[llm_provider.moonshot]": "hoover4 uses only its self-hosted model servers.",
+}
+
+
+def test_every_removed_model_setting_is_refused_with_its_replacement():
+    path = SCHEMA / "removed-model-settings.ini"
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.Config(path)
+    message = str(refused.value)
+    fixed = [line.split("=")[0].strip() for line in path.read_text().splitlines()
+             if line.startswith(("vllm_", "chat_vllm_"))]
+    assert len(fixed) == 31
+    assert "has %d configuration problems" % (len(fixed) + len(REMOVED_MODEL_SETTINGS)) \
+        in message
+    for key in fixed:
+        assert ("[ai_services] %s is removed. deploy.py sets this value for the supported "
+                "model servers. Delete it." % key) in message
+    for label, text in REMOVED_MODEL_SETTINGS.items():
+        assert "%s is removed. %s" % (label, text) in message
+    for port in ("vllm_port", "vllm_structured_port", "chat_vllm_port", "vllm_api_key_file"):
+        assert port in deploy.DEFAULTS["ai_services"]
 
 
 def test_the_chat_control_folder_is_rendered_only_when_set(tmp_path):
@@ -1175,9 +1281,7 @@ def test_the_templates_carry_the_slots_and_the_provider_temperature_rule(templat
     assert main["llm_request_timeout_seconds"] == "3600"
     assert "chat_run_timeout_seconds" not in main and "plan_run_timeout_seconds" not in main
     assert main["agent_max_output_tokens"] == "32768"
-    assert cfg.values["llm_provider.selfhosted"]["send_temperature"] == "false"
-    assert cfg.values["llm_provider.nvidia"]["send_temperature"] == "true"
-    assert cfg.values["llm_provider.moonshot"]["send_temperature"] == "true"
+    assert not any(section.startswith("llm_provider.") for section in cfg.values)
 
 
 def test_the_worker_and_both_agents_receive_the_model_variables():
@@ -1206,14 +1310,14 @@ VLLM_DEFAULT_ENV = {
     "VLLM_STRUCTURED_PORT": "21963",
     "VLLM_BUILD_REPO": "https://github.com/mmastrac/djev-spark.git",
     "VLLM_BUILD_REF": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
-    "VLLM_GPU_FRACTION": "0.60",
+    "VLLM_GPU_FRACTION": "0.24",
     "VLLM_MAX_MODEL_LEN": "262144",
     "VLLM_MAX_NUM_SEQS": "4",
-    "VLLM_KV_CACHE_GB": "28",
+    "VLLM_KV_CACHE_GB": "6",
     "VLLM_HEADROOM_GB": "4",
     "VLLM_TRANSIENT_COPIES": "2",
     "VLLM_TORCH_MEM_FRACTION": "0.85",
-    "VLLM_MEM_LIMIT": "97g",
+    "VLLM_MEM_LIMIT": "40g",
     "VLLM_ATTENTION_BACKEND": "TRITON_ATTN",
     "VLLM_CANVAS": "256",
     "VLLM_CANVAS_SCHEDULE": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
@@ -1228,6 +1332,16 @@ VLLM_DEFAULT_ENV = {
     "VLLM_USE_V2_MODEL_RUNNER": "1",
     "VLLM_MAX_JOBS": "4",
     "VLLM_FLASHINFER_NVCC_THREADS": "2",
+    "CHAT_VLLM_PORT": "21964",
+    "CHAT_VLLM_SERVED_NAME": "ornith",
+    "CHAT_VLLM_GPU_FRACTION": "0.30",
+    "CHAT_VLLM_MAX_MODEL_LEN": "262144",
+    "CHAT_VLLM_MAX_NUM_SEQS": "4",
+    "CHAT_VLLM_MEM_LIMIT": "48g",
+    "CHAT_VLLM_ARGS": ("--kv-cache-dtype fp8 --enable-prefix-caching --enable-chunked-prefill "
+                       "--reasoning-parser qwen3 --enable-auto-tool-choice "
+                       "--tool-call-parser qwen3_coder --speculative-config "
+                       '{"method":"mtp","num_speculative_tokens":3}'),
 }
 
 VLLM_DEFAULT_EXTRA_ARGS = (
@@ -1250,26 +1364,34 @@ def test_the_model_server_keys_render_their_defaults(source):
     assert "VLLM_IMAGE" not in env
 
 
-def test_the_extra_args_are_empty_with_every_feature_off():
+def test_the_model_server_values_render_whether_or_not_the_servers_are_enabled():
+    on = _llm_cfg("true", "true")
+    off = _llm_cfg("false", "false")
+    assert {key: deploy.render_ai_env(on)[key] for key in VLLM_DEFAULT_ENV} == \
+        {key: deploy.render_ai_env(off)[key] for key in VLLM_DEFAULT_ENV} == VLLM_DEFAULT_ENV
+    assert deploy.render_ai_env(on)["VLLM_API_KEY_FILE_HOST"] == "/srv/keys/vllm"
+
+
+def test_the_fingerprint_changes_with_a_fixed_model_value(monkeypatch):
     cfg = _config("settings-defaults.ini")
-    cfg.values["ai_services"].update(vllm_image_input="false", vllm_default_thinking="false",
-                                     vllm_load_format="")
-    assert deploy.vllm_extra_args(cfg) == ""
+    before = cfg.ai_fingerprint()
+    monkeypatch.setitem(deploy.DGEMMA_ENV, "VLLM_KV_CACHE_GB", "7")
+    assert cfg.ai_fingerprint() != before
+    monkeypatch.setitem(deploy.DGEMMA_ENV, "VLLM_KV_CACHE_GB", "6")
+    assert cfg.ai_fingerprint() == before
+    monkeypatch.setattr(deploy, "MODEL_SERVERS",
+                        (deploy.DGEMMA._replace(revision="0" * 40), deploy.ORNITH))
+    assert cfg.ai_fingerprint() != before
 
 
-def test_a_chat_template_is_added_to_the_extra_args():
+def test_the_fingerprint_holds_no_key_file_path():
     cfg = _config("settings-defaults.ini")
-    cfg.values["ai_services"]["vllm_chat_template"] = "/opt/t/tool_chat.jinja"
-    assert deploy.vllm_extra_args(cfg).endswith(
-        "--load-format fastsafetensors --chat-template /opt/t/tool_chat.jinja")
-
-
-def test_an_image_limit_that_is_not_a_number_is_refused():
-    cfg = _config("settings-defaults.ini")
-    cfg.values["ai_services"]["vllm_mm_image_limit"] = "seven"
-    with pytest.raises(deploy.DeployError) as refused:
-        deploy.vllm_extra_args(cfg)
-    assert "[ai_services] vllm_mm_image_limit" in str(refused.value)
+    before = cfg.ai_fingerprint()
+    cfg.values["ai_services"]["vllm_api_key_file"] = "/srv/keys/vllm"
+    assert cfg.ai_fingerprint() == before
+    env = deploy.render_ai_env(cfg)
+    assert env["HOOVER4_CONFIG_FINGERPRINT"] == deploy.render_main_env(
+        cfg, lambda host: host)["HOOVER4_CONFIG_FINGERPRINT"] == before
 
 
 def test_the_model_server_folders_replace_the_huggingface_cache():
@@ -1281,9 +1403,26 @@ def test_the_model_server_folders_replace_the_huggingface_cache():
 
 def test_the_model_server_publishes_both_ports():
     cfg = _config("settings-defaults.ini")
-    cfg.values["ai_services"].update(enabled="true", llm_selfhosted="true")
-    ports = [port for svc, port in deploy.expected_ports(cfg, "ai") if svc == "hoover4-vllm"]
-    assert ports == [21960, 21963]
+    cfg.values["ai_services"].update(enabled="true", llm_enabled="true")
+    ports = deploy.expected_ports(cfg, "ai")
+    assert [port for svc, port in ports if svc == "hoover4-vllm"] == [21960, 21963]
+    assert [port for svc, port in ports if svc == "hoover4-vllm-chat"] == [21964]
+    overlays = deploy.selected_overlays(cfg, "ai")
+    assert "compose/vllm.yaml" in overlays and "compose/vllm-chat.yaml" in overlays
+    cfg.values["ai_services"]["llm_enabled"] = "false"
+    overlays = deploy.selected_overlays(cfg, "ai")
+    assert "compose/vllm.yaml" not in overlays and "compose/vllm-chat.yaml" not in overlays
+    assert not [svc for svc, _port in deploy.expected_ports(cfg, "ai") if "vllm" in svc]
+
+
+def test_the_chat_model_server_starts_after_the_healthy_dgemma_server():
+    documents = dict(_ai_compose_documents())
+    chat = documents["ai_services/vllm-chat.yaml"]["services"]["hoover4-vllm-chat"]
+    assert chat["depends_on"] == {"hoover4-vllm": {"condition": "service_healthy"}}
+    assert "healthcheck" in documents["ai_services/vllm.yaml"]["services"]["hoover4-vllm"]
+    env = deploy.render_ai_env(_config("settings-defaults.ini"))
+    used = set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)", str(chat)))
+    assert used - {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"} <= set(env)
 
 
 def test_the_model_server_service_reads_the_rendered_names():
@@ -1303,15 +1442,28 @@ def test_the_model_server_service_reads_the_rendered_names():
     assert service["ulimits"] == {"core": 0}
 
 
-def _weights(folder, shards, index=True):
+def _weights(folder, shards, index=True, revision=None):
+    """Write a checkpoint folder. With a revision, write the download metadata that
+    huggingface_hub writes for a `local_dir` download: commit, ETag and time."""
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "config.json").write_text("{}")
+    names = ["config.json"] + list(shards)
     if index:
         weight_map = {"w%d" % i: name for i, name in enumerate(shards)}
         (folder / "model.safetensors.index.json").write_text(
             deploy.json.dumps({"weight_map": weight_map}))
+        names.append("model.safetensors.index.json")
     for name in shards:
         (folder / name).write_bytes(b"x")
+    if revision:
+        _metadata(folder, names, revision)
+
+
+def _metadata(folder, names, revision):
+    meta = folder / ".cache" / "huggingface" / "download"
+    meta.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (meta / (name + ".metadata")).write_text("%s\n\"etag\"\n1793000000.0\n" % revision)
 
 
 def test_complete_weights_are_found(tmp_path):
@@ -1341,36 +1493,32 @@ def test_an_empty_folder_has_no_weights(tmp_path):
     assert not deploy.weights_complete(tmp_path / "missing")
 
 
-def test_the_download_runs_in_the_built_image():
+def test_the_download_is_pinned_and_mounts_no_token():
     cfg = _config("settings-defaults.ini")
-    cfg.values["ai_services"]["hf_token_file"] = ""
-    cmd = deploy.dgemma_download_command(cfg, "/v/dgemma_model")
+    cmd = deploy.dgemma_download_command(cfg, "/v/dgemma_model", deploy.DGEMMA)
     assert cmd[:3] == ["run", "--rm", "--entrypoint"]
     assert "/v/dgemma_model:/models/weights" in cmd
-    assert "/dev/null:/run/secrets/hf_token:ro" in cmd
+    assert not any("hf_token" in part for part in cmd)
     assert "M=nvidia/diffusiongemma-26B-A4B-it-NVFP4" in cmd
+    assert "R=ec4ff3df205028f4e81c954c2227f9312b3ec2ea" in cmd
     assert "hoover4-vllm-dgemma:v0.31.0-08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
-    chat = deploy.dgemma_download_command(cfg, "/v/chat_model", "chat_vllm_model")
+    assert "revision=os.environ['R']" in cmd[-1] and "token" not in cmd[-1]
+    chat = deploy.dgemma_download_command(cfg, "/v/chat_model", deploy.ORNITH)
     assert "/v/chat_model:/models/weights" in chat
     assert "M=ornith-ai/Ornith-1.5-35B-A3B-NVFP4" in chat
+    assert "R=94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa" in chat
+    assert "hf_token_file" not in deploy.DEFAULTS["ai_services"]
 
 
-def test_the_chat_model_server_is_the_default_quality_endpoint():
-    cfg = _config("settings-defaults.ini")
-    cfg.values["ai_services"]["enabled"] = "true"
-    cfg.values["ai_services"]["llm_selfhosted"] = "true"
-    cfg.values["ai_services"]["chat_llm_selfhosted"] = "true"
-    cfg.values["ai_services"]["host"] = "10.9.9.9"
-    cfg.values["llm_provider.selfhosted"]["enabled"] = "true"
-    env = deploy.render_main_env(cfg)
-    assert env["LLM_QUALITY_BASE_URL"] == "http://10.9.9.9:21964/v1"
-    assert env["LLM_QUALITY_MODEL"] == "ornith"
-    assert env["LLM_VISION_MODELS"] == "ornith"
-    cfg.values["llm_provider.selfhosted"]["vision_models"] = " a, ,b "
-    assert deploy.render_main_env(cfg)["LLM_VISION_MODELS"] == "a,b"
-    assert ("hoover4-vllm-chat", 21964) in deploy.expected_ports(cfg, "ai")
-    ai = deploy.render_ai_env(cfg)
-    assert ai["CHAT_VLLM_SERVED_NAME"] == "ornith" and "qwen3_coder" in ai["CHAT_VLLM_ARGS"]
+def test_the_enabled_model_servers_render_the_pinned_identities():
+    assert deploy.DGEMMA == ("nvidia/diffusiongemma-26B-A4B-it-NVFP4",
+                             "ec4ff3df205028f4e81c954c2227f9312b3ec2ea", "dgemma",
+                             "dgemma_model")
+    assert deploy.ORNITH == ("ornith-ai/Ornith-1.5-35B-A3B-NVFP4",
+                             "94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa", "ornith",
+                             "chat_model")
+    ai = deploy.render_ai_env(_llm_cfg("true", "true"))
+    assert ai["LLM_SERVED_NAME"] == "dgemma" and ai["CHAT_VLLM_SERVED_NAME"] == "ornith"
 
 
 def test_the_model_server_image_is_tagged_by_release_and_commit():
@@ -1386,7 +1534,7 @@ def _ai_up(monkeypatch, build, present):
     built, composed = [], []
     monkeypatch.setattr(deploy, "compose_files", lambda c, side: ["base.yaml"])
     monkeypatch.setattr(deploy, "selected_overlays", lambda c, side: ["compose/vllm.yaml"])
-    monkeypatch.setattr(deploy, "ensure_dgemma_weights", lambda c, r: None)
+    monkeypatch.setattr(deploy, "ensure_dgemma_weights", lambda c, r, server: None)
     monkeypatch.setattr(deploy, "_image_exists", lambda r, image: image in present)
 
     def run(cmd, env=None):
@@ -1421,12 +1569,74 @@ def test_the_patches_of_the_model_server_image_are_in_the_build_folder():
                 assert (folder / name).is_file(), line
 
 
-def test_complete_weights_start_no_download(tmp_path):
+DGEMMA_REVISION = "ec4ff3df205028f4e81c954c2227f9312b3ec2ea"
+
+
+def test_weights_at_the_pinned_commit_start_no_download(tmp_path):
     cfg = _storage(tmp_path)
-    _weights(tmp_path / "dgemma_model", ["a.safetensors"])
+    _weights(tmp_path / "dgemma_model", ["a.safetensors"], revision=DGEMMA_REVISION)
     rt = mock.Mock()
-    deploy.ensure_dgemma_weights(cfg, rt)
+    deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
     rt.run.assert_not_called()
+
+
+@pytest.mark.parametrize("revision", [None, "0" * 40], ids=["no-metadata", "other-commit"])
+def test_complete_weights_of_another_commit_are_downloaded_again(tmp_path, revision):
+    cfg = _storage(tmp_path)
+    folder = tmp_path / "dgemma_model"
+    _weights(folder, ["a.safetensors"], revision=revision)
+    other = tmp_path / "chat_model"
+    _weights(other, ["c.safetensors"], revision="1" * 40)
+    rt = mock.Mock()
+
+    def download(cmd):
+        # The pinned download replaces each file that differs and records the commit.
+        assert "R=%s" % DGEMMA_REVISION in cmd
+        _metadata(folder, ["config.json", "a.safetensors", "model.safetensors.index.json"],
+                  DGEMMA_REVISION)
+        return subprocess.CompletedProcess(cmd, 0)
+    rt.run.side_effect = download
+    deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
+    rt.run.assert_called_once()
+    assert (folder / "a.safetensors").read_bytes() == b"x"
+    # The other server's folder is not touched.
+    assert deploy.downloaded_revision(other, "c.safetensors") == "1" * 40
+
+
+def test_one_file_of_another_commit_starts_the_download(tmp_path):
+    folder = tmp_path / "dgemma_model"
+    _weights(folder, ["a.safetensors", "b.safetensors"], revision=DGEMMA_REVISION)
+    assert deploy.weights_match(folder, DGEMMA_REVISION)
+    _metadata(folder, ["b.safetensors"], "0" * 40)
+    assert deploy.weights_complete(folder)
+    assert not deploy.weights_match(folder, DGEMMA_REVISION)
+
+
+def test_an_interrupted_download_resumes_on_the_next_deploy(tmp_path):
+    cfg = _storage(tmp_path)
+    folder = tmp_path / "dgemma_model"
+    _weights(folder, ["a.safetensors", "b.safetensors"], revision=DGEMMA_REVISION)
+    (folder / "b.safetensors").unlink()
+    partial = folder / ".cache" / "huggingface" / "download" / "b.safetensors.incomplete"
+    partial.write_bytes(b"x")
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 1)
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
+    assert "incomplete or at another commit" in str(refused.value)
+    assert "--ai-services again" in str(refused.value)
+    # The partial file and the complete shard stay for the next run.
+    assert partial.exists() and (folder / "a.safetensors").exists()
+
+    def resume(cmd):
+        (folder / "b.safetensors").write_bytes(b"x")
+        partial.unlink()
+        return subprocess.CompletedProcess(cmd, 0)
+    rt = mock.Mock()
+    rt.run.side_effect = resume
+    deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
+    rt.run.assert_called_once()
+    assert deploy.weights_match(folder, DGEMMA_REVISION)
 
 
 def test_a_download_that_leaves_the_folder_incomplete_halts(tmp_path):
@@ -1434,9 +1644,24 @@ def test_a_download_that_leaves_the_folder_incomplete_halts(tmp_path):
     rt = mock.Mock()
     rt.run.return_value = subprocess.CompletedProcess([], 0)
     with pytest.raises(deploy.DeployError) as refused:
-        deploy.ensure_dgemma_weights(cfg, rt)
+        deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
     assert "incomplete" in str(refused.value)
     rt.run.assert_called_once()
+
+
+def test_both_model_servers_get_their_weights_before_up(monkeypatch):
+    cfg = _llm_cfg("true", "true")
+    calls = []
+    monkeypatch.setattr(deploy, "compose_files", lambda c, side: ["base.yaml"])
+    monkeypatch.setattr(deploy, "ensure_dgemma_image", lambda c, r: calls.append("image"))
+    monkeypatch.setattr(deploy, "ensure_dgemma_weights",
+                        lambda c, r, server: calls.append(server.served_name))
+    monkeypatch.setattr(deploy, "run_or_fail", lambda cmd, env=None: calls.append("up"))
+    monkeypatch.setattr(deploy, "compose_command", lambda c, side, rt, args: args)
+    rt = mock.Mock()
+    rt.name = "docker"
+    deploy.compose_up(cfg, "ai", rt, False)
+    assert calls == ["image", "dgemma", "ornith", "up"]
 
 
 def test_tika_config_limits_and_slots():

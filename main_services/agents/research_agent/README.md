@@ -638,8 +638,8 @@ The application is configured entirely via environment variables (rendered from
   error when it has no model and this value is empty.
 - `LLM_TEMPERATURE`: Temperature setting (default: 0.0)
 - `LLM_SEND_TEMPERATURE`: `false` leaves `temperature` out of every model request: the agent
-  turns and the compaction summary. [deploy.py](../../../deploy.py) renders it from the active provider's
-  `send_temperature` key. Empty or unset is `true`. [research_agent/model_params.py](research_agent/model_params.py) owns
+  turns and the compaction summary. [deploy.py](../../../deploy.py) renders `false`, because the model
+  servers reject the parameter. Empty or unset is `true`. [research_agent/model_params.py](research_agent/model_params.py) owns
   the rule, and the worker's title request mirrors it.
 - `AGENT_MAX_OUTPUT_TOKENS`: the output cap of every agent model request, which the model
   client sends as `max_completion_tokens`. It is also the output reserve of the request size.

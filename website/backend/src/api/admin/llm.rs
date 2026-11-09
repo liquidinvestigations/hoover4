@@ -56,9 +56,9 @@ fn llm_configured() -> bool {
         .unwrap_or(false)
 }
 
-/// The model of agent turns: `LLM_QUALITY_MODEL` when it is set, else `LLM_MODEL`. Both come
-/// from `[llm_provider.<name>]` of `hoover4.ini` through `deploy.py`, which renders the quality
-/// model only together with its endpoint. No setting overrides it.
+/// The model of agent turns: `LLM_QUALITY_MODEL` when it is set, else `LLM_MODEL`. `deploy.py`
+/// renders both from its model-server constants when `[ai_services] llm_enabled` is true, and
+/// the quality model only together with its endpoint. No setting overrides it.
 ///
 /// **Mirrored in `main_services/processing/tasks/llm_endpoints.py`** (`chat_model`).
 pub fn agent_model() -> String {
@@ -82,7 +82,7 @@ pub fn short_call_model() -> String {
 pub fn chat_turn_model() -> anyhow::Result<String> {
     let model = agent_model();
     if model.is_empty() {
-        anyhow::bail!("no LLM provider is configured; set one in hoover4.ini");
+        anyhow::bail!("the model servers are off. Set [ai_services] llm_enabled = true in hoover4.ini");
     }
     Ok(model)
 }
@@ -304,8 +304,8 @@ async fn prior_catalog(provider: &str) -> std::collections::HashMap<String, Prio
     }
 }
 
-/// The models that read images, from `LLM_VISION_MODELS` (`[llm_provider.selfhosted]
-/// vision_models`). The refresh marks them `supports_vision`.
+/// The models that read images, from `LLM_VISION_MODELS`, which `deploy.py` renders as
+/// ornith. The refresh marks them `supports_vision`.
 fn vision_models(list: &str) -> std::collections::HashSet<&str> {
     list.split(',').map(str::trim).filter(|name| !name.is_empty()).collect()
 }
@@ -496,14 +496,11 @@ async fn refresh_endpoint(base: &str, provider: String, api_key: &str) -> anyhow
     Ok(())
 }
 
-/// A short, stable name for the endpoint a base URL points at.
-///
-/// A registrable domain is named by its second-to-last label: `api.moonshot.ai` is
-/// `moonshot`. An address literal has no such label, and taking one anyway names the
-/// provider after an octet of its IP (`192.0.2.10:21960` becomes `2`), so the host and
-/// its port are kept whole. Every place that names the base provider goes through this,
-/// including the placeholder row for a configured endpoint whose catalog is still empty:
-/// two spellings of one endpoint render as two providers, one of them permanently empty.
+/// The catalog name of the base endpoint: `LLM_PROVIDER_NAME`, which `deploy.py` renders
+/// as `selfhosted`, else the endpoint's host. Every place that names the base provider goes
+/// through this, including the placeholder row for a configured endpoint whose catalog is
+/// still empty: two spellings of one endpoint render as two providers, one of them
+/// permanently empty.
 pub(crate) fn provider_name_from_url(base: &str) -> String {
     if let Ok(name) = std::env::var("LLM_PROVIDER_NAME") {
         if !name.trim().is_empty() {
@@ -513,32 +510,21 @@ pub(crate) fn provider_name_from_url(base: &str) -> String {
     endpoint_label(base)
 }
 
-/// The name of an endpoint from its host alone. `LLM_PROVIDER_NAME` names only the base
-/// endpoint, so the quality endpoint is always named this way, as `provider_label` does in
-/// `tasks/llm_catalog.py`.
+/// The catalog name of an endpoint from its host and port as written, for example
+/// `192.0.2.10:21964`. `LLM_PROVIDER_NAME` names only the base endpoint, so the quality
+/// endpoint is always named this way, as `provider_label` does in `tasks/llm_catalog.py`.
 fn endpoint_label(base: &str) -> String {
     let host = base
+        .trim()
         .trim_start_matches("https://")
         .trim_start_matches("http://")
         .split('/')
         .next()
-        .unwrap_or("provider");
-    if host.starts_with('[') {
-        return host.to_string();
-    }
-    let bare = if host.matches(':').count() == 1 {
-        host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host)
+        .unwrap_or("");
+    if host.is_empty() {
+        "unknown".to_string()
     } else {
-        host
-    };
-    if !bare.is_empty() && bare.chars().all(|c| c.is_ascii_digit() || c == '.') {
-        return host.to_string();
-    }
-    let parts: Vec<_> = bare.split('.').collect();
-    if parts.len() >= 2 {
-        parts[parts.len() - 2].to_string()
-    } else {
-        bare.to_string()
+        host.to_string()
     }
 }
 
@@ -617,21 +603,20 @@ mod tests {
         assert!(!thinking_from_setting(Some(" off ")));
     }
 
-    /// An endpoint reached by IP must not be named after one of its octets, and the
-    /// placeholder row for an empty catalog must spell the provider the same way the
-    /// refresh will, otherwise one endpoint renders as two providers.
+    /// An endpoint is named by its host and port as written. The placeholder row for an
+    /// empty catalog must spell the provider the same way the refresh will, otherwise one
+    /// endpoint renders as two providers.
     #[test]
-    fn a_provider_name_survives_an_address_literal() {
-        let configured = std::env::var("LLM_PROVIDER_NAME").ok().filter(|name| !name.trim().is_empty());
+    fn an_endpoint_label_is_its_host_and_port() {
         for (base, expected) in [
-            ("https://api.moonshot.ai/v1", "moonshot"),
-            ("https://integrate.api.nvidia.com/v1", "nvidia"),
-            ("http://192.0.2.10:21960/v1", "192.0.2.10:21960"),
+            ("http://192.0.2.10:21964/v1", "192.0.2.10:21964"),
             ("http://127.0.0.1/v1", "127.0.0.1"),
             ("http://[fd00::1]:8000/v1", "[fd00::1]:8000"),
-            ("http://localhost:8000/v1", "localhost"),
+            ("http://localhost:8000/v1", "localhost:8000"),
+            ("http://gpu.example.test:21964/v1", "gpu.example.test:21964"),
+            ("", "unknown"),
         ] {
-            assert_eq!(provider_name_from_url(base), configured.as_deref().unwrap_or(expected), "{base}");
+            assert_eq!(endpoint_label(base), expected, "{base}");
         }
     }
 

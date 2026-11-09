@@ -11,3 +11,10 @@ The `--check` tests set `INI_PATH` to a fixture, so they never read the operator
 They replace each command, file write, folder creation and network call with a mock that fails the test.
 
 The tests that read `hoover4.ini.release` or `hoover4.ini.development` read a copy without inline `;` comments.
+The copy also omits each section and key of `REMOVED_SETTINGS` in [deploy.py](../../deploy.py).
+
+[fixtures/schema/removed-model-settings.ini](fixtures/schema/removed-model-settings.ini) sets every removed model setting.
+[fixtures/schema/retired-cloud-provider.ini](fixtures/schema/retired-cloud-provider.ini) is an earlier cloud-provider file.
+The tests check that each removed setting is refused with its replacement text.
+The weight download tests write the download metadata of huggingface_hub into a temporary folder.
+They cover a folder at the pinned commit, a folder at another commit, and an interrupted download.

@@ -13,8 +13,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-#: The bearer token sent to a quality endpoint when the provider has no API key. The
-#: OpenAI client refuses an empty key, and a server without login ignores this one.
+#: The bearer token sent to a quality endpoint when the model servers have no API key.
+#: The OpenAI client refuses an empty key, and a server without login ignores this one.
 QUALITY_PLACEHOLDER_KEY = "unused"
 
 

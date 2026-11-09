@@ -68,8 +68,8 @@ title. Without it the only way to make one faster is to change the model for eve
 A model the user picked in the composer still wins over the profile's: the key configures
 the deployment, not the conversation.
 
-The selfhosted provider can have a quality endpoint beside its base endpoint
-(`[llm_provider.selfhosted] quality_base_url` and `quality_model`). A request that names the
+The self-hosted model servers have a quality endpoint, ornith, beside the base endpoint,
+dgemma (`LLM_QUALITY_BASE_URL` and `LLM_QUALITY_MODEL`). A request that names the
 quality model goes to the quality endpoint, and every other model goes to the base endpoint.
 The worker ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py)) and the agent services ([research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py))
 apply this rule to every model call. A deployment selects the quality model as

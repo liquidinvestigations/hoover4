@@ -25,8 +25,8 @@ Every service is an optional overlay under [compose/](compose), selected by `hoo
 | Overlay | Service | Port (ini key) | Enabled by | Purpose |
 |---|---|---|---|---|
 | [compose/ai-server.yaml](compose/ai-server.yaml) | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| [compose/vllm.yaml](compose/vllm.yaml) | `hoover4-vllm` | 21960 (`vllm_port`), 21963 (`vllm_structured_port`) | `llm_selfhosted` | The agent model (**DiffusionGemma 26B-A4B**, NVFP4), OpenAI-compatible, and its structured server. Off by default; a cloud provider serves the stack until it is turned on. |
-| [compose/vllm-chat.yaml](compose/vllm-chat.yaml) | `hoover4-vllm-chat` | 21964 (`chat_vllm_port`) | `chat_llm_selfhosted` | A second model server for agent turns (**Ornith-1.5-35B-A3B**, NVFP4 by default). It runs plain `vllm serve` in the image of `hoover4-vllm`, with the same API key. See [The chat model server](#the-chat-model-server). |
+| [compose/vllm.yaml](compose/vllm.yaml) | `hoover4-vllm` | 21960 (`vllm_port`), 21963 (`vllm_structured_port`) | `llm_enabled` | The model of short calls (**DiffusionGemma 26B-A4B**, NVFP4), OpenAI-compatible, and its structured server. The switch is off by default, and the stack then has no language model. |
+| [compose/vllm-chat.yaml](compose/vllm-chat.yaml) | `hoover4-vllm-chat` | 21964 (`chat_vllm_port`) | `llm_enabled` | The model of agent turns (**Ornith-1.5-35B-A3B**, NVFP4). It runs plain `vllm serve` in the image of `hoover4-vllm`, with the same API key, and starts after `hoover4-vllm` is healthy. See [The chat model server](#the-chat-model-server). |
 | [compose/easyocr.yaml](compose/easyocr.yaml) | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so [tasks/ocr_client.py](../main_services/processing/tasks/ocr_client.py) posts one request shape to either. |
 
 ## Deploy
@@ -87,9 +87,10 @@ by one minor, so it is torchvision that decides which triple is available, not t
   ignored** by podman-compose. Services appeared to start and then ran on CPU.
 * `HEALTHCHECK` in a Dockerfile is dropped for OCI images, so healthchecks are declared
   in the compose overlays.
-* The GPU services share one device. `vllm_gpu_fraction` (default `0.60`) is the setting to
-  turn down first if any of them OOMs, and it is a fraction of the **whole** device,
-  which on unified-memory hardware means total system memory, not a card's own.
+* The GPU services share one device. The GPU fractions of the two model servers are
+  constants of [deploy.py](../deploy.py) (`DGEMMA_ENV`, `ORNITH_ENV`). Each is a fraction of the
+  **whole** device, which on unified-memory hardware means total system memory, not a
+  card's own.
 
 ### Testing
 
@@ -108,6 +109,26 @@ so the suite is mounted in rather than run with `docker exec`. `AI_SERVER_TEST_U
 defaults to `http://localhost:21961`; point it at a container name on the `ai_services`
 network as above, or at a remote GPU host.
 
+## The supported model set
+
+hoover4 supports one model set on the Spark (GB10): dgemma with its structured server, and
+ornith. `[ai_services] llm_enabled` starts both servers. [deploy.py](../deploy.py) holds every other
+value as a constant, so a change of a model, a commit or a capacity value is a code change.
+
+| value | dgemma (`hoover4-vllm`) | ornith (`hoover4-vllm-chat`) |
+|---|---|---|
+| checkpoint | `nvidia/diffusiongemma-26B-A4B-it-NVFP4` | `ornith-ai/Ornith-1.5-35B-A3B-NVFP4` |
+| checkpoint commit | `ec4ff3df205028f4e81c954c2227f9312b3ec2ea` | `94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa` |
+| served name | `dgemma` | `ornith` |
+| image | `hoover4-vllm-dgemma:<VLLM_BASE_RELEASE>-<DJEV_SPARK_COMMIT>` | the same image |
+| GPU fraction | 0.24 | 0.30 |
+| container memory limit | 40g | 48g |
+| context, sequences | 262,144 tokens, 4 | 262,144 tokens, 4 |
+
+`MODEL_SERVERS`, `DGEMMA_ENV` and `ORNITH_ENV` in [deploy.py](../deploy.py) hold the complete values.
+They are also part of `HOOVER4_CONFIG_FINGERPRINT`, so two hosts with different
+[deploy.py](../deploy.py) revisions report different fingerprints.
+
 ## The local LLM: DiffusionGemma 26B-A4B
 
 `hoover4-vllm` serves `nvidia/diffusiongemma-26B-A4B-it-NVFP4` under the model name
@@ -122,8 +143,8 @@ The compose build of `hoover4-vllm` starts from the vLLM release image
 release tag stays on Docker Hub. A nightly tag is deleted after about a week, so the build
 does not start from a nightly.
 
-The build takes its support files from the Git repository in `vllm_build_repo` at the
-commit in `vllm_build_ref`: the CUDA header links, the worker memory cap, the entrypoint,
+The build takes its support files from the djev-spark repository at the commit
+`DJEV_SPARK_COMMIT` of [deploy.py](../deploy.py): the CUDA header links, the worker memory cap, the entrypoint,
 the test pages and the image check. It takes the structured server from the djev
 repository at the commit that this djev-spark commit pins. The Dockerfile of djev-spark
 is not used, because it starts from a nightly.
@@ -137,9 +158,9 @@ change `VLLM_BASE_RELEASE` and make each patch again against the new release. Th
 `diffusion-gemma-stack.patch` adds three DiffusionGemma changes that the release does not
 have: the skip of the last self-conditioning step (vllm-project/vllm#58221), engine
 samples (vllm-project/vllm#58438), which the structured server uses with
-`--engine-samples`, and the load-adaptive canvas width, which `vllm_canvas_schedule`
+`--engine-samples`, and the load-adaptive canvas width, which `VLLM_CANVAS_SCHEDULE`
 sets. The image does not carry the FlashInfer per-request causal change of djev-spark,
-because `vllm_attention_backend` is `TRITON_ATTN`.
+because the attention backend is `TRITON_ATTN`.
 
 `parser-arguments.patch` changes the tool call parser of vLLM. A parser that converts the
 model's own argument syntax to JSON, such as `gemma4`, streams no argument deltas. It sends
@@ -166,24 +187,29 @@ An image without `parser-arguments.patch` fails the case `streamed_prefix_not_js
 every case.
 
 The entrypoint of the image composes the `vllm serve` arguments from the container
-environment. [deploy.py](../deploy.py) renders that environment from `[ai_services]`. The entrypoint
+environment. [deploy.py](../deploy.py) renders that environment from `DGEMMA_ENV`. The entrypoint
 starts vLLM on container port 8000, and then the structured server on container port
 8011. `vllm_port` publishes the first and `vllm_structured_port` publishes the second.
 Both bind to `bind_ip`, which must be a private-network address.
 
 ### The weights
 
-The weights are the folder `dgemma_model` under `[storage] volumes_path`. Before the first
-start, `./deploy --ai-services` runs the built image once and downloads `vllm_model` into
-that folder. The download of about 19 GB runs for minutes, and it continues a partial folder. A
-folder is complete when it holds `config.json` and every shard that
-`model.safetensors.index.json` names, each above zero bytes. A checkpoint of one shard has
-no index, so a folder with no index is complete when it holds `config.json` and one
-`*.safetensors` file above zero bytes. A later deploy does not
-download a complete folder again. [deploy.py](../deploy.py) stops with an error when the folder is still
-incomplete after the download.
+The weights are the folder `dgemma_model` under `[storage] volumes_path`. Before each
+start, `./deploy --ai-services` checks the folder. A complete folder holds `config.json`,
+`model.safetensors.index.json` and every shard that the index names, each above zero bytes.
+The deploy keeps a complete folder when the download metadata of each of these files names
+the pinned checkpoint commit. huggingface_hub writes that metadata in
+`.cache/huggingface/download/<file>.metadata` of the folder. A checkpoint of one shard has
+no index, so a folder with no index needs `config.json` and its `*.safetensors` files.
 
-The checkpoint is not gated, so `hf_token_file` can stay empty. The server itself runs
+Otherwise the deploy runs the built image once with `snapshot_download` at the pinned
+commit. The download keeps each file that equals the file of that commit, downloads the
+other files again, and continues a partial file. The first download of about 19 GB runs for
+minutes. [deploy.py](../deploy.py) stops with an error when the folder does not match the pinned commit
+after the download. Run `./deploy --ai-services` again to continue an interrupted download.
+The deploy changes no other folder.
+
+The checkpoints are not gated, so the download sends no token. The server itself runs
 with `HF_HUB_OFFLINE=1`. The folder `dgemma_cache` holds the compile and JIT cache at
 `/root/.cache`. A first start compiles the FlashInfer kernels before the weights load, so
 the health check allows 1,800 s for the start.
@@ -204,34 +230,32 @@ on both servers.
 
 ### Memory
 
-The server shares the unified memory of the GPU box with the other model servers.
+The server shares the unified memory of the GPU box with ornith, `hoover4-ai-server` and GPU
+EasyOCR. These values of `DGEMMA_ENV` set its memory.
 
-| key | default | what it sets |
+| variable | value | what it sets |
 |---|---|---|
-| `vllm_gpu_fraction` | `0.60` | the fraction of the whole device that vLLM takes |
-| `vllm_kv_cache_gb` | `28` | the KV cache in GiB |
-| `vllm_headroom_gb` | `4` | the memory in GiB that the start-up check keeps free |
-| `vllm_transient_copies` | `2` | the sampler copies that the start-up check budgets for |
-| `vllm_torch_mem_fraction` | `0.85` | the fraction of memory that PyTorch can allocate |
-| `vllm_mem_limit` | `97g` | the memory limit of the container |
+| `VLLM_GPU_FRACTION` | `0.24` | the fraction of the whole device that vLLM takes |
+| `VLLM_KV_CACHE_GB` | `6` | the KV cache in GiB |
+| `VLLM_HEADROOM_GB` | `4` | the memory in GiB that the start-up check keeps free |
+| `VLLM_TRANSIENT_COPIES` | `2` | the sampler copies that the start-up check budgets for |
+| `VLLM_TORCH_MEM_FRACTION` | `0.85` | the fraction of memory that PyTorch can allocate |
+| `VLLM_MEM_LIMIT` | `40g` | the memory limit of the container |
 
 The entrypoint prints a `memory:` line with the memory available and the memory it needs.
 The memory it needs is the sum of the weights, the KV cache, the start-up transient and
-the headroom. The entrypoint refuses to start when the memory available is less. The KV cache must hold `vllm_max_num_seqs`
-sequences at the full context. Read both from the log:
+the headroom. The entrypoint refuses to start when the memory available is less. Read the
+line and the KV cache size from the log:
 
 ```
 docker logs hoover4-vllm 2>&1 | grep -E "memory:|refusing|GPU KV cache size|Maximum concurrency"
 ```
 
-The line `Maximum concurrency for 262,144 tokens per request` must read at least
-`vllm_max_num_seqs`. When it reads less, increase `vllm_kv_cache_gb` by one.
-
-With the defaults on the GPU box, the log reads `GPU KV cache size: 2,386,792 tokens` and
-`Maximum concurrency for 262,144 tokens per request: 9.10x`. The `memory:` line reads 117 GB
-available and 54 GB needed at 4 sequences, and 56 GB needed at 8. The other two model
-servers run beside it. With the model idle, the host keeps about 56 GiB of `MemAvailable`,
-and the swap in use does not grow.
+With these values the `memory:` line reads 117 GB available and 32 GB needed (weights 19,
+KV cache 6, start-up transient 3, headroom 4). The log reads `GPU KV cache size: 511,437
+tokens` and `Maximum concurrency for 262,144 tokens per request: 1.95x`. The KV cache
+therefore holds fewer than `VLLM_MAX_NUM_SEQS` (4) sequences at the full context. Four
+shorter sequences fit.
 
 ### Speed, and the agent timeouts that follow from it
 
@@ -267,7 +291,7 @@ one stream after it.
 | 8 | 32,768 | 512 | 167.7 | 4.0 | 192.7 |
 | 8 | 32,768 | 4,096 | 140.4 | 6.7 | 669.0 |
 
-`vllm_max_num_seqs` is 4 when the slowest stream at 8 sequences decodes below 30 tokens a
+`VLLM_MAX_NUM_SEQS` is 4 when the slowest stream at 8 sequences decodes below 30 tokens a
 second, and 8 otherwise. The slowest stream at 8 decoded 4.0 tokens a second, so the value is 4.
 
 The six cells at 4 sequences give an estimate of one worst-case request. The first chunk
@@ -293,8 +317,9 @@ gives the consequences.
 vLLM answers a request with a 400 error when it carries `temperature`, `min_p`, `seed`,
 `min_tokens`, `logit_bias`, `bad_words` or `allowed_token_ids`. A client of this server
 must leave them out. It can send `chat_template_kwargs` with `enable_thinking`, which
-wins over `vllm_default_thinking`. `[llm_provider.selfhosted] send_temperature = false`
-makes the agents, their compaction summary and the title call leave `temperature` out.
+wins over the default thinking of `VLLM_EXTRA_ARGS`. `LLM_SEND_TEMPERATURE = false`, which
+[deploy.py](../deploy.py) always renders, makes the agents, their compaction summary and the title call
+leave `temperature` out.
 
 ### Differences from the vLLM recipe
 
@@ -305,20 +330,19 @@ it in these arguments.
 | argument | recipe | here | why |
 |---|---|---|---|
 | image | `vllm/vllm-openai:gemma` | the release `VLLM_BASE_RELEASE` with the patches of [dgemma/vllm-image/](dgemma/vllm-image) | the build adds the adaptive canvas schedule and the structured server |
-| `--served-model-name` | not set | `dgemma` (`vllm_served_name`) | a short name for the clients |
-| `--gpu-memory-utilization` | 0.8 | 0.60 (`vllm_gpu_fraction`) | the box runs other model servers |
-| `--kv-cache-memory` | not set | 28 GiB (`vllm_kv_cache_gb`) | a fixed KV cache for 8 sequences at the full context |
-| `--max-num-seqs` | 8 | 4 (`vllm_max_num_seqs`) | at 8, one stream decodes below 30 tokens a second |
-| `--diffusion-config` | canvas 256 | canvas 256, 32 samples, and a canvas schedule by batch size (`vllm_canvas`, `vllm_max_samples`, `vllm_canvas_schedule`) | the schedule makes a smaller canvas at a larger batch |
+| `--served-model-name` | not set | `dgemma` | a short name for the clients |
+| `--gpu-memory-utilization` | 0.8 | 0.24 (`VLLM_GPU_FRACTION`) | the box runs ornith and other model servers |
+| `--kv-cache-memory` | not set | 6 GiB (`VLLM_KV_CACHE_GB`) | a fixed KV cache beside ornith |
+| `--max-num-seqs` | 8 | 4 (`VLLM_MAX_NUM_SEQS`) | at 8, one stream decodes below 30 tokens a second |
+| `--diffusion-config` | canvas 256 | canvas 256, 32 samples, and a canvas schedule by batch size (`VLLM_CANVAS`, `VLLM_MAX_SAMPLES`, `VLLM_CANVAS_SCHEDULE`) | the schedule makes a smaller canvas at a larger batch |
 | `--exclude-tools-when-tool-choice-none`, `--trust-remote-code`, `--async-scheduling`, `--max-logprobs 128`, `VLLM_USE_V2_MODEL_RUNNER=1` | not set | set by the entrypoint | the entrypoint of the build sets them, and the vLLM patches of the build need `--async-scheduling` |
-| `--chat-template` | the recipe names a tool chat template | not set (`vllm_chat_template`) | the model's own template is used until a measurement shows that tool calls need the other |
+| `--chat-template` | the recipe names a tool chat template | not set | the model's own template is used until a measurement shows that tool calls need the other |
 
-Every other argument of the recipe is set to the recipe's value. `--mm-processor-kwargs`,
-`--limit-mm-per-prompt`, `--default-chat-template-kwargs` and `--load-format` come from
-`vllm_image_input`, `vllm_mm_max_soft_tokens`, `vllm_mm_image_limit`,
-`vllm_default_thinking` and `vllm_load_format`. [deploy.py](../deploy.py) joins them into
-`VLLM_EXTRA_ARGS`, which the entrypoint adds to `vllm serve`. The entrypoint splits that
-value on spaces, so no JSON value in it holds a space.
+Every other argument of the recipe is set to the recipe's value. `--mm-processor-kwargs`
+(1,120 soft tokens), `--limit-mm-per-prompt` (7 images), `--default-chat-template-kwargs`
+(thinking on) and `--load-format` (`fastsafetensors`) are in `VLLM_EXTRA_ARGS` of
+`DGEMMA_ENV`, which the entrypoint adds to `vllm serve`. The entrypoint splits that value on
+spaces, so no JSON value in it holds a space.
 
 ### Token streaming
 
@@ -329,18 +353,25 @@ symptom to look for is an agent that answers with no tool calls.
 
 ## The chat model server
 
-`hoover4-vllm-chat` serves the model of agent turns, beside `hoover4-vllm`, which keeps the
-base model and the structured server. It uses the image of `hoover4-vllm`, because that vLLM
-build serves the Qwen3.5 mixture architecture and its MTP draft head on GB10. The entrypoint
-is plain `vllm serve`, with `chat_vllm_args` added after the size keys.
+`hoover4-vllm-chat` serves ornith, the model of agent turns, beside `hoover4-vllm`, which
+keeps dgemma and the structured server. It uses the image of `hoover4-vllm`, because that
+vLLM build serves the Qwen3.5 mixture architecture and its MTP draft head on GB10. The
+entrypoint is plain `vllm serve`, with `CHAT_VLLM_ARGS` of `ORNITH_ENV` added after the size
+values.
 
-[deploy.py](../deploy.py) downloads `chat_vllm_model` once into the folder `chat_model`, and the folder
-`chat_cache` holds the compile cache. The service reads the key file of
-`vllm_api_key_file`, so one key opens both servers.
+[deploy.py](../deploy.py) downloads the pinned ornith commit into the folder `chat_model` with the
+rule of [The weights](#the-weights), and the folder `chat_cache` holds the compile cache. The
+service reads the key file of `vllm_api_key_file`, so one key opens both servers.
 
 The memory of the two model servers, `hoover4-ai-server` and GPU EasyOCR must fit the device
-together. With the chat server on, `hoover4-vllm` needs a smaller KV cache, a smaller
-`vllm_gpu_fraction` and a shorter `vllm_max_model_len`.
+together. The two model servers take 0.24 and 0.30 of it.
 
-`[llm_provider.selfhosted]` `quality_base_url` and `quality_model` default to this server
-when `chat_llm_selfhosted` is true. A request that names `chat_vllm_served_name` goes to it.
+`hoover4-vllm-chat` starts after `hoover4-vllm` is healthy. vLLM measures the free memory of
+the device when it starts, and memory that `hoover4-vllm` takes during that measurement
+counts against `hoover4-vllm-chat`. Two servers that start together can give
+`hoover4-vllm-chat` a negative KV cache, and its first start then fails. A restart of the host
+starts both containers together, and the restart policy then starts `hoover4-vllm-chat`
+again.
+
+[deploy.py](../deploy.py) renders this server as `LLM_QUALITY_BASE_URL` and `LLM_QUALITY_MODEL` for the main
+services. A request that names `ornith` goes to it.

@@ -56,8 +56,8 @@ REQUEST_TIMEOUT = (10, TIMEOUTS.title_request_seconds)
 def _send_temperature() -> bool:
     """`LLM_SEND_TEMPERATURE`. Empty or unset is true.
 
-    `deploy.py` renders it from the active provider's `send_temperature` key. A provider that
-    rejects `temperature` gets a request without it. **Mirrored in
+    `deploy.py` renders `false`, because the self-hosted model servers reject `temperature`,
+    so the request leaves it out. **Mirrored in
     `main_services/agents/research_agent/research_agent/model_params.py`**, which reads the
     same variable with the same rule for the agent's own requests.
     """

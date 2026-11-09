@@ -59,7 +59,7 @@ ner_enabled        = false
 embeddings_enabled = false
 reranker_enabled   = false
 easyocr_enabled    = false      ; not implied by the others, see below
-llm_selfhosted     = false
+llm_enabled        = false
 
 [main_services]
 ner_provider          = none        ; NER runs on the GPU only
@@ -79,18 +79,10 @@ website_bind_ip       = <private-ip>    ; the private address the proxy reaches
 infra_bind_ip         = 127.0.0.1
 
 mcp_shared_secret_file = <secrets-dir>/mcp-shared-secret.txt
-
-[llm_provider.nvidia]
-enabled      = true
-base_url     = https://integrate.api.nvidia.com/v1
-model        = nvidia/nemotron-3-super-120b-a12b
-api_key_file = <secrets-dir>/nvidia-api-key.txt
-
-[llm_provider.selfhosted]
-enabled = false
-[llm_provider.moonshot]
-enabled = false
 ```
+
+This host has no language model. The model servers run only on the GPU tier, so the chat
+and the research agents are off.
 
 **`easyocr_enabled` behaves differently from the others.** `OCR_EASYOCR_URL` is rendered from that flag alone,
 *regardless* of `[ai_services] enabled`, and it ships `true`. Left alone it renders a
@@ -120,7 +112,6 @@ read-only into the containers that need it; no key value ever reaches a `.env` o
 mkdir -p <secrets-dir> && chmod 700 <secrets-dir>
 head -c 32 /dev/urandom | base64 > <secrets-dir>/mcp-shared-secret.txt
 chmod 600 <secrets-dir>/mcp-shared-secret.txt
-chmod 600 <secrets-dir>/nvidia-api-key.txt
 ```
 
 `<secrets-dir>` is a directory **outside the checkout**, which [deploy.py](../../deploy.py) enforces: it
@@ -148,9 +139,10 @@ embeddings_enabled = true
 reranker_enabled   = true
 easyocr_enabled    = true
 
-llm_selfhosted     = true
+llm_enabled        = true
 vllm_port          = 21960
-vllm_served_name   = <served-name>      ; the id the other box answers /v1/models with
+vllm_structured_port = 21963
+chat_vllm_port     = 21964
 vllm_api_key_file  = <secrets-dir>/vllm-key.txt
 
 [main_services]
@@ -158,30 +150,12 @@ ner_provider          = gpu
 embeddings_provider   = gpu
 pdf_ocr_provider      = tesseract
 gpu_fallback          = true        ; the CPU twin covers a GPU box that stops answering
-
-[llm_provider.selfhosted]
-enabled      = true
-base_url     = http://<gpu-private-ip>:21960/v1
-model        = <served-name>
-api_key_file = <secrets-dir>/vllm-key.txt
-
-[llm_provider.nvidia]
-enabled      = true     ; the fallback, and it serves nothing while the block above is on
 ```
 
-**`llm_selfhosted = true` on its own does not select the self-hosted model.**
-`active_llm_provider()` in [deploy.py](../../deploy.py) reads that flag **and**
-`[llm_provider.selfhosted] enabled`. With the flag on and the provider off, it falls
-through to the first enabled cloud provider. The whole deployment then answers on that
-provider's model, and nothing reports an error. `hoover4.ini.release` ships the
-self-hosted provider disabled and a cloud provider enabled, so an ini rebuilt from the
-template loses this setting silently. Read the two keys together after any rebuild.
-
-**Write `base_url` and `model` out rather than leaving them empty.** The empty form
-derives them from `[ai_services] host`, `vllm_port` and `vllm_served_name`, which state
-what would be deployed *from this file*. This host deploys no GPU tier of its own, so
-those keys carry an intention. Name the endpoint and the served model where they are
-read.
+`llm_enabled = true` starts dgemma, its structured server and ornith on the GPU host, and
+on this host it renders their endpoints from `host` and the three ports. The models and
+their capacity are constants of [deploy.py](../../deploy.py), so both hosts serve the same set. Copy the
+same `[ai_services]` section to both hosts.
 
 `--print-env` settles it before anything starts:
 
@@ -189,7 +163,8 @@ read.
 ./deploy --print-env | grep '^LLM_'
 ```
 
-`LLM_BASE_URL` must name the GPU box and `LLM_MODEL` the served name. Once the stack is
+`LLM_BASE_URL` must name the GPU box and `LLM_MODEL` the served name `dgemma`.
+`LLM_QUALITY_MODEL` must be `ornith`. Once the stack is
 up, `/admin/ai_status` reports the same pair from the running website, with the result of
 a live probe of the endpoint.
 
@@ -371,7 +346,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **No vector search** | `embeddings_provider = none` leaves `EMBEDDINGS_URL` empty, P5 logs *"skipping chunk+embed"* and writes nothing. No `text_chunk_vectors`, no `_vectors` shards, keyword search everywhere. |
 | **…which removes a memory risk** | `_vectors` HNSW tables are RAM-resident at roughly 2 KB per chunk. Not building them is one large thing the host does not have to hold. |
 | **No reranking** | Collection RAG and web search return RRF order with `rerank_applied: false`. |
-| **Chat still works** | It is a network call to the LLM provider, not a GPU. It answers from keyword retrieval only. |
+| **No chat** | The model servers run on the GPU tier only. Every `LLM_*` endpoint is empty, the research agents do not start, and the chat refuses a new turn. |
 | **No named entities** | NER runs on the GPU only. `ner_provider = none` skips entity extraction. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
 | **The proxy's default identity is an administrator** | `proxy_username`/`proxy_groups` name the identity every request carries, and the default group is `admin`. Acceptable only behind a reverse proxy that authenticates, which is what `website_bind_ip` is enforcing. |

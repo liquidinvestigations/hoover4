@@ -163,17 +163,16 @@ def test_a_configured_vision_model_is_marked_and_a_stored_flag_is_carried(fake, 
 @pytest.mark.parametrize(
     "host,expected",
     [
-        ("api.moonshot.ai", "moonshot"),
-        ("integrate.api.nvidia.com", "nvidia"),
-        # An IP literal has no registrable label, and taking the second-to-last one names
-        # the provider after an octet. The admin page synthesises `host:port` for a
-        # configured endpoint with no rows yet, so the two must agree or a refresh writes
-        # its models beside the provider the page is already showing.
-        ("192.0.2.10:21960", "192.0.2.10:21960"),
+        # The host and port as written. The admin page names a configured endpoint with
+        # no rows the same way, so a refresh writes its models on the provider that the
+        # page already shows. A domain name is not shortened to a provider name.
+        ("192.0.2.10:21964", "192.0.2.10:21964"),
         ("127.0.0.1", "127.0.0.1"),
         ("[fd00::1]:8000", "[fd00::1]:8000"),
-        ("localhost:8000", "localhost"),
+        ("localhost:8000", "localhost:8000"),
+        ("gpu.example.test:21964", "gpu.example.test:21964"),
+        ("", "unknown"),
     ],
 )
-def test_a_provider_label_survives_an_address_literal(host, expected):
+def test_an_endpoint_label_is_its_host_and_port(host, expected):
     assert provider_label(host) == expected

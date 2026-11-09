@@ -145,59 +145,15 @@ DEFAULTS = {
         "enabled": "false",
         "host": "127.0.0.1",
         "bind_ip": "0.0.0.0",
-        # local LLM: the agent model, served OpenAI-compatible.
-        "llm_selfhosted": "false",
+        # The self-hosted model servers: dgemma with its structured server, and ornith. One
+        # switch starts all three. Their models and capacity are the MODEL_SERVER constants.
+        "llm_enabled": "false",
         "vllm_port": "21960",
-        # The structured server of the same container, published on bind_ip.
+        # The structured server of the dgemma container, published on bind_ip.
         "vllm_structured_port": "21963",
-        # The support files of the image come from this Git repository at this commit.
-        "vllm_build_repo": "https://github.com/mmastrac/djev-spark.git",
-        "vllm_build_ref": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
-        # The checkpoint that deploy.py downloads once into the dgemma_model folder.
-        "vllm_model": "nvidia/diffusiongemma-26B-A4B-it-NVFP4",
-        "vllm_served_name": "dgemma",
-        "vllm_gpu_fraction": "0.60",
-        "vllm_max_model_len": "262144",
-        "vllm_max_num_seqs": "4",
-        "vllm_kv_cache_gb": "28",
-        "vllm_headroom_gb": "4",
-        "vllm_transient_copies": "2",
-        "vllm_torch_mem_fraction": "0.85",
-        "vllm_mem_limit": "97g",
-        "vllm_attention_backend": "TRITON_ATTN",
-        "vllm_canvas": "256",
-        "vllm_canvas_schedule": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
-        "vllm_max_samples": "32",
-        "vllm_tool_parser": "gemma4",
-        "vllm_reasoning_parser": "gemma4",
-        # The four keys below become VLLM_EXTRA_ARGS (vllm_extra_args).
-        "vllm_image_input": "true",
-        "vllm_mm_max_soft_tokens": "1120",
-        "vllm_mm_image_limit": "7",
-        "vllm_default_thinking": "true",
-        # Empty omits --load-format.
-        "vllm_load_format": "fastsafetensors",
-        # A chat template path inside the container. Empty keeps the model's own template.
-        "vllm_chat_template": "",
-        "vllm_api_key_file": "",
-        # A second model server for agent turns, beside the model server above. It runs
-        # `vllm serve` in the image of hoover4-vllm, with the API key of vllm_api_key_file.
-        # [llm_provider.selfhosted] quality_base_url and quality_model default to it.
-        "chat_llm_selfhosted": "false",
         "chat_vllm_port": "21964",
-        "chat_vllm_model": "ornith-ai/Ornith-1.5-35B-A3B-NVFP4",
-        "chat_vllm_served_name": "ornith",
-        # A fraction of the WHOLE device, as vllm_gpu_fraction.
-        "chat_vllm_gpu_fraction": "0.30",
-        "chat_vllm_max_model_len": "262144",
-        "chat_vllm_max_num_seqs": "4",
-        "chat_vllm_mem_limit": "48g",
-        # More `vllm serve` arguments, split on spaces, so no JSON value holds a space.
-        "chat_vllm_args": ("--kv-cache-dtype fp8 --enable-prefix-caching "
-                           "--enable-chunked-prefill --reasoning-parser qwen3 "
-                           "--enable-auto-tool-choice --tool-call-parser qwen3_coder "
-                           "--speculative-config "
-                           '{"method":"mtp","num_speculative_tokens":3}'),
+        # The API key file of both model servers. Empty turns the key off.
+        "vllm_api_key_file": "",
         # GPU NER + embeddings
         "ai_server_enabled": "true",
         "ai_server_port": "21961",
@@ -211,7 +167,6 @@ DEFAULTS = {
         "reranker_model": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
         "half_precision": "true",
         "torch_compile": "false",
-        "hf_token_file": "",
         # Per-capability GPU admission. NER saturates at 4; embeddings still scale at 8.
         "ai_server_ner_concurrency": "4",
         "ai_server_embed_concurrency": "8",
@@ -545,47 +500,12 @@ DEFAULTS = {
     "cluster": {
         "registry_address": "",
     },
-    "llm_provider.selfhosted": {
-        "enabled": "false",
-        "base_url": "",  # empty = derived: http://<ai_services.host>:<vllm_port>/v1
-        "model": "",     # empty = vllm_served_name
-        "api_key_file": "",
-        # false: every model request leaves `temperature` out, because the server rejects it.
-        "send_temperature": "false",
-        # The structured server of the chat policy checks. Empty = derived:
-        # http://<host of base_url>:<ai_services.vllm_structured_port>
-        "decision_url": "",
-        # The endpoint of agent turns, with the API key of this provider. Empty = derived
-        # from [ai_services] chat_vllm_port and chat_vllm_served_name when
-        # chat_llm_selfhosted is true, else base_url serves them too.
-        "quality_base_url": "",
-        "quality_model": "",
-        # The models of this provider that read images, comma separated. The catalog
-        # marks them `supports_vision`. Empty = the quality model.
-        "vision_models": "",
-    },
-    "llm_provider.nvidia": {
-        "enabled": "true",
-        "base_url": "https://integrate.api.nvidia.com/v1",
-        "model": "",
-        "api_key_file": "",
-        "send_temperature": "true",
-    },
-    "llm_provider.moonshot": {
-        "enabled": "false",
-        "base_url": "https://api.moonshot.ai/v1",
-        "model": "",
-        "api_key_file": "",
-        "send_temperature": "true",
-    },
 }
-
-LLM_PROVIDER_SECTIONS = [s for s in DEFAULTS if s.startswith("llm_provider.")]
 
 # Compose overlays per side, in order, with the ini flag that enables them.
 AI_OVERLAYS = [
-    ("llm_selfhosted", "compose/vllm.yaml", "hoover4-vllm"),
-    ("chat_llm_selfhosted", "compose/vllm-chat.yaml", "hoover4-vllm-chat"),
+    ("llm_enabled", "compose/vllm.yaml", "hoover4-vllm"),
+    ("llm_enabled", "compose/vllm-chat.yaml", "hoover4-vllm-chat"),
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
@@ -604,12 +524,49 @@ REMOVED_SETTINGS = {
     # The agent divides a fixed batch target among the calls of a reply.
     ("main_services", "agent_max_page_tokens"): None,
     ("main_services", "agent_completion_reserve_tokens"): None,
+    # The self-hosted model servers are the only model endpoints. One switch starts them.
+    ("ai_services", "llm_selfhosted"): "Use [ai_services] llm_enabled.",
+    ("ai_services", "chat_llm_selfhosted"): "Use [ai_services] llm_enabled.",
+    ("llm_provider.selfhosted", None): (
+        "Use [ai_services] llm_enabled. The model endpoints come from the [ai_services] "
+        "host and ports, and the API key from [ai_services] vllm_api_key_file."),
+    ("llm_provider.nvidia", None): (
+        "hoover4 uses only its self-hosted model servers. Delete the section, and use "
+        "[ai_services] llm_enabled."),
+    ("llm_provider.moonshot", None): (
+        "hoover4 uses only its self-hosted model servers. Delete the section, and use "
+        "[ai_services] llm_enabled."),
+    ("ai_services", "hf_token_file"): None,
 }
+
+#: The model-server settings that are now constants of deploy.py (MODEL_SERVERS).
+FIXED_MODEL_SETTINGS = (
+    "vllm_build_repo", "vllm_build_ref", "vllm_model", "vllm_served_name",
+    "vllm_tool_parser", "vllm_reasoning_parser", "vllm_attention_backend", "vllm_canvas",
+    "vllm_canvas_schedule", "vllm_max_samples", "vllm_image_input",
+    "vllm_mm_max_soft_tokens", "vllm_mm_image_limit", "vllm_default_thinking",
+    "vllm_load_format", "vllm_chat_template", "vllm_transient_copies",
+    "vllm_torch_mem_fraction", "vllm_gpu_fraction", "vllm_max_model_len",
+    "vllm_max_num_seqs", "vllm_kv_cache_gb", "vllm_headroom_gb", "vllm_mem_limit",
+    "chat_vllm_model", "chat_vllm_served_name", "chat_vllm_args", "chat_vllm_gpu_fraction",
+    "chat_vllm_max_model_len", "chat_vllm_max_num_seqs", "chat_vllm_mem_limit",
+)
+REMOVED_SETTINGS.update({
+    ("ai_services", key): ("deploy.py sets this value for the supported model servers. "
+                           "Delete it.")
+    for key in FIXED_MODEL_SETTINGS
+})
+
+
+def llm_active(cfg):
+    """Whether the main side uses the model servers: llm_enabled with the GPU tier on.
+    preflight_llm_without_tier refuses llm_enabled without the GPU tier."""
+    return cfg.get_bool("ai_services", "llm_enabled") and _ai_tier_present(cfg)
 
 
 def research_agents_enabled(cfg):
-    """The two research agents need a language model, so they start only with one."""
-    return cfg.active_llm_provider() is not None
+    """The two research agents need the model servers, so they start only with them."""
+    return llm_active(cfg)
 
 
 def web_tor_enabled(cfg):
@@ -649,6 +606,15 @@ MAIN_OVERLAYS = [
 # talking through. Its volume folder has the reset class `protected` in VOLUMES.
 SERENA_OVERLAY = "compose/serena.yaml"
 SERENA_PROJECT = "hoover4-devtools"
+
+# The [ai_services] port keys that each overlay of the ai side publishes. The structured
+# server in hoover4-vllm has its own port.
+AI_PUBLISHED = {
+    "compose/vllm.yaml": ("vllm_port", "vllm_structured_port"),
+    "compose/vllm-chat.yaml": ("chat_vllm_port",),
+    "compose/ai-server.yaml": ("ai_server_port",),
+    "compose/easyocr.yaml": ("easyocr_port",),
+}
 
 # Services that request the GPU on the ai side (for the GPU/CDI preflights).
 AI_GPU_OVERLAYS = ("compose/vllm.yaml", "compose/vllm-chat.yaml", "compose/ai-server.yaml",
@@ -865,44 +831,22 @@ class Config:
         return out
 
     def ai_fingerprint(self):
-        """sha256 of the normalised [ai_services] section; guards ini drift between
-        the two hosts. Passed in as HOOVER4_CONFIG_FINGERPRINT; ai services
-        return it from /health and verify-stack.sh compares."""
+        """sha256 of the normalised [ai_services] section and the fixed model-server
+        values; guards drift between the two hosts. Passed in as
+        HOOVER4_CONFIG_FINGERPRINT; ai services return it from /health and verify-stack.sh
+        compares. The model-server values are code constants, so two hosts with the same
+        ini and different deploy.py revisions also get different fingerprints."""
         lines = []
         for key in sorted(self.values["ai_services"]):
             if key.endswith("_file"):
                 continue  # host paths differ legitimately between the two boxes
             lines.append("%s=%s" % (key, self.values["ai_services"][key].strip()))
+        for name, value in sorted(model_server_env().items()):
+            lines.append("model.%s=%s" % (name, value))
+        for server in MODEL_SERVERS:
+            lines.append("checkpoint.%s=%s@%s" % (server.served_name, server.checkpoint,
+                                                   server.revision))
         return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
-
-    def active_llm_provider(self):
-        """The provider main_services should talk to: selfhosted when the local vLLM
-        is on, otherwise the first enabled cloud provider, else None."""
-        if self.get_bool("ai_services", "llm_selfhosted") and \
-                self.get_bool("llm_provider.selfhosted", "enabled"):
-            return "selfhosted"
-        for section in LLM_PROVIDER_SECTIONS:
-            name = section.split(".", 1)[1]
-            if name != "selfhosted" and self.get_bool(section, "enabled"):
-                return name
-        return None
-
-    def llm_base_url(self, provider):
-        if provider == "selfhosted" and not self.get("llm_provider.selfhosted", "base_url"):
-            return "http://%s:%s/v1" % (
-                self.get("ai_services", "host"), self.get("ai_services", "vllm_port"))
-        return self.get("llm_provider." + provider, "base_url")
-
-    def llm_model(self, provider):
-        model = self.get("llm_provider." + provider, "model")
-        if not model and provider == "selfhosted":
-            model = self.get("ai_services", "vllm_served_name")
-        return model
-
-    def llm_api_key_file(self, provider):
-        if provider == "selfhosted" and not self.get("llm_provider.selfhosted", "api_key_file"):
-            return self.get("ai_services", "vllm_api_key_file")
-        return self.get("llm_provider." + provider, "api_key_file")
 
 
 # --------------------------------------------------------------------------------------
@@ -1469,72 +1413,109 @@ def set_volume_owners(cfg, side, rt, env):
                  % (folder, (result.stderr or "").strip()))
 
 
-#: The script the one-time weight download runs inside the model server's image. It
-#: reads the repository id from M and an optional token from the mounted token file, and
-#: writes into /models/weights.
+#: The script the weight download runs inside the model server's image. It downloads
+#: the checkpoint M at the commit R into /models/weights. huggingface_hub writes one
+#: metadata file for each downloaded file, with the commit, under
+#: /models/weights/.cache/huggingface/download. It downloads a file again when its
+#: content at R differs, and it resumes an interrupted file.
 DGEMMA_DOWNLOAD_SCRIPT = (
     "import os; from huggingface_hub import snapshot_download; "
-    "t = open('/run/secrets/hf_token').read().strip() or None; "
-    "snapshot_download(repo_id=os.environ['M'], local_dir='/models/weights', token=t)"
+    "snapshot_download(repo_id=os.environ['M'], revision=os.environ['R'], "
+    "local_dir='/models/weights')"
 )
 
+#: Where huggingface_hub keeps the download metadata of a `local_dir` download.
+DOWNLOAD_METADATA_DIR = Path(".cache") / "huggingface" / "download"
 
-def dgemma_image(cfg):
+
+def dgemma_image(cfg=None):
     """The image tag of hoover4-vllm, as ai_services/compose/vllm.yaml writes it."""
-    return "hoover4-vllm-dgemma:%s-%s" % (
-        VLLM_BASE_RELEASE, cfg.get("ai_services", "vllm_build_ref").strip())
+    return MODEL_SERVER_IMAGE
+
+
+def weight_files(folder):
+    """The files of a complete checkpoint in folder: config.json, the safetensors index
+    and every shard that it names. A folder with no index needs config.json and its
+    *.safetensors files. None when a file is missing or empty, or the index cannot be
+    read."""
+    folder = Path(folder)
+    if not (folder / "config.json").is_file():
+        return None
+    index = folder / "model.safetensors.index.json"
+    if not index.is_file():
+        shards = sorted(p.name for p in folder.glob("*.safetensors"))
+    else:
+        try:
+            weight_map = json.loads(index.read_text()).get("weight_map") or {}
+        except (OSError, ValueError):
+            return None
+        shards = sorted(set(weight_map.values()))
+    if not shards:
+        return None
+    for shard in shards:
+        path = folder / shard
+        if not path.is_file() or path.stat().st_size == 0:
+            return None
+    files = ["config.json"] + shards
+    if index.is_file():
+        files.append(index.name)
+    return files
 
 
 def weights_complete(folder):
-    """Whether folder holds config.json and every shard that the safetensors index names,
-    each with a size above zero. A folder with no index needs config.json and one
-    non-empty *.safetensors file."""
-    folder = Path(folder)
-    if not (folder / "config.json").is_file():
-        return False
-    index = folder / "model.safetensors.index.json"
-    if not index.is_file():
-        return any(p.stat().st_size > 0 for p in folder.glob("*.safetensors"))
+    """Whether folder holds every file of a checkpoint, each with a size above zero."""
+    return weight_files(folder) is not None
+
+
+def downloaded_revision(folder, name):
+    """The commit that the download metadata of one file names, or None."""
+    path = Path(folder) / DOWNLOAD_METADATA_DIR / (name + ".metadata")
     try:
-        weight_map = json.loads(index.read_text()).get("weight_map") or {}
-    except (OSError, ValueError):
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.readline().strip() or None
+    except OSError:
+        return None
+
+
+def weights_match(folder, revision):
+    """Whether folder holds a complete checkpoint whose every file was downloaded at
+    revision. A folder without download metadata does not match, so the download checks
+    each of its files against the pinned commit."""
+    files = weight_files(folder)
+    if files is None:
         return False
-    for shard in set(weight_map.values()):
-        path = folder / shard
-        if not path.is_file() or path.stat().st_size == 0:
-            return False
-    return bool(weight_map)
+    return all(downloaded_revision(folder, name) == revision for name in files)
 
 
-def dgemma_download_command(cfg, folder, model_key="vllm_model"):
-    """The one-shot container that downloads the weights of model_key into folder."""
-    token = cfg.get("ai_services", "hf_token_file").strip() or "/dev/null"
+def dgemma_download_command(cfg, folder, server):
+    """The one-shot container that downloads the checkpoint of server into folder."""
     return ["run", "--rm", "--entrypoint", "python3",
             "-v", "%s:/models/weights" % folder,
-            "-v", "%s:/run/secrets/hf_token:ro" % token,
             "-e", "HF_HUB_OFFLINE=0",
-            "-e", "M=%s" % cfg.get("ai_services", model_key).strip(),
+            "-e", "M=%s" % server.checkpoint,
+            "-e", "R=%s" % server.revision,
             dgemma_image(cfg), "-c", DGEMMA_DOWNLOAD_SCRIPT]
 
 
-def ensure_dgemma_weights(cfg, rt, volume="dgemma_model", model_key="vllm_model"):
-    """Download a model server's weights once into its weights folder: dgemma_model for
-    hoover4-vllm, chat_model with chat_vllm_model for hoover4-vllm-chat.
+def ensure_dgemma_weights(cfg, rt, server):
+    """Make the weights folder of a model server hold its pinned checkpoint.
 
-    Runs on the ai side after the image exists and before `up`, only for a selected
-    model server overlay. A complete folder is kept. The download resumes a partial
-    folder, and deploy.py fails when the folder is still incomplete after it.
+    Runs on the ai side after the image exists and before `up`, when the model servers
+    are selected. A folder whose files all name the pinned commit is kept. Otherwise the
+    download runs. It keeps each file that equals the file of the pinned commit. It
+    replaces the other files and resumes a partial file. deploy.py fails when the folder does not match the
+    pinned commit after the download. No other folder changes.
     """
-    row = [r for r in VOLUMES if r.name == volume][0]
+    row = [r for r in VOLUMES if r.name == server.volume][0]
     folder = volume_folder(volumes_path(cfg), row)
-    if weights_complete(folder):
+    if weights_match(folder, server.revision):
         return
-    model = cfg.get("ai_services", model_key).strip()
-    print("weights: downloading %s into %s. This runs for several minutes."
-          % (model, folder))
-    result = rt.run(dgemma_download_command(cfg, folder, model_key))
-    if result.returncode != 0 or not weights_complete(folder):
-        fail("the weights of %s are incomplete in %s" % (model, folder))
+    label = "%s at %s" % (server.checkpoint, server.revision)
+    print("weights: downloading %s into %s. This runs for several minutes." % (label, folder))
+    result = rt.run(dgemma_download_command(cfg, folder, server))
+    if result.returncode != 0 or not weights_match(folder, server.revision):
+        fail("the weights of %s are incomplete or at another commit in %s. Run ./deploy "
+             "--ai-services again to resume the download." % (label, folder))
 
 
 def _image_exists(rt, image):
@@ -1844,6 +1825,43 @@ def render_tika_config(cfg):
     return json.dumps(config, indent=2) + "\n"
 
 
+#: The rendered model-endpoint variables. render_llm_env sets each one, so a disabled
+#: model stack leaves no endpoint from an earlier render.
+LLM_ENDPOINT_VARS = ("LLM_BASE_URL", "LLM_MODEL", "LLM_PROVIDER_NAME", "LLM_QUALITY_BASE_URL",
+                     "LLM_QUALITY_MODEL", "LLM_VISION_MODELS", "CHAT_CLASSIFIER_URL")
+
+
+def render_llm_env(cfg):
+    """The model endpoints of the main side, from [ai_services] and MODEL_SERVERS.
+
+    LLM_BASE_URL serves dgemma, the model of short calls. CHAT_CLASSIFIER_URL is the
+    structured server in the dgemma container, which the chat policy checks ask.
+    LLM_QUALITY_BASE_URL serves ornith, the model of agent turns, and ornith reads images.
+    Both servers refuse `temperature`, so LLM_SEND_TEMPERATURE is false. Each endpoint is
+    empty when llm_active is false, so no service calls a model.
+    """
+    a = "ai_services"
+    env = {name: "" for name in LLM_ENDPOINT_VARS}
+    env["LLM_SEND_TEMPERATURE"] = "false"
+    if not llm_active(cfg):
+        return env
+    for key in ("vllm_port", "vllm_structured_port", "chat_vllm_port"):
+        port_number(cfg, a, key)
+    host = cfg.get(a, "host").strip()
+    env["LLM_PROVIDER_NAME"] = "selfhosted"
+    env["LLM_BASE_URL"] = "http://%s:%s/v1" % (host, cfg.get(a, "vllm_port"))
+    env["LLM_MODEL"] = DGEMMA.served_name
+    env["CHAT_CLASSIFIER_URL"] = "http://%s:%s" % (host, cfg.get(a, "vllm_structured_port"))
+    env["LLM_QUALITY_BASE_URL"] = "http://%s:%s/v1" % (host, cfg.get(a, "chat_vllm_port"))
+    env["LLM_QUALITY_MODEL"] = ORNITH.served_name
+    env["LLM_VISION_MODELS"] = ORNITH.served_name
+    key_file = cfg.get(a, "vllm_api_key_file").strip()
+    if key_file:
+        # The value is a bind-mount source. The container reads /run/secrets/llm_api_key.
+        env["LLM_API_KEY_FILE_HOST"] = key_file
+    return env
+
+
 def render_main_env(cfg, reachable_host=None):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini, and no port
     literal appears here except 12345 (which is not rendered at all. It stays in the
@@ -1973,50 +1991,7 @@ def render_main_env(cfg, reachable_host=None):
         else ""
     )
 
-    provider = cfg.active_llm_provider()
-    if provider is not None and (provider != "selfhosted" or _ai_tier_present(cfg)):
-        env["LLM_BASE_URL"] = cfg.llm_base_url(provider)
-        env["LLM_MODEL"] = cfg.llm_model(provider)
-        env["LLM_PROVIDER_NAME"] = provider
-        env["LLM_SEND_TEMPERATURE"] = (
-            "true" if cfg.get_bool("llm_provider." + provider, "send_temperature")
-            else "false")
-        key_file = cfg.llm_api_key_file(provider)
-        if key_file:
-            # Bind-mount source only; the container reads /run/secrets/llm_api_key.
-            env["LLM_API_KEY_FILE_HOST"] = key_file
-    else:
-        env["LLM_BASE_URL"] = ""
-        env["LLM_MODEL"] = ""
-        env["LLM_PROVIDER_NAME"] = ""
-        env["LLM_SEND_TEMPERATURE"] = "true"
-    # The structured server of the selfhosted model, which the chat policy checks ask.
-    # It is rendered only for that provider, so chat content never goes to a hosted
-    # classifier. Empty: every policy question is unavailable and the turn goes on.
-    env["CHAT_CLASSIFIER_URL"] = ""
-    env["LLM_QUALITY_BASE_URL"] = ""
-    env["LLM_QUALITY_MODEL"] = ""
-    env["LLM_VISION_MODELS"] = ""
-    if env["LLM_PROVIDER_NAME"] == "selfhosted":
-        host = urllib.parse.urlsplit(env["LLM_BASE_URL"]).hostname or cfg.get("ai_services", "host")
-        env["CHAT_CLASSIFIER_URL"] = cfg.get("llm_provider.selfhosted", "decision_url").strip() or \
-            "http://%s:%s" % (host, cfg.get("ai_services", "vllm_structured_port"))
-        # The quality endpoint serves the model that the chat profiles select for agent
-        # turns. Both halves or neither: a URL without a model would route nothing.
-        quality_url = cfg.get("llm_provider.selfhosted", "quality_base_url").strip()
-        quality_model = cfg.get("llm_provider.selfhosted", "quality_model").strip()
-        if not quality_url and not quality_model and \
-                cfg.get_bool("ai_services", "chat_llm_selfhosted"):
-            quality_url = "http://%s:%s/v1" % (cfg.get("ai_services", "host"),
-                                               cfg.get("ai_services", "chat_vllm_port"))
-            quality_model = cfg.get("ai_services", "chat_vllm_served_name").strip()
-        if bool(quality_url) != bool(quality_model):
-            fail("[llm_provider.selfhosted] quality_base_url and quality_model are set together")
-        env["LLM_QUALITY_BASE_URL"] = quality_url
-        env["LLM_QUALITY_MODEL"] = quality_model
-        vision = [name.strip() for name in
-                  cfg.get("llm_provider.selfhosted", "vision_models").split(",") if name.strip()]
-        env["LLM_VISION_MODELS"] = ",".join(vision or ([quality_model] if quality_model else []))
+    env.update(render_llm_env(cfg))
     control_dir = cfg.get(m, "chat_control_dir").strip()
     if control_dir:
         if not os.path.isabs(control_dir) or not os.path.isdir(control_dir):
@@ -2181,35 +2156,69 @@ def render_main_env(cfg, reachable_host=None):
     return env
 
 
-#: `[ai_services]` keys of the model server that render unchanged, with their env names.
-VLLM_KEY_ENV = (
-    ("vllm_structured_port", "VLLM_STRUCTURED_PORT"),
-    ("vllm_build_repo", "VLLM_BUILD_REPO"),
-    ("vllm_build_ref", "VLLM_BUILD_REF"),
-    ("vllm_gpu_fraction", "VLLM_GPU_FRACTION"),
-    ("vllm_max_model_len", "VLLM_MAX_MODEL_LEN"),
-    ("vllm_max_num_seqs", "VLLM_MAX_NUM_SEQS"),
-    ("vllm_kv_cache_gb", "VLLM_KV_CACHE_GB"),
-    ("vllm_headroom_gb", "VLLM_HEADROOM_GB"),
-    ("vllm_transient_copies", "VLLM_TRANSIENT_COPIES"),
-    ("vllm_torch_mem_fraction", "VLLM_TORCH_MEM_FRACTION"),
-    ("vllm_mem_limit", "VLLM_MEM_LIMIT"),
-    ("vllm_attention_backend", "VLLM_ATTENTION_BACKEND"),
-    ("vllm_canvas", "VLLM_CANVAS"),
-    ("vllm_canvas_schedule", "VLLM_CANVAS_SCHEDULE"),
-    ("vllm_max_samples", "VLLM_MAX_SAMPLES"),
-    ("vllm_tool_parser", "VLLM_TOOL_PARSER"),
-    ("vllm_reasoning_parser", "VLLM_REASONING_PARSER"),
-)
+# --------------------------------------------------------------------------------------
+# The self-hosted model servers. hoover4 supports one model set on the Spark (GB10, 128 GB
+# of unified memory): dgemma with its structured server in hoover4-vllm, and ornith in
+# hoover4-vllm-chat. The values below are those of the supported GPU deployment. A
+# change to one of them is a change of the supported model set.
+# --------------------------------------------------------------------------------------
 
 #: The vLLM release that the image of hoover4-vllm starts from. The patches in
 #: ai_services/dgemma/vllm-image are made against this release, so it changes with them.
 VLLM_BASE_RELEASE = "v0.31.0"
+#: The image holds the support files of the djev-spark repository at DJEV_SPARK_COMMIT.
+DJEV_SPARK_REPO = "https://github.com/mmastrac/djev-spark.git"
+DJEV_SPARK_COMMIT = "08b708e51bb8d9f4eba0e85b61dab0be7093d20e"
+#: The image of both model servers, as ai_services/compose/vllm.yaml writes it.
+MODEL_SERVER_IMAGE = "hoover4-vllm-dgemma:%s-%s" % (VLLM_BASE_RELEASE, DJEV_SPARK_COMMIT)
 
-#: Values of the djev-spark image that hoover4 does not tune. They are the values of the
-#: djev-spark compose file, and no ini key carries them.
-DGEMMA_FIXED_ENV = {
+#: One model server: its Hugging Face checkpoint at a pinned commit, the model name it
+#: serves, and the VOLUMES row of its weights folder.
+ModelServer = collections.namedtuple("ModelServer", "checkpoint revision served_name volume")
+
+DGEMMA = ModelServer("nvidia/diffusiongemma-26B-A4B-it-NVFP4",
+                     "ec4ff3df205028f4e81c954c2227f9312b3ec2ea", "dgemma", "dgemma_model")
+ORNITH = ModelServer("ornith-ai/Ornith-1.5-35B-A3B-NVFP4",
+                     "94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa", "ornith", "chat_model")
+MODEL_SERVERS = (DGEMMA, ORNITH)
+
+#: The environment of hoover4-vllm (compose/vllm.yaml). The image's entrypoint builds
+#: the `vllm serve` arguments from it.
+#:
+#: Memory. A GPU fraction is a fraction of the whole device, which the two model servers,
+#: hoover4-ai-server and GPU EasyOCR share. dgemma takes 0.24 and ornith 0.30. dgemma
+#: reserves a fixed 6 GB KV cache. Its entrypoint refuses to start when the free memory
+#: is below weights + KV cache + start-up transient + headroom (19 + 6 + 3 + 4 GB).
+#: VLLM_EXTRA_ARGS turns on image input (1120 soft tokens, 7 images for each prompt),
+#: thinking by default and the fastsafetensors loader. The entrypoint splits it on
+#: spaces, so no JSON value in it holds a space. The checkpoint's own chat template
+#: applies.
+DGEMMA_ENV = {
+    "LLM_SERVED_NAME": DGEMMA.served_name,
     "VLLM_BASE_RELEASE": VLLM_BASE_RELEASE,
+    "VLLM_BUILD_REPO": DJEV_SPARK_REPO,
+    "VLLM_BUILD_REF": DJEV_SPARK_COMMIT,
+    "VLLM_GPU_FRACTION": "0.24",
+    "VLLM_MAX_MODEL_LEN": "262144",
+    "VLLM_MAX_NUM_SEQS": "4",
+    "VLLM_KV_CACHE_GB": "6",
+    "VLLM_HEADROOM_GB": "4",
+    "VLLM_TRANSIENT_COPIES": "2",
+    "VLLM_TORCH_MEM_FRACTION": "0.85",
+    "VLLM_MEM_LIMIT": "40g",
+    "VLLM_ATTENTION_BACKEND": "TRITON_ATTN",
+    "VLLM_CANVAS": "256",
+    "VLLM_CANVAS_SCHEDULE": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
+    "VLLM_MAX_SAMPLES": "32",
+    "VLLM_TOOL_PARSER": "gemma4",
+    "VLLM_REASONING_PARSER": "gemma4",
+    "VLLM_EXTRA_ARGS": " ".join([
+        "--no-language-model-only",
+        "--mm-processor-kwargs", '{"max_soft_tokens":1120}',
+        "--limit-mm-per-prompt", '{"image":7}',
+        "--default-chat-template-kwargs", '{"enable_thinking":true}',
+        "--load-format", "fastsafetensors"]),
+    # Values of the djev-spark compose file that hoover4 does not change.
     "VLLM_TLS_PORT": "0",
     "VLLM_TEST_PAGE": "1",
     "VLLM_CONSTRAINED": "1",
@@ -2219,31 +2228,27 @@ DGEMMA_FIXED_ENV = {
     "VLLM_FLASHINFER_NVCC_THREADS": "2",
 }
 
+#: The environment of hoover4-vllm-chat (compose/vllm-chat.yaml), plain `vllm serve`.
+#: CHAT_VLLM_ARGS is split on spaces, so no JSON value in it holds a space.
+ORNITH_ENV = {
+    "CHAT_VLLM_SERVED_NAME": ORNITH.served_name,
+    "CHAT_VLLM_GPU_FRACTION": "0.30",
+    "CHAT_VLLM_MAX_MODEL_LEN": "262144",
+    "CHAT_VLLM_MAX_NUM_SEQS": "4",
+    "CHAT_VLLM_MEM_LIMIT": "48g",
+    "CHAT_VLLM_ARGS": " ".join([
+        "--kv-cache-dtype", "fp8", "--enable-prefix-caching", "--enable-chunked-prefill",
+        "--reasoning-parser", "qwen3", "--enable-auto-tool-choice",
+        "--tool-call-parser", "qwen3_coder",
+        "--speculative-config", '{"method":"mtp","num_speculative_tokens":3}']),
+}
 
-def vllm_extra_args(cfg):
-    """The arguments the image's entrypoint adds to `vllm serve`, as one string.
 
-    The entrypoint splits the string on spaces, so each JSON value is written without a
-    space.
-    """
-    a = "ai_services"
-    parts = []
-    if cfg.get_bool(a, "vllm_image_input"):
-        parts += ["--no-language-model-only",
-                  "--mm-processor-kwargs",
-                  '{"max_soft_tokens":%d}' % whole_number(
-                      cfg, "vllm_mm_max_soft_tokens", section=a),
-                  "--limit-mm-per-prompt",
-                  '{"image":%d}' % whole_number(cfg, "vllm_mm_image_limit", section=a)]
-    if cfg.get_bool(a, "vllm_default_thinking"):
-        parts += ["--default-chat-template-kwargs", '{"enable_thinking":true}']
-    load_format = cfg.get(a, "vllm_load_format").strip()
-    if load_format:
-        parts += ["--load-format", load_format]
-    chat_template = cfg.get(a, "vllm_chat_template").strip()
-    if chat_template:
-        parts += ["--chat-template", chat_template]
-    return " ".join(parts)
+def model_server_env():
+    """The fixed environment of both model servers."""
+    env = dict(DGEMMA_ENV)
+    env.update(ORNITH_ENV)
+    return env
 
 
 def render_ai_env(cfg):
@@ -2259,21 +2264,14 @@ def render_ai_env(cfg):
     for key in ("vllm_port", "ai_server_port", "easyocr_port", "vllm_structured_port",
                 "chat_vllm_port"):
         port_number(cfg, a, key)
-    for key in ("vllm_port", "ai_server_port", "easyocr_port"):
         env[key.upper()] = cfg.get(a, key)
-    for key in ("chat_vllm_port", "chat_vllm_served_name", "chat_vllm_gpu_fraction",
-                "chat_vllm_max_model_len", "chat_vllm_max_num_seqs", "chat_vllm_mem_limit",
-                "chat_vllm_args"):
-        env[key.upper()] = cfg.get(a, key)
+    cfg.get_bool(a, "llm_enabled")
 
-    env["LLM_SERVED_NAME"] = cfg.get(a, "vllm_served_name")
-    for key, name in VLLM_KEY_ENV:
-        env[name] = cfg.get(a, key)
-    env["VLLM_EXTRA_ARGS"] = vllm_extra_args(cfg)
-    env.update(DGEMMA_FIXED_ENV)
+    # Rendered whether or not llm_enabled is true: the VOLUMES rows of the model servers
+    # name their image through these variables, and a reset resolves them.
+    env.update(model_server_env())
     if cfg.get(a, "vllm_api_key_file"):
         env["VLLM_API_KEY_FILE_HOST"] = cfg.get(a, "vllm_api_key_file")
-    # hf_token_file is read by ensure_dgemma_weights only, so it renders no variable.
 
     for key in ("half_precision", "torch_compile", "ner_enabled", "embeddings_enabled",
                 "reranker_enabled"):
@@ -2640,17 +2638,10 @@ def expected_ports(cfg, side):
     """[(service, port)] this side publishes with the current ini. Shared by the port
     preflight and the post-`down` wait so the two can never disagree."""
     if side == "ai":
-        entries = []
-        for flag, rel, svc in AI_OVERLAYS:
-            if rel in selected_overlays(cfg, "ai"):
-                port_key = {"llm_selfhosted": "vllm_port",
-                            "chat_llm_selfhosted": "chat_vllm_port"}.get(
-                                flag, flag.replace("_enabled", "_port"))
-                entries.append((svc, "ai_services", port_key))
-                if flag == "llm_selfhosted":
-                    # The structured server of the same container has its own port.
-                    entries.append((svc, "ai_services", "vllm_structured_port"))
-        return [(svc, int(cfg.get(sec, key))) for svc, sec, key in entries]
+        selected = selected_overlays(cfg, "ai")
+        return [(svc, int(cfg.get("ai_services", key)))
+                for _flag, rel, svc in AI_OVERLAYS if rel in selected
+                for key in AI_PUBLISHED[rel]]
     backdoor_on = cfg.get_bool("main_services", "development_auth_backdoor_enabled")
     checks = []
     for svc, sec, key in MAIN_PUBLISHED:
@@ -2715,14 +2706,13 @@ def preflight_ner_gpu_without_tier(cfg, side):
          "[ai_services] enabled = true.")
 
 
-def preflight_llm_selfhosted_without_tier(cfg, side):
+def preflight_llm_without_tier(cfg, side):
     if side == "ai":
         return
-    for flag in ("llm_selfhosted", "chat_llm_selfhosted"):
-        if not cfg.get_bool("ai_services", flag) or _ai_tier_present(cfg):
-            continue
-        fail("[ai_services] %s = true but [ai_services] enabled = false. "
-             "Set %s = false, or set [ai_services] enabled = true." % (flag, flag))
+    if not cfg.get_bool("ai_services", "llm_enabled") or _ai_tier_present(cfg):
+        return
+    fail("[ai_services] llm_enabled = true but [ai_services] enabled = false. "
+         "Set llm_enabled = false, or set [ai_services] enabled = true.")
 
 
 def preflight_compose_yaml(cfg, side):
@@ -2856,7 +2846,7 @@ def run_preflights(cfg, side, rt, starting):
         preflight_ports(cfg, side, rt)
     preflight_ai_enabled(cfg, side)
     preflight_ner_gpu_without_tier(cfg, side)
-    preflight_llm_selfhosted_without_tier(cfg, side)
+    preflight_llm_without_tier(cfg, side)
     preflight_ner_provider(cfg, side)
     preflight_compose_yaml(cfg, side)
     if starting:
@@ -2974,8 +2964,7 @@ def verify_network_dns(rt, cfg, side):
 def compose_up(cfg, side, rt, build):
     files = compose_files(cfg, side)
     overlays = selected_overlays(cfg, "ai") if side == "ai" else []
-    vllm = "compose/vllm.yaml" in overlays
-    chat = "compose/vllm-chat.yaml" in overlays
+    models = "compose/vllm.yaml" in overlays
     if build:
         build_cmd = rt.compose_prefix()
         for f in files:
@@ -2985,12 +2974,10 @@ def compose_up(cfg, side, rt, build):
         up_args = ["up", "-d", "--force-recreate"]
     else:
         up_args = ["up", "-d"]
-    if vllm or chat:
+    if models:
         ensure_dgemma_image(cfg, rt)
-    if vllm:
-        ensure_dgemma_weights(cfg, rt)
-    if chat:
-        ensure_dgemma_weights(cfg, rt, "chat_model", "chat_vllm_model")
+        for server in MODEL_SERVERS:
+            ensure_dgemma_weights(cfg, rt, server)
     run_or_fail(compose_command(cfg, side, rt, up_args))
     if side == "main":
         stop_disabled_internet_tools(cfg, rt)
@@ -3018,7 +3005,8 @@ def stop_disabled_internet_tools(cfg, rt):
 
 
 def stop_disabled_research_agents(cfg, rt):
-    """With no LLM provider, remove research-agent containers an earlier deploy started."""
+    """With the model servers off, remove research-agent containers an earlier deploy
+    started."""
     if research_agents_enabled(cfg):
         return
     for name in RESEARCH_AGENT_SERVICES:
@@ -3333,7 +3321,7 @@ def check_configuration(cfg):
     # The refusals of the main side that need no runtime. The GPU tier may be off: the
     # refusal of a disabled tier applies only to an `--ai-services` start.
     step(preflight_ner_gpu_without_tier, cfg, "main")
-    step(preflight_llm_selfhosted_without_tier, cfg, "main")
+    step(preflight_llm_without_tier, cfg, "main")
     if not problems:
         warning = ocr_concurrency_warning(cfg)
         if warning:

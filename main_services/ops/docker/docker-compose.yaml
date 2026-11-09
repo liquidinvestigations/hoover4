@@ -584,23 +584,25 @@ services:
       - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"
-      # The LLM provider. LLM_MODEL is the model of short calls (titles, summaries, board
-      # labels and assessments), and of agent turns when no quality model is set.
-      # `main.py refresh-llm-catalog`, and the worker supervisor once at start, list the
-      # models of the base and quality endpoints into `llm_models` for reading. The key is a bind-mounted file, never an env value.
+      # The self-hosted model servers. LLM_MODEL is the model of short calls (titles,
+      # summaries, board labels and assessments), and of agent turns when no quality model
+      # is set. `main.py refresh-llm-catalog`, and the worker supervisor once at start, list
+      # the models of the base and quality endpoints into `llm_models` for reading.
+      # LLM_PROVIDER_NAME names the base endpoint in the catalog, as the website does. The
+      # key is a bind-mounted file, never an env value.
       - "LLM_BASE_URL=${LLM_BASE_URL:-}"
       - "LLM_MODEL=${LLM_MODEL:-}"
+      - "LLM_PROVIDER_NAME=${LLM_PROVIDER_NAME:-}"
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
-      # The quality endpoint of the selfhosted provider and its model. When set, agent
-      # turns use this model. Empty: the base endpoint serves every model
+      # The quality endpoint (ornith) and its model. When set, agent turns use this model. Empty: the base endpoint serves every model
       # (tasks/llm_endpoints.py).
       - "LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}"
       - "LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}"
       # The models that the catalog marks `supports_vision`, comma separated.
       - "LLM_VISION_MODELS=${LLM_VISION_MODELS:-}"
-      # false when the active provider rejects `temperature`: the title request leaves it out.
+      # false: the model servers reject `temperature`, so the title request leaves it out.
       - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
-      # The structured server of the selfhosted model for the chat policy checks, and
+      # The structured server of dgemma for the chat policy checks, and
       # the folder of custom policy handlers. Both are empty unless deploy.py renders them.
       - "CHAT_CLASSIFIER_URL=${CHAT_CLASSIFIER_URL:-}"
       - "HOOVER4_CHAT_CONTROL_DIR=${HOOVER4_CHAT_CONTROL_DIR:-}"
@@ -795,14 +797,15 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-}
       # The model of agent turns when it is set, else LLM_MODEL (api/admin/llm.rs
-      # `agent_model`). hoover4.ini sets it as quality_model of the selfhosted provider.
+      # `agent_model`). deploy.py renders it as ornith when [ai_services] llm_enabled is true.
       - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
       # The endpoint of that model. The admin catalog refresh lists it too, so the
       # compaction trigger finds the context window of the agent model.
       - LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}
       # The models that the catalog refresh marks `supports_vision`, comma separated.
       - LLM_VISION_MODELS=${LLM_VISION_MODELS:-}
-      # The chat gate uses this name to decide whether an API key is required.
+      # The catalog name of the base endpoint. The chat gate requires no API key for
+      # `selfhosted`.
       - LLM_PROVIDER_NAME=${LLM_PROVIDER_NAME:-}
       # The API key is a bind-mounted file, never an env value: hoover4.ini stores
       # the host path, deploy.py mounts it here, and summarize.rs reads it. With no

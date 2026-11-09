@@ -61,12 +61,12 @@ class RefreshResult:
 
 
 def providers_from_env() -> List[ProviderConfig]:
-    """The providers this container was configured with.
+    """The model endpoints this container was configured with.
 
-    The ini's single active provider is `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY_FILE`.
-    The selfhosted provider can add its quality endpoint, `LLM_QUALITY_BASE_URL`, which is
-    listed as a provider of its own so that its model can be selected
-    (`tasks/llm_endpoints.py`).
+    `deploy.py` renders the base endpoint (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY_FILE`)
+    and the quality endpoint (`LLM_QUALITY_BASE_URL`) of the self-hosted model servers.
+    The quality endpoint is listed as a provider of its own so that its model can be
+    selected (`tasks/llm_endpoints.py`).
     """
     base_url = (os.getenv("LLM_BASE_URL") or "").strip()
     if not base_url:
@@ -80,8 +80,8 @@ def providers_from_env() -> List[ProviderConfig]:
         except OSError:
             log.warning("could not read LLM_API_KEY_FILE at %s", key_file)
 
-    # The provider *name* is not rendered separately, so derive a stable one from the
-    # host. It is only a label -- the base_url is what identifies the endpoint.
+    # `LLM_PROVIDER_NAME` names the base endpoint, as in the website's refresh
+    # (`api/admin/llm.rs`). Without it the endpoint is named by its host.
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
     if not name:
         name = provider_label(re.sub(r"^https?://", "", base_url).split("/")[0])
@@ -97,24 +97,14 @@ def providers_from_env() -> List[ProviderConfig]:
 
 
 def provider_label(host: str) -> str:
-    """A short, stable name for one endpoint's host.
+    """The catalog name of an endpoint that `LLM_PROVIDER_NAME` does not name: its host
+    and port as written, for example `192.0.2.10:21964`.
 
-    A registrable domain is named by its second-to-last label: `api.moonshot.ai` is
-    `moonshot`. An address literal has no such label, and taking one anyway names the
-    provider after an octet of its IP -- `192.0.2.10:21960` becomes `2` -- so the
-    host and its port are kept whole. That is also the string the admin page synthesises
-    for a configured endpoint with no catalog rows yet, so the row a refresh writes
-    lands on the same provider the page was already showing rather than beside it.
+    The admin page names a configured endpoint with no catalog rows the same way
+    (`endpoint_label` in `api/admin/llm.rs`), so the rows that a refresh writes land on
+    the provider that the page already shows. Both writers must agree.
     """
-    host = host.strip()
-    if host.startswith("["):
-        return host
-    bare = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
-    if re.fullmatch(r"[0-9.]+", bare):
-        return host
-    if bare.count(".") >= 1:
-        return bare.split(".")[-2]
-    return bare
+    return host.strip() or "unknown"
 
 
 def fetch_models(provider: ProviderConfig) -> RefreshResult:
@@ -183,8 +173,8 @@ def _is_reasoning(model_id: str) -> bool:
 
 
 def vision_models() -> set:
-    """The models that read images, from `LLM_VISION_MODELS` (`[llm_provider.selfhosted]
-    vision_models`). The catalog marks them `supports_vision`."""
+    """The models that read images, from `LLM_VISION_MODELS`, which `deploy.py` renders as
+    ornith. The catalog marks them `supports_vision`."""
     return {name.strip() for name in (os.getenv("LLM_VISION_MODELS") or "").split(",")
             if name.strip()}
 

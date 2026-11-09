@@ -1,8 +1,9 @@
-# Optional overlay: local LLM (enabled via [ai_services] llm_selfhosted = true).
+# Optional overlay: the dgemma model server and its structured server (enabled via
+# [ai_services] llm_enabled = true, together with compose/vllm-chat.yaml).
 #
-# This is the model the research agents talk to. It is OpenAI-compatible, so the
-# provider selection in hoover4.ini is the only thing that decides whether the stack
-# uses it or a cloud endpoint.
+# This is the model of short calls and the server of the chat policy checks. deploy.py
+# renders its model, revision and capacity from constants (DGEMMA_ENV), so hoover4.ini
+# sets only the switch, the ports and the API key file.
 
 # Log rotation for every service in this file, from container_log_max_size and
 # container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
@@ -16,22 +17,22 @@ x-logging: &logging
 services:
   # ---------------------------------------------------------------- GPU: local LLM
   # DiffusionGemma 26B-A4B at NVFP4, served by vLLM. This service builds its image from
-  # the vLLM release VLLM_BASE_RELEASE, which deploy.py pins, with the patches of
-  # ai_services/dgemma/vllm-image and the support files of vllm_build_repo at
-  # vllm_build_ref. The image's own entrypoint composes
-  # the `vllm serve` arguments from the environment below, starts vLLM on port 8000,
-  # and then starts the structured server on port 8011.
+  # the vLLM release VLLM_BASE_RELEASE with the patches of ai_services/dgemma/vllm-image
+  # and the support files of the djev-spark repository at VLLM_BUILD_REF. deploy.py pins
+  # all three. The image's own entrypoint composes the `vllm serve` arguments from the
+  # environment below, starts vLLM on port 8000, and then starts the structured server on
+  # port 8011.
   #
-  # The weights are a local folder, dgemma_model, which deploy.py downloads once before
-  # the first start. HF_HUB_OFFLINE is therefore 1 here.
+  # The weights are a local folder, dgemma_model, which deploy.py downloads at the pinned
+  # checkpoint commit before the start. HF_HUB_OFFLINE is therefore 1 here.
   #
-  # vllm_gpu_fraction is a fraction of the WHOLE device, shared with hoover4-ai-server,
-  # GPU EasyOCR and any other model server on the box. On unified-memory hardware (GB10)
-  # it is taken against total system memory. The entrypoint also refuses to start when
-  # MemAvailable is below the sum of the weights, the KV cache, the start-up transient
-  # and the headroom, and it prints that sum on its `memory:` line.
+  # VLLM_GPU_FRACTION is a fraction of the WHOLE device, shared with hoover4-vllm-chat,
+  # hoover4-ai-server and GPU EasyOCR. On unified-memory hardware (GB10) it is taken
+  # against total system memory. The entrypoint also refuses to start when MemAvailable
+  # is below the sum of the weights, the KV cache, the start-up transient and the
+  # headroom, and it prints that sum on its `memory:` line.
   #
-  # vllm_max_num_seqs is the number of sequences vLLM runs at once. More requests wait
+  # VLLM_MAX_NUM_SEQS is the number of sequences vLLM runs at once. More requests wait
   # in vLLM's own queue.
   #
   # The wrapper below reads the API key file and gives the key to vLLM, to the
@@ -91,9 +92,9 @@ services:
       MAX_SAMPLES: ${VLLM_MAX_SAMPLES}
       REASONING_PARSER: ${VLLM_REASONING_PARSER}
       TOOL_CALL_PARSER: ${VLLM_TOOL_PARSER}
-      # Arguments added to `vllm serve`. deploy.py builds them from the image input,
-      # thinking, load format and chat template keys. The entrypoint splits them on
-      # spaces, so no JSON value in them holds a space.
+      # Arguments added to `vllm serve`: image input, thinking by default and the
+      # loader. The entrypoint splits them on spaces, so no JSON value in them holds a
+      # space.
       EXTRA_ARGS: ${VLLM_EXTRA_ARGS}
       TLS_PORT: ${VLLM_TLS_PORT}
       TEST_PAGE: ${VLLM_TEST_PAGE}

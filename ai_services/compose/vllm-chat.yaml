@@ -1,9 +1,9 @@
-# Optional overlay: a second model server for agent turns
-# (enabled via [ai_services] chat_llm_selfhosted = true).
+# Optional overlay: the ornith model server for agent turns (enabled via
+# [ai_services] llm_enabled = true, together with compose/vllm.yaml).
 #
-# hoover4-vllm keeps the base model and the decision server. This server holds the model
-# that [llm_provider.selfhosted] quality_model names, and the worker and the research
-# agents send every request that names that model here (tasks/llm_endpoints.py).
+# hoover4-vllm keeps dgemma and the structured server. This server holds ornith, the
+# model that LLM_QUALITY_MODEL names, and the worker and the research agents send every
+# request that names that model here (tasks/llm_endpoints.py).
 
 # Log rotation for every service in this file, as in vllm.yaml.
 x-logging: &logging
@@ -15,12 +15,19 @@ x-logging: &logging
 services:
   # ---------------------------------------------------------------- GPU: chat model
   # Plain `vllm serve` in the image of hoover4-vllm. That image's vLLM build serves the
-  # Qwen3.5 mixture architecture and its MTP draft head. deploy.py downloads the weights of
-  # chat_vllm_model once into the chat_model folder, so HF_HUB_OFFLINE is 1 here.
+  # Qwen3.5 mixture architecture and its MTP draft head. deploy.py downloads the pinned
+  # checkpoint commit into the chat_model folder before the start, so HF_HUB_OFFLINE is 1
+  # here. deploy.py renders the model and its capacity from constants (ORNITH_ENV).
   #
-  # chat_vllm_gpu_fraction is a fraction of the WHOLE device, as vllm_gpu_fraction. The
+  # CHAT_VLLM_GPU_FRACTION is a fraction of the WHOLE device, as VLLM_GPU_FRACTION. The
   # two model servers, hoover4-ai-server and GPU EasyOCR share the device, so the fractions
   # of the two model servers and the memory of the other two must fit together.
+  #
+  # This server starts after hoover4-vllm is healthy. vLLM measures the free device
+  # memory when it starts, and memory that hoover4-vllm takes during that measurement
+  # counts against this server. Two servers that start together can give this server a
+  # negative KV cache, and its first start then fails. A restart of the host starts both
+  # containers together, and the restart policy recovers this server.
   #
   # The API key is the key of hoover4-vllm (vllm_api_key_file). An empty key file turns it
   # off.
@@ -32,6 +39,9 @@ services:
     container_name: hoover4-vllm-chat
     restart: unless-stopped
     mem_limit: ${CHAT_VLLM_MEM_LIMIT}
+    depends_on:
+      hoover4-vllm:
+        condition: service_healthy
     ipc: host
     ulimits:
       core: 0

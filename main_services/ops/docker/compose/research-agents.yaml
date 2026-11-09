@@ -1,9 +1,8 @@
-# Overlay: the two research agents (selected when an LLM provider is enabled).
+# Overlay: the two research agents (selected when the self-hosted model servers are on).
 #
-# deploy.py selects this file only when Config.active_llm_provider finds an enabled
-# LLM provider in hoover4.ini. With no provider the
-# agents cannot answer, the website's chat page says that no language model is
-# configured, and these containers do not start.
+# deploy.py selects this file only when [ai_services] llm_enabled and [ai_services] enabled
+# are true (llm_active). Without the model servers the agents cannot answer, the website's
+# chat page says that no language model is configured, and these containers do not start.
 
 # Log rotation for every service in this file, from container_log_max_size and
 # container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
@@ -39,8 +38,8 @@ services:
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
-      # false when the active provider's section sets `send_temperature = false`: every
-      # model request of the agent then leaves `temperature` out.
+      # false: the model servers reject `temperature`, so every model request of the agent
+      # leaves it out.
       - LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}
       # Token streaming, from `[main_services] llm_streaming` (empty renders true). It must
       # stay off on vLLM 0.11, where streamed tool-call deltas arrive without `arguments`
@@ -52,7 +51,7 @@ services:
       # the output cap of one model request. Empty keeps the client defaults and no cap.
       - LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
-      # Rendered by deploy.py from the active LLM provider in hoover4.ini.
+      # Rendered by deploy.py from [ai_services] in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       # The quality endpoint and its model. A turn that names that model goes there
       # (research_agent/endpoints.py). Empty: LLM_BASE_URL serves every model.
@@ -135,8 +134,8 @@ services:
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
-      # false when the active provider's section sets `send_temperature = false`: every
-      # model request of the agent then leaves `temperature` out.
+      # false: the model servers reject `temperature`, so every model request of the agent
+      # leaves it out.
       - LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}
       # Token streaming, from `[main_services] llm_streaming` (empty renders true). It must
       # stay off on vLLM 0.11, where streamed tool-call deltas arrive without `arguments`
@@ -148,7 +147,7 @@ services:
       # the output cap of one model request. Empty keeps the client defaults and no cap.
       - LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
-      # Rendered by deploy.py from the active LLM provider in hoover4.ini.
+      # Rendered by deploy.py from [ai_services] in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       # The quality endpoint and its model. A turn that names that model goes there
       # (research_agent/endpoints.py). Empty: LLM_BASE_URL serves every model.

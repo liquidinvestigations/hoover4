@@ -6,7 +6,8 @@
 # [storage] volumes_path that deploy.py creates. Every service is an optional overlay
 # under compose/ selected by hoover4.ini flags:
 #
-#   compose/vllm.yaml       [ai_services] llm_selfhosted   (SUPPORTED BUT PARKED)
+#   compose/vllm.yaml       [ai_services] llm_enabled       (dgemma, structured server)
+#   compose/vllm-chat.yaml  [ai_services] llm_enabled       (ornith)
 #   compose/ai-server.yaml  [ai_services] ai_server_enabled (GPU NER + embeddings)
 #   compose/easyocr.yaml    [ai_services] easyocr_enabled   (no server image in tree)
 #
