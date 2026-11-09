@@ -397,7 +397,6 @@ replaces one older prefix of steps with one summary.
 | variable | default | meaning |
 |---|---|---|
 | `AGENT_COMPACTION_FRACTION` | `0.80` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off |
-| `LLM_MODEL_COMPACTION` | the answering model | model that writes the summary |
 
 For a window of 262,144 tokens at 0.80, the trigger is 209,715 tokens and the target 69,905.
 

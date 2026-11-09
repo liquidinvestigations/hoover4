@@ -110,7 +110,6 @@ def _install_fakes(monkeypatch, text_rows, post):
     # The endpoint list is now built from the environment per call, so the
     # stub server is injected the same way deploy.py injects the real one.
     monkeypatch.setenv("NER_URL", "http://ner.test/v1")
-    monkeypatch.setenv("NER_PROVIDER", "gpu")
     monkeypatch.setattr(requests, "post", post)
     return fake_client
 
@@ -155,8 +154,7 @@ def test_ner_requests_are_batched_and_reassembled_in_order(monkeypatch, n):
     for row in processed_rows:
         i = int(row["file_hash"].split("-")[1])
         assert row["text_bytes"] == len(f"text-{i}".encode("utf-8"))
-        # NER_PROVIDER=gpu is set by _install_fakes, so every row must be
-        # attributed to the GPU model -- not to the configured default.
+        # Every row is attributed to the GPU model that served it.
         assert row["nlp_model"] == ner_module.NLP_MODEL_BY_PROVIDER["gpu"]
 
 

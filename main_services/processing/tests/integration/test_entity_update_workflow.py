@@ -38,7 +38,6 @@ def test_changed_table_then_entities_settle_after_unchanged_worker_restart(searc
     path=tmp_path/"source.csv"
     path.write_text("Name,Count\nCurrent Person,10\n")
     monkeypatch.setenv("NER_URL","http://ner-fixture.invalid")
-    monkeypatch.setenv("NER_PROVIDER","gpu")
     monkeypatch.setenv("EMBEDDINGS_URL","")
     from tasks.P_admin.updates import workflows
     monkeypatch.setattr(workflows,"dataset_search_attributes",lambda _dataset:{})

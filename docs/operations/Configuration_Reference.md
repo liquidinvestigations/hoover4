@@ -56,7 +56,7 @@ fingerprint between them: it will drift.
 The message names the section and the key of each problem, and it does not show the value.
 A `;` or `#` with no space before it stays part of the value. A key that the file does not
 set keeps its default. The file must set `[storage] volumes_path`, `manticore_mem_limit` and
-`manticore_vectors_mem_limit`.
+`manticore_vectors_mem_limit`, and it must have at least one `[dataset_mount.<name>]` section.
 
 `./deploy --check` validates the file and stops. It needs `hoover4.ini` and does not read a
 sample in its place. It renders the environment of both sides in memory. It validates the
@@ -88,8 +88,10 @@ the port having moved. The website's port is the single exception, because a per
 
 ## `[storage]`
 
-One key, `volumes_path`, read by [deploy.py](../../deploy.py) on both sides. It is mandatory, and it must be an
+Two keys. `volumes_path` is read by [deploy.py](../../deploy.py) on both sides. It is mandatory, and it must be an
 absolute host path, for example `/srv/hoover4-volumes`. Each host sets its own value.
+`garage_capacity` (default `300G`) is the capacity that the object store declares for its node.
+The store sizes its partitions from it and reports itself full above it. [deploy.py](../../deploy.py) does not measure the disk.
 
 Every container keeps its data in a folder `<volumes_path>/<volume name>`, which the compose
 files bind-mount. [deploy.py](../../deploy.py) creates `volumes_path`, its parents and the folders of the
@@ -112,7 +114,7 @@ Deployment creates each daemon's authentication file when it is absent and prese
 
 ## `[ai_services]`
 
-Twenty-four keys. Read by [deploy.py](../../deploy.py), by the tier's compose overlays, and by the model
+Nineteen keys. Read by [deploy.py](../../deploy.py), by the tier's compose overlays, and by the model
 server itself.
 
 | group | keys | decides |
@@ -120,7 +122,7 @@ server itself.
 | tier | `enabled`, `host`, `bind_ip` | whether the tier exists, where the main stack reaches it, and which interface it binds |
 | language models | `llm_enabled`, `vllm_port`, `vllm_structured_port`, `chat_vllm_port` | whether the self-hosted model servers run, and the ports of dgemma, its structured server and ornith. The models, their checkpoint commits and their capacity are constants of [deploy.py](../../deploy.py) ([the model servers](../../ai_services/README.md)) |
 | model server | `ai_server_enabled`, `ai_server_port`, `*_concurrency` | the embeddings, reranking and entity service, and how many of each it will do at once |
-| models | `ner_enabled`, `embeddings_enabled`, `embeddings_model`, `embeddings_dim`, `reranker_enabled`, `reranker_model`, `half_precision`, `torch_compile` | which capabilities load, and at what precision |
+| capabilities | `ner_enabled`, `embeddings_enabled`, `reranker_enabled` | which capabilities load, and which endpoints the main side receives. The models, the embedding dimension and the precision are constants of [the model server](../../ai_services/hoover4_ai_server/README.md) |
 | OCR | `easyocr_enabled`, `easyocr_port`, `easyocr_languages` | the accelerated OCR service |
 | credentials | `vllm_api_key_file` | the path of the API key file of both model servers, never the value |
 
@@ -128,8 +130,10 @@ server itself.
 to the GPU tier. NER then has no endpoint, because NER runs on the GPU only.
 The per-service flags do not turn GPU services on.
 
-**`embeddings_dim` must match the model.** It is a stored column width, not a hint: changing
-the model without it produces vectors the store rejects or silently truncates.
+The main side reads `ai_server_enabled`, `ner_enabled` and `embeddings_enabled` of its own file.
+`NER_URL` is set only when `enabled`, `ai_server_enabled` and `ner_enabled` are true.
+`EMBEDDINGS_URL` follows the same rule with `embeddings_enabled`, and `RERANK_URL` also needs `reranker_enabled`.
+An empty URL makes the stage skip its work. Set `ner_enabled = false` or `embeddings_enabled = false` to turn a capability off.
 
 ## `[main_services]`
 
@@ -137,18 +141,14 @@ the model without it produces vectors the store rejects or silently truncates.
 
 ### Which provider serves what
 
-`ner_provider`, `embeddings_provider`, `pdf_ocr_provider`, and the twin switches
-`tesseract_cpu_enabled`, `ocr_pdf_enabled`. These pick between the
-accelerated tier and the CPU twins on the main side. See
+`pdf_ocr_provider`, and the twin switches `tesseract_cpu_enabled`, `ocr_pdf_enabled`. These
+select the OCR services on the main side. See
 [AI services](../architecture/AI_Services.md) for why the twins live there.
+NER and embeddings have no provider key. The `[ai_services]` capability switches decide their endpoints.
 
-`ner_provider` accepts `gpu`, `both`, and `none`. `both` reads as `gpu`. `none` leaves `NER_URL` empty.
-The removed value `spacy` leaves `NER_URL` empty, and `./deploy` prints a warning.
-
-`gpu_fallback`, `gpu_connect_timeout_ms` and `gpu_circuit_break_seconds` are the fallback
-behaviour itself, read by [main_services/processing/tasks/remote.py](../../main_services/processing/tasks/remote.py): whether to retry
-against the twin on a connect failure, how long a connect may take, and how long a failing
-endpoint stays out of rotation.
+`gpu_connect_timeout_ms` and `gpu_circuit_break_seconds` are read by
+[main_services/processing/tasks/remote.py](../../main_services/processing/tasks/remote.py): how long a connect may take, and how long a failing
+endpoint stays out of rotation. Each capability has one endpoint, so a call has no second endpoint to try.
 
 ### Scanning and OCR
 
@@ -347,8 +347,7 @@ read of the agent stream and the website's 180 s stall window.
 the agent compacts the context of a model call, to a third of that size. It replaces one
 older prefix of steps with one summary. The templates and the code default set 0.80. An
 empty key keeps the code default. The compacted list is kept for the later calls of the
-conversation. `agent_compaction_model` names the model that writes the summary, and empty is
-the answering model. The summary request must fit the stated window of that model.
+conversation. The answering model writes the summary.
 
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
 `max_completion_tokens`. Empty sends no cap, and the templates set 32768. The agent also
@@ -401,11 +400,8 @@ stores, the admin consoles, the processing services, the MCP servers, the two ag
 and the symbol-navigation server. [main_services/ops/Readme.md](../../main_services/ops/Readme.md) lists them with their
 defaults and what each answers.
 
-### Data and infrastructure versions
+### Temporal history shards
 
-`testdata_dir` and `datasets_mount_path` are the host folder and the container path of the
-inferred dataset mount. They apply when the file has no `[dataset_mount.*]` section
-([below](#dataset_mount)).
 `temporal_history_shards` is the one key that **cannot be changed in place**: the persistence
 store refuses to open a keyspace initialised with a different count, so changing it requires
 `./deploy --reset-temporal`. The deploy preflights the running cluster against the file and
@@ -452,9 +448,9 @@ the `json-file` log rotation of every hoover4 container, on the main stack and o
 tier. [deploy.py](../../deploy.py) writes both values into the `.env` file of each side. Podman records only
 the size, and ignores `container_log_max_files`.
 
-The pinned versions (of the workflow service and its UI, the history and visibility stores,
-and the object store, which is pinned by digest as well as tag) are here so that a rebuild
-is reproducible. `garage_capacity` sizes the object store's advertised capacity.
+The versions of the workflow service and its UI, the history and visibility stores, and the
+object store are literals of [the main compose file](../../main_services/ops/docker/docker-compose.yaml). The object store is
+pinned by digest as well as tag. No `hoover4.ini` key selects a version.
 
 `serena_enabled` and `serena_port` control the symbol-navigation server, which is development
 tooling and is published on loopback only.
@@ -478,10 +474,9 @@ main side includes it. The same overlay sets `HOOVER4_DATASET_MOUNTS`, a JSON li
 container path and `writable` flag of each mount, in both services.
 `DATASETS_MOUNT_PATH` keeps the container path of the first mount, by name order.
 
-A file without a `[dataset_mount.*]` section gets one inferred mount named `testdata`. Its host
-folder is `testdata_dir`, or the in-repository `testdata/` when that key is empty. Its container
-path is `datasets_mount_path`. The worker mounts it read-write and the website mounts it
-read-only, as before these sections existed. The dataset form cannot create a folder in it.
+The file must have at least one `[dataset_mount.<name>]` section. [deploy.py](../../deploy.py) refuses a file without one.
+When a `[dataset_mount.testdata]` section exists, `deploy.py` renders its `host_path` as
+`HOOVER4_TESTDATA_DIR`, which `verify-stack.sh` uses to check the corpus fixtures.
 
 `deploy.py` refuses these configurations, with a message that names the section and the key.
 
@@ -490,7 +485,7 @@ read-only, as before these sections existed. The dataset form cannot create a fo
 | `host_path` is absolute and exists. | Podman refuses a missing bind source, and Docker creates an empty folder owned by root. |
 | `container_path` neither contains nor falls beneath a path the services use for code, scratch, secrets, mirrors or system folders, such as `/app`, `/tmp`, `/run` or `/mirror`. | A dataset mount must not cover another mount or the image. |
 | No two container paths are equal or contain each other. No two host folders are equal or contain each other after symbolic links are resolved. | An alias or a nested writable mount would make a read-only mount writable. |
-| With sections present, `testdata_dir` and `datasets_mount_path` are empty or equal to the `host_path` and `container_path` of one section. | Two sources for one mount would disagree. |
+| The file has at least one section. | The dataset form needs a folder to list. |
 | A writable mount accepts an exclusive create, a write, a sync and a delete in each running service, under the user of that container. | A permission error would otherwise show only at the first new folder or upload. A rootless runtime maps container users to other host users, so a host check is not sufficient. |
 
 The last rule runs after the services start. The others run before any compose command.
@@ -611,7 +606,7 @@ is the map back to the group above that explains it.
 
 ### `[storage]`: the volume folders
 
-- `volumes_path`
+- `volumes_path`, `garage_capacity`
 
 ### `[dataset_mount.<name>]`: the dataset folders
 
@@ -622,14 +617,13 @@ is the map back to the group above that explains it.
 - `enabled`, `host`, `bind_ip`, `llm_enabled`
 - `vllm_port`, `vllm_structured_port`, `chat_vllm_port`, `vllm_api_key_file`
 - `ai_server_enabled`, `ai_server_port`
-- `ner_enabled`, `embeddings_enabled`, `embeddings_model`, `embeddings_dim`
-- `reranker_enabled`, `reranker_model`, `half_precision`, `torch_compile`
+- `ner_enabled`, `embeddings_enabled`, `reranker_enabled`
 - `ai_server_ner_concurrency`, `ai_server_embed_concurrency`, `ai_server_rerank_concurrency`
 - `easyocr_enabled`, `easyocr_port`, `easyocr_languages`
 
 ### `[main_services]`: everything else
 
-- `ner_provider`, `embeddings_provider`, `pdf_ocr_provider`
+- `pdf_ocr_provider`
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
 - `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
 - `ocr_pdf_concurrency`, `ocr_pdf_queue_depth`
@@ -649,20 +643,17 @@ is the map back to the group above that explains it.
 - `agent_max_output_tokens`
 - `llm_streaming`
 - `internet_tools_enabled`
-- `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
+- `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
-- `testdata_dir`, `datasets_mount_path`
 - `mcp_shared_secret_file`, `chat_control_dir`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
 - `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `manticore_vectors_sql_port`, `manticore_vectors_http_port`, `garage_s3_port`
 - `garage_admin_port`, `redis_port`, `temporal_grpc_port`, `temporal_http_port`
 - `temporal_ui_port`, `clickhouse_monitoring_port`, `ch_ui_port`, `cassandra_port`
 - `elasticsearch_port`, `pdf_to_html_port`, `tesseract_cpu_port`, `ocr_pdf_port`
-- `embeddings_cpu_port`, `regex_entity_scanner_port`, `mcp_collections_port`
+- `regex_entity_scanner_port`, `mcp_collections_port`
 - `mcp_metasearch_port`, `mcp_browser_port`, `mcp_whois_port`, `mcp_todo_port`
 - `internal_search_agent_port`
-- `full_research_agent_port`, `cassandra_version`, `elasticsearch_version`, `temporal_version`
-- `temporal_ui_version`, `temporal_history_shards`, `garage_version`, `garage_image_digest`
-- `garage_capacity`, `ops_backup_object_volume_bytes`
+- `full_research_agent_port`, `temporal_history_shards`, `ops_backup_object_volume_bytes`
 - `cassandra_mem_limit`, `cassandra_cpus`, `cassandra_heap`, `cassandra_heap_new`
 - `cassandra_direct_memory`, `cassandra_malloc_arenas`, `cassandra_chunk_cache_mb`
 - `temporal_mem_limit`, `temporal_cpus`, `temporal_retention`

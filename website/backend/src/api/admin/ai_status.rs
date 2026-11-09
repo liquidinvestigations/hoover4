@@ -104,6 +104,15 @@ async fn probe_json(url: &str, timeout_s: u64) -> Result<serde_json::Value, Stri
     resp.json().await.map_err(|e| e.to_string())
 }
 
+/// `gpu` when deploy.py rendered an endpoint for a GPU capability, else `none`.
+fn configured_provider(url: &str) -> &'static str {
+    if url.trim().is_empty() {
+        "none"
+    } else {
+        "gpu"
+    }
+}
+
 pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiStatus> {
     guard::require_admin(user)?;
 
@@ -129,8 +138,8 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
 
     let mut capabilities = Vec::new();
 
-    // Embeddings
-    let emb_provider = std::env::var("EMBEDDINGS_PROVIDER").unwrap_or_else(|_| "none".into());
+    // Embeddings. deploy.py renders EMBEDDINGS_URL only when the GPU tier serves them.
+    let emb_provider = configured_provider(&std::env::var("EMBEDDINGS_URL").unwrap_or_default()).to_string();
     let emb_serving = if ai_ok {
         ai_body
             .get("embedding_model")
@@ -169,11 +178,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
     let rerank_url = std::env::var("RERANK_URL").unwrap_or_default();
     capabilities.push(AiCapabilityStatus {
         name: "rerank".into(),
-        configured_provider: if rerank_url.is_empty() {
-            "none".into()
-        } else {
-            "gpu".into()
-        },
+        configured_provider: configured_provider(&rerank_url).into(),
         serving_provider: if ai_ok {
             serving_hardware(&ai_body).into()
         } else {
@@ -215,7 +220,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
     };
     capabilities.push(AiCapabilityStatus {
         name: "ner".into(),
-        configured_provider: std::env::var("NER_PROVIDER").unwrap_or_else(|_| "none".into()),
+        configured_provider: configured_provider(&ner_url).into(),
         serving_provider: ner_serving,
         // From the endpoint that actually answered, not from the main AI server's body.
         serving_model: ner_serving_body
@@ -578,5 +583,13 @@ mod tests {
         let gpu_less = serde_json::json!({"status": "healthy", "cuda_available": false});
         assert_eq!(serving_hardware(&gpu_less), "cpu");
         assert_eq!(serving_hardware(&serde_json::json!({})), "cpu");
+    }
+
+    /// The configured provider follows the endpoint that deploy.py rendered.
+    #[test]
+    fn the_configured_provider_follows_the_rendered_endpoint() {
+        assert_eq!(configured_provider(""), "none");
+        assert_eq!(configured_provider("  "), "none");
+        assert_eq!(configured_provider("http://gpu.test:21961/v1"), "gpu");
     }
 }

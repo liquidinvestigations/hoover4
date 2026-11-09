@@ -48,6 +48,11 @@ def _without_removed_settings(text):
     return "".join(kept)
 
 
+#: The mount section that a sample copy receives when the sample has none.
+SAMPLE_DATASET_MOUNT = ("\n[dataset_mount.testdata]\nhost_path = /opt/hoover4-testdata\n"
+                        "container_path = /testdata\nwritable = false\n")
+
+
 def _template(name="hoover4.ini.development"):
     """Return the Config of a copy of a tracked sample without inline `;` comments and
     without removed settings.
@@ -58,7 +63,11 @@ def _template(name="hoover4.ini.development"):
     if not copy.exists():
         text = (REPO_ROOT / name).read_text(encoding="utf-8")
         text = re.sub(r"(?m)^([^#;\n][^\n]*?)[ \t]+;[^\n]*$", r"\1", text)
-        copy.write_text(_without_removed_settings(text), encoding="utf-8")
+        text = _without_removed_settings(text)
+        if "[dataset_mount." not in re.sub(r"(?m)^[#;].*$", "", text):
+            # deploy.py requires a mount section, and a sample can lack one.
+            text += SAMPLE_DATASET_MOUNT
+        copy.write_text(text, encoding="utf-8")
     return deploy.Config(copy)
 
 
@@ -135,13 +144,22 @@ def _render(fixture_name):
         ),
         pytest.param(
             "ner-none.ini",
-            {"NER_URL": "", "NER_PROVIDER": "none"},
-            id="ner-none",
+            {
+                "NER_URL": "",
+                "EMBEDDINGS_URL": "http://127.0.0.1:21961/v1",
+                "RERANK_URL": "http://127.0.0.1:21961/v1",
+            },
+            id="ner-disabled",
         ),
         pytest.param(
-            "ner-spacy.ini",
-            {"NER_URL": ""},
-            id="ner-spacy",
+            "embeddings-off.ini",
+            {
+                "NER_URL": "http://127.0.0.1:21961/v1",
+                "EMBEDDINGS_URL": "",
+                "RERANK_URL": "",
+                "EMBEDDINGS_DIM": "384",
+            },
+            id="embeddings-disabled",
         ),
         pytest.param(
             "llm-selfhosted.ini",
@@ -247,30 +265,42 @@ def test_scanner_and_ui_compose_limits_use_rendered_names():
         assert service["memswap_limit"] == service["mem_limit"]
 
 
-def test_gpu_ner_requires_ai_tier():
-    with mock.patch.object(deploy, "fail") as fail:
-        deploy.preflight_ner_gpu_without_tier(_config("gpu-off-leftovers.ini"), "main")
+def test_ner_and_embeddings_with_the_gpu_tier_off_are_not_refused(capsys, tmp_path):
+    """NER and embeddings default to on. With the GPU tier off, their endpoints are empty
+    and the file is still valid."""
+    env = _env("gpu-off-leftovers.ini")
+    assert (env["NER_URL"], env["EMBEDDINGS_URL"], env["RERANK_URL"]) == ("", "", "")
+    path = tmp_path / "gpu-off.ini"
+    path.write_text((FIXTURES / "gpu-off-leftovers.ini").read_text(encoding="utf-8")
+                    + "\n[storage]\nvolumes_path = /srv/hoover4-volumes\n", encoding="utf-8")
+    text = path.read_text(encoding="utf-8").replace(
+        "[main_services]\n",
+        "[main_services]\nmanticore_mem_limit = 32G\nmanticore_vectors_mem_limit = 16G\n")
+    path.write_text(text, encoding="utf-8")
+    code, out, _err = _run(["--check"], path, capsys)
+    assert code == 0, out
+    assert "configuration valid" in out
 
-    fail.assert_called_once()
-    assert "ner_provider = none" in fail.call_args.args[0]
-    assert "[ai_services] enabled = true" in fail.call_args.args[0]
+
+def test_the_ai_server_switch_turns_both_endpoints_off():
+    cfg = _config("gpu-on.ini")
+    cfg.values["ai_services"]["ai_server_enabled"] = "false"
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h):
+        env = deploy.render_main_env(cfg)
+    assert (env["NER_URL"], env["EMBEDDINGS_URL"], env["RERANK_URL"]) == ("", "", "")
 
 
-def test_ner_none_does_not_require_ai_tier():
-    with mock.patch.object(deploy, "fail") as fail:
-        deploy.preflight_ner_gpu_without_tier(_config("ner-none.ini"), "main")
-
-    fail.assert_not_called()
-
-
-def test_gpu_embeddings_do_not_require_ai_tier():
-    cfg = _config("ner-none.ini")
-    assert cfg.get("main_services", "embeddings_provider") == "gpu"
-
-    with mock.patch.object(deploy, "fail") as fail:
-        deploy.preflight_ner_gpu_without_tier(cfg, "main")
-
-    fail.assert_not_called()
+def test_removed_provider_variables_are_not_rendered():
+    env = _env("gpu-on.ini")
+    for name in ("NER_PROVIDER", "EMBEDDINGS_PROVIDER", "EMBEDDINGS_CPU_PORT", "GPU_FALLBACK",
+                 "LLM_MODEL_COMPACTION", "CASSANDRA_VERSION", "ELASTICSEARCH_VERSION",
+                 "TEMPORAL_VERSION", "TEMPORAL_UI_VERSION", "GARAGE_VERSION",
+                 "GARAGE_IMAGE_DIGEST"):
+        assert name not in env, name
+    ai_env = deploy.render_ai_env(_config("gpu-on.ini"))
+    for name in ("EMBEDDINGS_MODEL", "EMBEDDINGS_DIM", "RERANKER_MODEL",
+                 "AI_SERVER_ENABLE_HALF_PRECISION", "AI_SERVER_ENABLE_TORCH_COMPILE"):
+        assert name not in ai_env, name
 
 
 def test_selfhosted_llm_requires_ai_tier():
@@ -308,10 +338,6 @@ def test_the_llm_preflight_refuses_a_check_of_the_main_side(capsys):
 def test_disabled_template_skips_gpu_ner(template_name):
     cfg = _template(template_name)
 
-    with mock.patch.object(deploy, "fail") as fail:
-        deploy.preflight_ner_gpu_without_tier(cfg, "main")
-
-    fail.assert_not_called()
     with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
         env = deploy.render_main_env(cfg)
     assert env["NER_URL"] == ""
@@ -868,7 +894,8 @@ def test_reset_class_of_each_row_is_unchanged():
         assert row.reset_class == _class_before_folders(row.name), row.name
 
 
-ENV = {"CASSANDRA_VERSION": "3.11.9", "ELASTICSEARCH_VERSION": "7.17.27"}
+#: A rendered environment for the owner commands. Their images are literals.
+ENV = {}
 
 
 def test_image_variables_are_resolved():
@@ -1239,6 +1266,77 @@ def test_every_removed_model_setting_is_refused_with_its_replacement():
         assert "%s is removed. %s" % (label, text) in message
     for port in ("vllm_port", "vllm_structured_port", "chat_vllm_port", "vllm_api_key_file"):
         assert port in deploy.DEFAULTS["ai_services"]
+
+
+#: The settings that the fixed services and models replace, with the text each one gets.
+REMOVED_SERVICE_SETTINGS = {
+    "[main_services] garage_capacity": "Use [storage] garage_capacity.",
+    "[main_services] ner_provider": "Use [ai_services] ner_enabled.",
+    "[main_services] embeddings_provider": "Use [ai_services] embeddings_enabled.",
+    "[main_services] testdata_dir": "Use a [dataset_mount.<name>] section",
+    "[main_services] datasets_mount_path": "Use a [dataset_mount.<name>] section",
+    "[cluster]": "Give the registry address to main_services/ops/publish-images.sh",
+}
+NO_REPLACEMENT = (
+    "[ai_services] embeddings_model", "[ai_services] embeddings_dim",
+    "[ai_services] reranker_model", "[ai_services] half_precision",
+    "[ai_services] torch_compile", "[main_services] embeddings_cpu_port",
+    "[main_services] gpu_fallback", "[main_services] agent_compaction_model",
+    "[main_services] cassandra_version", "[main_services] elasticsearch_version",
+    "[main_services] temporal_version", "[main_services] temporal_ui_version",
+    "[main_services] garage_version", "[main_services] garage_image_digest",
+)
+
+
+def test_every_removed_service_setting_is_refused_with_its_replacement():
+    path = SCHEMA / "removed-service-settings.ini"
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.Config(path)
+    message = str(refused.value)
+    assert "has %d configuration problems" % (
+        len(REMOVED_SERVICE_SETTINGS) + len(NO_REPLACEMENT)) in message
+    for label, text in REMOVED_SERVICE_SETTINGS.items():
+        assert "%s is removed. %s" % (label, text) in message
+    for label in NO_REPLACEMENT:
+        assert "%s is removed. No setting replaces it. Delete it." % label in message
+    for value in ("small-model", "corpus-7f3a", "registry-9c2e", "866bd13e"):
+        assert value not in message
+    assert "temporal_history_shards" in deploy.DEFAULTS["main_services"]
+
+
+def test_the_moved_garage_capacity_is_rendered_from_storage():
+    cfg = _config("settings-defaults.ini")
+    assert _env("settings-defaults.ini")["GARAGE_CAPACITY"] == "300G"
+    cfg.values["storage"]["garage_capacity"] = "2T"
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h):
+        assert deploy.render_main_env(cfg)["GARAGE_CAPACITY"] == "2T"
+    assert deploy.REMOVED_SETTINGS[("main_services", "garage_capacity")] == (
+        "Use [storage] garage_capacity.")
+
+
+#: The service images that the compose file and VOLUMES write as literals.
+FIXED_SERVICE_IMAGES = {
+    "temporal-cassandra": "cassandra:3.11.9",
+    "temporal-elasticsearch": "elasticsearch:7.17.27",
+    "temporal": "temporalio/auto-setup:1.23.1",
+    "temporal-ui": "temporalio/ui:2.26.2",
+    "garage": "dxflrs/garage:v2.3.0@sha256:"
+              "866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690",
+}
+
+
+def test_the_service_images_are_literals_of_compose_and_volumes():
+    services = dict(_compose_documents())["docker-compose.yaml"]["services"]
+    for service, image in FIXED_SERVICE_IMAGES.items():
+        assert services[service]["image"] == image, service
+    assert services["garage-init"]["build"]["args"]["GARAGE_IMAGE"] == FIXED_SERVICE_IMAGES["garage"]
+    volumes = {row.name: deploy.resolve_image(row.image, {}) for row in deploy.VOLUMES
+               if row.side == "main"}
+    assert volumes["temporal_cassandra"] == FIXED_SERVICE_IMAGES["temporal-cassandra"]
+    assert volumes["temporal_elasticsearch"] == FIXED_SERVICE_IMAGES["temporal-elasticsearch"]
+    assert volumes["garage_data"] == FIXED_SERVICE_IMAGES["temporal-cassandra"]
+    dockerfile = (REPO_ROOT / "main_services/ops/docker/garage/Dockerfile").read_text()
+    assert "ARG GARAGE_IMAGE=%s\n" % FIXED_SERVICE_IMAGES["garage"] in dockerfile
 
 
 def test_the_chat_control_folder_is_rendered_only_when_set(tmp_path):
@@ -1784,20 +1882,6 @@ def test_pdf_activity_limits_refuse_zero(key):
 
 # ---- dataset mounts -----------------------------------------------------------------
 
-#: The two static lines that docker-compose.yaml held before the generated overlay.
-OLD_WORKER_TESTDATA_LINE = "${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata"
-OLD_WEBSITE_TESTDATA_LINE = "${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro"
-
-
-def _old_line_mount(line, testdata_dir):
-    """(source, target, read_only) of an old static line, resolved the way Compose did."""
-    rest = line[line.index("}") + 1:]
-    _, target, *mode = rest.split(":")
-    source = testdata_dir or os.path.normpath(
-        os.path.join(str(deploy.MAIN_COMPOSE_DIR), "../../../testdata"))
-    return (source, target, mode == ["ro"])
-
-
 def _overlay(cfg):
     import yaml
 
@@ -1823,22 +1907,40 @@ def _mount_sections(cfg, sections):
     return cfg
 
 
-@pytest.mark.parametrize("testdata_dir", ["", "/srv/hoover4-corpus"])
-def test_an_ini_without_mount_sections_renders_the_old_lines(testdata_dir):
+def _template_without_mounts():
     cfg = _template()
-    cfg.values["main_services"]["testdata_dir"] = testdata_dir
-    services = _overlay(cfg)
+    for section in [s for s in cfg.values if s.startswith("dataset_mount.")]:
+        del cfg.values[section]
+    return cfg
 
-    assert _overlay_mounts(services, "hoover4-worker") == [
-        _old_line_mount(OLD_WORKER_TESTDATA_LINE, testdata_dir)]
-    assert _overlay_mounts(services, "hoover4-website") == [
-        _old_line_mount(OLD_WEBSITE_TESTDATA_LINE, testdata_dir)]
+
+def test_an_ini_without_mount_sections_is_refused():
+    _refused(_template_without_mounts(), "no [dataset_mount.<name>] section")
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h), \
+            pytest.raises(deploy.DeployError, match="dataset_mount"):
+        deploy.render_main_env(_template_without_mounts())
+
+
+def test_the_testdata_mount_keeps_its_identity_and_names_the_corpus_folder():
+    cfg = _template()
+    services = _overlay(cfg)
+    for service in deploy.DATASET_MOUNT_SERVICES:
+        assert _overlay_mounts(services, service) == [
+            ("/opt/hoover4-testdata", "/testdata", True)]
+        assert _overlay_env(services, service) == [
+            {"name": "testdata", "path": "/testdata", "writable": False}]
     with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h):
         env = deploy.render_main_env(cfg)
     assert env["DATASETS_MOUNT_PATH"] == "/testdata"
-    expected = [{"name": "testdata", "path": "/testdata", "writable": False}]
-    assert _overlay_env(services, "hoover4-worker") == expected
-    assert _overlay_env(services, "hoover4-website") == expected
+    assert env["HOOVER4_TESTDATA_DIR"] == "/opt/hoover4-testdata"
+
+
+def test_only_a_testdata_mount_names_the_corpus_folder(tmp_path):
+    cfg = _mount_sections(_template_without_mounts(), {
+        "corpus": {"host_path": str(tmp_path), "container_path": "/data", "writable": "false"}})
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h):
+        env = deploy.render_main_env(cfg)
+    assert "HOOVER4_TESTDATA_DIR" not in env
 
 
 def test_the_tracked_compose_files_hold_no_dataset_mount():
@@ -1851,7 +1953,7 @@ def test_two_explicit_mounts_render_their_modes_and_the_value(tmp_path):
     uploads = tmp_path / "uploads"
     corpus.mkdir()
     uploads.mkdir()
-    cfg = _mount_sections(_template(), {
+    cfg = _mount_sections(_template_without_mounts(), {
         "corpus": {"host_path": str(corpus), "container_path": "/testdata", "writable": "false"},
         "uploads": {"host_path": str(uploads), "container_path": "/uploads", "writable": "true"},
     })
@@ -2010,32 +2112,6 @@ def test_overlapping_host_folders_are_refused(tmp_path, layout):
     _refused(cfg, "[dataset_mount.a] host_path", "[dataset_mount.b] host_path", "overlap")
 
 
-def test_the_older_keys_must_match_one_section(tmp_path):
-    (tmp_path / "a").mkdir()
-    (tmp_path / "b").mkdir()
-    sections = {
-        "a": {"host_path": str(tmp_path / "a"), "container_path": "/data", "writable": "false"},
-        "b": {"host_path": str(tmp_path / "b"), "container_path": "/uploads", "writable": "true"},
-    }
-    # The tracked templates set datasets_mount_path = /testdata explicitly.
-    _refused(_mount_sections(_template(), sections),
-             "[main_services] testdata_dir and datasets_mount_path")
-
-    cfg = _mount_sections(_template(), sections)
-    cfg.values["main_services"]["datasets_mount_path"] = "/uploads"
-    assert [m.name for m in deploy.dataset_mounts(cfg)] == ["a", "b"]
-
-    cfg.values["main_services"]["testdata_dir"] = str(tmp_path / "a")
-    cfg.explicit.add(("main_services", "testdata_dir"))
-    _refused(cfg, "[main_services] testdata_dir and datasets_mount_path")
-
-    cfg.values["main_services"]["datasets_mount_path"] = "/data"
-    assert len(deploy.dataset_mounts(cfg)) == 2
-
-    unset = _mount_sections(deploy.Config(None), sections)
-    assert len(deploy.dataset_mounts(unset)) == 2
-
-
 def test_the_write_probe_runs_in_both_services_for_each_writable_mount(tmp_path):
     (tmp_path / "a").mkdir()
     (tmp_path / "b").mkdir()
@@ -2112,9 +2188,7 @@ def test_the_upload_space_is_a_website_volume_with_the_data_reset_class():
     cfg = _mount_sections(_config("settings-defaults.ini"), {
         "inside": {"host_path": "/srv/x", "container_path": "/upload-tmp/x", "writable": "true"},
     })
-    cfg.values["main_services"]["testdata_dir"] = ""
-    cfg.values["main_services"]["datasets_mount_path"] = ""
-    with pytest.raises(deploy.DeployError):
+    with pytest.raises(deploy.DeployError, match="overlaps /upload-tmp"):
         deploy.dataset_mounts(cfg)
 
 
@@ -2134,8 +2208,6 @@ def test_every_writable_compose_mount_prints_a_copy_note(tmp_path):
         "other": {"host_path": "/dev/shm", "container_path": "/other", "writable": "true"},
         "readonly": {"host_path": "/proc", "container_path": "/readonly", "writable": "false"},
     })
-    cfg.values["main_services"]["testdata_dir"] = ""
-    cfg.values["main_services"]["datasets_mount_path"] = ""
     notes = deploy.upload_space_notes(cfg)
     assert len(notes) == 2
     assert any("[dataset_mount.same]" in note and "copies" in note for note in notes)
@@ -2248,9 +2320,9 @@ def test_full_line_comments_and_marks_inside_a_value_are_accepted():
 
 def test_an_omitted_key_keeps_its_default():
     cfg = deploy.Config(SCHEMA / "valid-gpu-off.ini")
-    assert cfg.get("main_services", "agent_compaction_model") == ""
+    assert cfg.get("main_services", "agent_compaction_fraction") == ""
     assert cfg.get("main_services", "factcheck_api_key_file") == ""
-    assert cfg.get("cluster", "registry_address") == ""
+    assert cfg.get("storage", "garage_capacity") == "300G"
 
 
 class _Boundaries:
@@ -2393,7 +2465,8 @@ def test_check_collects_problems_of_separate_steps(capsys, tmp_path):
     path = tmp_path / "hoover4.ini"
     path.write_text((SCHEMA / "valid-gpu-off.ini").read_text(encoding="utf-8")
                     .replace("volumes_path = /srv/hoover4-volumes", "volumes_path =")
-                    + "proxy_username =\n", encoding="utf-8")
+                    .replace("[main_services]\n", "[main_services]\nproxy_username =\n"),
+                    encoding="utf-8")
     code, _out, err = _run(["--check"], path, capsys)
     assert code == 1
     assert "has 2 configuration problems" in err

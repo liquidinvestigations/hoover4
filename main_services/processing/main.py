@@ -146,7 +146,7 @@ def probe_embeddings_cmd():
     from tasks.remote import record_embeddings_probe
 
     if not (os.getenv("EMBEDDINGS_URL") or "").strip():
-        print("EMBEDDINGS_URL is empty (embeddings_provider = none); nothing to probe")
+        print("EMBEDDINGS_URL is empty ([ai_services] embeddings_enabled or the GPU tier is off); nothing to probe")
         return
     probed = record_embeddings_probe()
     if not probed:

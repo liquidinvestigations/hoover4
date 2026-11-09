@@ -64,7 +64,6 @@ def test_successful_old_output_remains_selected_until_current_index_settles(sear
             return [{key:value for key,value in zip(cursor.column_names,row) if key not in {"ner_per","ner_org","ner_loc","ner_misc"}} for row in cursor.fetchall()]
     previous_index=non_ner_rows()
     monkeypatch.setenv("NER_URL","http://ner-fixture.invalid")
-    monkeypatch.setenv("NER_PROVIDER","gpu")
     calls = []
     def infer(texts):
         calls.append(texts)
@@ -156,7 +155,6 @@ def test_table_entity_receipt_requires_current_provider_source(collection,monkey
     from tasks.P_admin.updates import table_receipts
     from tasks.P4_extract_entities.completion import NER_STAGE_VERSION
     monkeypatch.setenv("NER_URL","http://ner-fixture.invalid")
-    monkeypatch.setenv("NER_PROVIDER","gpu")
     params=table_receipts.TableReceiptParams(collection,"dataset","operation",["source"],["entities"])
     with clickhouse.get_collection_client(collection) as client:
         client.insert("text_content",[["dataset","source","table_text",1,"Current text",12,20]],
@@ -175,7 +173,6 @@ def test_table_entity_receipt_requires_current_provider_source(collection,monkey
 def test_current_completion_with_missing_group_repeats_inference(collection,monkeypatch):
     seed(collection)
     monkeypatch.setenv("NER_URL","http://ner-fixture.invalid")
-    monkeypatch.setenv("NER_PROVIDER","gpu")
     calls=[]
     def infer(texts):
         calls.append(texts)

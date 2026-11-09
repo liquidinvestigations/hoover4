@@ -62,23 +62,22 @@ easyocr_enabled    = false      ; not implied by the others, see below
 llm_enabled        = false
 
 [main_services]
-ner_provider          = none        ; NER runs on the GPU only
-embeddings_provider   = none        ; no vectors, no semantic search
 pdf_ocr_provider      = tesseract   ; CPU
 tesseract_cpu_enabled = true
 ocr_pdf_enabled       = true
-gpu_fallback          = false       ; nothing to fall back from
 
 website_release_mode  = true        ; a visitor must not get `dx serve`
 serena_enabled        = false       ; dev tooling, not a deployed service
-
-testdata_dir          = /opt/hoover4-testdata
-datasets_mount_path   = /testdata
 
 website_bind_ip       = <private-ip>    ; the private address the proxy reaches
 infra_bind_ip         = 127.0.0.1
 
 mcp_shared_secret_file = <secrets-dir>/mcp-shared-secret.txt
+
+[dataset_mount.testdata]
+host_path      = /opt/hoover4-testdata
+container_path = /testdata
+writable       = false
 ```
 
 This host has no language model. The model servers run only on the GPU tier, so the chat
@@ -146,10 +145,7 @@ chat_vllm_port     = 21964
 vllm_api_key_file  = <secrets-dir>/vllm-key.txt
 
 [main_services]
-ner_provider          = gpu
-embeddings_provider   = gpu
 pdf_ocr_provider      = tesseract
-gpu_fallback          = true        ; the CPU twin covers a GPU box that stops answering
 ```
 
 `llm_enabled = true` starts dgemma, its structured server and ornith on the GPU host, and
@@ -208,7 +204,7 @@ What a reset destroys is the derived data. It empties the folders under
 `[storage] volumes_path` that hold ClickHouse, Manticore, Garage blobs, Temporal's
 Cassandra and Elasticsearch, the monitoring data, the worker's temporary copies of plan files
 and the website's build target. It keeps
-the folders themselves. The corpus is a separate bind mount (`testdata_dir`) outside
+the folders themselves. The corpus is a separate bind mount (`[dataset_mount.testdata]`) outside
 `volumes_path`, and no step here touches it. Everything except the corpus is re-creatable
 from the corpus.
 
@@ -265,7 +261,7 @@ one idempotent command, which is the scripted equivalent of the admin UI's creat
 only through a group grant. A demo that displays its collections anyway needs this flag
 recorded, rather than relying on every user already being in the right group.
 
-Paths are **in-container** paths under `datasets_mount_path`, so a corpus at
+Paths are **in-container** paths under the `container_path` of the mount, so a corpus at
 `/opt/hoover4-testdata/consulate` on the host is `/testdata/consulate` here.
 
 ### Ingest in stages, smallest first
@@ -302,7 +298,7 @@ INGEST_ROOT_SHAPES=$T/many-children \
   ./verify-stack.sh
 ```
 
-The `INGEST_ROOT_*` overrides are not optional when `testdata_dir` points outside the
+The `INGEST_ROOT_*` overrides are not optional when the testdata mount points outside the
 repo: the defaults assume the in-repo [testdata/](../../testdata), and the fixtures then sit at a
 different depth. `fetch-testdata.sh --check` needs `HOOVER4_TESTDATA_DIR` for the same
 reason.
@@ -343,11 +339,11 @@ Stated up front, because none of it is a fault to be diagnosed later:
 
 | | |
 |---|---|
-| **No vector search** | `embeddings_provider = none` leaves `EMBEDDINGS_URL` empty, P5 logs *"skipping chunk+embed"* and writes nothing. No `text_chunk_vectors`, no `_vectors` shards, keyword search everywhere. |
+| **No vector search** | With the GPU tier off, `EMBEDDINGS_URL` is empty, P5 logs *"skipping chunk+embed"* and writes nothing. No `text_chunk_vectors`, no `_vectors` shards, keyword search everywhere. |
 | **…which removes a memory risk** | `_vectors` HNSW tables are RAM-resident at roughly 2 KB per chunk. Not building them is one large thing the host does not have to hold. |
 | **No reranking** | Collection RAG and web search return RRF order with `rerank_applied: false`. |
 | **No chat** | The model servers run on the GPU tier only. Every `LLM_*` endpoint is empty, the research agents do not start, and the chat refuses a new turn. |
-| **No named entities** | NER runs on the GPU only. `ner_provider = none` skips entity extraction. |
+| **No named entities** | NER runs on the GPU only. With the GPU tier off, `NER_URL` is empty and entity extraction is skipped. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
 | **The proxy's default identity is an administrator** | `proxy_username`/`proxy_groups` name the identity every request carries, and the default group is `admin`. Acceptable only behind a reverse proxy that authenticates, which is what `website_bind_ip` is enforcing. |
 | **A browser ships only when the internet-tools switch is on** | [compose/internet-tools.yaml](docker/compose/internet-tools.yaml) is selected by `internet_tools_enabled`. Off, `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and `hoover4-mcp-whois` do not start. On, the browser's URL checks are still strict (public http/https only, deny-list, PAC). |

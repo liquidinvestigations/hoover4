@@ -2810,6 +2810,21 @@
       "no_screenshot_reason": "This feature is the deployment of the model servers. It has no interface state."
     },
     {
+      "id": "F-admin-43",
+      "source": [
+        "deploy.py",
+        "main_services/ops/docker/docker-compose.yaml",
+        "ai_services/hoover4_ai_server/hoover4_ai_server.py",
+        "scripts/deploy.py_tests/test_render.py"
+      ],
+      "docs": [
+        "docs/operations/Configuration_Reference.md",
+        "ai_services/hoover4_ai_server/README.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature is the deployment of fixed service versions and model endpoints. It has no interface state."
+    },
+    {
       "id": "F-auth-01",
       "source": [
         "website/backend/src/auth/route_policy.rs"

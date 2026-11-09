@@ -6,14 +6,15 @@ The main pipeline and agent services call it through their configured endpoints.
 
 ## Verify configured and serving models.
 
-| Capability | Source default | Selection |
+| Capability | Model | Selection |
 |---|---|---|
-| Embeddings | `intfloat/multilingual-e5-small`, 384 dimensions | `EMBEDDINGS_MODEL` and `EMBEDDINGS_DIM` |
-| Reranking | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | `RERANKER_MODEL` |
-| NER | `FacebookAI/xlm-roberta-large-finetuned-conll03-english` | `NER_MODEL` |
+| Embeddings | `intfloat/multilingual-e5-small`, 384 dimensions | Code constants `model_name` and `EXPECTED_EMBEDDINGS_DIM` |
+| Reranking | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Code constant `reranker_model_name` |
+| NER | `FacebookAI/xlm-roberta-large-finetuned-conll03-english` | `NER_MODEL`, which deployment does not set |
 
-Deployment renders these values from `hoover4.ini`.
-A deployment can select different values from the source defaults.
+No `hoover4.ini` setting selects a model.
+Stored vectors and the dimension of each vector table depend on the embedding model.
+A change of the embedding model therefore needs a rebuild of every vector table.
 `AI_SERVER_ENABLE_EMBEDDINGS`, `AI_SERVER_ENABLE_RERANKER`, and `AI_SERVER_ENABLE_NER` enable their respective capabilities.
 Startup loads the enabled models and verifies the embedding dimension.
 An embedding request that names a different model returns an error.
@@ -91,7 +92,7 @@ Its output equals the stock pipeline output, and [pipeline tests](tests/test_ner
 Use the [AI deployment procedure](../README.md#deploy) to build and start this service.
 
 `OPTIMAL_BATCH_SIZE` and `MAX_SEQUENCE_LENGTH` bound batch and sequence behavior.
-`ENABLE_HALF_PRECISION` and `ENABLE_TORCH_COMPILE` control optional model execution settings.
+The server uses half precision on CUDA and does not use `torch.compile`. These are code constants.
 The server selects CUDA when available and CPU otherwise.
 That internal device choice does not create a deployed CPU embedding fallback.
 [AI architecture](../../docs/architecture/AI_Services.md) defines the pipeline's capability and fallback behavior.

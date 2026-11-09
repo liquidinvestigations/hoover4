@@ -64,18 +64,16 @@ reranker = None
 ner_model = None
 ner_stride = None
 
-# Model ids come from the environment, rendered by deploy.py from hoover4.ini
-# ([ai_services] embeddings_model / reranker_model). Never hardcode them here: a
-# constant in this file is how the container ends up serving e5-large-instruct while the
-# ini says e5-small, with the rendered .env read by nothing and nobody any the wiser.
-model_name = os.getenv("EMBEDDINGS_MODEL", "intfloat/multilingual-e5-small")
-reranker_model_name = os.getenv("RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
+# The supported embedding and reranking models. No setting selects another model.
+# The stored vectors and the knn_dims of every Manticore _vectors table depend on the
+# embedding model and its dimension, so a change here needs a vector rebuild.
+model_name = "intfloat/multilingual-e5-small"
+reranker_model_name = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 ner_model_name = os.getenv("NER_MODEL", "FacebookAI/xlm-roberta-large-finetuned-conll03-english")
 
-#: Expected embedding dimensionality, from hoover4.ini's embeddings_dim. Checked against
-#: a real probe embedding at startup: a model that does not match its declared dims is a
-#: config error, and finding out at index-build time is too late.
-EXPECTED_EMBEDDINGS_DIM = int(os.getenv("EMBEDDINGS_DIM", "384"))
+#: The dimension of model_name. Startup compares it with a probe embedding.
+#: deploy.py renders the same value as EMBEDDINGS_DIM for verify-stack.sh.
+EXPECTED_EMBEDDINGS_DIM = 384
 
 # Capability switches (hoover4.ini ner_enabled / embeddings_enabled / reranker_enabled).
 # A disabled capability is not loaded, and /health reports it as "disabled" rather than
@@ -132,8 +130,10 @@ def _run_on_gate(gate: CapabilityGate, fn, *args, **kwargs):
 # Performance optimization settings
 OPTIMAL_BATCH_SIZE = int(os.getenv("OPTIMAL_BATCH_SIZE", "32"))  # Configurable batch size
 MAX_SEQUENCE_LENGTH = int(os.getenv("MAX_SEQUENCE_LENGTH", "512"))  # Max tokens per sequence
-ENABLE_HALF_PRECISION = os.getenv("ENABLE_HALF_PRECISION", "true").lower() == "true"
-ENABLE_TORCH_COMPILE = os.getenv("ENABLE_TORCH_COMPILE", "true").lower() == "true"  # PyTorch 2.0+
+# FP16 on CUDA. torch.compile stays off: it adds several minutes to each start, and a
+# compile failure kept the server from becoming healthy.
+ENABLE_HALF_PRECISION = True
+ENABLE_TORCH_COMPILE = False
 
 
 def configure_ner_windowing(loaded_model):
@@ -316,17 +316,17 @@ async def load_models():
 
             logger.info(f"Embedding model loaded and optimized (batch_size: {OPTIMAL_BATCH_SIZE})")
 
-            # Assert the dimension rather than trusting the ini: a model that does not
-            # match embeddings_dim would only be discovered at index-build time, when
-            # Manticore refuses the vectors. Fail loudly here instead.
+            # A model that does not match EXPECTED_EMBEDDINGS_DIM would otherwise be
+            # found only at index-build time, when Manticore refuses the vectors.
             probe = model.encode(["dimension probe"], convert_to_tensor=False,
                                  normalize_embeddings=True, show_progress_bar=False)
             actual_dim = len(probe[0])
             if actual_dim != EXPECTED_EMBEDDINGS_DIM:
                 raise RuntimeError(
                     f"embedding model {model_name} produces {actual_dim}-dim vectors but "
-                    f"EMBEDDINGS_DIM says {EXPECTED_EMBEDDINGS_DIM}. Fix hoover4.ini, and "
-                    f"remember a Manticore _vectors table's knn_dims cannot be altered"
+                    f"the server expects {EXPECTED_EMBEDDINGS_DIM}. Correct "
+                    f"EXPECTED_EMBEDDINGS_DIM. A Manticore _vectors table's knn_dims "
+                    f"cannot be altered"
                 )
             logger.info(f"Embedding dimension probe OK: {actual_dim}")
         else:
@@ -795,10 +795,6 @@ async def performance_stats():
     # Recommendations based on current setup
     recommendations = []
     if torch.cuda.is_available():
-        if not ENABLE_HALF_PRECISION:
-            recommendations.append("Enable half precision (FP16) with ENABLE_HALF_PRECISION=true for 2x speed boost")
-        if not ENABLE_TORCH_COMPILE:
-            recommendations.append("Enable torch.compile with ENABLE_TORCH_COMPILE=true for additional 20-30% speedup")
         if OPTIMAL_BATCH_SIZE < 16:
             recommendations.append(f"Consider increasing batch size from {OPTIMAL_BATCH_SIZE} to 32-64 for better GPU utilization")
     else:

@@ -312,8 +312,8 @@ load_ingest_roots
 # repository otherwise records, because testdata/ is gitignored. Say so before ingesting
 # rather than after a check fails for a reason that is not in any diff.
 #
-# The corpus is not always in the repository: a deployment sets `testdata_dir`, which
-# deploy.py renders as HOOVER4_TESTDATA_DIR and mounts at /testdata. Ask about the tree
+# The corpus is not always in the repository: deploy.py renders the host_path of
+# [dataset_mount.testdata] as HOOVER4_TESTDATA_DIR. Ask about the tree
 # the stack actually mounts rather than about the in-repo default, or the check reports
 # a missing corpus on every host that keeps its corpus elsewhere.
 echo "== testdata =="
@@ -962,12 +962,12 @@ if [ -n "$emb_url" ]; then
     fi
     served_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
     if [ "$served_dim" = "$expected_dim" ]; then
-        ok "serving embedding dim ($served_dim) matches the ini"
+        ok "serving embedding dim ($served_dim) matches EMBEDDINGS_DIM"
     else
-        fail "serving embedding dim ($served_dim) != ini embeddings_dim ($expected_dim)"
+        fail "serving embedding dim ($served_dim) != EMBEDDINGS_DIM ($expected_dim)"
     fi
 else
-    echo "NOTE - no EMBEDDINGS_URL rendered (embeddings_provider = none); skipping embeddings probe"
+    echo "NOTE - no EMBEDDINGS_URL rendered ([ai_services] embeddings_enabled or the GPU tier is off); skipping embeddings probe"
 fi
 if [ -n "$rerank_url" ]; then
     rerank_out=$(docker exec "$WORKER" curl -s --max-time 60 -X POST "$rerank_url/rerank" \

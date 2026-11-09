@@ -22,8 +22,7 @@ from test_thread_index import DGEMMA, EST, THREAD, TODAY_EMPTY, Thread, chars, o
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    for name in ("AGENT_COMPACTION_FRACTION", "LLM_BASE_URL", "LLM_MODEL_COMPACTION",
-                 "CLICKHOUSE_URL"):
+    for name in ("AGENT_COMPACTION_FRACTION", "LLM_BASE_URL", "CLICKHOUSE_URL"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -541,9 +540,9 @@ def test_the_summariser_sends_thinking_off_and_the_cap_of_its_caller(monkeypatch
     assert seen["body"]["model"] == "m"
 
 
-def test_the_summariser_uses_the_compaction_model(monkeypatch):
+def test_the_summariser_ignores_the_removed_compaction_model(monkeypatch):
     seen = _summariser_request(monkeypatch, LLM_MODEL_COMPACTION="small")
-    assert seen["body"]["model"] == "small"
+    assert seen["body"]["model"] == "m"
 
 
 def test_the_summariser_leaves_temperature_out_when_the_provider_refuses_it(monkeypatch):

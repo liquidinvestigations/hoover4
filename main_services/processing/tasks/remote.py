@@ -1,4 +1,4 @@
-"""Outbound HTTP from activities: bounded timeouts, CPU fallback, circuit breaker.
+"""Outbound HTTP from activities: bounded timeouts and a circuit breaker.
 
 Why this module exists
 ----------------------
@@ -14,20 +14,20 @@ all. Two defects stack to produce it:
    read, for a single NER batch. The only reason it fails in ~2 minutes rather
    than 50 is the kernel giving up on SYN retries first.
 
-The config contract must also be honoured. ``deploy.py`` renders
-``GPU_CONNECT_TIMEOUT_MS``, ``GPU_FALLBACK`` and ``GPU_CIRCUIT_BREAK_SECONDS``
-into the worker's environment, and this module is what reads them. A setting that
-is rendered and never read means a dead GPU host stalls the pipeline instead of
-degrading it, which is precisely what those three settings exist to prevent.
+``deploy.py`` renders ``GPU_CONNECT_TIMEOUT_MS`` and ``GPU_CIRCUIT_BREAK_SECONDS``
+into the worker's environment, and this module reads them. Without them a dead GPU
+host stalls the pipeline instead of failing the call in seconds.
 
 The contract implemented here
 -----------------------------
-====================== ======================================================
-``GPU_CONNECT_TIMEOUT_MS``  connect timeout on every ai-tier call (default 2000)
-``GPU_FALLBACK``            on connect failure, retry against the next endpoint
-``GPU_CIRCUIT_BREAK_SECONDS`` after N consecutive connect failures, skip the GPU
-                            endpoint entirely for this long
-====================== ======================================================
+============================= ===============================================
+``GPU_CONNECT_TIMEOUT_MS``    connect timeout on every ai-tier call (default 2000)
+``GPU_CIRCUIT_BREAK_SECONDS`` after N consecutive connect failures, skip an
+                              endpoint that is not the last of its list for this long
+============================= ===============================================
+
+Each caller gives one endpoint for each capability, so a request has no second
+endpoint to move to. ``post_json`` still accepts an ordered list.
 
 The ``(connect, read)`` two-tuple is what this module exists for. The failure modes are
 completely different. A dead host must be detected in ~2 seconds, while a live
@@ -68,13 +68,6 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = (os.getenv(name) or "").strip().lower()
-    if not raw:
-        return default
-    return raw in ("1", "true", "yes", "on")
-
-
 # Connect: a dead host must be detected in ~2 s, not in minutes.
 CONNECT_TIMEOUT = _env_float("GPU_CONNECT_TIMEOUT_MS", 2000.0) / 1000.0
 
@@ -88,8 +81,6 @@ CIRCUIT_FAILURE_THRESHOLD = int(_env_float("REMOTE_CIRCUIT_FAILURES", 3))
 # How long an endpoint stays skipped once the breaker opens. Time-boxed, never
 # latching: a recovered GPU host must come back on its own.
 CIRCUIT_BREAK_SECONDS = _env_float("GPU_CIRCUIT_BREAK_SECONDS", 60.0)
-
-GPU_FALLBACK = _env_bool("GPU_FALLBACK", True)
 
 
 class RemoteUnavailable(RuntimeError):
@@ -200,11 +191,9 @@ def post_json(
     live = [(name, url) for name, url in endpoints if url]
     if not live:
         raise RemoteUnavailable(
-            "no endpoint is configured for this call; check NER_URL / the "
-            "*_provider settings in hoover4.ini"
+            "no endpoint is configured for this call; check the endpoint variables that "
+            "deploy.py renders from the [ai_services] and [main_services] switches"
         )
-    if not GPU_FALLBACK:
-        live = live[:1]
 
     post = (session or requests).post
     attempts: list[str] = []
@@ -287,8 +276,7 @@ def scanner_health(session: requests.Session | None = None) -> dict:
 def probe_embeddings(base_url: str) -> tuple[str, int]:
     """One trivial ``POST {base_url}/embeddings``; returns ``(serving_model, dims)``.
 
-    The ini's ``embeddings_model`` / ``embeddings_dim`` are the *request*; this probe is
-    the *truth*. The index builder builds Manticore ``_vectors`` tables from the probed value and
+    The AI server's model constants are the *request*; this probe is the *truth*. The index builder builds Manticore ``_vectors`` tables from the probed value and
     refuses to index when it stops matching a shard's ``knn_dims``. A table's knn_dims
     is fixed at creation, so writing 384-dim vectors into a 1024-dim table is the
     failure this exists to catch early.
@@ -308,7 +296,7 @@ def record_embeddings_probe() -> tuple[str, int] | None:
     """Probe the endpoint and write the result to ``server_settings``.
 
     Returns ``(model, dims)``, or ``None`` when there is nothing to probe
-    (``embeddings_provider = none``) or the endpoint could not be reached.
+    (``EMBEDDINGS_URL`` is empty) or the endpoint could not be reached.
 
     **This must never raise.** Its callers are a worker's startup path and a CLI, and a
     worker that refuses to boot because the GPU tier is down is worse than one that boots

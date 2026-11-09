@@ -30,17 +30,18 @@ The stack includes:
 
 ## Publishing images
 
-[publish-images.sh](publish-images.sh) builds every image this tree owns and pushes it to the local Nomad
-cluster's own image registry, for Nomad to pull later. Run it by hand:
+[publish-images.sh](publish-images.sh) builds every image this tree owns and pushes it to an image
+registry. No deployment pulls these images: the compose stack builds its own. Run it by hand:
 
 ```
-main_services/ops/publish-images.sh <version>
+main_services/ops/publish-images.sh <registry address> <version>
 ```
 
-The version becomes the tag on every image, the same tag across the whole set. There is
-no default. The script refuses to run without one. The registry's address comes from
-`hoover4.ini` (`[cluster] registry_address`) and never appears in this script or in any
-other tracked file. A second run at the same version overwrites that version's tag.
+The registry address is the host and port of the registry. Take it from the private
+infrastructure inventory. It never appears in this script or in any other tracked file.
+The version becomes the tag on every image, the same tag across the whole set. Neither
+argument has a default. The script stops before it builds anything when an argument is
+missing. A second run at the same version overwrites that version's tag.
 
 The compose stack and the published set differ on purpose, for four services.
 
@@ -203,9 +204,9 @@ copy of ClickHouse `text_chunk_vectors` (the durable store). Two operational fac
   tables and rebuild them later from ClickHouse (`main.py reindex-collection
   <collection>`; ClickHouse keeps the vectors, so no re-embedding is needed).
 - **`knn_dims` is fixed at table creation and cannot be altered.** Tables are created
-  from the probed serving dimension (`server_settings.embeddings_serving_dim`), never
-  the ini. Changing `embeddings_model` means dropping and rebuilding every `_vectors`
-  shard (same `reindex-collection` path), and the P6 vector indexer refuses loudly
+  from the probed serving dimension (`server_settings.embeddings_serving_dim`).
+  Changing the embedding model constant of the AI server means dropping and rebuilding
+  every `_vectors` shard (same `reindex-collection` path), and the P6 vector indexer refuses loudly
   (the activity fails and every affected document gets a `processing_errors` row) when
   the rows' dimension does not match a shard's `knn_dims`.
 

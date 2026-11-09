@@ -1,10 +1,8 @@
-"""Tests for tasks.remote: the timeout contract, the fallback and the breaker.
+"""Tests for tasks.remote: the timeout contract, the endpoint list and the breaker.
 
-These three settings -- GPU_CONNECT_TIMEOUT_MS, GPU_FALLBACK and
-GPU_CIRCUIT_BREAK_SECONDS -- are rendered into the worker's environment by
-deploy.py. A setting that is rendered and read by nothing is how a dead GPU host
-stalls the pipeline for tens of minutes instead of degrading it, so each one
-gets a test here to keep it from becoming decorative.
+deploy.py renders GPU_CONNECT_TIMEOUT_MS and GPU_CIRCUIT_BREAK_SECONDS into the
+worker's environment. Without a reader, a dead GPU host stalls the pipeline for tens
+of minutes instead of failing the call in seconds.
 """
 
 import pytest
@@ -79,8 +77,7 @@ def test_falls_back_to_the_cpu_twin_on_connect_failure(monkeypatch):
 
 
 def test_no_twin_configured_fails_fast_and_names_the_url(monkeypatch):
-    """With no SECOND twin deployed, GPU_FALLBACK=true and nothing to fall back to
-    must fail fast with a clear message, not stall."""
+    """With no second endpoint, a connect failure fails fast with a clear message."""
     def post(url, **kwargs):
         raise requests.ConnectTimeout("no route to host")
 
@@ -153,16 +150,27 @@ def test_breaker_is_time_boxed_never_latching(monkeypatch):
     assert remote.post_json([GPU, SECOND], {}).provider == "gpu", "breaker latched"
 
 
-def test_gpu_fallback_false_never_uses_the_twin(monkeypatch):
+def test_every_caller_gives_one_endpoint(monkeypatch):
+    """No supported call has a second endpoint, so no setting can select one."""
+    from tasks import ocr_client, ocr_pdf_client
+    from tasks.P4_extract_entities import extract_ner_from_text
+
+    for name in ("OCR_TESSERACT_URL", "OCR_EASYOCR_URL", "OCR_PDF_URL", "NER_URL"):
+        monkeypatch.setenv(name, "http://service.test/v1")
+    lists = [ocr_client._endpoints_for(ocr_client.ENGINE_TESSERACT),
+             ocr_client._endpoints_for(ocr_client.ENGINE_EASYOCR),
+             ocr_pdf_client._endpoints(), extract_ner_from_text._endpoints()]
+    assert [len(endpoints) for endpoints in lists] == [1, 1, 1, 1]
+
+
+def test_a_single_endpoint_connect_failure_is_unavailable(monkeypatch):
     def post(url, **kwargs):
-        if url == GPU[1]:
-            raise requests.ConnectTimeout("down")
-        return _Response({"data": []})
+        raise requests.ConnectTimeout("down")
 
     monkeypatch.setattr(requests, "post", post)
-    monkeypatch.setattr(remote, "GPU_FALLBACK", False)
-    with pytest.raises(remote.RemoteUnavailable):
-        remote.post_json([GPU, SECOND], {})
+    with pytest.raises(remote.RemoteUnavailable) as excinfo:
+        remote.post_json([GPU], {})
+    assert "gpu.test" in str(excinfo.value)
 
 
 def test_http_errors_propagate_rather_than_falling_back(monkeypatch):

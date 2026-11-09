@@ -7,12 +7,11 @@ NER_STAGE_VERSION = 2
 
 
 def target() -> dict:
+    """The entity update target. NER runs on the GPU only, so `provider` is always `gpu`.
+    The key stays in the target because the update fingerprint hashes the whole dict."""
     from .activities import configured_nlp_model
-    provider = (os.getenv("NER_PROVIDER") or "gpu").strip() or "gpu"
-    if provider == "both":
-        provider = "gpu"
-    return {"enabled": bool((os.getenv("NER_URL") or "").strip()), "provider": provider,
-            "model": configured_nlp_model(), "coverage_version": 2 if provider == "gpu" else 1}
+    return {"enabled": bool((os.getenv("NER_URL") or "").strip()), "provider": "gpu",
+            "model": configured_nlp_model(), "coverage_version": 2}
 
 
 def replace_completed_groups(client, dataset, rows):

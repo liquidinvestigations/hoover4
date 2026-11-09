@@ -25,8 +25,8 @@ between P4 and P5 would move a number that existing rows already hold.
   (`NER_URL`).
   NER has no CPU path, so an unreachable GPU tier fails fast and names the url.
   Calls use a `(connect, read)` timeout pair and a per-endpoint,
-  time-boxed circuit breaker; a connect failure falls back, a read timeout
-  does not (the host is alive, so degrading would mask a server-side fault).
+  time-boxed circuit breaker. The call has one endpoint, so a connect failure or a
+  read timeout fails the activity and Temporal retries it.
 - Save results after each `NER_SAVE_BYTES = 8 MB` of text. A retry skips the saved pages, so a plan that outlasts the 30-minute activity timeout still advances.
 - Write `entity_hit` rows and populate the `ner` string-term dictionary. **Each
   entity row carries the `nlp_model` that served its text**, and `nlp_model` is
@@ -77,10 +77,10 @@ share a file (the two test suites run in containers that mount different trees),
 hashes its own rule data and canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the
 same literal, which makes a one-sided change fail a test rather than drift.
 
-## Two providers, and the two places they collide
+## Stored hits of several providers
 
-With `ner_provider = both`, both configured providers process the eligible text variants.
-Their stored hits retain provider identity. The storage and indexing contracts require these properties:
+New hits come from the GPU model only. Earlier rows of another provider can remain in storage,
+and their hits retain provider identity. The storage and indexing contracts require these properties:
 
 1. **`entity_hit` must carry `nlp_model`.** With it empty, both providers land on
    the same key and whichever ran last is the only one with entities.
@@ -150,7 +150,7 @@ one stage is a rule the other can drift away from.
 ## Failure Policy
 
 When `NER_URL` is empty, the activity returns zero counts before it opens ClickHouse. This
-skip applies to `ner_provider = none` and to a GPU provider with the GPU tier off.
+skip applies when `[ai_services] ner_enabled` or `ai_server_enabled` is false, or when the GPU tier is off.
 
 NER errors are **not** swallowed. The activity fails and Temporal retries it
 (`maximum_attempts=3`, 30 min `start_to_close_timeout`); after retries are

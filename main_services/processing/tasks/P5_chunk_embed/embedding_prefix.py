@@ -10,7 +10,7 @@ ever alert you.
 
 The convention keys off the model id recorded in `server_settings`
 (`embeddings_serving_model`, written by `main.py probe-embeddings`), which is the probed
-truth rather than the configured `embeddings_model` from the ini. Note for anyone reverting to
+truth rather than the model constant of the AI server. Note for anyone reverting to
 `e5-large-instruct`: its convention is DIFFERENT (bare passages; queries wrapped as
 `Instruct: {task}\\nQuery: {text}`, applied by the server from `task_description`), which
 is exactly why this is a function of the model id and not a module-level constant.

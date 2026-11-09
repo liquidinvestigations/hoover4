@@ -180,7 +180,8 @@ services:
   # ========================
   temporal-cassandra:
     container_name: temporal-cassandra
-    image: cassandra:${CASSANDRA_VERSION}
+    # The service versions are literals here. deploy.py VOLUMES uses the same strings.
+    image: cassandra:3.11.9
     # image: scylladb/scylla -- SLOWER
     networks:
       - hoover4
@@ -235,7 +236,7 @@ services:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms2048m -Xmx2048m
       - xpack.security.enabled=false
-    image: elasticsearch:${ELASTICSEARCH_VERSION}
+    image: elasticsearch:7.17.27
     networks:
       - hoover4
     ports:
@@ -282,7 +283,7 @@ services:
       # Temporal reads one dynamic config file. deploy.py renders generated.yaml from
       # the tracked docker.yaml and the temporal_*_persistence_qps keys of hoover4.ini.
       - DYNAMIC_CONFIG_FILE_PATH=/etc/temporal/config/dynamicconfig/generated.yaml
-    image: temporalio/auto-setup:${TEMPORAL_VERSION}
+    image: temporalio/auto-setup:1.23.1
     networks:
       - hoover4
     ports:
@@ -323,7 +324,7 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:3000
-    image: temporalio/ui:${TEMPORAL_UI_VERSION}
+    image: temporalio/ui:2.26.2
     networks:
       - hoover4
     ports:
@@ -354,7 +355,9 @@ services:
   garage:
     logging: *logging
     container_name: garage
-    image: dxflrs/garage:${GARAGE_VERSION}@${GARAGE_IMAGE_DIGEST}
+    # Pinned by tag and manifest-list digest. A platform digest does not resolve on the
+    # other architecture. garage-init builds FROM the same string.
+    image: dxflrs/garage:v2.3.0@sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
     networks:
       - hoover4
     ports:
@@ -398,7 +401,7 @@ services:
       context: ./garage
       dockerfile: Dockerfile
       args:
-        GARAGE_IMAGE: dxflrs/garage:${GARAGE_VERSION}@${GARAGE_IMAGE_DIGEST}
+        GARAGE_IMAGE: dxflrs/garage:v2.3.0@sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
     networks:
       - hoover4
     depends_on:
@@ -522,13 +525,9 @@ services:
       # goes here, so a conversation does not answer some questions with the open web
       # and some without.
       - "INTERNAL_SEARCH_AGENT_URL=${INTERNAL_SEARCH_AGENT_URL:-http://hoover4-internal-search-agent:8000}"
-      # Provider switches and GPU-failure behaviour, rendered from hoover4.ini by
-      # deploy.py. Read by the pipeline worker.
-      - "NER_PROVIDER=${NER_PROVIDER:-gpu}"
-      - "EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-gpu}"
       # Embeddings + reranker base URL (one server serves both /v1/embeddings and
-      # /v1/rerank). Empty when embeddings_provider = none: the embed activity fails
-      # fast naming the setting rather than hanging on a dead host.
+      # /v1/rerank). Empty when [ai_services] embeddings_enabled or the GPU tier is off,
+      # and the embed activity then skips vectors.
       - "EMBEDDINGS_URL=${EMBEDDINGS_URL:-}"
       - "RERANK_URL=${RERANK_URL:-}"
       - "PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}"
@@ -581,7 +580,6 @@ services:
       # itself. Without this line the worker reads no graceful shutdown period, falls
       # back to its own default, and the ini key silently stops deciding anything.
       - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
-      - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"
       # The self-hosted model servers. LLM_MODEL is the model of short calls (titles,
@@ -816,10 +814,8 @@ services:
       # page falls back to compose DNS names that are not on this container's network
       # (the GPU tier publishes via host.containers.internal).
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
-      - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-}
       - EMBEDDINGS_URL=${EMBEDDINGS_URL:-}
       - RERANK_URL=${RERANK_URL:-}
-      - NER_PROVIDER=${NER_PROVIDER:-}
       - NER_URL=${NER_URL:-}
       - PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}

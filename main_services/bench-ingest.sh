@@ -305,13 +305,8 @@ missing_text=$(CH "SELECT count() FROM ${DB}.blobs b FINAL
     && ok "every blobs row has >=1 text_content row" \
     || fail "$missing_text blobs row(s) have no text_content"
 
-provider=$(docker exec "$WORKER" printenv NER_PROVIDER 2>/dev/null || true)
-provider="${provider:-gpu}"
-[ "$provider" = "both" ] && provider="gpu"
-case "$provider" in
-    gpu) NLP_MODEL="ner-gpu-xlmr" ;;
-    *) NLP_MODEL="ner-${provider}" ;;
-esac
+# The nlp_model of the GPU NER model, the only NER provider.
+NLP_MODEL="ner-gpu-xlmr"
 missing_nlp=$(CH "SELECT count() FROM ${DB}.text_content t FINAL
     LEFT ANTI JOIN ${DB}.nlp_processed n FINAL
       ON n.collection_dataset = t.collection_dataset AND n.file_hash = t.file_hash

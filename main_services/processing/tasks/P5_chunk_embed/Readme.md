@@ -41,7 +41,7 @@ There is no CPU embedding fallback.
 - The endpoint serves a different model id or dimension than the probe recorded → the
   probe is stale; proceeding would write vectors under a convention the search side
   does not share, and the anti-join would never match them (re-embedding forever).
-- `EMBEDDINGS_URL` empty (`embeddings_provider = none`) is NOT an error: the stage is
+- `EMBEDDINGS_URL` empty (`[ai_services] embeddings_enabled` or the GPU tier off) is NOT an error: the stage is
   a logged no-op.
 
 ## Entry Points

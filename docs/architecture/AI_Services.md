@@ -9,11 +9,11 @@ The GPU tier does not call the main services.
 
 | Capability | Configuration and behavior |
 |---|---|
-| Named entities | GPU or disabled. NER has no CPU path. |
+| Named entities | GPU or disabled. NER has no CPU path. `[ai_services] ner_enabled` turns it off. |
 | Image OCR | Tesseract and EasyOCR have separate endpoints, language lists, and stored source identities. |
 | PDF OCR | The PDF builder requests the selected engine and stores engine-specific source parts. |
-| Embeddings | The configured GPU endpoint supplies vectors. An empty endpoint skips P5 chunking and embedding. No CPU embedding fallback exists. |
-| Reranking | The configured reranker shares the embedding service base URL. No CPU reranker fallback exists. |
+| Embeddings | The GPU endpoint supplies vectors from the model constant of the AI server. `[ai_services] embeddings_enabled` turns it off. An empty endpoint skips P5 chunking and embedding. No CPU embedding fallback exists. |
+| Reranking | The reranker shares the embedding service base URL. No CPU reranker fallback exists. |
 | Chat | The selected provider supplies chat models. A configured self-hosted model service is optional. |
 
 Disabled model capabilities do not prevent full-text search over parsed and indexed text.
@@ -28,10 +28,10 @@ An EasyOCR request cannot fall back to Tesseract because their model, language, 
 [Text source helpers](../../main_services/processing/tasks/text_sources.py) construct the stored identity.
 The viewer uses the matching [source types](../../website/common/src/document_sources.rs).
 
-## Apply fallback only to supported calls.
+## Send each call to one endpoint.
 
 [The remote client](../../main_services/processing/tasks/remote.py) tries the ordered endpoints supplied by its caller.
-A connection failure can select the next endpoint when fallback is enabled.
+Each caller supplies one endpoint, so no call selects a second provider.
 A read timeout or ordinary HTTP error does not select another provider.
 HTTP 503 requests a later retry and does not open the circuit breaker.
 Connect and read timeouts have separate settings.

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Builds every hoover4 image with its code baked in, and pushes it to the local Nomad
-# cluster's own registry. Run by hand. No continuous integration calls this script.
+# Builds every hoover4 image with its code baked in, and pushes it to a registry. Run by
+# hand. No continuous integration and no deployment calls this script.
 #
-# Usage: main_services/ops/publish-images.sh <version>
+# Usage: main_services/ops/publish-images.sh <registry address> <version>
 #
-# The version becomes the tag on every image, the same tag across the whole set. There
-# is no default; a missing version stops the script before it builds anything. The
-# registry's address is read from hoover4.ini ([cluster] registry_address) and never
-# appears in this script or in any other tracked file.
+# The registry address is the host and port of the registry. Take it from the private
+# infrastructure inventory. It never appears in a tracked file. The version
+# becomes the tag on every image, the same tag across the whole set. Neither argument has
+# a default; a missing argument stops the script before it builds anything.
 #
 # Two services, hoover4-worker and hoover4-ops, publish from one build
 # (main_services/processing/Dockerfile), because the compose stack already runs both
@@ -16,30 +16,22 @@
 # registry repository each, by decision, so the same image is tagged and pushed twice.
 set -euo pipefail
 
-VERSION="${1:-}"
-if [ -z "$VERSION" ]; then
-  echo "usage: $0 <version>" >&2
-  echo "example: $0 0.1.0" >&2
+usage() {
+  echo "usage: $0 <registry address> <version>" >&2
+  echo "example: $0 registry.example:5000 0.1.0" >&2
   exit 1
+}
+
+if [ "$#" -ne 2 ]; then
+  usage
+fi
+REGISTRY="$1"
+VERSION="$2"
+if [ -z "$REGISTRY" ] || [ -z "$VERSION" ]; then
+  usage
 fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-INI_PATH="$REPO_ROOT/hoover4.ini"
-
-REGISTRY="$(python3 - "$INI_PATH" <<'PYEOF'
-import configparser
-import sys
-
-parser = configparser.ConfigParser(inline_comment_prefixes=(";",))
-parser.read(sys.argv[1])
-print(parser.get("cluster", "registry_address", fallback="").strip())
-PYEOF
-)"
-
-if [ -z "$REGISTRY" ]; then
-  echo "no [cluster] registry_address set in $INI_PATH; nothing to push to" >&2
-  exit 1
-fi
 
 echo "registry: $REGISTRY"
 echo "version: $VERSION"

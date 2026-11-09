@@ -611,8 +611,8 @@ def render_prompt(texts: Sequence[str], task: str, max_tokens: int, previous: bo
 
 
 def summary_model(model_id: str) -> str:
-    """The model of the summary request: `LLM_MODEL_COMPACTION`, else the answering model."""
-    return (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or model_id
+    """The model of the summary request: the answering model."""
+    return model_id
 
 
 def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
@@ -1113,9 +1113,8 @@ def describe() -> str:
     fraction = compaction_fraction()
     if fraction <= 0:
         return "context compaction: off"
-    summariser = (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or "the answering model"
     return (
         # `:g`, because a test lowers the fraction, and "0%" would read as off.
         f"context compaction: at {fraction * 100:g}% of the model's stated context window, "
-        f"to a third of that, with one summary of the older steps by {summariser}"
+        f"to a third of that, with one summary of the older steps by the answering model"
     )

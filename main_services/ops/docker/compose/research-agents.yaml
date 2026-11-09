@@ -80,11 +80,9 @@ services:
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       # Context compaction: at this fraction of the model's stated context window the
-      # older steps of a run are replaced by a record, which LLM_MODEL_COMPACTION writes,
-      # or the answering model when that is unset. Unset means the agent's own default,
-      # which is the shipped trigger. See research_agent/compaction.py.
+      # answering model replaces the older steps of a run with a record. Unset means the
+      # agent's own default, which is the shipped trigger. See research_agent/compaction.py.
       - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
-      - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
       - RELOAD=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
@@ -174,7 +172,6 @@ services:
       # See the internal search agent: the compaction trigger, as a fraction of the
       # model's stated context window. Unset means the agent's shipped default.
       - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
-      - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
       # Uvicorn worker processes. Each holds its own graph cache and MCP connections.
       # The citation HandleTable lives in hoover4-mcp-collections, so these workers
       # do not split a session's [Dn] handles.

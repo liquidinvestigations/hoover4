@@ -357,7 +357,7 @@ def log_missing_ner_watermarks(collection_dataset: str, plan_hash: str,
     """Record one activity-level warning for segments without NER output."""
     if not missing_watermarks:
         return
-    level = log.info if (os.getenv("NER_PROVIDER") or "").strip() == "none" else log.warning
+    level = log.info if not (os.getenv("NER_URL") or "").strip() else log.warning
     level(
         "%s (plan %s): %d of %d segments have no nlp_processed watermark; "
         "indexed with empty entities",

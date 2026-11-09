@@ -74,15 +74,12 @@ NER_SAVE_BYTES = 8 * 1024 * 1024
 
 
 def configured_nlp_model() -> str:
-    """The ``nlp_model`` this worker *intends* to write.
+    """The ``nlp_model`` this worker *intends* to write: the GPU model, ``ner-gpu-xlmr``.
 
     Used for the left-anti join only. Earlier CPU rows have no GPU watermark, so they
     reprocess under ``ner-gpu-xlmr``.
     """
-    provider = (os.getenv("NER_PROVIDER") or "gpu").strip() or "gpu"
-    if provider == "both":
-        provider = "gpu"
-    return NLP_MODEL_BY_PROVIDER.get(provider, f"ner-{provider}")
+    return NLP_MODEL_BY_PROVIDER["gpu"]
 
 
 def _save_entities(params: ExtractEntitiesParams, clickhouse_ner_rows: list[dict],
@@ -152,7 +149,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     base_url = (os.getenv("NER_URL") or "").strip().rstrip("/")
     if not base_url:
         log.info(
-            "%s (plan %s): NER_URL is empty (ner_provider = none or the GPU tier is off); "
+            "%s (plan %s): NER_URL is empty ([ai_services] ner_enabled or the GPU tier is off); "
             "skipping entity extraction",
             collection_dataset, plan_hash[:8],
         )

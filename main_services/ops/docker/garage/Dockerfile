@@ -1,6 +1,6 @@
 # The bootstrap needs a shell, curl and jq; the Garage image is FROM scratch and has
 # none of them. The binary is a static-PIE ELF, so it runs unmodified on Alpine.
-ARG GARAGE_IMAGE=dxflrs/garage:v2.3.0
+ARG GARAGE_IMAGE=dxflrs/garage:v2.3.0@sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cfa439ae088c1e4690
 FROM ${GARAGE_IMAGE} AS bin
 FROM alpine:3.22
 RUN apk add --no-cache curl jq

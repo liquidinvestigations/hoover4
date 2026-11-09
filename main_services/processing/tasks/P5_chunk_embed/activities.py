@@ -92,10 +92,10 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
 
     base_url = (os.getenv("EMBEDDINGS_URL") or "").strip().rstrip("/")
     if not base_url:
-        # embeddings_provider = none is a legitimate configuration: the stage is a
-        # no-op, not a failure. Logged so an unexpected skip is traceable.
+        # Embeddings off is a valid configuration: the stage does nothing and succeeds.
+        # Logged so an unexpected skip is traceable.
         log.info(
-            "%s (plan %s): EMBEDDINGS_URL is empty (embeddings_provider = none); skipping chunk+embed",
+            "%s (plan %s): EMBEDDINGS_URL is empty ([ai_services] embeddings_enabled or the GPU tier is off); skipping chunk+embed",
             collection_dataset, plan_hash[:8],
         )
         return ChunkEmbedResult(text_segments=0, chunks_written=0, vectors_written=0)

@@ -102,4 +102,4 @@ stack uses, and the privileged one the cluster uses. Neither carried a per-user
 `registries.conf` override before this was added, so both fell back to one shared system
 file. A per-user override in each engine's own home directory is what took effect. The
 address itself is not repeated here, because it identifies a real host. It lives in the
-gitignored `INFRASTRUCTURE_INVENTORY.md`, and in `hoover4.ini`'s `[cluster]` section.
+gitignored `INFRASTRUCTURE_INVENTORY.md`. `main_services/ops/publish-images.sh` takes it as its first argument.
