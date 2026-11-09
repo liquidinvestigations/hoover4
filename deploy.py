@@ -3215,10 +3215,13 @@ def run_or_fail(cmd, env=None):
 # CLI
 # --------------------------------------------------------------------------------------
 
-def check_configuration(cfg):
+def check_configuration(cfg, side=None):
     """Return the problems and the warnings of the `--check` dry run.
 
-    It renders both sides in memory and runs the refusals that depend only on the
+    Config has already validated the structure of every section when this runs. With
+    `side=None` it renders both sides in memory. With `side="ai"` (`--check --ai-services`)
+    it renders only the GPU side, so a GPU host file needs no Manticore limit and no
+    dataset mount. It runs the refusals of the rendered sides that depend only on the
     configuration. It writes no file, creates no folder, runs no command, starts no
     container runtime and contacts no service.
 
@@ -3242,6 +3245,12 @@ def check_configuration(cfg):
     problem = volumes_path_problem(cfg)
     if problem:
         problems.append(problem)
+    if side == "ai":
+        step(render_ai_env, cfg)
+        step(selected_overlays, cfg, "ai")
+        step(side_volumes, cfg, "ai")
+        step(preflight_ai_enabled, cfg, "ai")
+        return problems, warnings
     step(render_main_env, cfg, lambda host: host)
     step(render_ai_env, cfg)
     step(render_tika_config, cfg)
@@ -3249,9 +3258,9 @@ def check_configuration(cfg):
     step(render_nginx_proxy_conf, cfg)
     step(render_temporal_dynamic_config, cfg)
     step(lambda: render_dataset_mounts_overlay(dataset_mounts(cfg)))
-    for side in ("main", "ai"):
-        step(selected_overlays, cfg, side)
-        step(side_volumes, cfg, side)
+    for rendered_side in ("main", "ai"):
+        step(selected_overlays, cfg, rendered_side)
+        step(side_volumes, cfg, rendered_side)
     # The refusals of the main side that need no runtime. The GPU tier may be off: the
     # refusal of a disabled tier applies only to an `--ai-services` start.
     step(preflight_llm_without_tier, cfg, "main")
@@ -3278,13 +3287,14 @@ def load_config(args):
 
 def run_check(args):
     """`--check`: print `configuration valid` and return 0, or print the problems and
-    return 1. It needs hoover4.ini and does not read a sample in its place."""
+    return 1. It needs hoover4.ini and does not read a sample in its place. With
+    `--ai-services` it checks only the ai_services side."""
     try:
         cfg = load_config(args)
     except DeployError as exc:
         print("deploy: error: %s" % exc, file=sys.stderr)
         return 1
-    problems, warnings = check_configuration(cfg)
+    problems, warnings = check_configuration(cfg, "ai" if args.ai_services else None)
     for warning in warnings:
         print(warning, file=sys.stderr)
     if problems:
@@ -3302,8 +3312,9 @@ def main(argv=None):
     parser.add_argument("--ai-services", action="store_true",
                         help="deploy the ai_services side instead of main_services")
     parser.add_argument("--check", action="store_true",
-                        help="validate hoover4.ini for both sides and stop; changes "
-                             "nothing and starts nothing")
+                        help="validate hoover4.ini for both sides, or for the "
+                             "ai_services side with --ai-services. It changes nothing "
+                             "and starts nothing.")
     parser.add_argument("--print-env", action="store_true",
                         help="render and show the .env files, start nothing")
     parser.add_argument("--print-command", action="store_true",

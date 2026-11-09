@@ -25,6 +25,7 @@ the container network, and then drives the container runtime.
 ./deploy --reset-caches     # with --reset: also wipe the model caches
 ./deploy --reset-temporal   # drop the workflow history and visibility stores only
 ./deploy --check           # validate hoover4.ini for both sides, change nothing
+./deploy --check --ai-services  # validate only the GPU side of a GPU host file
 ./deploy --print-env        # render the environment files and show them, start nothing
 ./deploy --print-command    # show the compose invocation, run nothing
 ```

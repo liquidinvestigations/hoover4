@@ -2421,6 +2421,43 @@ def test_check_accepts_a_valid_configuration_from_the_gpu_host(capsys):
     assert (code, out) == (0, "configuration valid\n")
 
 
+def test_check_of_the_gpu_side_needs_no_main_side_settings(capsys):
+    """A GPU host file has no Manticore limits and no dataset mount."""
+    path = SCHEMA / "valid-gpu-host.ini"
+    code, out, err = _run(["--check", "--ai-services"], path, capsys)
+    assert (code, out) == (0, "configuration valid\n"), err
+    code, out, err = _run(["--check"], path, capsys)
+    assert code == 1
+    assert "configuration valid" not in out
+    assert "[main_services] manticore_mem_limit is required" in err
+    assert "the ini has no [dataset_mount.<name>] section" in err
+
+
+def test_check_of_the_gpu_side_refuses_a_structural_problem_in_main_services(
+        capsys, tmp_path):
+    path = tmp_path / "hoover4.ini"
+    path.write_text((SCHEMA / "valid-gpu-host.ini").read_text(encoding="utf-8")
+                    + "\n[main_services]\nmystery_key = 1\nresearch_concurrency = 2\n",
+                    encoding="utf-8")
+    code, out, err = _run(["--check", "--ai-services"], path, capsys)
+    assert code == 1
+    assert "configuration valid" not in out
+    assert "[main_services] mystery_key is not a known key." in err
+    assert "[main_services] research_concurrency is removed." in err
+
+
+def test_check_of_the_gpu_side_refuses_a_disabled_tier(capsys, tmp_path):
+    path = tmp_path / "hoover4.ini"
+    path.write_text((SCHEMA / "valid-gpu-host.ini").read_text(encoding="utf-8")
+                    .replace("enabled = true\nhost", "enabled = false\nhost")
+                    .replace("llm_enabled = true", "llm_enabled = false"),
+                    encoding="utf-8")
+    code, out, err = _run(["--check", "--ai-services"], path, capsys)
+    assert code == 1
+    assert "configuration valid" not in out
+    assert "[ai_services] says enabled = false" in err
+
+
 @pytest.mark.parametrize(
     ("fixture_name", "expected"),
     [

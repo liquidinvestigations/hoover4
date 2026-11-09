@@ -82,13 +82,20 @@ comment layout of both samples.
 
 The message names the section and the key of each problem, and it does not show the value.
 A `;` or `#` inside a value with no space before it stays part of the value. A key that the file does not
-set keeps its default. The file must set `[storage] volumes_path`, `manticore_mem_limit` and
-`manticore_vectors_mem_limit`, and it must have at least one `[dataset_mount.<name>]` section.
+set keeps its default. The file must set `[storage] volumes_path`. The file of the main side
+must also set `manticore_mem_limit` and `manticore_vectors_mem_limit`, and it must have at
+least one `[dataset_mount.<name>]` section.
 
 `./deploy --check` validates the file and stops. It needs `hoover4.ini` and does not read a
 sample in its place. It renders the environment of both sides in memory. It validates the
 boolean, number, port and size values that the two renders read. It also runs the refusals
 that depend only on the file. A file with `[ai_services] enabled = false` can be valid.
+
+`./deploy --check --ai-services` checks the file of a host that runs only the GPU side. It
+refuses the structural problems of the list above in every section. Then it renders only the
+GPU side and runs the refusals of that side that depend only on the file. The file needs no
+Manticore limit and no dataset mount. It must set `[ai_services] enabled = true`.
+
 The command prints `configuration valid` and exits with status 0. Otherwise it prints the
 problems and exits with status 1. It writes no file, creates no folder, runs no command and
 contacts no service. It cannot be used with another action flag.
