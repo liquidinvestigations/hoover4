@@ -489,10 +489,14 @@ pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> E
     let selected = control.doc_viewer_state.read().clone().unwrap_or_default().selected_match;
     let value = reply.as_ref().and_then(|(_, result)| result.as_ref().ok());
     let targets = value.map(|value| value.targets.clone()).unwrap_or_default();
+    // No current target means the displayed source has no selected match. The counter
+    // then shows 0, and the arrows start at the ends of the document order.
     let current = selected.as_ref().and_then(|selection| targets.iter().position(|target|
-        selection_for(target, &find_query) == *selection)).unwrap_or(0);
+        selection_for(target, &find_query) == *selection));
     let count = targets.len();
-    let number = if count == 0 { 0 } else { current + 1 };
+    let number = current.map_or(0, |index| index + 1);
+    let previous = current.map_or(count.saturating_sub(1), |index| if index == 0 { count.saturating_sub(1) } else { index - 1 });
+    let next = current.map_or(0, |index| (index + 1) % count.max(1));
     let completeness = value.map(|value| value.completeness);
     let pending = reply.is_none();
     let failed = reply.as_ref().is_some_and(|(_, result)| result.is_err());
@@ -500,7 +504,7 @@ pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> E
     let unavailable = completeness == Some(MatchCompleteness::Unavailable);
     let displayed_source = control.doc_viewer_state.read().as_ref().and_then(|state| state.selected_source.clone());
     let initial_index = initial_match_index(&targets, displayed_source.as_ref());
-    let selection_current = selected.as_ref().is_some_and(|selection| targets.iter().any(|target| selection_for(target, &find_query) == *selection));
+    let selection_current = current.is_some();
     let initial_query = find_query.clone();
     let navigate = Callback::new(move |index: usize| {
         let Some(target) = targets.get(index) else { return };
@@ -508,12 +512,13 @@ pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> E
         let mut state = control.doc_viewer_state.peek().clone().unwrap_or_default();
         if state.find_query != find_query { return; }
         let available = sources.and_then(|sources| sources.0.peek().clone()).unwrap_or_default();
-        state.selected_source = available.iter().find(|source| match (target, source) {
-            (DocumentMatchTarget::Header { .. }, DocumentSourceItem::Email(_)) => true,
-            (DocumentMatchTarget::Body { extracted_by, .. }, DocumentSourceItem::Email(_)) => extracted_by == EMAIL_TEXT_EXTRACTOR,
-            (DocumentMatchTarget::Body { extracted_by, .. }, DocumentSourceItem::Text(text)) => extracted_by == &text.extracted_by,
-            _ => false,
-        }).map(DocumentSourceItem::route_identity).or(state.selected_source);
+        // The displayed source stays when it shows the target. The Email source and the
+        // Email body source both show email parser targets.
+        let displayed = state.selected_source.as_ref().is_some_and(|source| target_in_source(target, source));
+        if !displayed {
+            state.selected_source = available.iter().find(|source| target_in_source(target, source))
+                .map(DocumentSourceItem::route_identity).or(state.selected_source);
+        }
         if matches!(target, DocumentMatchTarget::Body { .. }) { state.selected_source_page = Some(selection.page_id); }
         state.selected_match = Some(selection);
         control.set_doc_viewer_state.call(state);
@@ -527,7 +532,7 @@ pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> E
     rsx! {
         div { class: "x-email-match-controls", style: "display: flex; align-items: center; gap: 8px;",
             NavigationButton { icon: MdArrowUpward, label: tr!("preview-with-search-previous-hit"), disabled: count == 0,
-                onclick: move |_| navigate.call(if current == 0 { count.saturating_sub(1) } else { current - 1 }) }
+                onclick: move |_| navigate.call(previous) }
             if pending {
                 span { role: "status", {tr!("preview-with-search-searching")} }
             } else if failed {
@@ -539,7 +544,7 @@ pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> E
             }
             if incomplete { span { role: "status", {tr!("preview-with-search-search-incomplete")} } }
             NavigationButton { icon: MdArrowDownward, label: tr!("preview-with-search-next-hit"), disabled: count == 0,
-                onclick: move |_| navigate.call((current + 1) % count.max(1)) }
+                onclick: move |_| navigate.call(next) }
             if let Some((_, Err(error))) = reply {
                 crate::components::error_boundary::ServerErrorDisplay { error }
                 button { onclick: move |_| retry += 1, {tr!("collections-facet-pane-retry")} }
@@ -548,14 +553,24 @@ pub fn EmailMatchControls(document: DocumentIdentifier, find_query: String) -> E
     }
 }
 
+/// The first target inside the displayed source. A source without a target gets none, so
+/// a source that the person picks stays. A link that names no source opens the first target.
 fn initial_match_index(targets: &[DocumentMatchTarget], displayed_source: Option<&DocumentSourceItem>) -> Option<usize> {
-    if let Some(DocumentSourceItem::Text(text)) = displayed_source {
-        if let Some(index) = targets.iter().position(|target|
-            matches!(target, DocumentMatchTarget::Body { extracted_by, .. } if extracted_by == &text.extracted_by)) {
-            return Some(index);
-        }
+    match displayed_source {
+        Some(source) => targets.iter().position(|target| target_in_source(target, source)),
+        None => (!targets.is_empty()).then_some(0),
     }
-    (!targets.is_empty()).then_some(0)
+}
+
+/// Header targets and email parser body targets show in the Email source. Other body
+/// targets show in the text source of their extractor.
+fn target_in_source(target: &DocumentMatchTarget, source: &DocumentSourceItem) -> bool {
+    match (target, source) {
+        (DocumentMatchTarget::Header { .. }, DocumentSourceItem::Email(_)) => true,
+        (DocumentMatchTarget::Body { extracted_by, .. }, DocumentSourceItem::Email(_)) => extracted_by == EMAIL_TEXT_EXTRACTOR,
+        (DocumentMatchTarget::Body { extracted_by, .. }, DocumentSourceItem::Text(text)) => extracted_by == &text.extracted_by,
+        _ => false,
+    }
 }
 
 fn selection_for(target: &DocumentMatchTarget, query: &str) -> TextMatchSelection {
@@ -581,12 +596,55 @@ async fn get_email_document_matches(document: DocumentIdentifier, find_query: St
 mod navigation_tests {
     use super::*;
 
+    fn header() -> DocumentMatchTarget {
+        DocumentMatchTarget::Header { field: "subject".into(), occurrence: 0, start_char: 0, end_char: 6 }
+    }
+
+    fn body(extracted_by: &str) -> DocumentMatchTarget {
+        DocumentMatchTarget::Body { extracted_by: extracted_by.into(), page_id: 1, ordinal: 0 }
+    }
+
+    fn email_source() -> DocumentSourceItem {
+        DocumentSourceItem::Email(DocumentEmailSourceItem {
+            subject: String::new(), addresses: String::new(), date_sent: String::new(), raw_headers_json: String::new(),
+            min_page: 1, max_page: 1, has_body: true,
+        })
+    }
+
+    fn text_source(extracted_by: &str) -> DocumentSourceItem {
+        DocumentSourceItem::Text(DocumentTextSourceItem { extracted_by: extracted_by.into(), min_page: 1, max_page: 1 })
+    }
+
     #[test]
-    fn a_text_source_without_body_hits_selects_the_available_header() {
-        let targets = vec![DocumentMatchTarget::Header { field: "subject".into(), occurrence: 0, start_char: 0, end_char: 6 }];
-        let source = DocumentSourceItem::Text(DocumentTextSourceItem { extracted_by: "raw_text".into(), min_page: 1, max_page: 1 });
-        assert_eq!(initial_match_index(&targets, Some(&source)), Some(0));
-        assert_eq!(initial_match_index(&[], Some(&source)), None);
+    fn the_email_source_selects_its_first_header_target() {
+        let targets = vec![header(), body(EMAIL_TEXT_EXTRACTOR), body("raw_text")];
+        assert_eq!(initial_match_index(&targets, Some(&email_source())), Some(0));
+    }
+
+    #[test]
+    fn the_email_source_selects_an_email_body_target_after_other_sources() {
+        let targets = vec![body("raw_text"), body(EMAIL_TEXT_EXTRACTOR)];
+        assert_eq!(initial_match_index(&targets, Some(&email_source())), Some(1));
+    }
+
+    #[test]
+    fn a_text_source_selects_the_targets_of_its_extractor() {
+        let targets = vec![header(), body(EMAIL_TEXT_EXTRACTOR), body("raw_text")];
+        assert_eq!(initial_match_index(&targets, Some(&text_source("raw_text"))), Some(2));
+    }
+
+    #[test]
+    fn a_source_without_targets_selects_nothing() {
+        let targets = vec![header(), body(EMAIL_TEXT_EXTRACTOR)];
+        assert_eq!(initial_match_index(&targets, Some(&text_source("raw_text"))), None);
+        assert_eq!(initial_match_index(&[body("raw_text")], Some(&email_source())), None);
+        assert_eq!(initial_match_index(&[], Some(&email_source())), None);
+    }
+
+    #[test]
+    fn a_link_without_a_source_selects_the_first_document_target() {
+        assert_eq!(initial_match_index(&[body("raw_text"), header()], None), Some(0));
+        assert_eq!(initial_match_index(&[], None), None);
     }
 
     #[test]
