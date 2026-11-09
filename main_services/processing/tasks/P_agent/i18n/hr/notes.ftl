@@ -1,18 +1,6 @@
 # Translation of en/notes.ftl. Change it together with the English catalog.
 
-note-discovery-l2 = Zadnja dva pretraživanja nisu pronašla novi izvor. Sada pročitaj najbolje stranice rezultata: stavi do 6 njihovih URL-ova u jedan poziv read_page, u njegov popis `urls`. Ponovno traži samo drugim pitanjem.
-note-discovery-l3-web = Odgovor si dao prije čitanja ijedne stranice izvora. Pozovi read_page jednom s URL-ovima stranica koje potkrepljuju tvoje stavke, do 6 u njegovu popisu `urls`. Zatim ponovno napiši odgovor s izvorima koji ga potkrepljuju.
-note-discovery-l3-documents = Odgovor si dao prije čitanja ijednog dokumenta. Pročitaj dokumente koji potkrepljuju tvoje stavke pomoću read_documents, s više hasheva datoteka u jednom pozivu. Zatim ponovno napiši odgovor s izvorima koji ga potkrepljuju.
 note-discovery-l4 = Sada pročitaj stranice rezultata koje mogu odgovoriti na zahtjev: stavi do 6 njihovih URL-ova u jedan poziv read_page, u njegov popis `urls`. Jedan poziv čita sve stranice istodobno.
-note-capture-empty = Snimka stranice { $urls } ne sadrži tekst članka. Pročitaj drugi izvor. Ne citiraj ovu stranicu.
-note-web-tools-absent = Ovaj krug nema web alate, pa ne može čitati javne web stranice. Koristi odabrane zbirke i navedi koji dio zahtjeva one ne pokrivaju.
-note-sources-documents = Prvo pretraži dopuštene zbirke dokumenata. Pročitaj njihove relevantne dokumente.
-note-sources-documents-before-web = Prvo pretraži dopuštene zbirke dokumenata. Pročitaj njihove relevantne dokumente. Pročitaj te dokumente prije korištenja weba.
-note-absent-collection = Nijedna dopuštena zbirka ne zove se { $name }. Dopuštene zbirke su: { $collections }.
-note-absent-name = Odabrane zbirke nemaju indeksirano podudaranje za { $name }.
-note-absent-close-forms = Indeksirani bliski oblici: { $forms }. Ne upotrebljavaj blizak oblik kao traženi naziv. Kad pretražiš blizak oblik, u odgovoru ga navedi kao drugačiji pravopis.
-note-absent-close-form = { $form } (dokumenata: { $count })
-note-absent-web = Web alati ovog kruga mogu pretražiti naziv.
 note-progress-level = Razina napretka pretrage { $level }.
 note-progress-searches = Već izvedene pretrage:
 note-progress-search = { $name } { $args }: stavki: { $items }, podudaranja ključnih riječi: { $matches }.
@@ -31,9 +19,6 @@ note-progress-step-read-hits = Pročitaj 1 do 3 najbolja pogotka pomoću { $tool
 note-progress-step-web-search = Pretraži web pomoću web_search i pročitaj najbolje stranice rezultata.
 note-progress-step-page-find = Pretraži sačuvani tekst duge stranice pomoću read_page i find.
 note-progress-step-page-retry = Pročitaj drugu adresu rezultata ili arhiviranu kopiju neuspjele stranice.
-note-advice-stuck = Provjera razgovora procjenjuje da nedavne pretrage ponavljaju svoje rezultate. Vještina no_results opisuje druge oblike pretrage.
-note-advice-absent = Provjera razgovora procjenjuje da rezultati ne sadrže ono što zadatak traži. Navedi pretraženo područje prije nego što prijaviš odsutnost.
-note-advice-completion = Provjera razgovora procjenjuje da rezultati mogu odgovoriti na zadatak. Prije odgovora usporedi svaki traženi dio s izvorima koje si pročitao.
 note-progress-ended = Pokretanje je završilo nakon ponovljenih pretraga bez napretka.
 note-progress-ended-none = Nije pronađen nijedan izvor s podudaranjem ključnih riječi.
 note-progress-ended-some = Pretrage su pronašle izvore s podudaranjem ključnih riječi: { $count }. Agent nije dovršio svoj odgovor.

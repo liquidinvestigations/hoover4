@@ -1,75 +1,44 @@
-"""The endpoint of each model name, and the catalog's view of the quality endpoint."""
+"""The endpoint of the model server, and the catalog's view of it."""
 
 from tasks import llm_catalog
-from tasks.llm_endpoints import QUALITY_PLACEHOLDER_KEY, endpoint_for
-
-QUALITY = "lan/coder-35b"
+from tasks.llm_endpoints import chat_model, endpoint
 
 
-def configure(monkeypatch, quality=True):
+def configure(monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "http://gpu.invalid:21960/v1/")
-    monkeypatch.setenv("LLM_MODEL", "dgemma")
+    monkeypatch.setenv("LLM_MODEL", "qwen3.8-flash-next")
     monkeypatch.setenv("LLM_API_KEY", "base-key")
     monkeypatch.setenv("LLM_PROVIDER_NAME", "selfhosted")
-    if quality:
-        monkeypatch.setenv("LLM_QUALITY_BASE_URL", "http://10.0.0.8:12008/v1")
-        monkeypatch.setenv("LLM_QUALITY_MODEL", QUALITY)
-    else:
-        monkeypatch.delenv("LLM_QUALITY_BASE_URL", raising=False)
-        monkeypatch.delenv("LLM_QUALITY_MODEL", raising=False)
 
 
-def test_the_quality_model_goes_to_the_quality_endpoint(monkeypatch):
+def test_every_call_goes_to_the_one_endpoint_and_model(monkeypatch):
     configure(monkeypatch)
-    endpoint = endpoint_for(QUALITY)
-    assert endpoint.base_url == "http://10.0.0.8:12008/v1"
-    assert endpoint.api_key == "base-key"
-    assert endpoint.label == "10.0.0.8:12008"
+    assert chat_model() == "qwen3.8-flash-next"
+    found = endpoint()
+    assert (found.base_url, found.api_key, found.label) == (
+        "http://gpu.invalid:21960/v1", "base-key", "selfhosted")
 
 
-def test_a_provider_without_a_key_sends_the_placeholder(monkeypatch):
+def test_an_endpoint_without_a_name_is_labelled_by_its_host(monkeypatch):
     configure(monkeypatch)
-    monkeypatch.delenv("LLM_API_KEY")
-    monkeypatch.delenv("LLM_API_KEY_FILE", raising=False)
-    assert endpoint_for(QUALITY).api_key == QUALITY_PLACEHOLDER_KEY
+    monkeypatch.delenv("LLM_PROVIDER_NAME")
+    assert endpoint().label == "gpu.invalid:21960"
 
 
-def test_every_other_model_goes_to_the_base_endpoint(monkeypatch):
-    configure(monkeypatch)
-    for model in ("dgemma", "", "other"):
-        endpoint = endpoint_for(model)
-        assert endpoint.base_url == "http://gpu.invalid:21960/v1"
-        assert endpoint.api_key == "base-key"
-        assert endpoint.label == "selfhosted"
-
-
-def test_without_a_quality_endpoint_the_quality_name_is_an_ordinary_model(monkeypatch):
-    configure(monkeypatch, quality=False)
-    assert endpoint_for(QUALITY).base_url == "http://gpu.invalid:21960/v1"
-
-
-def test_the_catalog_lists_the_quality_endpoint_as_a_provider(monkeypatch):
+def test_the_catalog_lists_one_provider(monkeypatch):
     configure(monkeypatch)
     monkeypatch.delenv("LLM_API_KEY_FILE", raising=False)
     providers = llm_catalog.providers_from_env()
-    assert [p.base_url for p in providers] == ["http://gpu.invalid:21960/v1", "http://10.0.0.8:12008/v1"]
-    assert providers[1].name == "10.0.0.8:12008"
-
-
-def test_the_catalog_names_the_base_endpoint_selfhosted(monkeypatch):
-    configure(monkeypatch)
-    monkeypatch.delenv("LLM_API_KEY_FILE", raising=False)
-    assert llm_catalog.providers_from_env()[0].name == "selfhosted"
+    assert [(p.name, p.base_url) for p in providers] == [("selfhosted", "http://gpu.invalid:21960/v1")]
 
 
 def test_disabled_model_servers_give_no_endpoint_and_no_catalog_provider(monkeypatch):
     # deploy.py renders every LLM_* endpoint empty when [ai_services] llm_enabled is false.
-    for name in ("LLM_BASE_URL", "LLM_MODEL", "LLM_PROVIDER_NAME", "LLM_QUALITY_BASE_URL",
-                 "LLM_QUALITY_MODEL"):
+    for name in ("LLM_BASE_URL", "LLM_MODEL", "LLM_PROVIDER_NAME"):
         monkeypatch.setenv(name, "")
     assert llm_catalog.providers_from_env() == []
-    endpoint = endpoint_for("ornith")
-    assert endpoint.base_url == "" and endpoint.label == "unknown"
+    assert chat_model() == ""
+    assert endpoint().base_url == "" and endpoint().label == "unknown"
 
 
 def test_a_llama_cpp_listing_states_its_window_inside_meta():

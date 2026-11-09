@@ -7,8 +7,7 @@ One overlay per service in the standalone GPU tier. [deploy.py](../../deploy.py)
 |---|---|
 | [ai-server.yaml](ai-server.yaml) | embeddings, reranking and NER |
 | [easyocr.yaml](easyocr.yaml) | GPU OCR |
-| [vllm.yaml](vllm.yaml) | dgemma and its structured server |
-| [vllm-chat.yaml](vllm-chat.yaml) | ornith, which starts after `hoover4-vllm` is healthy |
+| [vllm.yaml](vllm.yaml) | the language model, Qwen Flash on vLLM |
 
 Relative paths in these files resolve against the **project directory** (the first compose
 file's directory) not against the overlay's own location. Render the merged configuration

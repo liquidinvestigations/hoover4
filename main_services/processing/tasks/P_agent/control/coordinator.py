@@ -24,7 +24,6 @@ from typing import Any, Optional
 
 from tasks.P_agent.language import turn_language
 from tasks.P_agent.control import definitions, facts as F, registry, task_state as TS
-from tasks.P_agent.control.classifier import Classifier, Deadline
 from tasks.P_agent.control.model import (
     Action, CheckResult, ControlEvent, PolicyContext, PolicyResult, action_id, check_dict,
     digest, freeze, plain,
@@ -99,30 +98,26 @@ def counters(messages) -> dict:
 # ------------------------------------------------------------------------------ services
 
 
-class Services:
-    """`PolicyServices` of one event: classifier requests and stored message texts."""
+class Deadline:
+    """The end of one hook's time, on a clock that tests can replace."""
 
-    def __init__(self, classifier: Classifier, messages, row=None, params=None, trace=None):
-        self.classifier = classifier
+    def __init__(self, seconds: float, clock=time.monotonic, cancelled=lambda: False):
+        self._clock = clock
+        self._end = clock() + max(0.0, seconds)
+        self.cancelled = cancelled
+
+    def remaining(self) -> float:
+        return max(0.0, self._end - self._clock())
+
+
+class Services:
+    """`PolicyServices` of one event: stored message texts and the hook deadline."""
+
+    def __init__(self, deadline: Deadline, messages, row=None, params=None):
+        self.deadline = deadline
         self._messages = messages
         self._by_idx = {m.idx: m for m in messages}
         self.row, self.params = row, params
-        self.trace = trace or {}
-
-    def for_rule(self, rule):
-        return Services(self.classifier, self._messages, self.row, self.params,
-                        {"rule_id": rule.id, "handler": rule.handler.name})
-
-    async def ask(self, state, questions, instructions=""):
-        return await self.classifier.ask(state, questions, instructions, trace=self.trace)
-
-    async def complete(self, prompt, max_tokens=300):
-        return await self.classifier.complete(prompt, max_tokens, trace=self.trace)
-
-    async def suggestions(self, names, kind="pages", collections=()):
-        return await asyncio.to_thread(self._backend, "search/suggestions", {
-            "collectionname": list(collections or (self.params.allowed_collections if self.params else [])),
-            "words": list(names), "kind": kind})
 
     def _backend(self, path, body):
         import requests
@@ -147,7 +142,7 @@ class Services:
         return message.content if message is not None else ""
 
     def remaining(self) -> float:
-        return self.classifier.deadline.remaining()
+        return self.deadline.remaining()
 
 
 async def evaluate(definition, event: ControlEvent, context: PolicyContext,
@@ -167,7 +162,7 @@ async def evaluate(definition, event: ControlEvent, context: PolicyContext,
             return None, {"status": "error", "error": "the handler code changed after the turn started"}
         try:
             result = await handlers[rule.handler.name].handler.evaluate(
-                event, context, rule.parameters, services.for_rule(rule) if hasattr(services, "for_rule") else services)
+                event, context, rule.parameters, services)
             if not isinstance(result, PolicyResult):
                 raise TypeError("the handler returned no PolicyResult")
             return result, {"status": "ok", "duration_ms": int((time.monotonic() - started) * 1000)}
@@ -253,7 +248,7 @@ def _pin(row, messages, params) -> dict:
                                            "catalog_revision")}
     capabilities = capabilities_of(assets.get("callable_tools") or [])
     definition = definitions.resolve(profile_of(params.internet_tools, capabilities))
-    services = Services(Classifier(Deadline(2)), messages, row, params)
+    services = Services(Deadline(2), messages, row, params)
     listing = services._backend("collections/list", {}) if params.allowed_collections else {"collections": []}
     collections = [c["collectionname"] for c in listing.get("collections", []) if c.get("collectionname")]
     conversation, earlier = _conversation(row)
@@ -305,9 +300,7 @@ def _conversation(row) -> tuple[list[dict], dict]:
         if position < 2:
             answer = next((m.content for m in reversed(previous)
                            if m.role == "ai" and m.content and not m.tool_calls), "")
-            preparation = _turn_facts(previous).get("preparation") or {}
-            out.insert(0, {"request": (previous[0].content or "")[:2000], "answer": answer[:3000],
-                           "sources": (preparation.get("sources") or {}).get("choice")})
+            out.insert(0, {"request": (previous[0].content or "")[:2000], "answer": answer[:3000]})
         opening = previous[0]
         delivered = [{"name": r["name"], "version": r["version"]}
                      for r in delivered_reports(prepare_thread(previous))]
@@ -454,7 +447,6 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         draft=row.result or "",
         capabilities=frozenset(control.get("capabilities") or capabilities_of(assets.get("callable_tools") or [])),
         collections=tuple(control.get("collections", params.allowed_collections) or []),
-        recent_steps=F.render_steps(messages),
         run_kind="board" if getattr(params, "board_turn", False) else "chat",
         task=freeze(F.task_of(messages[0], control)),
         task_state=freeze(F.task_state_of(messages[0], control)),
@@ -462,7 +454,7 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
     return context
 
 
-def _decide(row, params, messages, control, anchor, samples) -> dict:
+def _decide(row, params, messages, control, anchor) -> dict:
     """Evaluate the rules of the event and return its decision, positions reserved."""
     from tasks.P_agent.steps import _raise_if_cancelled, _step_event
 
@@ -475,12 +467,9 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
     deadline = Deadline(min(limit, params.deadline_seconds),
                         cancelled=lambda: _cancelled())
     context = _context(row, params, messages, control, event, anchor)
-    classifier = Classifier(deadline)
-    samples.update(row=row, event={"id": event.id, "hook": event.hook},
-                   definition_revision=definition.revision, events=classifier.events)
     started = time.monotonic()
     with _step_event(row, "control", params.hook, mode=definition.id) as step:
-        evaluated = asyncio.run(evaluate(definition, event, context, Services(classifier, messages, row, params),
+        evaluated = asyncio.run(evaluate(definition, event, context, Services(deadline, messages, row, params),
                                          deadline))
         step.ok = all(record.get("status") in ("ok", "skipped") for _, _, record in evaluated)
         step.error_class = "" if step.ok else "rule_error"
@@ -499,7 +488,7 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
                   for rule, _, record in evaluated],
         "task_digest": digest(plain(context.task)),
         "task_state_digest": digest(plain(context.task_state)),
-        "checks": checks, "facts": facts, "classifier": classifier.log,
+        "checks": checks, "facts": facts,
         "evaluated_ms": int((time.monotonic() - started) * 1000),
         "status": "prepared", "round": False, "rows": {"ai_idx": None, "calls": [], "note": None},
         "actions": [],
@@ -541,39 +530,6 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
         seq += 1
     decision["actions"] = kept + ([ending] if ending else [])
     decision["next_seq"] = seq
-    events = []
-    attributed = set()
-    rules = {r.id: r for r in definition.rules}
-    for sample in sorted(classifier.events, key=lambda e: e["sequence"]):
-        item = dict(sample)
-        rid = item.get("rule_id", "")
-        rule = rules.get(rid)
-        positive = 0
-        scored = 0
-        for qid, value in zip(item["question_ids"], item["answer_values"]):
-            if value is None:
-                continue
-            scored += 1
-            parameter = rule.parameters if rule else {}
-            threshold = 0.5
-            if qid.startswith("skill_"):
-                threshold = (parameter.get("skills", {}).get(qid[6:-1]) or {}).get("threshold", 0.9)
-            if rule and rule.handler.name == "progress":
-                from tasks.P_agent.control.handlers.progress import SIGNALS
-                threshold = next((spec[1] for spec in SIGNALS.values() if spec[0] == qid), threshold)
-            if rule and rule.handler.name == "capture_check":
-                threshold = parameter.get({"facts=": "facts_below", "boilerplate=": "boilerplate_above",
-                                           "not_found=": "not_found_above"}.get(qid, ""), threshold)
-            if "supported" in qid:
-                threshold = (parameter.get("supported") or {}).get("threshold", 0.05)
-            if qid.startswith("req"):
-                threshold = (parameter.get("requirements") or {}).get("threshold", 0.05)
-            positive += int(value >= threshold)
-        item["positive_answers"], item["scored_answers"] = positive, scored
-        item["actions"] = sum(a["rule_id"] == rid for a in decision["actions"]) if rid not in attributed else 0
-        attributed.add(rid)
-        events.append(item)
-    decision["classifier_events"] = events
     return decision
 
 
@@ -581,20 +537,6 @@ def _cancelled() -> bool:
     from temporalio import activity
 
     return activity.in_activity() and activity.is_cancelled()
-
-
-def settle_output_requirements(row, messages, decision):
-    """Apply a stored preparation result once before policy actions write their rows."""
-    from tasks.P_agent.control import output_requirements
-    opening = messages[0]
-    mine = control_of(opening)
-    preparation = (decision.get("facts") or {}).get("preparation") or {}
-    recognized = preparation.get("output_requirements")
-    if recognized and not mine.get("output_requirements_applied"):
-        mine["task_state"] = output_requirements.apply(mine["task_state"], recognized)
-        mine["task"] = TS.text_task(mine["task_state"])
-        mine["output_requirements_applied"] = True
-        write_control(row, opening, mine)
 
 
 def _apply(row, messages, decision, params) -> None:
@@ -636,21 +578,6 @@ def _apply(row, messages, decision, params) -> None:
 
 def run_hook(params):
     """The body of the `control_event` activity. See the module docstring."""
-    from tasks.P_agent.control.classifier import write_events
-
-    samples = {}
-    try:
-        return _run_hook(params, samples)
-    finally:
-        if samples and not samples.get("written"):
-            write_events(samples["row"], {"event": samples["event"],
-                         "definition_revision": samples["definition_revision"],
-                         "classifier_events": [{**event, "actions": 0, "positive_answers": 0,
-                                                "scored_answers": 0} for event in samples["events"]]})
-
-
-def _run_hook(params, samples):
-    """Persist the decision and apply it while retaining the request samples."""
     from database import agent_runs
     from tasks.P_agent.activities import CallRef
     from tasks.P_agent.steps import _raise_if_cancelled, _read_row, _read_thread
@@ -678,7 +605,7 @@ def _run_hook(params, samples):
         return ControlOutcome(next_seq=row.next_seq)
     decision = (control_of(anchor).get("decisions") or {}).get(params.hook)
     if decision is None:
-        decision = _decide(row, params, messages, control, anchor, samples)
+        decision = _decide(row, params, messages, control, anchor)
         _raise_if_cancelled()
         # Read again: a late attempt never replaces a decision that another attempt stored.
         messages = _read_thread(row)
@@ -695,14 +622,8 @@ def _run_hook(params, samples):
     row = _read_row(params)
     if agent_runs.is_terminal(row):
         return ControlOutcome(closed=True, next_seq=row.next_seq)
-    if params.hook == "turn_started":
-        settle_output_requirements(row, messages, decision)
     _apply(row, messages, decision, params)
     if decision.get("status") != "applied":
-        from tasks.P_agent.control.classifier import write_events
-
-        write_events(row, decision)
-        samples["written"] = True
         mine = control_of(_message(_read_thread(row), anchor.idx))
         mine.setdefault("decisions", {})[params.hook] = {**decision, "status": "applied"}
         write_control(row, _message(_read_thread(row), anchor.idx), mine)

@@ -2,7 +2,7 @@
 omissions (`tasks.P_agent.control.task_state`), and the method advice that reads it.
 
 The cases are the reproduced defects of the worker probes and the output table of the
-change design. No test makes a model or classifier request.
+change design. No test makes a model request.
 """
 
 import asyncio
@@ -13,7 +13,7 @@ import pytest
 from tasks.P_agent.control import facts as F
 from tasks.P_agent.control import task_state as TS
 from tasks.P_agent.control.facts import ResultFact
-from tasks.P_agent.control.model import ControlEvent, PolicyContext, freeze, plain
+from tasks.P_agent.control.model import ControlEvent, PolicyContext, freeze
 
 
 def _state(*requests, base=None):
@@ -192,8 +192,7 @@ def test_an_unrecognized_message_keeps_the_objective_and_its_outputs_unresolved(
     for delivered in ([], ["b.md", "c.md", "report.md", "notes.md"]):
         out = TS.delivery(state, delivered)
         assert (out["state"], out["evidence"]) == ("unknown", False)
-    text, _ = F.task_text(task, 6000)
-    assert text.startswith(f"objective: {second}") and f"earlier_objective: {first}" in text
+    assert task["earlier_objective"]["text"] == first
     # A later continuation keeps the record unresolved.
     assert TS.derive("Continue.", 3, state)["interpretation_state"] == "unresolved"
 
@@ -256,13 +255,6 @@ def test_long_tasks_keep_every_rule_and_name_their_omissions():
     assert TS.delivery(huge, [])["state"] == "unknown"
 
 
-def test_the_text_task_projection_names_the_characters_it_omits():
-    state = _state("Use only the testdata collection. " + "Find the lease. " * 400)
-    text, omitted = F.task_text(TS.text_task(state), 600)
-    assert omitted > 0 and f"[{omitted} characters of the task are omitted here]" in text
-    assert text.startswith("objective: Use only the testdata collection.")
-
-
 def test_reconstruction_of_legacy_turns_and_its_incomplete_state():
     legacy = [{"request": "Use only the enron collection. Write two memos on the loans.", "turn": 1,
                "delivered": [{"name": "loan-1.md", "version": 1}]},
@@ -306,11 +298,9 @@ def _fact(name, status="ok", args=None, **fields):
 
 
 def _context(request, results=(), tools=("search_collections", "search_passages", "web_search", "read_page"),
-             state=None, choice=None, capabilities=("documents", "web")):
+             state=None, capabilities=("documents", "web")):
     state = state if state is not None else _state(request)
     turn = {"progress": {"level": 0, "units": 2}}
-    if choice:
-        turn["preparation"] = {"sources": {"choice": choice}}
     return PolicyContext(run_id="r", thread_id="r", profile="full_research:web", definition_revision="t",
                          request=request, callable_tools=frozenset(tools), listed_skills=freeze({}),
                          visible_skills=frozenset(), results=tuple(results), batch=tuple(results[-1:]),
@@ -319,35 +309,23 @@ def _context(request, results=(), tools=("search_collections", "search_passages"
                          task=freeze(TS.text_task(state)), task_state=freeze(state))
 
 
-class _Signals:
-    def __init__(self, score):
-        self.score = score
-        self.states = []
-
-    async def ask(self, state, questions, instructions=""):
-        from tasks.P_agent.control.model import ClassifierResult
-        self.states.append(state)
-        return ClassifierResult("ok", freeze({q: {"noul": self.score} for q in questions}))
-
-
 def _level_note(context, parameters):
     from tasks.P_agent.control.handlers.progress import Handler
     result = asyncio.run(Handler().evaluate(ControlEvent("batch", "tool_batch_completed", 1, "model"),
-                                            context, parameters, _Signals(0.0)))
+                                            context, parameters, object()))
     return next(a.arguments["text"] for a in result.actions if a.kind == "append_note")
 
 
 WEB_PDF = "Read https://example.org/report.pdf and say whether it names Ortwin Pell."
 
 
-@pytest.mark.parametrize("signals", [False, True])
-def test_a_web_pdf_task_gets_no_collection_step(signals):
+def test_a_web_pdf_task_gets_no_collection_step():
     """The captured failure: a turn that read one web PDF got collection-search steps."""
     page = _fact("read_page", args={"urls": ["https://example.org/report.pdf"]}, continuation=True,
                  reads=(("https://example.org/report.pdf", "ok"),))
     stalled = _fact("read_page", args={"urls": ["https://example.org/report.pdf"], "offset": 9000},
                     status="error", call_id="c2")
-    note = _level_note(_context(WEB_PDF, (page, stalled)), {"signals": signals})
+    note = _level_note(_context(WEB_PDF, (page, stalled)), {})
     assert "search_collections" not in note and "search_passages" not in note
     assert "find" in note
 
@@ -355,7 +333,7 @@ def test_a_web_pdf_task_gets_no_collection_step(signals):
 def test_a_collection_only_task_gets_no_web_step():
     request = "Use only the testdata collection. Who approved the transfer?"
     search = _fact("search_collections", args={"query": "transfer"}, item_count=0)
-    note = _level_note(_context(request, (search,), choice="both"), {"signals": False})
+    note = _level_note(_context(request, (search,)), {})
     assert "web" not in note.split("Search steps still available:")[1].lower()
     assert "search_collections" in note
 
@@ -364,19 +342,19 @@ def test_a_mixed_task_gets_the_steps_of_both_methods():
     request = "Compare the stored contract with the public filing on the web."
     results = (_fact("search_collections", args={"query": "contract"}, item_count=0),
                _fact("read_page", args={"urls": ["https://example.org"]}, status="error", call_id="c2"))
-    note = _level_note(_context(request, results), {"signals": False})
+    note = _level_note(_context(request, results), {})
     assert "search_passages" in note and "web_search" in note
 
 
 def test_a_turn_without_method_evidence_gets_no_step_list():
-    note = _level_note(_context("What is 17 times 3?", (_fact("update_plan"),)), {"signals": False})
+    note = _level_note(_context("What is 17 times 3?", (_fact("update_plan"),)), {})
     assert "Search steps still available" not in note and "search steps are complete" not in note
 
 
 def test_a_forbidden_web_gets_no_web_step_even_after_a_web_search():
     request = "Do not use the web. Who signed the lease?"
     results = (_fact("web_search", args={"queries": ["lease"]}, item_count=0),)
-    note = _level_note(_context(request, results), {"signals": False})
+    note = _level_note(_context(request, results), {})
     steps = note.split("Search steps still available:")[1]
     assert "web" not in steps.lower() and "search_collections" in steps
 
@@ -395,73 +373,22 @@ def test_result_evidence_selects_recovery_skills_without_a_classifier(batch, exp
     assert sorted(a.target_id for a in result.actions) == expected
 
 
-class _Prepared(_Signals):
-    """A preparation classifier that answers the source choice and every other question."""
-
-    def __init__(self):
-        super().__init__(0.0)
-
-    async def ask(self, state, questions, instructions=""):
-        from tasks.P_agent.control.model import ClassifierResult
-        self.states.append(state)
-        answers = {q: {"noul": 0.0} for q in questions}
-        if "sources=" in questions:
-            answers["sources="] = {"choice": "documents", "probabilities": {"documents": 1.0}}
-        return ClassifierResult("ok", freeze(answers))
-
-
-@pytest.mark.parametrize("classifier", [False, True])
-def test_the_report_skill_follows_the_task_record_in_both_definitions(classifier):
+def test_the_report_skill_follows_the_task_record():
     from tasks.P_agent.control.handlers.preparation import Handler
 
     first = _state("Use only the testdata collection. Who approved the transfer?")
     amended = TS.derive("Now write the counts in a short report.", 2, first)
     context = replace(_context("Now write the counts in a short report.", state=amended),
                       listed_skills=freeze({"report": {}}))
-    services = _Prepared()
     result = asyncio.run(Handler().evaluate(ControlEvent("start", "turn_started", 0, "runtime"), context,
-                                            {"classifier": classifier, "names": False}, services))
+                                            {}, object()))
     assert "report" in [a.target_id for a in result.actions if a.kind == "load_skill"]
-    if classifier:
-        shown = services.states[0]["request"]
-        assert shown.startswith("objective: Use only the testdata collection. Who approved the transfer?")
-        assert "amendments:\n- Now write the counts in a short report." in shown
     inputs = replace(context, task_state=freeze(_state("Write summary.md from input.csv")))
     assert [a.target_id for a in asyncio.run(Handler().evaluate(
-        ControlEvent("start", "turn_started", 0, "runtime"), inputs, {"classifier": False}, object())).actions] == ["report"]
+        ControlEvent("start", "turn_started", 0, "runtime"), inputs, {}, object())).actions] == ["report"]
     none = replace(context, task_state=freeze(_state("Do not write a report. Answer in chat.")))
     assert asyncio.run(Handler().evaluate(ControlEvent("start", "turn_started", 0, "runtime"), none,
-                                          {"classifier": False}, object())).actions == ()
-
-
-def test_the_progress_input_shows_the_amended_task_without_superseded_rules():
-    from tasks.P_agent.control.handlers.progress import Handler
-    state = TS.derive("Continue.", 3, TS.derive("You may now use the web. Write a report.", 2,
-                                               _state("Use only the selected collections. Do not use the web.")))
-    signals = _Signals(0.0)
-    search = _fact("web_search", args={"queries": ["x"]}, item_count=0)
-    asyncio.run(Handler().evaluate(ControlEvent("batch", "tool_batch_completed", 1, "model"),
-                                   _context("Continue.", (search,), state=state), {}, signals))
-    shown = signals.states[0]["request"]
-    assert "Do not use the web." not in shown and "allowed_sources:\n- You may now use the web." in shown
-    assert "amendments:\n- You may now use the web. Write a report.\n- Continue." in shown
-
-
-def test_one_written_file_is_no_evidence_for_a_three_report_deliverable():
-    from tasks.P_agent.control.handlers.progress import COMPLETION_ADVICE, Handler, delivery
-    state = TS.from_structured({"objective": {"text": "Compare the bids.", "source": "intent"},
-                                "deliverables": [{"text": "Three reports", "source": "intent"}]})
-    one = _fact("write_file", file_version=("first.md", 1, True), call_id="w1")
-    search = _fact("search_collections", args={"query": "x"}, item_count=0)
-    assert delivery(state, [one])["state"] == "incomplete"
-    unchanged = _fact("write_file", file_version=("first.md", 1, False), call_id="w2")
-    assert delivery(state, [one, unchanged])["delivered"] == ["first.md"]
-    context = replace(_context("Compare the bids.", (one, search), state=state))
-    result = asyncio.run(Handler().evaluate(ControlEvent("batch", "tool_batch_completed", 1, "model"),
-                                            context, {}, _Signals(0.95)))
-    ledger = plain(result.facts)
-    assert ledger["delivery"]["state"] == "incomplete" and ledger["delivery_evidence"] is False
-    assert all(COMPLETION_ADVICE not in a.arguments.get("text", "") for a in result.actions)
+                                          {}, object())).actions == ()
 
 
 # ----------------------------------------------- B2: new questions after a task with a file
@@ -488,13 +415,12 @@ def _after_report(question):
 
 @pytest.mark.parametrize("question", NEW_QUESTIONS)
 def test_an_ordinary_new_question_after_a_report_task_is_a_new_objective(question):
-    """The verification probe: 7 of these 10 questions were unresolved, the classifier read
-    the report task first, and the report skill loaded for a plain question."""
+    """The verification probe: 7 of these 10 questions were unresolved, and the report skill
+    loaded for a plain question."""
     from tasks.P_agent.control.handlers.preparation import asks_for_file
     state = _after_report(question)
     assert (state["request"]["kind"], state["interpretation_state"]) == ("new", "resolved")
-    text, omitted = F.task_text(TS.text_task(state), 6000)
-    assert text.startswith(f"objective: {question}") and omitted == 0
+    assert TS.text_task(state)["objective"]["text"] == question
     assert asks_for_file(TS.text_task(state), state) is False
     if "web" in question:
         # An explicit web request supersedes the restriction of the report task (F1).
@@ -510,9 +436,9 @@ def test_a_message_that_refers_to_the_earlier_work_stays_unresolved(message):
     from tasks.P_agent.control.handlers.preparation import asks_for_file
     state = _after_report(message)
     assert state["interpretation_state"] == "unresolved"
-    text, _ = F.task_text(TS.text_task(state), 6000)
-    assert text.startswith(f"objective: {message}")
-    assert "earlier_objective: Write a short report on the 2001 Enron energy trades" in text
+    task = TS.text_task(state)
+    assert task["objective"]["text"] == message
+    assert task["earlier_objective"]["text"].startswith("Write a short report on the 2001 Enron energy trades")
     # Only an output clause of the message itself loads the report skill.
     assert asks_for_file(TS.text_task(state), state) is ("notes.md" in message)
     assert TS.delivery(state, ["report.md", "notes.md"])["evidence"] is False
@@ -529,32 +455,11 @@ def test_an_unresolved_message_with_its_own_output_clause_loads_the_report_skill
     assert TS.proactive_file(legacy) is True
 
 
-LONG = "Summarize this pasted contract and write the result to summary.md. " + "The parties agree to the terms below. " * 180
-
-
-@pytest.mark.parametrize("second,kind", [("Which clause of it mentions the governing law?", "unresolved"),
-                                         ("Now write it into notes.md as well.", "unresolved"),
-                                         ("Continue.", "continuation"),
-                                         ("Now save it as summary.md.", "amendment")])
-def test_the_classifier_text_keeps_the_current_message_within_the_limit(second, kind):
-    state = TS.derive(second, 2, TS.derive(LONG, 1, None))
-    assert len(LONG) > 6000 and state["request"]["kind"] == kind
-    text, omitted = F.task_text(TS.text_task(state), 6000)
-    assert second in text and omitted > 0
-    assert f"[{omitted} characters of the task are omitted here]" in text
-    assert len(text) <= 6000 + len(f"\n[{omitted} characters of the task are omitted here]")
-    if kind == "unresolved":
-        assert text.startswith(f"objective: {second}")
-    else:
-        assert text.startswith("objective: Summarize this pasted contract")
-        assert text.endswith(f"newest amendment: {second}")
-
-
 # ---------------------------------------------- F1: a later request for a forbidden source
 
 def test_a_later_web_request_supersedes_an_earlier_web_restriction():
     """The verification probe: `Do not use the web.` stayed active after `Search the web
-    for ...`, so the scope forbade the web and the classifier read both."""
+    for ...`, so the scope forbade the web."""
     question = "Search the web for the date of the Enron bankruptcy filing."
     state = _after_report(question)
     [old, new] = state["source_rules"]
@@ -563,8 +468,8 @@ def test_a_later_web_request_supersedes_an_earlier_web_restriction():
     assert (new["start"], new["end"]) == (0, len(question))
     assert TS.source_scope(state)["web"] == "allowed"
     assert state["interpretation_state"] == "resolved"
-    text, _ = F.task_text(TS.text_task(state), 6000)
-    assert text == f"objective: {question}"
+    assert {key for key, value in TS.text_task(state).items() if value} == {"objective"}
+    assert TS.text_task(state)["objective"]["text"] == question
 
 
 @pytest.mark.parametrize("question", ["Who signed the 2001 lease renewal?", "What is the capital of Australia?",
@@ -677,7 +582,7 @@ def test_method_advice_follows_the_web_request():
     question = "Search the web for the date of the Enron bankruptcy filing."
     state = _after_report(question)
     search = _fact("web_search", args={"queries": ["enron bankruptcy"]}, item_count=0)
-    note = _level_note(_context(question, (search,), state=state), {"signals": False})
+    note = _level_note(_context(question, (search,), state=state), {})
     assert "Search steps still available" in note or "search steps are complete" in note
     restricted = _after_report("Who signed the 2001 lease renewal?")
     from tasks.P_agent.control.handlers.progress import methods
@@ -769,10 +674,8 @@ def test_a_collection_search_under_an_exclusive_web_rule_is_unresolved():
 
 @pytest.mark.parametrize("message", ["Écris trois rapports sur les contrats.", "合同について報告書を三つ書いてください。", "请写三份合同报告。"])
 def test_unknown_output_recognition_supplies_no_positive_evidence(message):
-    from tasks.P_agent.control.handlers.progress import delivery
     state = _state(message)
     assert state["objective"]["text"] == message
     assert state["output_spec"]["recognition"]["state"] == "unknown"
     assert TS.delivery(state, ["one.md"])["state"] == "unknown"
-    write = _fact("write_file", file_version=("one.md", 1, True))
-    assert delivery(state, [write])["evidence"] is False
+    assert TS.delivery(state, ["one.md"])["evidence"] is False

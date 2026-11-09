@@ -699,9 +699,9 @@ def summarise_with_images(plan: "CompactionPlan", max_tokens: int) -> str:
 def _summary_request(content: Any, *, model_id: str, max_tokens: int) -> Tuple[Optional[int], str]:
     """Send one request to the compaction model. Return the status, or None when no
     response came, and the text, which is empty on any failure."""
-    from research_agent.endpoints import endpoint_for
+    from research_agent.endpoints import endpoint as llm_endpoint
 
-    endpoint = endpoint_for(summary_model(model_id))
+    endpoint = llm_endpoint()
     base, api_key = endpoint.base_url, endpoint.api_key
     if not base:
         return None, ""

@@ -56,7 +56,7 @@ _IPV4_HOST = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 
 def provider_from_base_url(base_url: Optional[str] = None) -> str:
     """Stable label for the endpoint that served the call. `LLM_PROVIDER_NAME` names the
-    base endpoint. A `base_url` of another endpoint is labelled by its host."""
+    configured endpoint. A `base_url` of another endpoint is labelled by its host."""
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
     if name and not base_url:
         return name

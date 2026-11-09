@@ -211,12 +211,6 @@ def first(items: Iterable, default: Optional[Any] = None) -> Any:
     return next(iter(items), default)
 
 
-#: The task fields of a structured task, in the order that a classifier request shows them.
-#: The objective, the corrections and the amendments come first, so a cut text keeps them.
-TASK_FIELDS = ("objective", "corrections", "amendments", "constraints", "allowed_sources",
-               "deliverables", "earlier_objective", "earlier_amendments", "brief", "goals")
-
-
 def task_of(opening, control: Optional[dict] = None) -> dict:
     """The structured task of a turn: each field with its `text` and its `source`.
 
@@ -224,8 +218,7 @@ def task_of(opening, control: Optional[dict] = None) -> dict:
     built from the stored intent before the long brief is rendered. A chat turn stores its
     text task in the control record of the opening message (`control["task"]`), derived from
     its task record (`task_state.text_task`). An older opening row without either has the
-    request of the person as its objective. A field holds original text only. A classifier
-    answer never becomes a field.
+    request of the person as its objective. A field holds original text only.
     """
     task = opening.usage.get("task") if opening is not None else None
     if not (isinstance(task, dict) and task):
@@ -292,89 +285,3 @@ def chat_task(request: str, turn_seq: int, earlier: Iterable[dict]) -> dict:
 
     base = task_state.from_text_tasks(list(earlier))
     return task_state.text_task(task_state.derive(request or "", turn_seq, base))
-
-
-def task_text(task: dict, limit: int) -> tuple[str, int]:
-    """The text of a structured task for a classifier request, and the characters left out.
-
-    The objective and the corrections come first, so a cut never removes the focused task.
-    A cut text ends with a line that names the count of omitted characters, so the request
-    never shows a cut task as complete. When the task has amendments, the newest one is the
-    current message of the person. A cut then keeps that message whole after the omission
-    line, and the earlier fields are cut first."""
-    from collections.abc import Mapping
-
-    def render(source: dict) -> str:
-        parts = []
-        for key in TASK_FIELDS + tuple(k for k in source if k not in TASK_FIELDS):
-            value = source.get(key)
-            if isinstance(value, Mapping):
-                if value["text"]:
-                    parts.append(f"{key}: {value['text']}")
-            elif isinstance(value, (list, tuple)) and value:
-                parts.append(f"{key}:\n" + "\n".join(f"- {v['text']}" for v in value))
-        return "\n\n".join(parts)
-
-    text = render(task)
-    if len(text) <= limit:
-        return text, 0
-    amendments = task.get("amendments")
-    if not isinstance(amendments, (list, tuple)) or not amendments:
-        omitted = len(text) - limit
-        return text[:limit] + f"\n[{omitted} characters of the task are omitted here]", omitted
-    current = str(amendments[-1]["text"])
-    others = render({**task, "amendments": list(amendments[:-1])})
-    label = "\n\nnewest amendment: "
-    kept = current[:max(0, limit - len(label))]
-    head = others[:max(0, limit - len(label) - len(kept))]
-    omitted = (len(others) - len(head)) + (len(current) - len(kept))
-    return head + f"\n[{omitted} characters of the task are omitted here]" + label + kept, omitted
-
-
-def task_request(context, limit: int) -> str:
-    """The task text of a policy context for a classifier request of at most `limit`
-    characters: the text task (`task_text`) when the context has one, else the request."""
-    if context.task:
-        return task_text(context.task, limit)[0]
-    return (context.request or "")[:limit]
-
-
-def render_steps(messages, limit: int = 5) -> str:
-    """Render recent model replies and their structured result counts for the classifier."""
-    replies = [m for m in messages if m.role == "ai" and origin_of(m) == "model"][-limit:]
-    facts = result_facts(messages)
-    lines = []
-    for number, message in enumerate(replies, 1):
-        calls = ", ".join(f"{c.get('name')}({json.dumps(c.get('args'), ensure_ascii=False)[:180]})"
-                          for c in message.tool_calls)
-        lines.append(f"Step {number}: {message.content[:300]} {calls}")
-        for fact in batch_of(facts, message.idx):
-            lines.append(f"  {fact.name}: status {fact.status}, {fact.item_count} items, "
-                         f"{len(fact.keyword_sources)} keyword-matched sources.")
-            text = next((m.content for m in messages if m.idx == fact.idx), "")
-            lines.append(text[:700])
-    return "\n".join(lines)[-6000:]
-
-
-def justified_absence(context) -> bool:
-    """An explicit absence statement with successful searches and no keyword source.
-
-    A stored absence record also justifies it without a search of the model. A collection
-    record names a collection that the person cannot read. A name record exists only after a
-    successful word count lookup of the selected collections. That lookup found no document
-    for a word of the name, so it is the search of the record. Preparation stores records only
-    for a document source choice, and a keyword source of a later search still defeats the
-    record."""
-    import re
-
-    searches = [f for f in context.results if f.name in ("search_collections", "search_passages", "web_search")
-                and f.status == "ok"]
-    absent = re.search(r"\b(?:no (?:matching |relevant )?(?:documents?|sources?|results?|evidence|records?|e-?mails?)|"
-                       r"(?:could not|couldn't|did not|didn't|cannot|can't) find|not found|"
-                       r"(?:do not|does not|don't|doesn't) (?:contain|hold|establish)|"
-                       r"(?:not|isn't|aren't) (?:available|present|in the collections))\b", context.draft, re.I)
-    named = [*(context.turn.get("preparation", {}).get("absence_records") or []),
-             *(context.turn.get("progress", {}).get("absence_records") or [])]
-    verified_name = any(str(record.get("name") or "").casefold() in context.draft.casefold()
-                        for record in named if record.get("name"))
-    return bool(absent and (searches or verified_name) and not any(f.keyword_sources for f in searches))

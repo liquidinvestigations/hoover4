@@ -32,13 +32,10 @@ pub struct LlmProviderHealth {
 pub struct AdminLlmPage {
     pub providers: Vec<LlmProviderHealth>,
     pub models: Vec<LlmModelItem>,
-    /// The model of agent turns, board assessments and report conversions from
-    /// `hoover4.ini`: the quality model when it is set, else the provider model.
+    /// The model of every call from `hoover4.ini`: agent turns, board assessments, report
+    /// conversions, titles, summaries and board labels.
     #[serde(default)]
     pub agent_model: String,
-    /// The model of titles, summaries and board labels: the provider model.
-    #[serde(default)]
-    pub short_call_model: String,
     /// True when a catalog refresh is currently running in-process.
     pub refresh_in_flight: bool,
     /// True when `LLM_BASE_URL` is unset. Chat is disabled.
@@ -176,33 +173,3 @@ pub struct TopUserRow {
     pub tokens_out: u64,
 }
 
-/// Aggregated classifier requests for one hook and rule.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SystemOneRow {
-    pub hook: String,
-    pub rule_id: String,
-    pub requests_24h: u64,
-    pub requests_7d: u64,
-    pub requests_30d: u64,
-    pub questions: u64,
-    pub median_ms: f64,
-    pub p95_ms: f64,
-    pub error_pct: f64,
-    pub positive_pct: f64,
-    pub actions: u64,
-}
-
-/// A failed classifier request contains no request or source text.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SystemOneFailure {
-    pub time_ms: i64,
-    pub hook: String,
-    pub rule_id: String,
-    pub outcome: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SystemOneReport {
-    pub rows: Vec<SystemOneRow>,
-    pub failures: Vec<SystemOneFailure>,
-}

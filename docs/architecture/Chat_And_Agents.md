@@ -56,32 +56,15 @@ It sends turns with internet tools to the full research agent.
 It sends other turns to the internal search agent.
 The agent service names remain unchanged.
 
-The same switch also picks the **model**. Each agent profile has a `server_settings` key
-of its own (`llm_model_internal_search`, `llm_model_full_research`,
-`llm_summarization_model`) resolved by `admin::llm::model_for_profile`. **Unset means
-"use `llm_default_chat_model`"**, and an empty string is the same as unset, so a deployment
-that never touches these keys runs one model everywhere. They exist because the profiles make
-different demands: one binds four tools and reads a handful of
-passages, the other binds thirty and reads the open web, and the summariser writes a chat
-title. Without it the only way to make one faster is to change the model for everything.
-
-A model the user picked in the composer still wins over the profile's: the key configures
-the deployment, not the conversation.
-
-The self-hosted model servers have a quality endpoint, ornith, beside the base endpoint,
-dgemma (`LLM_QUALITY_BASE_URL` and `LLM_QUALITY_MODEL`). A request that names the
-quality model goes to the quality endpoint, and every other model goes to the base endpoint.
-The worker ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py)) and the agent services ([research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py))
-apply this rule to every model call. A deployment selects the quality model as
-`llm_default_chat_model`, so agent turns run on it, and the base model as
-`llm_summarization_model`, so titles and board reasons stay on the base endpoint. Follow-up
-suggestions use the answer's model, so they run on the quality endpoint too. The default chat model is the one that matters for a person's chat, because
-the composer selects it and sends it with every message, and a sent model wins over the
-profile keys. The chat policy checks ask the decision endpoint, `CHAT_CLASSIFIER_URL`.
-The worker uses `llm_default_chat_model` for a request without a model. If that setting is
-empty, it uses the configured `LLM_MODEL` value, as the website does. It gives an error
-when both values are empty. The agent service also requires a selected or configured
-model, and it does not insert a model id of its own.
+Every turn runs on one model, `LLM_MODEL`, which [deploy.py](../../deploy.py) renders from
+its model-server constants. No page and no `server_settings` key chooses another model. The
+worker ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py)) and the agent services
+([research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)) send every model call to
+`LLM_BASE_URL`: agent turns, titles, summaries, follow-up suggestions, board labels, board
+assessments and report conversions. The server keeps one paged KV cache for every request,
+so a short call does not remove the cached prefix of a conversation. The worker gives an
+error for a turn when `LLM_MODEL` is empty, and the agent service does not insert a model id
+of its own.
 
 **`llm_models.supports_tools` is `0` for every row**, and nothing populates it, so nothing
 checks that a model chosen here can call tools at all. Choosing one that cannot produces a
@@ -262,15 +245,10 @@ These definitions are built in.
 
 | Definition | Rules |
 |---|---|
-| `chat-default` | Active in the repository for every profile. It loads skills at the turn start and after a result, ranks web reads, and writes progress, discovery and capture notes. |
-| `chat-quality` | For a model that searches, reads and cites without guidance notes. It loads skills and ranks web reads. It has no progress, discovery or capture rule. |
+| `chat-deterministic` | Active in the repository for every profile. Skills load from the report trigger and from result facts. Web reads follow the search rank. Progress notes count operations only. No rule makes a model request. |
 | `chat-null` | No rule. |
-| `chat-deterministic` | No classifier request. Skills load from the report trigger and from result facts. Progress notes count operations only. |
-| `chat-advisory` | The classifier selects skills at the turn start. The progress signals give advice notes that name the chat check as their origin. They change no progress count and end no turn (`stuck_units` false). |
-| `chat-repaired` | The `chat-default` rules with the corrected progress, completion and preparation behavior. A fired `stuck` signal adds a progress unit (`stuck_units` true), and the progress record names the cause of an ending in `stop_cause`. |
 
-The last three definitions are versioned comparison policies. Each has its own revision. A
-deployment selects a definition with
+A deployment selects a definition with
 [definitions/active.json](../../main_services/processing/tasks/P_agent/control/definitions/active.json) in the `chat_control_dir` folder.
 
 A definition can set `model_images`. `attach` is the default and sends each named image to
@@ -282,8 +260,7 @@ of an older definition does not change.
 The opening row of a run stores the structured task of the turn (`task` in `usage_json`)
 when the user row has one. A board explore turn has one: the objective, the context, the
 known facts, the scope and the expected output. The checks read the task through
-`facts.task_text`, which puts the objective first and marks a cut text with the number of
-omitted characters. Each decision records the digest of the task that it read.
+`facts.task_of`. Each decision records the digest of the task that it read.
 
 For each event the worker stores one decision before it writes any row of it. A retry reads
 the stored decision and writes the same rows at the same keys. An action is a note, a skill
@@ -291,27 +268,23 @@ load or a tool call. Skill loads and tool calls run as a policy batch before the
 step. The batch uses the normal tool path and the permissions of the run. The transcript
 labels each row of a policy batch.
 
-The checks ask the structured server of the selfhosted model (`CHAT_CLASSIFIER_URL`).
-No other route receives chat content. A failed or absent route makes the answers unknown,
-and the turn continues as it would without the check. Scores are recorded at full
-precision. They are not calibrated probabilities.
-Cancellation preserves completed request samples without applying policy actions.
+The checks make no model request. They read the stored thread, the tool results and the
+task record. A cancelled event stores no decision and writes no action row.
 
-The `chat-default` definition has these rules:
+The system prompt holds the guidance that a model request of the checks gave before: the
+search of the selected collections before the web, the search of each named person,
+organisation or place, and the rules for a period, quotes, an order, a comparison and a
+superlative.
 
-- At the turn start, the preparation check classes the request sources and scores the
-  listed skills. It loads at most three skills in 15 seconds. It uses bounded context from
-  the last two ended turns to resolve references in a follow-up request. A task whose
-  record requests a file loads the `report` skill without a classifier request: a
+The `chat-deterministic` definition has these rules:
+
+- At the turn start, a task whose record requests a file loads the `report` skill: a
   deliverable that names a file, an output action such as "write a report", a file
   destination such as "in a short report", or a named output path such as
   "save it as notes.md". An input file name, a prohibited write, a report title and a
   question about the files of a folder load nothing, and the first workspace write loads
-  the skill for another form. The classifier request, the name check and the requirement list run
-  as independent children. Each child records `ok`, `timeout`, `error`, `cancelled`,
-  `skipped` or `disabled`, and a child whose classifier result failed records its status,
-  so a slow or failed child does not discard the result of another. The requirement list
-  is off unless a definition enables it.
+  the skill for another form. The active source restrictions of the task record go to the
+  model as one note.
 - The opening row of a chat turn records the task record of the turn in its control
   record (`control["task_state"]`, `task_state.py`), derived once when the turn is pinned.
   It holds the active objective, the amendments of later turns, and each source rule with
@@ -340,14 +313,11 @@ The `chat-default` definition has these rules:
   clause of that message. A singular count
   for each item of a set, such as "a report for each company", is no exact count. The text task (`control["task"]`) is derived from the record: the objective,
   the amendments, the active restrictions and the active permissions, without the
-  sentences of superseded rules. The preparation and progress checks and the web read
-  ranking read this task, objective first. A cut of the task text keeps the newest
-  amendment whole and cuts the earlier fields first. The record reads earlier turns back to the
+  sentences of superseded rules. The record reads earlier turns back to the
   newest stored record, at most 12 turns, and names an incomplete reconstruction. A board
   explore keeps its structured task as its record. An opening row without the record is
   read as a legacy task, which supports no completion evidence.
-- A chat turn gets one source note: search the permitted collections first, and the web
-  after them when the turn has web tools. No effort question or call quota applies.
+- No effort question or call quota applies.
 - After a tool batch, a result that needs the table, email or citation method loads that
   skill. A successful web search of the model, the first successful page read, and a page
   read that failed or holds a cut page, a find result or a page without text, load
@@ -356,14 +326,6 @@ The `chat-default` definition has these rules:
   again, and a skill that the turn does not list is not loaded.
 - After a web search batch of the model, the worker reads the unread result addresses in
   search-rank order. It uses one `read_page` call of at most six addresses.
-- A short page capture with no article text gets a note that names the page.
-- A reply that reads one page while two or more search results stay unread gets one note.
-
-An absent-name note lists the indexed close forms with their document counts. A close form is never the requested name, and an answer that uses one names it as a different spelling.
-Without web tools, preparation records whether the request asks for public sources, including past events.
-The callable tools of the turn establish the capability. A public-source request gets a note that this turn has no web tools.
-The note names no deployment setting and asks for no refusal, and the source choice and the document guidance stay.
-The chat system prompt requires the capability explanation before the answer.
 
 ## Streaming a turn
 
@@ -436,8 +398,6 @@ different request, so they are not retries. The metasearch server tries another 
 a route fails. The agent service compacts again after the provider refuses a request as too
 large. The compaction summary returns no summary on a failed request, so
 the step continues when the request fits, and fails as `context_preparation` otherwise.
-The chat checks ask their classifier inside the hook deadline, and a failed request gives
-the answer `unknown`.
 
 **A transport failure of a tool reaches Temporal.** The collection server marks a
 connection error, a client timeout, and a 503 or 504 of a dependency as `retryable`. A 504
@@ -636,17 +596,9 @@ hardcodes the tool name and populates none of the payload columns produces a tra
 that renders as a wall of JSON in a card whose expand panel opens onto nothing. If you
 change the shape, change both.
 
-### Search progress and classifier traffic
+### Search progress
 
 The turn pins capabilities from callable tools and permitted collections. Rules skip when their required tools are unavailable.
-Preparation classifies sources and names. It verifies absent names with indexed counts.
-For a source choice of `documents`, `both` or `overview`, a note gives each absent name with its indexed close forms and their document counts.
-The note tells the model not to use a close form as the requested name. It names no tool and waits for no person.
-For another source choice, or a failed classifier request, preparation stores no absence record and adds no note.
-A failed name lookup establishes no absence. The progress rule checks names again only after a successful `search_collections` or `search_passages` call.
-Name lookups use the collections of earlier tool calls, or the collections explicitly named in the request before those calls.
-Without either scope, they use all permitted collections. A string collection argument remains one collection name.
-Code also retains names after "folder called", "folder named", "collection called" and "collection named" when the classifier omits them.
 A progress decision records distinct keyword sources, empty results, repeated calls, refusals, todo churn and word counts.
 Document-text, PDF and table-cell searches include their resolved document identity when the query has matches. Continuation pages retain that identity.
 A policy batch, such as a skill load or an automatic page read, changes no count.
@@ -654,15 +606,8 @@ Progress is a new keyword source, a successful read, a useful metadata listing, 
 Three batches without progress raise the note level. A batch with progress sets the level to 0.
 Six model steps without progress at the third level end the turn through `write_incomplete` with the search summary and the delivered files.
 No fixed search count or call budget applies.
-Classifier signals require measured score thresholds. A failed request supplies no signal.
-The `answered` signal is computed again for each batch. It adds advice only with delivery evidence of the task record.
-A task that requests files needs every output group with its names and its exact count of new versions.
-A task that requests no file needs a stored file version or a verified citation of a successful read.
 A level note lists only the search steps of the relevant methods (`progress.methods`).
-The source rules, the operations of the turn and the source choice decide them, and the callable tools alone decide nothing.
-A signal never ends a turn.
-Each classifier request writes metadata to `systemone_call_events` and traffic to `ai_service_telemetry`.
-The admin report reads these rows only when an administrator selects Run report.
+The source rules and the operations of the turn decide them, and the callable tools alone decide nothing.
 
 ## Images in tool results
 

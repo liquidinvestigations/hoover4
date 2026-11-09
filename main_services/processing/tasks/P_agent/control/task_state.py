@@ -6,7 +6,7 @@ stores it in the control record of the opening message as `control["task_state"]
 handler reads that stored copy through `PolicyContext.task_state`, so a retry or a worker
 restart reads the same interpretation. A later code or prompt change does not reinterpret a
 pinned turn. The text task `control["task"]` (`text_task`) is derived from the record for
-the readers of the text fields (`facts.task_of`, `facts.task_text`).
+the reader of the text fields (`facts.task_of`).
 
 **Fields.** `schema_version` names the representation. `objective` is the active objective
 and the turn that stated it. `request` gives the turn of the current message and how it was
@@ -945,7 +945,7 @@ def text_task(state: Mapping) -> dict:
     active permissions, and the earlier objective of an unresolved follow-up.
 
     The objective and the amendments leave out the sentences of a superseded or expired
-    rule, so a classifier never reads an old restriction as current. The record keeps the
+    rule, so a reader never takes an old restriction as current. The record keeps the
     whole message."""
     rules = list(state.get("source_rules") or [])
     amendments = [_without_inactive_rules(a, rules) for a in state.get("amendments") or []]

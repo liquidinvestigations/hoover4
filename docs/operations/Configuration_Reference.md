@@ -117,7 +117,8 @@ complete list.
 | Removed setting | Action |
 |---|---|
 | `[llm_provider.*]` sections, `[ai_services] llm_selfhosted` and `chat_llm_selfhosted` | Delete them and set `[ai_services] llm_enabled`. |
-| `[ai_services]` model and capacity keys `vllm_*` and `chat_vllm_*`, other than the three ports and `vllm_api_key_file` | Delete them. [deploy.py](../../deploy.py) sets these values for the supported model servers. |
+| `[ai_services]` model and capacity keys `vllm_*` and `chat_vllm_*`, other than `vllm_port` and `vllm_api_key_file` | Delete them. [deploy.py](../../deploy.py) sets these values for the supported model server. |
+| `[ai_services] vllm_structured_port`, `chat_vllm_port` | Delete them. One model server serves every call on `vllm_port`. |
 | `[ai_services] hf_token_file`, `embeddings_model`, `embeddings_dim`, `reranker_model`, `half_precision` and `torch_compile` | Delete them. The model servers and the AI server use fixed models. |
 | `[main_services] ner_provider` and `embeddings_provider` | Use `[ai_services] ner_enabled` and `embeddings_enabled`. |
 | `[main_services] testdata_dir` and `datasets_mount_path` | Add a `[dataset_mount.<name>]` section. |
@@ -174,11 +175,11 @@ server itself.
 | group | keys | decides |
 |---|---|---|
 | tier | `enabled`, `host`, `bind_ip` | whether the tier exists, where the main stack reaches it, and which interface it binds |
-| language models | `llm_enabled`, `vllm_port`, `vllm_structured_port`, `chat_vllm_port` | whether the self-hosted model servers run, and the ports of dgemma, its structured server and ornith. The models, their checkpoint commits and their capacity are constants of [deploy.py](../../deploy.py) ([the model servers](../../ai_services/README.md)) |
+| language model | `llm_enabled`, `vllm_port` | whether the self-hosted model server runs, and its port. The model, its checkpoint commit and its capacity are constants of [deploy.py](../../deploy.py) ([the model server](../../ai_services/README.md)) |
 | model server | `ai_server_enabled`, `ai_server_port`, `*_concurrency` | the embeddings, reranking and entity service, and how many of each it will do at once |
 | capabilities | `ner_enabled`, `embeddings_enabled`, `reranker_enabled` | which capabilities load, and which endpoints the main side receives. The models, the embedding dimension and the precision are constants of [the model server](../../ai_services/hoover4_ai_server/README.md) |
 | OCR | `easyocr_enabled`, `easyocr_port` | the accelerated OCR service. Its language groups are constants of [the EasyOCR server](../../ai_services/easyocr_server/README.md) |
-| credentials | `vllm_api_key_file` | the path of the API key file of both model servers, never the value |
+| credentials | `vllm_api_key_file` | the path of the API key file of the model server, never the value |
 
 NER, embeddings, reranking and EasyOCR have no authentication. The model servers accept only
 the key of `vllm_api_key_file`. Connect the two hosts through a private network, and set
@@ -444,10 +445,7 @@ registers no such source.
 Otherwise [deploy.py](../../deploy.py) selects no research-agent overlay and removes the agent
 containers of an earlier deploy.
 
-The chat policy checks of the worker ask the structured server in the dgemma container, at
-`[ai_services] host` and `vllm_structured_port`. [deploy.py](../../deploy.py) renders it as
-`CHAT_CLASSIFIER_URL`. With the model servers off the value is empty, every check question is
-unavailable, and the turns run without the answers.
+The chat policy checks of the worker make no model request.
 `chat_control_dir` names an absolute host folder with custom policy handlers and
 definitions. The worker mounts it read-only. Empty means the built-in handlers and
 definitions only.
@@ -645,54 +643,49 @@ No batch above 1,000 files or 512 MiB was measured.
 
 ## Model endpoints
 
-hoover4 uses only its self-hosted model servers on the GPU tier. `[ai_services] llm_enabled`
-starts dgemma with its structured server (`hoover4-vllm`) and ornith (`hoover4-vllm-chat`)
-together. [deploy.py](../../deploy.py) refuses `llm_enabled = true` with `[ai_services] enabled = false`.
-The models and their Hugging Face checkpoint commits are constants of [deploy.py](../../deploy.py). Their
-served names, parsers and capacity values are constants too, so a change of the model set is
-a code change.
-[The model servers](../../ai_services/README.md) lists them.
-Before the first start, `./deploy --ai-services` downloads each checkpoint at its pinned commit
-into the weights folder of its server. It downloads again when a file of the folder names another
-commit, and it stops when the folder does not match the pinned commit after the download.
+hoover4 uses only its self-hosted model server on the GPU tier. `[ai_services] llm_enabled`
+starts `hoover4-vllm`, which serves Qwen3.8 Flash Next with vLLM. [deploy.py](../../deploy.py) refuses
+`llm_enabled = true` with `[ai_services] enabled = false`. The model, its Hugging Face
+checkpoint commit, its image and its served name are constants of [deploy.py](../../deploy.py)
+(`QWEN_FLASH_ENV`). The engine arguments are literals of
+[ai_services/compose/vllm.yaml](../../ai_services/compose/vllm.yaml), so a change of the model is a code change.
+[The model server](../../ai_services/README.md) describes it. The engine downloads the checkpoint at
+its pinned commit into the `qwen_flash_hf` folder on its first start.
 
 [deploy.py](../../deploy.py) renders these variables for the main services from `[ai_services] host`
-and the three ports.
+and `vllm_port`.
 
 | variable | value |
 |---|---|
-| `LLM_BASE_URL`, `LLM_MODEL` | dgemma at `vllm_port`. It serves the short calls: conversation titles and summaries, board labels and board assessments. |
-| `CHAT_CLASSIFIER_URL` | the structured server at `vllm_structured_port`, for the chat policy checks |
-| `LLM_QUALITY_BASE_URL`, `LLM_QUALITY_MODEL` | ornith at `chat_vllm_port`. It serves agent turns, of chats and of board explores. |
-| `LLM_VISION_MODELS` | ornith. Both catalog refreshes mark it `supports_vision`, and an agent turn sends it the images of tool results. |
-| `LLM_PROVIDER_NAME` | `selfhosted`, the catalog name of the base endpoint |
-| `LLM_SEND_TEMPERATURE` | `false`, because both servers reject the parameter |
+| `LLM_BASE_URL`, `LLM_MODEL` | the model server at `vllm_port`. It serves agent turns of chats and board explores, and every short call: conversation titles and summaries, follow-up suggestions, board labels, board assessments and report conversions. |
+| `LLM_VISION_MODELS` | the served model. Both catalog refreshes mark it `supports_vision`, and an agent turn sends it the images of tool results. |
+| `LLM_PROVIDER_NAME` | `selfhosted`, the catalog name of the endpoint |
+| `LLM_SEND_TEMPERATURE` | `false`, so the server applies the sampling values of the checkpoint |
 | `LLM_API_KEY_FILE_HOST` | `vllm_api_key_file`, when it is set |
 
 With `llm_enabled = false` or the GPU tier off, every endpoint variable is empty, so no service
 calls a model.
 
-A request that names the quality model goes to the quality endpoint, with the key of
-`vllm_api_key_file` or a placeholder when there is none. The worker and both agent services
-apply the rule ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py), [research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)).
-Both catalog refreshes list the quality endpoint as a provider of its own, named by its host
-and port. The worker runs `main.py refresh-llm-catalog` once at start, and the admin LLM page
-runs the website refresh. Compaction of agent turns divides by the context window of that
-catalog row, so a model without a row is never compacted.
+The worker and both agent services send every request to `LLM_BASE_URL`, with the key of
+`vllm_api_key_file` or a placeholder when there is none
+([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py), [research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)).
+The worker runs `main.py refresh-llm-catalog` once at start, and the admin LLM page runs the
+website refresh. Compaction of agent turns divides by the context window of that catalog row,
+so a model without a row is never compacted.
 
-No page and no `server_settings` key overrides the two models: the keys
+No page and no `server_settings` key overrides the model: the keys
 `llm_default_chat_model`, `llm_summarization_model`, `llm_model_internal_search` and
 `llm_model_full_research` are retired, and a stored row of one of them has no effect.
-`/admin/llm` shows the two models read only.
+`/admin/llm` shows the model read only.
 
-The `[llm_provider.*]` sections, `llm_selfhosted`, `chat_llm_selfhosted`, `hf_token_file`
-and the earlier `vllm_*` and `chat_vllm_*` model keys are removed. A file that sets one of
-them is refused, and the message names the replacement.
+The `[llm_provider.*]` sections, `llm_selfhosted`, `chat_llm_selfhosted`, `hf_token_file`,
+`vllm_structured_port`, `chat_vllm_port` and the earlier `vllm_*` and `chat_vllm_*` model keys
+are removed. A file that sets one of them is refused, and the message names the replacement.
 
 ## Secrets
 
 Keys that end in `_file` name files rather than values, for example the API key of the model
-servers and the shared secret of the MCP servers. Each one is a file outside the repository,
+server and the shared secret of the MCP servers. Each one is a file outside the repository,
 bind-mounted read-only.
 
 **No key value belongs in any tracked file or in any log line.** Where a deployment keeps
@@ -714,7 +707,7 @@ literally. This index maps each key to the group above that explains it.
 ### `[ai_services]`: the accelerated tier
 
 - `enabled`, `host`, `bind_ip`, `llm_enabled`
-- `vllm_port`, `vllm_structured_port`, `chat_vllm_port`, `vllm_api_key_file`
+- `vllm_port`, `vllm_api_key_file`
 - `ai_server_enabled`, `ai_server_port`
 - `ner_enabled`, `embeddings_enabled`, `reranker_enabled`
 - `ai_server_ner_concurrency`, `ai_server_embed_concurrency`, `ai_server_rerank_concurrency`

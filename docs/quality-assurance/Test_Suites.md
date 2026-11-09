@@ -101,11 +101,11 @@ The host rules are [Running the checks](Running_Checks.md#remote-targets).
 
 ## Chat progress and indexed suggestions
 
-Worker tests verify capability selection, deadline failures, progress levels, signal streaks, absence options and classifier request metadata.
+Worker tests verify capability selection, deadline failures, progress levels and the report skill trigger. No chat check makes a model request.
 Research-agent tests verify that repeated searches count completed calls and preserve simultaneous call execution.
 Rust tests verify word extraction, positional folding, merged counts, candidate gates, replacement queries and telemetry names.
 The stack integration cases verify phrase alternatives, proximity alternatives, `NOTNEAR` and indexed spelling candidates on testdata.
-Browser cases verify typo suggestions, no close form, normal results, policy rows and the systemone report.
+Browser cases verify typo suggestions, no close form, normal results and policy rows.
 
 `website/observe-chat.sh --prompt-file` accepts a JSON smoke prompt with `name`, `profile` and `text`.
 An optional `followup` string supplies the next turn after the first answer.

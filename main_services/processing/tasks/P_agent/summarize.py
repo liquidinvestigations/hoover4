@@ -174,15 +174,15 @@ def _api_key() -> str:
 
 
 def _model() -> str:
-    """The short-call model of `hoover4.ini` (`LLM_MODEL`), or nothing.
+    """The model of `hoover4.ini` (`LLM_MODEL`), or nothing.
 
     Nothing disables the summariser: the provisional title is a correct answer to "what
     is this conversation called", and inventing a model id here would send the call to
     whatever the endpoint defaults to.
     """
-    from tasks.llm_endpoints import short_model
+    from tasks.llm_endpoints import chat_model
 
-    return short_model()
+    return chat_model()
 
 
 def _post(endpoint, body: dict, timeout=None):
@@ -230,14 +230,14 @@ def record_call(username: str, session_id: str, kind: str, model: str, usage: di
     from datetime import datetime, timezone
 
     from database.clickhouse import get_global_client
-    from tasks.llm_endpoints import endpoint_for
+    from tasks.llm_endpoints import endpoint as llm_endpoint
 
     try:
         with get_global_client() as client:
             client.insert(
                 "llm_call_events",
                 [[datetime.now(timezone.utc).replace(tzinfo=None), username, session_id, kind,
-                  endpoint_for(model).label, model, int(usage.get("prompt_tokens") or 0),
+                  llm_endpoint().label, model, int(usage.get("prompt_tokens") or 0),
                   int(usage.get("completion_tokens") or 0), 0, reply_bytes, latency_ms,
                   1 if ok else 0, error[:500]]],
                 column_names=["event_time", "username", "session_id", "kind", "provider",
@@ -279,9 +279,9 @@ def complete(system: str, prompt: str, max_tokens: int) -> Completion:
     if not model:
         return Completion(error="no summarisation model configured")
 
-    from tasks.llm_endpoints import endpoint_for
+    from tasks.llm_endpoints import endpoint as llm_endpoint
 
-    endpoint = endpoint_for(model)
+    endpoint = llm_endpoint()
     if not endpoint.base_url:
         return Completion(model=model, error="no LLM_BASE_URL configured")
     started = time.monotonic()

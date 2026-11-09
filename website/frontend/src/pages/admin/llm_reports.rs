@@ -67,7 +67,6 @@ pub fn LlmReports() -> Element {
         ErrorLogReport {}
         ToolTableReport {}
         TopUsersReport {}
-        SystemOneReport {}
     }
 }
 
@@ -369,66 +368,5 @@ mod tests {
         assert_eq!(format_utc_ms(0), "1970-01-01 00:00:00 UTC");
         assert_eq!(format_utc_ms(951_782_400_000), "2000-02-29 00:00:00 UTC");
         assert_eq!(format_utc_ms(1_790_000_000_123), "2026-09-21 14:13:20 UTC");
-    }
-}
-
-#[component]
-fn SystemOneReport() -> Element {
-    let mut state = use_signal(|| None::<Result<(common::llm_types::SystemOneReport, String), String>>);
-    let mut busy = use_signal(|| false);
-    let mut failures = use_signal(|| false);
-    let run = move |_| {
-        busy.set(true);
-        spawn(async move {
-            let response = crate::api::admin_api::admin_llm_systemone().await;
-            state.set(Some(response.map(|report| (report, read_at())).map_err(|e| user_facing_message(&e))));
-            busy.set(false);
-        });
-    };
-    let current = state.read().clone();
-    let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
-    rsx! {
-        div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, {tr!("admin-llm-reports-system-one-checks")} }
-            div { style: MODULE_BODY,
-                p { style: HELP_TEXT, {tr!("admin-llm-reports-requests-are-grouped-by-hook")} }
-                RunBar { id: "x-admin-llm-run-systemone", busy: busy(), read_at: at, onclick: run }
-                button { style: BTN, onclick: move |_| failures.set(false), {tr!("admin-llm-reports-counts")} }
-                button { style: BTN, onclick: move |_| failures.set(true), {tr!("admin-llm-reports-recent-failures")} }
-                match current {
-                    None => rsx! { p { style: HELP_TEXT, {tr!("admin-llm-reports-select-run-report-to-read")} } },
-                    Some(Err(error)) => rsx! { ErrorBar { message: error } },
-                    Some(Ok((report, _))) => rsx! {
-                        if failures() {
-                            table { id: "x-admin-llm-systemone-failures", style: TABLE,
-                                thead { tr { th { style: TH, {tr!("admin-llm-reports-time")} } th { style: TH, {tr!("admin-llm-reports-hook")} } th { style: TH, {tr!("admin-llm-reports-rule")} } th { style: TH, {tr!("admin-llm-reports-outcome")} } } }
-                                tbody { for (index, row) in report.failures.iter().enumerate() {
-                                    tr { key: "{index}",
-                                        td { style: TD, "{format_utc_ms(row.time_ms)}" }
-                                        td { style: TD, "{row.hook}" } td { style: TD, "{row.rule_id}" } td { style: TD, "{row.outcome}" }
-                                    }
-                                } }
-                            }
-                        } else {
-                            table { id: "x-admin-llm-systemone", style: TABLE,
-                                thead { tr {
-                                    for title in ["Hook".to_string(), tr!("admin-llm-reports-rule"), "24h".to_string(), "7d".to_string(), "30d".to_string(), tr!("admin-llm-reports-questions"), tr!("admin-llm-reports-median-ms"), tr!("admin-llm-reports-95th-percentile-ms"), tr!("admin-llm-reports-error-2"), tr!("admin-llm-reports-positive"), tr!("admin-llm-reports-actions")] {
-                                        th { key: "{title}", style: TH, "{title}" }
-                                    }
-                                } }
-                                tbody { for row in report.rows {
-                                    tr { key: "{row.hook}-{row.rule_id}",
-                                        td { style: TD, "{row.hook}" } td { style: TD, "{row.rule_id}" }
-                                        td { style: TD, "{row.requests_24h}" } td { style: TD, "{row.requests_7d}" } td { style: TD, "{row.requests_30d}" }
-                                        td { style: TD, "{row.questions}" } td { style: TD, "{row.median_ms:.0}" } td { style: TD, "{row.p95_ms:.0}" }
-                                        td { style: TD, "{row.error_pct:.1}" } td { style: TD, "{row.positive_pct:.1}" } td { style: TD, "{row.actions}" }
-                                    }
-                                } }
-                            }
-                        }
-                    },
-                }
-            }
-        }
     }
 }

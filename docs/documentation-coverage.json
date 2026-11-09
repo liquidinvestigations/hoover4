@@ -1561,20 +1561,6 @@
       "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
-      "id": "F-chat-26",
-      "source": [
-        "main_services/processing/tasks/P_agent/control/handlers/absence.py",
-        "main_services/processing/tasks/P_agent/control/coordinator.py"
-      ],
-      "docs": [
-        "docs/user-manual/User_Manual.md#9-ai-chat",
-        "docs/architecture/Chat_And_Agents.md",
-        "docs/technical-specification/Capability_Contracts.md#f-chat-26"
-      ],
-      "audience": "user",
-      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
-    },
-    {
       "id": "F-chat-15a",
       "source": [
         "main_services/processing/tasks/P_agent",
@@ -2799,7 +2785,7 @@
       "source": [
         "deploy.py",
         "ai_services/compose/vllm.yaml",
-        "ai_services/compose/vllm-chat.yaml",
+        "ai_services/qwen_flash/Dockerfile",
         "scripts/deploy.py_tests/test_render.py"
       ],
       "docs": [

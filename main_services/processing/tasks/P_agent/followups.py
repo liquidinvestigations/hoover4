@@ -60,11 +60,11 @@ def generate_prompts(question: str, answer: str, model: str, username: str = "",
 
     A transport failure raises `summarize.TransportFailure`, so Temporal sends the request
     again. A reply that gives no three questions returns the error in the result."""
-    from tasks.llm_endpoints import endpoint_for
+    from tasks.llm_endpoints import endpoint as llm_endpoint
     from tasks.P_agent.language import english_name
 
     model = model or summarize._model()
-    endpoint = endpoint_for(model)
+    endpoint = llm_endpoint()
     if not endpoint.base_url or not model:
         return {"follow_up_prompts": [], "follow_up_error": "No model is configured."}
     body = {

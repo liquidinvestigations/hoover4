@@ -38,8 +38,7 @@ def _patch(monkeypatch, live=True):
     store.write_events([EventRow("b1", "e1", m.BOARD_CREATED, "admin", "", {}, T0)])
     store.publish_facts([FactRow("b1", "origin", m.ORIGIN, "o", created_at=T0),
                          FactRow("b1", "goal", m.GOAL, "g", created_at=T0)], [])
-    monkeypatch.setenv("LLM_MODEL", "short-model")
-    monkeypatch.setenv("LLM_QUALITY_MODEL", "agent-model")
+    monkeypatch.setenv("LLM_MODEL", "agent-model")
     monkeypatch.setattr(activities, "_record_llm_call", lambda *a, **k: None)
     return store
 
@@ -75,13 +74,11 @@ def test_a_reason_with_a_reply_sends_one_request(monkeypatch):
 
 
 def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
-    monkeypatch.setenv("LLM_QUALITY_BASE_URL", "http://quality.invalid")
     store = _patch(monkeypatch)
     reply = '{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}'
     monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply(reply))
     assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
     (board_id, reason_no, prompt, text, error, model), = store.assessments
-    # An assessment uses the agent model, not the short-call model.
     assert (board_id, reason_no, text, error, model) == ("b1", 1, reply, "", "agent-model")
     assert "You are the reasoning step" in prompt and "Goals:" in prompt
     [command] = store.read_inputs("b1")

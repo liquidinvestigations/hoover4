@@ -119,9 +119,9 @@ def request_text(system_text: str, schemas_json: str, messages: Sequence[RunMess
 
 
 def _default_counter(model_id: str) -> Any:
-    from research_agent.endpoints import endpoint_for
+    from research_agent.endpoints import endpoint as llm_endpoint
 
-    endpoint = endpoint_for(model_id)
+    endpoint = llm_endpoint()
     return TokenCounter(endpoint.base_url, model_id, endpoint.api_key or None)
 
 
@@ -134,9 +134,9 @@ def measure(system_text: str, schemas_json: str, messages: Sequence[RunMessage],
     and a test passes a fake one."""
     reserve, source = output_reserve()
     clock = time.monotonic() if now is None else now
-    from research_agent.endpoints import endpoint_for
+    from research_agent.endpoints import endpoint
 
-    base = endpoint_for(model_id).base_url
+    base = endpoint().base_url
     error = ""
     if window > 0:
         if _tokenizer_down.get(base, 0.0) > clock:

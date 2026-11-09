@@ -238,7 +238,6 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
 /// somebody counts. Every `#[server]` function in the frontend belongs in exactly one of
 /// these three lists. The two above only if its own handler records the event.
 const KNOWN_FUNCTIONS: &[&str] = &[
-    "admin_llm_systemone",
     "admin_add_member",
     "admin_cancel_operation",
     "admin_collection_processing",

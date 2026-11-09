@@ -148,18 +148,16 @@ easyocr_enabled    = true
 
 llm_enabled        = true
 vllm_port          = 21960
-vllm_structured_port = 21963
-chat_vllm_port     = 21964
 vllm_api_key_file  = <secrets-dir>/vllm-key.txt
 
 [main_services]
 pdf_ocr_provider      = tesseract
 ```
 
-`llm_enabled = true` starts dgemma, its structured server and ornith on the GPU host, and
-on this host it renders their endpoints from `host` and the three ports. The models and
-their capacity are constants of [deploy.py](../../deploy.py), so both hosts serve the same set. Copy the
-same `[ai_services]` section to both hosts.
+`llm_enabled = true` starts the Qwen Flash model server on the GPU host, and on this host
+it renders its endpoint from `host` and `vllm_port`. The model and its capacity are
+constants of [deploy.py](../../deploy.py), so both hosts serve the same model. Copy the same
+`[ai_services]` section to both hosts.
 
 `--print-env` settles it before anything starts:
 
@@ -167,15 +165,14 @@ same `[ai_services]` section to both hosts.
 ./deploy --print-env | grep '^LLM_'
 ```
 
-`LLM_BASE_URL` must name the GPU box and `LLM_MODEL` the served name `dgemma`.
-`LLM_QUALITY_MODEL` must be `ornith`. Once the stack is
-up, `/admin/ai_status` reports the same pair from the running website, with the result of
-a live probe of the endpoint.
+`LLM_BASE_URL` must name the GPU box and `LLM_MODEL` the served name `qwen3.8-flash-next`.
+Once the stack is up, `/admin/ai_status` reports the same pair from the running website,
+with the result of a live probe of the endpoint.
 
-**No `server_settings` row is needed.** The website and the worker read the models from
-the environment only: `LLM_QUALITY_MODEL` for agent turns when it is set, else `LLM_MODEL`,
-and `LLM_MODEL` for the short calls. A stored row of a retired model key, such as
-`llm_default_chat_model`, has no effect, so an ini change and a redeploy move the models.
+**No `server_settings` row is needed.** The website and the worker read the model from
+the environment only: `LLM_MODEL` serves agent turns and the short calls. A stored row of
+a retired model key, such as `llm_default_chat_model`, has no effect, so an ini change and
+a redeploy move the model.
 
 ## Resetting a host that has run an older stack
 

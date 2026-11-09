@@ -329,4 +329,3 @@ Verify a zero-result typo with a checked suggestion button. Select it and verify
 Verify a zero-result word without candidates. Verify the no-similar-words message.
 Verify that a normal query and an empty query show no suggestion section.
 Verify policy-origin rows with case 526. Verify that a session without internet tools offers no web option.
-Run the System one checks report after a chat. Verify hook counts and the Recent failures view.

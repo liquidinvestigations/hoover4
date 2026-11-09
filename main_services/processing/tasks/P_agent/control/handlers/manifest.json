@@ -25,18 +25,6 @@
       "api_version": 1
     },
     {
-      "name": "capture_check",
-      "module": "capture_check.py",
-      "factory": "Handler",
-      "api_version": 1
-    },
-    {
-      "name": "answer_review",
-      "module": "answer_review.py",
-      "factory": "Handler",
-      "api_version": 1
-    },
-    {
       "name": "progress",
       "module": "progress.py",
       "factory": "Handler",

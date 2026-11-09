@@ -1,9 +1,11 @@
-# Optional overlay: the dgemma model server and its structured server (enabled via
-# [ai_services] llm_enabled = true, together with compose/vllm-chat.yaml).
+# Optional overlay: the model server, Qwen3.8 Flash Next on vLLM (enabled via
+# [ai_services] llm_enabled = true).
 #
-# This is the model of short calls and the server of the chat policy checks. deploy.py
-# renders its model, revision and capacity from constants (DGEMMA_ENV), so hoover4.ini
-# sets only the switch, the ports and the API key file.
+# It serves agent turns and every short call. The recipe is
+# github.com/devopsfortunato/Qwen3.8-Flash-Next-FP4-Local-DGX-Spark at 6aab1a5 (MIT): the
+# eugr/spark-vllm-b12x image pinned by digest, with the PLE queue depth patch of
+# ai_services/qwen_flash. deploy.py pins the image, the checkpoint and its commit in
+# QWEN_FLASH_ENV.
 
 # Log rotation for every service in this file, from container_log_max_size and
 # container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
@@ -15,114 +17,141 @@ x-logging: &logging
     max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
 
 services:
-  # ---------------------------------------------------------------- GPU: local LLM
-  # DiffusionGemma 26B-A4B at NVFP4, served by vLLM. This service builds its image from
-  # the vLLM release VLLM_BASE_RELEASE with the patches of ai_services/dgemma/vllm-image
-  # and the support files of the djev-spark repository at VLLM_BUILD_REF. deploy.py pins
-  # all three. The image's own entrypoint composes the `vllm serve` arguments from the
-  # environment below, starts vLLM on port 8000, and then starts the structured server on
-  # port 8011.
+  # The engine downloads the checkpoint at the pinned commit into qwen_flash_hf on its
+  # first start (about 96 GiB) and compiles its kernels into qwen_flash_cache. A first
+  # start takes about 30 minutes.
   #
-  # The weights are a local folder, dgemma_model, which deploy.py downloads at the pinned
-  # checkpoint commit before the start. HF_HUB_OFFLINE is therefore 1 here.
+  # vLLM keeps one paged KV pool for every request. A short call uses a few blocks
+  # and does not remove the cached prefix of a conversation. The oldest free blocks go
+  # first when the pool is full.
   #
-  # VLLM_GPU_FRACTION is a fraction of the WHOLE device, shared with hoover4-vllm-chat,
-  # hoover4-ai-server and GPU EasyOCR. On unified-memory hardware (GB10) it is taken
-  # against total system memory. The entrypoint also refuses to start when MemAvailable
-  # is below the sum of the weights, the KV cache, the start-up transient and the
-  # headroom, and it prints that sum on its `memory:` line.
+  # On GB10 the GPU allocations come from host memory and cannot go to swap.
+  # mem_limit bounds only the host pages of the container. The engine holds about
+  # 74.5 GiB beside the KV pool, and --kv-cache-memory-bytes sizes the pool. 9 GB holds
+  # about 455,000 fp8 tokens and leaves room for hoover4-ai-server and GPU EasyOCR at
+  # their highest use.
   #
-  # VLLM_MAX_NUM_SEQS is the number of sequences vLLM runs at once. More requests wait
-  # in vLLM's own queue.
-  #
-  # The wrapper below reads the API key file and gives the key to vLLM, to the
-  # structured server, and to ai_services/dgemma/sitecustomize.py, which adds the key to
-  # the structured server's own calls to vLLM. Then it runs the image's entrypoint
-  # unchanged. An empty key file turns the key off on both servers.
-  #
-  # SECURITY: bind_ip comes from hoover4.ini and MUST be a private-network address in
-  # any real deployment. Both published ports, the vLLM API and the structured server,
-  # bind to it. An exposed vLLM is a free GPU for the internet.
+  # SECURITY: the published port binds to bind_ip. An empty key file turns the key off.
   hoover4-vllm:
     logging: *logging
     build:
-      context: ${HOOVER4_REPO_ROOT}/ai_services/dgemma/vllm-image
+      context: ${HOOVER4_REPO_ROOT}/ai_services/qwen_flash
       args:
-        VLLM_BASE_RELEASE: ${VLLM_BASE_RELEASE}
-        VLLM_BUILD_REPO: ${VLLM_BUILD_REPO}
-        VLLM_BUILD_REF: ${VLLM_BUILD_REF}
-    image: hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}
+        BASE_IMAGE: ${QWEN_FLASH_BASE_IMAGE}
+    image: ${QWEN_FLASH_IMAGE}
     container_name: hoover4-vllm
     restart: unless-stopped
-    mem_limit: ${VLLM_MEM_LIMIT}
+    mem_limit: 90g
     ipc: host
+    shm_size: 16g
     ulimits:
       core: 0
+      memlock: -1
+      stack: 67108864
+    # The n-gram table is read from NVMe with io_uring, which the default seccomp
+    # profile refuses.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    devices:
+      - nvidia.com/gpu=all
     ports:
       - "${AI_BIND_IP:-0.0.0.0}:${VLLM_PORT}:8000"
-      - "${AI_BIND_IP:-0.0.0.0}:${VLLM_STRUCTURED_PORT}:8011"
-    # The API key is a bind-mounted file, never an env value: hoover4.ini stores the
-    # host path (vllm_api_key_file), and deploy.py mounts it at /run/secrets/vllm_api_key.
-    # The wrapper keeps a PYTHONPATH of the image after /opt/hoover4.
+    volumes:
+      # The vLLM, FlashInfer, b12x and Triton caches are folders of qwen_flash_cache.
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/qwen_flash_cache:/root/.cache
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/qwen_flash_hf:/root/.cache/huggingface
+      - ${VLLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/vllm_api_key:ro
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      TRITON_CACHE_DIR: /root/.cache/triton
+      VLLM_PLE_TABLE_MEMORY: disk
+      B12X_DISK_BACKEND: io_uring
+      PLE_QUEUE_DEPTH: "256"
+      CUTE_DSL_ARCH: sm_121a
+      SAFETENSORS_FAST_GPU: "1"
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      VLLM_SSM_CONV_STATE_LAYOUT: DS
+      VLLM_USE_AOT_COMPILE: "1"
+      VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+      VLLM_USE_V2_MODEL_RUNNER: "1"
+      B12X_POLICY_MODE: auto
+      VLLM_MXFP8_LM_HEAD: "1"
+      VLLM_B12X_MOE_FP4_LAYER_MAX_INPUT_SCALE: w13
+      VLLM_B12X_MOE_FP4_FORCE_A16: "1"
+      B12X_W4A16_A4_PREFILL: "1"
+      DO_NOT_TRACK: "1"
+      VLLM_NO_USAGE_STATS: "1"
+    # The wrapper adds the API key when the key file is not empty.
     entrypoint:
       - /bin/sh
       - -c
       - >-
         key="$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)";
-        export VLLM_API_KEY="$$key";
-        export API_KEY="$$key";
-        export HOOVER4_UPSTREAM_KEY="$$key";
-        export PYTHONPATH="/opt/hoover4$${PYTHONPATH:+:$$PYTHONPATH}";
-        exec /entrypoint.sh
-    environment:
-      MODEL: /models/dgemma
-      SERVED_NAME: ${LLM_SERVED_NAME}
-      PORT: "8000"
-      STRUCTURED_PORT: "8011"
-      MAX_SEQS: ${VLLM_MAX_NUM_SEQS}
-      MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN}
-      GPU_UTIL: ${VLLM_GPU_FRACTION}
-      KV_CACHE_GB: ${VLLM_KV_CACHE_GB}
-      HEADROOM_GB: ${VLLM_HEADROOM_GB}
-      TRANSIENT_COPIES: ${VLLM_TRANSIENT_COPIES}
-      TORCH_MEM_FRACTION: ${VLLM_TORCH_MEM_FRACTION}
-      ATTN: ${VLLM_ATTENTION_BACKEND}
-      CANVAS: ${VLLM_CANVAS}
-      CANVAS_SCHEDULE: ${VLLM_CANVAS_SCHEDULE}
-      MAX_SAMPLES: ${VLLM_MAX_SAMPLES}
-      REASONING_PARSER: ${VLLM_REASONING_PARSER}
-      TOOL_CALL_PARSER: ${VLLM_TOOL_PARSER}
-      # Arguments added to `vllm serve`: image input, thinking by default and the
-      # loader. The entrypoint splits them on spaces, so no JSON value in them holds a
-      # space.
-      EXTRA_ARGS: ${VLLM_EXTRA_ARGS}
-      TLS_PORT: ${VLLM_TLS_PORT}
-      TEST_PAGE: ${VLLM_TEST_PAGE}
-      CONSTRAINED: ${VLLM_CONSTRAINED}
-      ENGINE_SAMPLES: ${VLLM_ENGINE_SAMPLES}
-      VLLM_USE_V2_MODEL_RUNNER: ${VLLM_USE_V2_MODEL_RUNNER}
-      HF_HUB_OFFLINE: "1"
-      MAX_JOBS: ${VLLM_MAX_JOBS}
-      FLASHINFER_NVCC_THREADS: ${VLLM_FLASHINFER_NVCC_THREADS}
-      DO_NOT_TRACK: "1"
-      VLLM_NO_USAGE_STATS: "1"
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    volumes:
-      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/dgemma_model:/models/dgemma:ro
-      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/dgemma_cache:/root/.cache
-      - ${HOOVER4_REPO_ROOT}/ai_services/dgemma:/opt/hoover4:ro
-      - ${VLLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/vllm_api_key:ro
-    devices:
-      - nvidia.com/gpu=all
-    # start_period is the entrypoint's own wait for vLLM. A first start compiles the
-    # FlashInfer kernels before the weights load.
+        if [ -n "$$key" ]; then set -- "$$@" --api-key "$$key"; fi;
+        exec vllm serve "$$@"
+      - sh
+    command:
+      - ${QWEN_FLASH_CHECKPOINT}
+      - --revision
+      - ${QWEN_FLASH_REVISION}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --served-model-name
+      - ${LLM_SERVED_NAME}
+      # One paged KV pool for every request. A conversation keeps its cached prefix
+      # until the pool is full. The hybrid layers keep their state at block boundaries.
+      - --enable-prefix-caching
+      - --mamba-cache-mode
+      - align
+      - --enable-chunked-prefill
+      - --enable-prompt-tokens-details
+      - --dtype
+      - bfloat16
+      - --kv-cache-dtype
+      - fp8
+      - --quantization
+      - modelopt_mixed
+      - --block-size
+      - "16"
+      - --load-format
+      - b12x
+      - --max-model-len
+      - "262144"
+      - --max-num-seqs
+      - "8"
+      - --max-num-batched-tokens
+      - "4096"
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":3}'
+      - --gdn-decode-kernel
+      - b12x
+      - --linear-backend
+      - b12x
+      - --moe-backend
+      - b12x
+      - --no-enable-flashinfer-autotune
+      - --mm-encoder-tp-mode
+      - data
+      - --reasoning-parser
+      - qwen3
+      - --tool-call-parser
+      - qwen3_xml
+      - --enable-auto-tool-choice
+      - --compilation-config
+      - '{"pass_config":{"fuse_act_quant":true}}'
+      - --gpu-memory-utilization
+      - "0.8"
+      - --kv-cache-memory-bytes
+      - "9000000000"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
       interval: 30s
       timeout: 15s
       retries: 10
-      start_period: 1800s
+      start_period: 3600s
     networks:
       - ai_services
 

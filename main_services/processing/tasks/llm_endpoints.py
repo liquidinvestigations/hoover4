@@ -1,23 +1,16 @@
-"""The language-model endpoint of each model name.
+"""The language-model endpoint and its model name.
 
-The self-hosted model servers have a base endpoint and a quality endpoint.
-`LLM_BASE_URL` serves `LLM_MODEL` (dgemma) and every short call: titles, summaries and
-board labels. `LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL` (ornith), the model of
-agent turns, board assessments and report conversions when it is set (`chat_model`). A
-request goes to the quality endpoint when it names the quality model, and to the base
-endpoint otherwise.
+The self-hosted model server serves one model. `LLM_BASE_URL` serves `LLM_MODEL`, the
+model of agent turns, board assessments, report conversions and every short call:
+titles, summaries, follow-up suggestions and board labels.
 
-The research agent applies the same rule in `research_agent/endpoints.py`. Both read the
-variables that `deploy.py` renders from `[ai_services]` when `llm_enabled` is true.
+The research agent reads the same variables in `research_agent/endpoints.py`. Both read
+the variables that `deploy.py` renders from `[ai_services]` when `llm_enabled` is true.
 """
 
 import os
 import re
 from dataclasses import dataclass
-
-#: The bearer token sent to a quality endpoint when the model servers have no API key.
-#: The OpenAI clients refuse an empty key, and a server without login ignores this one.
-QUALITY_PLACEHOLDER_KEY = "unused"
 
 
 @dataclass(frozen=True)
@@ -27,23 +20,11 @@ class Endpoint:
     label: str
 
 
-def quality_model() -> str:
-    """The model that the quality endpoint serves, or empty when there is none."""
-    if not (os.getenv("LLM_QUALITY_BASE_URL") or "").strip():
-        return ""
-    return (os.getenv("LLM_QUALITY_MODEL") or "").strip()
-
-
 def chat_model() -> str:
-    """The model of agent turns: the quality model when there is one, else `LLM_MODEL`.
+    """The model of every call, `LLM_MODEL`, or empty when the model server is off.
 
-    `hoover4.ini` sets both. No setting overrides them.
+    `hoover4.ini` sets it. No setting overrides it.
     **Mirrored in `website/backend/src/api/admin/llm.rs`** (`agent_model`)."""
-    return quality_model() or short_model()
-
-
-def short_model() -> str:
-    """The model of short calls: titles, summaries, follow-up suggestions and board labels."""
     return (os.getenv("LLM_MODEL") or "").strip()
 
 
@@ -55,7 +36,7 @@ def _label(base_url: str) -> str:
 
 
 def base_api_key() -> str:
-    """The key of the base endpoint: `LLM_API_KEY`, else the bind-mounted key file."""
+    """The key of the endpoint: `LLM_API_KEY`, else the bind-mounted key file."""
     key = (os.getenv("LLM_API_KEY") or "").strip()
     if key:
         return key
@@ -69,13 +50,9 @@ def base_api_key() -> str:
     return ""
 
 
-def endpoint_for(model: str) -> Endpoint:
-    """The endpoint that serves `model`. An empty base URL means that the model servers
-    are off."""
-    quality = quality_model()
-    if quality and (model or "").strip() == quality:
-        base = (os.getenv("LLM_QUALITY_BASE_URL") or "").strip().rstrip("/")
-        return Endpoint(base, base_api_key() or QUALITY_PLACEHOLDER_KEY, _label(base))
+def endpoint() -> Endpoint:
+    """The endpoint of the model server. An empty base URL means that the model server is
+    off."""
     base = (os.getenv("LLM_BASE_URL") or "").strip().rstrip("/")
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
     return Endpoint(base, base_api_key(), name or (_label(base) if base else "unknown"))

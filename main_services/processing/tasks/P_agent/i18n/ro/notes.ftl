@@ -1,18 +1,6 @@
 # Translation of en/notes.ftl. Change it together with the English catalog.
 
-note-discovery-l2 = Ultimele două căutări nu au găsit nicio sursă nouă. Citește acum paginile cu cele mai bune rezultate: pune până la 6 dintre URL-urile lor într-un singur apel read_page, în lista `urls`. Caută din nou doar cu o altă întrebare.
-note-discovery-l3-web = Ai răspuns înainte de a citi vreo pagină-sursă. Apelează read_page o singură dată cu URL-urile paginilor care susțin elementele tale, cel mult 6, în lista `urls`. Apoi scrie din nou răspunsul, cu sursele care îl susțin.
-note-discovery-l3-documents = Ai răspuns înainte de a citi vreun document. Citește cu read_documents documentele care susțin elementele tale, mai multe hash-uri de fișier într-un singur apel. Apoi scrie din nou răspunsul, cu sursele care îl susțin.
 note-discovery-l4 = Citește acum paginile de rezultate care pot răspunde cererii: pune până la 6 dintre URL-urile lor într-un singur apel read_page, în lista `urls`. Un singur apel le citește pe toate în același timp.
-note-capture-empty = Captura pentru { $urls } nu conține text de articol. Citește altă sursă. Nu cita această pagină.
-note-web-tools-absent = Această rundă nu are instrumente web, deci nu poate citi pagini web publice. Folosește colecțiile selectate și spune ce parte a cererii nu primește răspuns de la ele.
-note-sources-documents = Caută mai întâi în colecțiile de documente permise. Citește documentele lor relevante.
-note-sources-documents-before-web = Caută mai întâi în colecțiile de documente permise. Citește documentele lor relevante. Citește aceste documente înainte de a folosi web-ul.
-note-absent-collection = Nicio colecție permisă nu se numește { $name }. Colecțiile permise sunt { $collections }.
-note-absent-name = Colecțiile selectate nu au nicio potrivire indexată pentru { $name }.
-note-absent-close-forms = Forme apropiate indexate: { $forms }. Nu folosi o formă apropiată în locul numelui cerut. Când cauți una dintre ele, numește-o în răspuns ca o altă grafie.
-note-absent-close-form = { $form } (documente: { $count })
-note-absent-web = Instrumentele web ale acestei runde pot căuta numele.
 note-progress-level = Nivelul de progres al căutării: { $level }.
 note-progress-searches = Căutări deja rulate:
 note-progress-search = { $name } { $args }: elemente: { $items }, potriviri de cuvinte-cheie: { $matches }.
@@ -31,9 +19,6 @@ note-progress-step-read-hits = Citește cu { $tool } cele mai bune 1 până la 3
 note-progress-step-web-search = Caută pe web cu web_search și citește cele mai bune pagini de rezultate.
 note-progress-step-page-find = Caută în textul păstrat al unei pagini lungi cu read_page și find.
 note-progress-step-page-retry = Citește altă adresă din rezultate sau copia arhivată a unei pagini care a eșuat.
-note-advice-stuck = O verificare a conversației estimează că ultimele căutări repetă aceleași rezultate. Abilitatea no_results descrie alte forme de căutare.
-note-advice-absent = O verificare a conversației estimează că rezultatele nu conțin ce cere sarcina. Spune ce domeniu ai căutat înainte de a raporta o absență.
-note-advice-completion = O verificare a conversației estimează că rezultatele pot răspunde sarcinii. Compară fiecare parte cerută cu sursele pe care le-ai citit înainte de a răspunde.
 note-progress-ended = Rularea s-a încheiat după căutări repetate fără progres.
 note-progress-ended-none = Nu a fost găsită nicio sursă potrivită după cuvinte-cheie.
 note-progress-ended-some = Căutările au găsit surse potrivite după cuvinte-cheie: { $count }. Agentul nu și-a finalizat răspunsul.

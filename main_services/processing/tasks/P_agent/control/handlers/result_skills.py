@@ -4,7 +4,7 @@ An object trigger fires when a result of the batch holds a hit of a named type, 
 with a table or e-mail extension (`facts.is_table_hit`, `facts.is_email_hit`). An event
 trigger fires on the first event that makes a method necessary, for example the first
 successful document read for the citation skill. Code decides both from structured
-result fields, so no classifier request is made.
+result fields, so no model request is made.
 
 The events:
 

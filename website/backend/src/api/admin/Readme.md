@@ -43,11 +43,11 @@ the actual gate.
   `admin_get_manticore_load`, which reads Manticore's `SHOW STATUS` and the status of each
   table for the load panel of `/admin/metrics`. The model and tool time of a user comes
   from `agent_step_events`. See below.
-- [llm.rs](llm.rs), the model catalog, the two models that `hoover4.ini` sets (`agent_model`,
-  `short_call_model`, read from the environment and shown read only) and the thinking switch
+- [llm.rs](llm.rs), the model catalog, the model that `hoover4.ini` sets (`agent_model`, read
+  from the environment and shown read only) and the thinking switch
   (`server_settings.llm_thinking`, on when the row is absent). The `p50` and `Calls 14d`
   columns count `kind = 'chat'` rows of `llm_call_events` only. See below.
-- [llm_reports.rs](llm_reports.rs), the five reports of `/admin/llm`. See below.
+- [llm_reports.rs](llm_reports.rs), the four reports of `/admin/llm`. See below.
 
 ## `llm_models` is a ReplacingMergeTree, and both rules that follow from that
 
@@ -74,7 +74,7 @@ lists it again.
 `agent_step_events` holds one row for each attempt of an agent model call, tool call and
 title call, for 90 days. The worker's step activities write it, and the `AgentRun` workflow
 writes the row of a step that never started or lost its heartbeat, with `attempt` 0.
-[llm_reports.rs](llm_reports.rs) reads it for four reports. A fifth report reads `systemone_call_events`. Each runs only when an admin clicks its "Run
+[llm_reports.rs](llm_reports.rs) reads it for four reports. Each runs only when an admin clicks its "Run
 report" button, so a page load runs no report query.
 
 | report | rows |
@@ -82,7 +82,6 @@ report" button, so a page load runs no report query.
 | Errors | failed attempts by step and error class, and agent runs that failed or ended early by `end_reason`, in 24 h, 7 d and 30 d |
 | Recent errors | the newest 100 failed attempts of 7 days, with the first 500 characters of the error |
 | Tool calls | one row for each tool: calls, error percent and average time in 24 h, 7 d and 30 d |
-| System one checks | Requests by hook and rule, latency, errors, positive answers and actions, with the newest 100 failures. |
 | Top users | the 30 users with the most model time (model and title steps) in 1, 7 or 30 days |
 
 The step budget and the repeated call guard end a run as `completed`, with an

@@ -139,7 +139,7 @@ def _render(fixture_name):
             "llm-selfhosted-tier.ini",
             {
                 "LLM_BASE_URL": "http://127.0.0.1:21960/v1",
-                "LLM_MODEL": "dgemma",
+                "LLM_MODEL": "qwen3.8-flash-next",
                 "LLM_PROVIDER_NAME": "selfhosted",
             },
             id="llm-selfhosted-tier",
@@ -659,7 +659,7 @@ def test_every_service_rotates_its_logs():
         for service, definition in (document.get("services") or {}).items():
             assert definition.get("logging") == expected, "%s: %s" % (name, service)
             ai_checked += 1
-    assert ai_checked == 4
+    assert ai_checked == 3
 
 
 def test_gpu_tier_env_carries_the_log_rotation():
@@ -846,8 +846,7 @@ def _class_before_folders(name):
     """The class each volume had under the volume-removing reset code."""
     if name == "serena_state":
         return "protected"
-    if name in ("ai_models_cache", "dgemma_model", "dgemma_cache", "easyocr_models_cache",
-                "chat_model", "chat_cache"):
+    if name in ("ai_models_cache", "qwen_flash_hf", "qwen_flash_cache", "easyocr_models_cache"):
         return "cache"
     if name in ("temporal_cassandra", "temporal_elasticsearch"):
         return "temporal"
@@ -1142,12 +1141,9 @@ def test_llm_streaming_renders_true_unless_turned_off(value, rendered):
 LLM_ENABLED_ENV = {
     "LLM_PROVIDER_NAME": "selfhosted",
     "LLM_BASE_URL": "http://10.9.9.9:21960/v1",
-    "LLM_MODEL": "dgemma",
+    "LLM_MODEL": "qwen3.8-flash-next",
     "LLM_SEND_TEMPERATURE": "false",
-    "CHAT_CLASSIFIER_URL": "http://10.9.9.9:21963",
-    "LLM_QUALITY_BASE_URL": "http://10.9.9.9:21964/v1",
-    "LLM_QUALITY_MODEL": "ornith",
-    "LLM_VISION_MODELS": "ornith",
+    "LLM_VISION_MODELS": "qwen3.8-flash-next",
     "LLM_API_KEY_FILE_HOST": "/srv/keys/vllm",
 }
 
@@ -1165,14 +1161,11 @@ def test_enabled_model_servers_render_every_endpoint_from_ai_services():
     assert {key: env[key] for key in LLM_ENABLED_ENV} == LLM_ENABLED_ENV
 
 
-def test_the_ports_of_ai_services_move_the_endpoints():
+def test_the_port_of_ai_services_moves_the_endpoint():
     cfg = _llm_cfg("true", "true")
-    cfg.values["ai_services"].update(vllm_port="9001", vllm_structured_port="9002",
-                                     chat_vllm_port="9003")
+    cfg.values["ai_services"].update(vllm_port="9001")
     env = deploy.render_llm_env(cfg)
     assert env["LLM_BASE_URL"] == "http://10.9.9.9:9001/v1"
-    assert env["CHAT_CLASSIFIER_URL"] == "http://10.9.9.9:9002"
-    assert env["LLM_QUALITY_BASE_URL"] == "http://10.9.9.9:9003/v1"
 
 
 @pytest.mark.parametrize(("enabled", "tier"), [("false", "true"), ("false", "false"),
@@ -1186,11 +1179,6 @@ def test_disabled_model_servers_render_no_endpoint(enabled, tier):
     assert "LLM_API_KEY_FILE_HOST" not in env
     assert not any(value.startswith("https://") for value in env.values()
                    if isinstance(value, str))
-
-
-@pytest.mark.parametrize("fixture_name", ["llm-selfhosted.ini", "provider-off.ini"])
-def test_no_model_servers_get_no_chat_classifier(fixture_name):
-    assert _env(fixture_name)["CHAT_CLASSIFIER_URL"] == ""
 
 
 def test_a_retired_cloud_provider_file_is_refused():
@@ -1229,7 +1217,7 @@ def test_every_removed_model_setting_is_refused_with_its_replacement():
                 "model servers. Delete it." % key) in message
     for label, text in REMOVED_MODEL_SETTINGS.items():
         assert "%s is removed. %s" % (label, text) in message
-    for port in ("vllm_port", "vllm_structured_port", "chat_vllm_port", "vllm_api_key_file"):
+    for port in ("vllm_port", "vllm_api_key_file"):
         assert port in deploy.DEFAULTS["ai_services"]
 
 
@@ -1250,6 +1238,7 @@ NO_REPLACEMENT = (
     "[main_services] cassandra_version", "[main_services] elasticsearch_version",
     "[main_services] temporal_version", "[main_services] temporal_ui_version",
     "[main_services] garage_version", "[main_services] garage_image_digest",
+    "[ai_services] vllm_structured_port", "[ai_services] chat_vllm_port",
 )
 
 
@@ -1350,9 +1339,9 @@ def test_a_chat_control_folder_that_is_not_an_absolute_folder_is_refused(value):
     assert "chat_control_dir" in fail.call_args.args[0]
 
 
-def test_the_worker_receives_the_chat_classifier_and_the_control_folder():
+def test_the_worker_receives_the_control_folder_and_no_chat_classifier():
     worker = dict(_compose_documents())["docker-compose.yaml"]["services"]["hoover4-worker"]
-    assert "CHAT_CLASSIFIER_URL=${CHAT_CLASSIFIER_URL:-}" in worker["environment"]
+    assert not any("CHAT_CLASSIFIER_URL" in line for line in worker["environment"])
     assert "HOOVER4_CHAT_CONTROL_DIR=${HOOVER4_CHAT_CONTROL_DIR:-}" in worker["environment"]
     assert "${HOOVER4_CHAT_CONTROL_DIR_HOST:-/dev/null}:/control:ro" in worker["volumes"]
 
@@ -1391,52 +1380,15 @@ def test_the_worker_and_both_agents_receive_the_model_variables():
 
 # ---- the model server ---------------------------------------------------------------
 
-VLLM_DEFAULT_ENV = {
-    "LLM_SERVED_NAME": "dgemma",
+QWEN_FLASH_DEFAULT_ENV = {
+    "LLM_SERVED_NAME": "qwen3.8-flash-next",
     "VLLM_PORT": "21960",
-    "VLLM_STRUCTURED_PORT": "21963",
-    "VLLM_BUILD_REPO": "https://github.com/mmastrac/djev-spark.git",
-    "VLLM_BUILD_REF": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
-    "VLLM_GPU_FRACTION": "0.24",
-    "VLLM_MAX_MODEL_LEN": "262144",
-    "VLLM_MAX_NUM_SEQS": "4",
-    "VLLM_KV_CACHE_GB": "6",
-    "VLLM_HEADROOM_GB": "4",
-    "VLLM_TRANSIENT_COPIES": "2",
-    "VLLM_TORCH_MEM_FRACTION": "0.85",
-    "VLLM_MEM_LIMIT": "40g",
-    "VLLM_ATTENTION_BACKEND": "TRITON_ATTN",
-    "VLLM_CANVAS": "256",
-    "VLLM_CANVAS_SCHEDULE": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
-    "VLLM_MAX_SAMPLES": "32",
-    "VLLM_TOOL_PARSER": "gemma4",
-    "VLLM_REASONING_PARSER": "gemma4",
-    "VLLM_BASE_RELEASE": "v0.31.0",
-    "VLLM_TLS_PORT": "0",
-    "VLLM_TEST_PAGE": "1",
-    "VLLM_CONSTRAINED": "1",
-    "VLLM_ENGINE_SAMPLES": "1",
-    "VLLM_USE_V2_MODEL_RUNNER": "1",
-    "VLLM_MAX_JOBS": "4",
-    "VLLM_FLASHINFER_NVCC_THREADS": "2",
-    "CHAT_VLLM_PORT": "21964",
-    "CHAT_VLLM_SERVED_NAME": "ornith",
-    "CHAT_VLLM_GPU_FRACTION": "0.30",
-    "CHAT_VLLM_MAX_MODEL_LEN": "262144",
-    "CHAT_VLLM_MAX_NUM_SEQS": "4",
-    "CHAT_VLLM_MEM_LIMIT": "48g",
-    "CHAT_VLLM_ARGS": ("--kv-cache-dtype fp8 --enable-prefix-caching --enable-chunked-prefill "
-                       "--reasoning-parser qwen3 --enable-auto-tool-choice "
-                       "--tool-call-parser qwen3_coder --speculative-config "
-                       '{"method":"mtp","num_speculative_tokens":3}'),
+    "QWEN_FLASH_CHECKPOINT": "nvidia/Qwen3.8-Flash-Next-FP4-Local",
+    "QWEN_FLASH_REVISION": "b9ce18a6887e18c089fdea8509a33e63429a3300",
+    "QWEN_FLASH_IMAGE": "hoover4-qwen-flash:b12x-03a95654",
+    "QWEN_FLASH_BASE_IMAGE": ("eugr/spark-vllm-b12x@sha256:"
+                              "03a956544e9f9b4b7ba91690469fbe7848bdbef29a7d2e0f5788368467bb3595"),
 }
-
-VLLM_DEFAULT_EXTRA_ARGS = (
-    '--no-language-model-only --mm-processor-kwargs {"max_soft_tokens":1120} '
-    '--limit-mm-per-prompt {"image":7} '
-    '--default-chat-template-kwargs {"enable_thinking":true} '
-    '--load-format fastsafetensors'
-)
 
 
 @pytest.mark.parametrize("source", ["settings-defaults.ini", "hoover4.ini.development",
@@ -1445,29 +1397,23 @@ def test_the_model_server_keys_render_their_defaults(source):
     cfg = (deploy.Config(FIXTURES / source) if source == "settings-defaults.ini"
            else _template(source))
     env = deploy.render_ai_env(cfg)
-
-    assert {key: env[key] for key in VLLM_DEFAULT_ENV} == VLLM_DEFAULT_ENV
-    assert env["VLLM_EXTRA_ARGS"] == VLLM_DEFAULT_EXTRA_ARGS
-    assert "VLLM_IMAGE" not in env
+    assert {key: env[key] for key in QWEN_FLASH_DEFAULT_ENV} == QWEN_FLASH_DEFAULT_ENV
+    assert not any(key.startswith(("CHAT_VLLM_", "VLLM_STRUCTURED", "VLLM_BUILD")) for key in env)
 
 
-def test_the_model_server_values_render_whether_or_not_the_servers_are_enabled():
+def test_the_model_server_values_render_whether_or_not_the_server_is_enabled():
     on = _llm_cfg("true", "true")
     off = _llm_cfg("false", "false")
-    assert {key: deploy.render_ai_env(on)[key] for key in VLLM_DEFAULT_ENV} == \
-        {key: deploy.render_ai_env(off)[key] for key in VLLM_DEFAULT_ENV} == VLLM_DEFAULT_ENV
+    assert {key: deploy.render_ai_env(on)[key] for key in QWEN_FLASH_DEFAULT_ENV} == \
+        {key: deploy.render_ai_env(off)[key] for key in QWEN_FLASH_DEFAULT_ENV} == \
+        QWEN_FLASH_DEFAULT_ENV
     assert deploy.render_ai_env(on)["VLLM_API_KEY_FILE_HOST"] == "/srv/keys/vllm"
 
 
 def test_the_fingerprint_changes_with_a_fixed_model_value(monkeypatch):
     cfg = _config("settings-defaults.ini")
     before = cfg.ai_fingerprint()
-    monkeypatch.setitem(deploy.DGEMMA_ENV, "VLLM_KV_CACHE_GB", "7")
-    assert cfg.ai_fingerprint() != before
-    monkeypatch.setitem(deploy.DGEMMA_ENV, "VLLM_KV_CACHE_GB", "6")
-    assert cfg.ai_fingerprint() == before
-    monkeypatch.setattr(deploy, "MODEL_SERVERS",
-                        (deploy.DGEMMA._replace(revision="0" * 40), deploy.ORNITH))
+    monkeypatch.setitem(deploy.QWEN_FLASH_ENV, "QWEN_FLASH_REVISION", "0" * 40)
     assert cfg.ai_fingerprint() != before
 
 
@@ -1481,35 +1427,22 @@ def test_the_fingerprint_holds_no_key_file_path():
         cfg, lambda host: host)["HOOVER4_CONFIG_FINGERPRINT"] == before
 
 
-def test_the_model_server_folders_replace_the_huggingface_cache():
+def test_the_model_server_folders_hold_its_caches():
     rows = {row.name: row for row in deploy.VOLUMES if row.image_service == "hoover4-vllm"}
-    assert sorted(rows) == ["dgemma_cache", "dgemma_model"]
+    assert sorted(rows) == ["qwen_flash_cache", "qwen_flash_hf"]
     assert all(row.reset_class == "cache" for row in rows.values())
-    assert "vllm_huggingface_cache" not in {row.name for row in deploy.VOLUMES}
+    assert all(row.image == "${QWEN_FLASH_IMAGE}" for row in rows.values())
 
 
-def test_the_model_server_publishes_both_ports():
+def test_the_model_server_publishes_one_port():
     cfg = _config("settings-defaults.ini")
     cfg.values["ai_services"].update(enabled="true", llm_enabled="true")
     ports = deploy.expected_ports(cfg, "ai")
-    assert [port for svc, port in ports if svc == "hoover4-vllm"] == [21960, 21963]
-    assert [port for svc, port in ports if svc == "hoover4-vllm-chat"] == [21964]
-    overlays = deploy.selected_overlays(cfg, "ai")
-    assert "compose/vllm.yaml" in overlays and "compose/vllm-chat.yaml" in overlays
+    assert [port for svc, port in ports if "vllm" in svc] == [21960]
+    assert "compose/vllm.yaml" in deploy.selected_overlays(cfg, "ai")
     cfg.values["ai_services"]["llm_enabled"] = "false"
-    overlays = deploy.selected_overlays(cfg, "ai")
-    assert "compose/vllm.yaml" not in overlays and "compose/vllm-chat.yaml" not in overlays
+    assert "compose/vllm.yaml" not in deploy.selected_overlays(cfg, "ai")
     assert not [svc for svc, _port in deploy.expected_ports(cfg, "ai") if "vllm" in svc]
-
-
-def test_the_chat_model_server_starts_after_the_healthy_dgemma_server():
-    documents = dict(_ai_compose_documents())
-    chat = documents["ai_services/vllm-chat.yaml"]["services"]["hoover4-vllm-chat"]
-    assert chat["depends_on"] == {"hoover4-vllm": {"condition": "service_healthy"}}
-    assert "healthcheck" in documents["ai_services/vllm.yaml"]["services"]["hoover4-vllm"]
-    env = deploy.render_ai_env(_config("settings-defaults.ini"))
-    used = set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)", str(chat)))
-    assert used - {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"} <= set(env)
 
 
 def test_the_model_server_service_reads_the_rendered_names():
@@ -1520,235 +1453,24 @@ def test_the_model_server_service_reads_the_rendered_names():
     used = set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)", str(service)))
     optional = {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"}
     assert used - optional <= set(env), sorted(used - optional - set(env))
-    assert service["image"] == "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}"
-    assert service["build"]["context"] == "${HOOVER4_REPO_ROOT}/ai_services/dgemma/vllm-image"
-    assert service["build"]["args"] == {
-        "VLLM_BASE_RELEASE": "${VLLM_BASE_RELEASE}",
-        "VLLM_BUILD_REPO": "${VLLM_BUILD_REPO}",
-        "VLLM_BUILD_REF": "${VLLM_BUILD_REF}"}
-    assert service["ulimits"] == {"core": 0}
+    assert service["image"] == "${QWEN_FLASH_IMAGE}"
+    assert service["build"]["context"] == "${HOOVER4_REPO_ROOT}/ai_services/qwen_flash"
+    assert service["build"]["args"] == {"BASE_IMAGE": "${QWEN_FLASH_BASE_IMAGE}"}
+    command = service["command"]
+    assert command[:3] == ["${QWEN_FLASH_CHECKPOINT}", "--revision", "${QWEN_FLASH_REVISION}"]
+    assert command[command.index("--served-model-name") + 1] == "${LLM_SERVED_NAME}"
+    assert "--enable-prefix-caching" in command
+    assert "healthcheck" in service
 
 
-def _weights(folder, shards, index=True, revision=None):
-    """Write a checkpoint folder. With a revision, write the download metadata that
-    huggingface_hub writes for a `local_dir` download: commit, ETag and time."""
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "config.json").write_text("{}")
-    names = ["config.json"] + list(shards)
-    if index:
-        weight_map = {"w%d" % i: name for i, name in enumerate(shards)}
-        (folder / "model.safetensors.index.json").write_text(
-            deploy.json.dumps({"weight_map": weight_map}))
-        names.append("model.safetensors.index.json")
-    for name in shards:
-        (folder / name).write_bytes(b"x")
-    if revision:
-        _metadata(folder, names, revision)
-
-
-def _metadata(folder, names, revision):
-    meta = folder / ".cache" / "huggingface" / "download"
-    meta.mkdir(parents=True, exist_ok=True)
-    for name in names:
-        (meta / (name + ".metadata")).write_text("%s\n\"etag\"\n1793000000.0\n" % revision)
-
-
-def test_complete_weights_are_found(tmp_path):
-    _weights(tmp_path, ["a.safetensors", "b.safetensors"])
-    assert deploy.weights_complete(tmp_path)
-
-
-def test_weights_without_config_are_incomplete(tmp_path):
-    _weights(tmp_path, ["a.safetensors"])
-    (tmp_path / "config.json").unlink()
-    assert not deploy.weights_complete(tmp_path)
-
-
-def test_weights_with_a_missing_shard_are_incomplete(tmp_path):
-    _weights(tmp_path, ["a.safetensors", "b.safetensors"])
-    (tmp_path / "b.safetensors").unlink()
-    assert not deploy.weights_complete(tmp_path)
-
-
-def test_weights_with_an_empty_shard_are_incomplete(tmp_path):
-    _weights(tmp_path, ["a.safetensors"])
-    (tmp_path / "a.safetensors").write_bytes(b"")
-    assert not deploy.weights_complete(tmp_path)
-
-
-def test_an_empty_folder_has_no_weights(tmp_path):
-    assert not deploy.weights_complete(tmp_path / "missing")
-
-
-def test_the_download_is_pinned_and_mounts_no_token():
-    cfg = _config("settings-defaults.ini")
-    cmd = deploy.dgemma_download_command(cfg, "/v/dgemma_model", deploy.DGEMMA)
-    assert cmd[:3] == ["run", "--rm", "--entrypoint"]
-    assert "/v/dgemma_model:/models/weights" in cmd
-    assert not any("hf_token" in part for part in cmd)
-    assert "M=nvidia/diffusiongemma-26B-A4B-it-NVFP4" in cmd
-    assert "R=ec4ff3df205028f4e81c954c2227f9312b3ec2ea" in cmd
-    assert "hoover4-vllm-dgemma:v0.31.0-08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
-    assert "revision=os.environ['R']" in cmd[-1] and "token" not in cmd[-1]
-    chat = deploy.dgemma_download_command(cfg, "/v/chat_model", deploy.ORNITH)
-    assert "/v/chat_model:/models/weights" in chat
-    assert "M=ornith-ai/Ornith-1.5-35B-A3B-NVFP4" in chat
-    assert "R=94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa" in chat
-    assert "hf_token_file" not in deploy.DEFAULTS["ai_services"]
-
-
-def test_the_enabled_model_servers_render_the_pinned_identities():
-    assert deploy.DGEMMA == ("nvidia/diffusiongemma-26B-A4B-it-NVFP4",
-                             "ec4ff3df205028f4e81c954c2227f9312b3ec2ea", "dgemma",
-                             "dgemma_model")
-    assert deploy.ORNITH == ("ornith-ai/Ornith-1.5-35B-A3B-NVFP4",
-                             "94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa", "ornith",
-                             "chat_model")
-    ai = deploy.render_ai_env(_llm_cfg("true", "true"))
-    assert ai["LLM_SERVED_NAME"] == "dgemma" and ai["CHAT_VLLM_SERVED_NAME"] == "ornith"
-
-
-def test_the_model_server_image_is_tagged_by_release_and_commit():
-    cfg = _config("settings-defaults.ini")
-    assert deploy.dgemma_image(cfg) == (
-        "hoover4-vllm-dgemma:v0.31.0-08b708e51bb8d9f4eba0e85b61dab0be7093d20e")
-
-
-def _ai_up(monkeypatch, build, present):
-    """Run compose_up of the ai side with the model server overlay and the given images
-    present. Returns the names of the images built and whether compose built."""
-    cfg = _config("settings-defaults.ini")
-    built, composed = [], []
-    monkeypatch.setattr(deploy, "compose_files", lambda c, side: ["base.yaml"])
-    monkeypatch.setattr(deploy, "selected_overlays", lambda c, side: ["compose/vllm.yaml"])
-    monkeypatch.setattr(deploy, "ensure_dgemma_weights", lambda c, r, server: None)
-    monkeypatch.setattr(deploy, "_image_exists", lambda r, image: image in present)
-
-    def run(cmd, env=None):
-        if "build" in cmd and "-t" in cmd:
-            built.append(cmd[cmd.index("-t") + 1])
-        elif "build" in cmd:
-            composed.append(cmd)
-    monkeypatch.setattr(deploy, "run_or_fail", run)
-    rt = mock.Mock()
-    rt.name, rt.engine = "docker", "/usr/bin/docker"
-    rt.compose_prefix.return_value = ["docker", "compose"]
-    deploy.compose_up(cfg, "ai", rt, build)
-    return built, bool(composed)
-
-
-def test_a_present_served_image_is_not_built_without_build(monkeypatch):
-    cfg = _config("settings-defaults.ini")
-    served = deploy.dgemma_image(cfg)
-    assert _ai_up(monkeypatch, False, {served}) == ([], False)
-    # A missing served image is built by compose, and no image is built by tag.
-    assert _ai_up(monkeypatch, False, set()) == ([], True)
-    assert _ai_up(monkeypatch, True, {served}) == ([], True)
-
-
-def test_the_patches_of_the_model_server_image_are_in_the_build_folder():
-    folder = deploy.REPO_ROOT / "ai_services" / "dgemma" / "vllm-image"
+def test_the_model_server_image_patch_is_in_the_build_folder():
+    folder = deploy.REPO_ROOT / "ai_services" / "qwen_flash"
     dockerfile = (folder / "Dockerfile").read_text()
-    assert "FROM vllm/vllm-openai:${VLLM_BASE_RELEASE}" in dockerfile
+    assert "FROM ${BASE_IMAGE}" in dockerfile
     for line in dockerfile.splitlines():
         if line.startswith("COPY ") and not line.startswith("COPY --from="):
             for name in line.split()[1:-1]:
                 assert (folder / name).is_file(), line
-
-
-DGEMMA_REVISION = "ec4ff3df205028f4e81c954c2227f9312b3ec2ea"
-
-
-def test_weights_at_the_pinned_commit_start_no_download(tmp_path):
-    cfg = _storage(tmp_path)
-    _weights(tmp_path / "dgemma_model", ["a.safetensors"], revision=DGEMMA_REVISION)
-    rt = mock.Mock()
-    deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
-    rt.run.assert_not_called()
-
-
-@pytest.mark.parametrize("revision", [None, "0" * 40], ids=["no-metadata", "other-commit"])
-def test_complete_weights_of_another_commit_are_downloaded_again(tmp_path, revision):
-    cfg = _storage(tmp_path)
-    folder = tmp_path / "dgemma_model"
-    _weights(folder, ["a.safetensors"], revision=revision)
-    other = tmp_path / "chat_model"
-    _weights(other, ["c.safetensors"], revision="1" * 40)
-    rt = mock.Mock()
-
-    def download(cmd):
-        # The pinned download replaces each file that differs and records the commit.
-        assert "R=%s" % DGEMMA_REVISION in cmd
-        _metadata(folder, ["config.json", "a.safetensors", "model.safetensors.index.json"],
-                  DGEMMA_REVISION)
-        return subprocess.CompletedProcess(cmd, 0)
-    rt.run.side_effect = download
-    deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
-    rt.run.assert_called_once()
-    assert (folder / "a.safetensors").read_bytes() == b"x"
-    # The other server's folder is not touched.
-    assert deploy.downloaded_revision(other, "c.safetensors") == "1" * 40
-
-
-def test_one_file_of_another_commit_starts_the_download(tmp_path):
-    folder = tmp_path / "dgemma_model"
-    _weights(folder, ["a.safetensors", "b.safetensors"], revision=DGEMMA_REVISION)
-    assert deploy.weights_match(folder, DGEMMA_REVISION)
-    _metadata(folder, ["b.safetensors"], "0" * 40)
-    assert deploy.weights_complete(folder)
-    assert not deploy.weights_match(folder, DGEMMA_REVISION)
-
-
-def test_an_interrupted_download_resumes_on_the_next_deploy(tmp_path):
-    cfg = _storage(tmp_path)
-    folder = tmp_path / "dgemma_model"
-    _weights(folder, ["a.safetensors", "b.safetensors"], revision=DGEMMA_REVISION)
-    (folder / "b.safetensors").unlink()
-    partial = folder / ".cache" / "huggingface" / "download" / "b.safetensors.incomplete"
-    partial.write_bytes(b"x")
-    rt = mock.Mock()
-    rt.run.return_value = subprocess.CompletedProcess([], 1)
-    with pytest.raises(deploy.DeployError) as refused:
-        deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
-    assert "incomplete or at another commit" in str(refused.value)
-    assert "--ai-services again" in str(refused.value)
-    # The partial file and the complete shard stay for the next run.
-    assert partial.exists() and (folder / "a.safetensors").exists()
-
-    def resume(cmd):
-        (folder / "b.safetensors").write_bytes(b"x")
-        partial.unlink()
-        return subprocess.CompletedProcess(cmd, 0)
-    rt = mock.Mock()
-    rt.run.side_effect = resume
-    deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
-    rt.run.assert_called_once()
-    assert deploy.weights_match(folder, DGEMMA_REVISION)
-
-
-def test_a_download_that_leaves_the_folder_incomplete_halts(tmp_path):
-    cfg = _storage(tmp_path)
-    rt = mock.Mock()
-    rt.run.return_value = subprocess.CompletedProcess([], 0)
-    with pytest.raises(deploy.DeployError) as refused:
-        deploy.ensure_dgemma_weights(cfg, rt, deploy.DGEMMA)
-    assert "incomplete" in str(refused.value)
-    rt.run.assert_called_once()
-
-
-def test_both_model_servers_get_their_weights_before_up(monkeypatch):
-    cfg = _llm_cfg("true", "true")
-    calls = []
-    monkeypatch.setattr(deploy, "compose_files", lambda c, side: ["base.yaml"])
-    monkeypatch.setattr(deploy, "ensure_dgemma_image", lambda c, r: calls.append("image"))
-    monkeypatch.setattr(deploy, "ensure_dgemma_weights",
-                        lambda c, r, server: calls.append(server.served_name))
-    monkeypatch.setattr(deploy, "run_or_fail", lambda cmd, env=None: calls.append("up"))
-    monkeypatch.setattr(deploy, "compose_command", lambda c, side, rt, args: args)
-    rt = mock.Mock()
-    rt.name = "docker"
-    deploy.compose_up(cfg, "ai", rt, False)
-    assert calls == ["image", "dgemma", "ornith", "up"]
 
 
 def test_tika_config_limits_and_slots():

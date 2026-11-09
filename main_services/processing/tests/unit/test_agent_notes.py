@@ -29,9 +29,8 @@ def test_every_catalog_message_is_in_the_subset_with_the_english_variables(code)
 
 
 def test_a_note_takes_its_variables():
-    assert notes.note("en", "note-capture-empty", urls="https://a.example") == (
-        "The capture of https://a.example holds no article text. Read another source. "
-        "Do not cite this page.")
+    assert notes.note("en", "note-progress-step-folder", tool="folder_list") == (
+        "Use folder_list for the requested folder, path or file.")
 
 
 def test_a_missing_or_unknown_language_reads_english(monkeypatch):

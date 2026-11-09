@@ -194,7 +194,6 @@ def render(
         skills=list(skills),
         tools=_pairs(snapshot, snapshot.callable_names(), language),
         catalogue_search="search_agent_tools" in tool_names,
-        chat_lead=name in {"internal_search", "full_research"},
         todo_rule=all(t in tool_names for t in TODO_TOOLS),
     ).strip()
 

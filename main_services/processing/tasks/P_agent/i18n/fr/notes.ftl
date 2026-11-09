@@ -1,18 +1,6 @@
 # Translation of en/notes.ftl. Change it together with the English catalog.
 
-note-discovery-l2 = Les deux dernières recherches n’ont trouvé aucune nouvelle source. Lisez maintenant les meilleures pages de résultats : placez jusqu’à 6 de leurs URL dans un seul appel read_page, dans sa liste `urls`. Ne relancez une recherche qu’avec une question différente.
-note-discovery-l3-web = Vous avez répondu avant d’avoir lu une seule page source. Appelez read_page une fois avec les URL des pages qui étayent vos éléments, jusqu’à 6 dans sa liste `urls`. Réécrivez ensuite la réponse avec les sources qui l’étayent.
-note-discovery-l3-documents = Vous avez répondu avant d’avoir lu un seul document. Lisez avec read_documents les documents qui étayent vos éléments, avec plusieurs empreintes de fichier dans un seul appel. Réécrivez ensuite la réponse avec les sources qui l’étayent.
 note-discovery-l4 = Lisez maintenant les pages de résultats qui peuvent répondre à la demande : placez jusqu’à 6 de leurs URL dans un seul appel read_page, dans sa liste `urls`. Un seul appel les lit toutes en même temps.
-note-capture-empty = La capture de { $urls } ne contient aucun texte d’article. Lisez une autre source. Ne citez pas cette page.
-note-web-tools-absent = Ce tour n’a aucun outil Web, il ne peut donc pas lire les pages Web publiques. Utilisez les collections sélectionnées et indiquez quelle partie de la demande elles ne couvrent pas.
-note-sources-documents = Cherchez d’abord dans les collections de documents autorisées. Lisez leurs documents pertinents.
-note-sources-documents-before-web = Cherchez d’abord dans les collections de documents autorisées. Lisez leurs documents pertinents. Lisez ces documents avant d’utiliser le Web.
-note-absent-collection = Aucune collection autorisée ne s’appelle { $name }. Les collections autorisées sont { $collections }.
-note-absent-name = Les collections sélectionnées n’ont aucune correspondance indexée pour { $name }.
-note-absent-close-forms = Formes proches indexées : { $forms }. N’utilisez pas une forme proche à la place du nom demandé. Quand vous en cherchez une, nommez-la dans la réponse comme une autre orthographe.
-note-absent-close-form = { $form } ({ $count } documents)
-note-absent-web = Les outils Web de ce tour peuvent chercher ce nom.
 note-progress-level = Niveau de progression de la recherche : { $level }.
 note-progress-searches = Recherches déjà effectuées :
 note-progress-search = { $name } { $args } : { $items } éléments, { $matches } correspondances de mots-clés.
@@ -31,9 +19,6 @@ note-progress-step-read-hits = Lisez les 1 à 3 meilleurs résultats avec { $too
 note-progress-step-web-search = Cherchez sur le Web avec web_search et lisez les meilleures pages de résultats.
 note-progress-step-page-find = Cherchez dans le texte conservé d’une longue page avec read_page et find.
 note-progress-step-page-retry = Lisez une autre adresse de résultat, ou la copie archivée d’une page en échec.
-note-advice-stuck = Une vérification du chat estime que les dernières recherches répètent leurs résultats. La compétence no_results décrit d’autres formes de recherche.
-note-advice-absent = Une vérification du chat estime que les résultats ne contiennent pas ce que la tâche demande. Indiquez le périmètre recherché avant de signaler une absence.
-note-advice-completion = Une vérification du chat estime que les résultats peuvent répondre à la tâche. Comparez chaque partie demandée avec les sources que vous avez lues avant de répondre.
 note-progress-ended = L’exécution s’est terminée après des recherches répétées sans progrès.
 note-progress-ended-none = Aucune source correspondant aux mots-clés n’a été trouvée.
 note-progress-ended-some = Les recherches ont trouvé { $count } sources correspondant aux mots-clés. L’agent n’a pas terminé sa réponse.

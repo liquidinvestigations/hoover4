@@ -333,8 +333,7 @@ class MCPGatewayAgent:
         tools = [tool for tool in tools if tool.name != "_page_tool_result"]
 
         model_id = self._resolve_model(llm_model)
-        # The quality model has an endpoint of its own (`research_agent/endpoints.py`).
-        endpoint = endpoints.endpoint_for(model_id)
+        endpoint = endpoints.endpoint()
         llm_api_key = endpoint.api_key
         llm_base_url = endpoint.base_url
         llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.0"))

@@ -63,10 +63,8 @@ class RefreshResult:
 def providers_from_env() -> List[ProviderConfig]:
     """The model endpoints this container was configured with.
 
-    `deploy.py` renders the base endpoint (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY_FILE`)
-    and the quality endpoint (`LLM_QUALITY_BASE_URL`) of the self-hosted model servers.
-    The quality endpoint is listed as a provider of its own so that its model can be
-    selected (`tasks/llm_endpoints.py`).
+    `deploy.py` renders the endpoint (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY_FILE`) of
+    the self-hosted model server.
     """
     base_url = (os.getenv("LLM_BASE_URL") or "").strip()
     if not base_url:
@@ -85,20 +83,12 @@ def providers_from_env() -> List[ProviderConfig]:
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
     if not name:
         name = provider_label(re.sub(r"^https?://", "", base_url).split("/")[0])
-    providers = [ProviderConfig(name=name, base_url=base_url.rstrip("/"), api_key=api_key)]
-    quality = (os.getenv("LLM_QUALITY_BASE_URL") or "").strip().rstrip("/")
-    if quality:
-        from tasks.llm_endpoints import QUALITY_PLACEHOLDER_KEY
-
-        host = re.sub(r"^https?://", "", quality).split("/")[0]
-        providers.append(ProviderConfig(name=provider_label(host), base_url=quality,
-                                        api_key=api_key or QUALITY_PLACEHOLDER_KEY))
-    return providers
+    return [ProviderConfig(name=name, base_url=base_url.rstrip("/"), api_key=api_key)]
 
 
 def provider_label(host: str) -> str:
     """The catalog name of an endpoint that `LLM_PROVIDER_NAME` does not name: its host
-    and port as written, for example `192.0.2.10:21964`.
+    and port as written, for example `192.0.2.10:21960`.
 
     The admin page names a configured endpoint with no catalog rows the same way
     (`endpoint_label` in `api/admin/llm.rs`), so the rows that a refresh writes land on
@@ -174,7 +164,7 @@ def _is_reasoning(model_id: str) -> bool:
 
 def vision_models() -> set:
     """The models that read images, from `LLM_VISION_MODELS`, which `deploy.py` renders as
-    ornith. The catalog marks them `supports_vision`."""
+    the served model. The catalog marks them `supports_vision`."""
     return {name.strip() for name in (os.getenv("LLM_VISION_MODELS") or "").split(",")
             if name.strip()}
 

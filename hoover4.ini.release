@@ -21,14 +21,12 @@ host = 127.0.0.1
 # The GPU services bind to this interface. Use the private-network address.
 bind_ip = 0.0.0.0
 
-# ---- language models: dgemma, its structured server, and ornith ----
+# ---- language model: Qwen Flash ----
 
-# True starts the three model servers. The research agents start only when this is true.
+# True starts the model server. The research agents start only when this is true.
 llm_enabled = false
 vllm_port = 21960
-vllm_structured_port = 21963
-chat_vllm_port = 21964
-# This host path names a chmod-600 file outside the repository with the API key of the model servers.
+# This host path names a chmod-600 file outside the repository with the API key of the model server.
 vllm_api_key_file =
 
 # ---- NER, embeddings and reranking ----

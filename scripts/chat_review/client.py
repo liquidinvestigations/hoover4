@@ -8,7 +8,7 @@ import platform
 import time
 
 import requests
-from tasks.llm_endpoints import endpoint_for
+from tasks.llm_endpoints import endpoint as llm_endpoint
 from . import ROOT
 from .schema import (Invalid, array, boolean, canonical_json, digest, integer, obj,
                      require, string, text_digest)
@@ -191,5 +191,5 @@ class Client:
 
     def __call__(self, messages, output_dir):
         config = self.config
-        return request_review(make_request(messages, config), endpoint_for(config["model"]), output_dir,
+        return request_review(make_request(messages, config), llm_endpoint(), output_dir,
                               (config["connect_timeout"], config["read_timeout"]))

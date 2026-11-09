@@ -135,7 +135,6 @@ admin_server_fn!(admin_get_feedback, backend::api::feedback::admin_get_feedback,
 admin_server_fn!(admin_set_feedback_flags, backend::api::feedback::admin_set_feedback_flags, (report_id: String, is_read: bool, is_archived: bool));
 admin_server_fn!(admin_list_document_errors, backend::api::admin::document_errors::admin_list_document_errors, (filter: DocumentErrorFilter, page: u32) -> DocumentErrorsPage);
 
-admin_server_fn!(admin_llm_systemone, backend::api::admin::llm_reports::admin_llm_systemone, () -> common::llm_types::SystemOneReport);
 
 
 admin_server_fn!(admin_get_processing_updates, backend::api::admin::processing_updates::admin_get_processing_updates, (collection_dataset: String) -> ProcessingUpdatesView);

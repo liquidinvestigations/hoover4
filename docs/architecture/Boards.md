@@ -368,9 +368,8 @@ links to the create form, and the answer decisions stay available.
 
 ## Assessment
 
-`board_reason` sends one model call on `chat-model-queue`. It uses the agent model of the
-explores (`llm_endpoints.chat_model`), which is the `quality_model` of `hoover4.ini` when it is
-set. The first request keeps the reasoning phase and has at most 8,000 output tokens
+`board_reason` sends one model call on `chat-model-queue`. It uses the model of the explores
+(`llm_endpoints.chat_model`). The first request keeps the reasoning phase and has at most 8,000 output tokens
 (`REASON_THINKING_TOKENS`). A new board needs that reasoning to declare its first intents. On a
 board with history the model can reason until the cap and give no reply. A cut or empty reply
 goes to a second request without reasoning, with at most 16,000 output tokens. A provider that

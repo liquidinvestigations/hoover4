@@ -187,7 +187,7 @@ Evidence identifies document reads, discovery, citations, notes, artifacts, span
 The `control_event` activity runs the chat checks of [P_agent/control/](P_agent/control) at the turn start and after each tool batch.
 [control/coordinator.py](P_agent/control/coordinator.py) describes the stored decision of each event and the rows it writes.
 A policy batch runs through `tool_call` before the next model step.
-The checks ask the selfhosted structured server at `CHAT_CLASSIFIER_URL` and continue without answers when it fails.
+The checks read the stored thread and the tool results. They make no model request.
 
 Each model, tool, and title attempt records an `agent_step_events` row.
 The row records queue wait, duration, status, error class, and token counts.

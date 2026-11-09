@@ -109,17 +109,10 @@ VOLUMES = (
     Volume("serena_state", "serena", "serena", 0, 0, "hoover4-serena:local", "protected"),
     Volume("ai_models_cache", "ai", "hoover4-ai-server", 0, 0,
            "hoover4-ai-server:local", "cache"),
-    # The model server's weights, downloaded once by ensure_dgemma_weights, and its
-    # compile and JIT cache.
-    Volume("dgemma_model", "ai", "hoover4-vllm", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
-    Volume("dgemma_cache", "ai", "hoover4-vllm", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
-    # The weights and the compile cache of the second model server.
-    Volume("chat_model", "ai", "hoover4-vllm-chat", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
-    Volume("chat_cache", "ai", "hoover4-vllm-chat", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
+    # The model server's Hugging Face cache, where the engine downloads the pinned
+    # checkpoint on its first start, and its compile and kernel caches.
+    Volume("qwen_flash_hf", "ai", "hoover4-vllm", 0, 0, "${QWEN_FLASH_IMAGE}", "cache"),
+    Volume("qwen_flash_cache", "ai", "hoover4-vllm", 0, 0, "${QWEN_FLASH_IMAGE}", "cache"),
     Volume("easyocr_models_cache", "ai", "hoover4-easyocr-gpu", 0, 0,
            "hoover4-easyocr:local", "cache"),
 )
@@ -152,14 +145,11 @@ DEFAULTS = {
         "enabled": "false",
         "host": "127.0.0.1",
         "bind_ip": "0.0.0.0",
-        # The self-hosted model servers: dgemma with its structured server, and ornith. One
-        # switch starts all three. Their models and capacity are the MODEL_SERVER constants.
+        # The self-hosted model server, Qwen Flash on vLLM. Its model and capacity are the
+        # QWEN_FLASH constants.
         "llm_enabled": "false",
         "vllm_port": "21960",
-        # The structured server of the dgemma container, published on bind_ip.
-        "vllm_structured_port": "21963",
-        "chat_vllm_port": "21964",
-        # The API key file of both model servers. Empty turns the key off.
+        # The API key file of the model server. Empty turns the key off.
         "vllm_api_key_file": "",
         # GPU NER + embeddings
         "ai_server_enabled": "true",
@@ -477,7 +467,6 @@ DEFAULTS = {
 # Compose overlays per side, in order, with the ini flag that enables them.
 AI_OVERLAYS = [
     ("llm_enabled", "compose/vllm.yaml", "hoover4-vllm"),
-    ("llm_enabled", "compose/vllm-chat.yaml", "hoover4-vllm-chat"),
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
@@ -552,9 +541,12 @@ REMOVED_SETTINGS = {
     ("cluster", None): (
         "Give the registry address to main_services/ops/publish-images.sh as its first "
         "argument."),
+    # One model server serves every call on vllm_port.
+    ("ai_services", "vllm_structured_port"): None,
+    ("ai_services", "chat_vllm_port"): None,
 }
 
-#: The model-server settings that are now constants of deploy.py (MODEL_SERVERS).
+#: The model-server settings that are now constants of deploy.py (QWEN_FLASH_ENV).
 FIXED_MODEL_SETTINGS = (
     "vllm_build_repo", "vllm_build_ref", "vllm_model", "vllm_served_name",
     "vllm_tool_parser", "vllm_reasoning_parser", "vllm_attention_backend", "vllm_canvas",
@@ -622,18 +614,15 @@ MAIN_OVERLAYS = [
 SERENA_OVERLAY = "compose/serena.yaml"
 SERENA_PROJECT = "hoover4-devtools"
 
-# The [ai_services] port keys that each overlay of the ai side publishes. The structured
-# server in hoover4-vllm has its own port.
+# The [ai_services] port keys that each overlay of the ai side publishes.
 AI_PUBLISHED = {
-    "compose/vllm.yaml": ("vllm_port", "vllm_structured_port"),
-    "compose/vllm-chat.yaml": ("chat_vllm_port",),
+    "compose/vllm.yaml": ("vllm_port",),
     "compose/ai-server.yaml": ("ai_server_port",),
     "compose/easyocr.yaml": ("easyocr_port",),
 }
 
 # Services that request the GPU on the ai side (for the GPU/CDI preflights).
-AI_GPU_OVERLAYS = ("compose/vllm.yaml", "compose/vllm-chat.yaml", "compose/ai-server.yaml",
-                   "compose/easyocr.yaml")
+AI_GPU_OVERLAYS = ("compose/vllm.yaml", "compose/ai-server.yaml", "compose/easyocr.yaml")
 
 # (service, ini section, port key) for every port the selected side publishes. Used by
 # the port-free preflight; stdlib-only deploy.py cannot parse compose YAML, so the
@@ -858,11 +847,8 @@ class Config:
             if key.endswith("_file"):
                 continue  # host paths differ legitimately between the two boxes
             lines.append("%s=%s" % (key, self.values["ai_services"][key].strip()))
-        for name, value in sorted(model_server_env().items()):
+        for name, value in sorted(QWEN_FLASH_ENV.items()):
             lines.append("model.%s=%s" % (name, value))
-        for server in MODEL_SERVERS:
-            lines.append("checkpoint.%s=%s@%s" % (server.served_name, server.checkpoint,
-                                                   server.revision))
         return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
 
 
@@ -1382,125 +1368,6 @@ def set_volume_owners(cfg, side, rt, env):
                  % (folder, (result.stderr or "").strip()))
 
 
-#: The script the weight download runs inside the model server's image. It downloads
-#: the checkpoint M at the commit R into /models/weights. huggingface_hub writes one
-#: metadata file for each downloaded file, with the commit, under
-#: /models/weights/.cache/huggingface/download. It downloads a file again when its
-#: content at R differs, and it resumes an interrupted file.
-DGEMMA_DOWNLOAD_SCRIPT = (
-    "import os; from huggingface_hub import snapshot_download; "
-    "snapshot_download(repo_id=os.environ['M'], revision=os.environ['R'], "
-    "local_dir='/models/weights')"
-)
-
-#: Where huggingface_hub keeps the download metadata of a `local_dir` download.
-DOWNLOAD_METADATA_DIR = Path(".cache") / "huggingface" / "download"
-
-
-def dgemma_image(cfg=None):
-    """The image tag of hoover4-vllm, as ai_services/compose/vllm.yaml writes it."""
-    return MODEL_SERVER_IMAGE
-
-
-def weight_files(folder):
-    """The files of a complete checkpoint in folder: config.json, the safetensors index
-    and every shard that it names. A folder with no index needs config.json and its
-    *.safetensors files. None when a file is missing or empty, or the index cannot be
-    read."""
-    folder = Path(folder)
-    if not (folder / "config.json").is_file():
-        return None
-    index = folder / "model.safetensors.index.json"
-    if not index.is_file():
-        shards = sorted(p.name for p in folder.glob("*.safetensors"))
-    else:
-        try:
-            weight_map = json.loads(index.read_text()).get("weight_map") or {}
-        except (OSError, ValueError):
-            return None
-        shards = sorted(set(weight_map.values()))
-    if not shards:
-        return None
-    for shard in shards:
-        path = folder / shard
-        if not path.is_file() or path.stat().st_size == 0:
-            return None
-    files = ["config.json"] + shards
-    if index.is_file():
-        files.append(index.name)
-    return files
-
-
-def weights_complete(folder):
-    """Whether folder holds every file of a checkpoint, each with a size above zero."""
-    return weight_files(folder) is not None
-
-
-def downloaded_revision(folder, name):
-    """The commit that the download metadata of one file names, or None."""
-    path = Path(folder) / DOWNLOAD_METADATA_DIR / (name + ".metadata")
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            return fh.readline().strip() or None
-    except OSError:
-        return None
-
-
-def weights_match(folder, revision):
-    """Whether folder holds a complete checkpoint whose every file was downloaded at
-    revision. A folder without download metadata does not match, so the download checks
-    each of its files against the pinned commit."""
-    files = weight_files(folder)
-    if files is None:
-        return False
-    return all(downloaded_revision(folder, name) == revision for name in files)
-
-
-def dgemma_download_command(cfg, folder, server):
-    """The one-shot container that downloads the checkpoint of server into folder."""
-    return ["run", "--rm", "--entrypoint", "python3",
-            "-v", "%s:/models/weights" % folder,
-            "-e", "HF_HUB_OFFLINE=0",
-            "-e", "M=%s" % server.checkpoint,
-            "-e", "R=%s" % server.revision,
-            dgemma_image(cfg), "-c", DGEMMA_DOWNLOAD_SCRIPT]
-
-
-def ensure_dgemma_weights(cfg, rt, server):
-    """Make the weights folder of a model server hold its pinned checkpoint.
-
-    Runs on the ai side after the image exists and before `up`, when the model servers
-    are selected. A folder whose files all name the pinned commit is kept. Otherwise the
-    download runs. It keeps each file that equals the file of the pinned commit. It
-    replaces the other files and resumes a partial file. deploy.py fails when the folder does not match the
-    pinned commit after the download. No other folder changes.
-    """
-    row = [r for r in VOLUMES if r.name == server.volume][0]
-    folder = volume_folder(volumes_path(cfg), row)
-    if weights_match(folder, server.revision):
-        return
-    label = "%s at %s" % (server.checkpoint, server.revision)
-    print("weights: downloading %s into %s. This runs for several minutes." % (label, folder))
-    result = rt.run(dgemma_download_command(cfg, folder, server))
-    if result.returncode != 0 or not weights_match(folder, server.revision):
-        fail("the weights of %s are incomplete or at another commit in %s. Run ./deploy "
-             "--ai-services again to resume the download." % (label, folder))
-
-
-def _image_exists(rt, image):
-    return rt.run(["image", "inspect", image], stdout=subprocess.DEVNULL,
-                  stderr=subprocess.DEVNULL).returncode == 0
-
-
-def ensure_dgemma_image(cfg, rt):
-    """Build the model server's image when it does not exist yet. The weight download
-    runs in this image, so it has to exist before `up` builds it."""
-    if _image_exists(rt, dgemma_image(cfg)):
-        return
-    print("build: %s does not exist yet, so it is built first" % dgemma_image(cfg))
-    run_or_fail(compose_command(cfg, "ai", rt, ["build", "hoover4-vllm"]))
-
-
 def _folder_is_empty(folder):
     try:
         return not any(folder.iterdir())
@@ -1796,34 +1663,28 @@ def render_tika_config(cfg):
 
 #: The rendered model-endpoint variables. render_llm_env sets each one, so a disabled
 #: model stack leaves no endpoint from an earlier render.
-LLM_ENDPOINT_VARS = ("LLM_BASE_URL", "LLM_MODEL", "LLM_PROVIDER_NAME", "LLM_QUALITY_BASE_URL",
-                     "LLM_QUALITY_MODEL", "LLM_VISION_MODELS", "CHAT_CLASSIFIER_URL")
+LLM_ENDPOINT_VARS = ("LLM_BASE_URL", "LLM_MODEL", "LLM_PROVIDER_NAME", "LLM_VISION_MODELS")
 
 
 def render_llm_env(cfg):
-    """The model endpoints of the main side, from [ai_services] and MODEL_SERVERS.
+    """The model endpoint of the main side, from [ai_services] and QWEN_FLASH_ENV.
 
-    LLM_BASE_URL serves dgemma, the model of short calls. CHAT_CLASSIFIER_URL is the
-    structured server in the dgemma container, which the chat policy checks ask.
-    LLM_QUALITY_BASE_URL serves ornith, the model of agent turns, and ornith reads images.
-    Both servers refuse `temperature`, so LLM_SEND_TEMPERATURE is false. Each endpoint is
-    empty when llm_active is false, so no service calls a model.
+    LLM_BASE_URL serves Qwen Flash, the model of agent turns and of every short call.
+    LLM_SEND_TEMPERATURE is false, so the server applies the sampling values of the
+    checkpoint. Each endpoint is empty when llm_active is false, so no service calls a
+    model.
     """
     a = "ai_services"
     env = {name: "" for name in LLM_ENDPOINT_VARS}
     env["LLM_SEND_TEMPERATURE"] = "false"
     if not llm_active(cfg):
         return env
-    for key in ("vllm_port", "vllm_structured_port", "chat_vllm_port"):
-        port_number(cfg, a, key)
+    port_number(cfg, a, "vllm_port")
     host = cfg.get(a, "host").strip()
     env["LLM_PROVIDER_NAME"] = "selfhosted"
     env["LLM_BASE_URL"] = "http://%s:%s/v1" % (host, cfg.get(a, "vllm_port"))
-    env["LLM_MODEL"] = DGEMMA.served_name
-    env["CHAT_CLASSIFIER_URL"] = "http://%s:%s" % (host, cfg.get(a, "vllm_structured_port"))
-    env["LLM_QUALITY_BASE_URL"] = "http://%s:%s/v1" % (host, cfg.get(a, "chat_vllm_port"))
-    env["LLM_QUALITY_MODEL"] = ORNITH.served_name
-    env["LLM_VISION_MODELS"] = ORNITH.served_name
+    env["LLM_MODEL"] = QWEN_FLASH_ENV["LLM_SERVED_NAME"]
+    env["LLM_VISION_MODELS"] = QWEN_FLASH_ENV["LLM_SERVED_NAME"]
     key_file = cfg.get(a, "vllm_api_key_file").strip()
     if key_file:
         # The value is a bind-mount source. The container reads /run/secrets/llm_api_key.
@@ -2107,98 +1968,26 @@ def render_main_env(cfg, reachable_host=None):
 
 
 # --------------------------------------------------------------------------------------
-# The self-hosted model servers. hoover4 supports one model set on the Spark (GB10, 128 GB
-# of unified memory): dgemma with its structured server in hoover4-vllm, and ornith in
-# hoover4-vllm-chat. The values below are those of the supported GPU deployment. A
-# change to one of them is a change of the supported model set.
+# The self-hosted model server. hoover4 supports one model on the Spark (GB10, 128 GB of
+# unified memory): Qwen3.8 Flash Next at FP4, served by vLLM in hoover4-vllm. The engine
+# arguments are literals of ai_services/compose/vllm.yaml. A change to a value here is a
+# change of the supported model.
 # --------------------------------------------------------------------------------------
 
-#: The vLLM release that the image of hoover4-vllm starts from. The patches in
-#: ai_services/dgemma/vllm-image are made against this release, so it changes with them.
-VLLM_BASE_RELEASE = "v0.31.0"
-#: The image holds the support files of the djev-spark repository at DJEV_SPARK_COMMIT.
-DJEV_SPARK_REPO = "https://github.com/mmastrac/djev-spark.git"
-DJEV_SPARK_COMMIT = "08b708e51bb8d9f4eba0e85b61dab0be7093d20e"
-#: The image of both model servers, as ai_services/compose/vllm.yaml writes it.
-MODEL_SERVER_IMAGE = "hoover4-vllm-dgemma:%s-%s" % (VLLM_BASE_RELEASE, DJEV_SPARK_COMMIT)
+#: The base image of hoover4-vllm, eugr/spark-vllm-b12x pinned by digest. The patch in
+#: ai_services/qwen_flash is made against this image, so it changes with it.
+QWEN_FLASH_BASE_IMAGE = ("eugr/spark-vllm-b12x@sha256:"
+                         "03a956544e9f9b4b7ba91690469fbe7848bdbef29a7d2e0f5788368467bb3595")
 
-#: One model server: its Hugging Face checkpoint at a pinned commit, the model name it
-#: serves, and the VOLUMES row of its weights folder.
-ModelServer = collections.namedtuple("ModelServer", "checkpoint revision served_name volume")
-
-DGEMMA = ModelServer("nvidia/diffusiongemma-26B-A4B-it-NVFP4",
-                     "ec4ff3df205028f4e81c954c2227f9312b3ec2ea", "dgemma", "dgemma_model")
-ORNITH = ModelServer("ornith-ai/Ornith-1.5-35B-A3B-NVFP4",
-                     "94e431d9cc47fa1986a7a1a4e9a80f7f118b03aa", "ornith", "chat_model")
-MODEL_SERVERS = (DGEMMA, ORNITH)
-
-#: The environment of hoover4-vllm (compose/vllm.yaml). The image's entrypoint builds
-#: the `vllm serve` arguments from it.
-#:
-#: Memory. A GPU fraction is a fraction of the whole device, which the two model servers,
-#: hoover4-ai-server and GPU EasyOCR share. dgemma takes 0.24 and ornith 0.30. dgemma
-#: reserves a fixed 6 GB KV cache. Its entrypoint refuses to start when the free memory
-#: is below weights + KV cache + start-up transient + headroom (19 + 6 + 3 + 4 GB).
-#: VLLM_EXTRA_ARGS turns on image input (1120 soft tokens, 7 images for each prompt),
-#: thinking by default and the fastsafetensors loader. The entrypoint splits it on
-#: spaces, so no JSON value in it holds a space. The checkpoint's own chat template
-#: applies.
-DGEMMA_ENV = {
-    "LLM_SERVED_NAME": DGEMMA.served_name,
-    "VLLM_BASE_RELEASE": VLLM_BASE_RELEASE,
-    "VLLM_BUILD_REPO": DJEV_SPARK_REPO,
-    "VLLM_BUILD_REF": DJEV_SPARK_COMMIT,
-    "VLLM_GPU_FRACTION": "0.24",
-    "VLLM_MAX_MODEL_LEN": "262144",
-    "VLLM_MAX_NUM_SEQS": "4",
-    "VLLM_KV_CACHE_GB": "6",
-    "VLLM_HEADROOM_GB": "4",
-    "VLLM_TRANSIENT_COPIES": "2",
-    "VLLM_TORCH_MEM_FRACTION": "0.85",
-    "VLLM_MEM_LIMIT": "40g",
-    "VLLM_ATTENTION_BACKEND": "TRITON_ATTN",
-    "VLLM_CANVAS": "256",
-    "VLLM_CANVAS_SCHEDULE": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
-    "VLLM_MAX_SAMPLES": "32",
-    "VLLM_TOOL_PARSER": "gemma4",
-    "VLLM_REASONING_PARSER": "gemma4",
-    "VLLM_EXTRA_ARGS": " ".join([
-        "--no-language-model-only",
-        "--mm-processor-kwargs", '{"max_soft_tokens":1120}',
-        "--limit-mm-per-prompt", '{"image":7}',
-        "--default-chat-template-kwargs", '{"enable_thinking":true}',
-        "--load-format", "fastsafetensors"]),
-    # Values of the djev-spark compose file that hoover4 does not change.
-    "VLLM_TLS_PORT": "0",
-    "VLLM_TEST_PAGE": "1",
-    "VLLM_CONSTRAINED": "1",
-    "VLLM_ENGINE_SAMPLES": "1",
-    "VLLM_USE_V2_MODEL_RUNNER": "1",
-    "VLLM_MAX_JOBS": "4",
-    "VLLM_FLASHINFER_NVCC_THREADS": "2",
+#: The environment of hoover4-vllm (compose/vllm.yaml): the image, the Hugging Face
+#: checkpoint at its pinned commit, and the model name that the server serves.
+QWEN_FLASH_ENV = {
+    "QWEN_FLASH_BASE_IMAGE": QWEN_FLASH_BASE_IMAGE,
+    "QWEN_FLASH_IMAGE": "hoover4-qwen-flash:b12x-03a95654",
+    "QWEN_FLASH_CHECKPOINT": "nvidia/Qwen3.8-Flash-Next-FP4-Local",
+    "QWEN_FLASH_REVISION": "b9ce18a6887e18c089fdea8509a33e63429a3300",
+    "LLM_SERVED_NAME": "qwen3.8-flash-next",
 }
-
-#: The environment of hoover4-vllm-chat (compose/vllm-chat.yaml), plain `vllm serve`.
-#: CHAT_VLLM_ARGS is split on spaces, so no JSON value in it holds a space.
-ORNITH_ENV = {
-    "CHAT_VLLM_SERVED_NAME": ORNITH.served_name,
-    "CHAT_VLLM_GPU_FRACTION": "0.30",
-    "CHAT_VLLM_MAX_MODEL_LEN": "262144",
-    "CHAT_VLLM_MAX_NUM_SEQS": "4",
-    "CHAT_VLLM_MEM_LIMIT": "48g",
-    "CHAT_VLLM_ARGS": " ".join([
-        "--kv-cache-dtype", "fp8", "--enable-prefix-caching", "--enable-chunked-prefill",
-        "--reasoning-parser", "qwen3", "--enable-auto-tool-choice",
-        "--tool-call-parser", "qwen3_coder",
-        "--speculative-config", '{"method":"mtp","num_speculative_tokens":3}']),
-}
-
-
-def model_server_env():
-    """The fixed environment of both model servers."""
-    env = dict(DGEMMA_ENV)
-    env.update(ORNITH_ENV)
-    return env
 
 
 def render_ai_env(cfg):
@@ -2211,15 +2000,14 @@ def render_ai_env(cfg):
     env["HOOVER4_CONFIG_FINGERPRINT"] = cfg.ai_fingerprint()
     env["AI_BIND_IP"] = cfg.get(a, "bind_ip")
 
-    for key in ("vllm_port", "ai_server_port", "easyocr_port", "vllm_structured_port",
-                "chat_vllm_port"):
+    for key in ("vllm_port", "ai_server_port", "easyocr_port"):
         port_number(cfg, a, key)
         env[key.upper()] = cfg.get(a, key)
     cfg.get_bool(a, "llm_enabled")
 
-    # Rendered whether or not llm_enabled is true: the VOLUMES rows of the model servers
-    # name their image through these variables, and a reset resolves them.
-    env.update(model_server_env())
+    # Rendered whether or not llm_enabled is true: the VOLUMES rows of the model server
+    # name its image through these variables, and a reset resolves them.
+    env.update(QWEN_FLASH_ENV)
     if cfg.get(a, "vllm_api_key_file"):
         env["VLLM_API_KEY_FILE_HOST"] = cfg.get(a, "vllm_api_key_file")
 
@@ -2898,8 +2686,6 @@ def verify_network_dns(rt, cfg, side):
 
 def compose_up(cfg, side, rt, build):
     files = compose_files(cfg, side)
-    overlays = selected_overlays(cfg, "ai") if side == "ai" else []
-    models = "compose/vllm.yaml" in overlays
     if build:
         build_cmd = rt.compose_prefix()
         for f in files:
@@ -2909,10 +2695,6 @@ def compose_up(cfg, side, rt, build):
         up_args = ["up", "-d", "--force-recreate"]
     else:
         up_args = ["up", "-d"]
-    if models:
-        ensure_dgemma_image(cfg, rt)
-        for server in MODEL_SERVERS:
-            ensure_dgemma_weights(cfg, rt, server)
     run_or_fail(compose_command(cfg, side, rt, up_args))
     if side == "main":
         stop_disabled_internet_tools(cfg, rt)

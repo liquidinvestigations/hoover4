@@ -1,18 +1,6 @@
 # Translation of en/notes.ftl. Change it together with the English catalog.
 
-note-discovery-l2 = De to siste søkene fant ingen ny kilde. Les de beste resultatsidene nå: legg inntil 6 av URL-ene deres i ett read_page-kall, i listen `urls`. Søk bare igjen med et annet spørsmål.
-note-discovery-l3-web = Du svarte før du leste noen kildeside. Kall read_page én gang med URL-ene til sidene som støtter punktene dine, inntil 6 i listen `urls`. Skriv deretter svaret på nytt med kildene som støtter det.
-note-discovery-l3-documents = Du svarte før du leste noe dokument. Les dokumentene som støtter punktene dine med read_documents, flere filhasher i ett kall. Skriv deretter svaret på nytt med kildene som støtter det.
 note-discovery-l4 = Les resultatsidene som kan besvare forespørselen nå: legg inntil 6 av URL-ene deres i ett read_page-kall, i listen `urls`. Ett kall leser alle samtidig.
-note-capture-empty = Opptaket av { $urls } inneholder ingen artikkeltekst. Les en annen kilde. Ikke henvis til denne siden.
-note-web-tools-absent = Denne omgangen har ingen nettverktøy, så den kan ikke lese offentlige nettsider. Bruk de valgte samlingene, og oppgi hvilken del av forespørselen de ikke besvarer.
-note-sources-documents = Søk først i de tillatte dokumentsamlingene. Les de relevante dokumentene deres.
-note-sources-documents-before-web = Søk først i de tillatte dokumentsamlingene. Les de relevante dokumentene deres. Les disse dokumentene før du bruker nettet.
-note-absent-collection = Ingen tillatt samling heter { $name }. De tillatte samlingene er { $collections }.
-note-absent-name = De valgte samlingene har ingen indeksert treff på { $name }.
-note-absent-close-forms = Indekserte lignende former: { $forms }. Bruk ikke en lignende form som det forespurte navnet. Når du søker etter en slik form, oppgi den i svaret som en annen skrivemåte.
-note-absent-close-form = { $form } ({ $count } dokumenter)
-note-absent-web = Nettverktøyene i denne omgangen kan søke etter navnet.
 note-progress-level = Søkefremdrift, nivå { $level }.
 note-progress-searches = Søk som allerede er kjørt:
 note-progress-search = { $name } { $args }: { $items } elementer, { $matches } nøkkelordtreff.
@@ -31,9 +19,6 @@ note-progress-step-read-hits = Les de 1 til 3 beste treffene med { $tool }.
 note-progress-step-web-search = Søk på nettet med web_search og les de beste resultatsidene.
 note-progress-step-page-find = Søk i den lagrede teksten til en lang side med read_page og find.
 note-progress-step-page-retry = Les en annen resultatadresse, eller den arkiverte kopien av en side som mislyktes.
-note-advice-stuck = En chat-kontroll anslår at de siste søkene gjentar resultatene sine. Ferdigheten no_results beskriver andre former for et søk.
-note-advice-absent = En chat-kontroll anslår at resultatene ikke inneholder det oppgaven ber om. Oppgi det søkte omfanget før du melder at noe mangler.
-note-advice-completion = En chat-kontroll anslår at resultatene kan besvare oppgaven. Sammenlign hver forespurte del med kildene du har lest, før du svarer.
 note-progress-ended = Kjøringen ble avsluttet etter gjentatte søk uten fremdrift.
 note-progress-ended-none = Fant ingen kilde med nøkkelordtreff.
 note-progress-ended-some = Søkene fant { $count } kilder med nøkkelordtreff. Agenten fullførte ikke svaret sitt.

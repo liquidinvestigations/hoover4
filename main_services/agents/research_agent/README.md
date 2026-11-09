@@ -564,10 +564,11 @@ of objects, the missing required keys, the keys that the schema does not name, a
 that it names. A list sent for a single value gets "takes one string value, and the call gave
 a list of 14 items. Send one value."
 
-**The served parser.** [tests/producer_fixtures/gemma4_tool_calls.json](tests/producer_fixtures/gemma4_tool_calls.json) holds calls of the
-served model: the raw text where it was captured, the parse that the model server gave, and
-the cause. The parser is the `gemma4` tool parser of vLLM (`vllm/parser/gemma4.py`) in the
-serving image, and this repository holds none of its code. Two cases are defects of the
+**The earlier served parser.** [tests/producer_fixtures/gemma4_tool_calls.json](tests/producer_fixtures/gemma4_tool_calls.json) holds calls of
+an earlier served model: the raw text where it was captured, the parse that the model server
+gave, and the cause. That parser was the `gemma4` tool parser of vLLM (`vllm/parser/gemma4.py`).
+The served model now uses the `qwen3_xml` parser, and the agent keeps the checks for these
+malformed calls. Two cases are defects of the
 model's output: an empty value written with one delimiter, and objects written with square
 brackets. For a malformed call like these, the streamed parse can also give an argument text
 that is not JSON, because the parser streams a prefix of its partial parse and does not

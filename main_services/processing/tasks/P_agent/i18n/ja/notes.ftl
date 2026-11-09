@@ -1,18 +1,6 @@
 # Translation of en/notes.ftl. Change it together with the English catalog.
 
-note-discovery-l2 = 直近2回の検索では、新しいソースが見つかりませんでした。最も有望な結果ページを今すぐ読んでください。1回のread_page呼び出しで、`urls`リストにそれらのURLを最大6件入れてください。検索し直すのは、別の質問にするときだけにしてください。
-note-discovery-l3-web = ソースのページを1つも読まずに回答しました。回答の各項目を裏付けるページのURLを、最大6件まで`urls`リストに入れて、read_pageを1回呼び出してください。そのうえで、裏付けとなるソースを付けて、回答を書き直してください。
-note-discovery-l3-documents = ドキュメントを1つも読まずに回答しました。回答の各項目を裏付けるドキュメントを、read_documentsで読んでください。複数のファイルハッシュを、1回の呼び出しにまとめてください。そのうえで、裏付けとなるソースを付けて、回答を書き直してください。
 note-discovery-l4 = 依頼に答えられそうな結果ページを今すぐ読んでください。1回のread_page呼び出しで、`urls`リストにそれらのURLを最大6件入れてください。1回の呼び出しで、すべてを同時に読み取れます。
-note-capture-empty = { $urls } のキャプチャには、記事の本文がありません。別のソースを読んでください。このページは引用しないでください。
-note-web-tools-absent = このターンにはウェブツールがないため、公開ウェブページを読めません。選択したコレクションを使い、コレクションでは答えられない依頼の部分を明記してください。
-note-sources-documents = まず、許可されたドキュメントコレクションを検索してください。関連するドキュメントを読んでください。
-note-sources-documents-before-web = まず、許可されたドキュメントコレクションを検索してください。関連するドキュメントを読んでください。ウェブを使う前に、それらのドキュメントを読んでください。
-note-absent-collection = { $name } という名前の許可されたコレクションはありません。許可されたコレクションは { $collections } です。
-note-absent-name = 選択したコレクションには、{ $name } に一致するインデックス済みの項目がありません。
-note-absent-close-forms = インデックス済みの近い表記: { $forms }。近い表記を、依頼された名前として使わないでください。近い表記を検索した場合は、回答で別の綴りであると明記してください。
-note-absent-close-form = { $form } (ドキュメント { $count } 件)
-note-absent-web = このターンのウェブツールで、この名前を検索できます。
 note-progress-level = 検索の進捗レベル { $level }。
 note-progress-searches = 実行済みの検索:
 note-progress-search = { $name } { $args }: 項目 { $items } 件、キーワード一致 { $matches } 件。
@@ -31,9 +19,6 @@ note-progress-step-read-hits = 最も有望なヒットを1〜3件、{ $tool }�
 note-progress-step-web-search = web_searchでウェブを検索し、最も有望な結果ページを読んでください。
 note-progress-step-page-find = 長いページの保存済みテキストを、read_pageとfindで検索してください。
 note-progress-step-page-retry = 別の結果のアドレスか、読み込みに失敗したページのアーカイブコピーを読んでください。
-note-advice-stuck = チャットのチェックによると、直近の検索は同じ結果を繰り返しています。検索の別の形は、no_resultsスキルに書かれています。
-note-advice-absent = チャットのチェックによると、結果には依頼されたものが含まれていません。不在を報告する前に、検索した範囲を明記してください。
-note-advice-completion = チャットのチェックによると、結果で依頼に答えられます。回答する前に、依頼の各部分を、読んだソースと照らし合わせてください。
 note-progress-ended = 進捗のない検索が繰り返されたため、実行を終了しました。
 note-progress-ended-none = キーワードに一致したソースは見つかりませんでした。
 note-progress-ended-some = 検索で、キーワードに一致したソースが { $count } 件見つかりました。エージェントは回答を完成できませんでした。

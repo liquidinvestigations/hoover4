@@ -13,71 +13,25 @@ run and the available search steps. At level 3, `steps_after_strongest` further 
 without progress end the turn when `end_turn` is true. The ending keeps the delivered files
 and names the searches.
 
-**Classifier signals.** With `signals` true, three classifier questions read the structured
-task (`facts.task_text`) and the recent steps: `stuck`, `answered` and `absent`. A signal
-fires after its number of consecutive positive answers. The deterministic ledger (units,
-level, progress identities, the strongest-note step and the ending) is computed from the
-operation facts before any signal is read.
-
-* `stuck_units` true lets a fired `stuck` signal add one unit to a batch without progress,
-  so the classifier advances the levels and the ending. Its default is `not advice`. An
-  advisory definition (`advice` true) therefore never changes the ledger, and identical
-  operation facts give identical levels and endings for every classifier answer. The
-  ledger records the units that the signal added in `signal_units`, and the cause of an
-  ending in `stop_cause`.
-
-* `completion` selects what the `answered` signal can do. `none` ignores it. `evidence`
-  adds advice to a level note only when the thread holds delivery evidence (`delivery`) and
-  the classifier read the whole task text. When the task record requests files
-  (`task_state.requirements`), the evidence is a successful new version of every named
-  file, and of as many further distinct files as each output group counts. One file of
-  three is not evidence. A group without an exact count, or an unresolved task, gives no
-  evidence. When the task requests no file, a stored file version or a verified citation of
-  a successful read is the evidence. The signal is recomputed for every batch and is never
-  kept from an earlier batch. The ledger records the comparison in `delivery`.
-* `advice` true adds an advice note, whose text names the chat check as its origin, the
-  first time in the turn that `stuck` or `absent` fires. The advice proposes a method. It
-  states no completion and no quota.
-* With `completion` `evidence`, a fired `absent` signal at level 2 or above checks the named
-  things of the preparation in the indexes (`absence.check_names`). The check runs only after
-  a successful `search_collections` or `search_passages` call of the turn.
-
 **Method advice.** A level note names only the search steps of the relevant methods
-(`methods`): the source rules of the task record, the operations of the turn and the source
-choice of the preparation decide them, and the callable tools alone decide nothing. A turn
-that read a web page gets no collection step, and a turn whose task forbids the web gets no
-web step. A turn without method evidence gets no step list.
+(`methods`): the source rules of the task record and the operations of the turn decide
+them, and the callable tools alone decide nothing. A turn that read a web page gets no
+collection step, and a turn whose task forbids the web gets no web step. A turn without
+method evidence gets no step list.
 
 No fixed search count or call budget applies.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any, Mapping
 
-from tasks.P_agent.control import facts as F
-from tasks.P_agent.control.handlers.absence import check_names, note_action
-from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze, noul, plain
+from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze, plain
 from tasks.P_agent.notes import note
 
 SEARCH_TOOLS = {"search_collections", "search_passages", "web_search", "folder_search",
                 "search_facet_values", "search_histogram", "search_entity_explainer", "doc_search_text", "pdf_search", "table_search_cells"}
 METADATA_TOOLS = {"list_collections", "search_facet_values", "search_histogram", "folder_overview"}
-
-SIGNALS = {
-    "stuck": ("stuck_w3=", 0.9, 2, "In `steps`, do the searches return no results, or the same results again, step after step?"),
-    "answered": ("answered_w4=", 0.3, 1, "Does a result in `steps` give the fact, the list or the count that `request` asks for, even if the agent has not written its answer yet?"),
-    "absent": ("absent_w1=", 0.5, 2, "Do the results show that the documents do not contain what `request` asks for?"),
-}
-COMPLETIONS = ("none", "evidence")
-
-#: The advice notes. Each names its origin, so the agent can tell advice from the task.
-#: The English texts. A run reads them in its own language (`tasks.P_agent.notes`).
-STUCK_ADVICE = note("en", "note-advice-stuck")
-ABSENT_ADVICE = note("en", "note-advice-absent")
-COMPLETION_ADVICE = note("en", "note-advice-completion")
-
 
 #: The tools of each method, for the method evidence of a turn.
 WEB_TOOLS = {"web_search", "read_page", "cite_pages"}
@@ -93,8 +47,8 @@ def methods(context, results) -> set:
 
     The active source rules of the task record decide first: a forbidden source gets no
     step. Then the operations of the turn decide: a method that the turn used is relevant.
-    A web address in the task, an explicit permission, the source choice of the preparation,
-    or a rule that forbids the only other method also selects a method. Callable tools alone select none, so an
+    A web address in the task, an explicit permission, or a rule that forbids the only
+    other method also selects a method. Callable tools alone select none, so an
     uncertain turn gets no method advice and keeps its tool results as they are."""
     from tasks.P_agent.control import task_state
 
@@ -105,14 +59,13 @@ def methods(context, results) -> set:
     collections_ok = "search_collections" in tools and scope["collections"] != "forbidden"
     web_used = any(f.name in WEB_TOOLS or f.name.startswith("browser_") for f in results)
     collections_used = any(f.name in COLLECTION_TOOLS for f in results)
-    choice = ((context.turn.get("preparation") or {}).get("sources") or {}).get("choice")
     direct = bool(task_state.urls(state))
     out = set()
-    if web_ok and (web_used or direct or scope["web"] == "allowed" or choice in ("web", "both", "browser")
+    if web_ok and (web_used or direct or scope["web"] == "allowed"
                    or (scope["collections"] == "forbidden" and not collections_ok)):
         out.add("web")
-    if collections_ok and (collections_used or (not web_used and not direct and choice in ("documents", "both", "overview"))
-                           or scope["collections"] == "allowed" or scope["web"] == "forbidden"):
+    if collections_ok and (collections_used or scope["collections"] == "allowed"
+                           or scope["web"] == "forbidden"):
         out.add("collections")
     return out
 
@@ -167,35 +120,6 @@ def summary(searches, language: str = "en"):
                                   matches=s["keyword_matches"]) for s in searches[-30:])
 
 
-def delivery(state, results) -> dict:
-    """The requested file outputs of the task record `state` compared with the stored file
-    versions (`task_state.delivery`).
-
-    A delivered file is a successful write or patch that stored a new version. A retry that
-    names the unchanged version delivers nothing more. The files that earlier turns of the
-    same objective delivered count as well. `state` is `complete`, `incomplete`, `unknown`
-    or `none` (all established output groups were cancelled). `evidence` is what the completion advice may rely on: a
-    complete delivery of recognized file requirements. Unrecognized requirements give
-    `unknown` and no evidence. The agent can continue work with the original request.
-    """
-    from tasks.P_agent.control import task_state
-
-    if state and not state.get("schema_version"):
-        state = task_state.from_structured(state)
-    delivered = [f.file_version[0] for f in results
-                 if f.status == "ok" and f.file_version and f.file_version[2]]
-    out = task_state.delivery(state or task_state.empty(), delivered)
-    if out["state"] == "none":
-        out["evidence"] = bool(out["delivered"]) or (bool(F.satisfactory_reads(results))
-                                                     and any(f.verified_citations for f in results))
-    return out
-
-
-def delivery_evidence(results, state=None) -> bool:
-    """Whether the thread holds the delivery evidence of `delivery`."""
-    return delivery(state, results)["evidence"]
-
-
 def new_versions(batch, seen: set) -> set:
     """The `name@version` keys of the new file versions that the batch stored."""
     return {f"{f.file_version[0]}@{f.file_version[1]}" for f in batch
@@ -212,15 +136,8 @@ class Handler:
                 raise ValueError(f"{key} must be a positive integer")
         if not 5 <= parameters.get("steps_after_strongest", 6) <= 10:
             raise ValueError("steps_after_strongest must be between 5 and 10")
-        if parameters.get("completion", "evidence") not in COMPLETIONS:
-            raise ValueError(f"completion must be one of {', '.join(COMPLETIONS)}")
-        for key in ("signals", "advice", "end_turn"):
-            if not isinstance(parameters.get(key, key != "advice"), bool):
-                raise ValueError(f"{key} must be true or false")
-        if not isinstance(parameters.get("stuck_units", False), bool):
-            raise ValueError("stuck_units must be true or false")
-        if not isinstance(parameters.get("request_chars", 6000), int):
-            raise ValueError("request_chars must be an integer")
+        if not isinstance(parameters.get("end_turn", True), bool):
+            raise ValueError("end_turn must be true or false")
 
     async def evaluate(self, event, context, parameters, services):
         previous = plain(context.turn.get("progress") or {})
@@ -238,27 +155,6 @@ class Handler:
                 searches.append({"call_id": f.call_id, "name": f.name, "args": plain(f.args),
                                  "items": f.item_count, "keyword_matches": len(f.keyword_sources),
                                  "word_counts": plain(f.word_counts), "status": f.status})
-        completion = parameters.get("completion", "evidence")
-        replies = {}
-        task_text, omitted = F.task_text(context.task or {"objective": {"text": context.request, "source": "user"}},
-                                         int(parameters.get("request_chars", 6000)))
-
-        async def signal(label, spec):
-            qid, threshold, needed, text = spec
-            result = await services.ask({"request": task_text, "steps": context.recent_steps},
-                                        {qid: {"type": "noul", "instructions": text}})
-            return label, noul(result, qid)
-        asked = {k: v for k, v in SIGNALS.items() if completion != "none" or k != "answered"}
-        if parameters.get("signals", True):
-            answers = await asyncio.gather(*(signal(k, v) for k, v in asked.items()), return_exceptions=True)
-            replies = dict(a for a in answers if not isinstance(a, BaseException))
-        signals, checks = {}, []
-        for label, (qid, threshold, needed, _) in SIGNALS.items():
-            score = replies.get(label)
-            streak = int((previous.get("signals", {}).get(label) or {}).get("streak", 0)) + 1 if score is not None and score >= threshold else 0
-            signals[label] = {"score": score, "streak": streak, "fired": streak >= needed}
-            checks.append(CheckResult(event.id, qid, "pass" if score is not None else "unknown", score, (),
-                                      "signal fired" if streak >= needed else "no signal", freeze({"threshold": threshold})))
         repeats = sum(f.repeated for f in context.batch)
         refused = sum(f.status == "refused" for f in context.batch)
         todo = [f for f in context.batch if f.name == "update_plan"]
@@ -274,20 +170,12 @@ class Handler:
         gained_results = (useful - progress_seen) | versions
         progress_seen.update(useful - progress_seen)
         made_progress = bool(new or gained_results)
-        # Only a definition that lets the classifier control the ledger adds its unit.
-        stuck_units = parameters.get("stuck_units", not parameters.get("advice", False))
-        signal_unit = int(bool(stuck_units) and signals["stuck"]["fired"] and not made_progress)
-        gained = 0 if made_progress else 1 + refused + churn + signal_unit
+        gained = 0 if made_progress else 1 + refused + churn
         units = 0 if made_progress else units + gained
         if made_progress:
             level = 0
         seen.update(new)
         actions = []
-        from tasks.P_agent.control.handlers.preparation import task_record
-
-        delivered = delivery(task_record(context), context.results)
-        # A cut task text cannot establish that the results answer the whole task.
-        evidence = delivered["evidence"] and not omitted
         raised = units >= parameters.get("units_per_level", 3)
         if raised and level < 3:
             level += 1
@@ -304,43 +192,19 @@ class Handler:
                 text += (pending[0] if pending else note(language, "note-progress-write-now"))
             else:
                 text += note(language, "note-progress-answer-next")
-            if completion == "evidence" and signals["answered"]["fired"] and evidence:
-                text += "\n" + note(language, "note-advice-completion")
             actions.append(Action("append_note", f"progress-{level}", freeze({"text": text, "level": level})))
-        if parameters.get("advice", False):
-            advice = []
-            if signals["stuck"]["fired"] and not made_progress and not previous.get("stuck_advised"):
-                advice.append(note(context.language, "note-advice-stuck"))
-            if signals["absent"]["fired"] and not previous.get("absent_advised"):
-                advice.append(note(context.language, "note-advice-absent"))
-            if advice:
-                actions.append(Action("append_note", "progress-advice", freeze({"text": " ".join(advice)})))
         model_steps = context.counters.get("model_steps", 0)
         strongest = None if made_progress else previous.get("strongest_step")
         if level == 3 and strongest is None:
             strongest = model_steps
-        stop_cause = ""
         if (parameters.get("end_turn", True) and level == 3 and strongest is not None
                 and model_steps - strongest >= parameters.get("steps_after_strongest", 6)):
-            stop_cause = ("operations and classifier" if int(previous.get("signal_units", 0)) + signal_unit
-                          else "operations")
             language = context.language
             source_text = (note(language, "note-progress-ended-none") if not seen else
                            note(language, "note-progress-ended-some", count=len(seen)))
             actions.append(Action("end_turn", "progress-end", freeze({"text": (
                 note(language, "note-progress-ended") + " " + source_text + "\n\n"
                 + note(language, "note-progress-ended-searches") + "\n" + summary(searches, language))})))
-        absence_records = previous.get("absence_records", [])
-        absent_checked = previous.get("absent_checked", False)
-        # Only a successful document search lets a name check give absence evidence.
-        searched = any(s["status"] == "ok" and s["name"] in ("search_collections", "search_passages")
-                       for s in searches)
-        if (completion == "evidence" and level >= 2 and signals["absent"]["fired"] and searched
-                and not absent_checked):
-            names = (context.turn.get("preparation") or {}).get("names", [])
-            absence_records = await check_names(names, context, services)
-            actions.extend(note_action(absence_records, context))
-            absent_checked = True
         ledger = {"progress_seen": sorted(progress_seen), "level": level, "units": units, "sources": sorted(seen), "searches": searches,
                   "file_versions": sorted(set(previous.get("file_versions", [])) | versions),
                   "repeats": previous.get("repeats", 0) + repeats,
@@ -349,17 +213,5 @@ class Handler:
                   "todo_churn": previous.get("todo_churn", 0) + churn,
                   "todo_goal": todo[-1].todo_goal if todo else previous.get("todo_goal", ""),
                   "todo_closed": todo[-1].todo_closed if todo else previous.get("todo_closed", 0),
-                  "signals": signals, "strongest_step": strongest,
-                  # The units that a classifier signal added since the last progress.
-                  "signal_units": 0 if made_progress else int(previous.get("signal_units", 0)) + signal_unit,
-                  "stop_cause": stop_cause,
-                  # Recomputed for each batch. An earlier positive answer is not kept.
-                  "answered": bool(signals["answered"]["fired"]),
-                  "delivery_evidence": evidence, "delivery": delivered, "task_omitted_chars": omitted,
-                  "absent_checked": absent_checked, "absence_records": absence_records,
-                  "absent_advised": bool(previous.get("absent_advised")
-                                         or (parameters.get("advice", False) and signals["absent"]["fired"])),
-                  "stuck_advised": bool(previous.get("stuck_advised")
-                                        or (parameters.get("advice", False) and signals["stuck"]["fired"]
-                                            and not made_progress))}
-        return PolicyResult(checks=tuple(checks), actions=tuple(actions), facts=freeze(ledger))
+                  "strongest_step": strongest}
+        return PolicyResult(actions=tuple(actions), facts=freeze(ledger))

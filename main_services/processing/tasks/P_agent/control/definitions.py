@@ -3,7 +3,7 @@
 A definition is one JSON file in `definitions/` beside this file, or in `definitions/` under
 the configured control directory (`registry.CONTROL_DIR_ENV`):
 
-    {"id": "chat-default", "schema_version": 1, "profile": "*",
+    {"id": "chat-deterministic", "schema_version": 1, "profile": "*",
      "limits": {"repair_rounds": 2, "preparation_seconds": 15, ...},
      "rules": [{"id": "prepare", "hook": "turn_started", "handler": "preparation",
                 "priority": 10, "frequency": "turn", "parameters": {...}}]}

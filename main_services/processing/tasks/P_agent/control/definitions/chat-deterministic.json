@@ -2,7 +2,7 @@
   "id": "chat-deterministic",
   "schema_version": 1,
   "profile": "*",
-  "description": "Deterministic controls only, for the policy comparison. Typed result triggers load the table, e-mail, citation, report, argument and document-identity skills. A task that names a file loads the report skill at the start. Search results are read by rank. Progress notes come from operation facts: reads, citations, new file versions and repeated calls. No classifier request is made.",
+  "description": "Deterministic controls only. Typed result triggers load the table, e-mail, citation, report, argument and document-identity skills. A task that names a file loads the report skill at the start. Search results are read by rank. Progress notes come from operation facts: reads, citations, new file versions and repeated calls. No rule makes a model request.",
   "rules": [
     {
       "id": "prepare",
@@ -11,7 +11,6 @@
       "priority": 10,
       "frequency": "turn",
       "parameters": {
-        "classifier": false,
         "report_skill": true
       }
     },
@@ -65,9 +64,6 @@
       "parameters": {
         "units_per_level": 3,
         "steps_after_strongest": 6,
-        "signals": false,
-        "completion": "none",
-        "advice": false,
         "end_turn": true
       }
     }

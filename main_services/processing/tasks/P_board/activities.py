@@ -513,15 +513,13 @@ def board_reason(task: ReasonTask) -> str:
         return "skipped"
     prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final,
                            internet=effective_internet_tools(bool(board.internet_tools)))
-    # An assessment decides the next work of the board, so it uses the agent model of the
-    # explores and the report conversion. Titles, summaries and board labels use the
-    # short-call model. The first request keeps the reasoning phase, which a new board needs
+    # The first request keeps the reasoning phase, which a new board needs
     # to declare its first intents. On a board with history the model can reason until the
     # cap, so a cut or empty reply goes to a second request without reasoning.
-    from tasks.llm_endpoints import chat_model, endpoint_for
+    from tasks.llm_endpoints import chat_model, endpoint as llm_endpoint
 
     model = chat_model()
-    endpoint = endpoint_for(model)
+    endpoint = llm_endpoint()
     body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
     timeout = (REASON_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds)
     started = time.monotonic()
@@ -667,7 +665,7 @@ def explore_task(intent, facts, folded, collections: list[str], web: bool) -> di
 
     Each field keeps its original text and names its source, so the chat controls read the
     focused objective apart from the long brief (`P_agent.control.facts.task_of`). No
-    classifier answer enters a field."""
+    model answer enters a field."""
     texts = {f.fact_id: f.text for f in facts}
     task: dict = {"objective": {"text": intent.objective, "source": f"intent:{intent.intent_id}"}}
     named = [c for c in [getattr(intent, "correction", "")] + list(intent.from_facts)
@@ -968,7 +966,7 @@ def convert_explore_report(req: TurnRequest) -> str:
 
     from database import boards
     from database import chat_workspace as store
-    from tasks.llm_endpoints import chat_model, endpoint_for
+    from tasks.llm_endpoints import chat_model, endpoint as llm_endpoint
     from tasks.P_agent import summarize
     from tasks.P_agent.model_timeouts import TIMEOUTS
     from tasks.P_board import conversion
@@ -1005,7 +1003,7 @@ def convert_explore_report(req: TurnRequest) -> str:
             body = conversion.request_body(model, _task_text(intent), version.name,
                                            version.content, version.citations, reasoning)
             return summarize.post_or_raise(
-                endpoint_for(model), body,
+                llm_endpoint(), body,
                 timeout=(CONVERT_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
 
         started = time.monotonic()

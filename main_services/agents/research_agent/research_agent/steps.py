@@ -49,7 +49,7 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, endpoints, images, llm_events, request_size, skill_store, stumbles
+from research_agent import compaction, images, llm_events, request_size, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.localization import catalog_revision
 from research_agent.execution import (
@@ -622,8 +622,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         classify_calls, snapshot, names, calls, request.step_no, thread
     )
 
-    endpoint = endpoints.endpoint_for(context.model_id)
-    provider = llm_events.provider_from_base_url(endpoint.base_url if endpoint.is_quality else None)
+    provider = llm_events.provider_from_base_url()
     try:
         stats = llm_events.stats_from_message(
             message, model_id=context.model_id, provider=provider, latency_ms=latency_ms,

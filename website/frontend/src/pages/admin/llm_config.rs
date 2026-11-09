@@ -133,7 +133,6 @@ fn ModelsPanel(
     mut reload: Signal<u32>,
 ) -> Element {
     let agent = if page.agent_model.is_empty() { "none".to_string() } else { page.agent_model.clone() };
-    let short = if page.short_call_model.is_empty() { "none".to_string() } else { page.short_call_model.clone() };
     rsx! {
         div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, {tr!("admin-llm-config-models")} }
@@ -141,17 +140,13 @@ fn ModelsPanel(
                 table { class: "x-admin-llm-models", style: TABLE,
                     tbody {
                         tr {
-                            td { style: TD, {tr!("admin-llm-config-agent-turns-board-assessments-and")} }
+                            td { style: TD, {tr!("admin-llm-config-every-call")} }
                             td { style: "{TD} font-family: monospace;", "{agent}" }
-                        }
-                        tr {
-                            td { style: TD, {tr!("admin-llm-config-titles-summaries-and-board-labels")} }
-                            td { style: "{TD} font-family: monospace;", "{short}" }
                         }
                     }
                 }
                 p { style: "{HELP_TEXT} margin: 8px 0 14px;",
-                    {tr!("admin-llm-config-hoover4-ini-sets-these-models")}
+                    {tr!("admin-llm-config-hoover4-ini-sets-the-model")}
                 }
                 label { style: "display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 4px;",
                     input {

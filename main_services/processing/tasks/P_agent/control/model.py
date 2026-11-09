@@ -16,7 +16,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Literal, Mapping, Optional, Protocol, Sequence
+from typing import Any, Literal, Mapping, Optional, Protocol
 
 Hook = Literal["turn_started", "tool_batch_completed", "answer_drafted"]
 HOOKS: tuple[str, ...] = ("turn_started", "tool_batch_completed", "answer_drafted")
@@ -126,25 +126,9 @@ class Action:
 class PolicyResult:
     checks: tuple[CheckResult, ...] = ()
     actions: tuple[Action, ...] = ()
-    #: Values that later hooks of the turn read, such as the source class and the
-    #: requirements of the preparation. Stored with the decision.
+    #: Values that later hooks of the turn read, such as the progress ledger. Stored with
+    #: the decision.
     facts: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
-
-
-@dataclass(frozen=True)
-class Requirement:
-    """One condition of a correct answer.
-
-    `scope` is `whole`, `item` or `relation`. `basis` is `output_form`, `source` or
-    `evidence`. `explicit` is true only when `words` occur in the request, so a generated
-    condition that the request does not state stays inferred.
-    """
-
-    text: str
-    scope: str
-    basis: str
-    explicit: bool
-    words: str = ""
 
 
 @dataclass(frozen=True)
@@ -152,8 +136,7 @@ class PolicyContext:
     """A read-only view of one turn for one event.
 
     `request` contains the original user message, `task` its structured fields and
-    `task_state` the record of the effective task. A classifier request shows `task` first
-    (`facts.task_text`). `results` contains the current thread's
+    `task_state` the record of the effective task. `results` contains the current thread's
     result facts, from `facts.result_facts`. `batch` contains this event's result facts.
     `turn` contains earlier decision facts and bounded prior conversation context.
     Handlers read large texts through `PolicyServices` references.
@@ -174,7 +157,6 @@ class PolicyContext:
     draft: str = ""
     capabilities: frozenset = frozenset()
     collections: tuple[str, ...] = ()
-    recent_steps: str = ""
     #: `chat`, or `board` for an explore turn of an investigation board.
     run_kind: str = "chat"
     #: The structured task of the turn (`facts.task_of`): the focused objective, the
@@ -192,35 +174,9 @@ class PolicyServices(Protocol):
     """The operations that handlers may use. Each honors the hook's remaining deadline
     and the activity's cancellation."""
 
-    async def ask(self, state: Mapping[str, Any], questions: Mapping[str, Any],
-                  instructions: str = "") -> "ClassifierResult": ...
-
-    async def complete(self, prompt: str, max_tokens: int = 300) -> "ClassifierResult": ...
-
-    async def suggestions(self, names: Sequence[str], kind: str = "pages",
-                          collections: Sequence[str] = ()) -> Mapping[str, Any]: ...
-
     def message_text(self, ref: str) -> str: ...
 
     def remaining(self) -> float: ...
-
-
-@dataclass(frozen=True)
-class ClassifierResult:
-    """The outcome of one classifier request.
-
-    `status` is `ok`, `skipped` (no question was asked), `malformed`, `timeout`,
-    `unavailable` or `http_error`. `answers` maps each question id to its validated
-    answer. A missing or malformed answer is absent, never a score of zero.
-    """
-
-    status: str
-    answers: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
-    text: str = ""
-    model: str = ""
-    duration_ms: int = 0
-    error: str = ""
-    asked: int = 0
 
 
 class PolicyHandler(Protocol):
@@ -237,16 +193,3 @@ def check_dict(check: CheckResult) -> dict:
     return {"rule_id": check.rule_id, "target_id": check.target_id, "status": check.status,
             "score": check.score, "input_refs": list(check.input_refs),
             "reason": check.reason, "detail": plain(check.detail)}
-
-
-def noul(result: ClassifierResult, qid: str) -> Optional[float]:
-    """The yes probability of one answered `noul` question, or None."""
-    value = result.answers.get(qid)
-    if isinstance(value, Mapping) and isinstance(value.get("noul"), (int, float)):
-        return float(value["noul"])
-    return None
-
-
-def ranked(items: Sequence[tuple[str, float]]) -> list[tuple[str, float]]:
-    """Items by full-precision score, highest first, and by name for equal scores."""
-    return sorted(items, key=lambda kv: (-kv[1], kv[0]))

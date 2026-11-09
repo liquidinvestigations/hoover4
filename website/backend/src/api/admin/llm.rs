@@ -56,25 +56,11 @@ fn llm_configured() -> bool {
         .unwrap_or(false)
 }
 
-/// The model of agent turns: `LLM_QUALITY_MODEL` when it is set, else `LLM_MODEL`. `deploy.py`
-/// renders both from its model-server constants when `[ai_services] llm_enabled` is true, and
-/// the quality model only together with its endpoint. No setting overrides it.
+/// The model of every call: `LLM_MODEL`. `deploy.py` renders it from its model-server
+/// constants when `[ai_services] llm_enabled` is true. No setting overrides it.
 ///
 /// **Mirrored in `main_services/processing/tasks/llm_endpoints.py`** (`chat_model`).
 pub fn agent_model() -> String {
-    agent_model_from(
-        &std::env::var("LLM_QUALITY_MODEL").unwrap_or_default(),
-        &std::env::var("LLM_MODEL").unwrap_or_default(),
-    )
-}
-
-fn agent_model_from(quality: &str, base: &str) -> String {
-    let quality = quality.trim();
-    if quality.is_empty() { base.trim().to_string() } else { quality.to_string() }
-}
-
-/// The model of short calls (titles, summaries and board labels): `LLM_MODEL`.
-pub fn short_call_model() -> String {
     std::env::var("LLM_MODEL").unwrap_or_default().trim().to_string()
 }
 
@@ -194,7 +180,6 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
         providers: providers_map.into_values().collect(),
         models,
         agent_model: agent_model(),
-        short_call_model: short_call_model(),
         refresh_in_flight: REFRESH_IN_FLIGHT.load(Ordering::Relaxed),
         llm_configured: llm_configured() || !agent_model().is_empty(),
         thinking: llm_thinking().await,
@@ -305,15 +290,14 @@ async fn prior_catalog(provider: &str) -> std::collections::HashMap<String, Prio
 }
 
 /// The models that read images, from `LLM_VISION_MODELS`, which `deploy.py` renders as
-/// ornith. The refresh marks them `supports_vision`.
+/// the served model. The refresh marks them `supports_vision`.
 fn vision_models(list: &str) -> std::collections::HashSet<&str> {
     list.split(',').map(str::trim).filter(|name| !name.is_empty()).collect()
 }
 
-/// Refresh the base endpoint and, when `LLM_QUALITY_BASE_URL` is set, the quality endpoint.
-/// The quality endpoint serves the model of agent turns, and the compaction trigger reads its
-/// context window from this table. The Python writer (`tasks/llm_catalog.py`) lists the
-/// quality endpoint under the same provider name.
+/// Refresh the endpoint of the model server. The compaction trigger reads the context window
+/// of the model from this table. The Python writer (`tasks/llm_catalog.py`) lists the
+/// endpoint under the same provider name.
 async fn refresh_catalog_now() -> anyhow::Result<()> {
     let base = std::env::var("LLM_BASE_URL")
         .map_err(|_| anyhow::anyhow!("LLM_BASE_URL unset"))?
@@ -323,18 +307,7 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
         anyhow::bail!("LLM_BASE_URL empty");
     }
     let api_key = read_llm_api_key();
-    let result = refresh_endpoint(&base, provider_name_from_url(&base), &api_key).await;
-    let quality = std::env::var("LLM_QUALITY_BASE_URL")
-        .unwrap_or_default()
-        .trim()
-        .trim_end_matches('/')
-        .to_string();
-    if !quality.is_empty() {
-        if let Err(e) = refresh_endpoint(&quality, endpoint_label(&quality), &api_key).await {
-            tracing::warn!("catalog refresh of the quality endpoint failed: {e:#}");
-        }
-    }
-    result
+    refresh_endpoint(&base, provider_name_from_url(&base), &api_key).await
 }
 
 /// List one endpoint's models into `llm_models` under `provider`.
@@ -587,8 +560,8 @@ mod tests {
 
     #[test]
     fn the_vision_list_is_split_on_commas() {
-        let names = vision_models(" ornith, ,other ");
-        assert!(names.contains("ornith") && names.contains("other"));
+        let names = vision_models(" qwen3.8-flash-next, ,other ");
+        assert!(names.contains("qwen3.8-flash-next") && names.contains("other"));
         assert_eq!(names.len(), 2);
         assert!(vision_models("").is_empty());
     }
@@ -646,14 +619,5 @@ mod tests {
         for (entry, expected) in cases {
             assert_eq!(context_window_from_entry(&entry), expected, "{entry}");
         }
-    }
-
-    /// The agent model is the quality model when `hoover4.ini` names one, and the provider
-    /// model when it does not.
-    #[test]
-    fn the_agent_model_is_the_quality_model_when_one_is_set() {
-        assert_eq!(agent_model_from("ornith", "dgemma"), "ornith");
-        assert_eq!(agent_model_from(" ", "dgemma"), "dgemma");
-        assert_eq!(agent_model_from("", ""), "");
     }
 }

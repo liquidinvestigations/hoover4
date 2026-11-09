@@ -268,7 +268,7 @@ def _record_summarizer_call(params: TitleSessionParams, result) -> None:
     while every title falls back to the user's own words.
     """
     from database.clickhouse import get_global_client
-    from tasks.llm_endpoints import endpoint_for
+    from tasks.llm_endpoints import endpoint as llm_endpoint
 
     ok = 1 if result.title else 0
     username = params.username.strip()
@@ -276,7 +276,7 @@ def _record_summarizer_call(params: TitleSessionParams, result) -> None:
     # telemetry into a cardinality problem with one row per visitor.
     if not username or username == "guest" or username.startswith("guest-"):
         username = "guest"
-    provider = endpoint_for(result.model).label
+    provider = llm_endpoint().label
     reply_bytes = len(result.title) + len(result.summary)
     event_time = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
