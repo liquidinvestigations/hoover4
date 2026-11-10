@@ -12,9 +12,10 @@ keeps it.
 This module builds the request and checks the reply. The checks keep the field limits of the
 earlier explore tool: a nonempty fact, a known kind, at most 3 open questions of 1 to 300
 characters, and a slug of at most 80 characters. A reply that fails them raises
-`MalformedConversion`, so the activity can use its second attempt. The schema asks for a fact
-of at most `MAX_FACT_CHARS` characters, but a longer fact is kept in full. The prompts of later
-board requests cut a long fact (`prompts.PROMPT_FACT_CHARS`).
+`MalformedConversion`, so the activity can use its second attempt. The schema sets no length
+limit on the fact, and a long fact is kept in full. A large `maxLength` makes the grammar of the
+forced call slow, and the model server computes that grammar for all requests in one loop. The
+prompts of later board requests cut a long fact (`prompts.PROMPT_FACT_CHARS`).
 
 `number_problems` names each number of the finding that the report does not hold, so a
 changed count or date is visible in the problems of the fact. It refuses nothing. It is a
@@ -40,8 +41,6 @@ from tasks.P_board import model as m
 #: A line that holds only a wrapper tag, which a model can copy from the request.
 WRAPPER_TAG_LINE = re.compile(r"^\s*</?(?:fact|report|task)>\s*$", re.IGNORECASE)
 
-#: The fact length that the schema asks for. The check does not refuse a longer fact.
-MAX_FACT_CHARS = 40000
 MAX_QUESTIONS = 3
 MAX_QUESTION_CHARS = 300
 MAX_SLUG_CHARS = 80
@@ -60,7 +59,9 @@ SUBMIT_FACT_SCHEMA = {
             "type": "object",
             "properties": {
                 "fact": {
-                    "type": "string", "minLength": 1, "maxLength": MAX_FACT_CHARS,
+                    # No maxLength: the model server builds a grammar from this schema, and
+                    # a large limit makes each token step slow for every request.
+                    "type": "string", "minLength": 1,
                     "description": "One paragraph with the finding. Keep each handle of the "
                                    "report, such as [D1] or [W1], beside the claim that it supports.",
                 },

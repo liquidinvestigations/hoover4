@@ -49,8 +49,24 @@ def test_the_request_offers_only_the_fact_function_with_a_named_choice():
         assert f"- {kind}:" in body["messages"][0]["content"]
 
 
+def test_the_function_schema_has_no_large_length_limit():
+    """The model server builds a grammar from the schema, and a large maxLength makes each
+    token step slow for every request on the server."""
+    def limits(node):
+        if isinstance(node, dict):
+            yield from (v for k, v in node.items() if k == "maxLength")
+            for value in node.values():
+                yield from limits(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from limits(value)
+
+    body = conversion.request_body("q-model", "Find", "report.md", "Approved [D1].", CITATIONS)
+    assert all(limit <= 1000 for limit in limits(body["tools"]))
+
+
 def test_a_long_fact_is_kept_in_full():
-    fact = "Approved [D1]. " + "x" * (conversion.MAX_FACT_CHARS + 500)
+    fact = "Approved [D1]. " + "x" * 40_500
     args = conversion.parse_reply(call_reply({"fact": fact, "kind": "sourced"}))
     assert args["fact"] == fact.strip()
 
