@@ -227,7 +227,9 @@ fn level_sql(tier: Tier, group: &str, filter: &str) -> String {
 
 const CHILD_GROUP: &str = "splitByChar('/', substring(path, length({prefix:String}) + 1))[1]";
 const FOLDER_FILTER: &str = "container_hash = {ch:String} AND startsWith(path, {prefix:String})";
-const MEMBERS_FILTER: &str = "container_hash IN {hashes:Array(String)}";
+// The hash list is bound into the SQL text with `?`, which the client sends in the request
+// body. A `.param()` value goes into the URL, and a long list exceeds the URI length limit.
+const MEMBERS_FILTER: &str = "container_hash IN ?";
 
 /// One row of a level query. Bound by column name: `g`, `files`, `bytes`, `inner_hashes`.
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
@@ -272,7 +274,7 @@ async fn fallback(
         let rows: Vec<LevelRow> = client
             .query(&level_sql(tier, "container_hash", MEMBERS_FILTER))
             .param("cd", collection_dataset)
-            .param("hashes", &frontier)
+            .bind(&frontier)
             .fetch_all()
             .await?;
         queries += 1;
@@ -326,10 +328,11 @@ pub async fn stats_for_targets(
     let stored: Vec<StoredRow> = client
         .query(
             "SELECT node_key, subtree_file_count, subtree_size_bytes FROM vfs_nodes FINAL \
-             WHERE collection_dataset = {cd:String} AND node_key IN {keys:Array(String)}",
+             WHERE collection_dataset = {cd:String} AND node_key IN ?",
         )
+        // In the SQL text, which goes in the request body. See `MEMBERS_FILTER`.
+        .bind(&keys)
         .param("cd", collection_dataset)
-        .param("keys", &keys)
         .fetch_all()
         .await?;
     let mut queries = 1;
@@ -599,5 +602,45 @@ mod tests {
         let sql = level_sql(Tier::Nodes, "container_hash", MEMBERS_FILTER);
         assert!(sql.contains("FROM vfs_nodes FINAL"));
         assert!(sql.contains("kind = 'container'"));
+    }
+
+    /// A folder listing with many long keys. As a URL parameter, this key list is longer
+    /// than the URI length limit, and the query fails with `uri too long`. The real
+    /// targets get the same values alone and inside the long list.
+    #[tokio::test]
+    #[ignore = "needs live clickhouse"]
+    async fn long_key_list_does_not_fail() {
+        let dataset = "testdata_zips";
+        let client = crate::db_utils::clickhouse_utils::get_client_for_dataset(dataset).await.unwrap();
+        let target = |path: &str, container_file_hash: Option<String>| StatsTarget {
+            node_key: common::vfs::make_node_key(dataset, "", path),
+            container_hash: String::new(),
+            path: path.to_string(),
+            container_file_hash,
+        };
+        // The fixture: `/location-1/parent.zip` and `/location-2/parent.zip`, with a nested archive.
+        let zips: Vec<(String, String)> = client
+            .query("SELECT path, hash FROM vfs_files FINAL WHERE collection_dataset = ? AND container_hash = '' ORDER BY path")
+            .bind(dataset)
+            .fetch_all()
+            .await
+            .unwrap();
+        let mut real = vec![target("/location-1", None), target("/location-2", None)];
+        real.extend(zips.into_iter().map(|(path, hash)| target(&path, Some(hash))));
+        let (alone, _) = stats_for_targets(&client, dataset, &real).await.unwrap();
+        eprintln!("values for the fixture targets: {alone:?}");
+        assert_eq!(alone.len(), real.len(), "every fixture target has values");
+
+        let folder = format!("/{}/Top of Personal Folders/Gelöschte Objekte", "ä".repeat(100));
+        let mut targets: Vec<StatsTarget> = (0..600)
+            .map(|i| target(&format!("{folder}/message {i:04}.eml"), Some(format!("{i:064x}"))))
+            .collect();
+        let encoded: usize = targets.iter().map(|t| t.node_key.len() * 3).sum();
+        assert!(encoded > 65_534, "the key list must exceed the URI limit, it is {encoded} bytes");
+        targets.extend(real.iter().cloned());
+        let (within, _) = stats_for_targets(&client, dataset, &targets).await.unwrap();
+        for t in &real {
+            assert_eq!(within.get(&t.node_key), alone.get(&t.node_key), "{}", t.path);
+        }
     }
 }
