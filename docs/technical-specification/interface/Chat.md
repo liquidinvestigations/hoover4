@@ -12,6 +12,7 @@
 | Previous match | Select and scroll to the previous exact match. | Selection wraps through the available matches. |
 | Next match | Select and scroll to the next exact match. | Selection wraps through the available matches. |
 | Close preview | Close the captured page pane. | The conversation stays open. |
+| Captured page title | Open the original web page in a new tab. | A page without a title shows its address. |
 | Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. The input is at most 350 pixels wide, and the counter and the buttons follow it. |
 | Investigation Board | Open the board of a board explore chat, with the chat's intent selected. | It shows only in a board explore chat, at the right end of the search row. It opens in the same tab. |
 | Board answer card | Open the board of a board explore chat, with the fact of the turn selected. | It is the card at the end of a board explore chat. It opens in the same tab. |

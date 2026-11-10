@@ -150,7 +150,22 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
                 }, "×" }
             }
             if let Some(page) = page {
-                div { style: "padding: 12px 16px; font-size: var(--x-text-xl); background: white; border-bottom: 1px solid; border-bottom-color: var(--x-border);", "{page.title}" }
+                {
+                    let url = if page.final_url.is_empty() { page.url.clone() } else { page.final_url.clone() };
+                    let title = if page.title.trim().is_empty() { url.clone() } else { page.title.clone() };
+                    // One line. `anywhere` lets an ellipsis cut a URL, which has no spaces.
+                    let line = "display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; word-break: break-all;";
+                    rsx! {
+                        div { "data-web-preview-title": "true", title: "{title}",
+                            style: "min-width: 0; padding: 12px 16px; font-size: var(--x-text-xl); background: white; border-bottom: 1px solid; border-bottom-color: var(--x-border);",
+                            if let Some(href) = http_link(&url) {
+                                a { href, target: "_blank", rel: "noopener noreferrer nofollow", style: "{line}", "{title}" }
+                            } else {
+                                span { style: "{line}", "{title}" }
+                            }
+                        }
+                    }
+                }
                 div { id: "web-page-preview-text", style: "overflow: auto; padding: 16px; flex: 1;",
                     onmounted: move |_| find_in_page(&find(), 0),
                     MarkdownishText { text: page.markdown, citation_links: false }

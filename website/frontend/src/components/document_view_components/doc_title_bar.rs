@@ -87,12 +87,13 @@ fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifi
 
             CollectionIcon {  }
             div {
-                style: "color: rgba(0, 0, 0, 0.8); font-style: italic; font-size: var(--x-text-detail); line-height: var(--x-line-detail);",
+                // One line. A long name ends in an ellipsis and can break inside a word.
+                style: "min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: break-all; color: rgba(0, 0, 0, 0.8); font-style: italic; font-size: var(--x-text-detail); line-height: var(--x-line-detail);",
                 class: "x-document-collection-name",
                 title: "{label}",
                 "{label}"
             }
-            div {
+            div { style: "flex-shrink: 0;",
             "/"
             }
             FileTypeIcon { document_identifier }
@@ -156,7 +157,7 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     };
     rsx! {
         div {
-            style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;color:rgba(0,0,0,0.75)",
+            style: "display: block; min-width: 0; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;color:rgba(0,0,0,0.75)",
 
             "{file_path}"
         }
