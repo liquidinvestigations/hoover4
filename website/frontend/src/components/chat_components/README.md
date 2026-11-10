@@ -26,6 +26,8 @@ Each finished answer retains citation status and tool scope in metadata.
 The interface omits this status prose.
 Each source has one card across the conversation, placed at its first visible marker.
 Successful citations without markers follow the final answer, before the centered token footer.
+While a turn has no answer, its citations without markers follow the rows of that turn.
+The previous answer does not show them.
 Later markers select the source and scroll to its card.
 Distinct verified document passages share one card and keep their own find actions.
 A web source without a title uses its URL as the linked title.

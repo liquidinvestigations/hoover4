@@ -142,6 +142,8 @@ pub fn ChatTranscript(
         if !cited_handles.contains(&page.handle) { cited_handles.push(page.handle.clone()); }
     }
     let placements = citation_placements(&messages, &all_sources, &web_pages);
+    // The sources that the turn without an answer cited so far.
+    let pending = placements.get(&messages.len()).cloned().unwrap_or_default();
     // The todo calls that show a task summary after their group, by row index.
     let summaries = todo_summaries(&messages, &todo_versions);
     // Runs of tool and instruction rows, and every other row on its own, as index ranges.
@@ -366,6 +368,39 @@ pub fn ChatTranscript(
                     }
                 }
             }
+            if !pending.documents.is_empty() || !pending.pages.is_empty() {
+                div { "data-pending-citations": "true", style: "align-self: stretch; max-width: 96%; padding: 0 2px;",
+                    UnreferencedCitations { documents: pending.documents, pages: pending.pages,
+                        web_pages: web_pages.clone(), conflicting: conflicting.clone() }
+                }
+            }
+        }
+    }
+}
+
+/// The source cards that no marker of the answer text places.
+#[component]
+fn UnreferencedCitations(
+    documents: Vec<ChatDocRef>,
+    pages: Vec<common::chat_pages::ChatPageRef>,
+    web_pages: Vec<common::chat_pages::ChatPageRef>,
+    conflicting: Vec<String>,
+) -> Element {
+    rsx! {
+        if !documents.is_empty() || !pages.is_empty() {
+            div { "data-unreferenced-citations": "true",
+                if !documents.is_empty() {
+                    DocumentCitationCards { sources: documents, conflicting }
+                }
+                for page in pages {
+                    div { "data-citation-handle": "{page.handle}",
+                        "data-citation-aliases": serde_json::to_string(&web_pages.iter().filter(|source| source.url == page.url).map(|source| source.handle.clone()).collect::<Vec<_>>()).unwrap_or_default(),
+                        if !page.why.is_empty() { p { "{page.why}" } }
+                        else { p { {page.terms.join("; ")} } }
+                        WebPageCard { page: page.clone(), passages: web_pages.iter().filter(|source| source.url == page.url).cloned().collect::<Vec<_>>() }
+                    }
+                }
+            }
         }
     }
 }
@@ -377,6 +412,8 @@ struct CitationPlacement {
     pages: Vec<common::chat_pages::ChatPageRef>,
 }
 
+/// The source cards of each answer, by row index. The key `messages.len()` holds the cards
+/// of a turn without an answer yet: they follow the rows of that turn.
 fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages: &[common::chat_pages::ChatPageRef]) -> HashMap<usize, CitationPlacement> {
     let mut result = HashMap::new();
     let mut seen = HashSet::new();
@@ -384,6 +421,31 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
         if handle.is_empty() { return None; }
         docs.iter().find(|doc| doc.handle == handle).map(|doc| format!("document:{}", doc.file_hash))
             .or_else(|| pages.iter().find(|page| page.handle == handle).map(|page| format!("page:{}", page.url)))
+    };
+    // The cited handles of the rows, then every source of the session for the last turn.
+    let issued_in = |rows: &[ChatMessageItem], last_turn: bool| {
+        let mut issued = Vec::new();
+        for row in rows {
+            if row.tool_name == "cite_documents" { issued.extend(row.parsed_doc_refs().into_iter().map(|doc| doc.handle)); }
+            if row.tool_name == "cite_pages" { issued.extend(common::chat_pages::extract_page_refs(&row.tool_output).into_iter().map(|page| page.handle)); }
+        }
+        if last_turn {
+            issued.extend(docs.iter().map(|doc| doc.handle.clone()));
+            issued.extend(pages.iter().map(|page| page.handle.clone()));
+        }
+        issued
+    };
+    let place = |issued: Vec<String>, seen: &mut HashSet<String>, placement: &mut CitationPlacement| {
+        for handle in issued {
+            if let Some(key) = identity(&handle) {
+                if seen.insert(key) {
+                    if let Some(source) = docs.iter().find(|doc| doc.handle == handle) {
+                        placement.documents.extend(docs.iter().filter(|doc| doc.file_hash == source.file_hash).cloned());
+                    }
+                    if let Some(page) = pages.iter().find(|page| page.handle == handle) { placement.pages.push(page.clone()); }
+                }
+            }
+        }
     };
     for (index, message) in messages.iter().enumerate() {
         if message.role != ChatRole::Assistant || answer_replaced(messages, index) { continue; }
@@ -398,27 +460,17 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
             .map(|offset| index + 1 + offset).unwrap_or(messages.len());
         let final_answer = !messages[index + 1..next_user].iter().any(|row| row.role == ChatRole::Assistant);
         if final_answer {
-            let mut issued = Vec::new();
-            for row in &messages[start..next_user] {
-                if row.tool_name == "cite_documents" { issued.extend(row.parsed_doc_refs().into_iter().map(|doc| doc.handle)); }
-                if row.tool_name == "cite_pages" { issued.extend(common::chat_pages::extract_page_refs(&row.tool_output).into_iter().map(|page| page.handle)); }
-            }
-            if index == messages.iter().rposition(|row| row.role == ChatRole::Assistant).unwrap_or(index) {
-                issued.extend(docs.iter().map(|doc| doc.handle.clone()));
-                issued.extend(pages.iter().map(|page| page.handle.clone()));
-            }
-            for handle in issued {
-                if let Some(key) = identity(&handle) {
-                    if seen.insert(key) {
-                        if let Some(source) = docs.iter().find(|doc| doc.handle == handle) {
-                            placement.documents.extend(docs.iter().filter(|doc| doc.file_hash == source.file_hash).cloned());
-                        }
-                        if let Some(page) = pages.iter().find(|page| page.handle == handle) { placement.pages.push(page.clone()); }
-                    }
-                }
-            }
+            // A later turn owns the sources that no row of this turn cites.
+            place(issued_in(&messages[start..next_user], next_user == messages.len()), &mut seen, &mut placement);
         }
         result.insert(index, placement);
+    }
+    if let Some(last_user) = messages.iter().rposition(|row| row.role == ChatRole::User) {
+        if !messages[last_user..].iter().any(|row| row.role == ChatRole::Assistant) {
+            let mut placement = CitationPlacement::default();
+            place(issued_in(&messages[last_user..], true), &mut seen, &mut placement);
+            result.insert(messages.len(), placement);
+        }
     }
     result
 }
@@ -1202,21 +1254,8 @@ fn MessageEntry(
                         }
                     }
                     if !replaced {
-                        if !trailing_docs.is_empty() || !trailing_pages.is_empty() {
-                        div { "data-unreferenced-citations": "true",
-                            if !trailing_docs.is_empty() {
-                                DocumentCitationCards { sources: trailing_docs, conflicting: conflicting_handles.clone() }
-                            }
-                            for page in trailing_pages {
-                                div { "data-citation-handle": "{page.handle}",
-                                    "data-citation-aliases": serde_json::to_string(&web_pages.iter().filter(|source| source.url == page.url).map(|source| source.handle.clone()).collect::<Vec<_>>()).unwrap_or_default(),
-                                    if !page.why.is_empty() { p { "{page.why}" } }
-                                    else { p { {page.terms.join("; ")} } }
-                                    WebPageCard { page: page.clone(), passages: web_pages.iter().filter(|source| source.url == page.url).cloned().collect::<Vec<_>>() }
-                                }
-                            }
-                        }
-                        }
+                        UnreferencedCitations { documents: trailing_docs, pages: trailing_pages,
+                            web_pages: web_pages.clone(), conflicting: conflicting_handles.clone() }
                         if let Some(tool_input) = board_fact.clone() {
                             BoardFactSummary { tool_input }
                         }
@@ -1569,6 +1608,19 @@ mod tests {
         assert_eq!(places[&2].inline, vec!["[D1]"]);
         assert_eq!(places[&2].documents.iter().map(|doc| doc.handle.as_str()).collect::<Vec<_>>(), vec!["[D2]"]);
         assert!(places[&4].inline.is_empty() && places[&4].documents.is_empty());
+    }
+
+    #[test]
+    fn a_turn_without_an_answer_keeps_its_own_unmarked_sources() {
+        let docs = vec![ChatDocRef { handle: "[D1]".into(), file_hash: "a".repeat(64), ..test_doc() },
+            ChatDocRef { handle: "[D2]".into(), file_hash: "b".repeat(64), ..test_doc() }];
+        let messages = vec![row(0, ChatRole::User, "", "", "Question"),
+            row(1, ChatRole::Assistant, "", "", "An answer without sources."),
+            row(2, ChatRole::User, "", "", "Search for music"),
+            row(3, ChatRole::Tool, "cite_documents", &serde_json::to_string(&docs[..1]).unwrap(), "")];
+        let places = citation_placements(&messages, &docs, &[]);
+        assert!(places[&1].documents.is_empty());
+        assert_eq!(places[&4].documents.iter().map(|doc| doc.handle.as_str()).collect::<Vec<_>>(), vec!["[D1]", "[D2]"]);
     }
 
     #[test]
