@@ -1848,19 +1848,15 @@ async fn an_email_with_no_parsed_body_is_not_offered_as_one() {
         .unwrap();
 }
 
-/// In-PDF search answers with real hits, through the sidecar, end to end.
+/// In-PDF search returns real hits from the `hoover4-pdf-search` service.
 ///
-/// Two separate things have to be true for a hit to come back and neither is visible from
-/// a unit test: the sidecar process is running, and the address this server sends the
-/// request to is the sidecar's. The sidecar is a CHILD of this server rather than a
-/// service of its own, so that address is loopback, and a deployment that starts the
-/// server from a different working directory loses the process entirely, which turns
-/// every in-PDF search into a 500 with nothing else affected.
+/// A unit test cannot show that the service runs and that `PDF_SEARCH_ENDPOINT` gives its
+/// address. A wrong address makes every in-PDF search fail, and the other routes still work.
 #[tokio::test]
 #[ignore = "needs live stack"]
-async fn in_pdf_search_returns_hits_through_the_sidecar() {
+async fn in_pdf_search_returns_hits_through_the_search_service() {
     skip_unless_dataset!(TESTFILES);
-    let _budget = Budget::start("in_pdf_search_returns_hits_through_the_sidecar");
+    let _budget = Budget::start("in_pdf_search_returns_hits_through_the_search_service");
     use common::search_result::DocumentIdentifier;
 
     // A PDF picked by the property the test needs (it has a text layer) rather than by
@@ -1893,10 +1889,10 @@ async fn in_pdf_search_returns_hits_through_the_sidecar() {
         None,
     )
     .await
-    .expect("in-PDF search must reach the sidecar");
+    .expect("in-PDF search must reach the search service");
     assert!(
         results.total > 0,
-        "{keyword:?} is in the PDF's text layer but the sidecar found it nowhere in the PDF"
+        "{keyword:?} is in the PDF's text layer but the search service found it nowhere in the PDF"
     );
 }
 
@@ -2018,18 +2014,19 @@ async fn slow_qa_pdf_sources_match_bytes_in_both_orders_and_keep_individual_coun
         expected[0]["total"], expected[1]["total"]);
 }
 
-/// The sidecar's address is configuration, not a literal, and defaults to the loopback
-/// the sidecar actually runs on.
+/// The search service address comes from `PDF_SEARCH_ENDPOINT`, and the default names the
+/// `hoover4-pdf-search` container.
 ///
-/// There is no second address to check: the sidecar is handed the PDF's bytes, so nothing
-/// tells it a url to fetch them back from. Such a url points at this server's own HTTP
-/// port. A request the server makes to itself, carrying no session cookie, which
-/// requiring a session on the download route kills silently.
+/// The service receives the PDF bytes, so it has no second address to fetch them from.
 #[test]
-fn pdf_search_endpoint_defaults_to_loopback() {
-    use backend::api::documents::search_document_pdf::pdf_search_endpoint;
-    // Nothing sets this in the test process, so this is the default path.
-    assert_eq!(pdf_search_endpoint(), "http://127.0.0.1:13500");
+fn pdf_search_endpoint_reads_the_environment() {
+    use backend::api::documents::search_document_pdf::{DEFAULT_PDF_SEARCH_ENDPOINT, pdf_search_endpoint};
+    let expected = std::env::var("PDF_SEARCH_ENDPOINT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_PDF_SEARCH_ENDPOINT.to_string());
+    assert_eq!(pdf_search_endpoint(), expected);
+    assert_eq!(DEFAULT_PDF_SEARCH_ENDPOINT, "http://hoover4-pdf-search:13500");
 }
 
 /// A hash nothing was ever ingested under is a 404, and a real one still downloads.

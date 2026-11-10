@@ -135,22 +135,26 @@ printing it in both put it across the pager and the page numbers.
 
 ## In-document PDF search
 
-`/api/search_document_pdf` collects the matching words out of Manticore and asks a
-**pdfium sidecar** where they sit on the page, so hits can be highlighted in the rendered
-PDF. The sidecar is `backend/pdf-viewer/_server/server-search.js`, a node process this
-server starts and supervises (`server_extra::run_pdf_search_server`) rather than a service
-of its own, which is why `PDF_SEARCH_ENDPOINT` is loopback.
+`/api/search_document_pdf` collects the matching words out of Manticore. Then it asks the
+**PDF search service** where the words are on each page, so the viewer can highlight them.
+The service is the `hoover4-pdf-search` container, from
+[main_services/pdf_search/](../../main_services/pdf_search). `PDF_SEARCH_ENDPOINT` gives its
+address, and the default is `http://hoover4-pdf-search:13500`.
 
-**The sidecar is handed the PDF's bytes**: `POST` the document as the body, keywords as a
-`?keywords=<json array>` parameter, and never a URL. It cannot reach back into anything.
-A sidecar told to fetch `http://127.0.0.1:<PORT>/_download_document/…` is this server
-asking itself for a document it already knows how to read, over a request that carries no
-session cookie; requiring a session on the download route kills it silently. The bytes are
-read straight out of the blob store instead
-(`api::documents::download_document::read_blob_bytes`), which also bounds the document by
-its registered size before a byte is fetched. The whole PDF is buffered here, on the wire
-and inside pdfium's wasm heap. Over that ceiling, the document still opens, downloads and
-searches by text; only the in-page highlight overlay is unavailable.
+The website sends the PDF bytes to the service. It sends a `POST` with the document as the
+body and the keywords as a `?keywords=<json array>` parameter. It never sends a URL, so the
+service has no access to the website or to the blob store. A URL to the download route
+would point back at this server, in a request without a session cookie, and that request
+fails. The website reads the bytes from the blob store
+(`api::documents::download_document::read_blob_bytes`). That read refuses a document above
+its registered size limit before it reads a byte. Over that limit, the document still
+opens, downloads and is searchable by text, but the viewer shows no highlights.
+
+The service runs each search in a new native PDFium process, and runs at most 4 at the
+same time. The process exits after its request, so the operating system frees all of its
+memory. The container memory limit is 12 GB. When a search process stops, for example
+after an out-of-memory kill, only its own request fails. Docker restarts the container
+when the server process stops. The results have the form of `common::pdf_search_results`.
 
 The selected PDF source determines which bytes the server reads.
 Original PDFs use the document blob. OCR PDFs use their stored engine and language row in `pdf_ocr_results`.
@@ -163,21 +167,6 @@ That blob read runs on the server's multi-threaded runtime through
 `startup::on_multi_thread_runtime`. The S3 SDK blocks internally while collecting the body,
 and Dioxus server functions do not run on the runtime the axum routes do. A bare
 `tokio::spawn` inherits the same context rather than escaping it.
-
-Its directory is found by walking **up** from the working directory, never joined to it:
-the built release binary serves from `target/dx/<pkg>/release/web/`, so a relative path
-resolves inside the build output, the spawn fails with `No such file or directory`, and
-in-PDF search is dead for the whole deployment while every other route looks healthy.
-`PDF_SEARCH_SERVER_DIR` overrides the search outright.
-
-The pid file at `/tmp/pdf-search-server.pid` outlives the process it names. It is on the
-container's filesystem and a restart does not clear it, and pids are handed out from a
-small range at boot. So "a process exists at this number" is never evidence that it is the
-sidecar, and the supervisor reads `/proc/<pid>/cmdline` before signalling anything. Killing
-on liveness alone SIGKILLs a stranger: it has killed *this server's own binary* seconds
-after start, after which `dx serve` treats the app as running, every route answers 500
-with nothing else in the log, and each restart reproduces it because the same pid is
-issued again.
 
 This is not `PDF_TO_HTML_ENDPOINT`. That names `hoover4-processing-pdf-to-html`, a
 separate container that takes a POST of raw PDF bytes and returns HTML; it answers

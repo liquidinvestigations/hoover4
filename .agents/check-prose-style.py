@@ -54,7 +54,7 @@ EXCLUDE = (
     "/.git/", "/node_modules/", "/website/target/", "/target/debug/", "/target/release/",
     "/.venv/", "/.container/cargo/", "/vendored/", "/tmp/stage/", "/__pycache__/",
     "/site-packages/", "/bx/",
-    "/website/backend/pdf-viewer/_server/dist/", "/website/frontend/assets/embed-pdf/",
+    "/website/frontend/assets/embed-pdf/",
     "/website/frontend/assets/", "/components/pdf-viewer/",
     "/plans/",
     # Generated capture reports. The harness writes them, and each one embeds a model's

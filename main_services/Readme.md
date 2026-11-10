@@ -25,6 +25,7 @@ This directory contains the core data plane for Hoover4. It includes database in
   pages, sends each to the OCR tier above, and writes back a PDF with an invisible text
   layer. It owns no engine and no language data. See its Readme for the derived-prefix
   guard that keeps the ingest walker from re-ingesting what it writes.
+- [pdf_search/](pdf_search) - in-document PDF search for the website (`hoover4-pdf-search`). It gives the page position of each keyword match.
 
 ### CPU services run with the main services.
 
@@ -42,6 +43,7 @@ An unconfigured OCR engine produces no variant.
 
 - [ocr_pdf/Readme.md](ocr_pdf/Readme.md)
 - [ocr_tesseract/Readme.md](ocr_tesseract/Readme.md)
+- [pdf_search/Readme.md](pdf_search/Readme.md)
 - [docs/Readme.md](docs/Readme.md)
 - [processing/Readme.md](processing/Readme.md)
 - [ops/Readme.md](ops/Readme.md)

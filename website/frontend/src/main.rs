@@ -35,23 +35,6 @@ fn main() {
             // The upload receiver. Its startup recovery and hourly sweep run on this
             // runtime, and their file work runs on its blocking pool.
             backend::uploads::start();
-            let _pdf_search_server = tokio::spawn(async move {
-                let res =
-                    backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;
-                match res {
-                    Ok(code) => {
-                        dioxus::logger::tracing::info!(
-                            "PDF search server exited with code: {}",
-                            code
-                        );
-                        // std::process::exit(code);
-                    }
-                    Err(e) => {
-                        dioxus::logger::tracing::error!("PDF search server error: {:?}", e);
-                        // std::process::exit(1);
-                    }
-                }
-            });
 
 
             use dioxus::server::axum;

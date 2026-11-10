@@ -20,21 +20,5 @@
   "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/document-evidence/report.md": "Preserve captured output from another system.",
   "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/open-source-project-research/report.md": "Preserve captured output from another system.",
   "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/public-organization-research/report.md": "Preserve captured output from another system.",
-  "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/public-source-research/report.md": "Preserve captured output from another system.",
-  "website/backend/pdf-viewer/_server/dist/engines/CHANGELOG.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/engines/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/engines/examples/node/CHANGELOG.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/arabic/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/hebrew/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/jp/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/kr/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/latin/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/sc/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/fonts/tc/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/models/CHANGELOG.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/models/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/pdfium/CHANGELOG.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/pdfium/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/pdfium/examples/README.md": "Preserve upstream distribution text.",
-  "website/backend/pdf-viewer/_server/dist/pdfium/examples/node/CHANGELOG.md": "Preserve upstream distribution text."
+  "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/public-source-research/report.md": "Preserve captured output from another system."
 }

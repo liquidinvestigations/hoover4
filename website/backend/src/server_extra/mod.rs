@@ -4,7 +4,6 @@ pub mod download_ocr_pdf;
 pub mod feedback;
 pub mod image_preview;
 pub mod private_routes;
-pub mod run_pdf_search_server;
 pub mod tus;
 pub mod uploads;
 

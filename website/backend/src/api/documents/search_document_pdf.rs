@@ -14,19 +14,18 @@ struct SearchPdfResultsSet {
 
 use crate::auth::permissions;
 
-/// Where the in-PDF search sidecar answers.
+/// The default address of the in-PDF search service, the `hoover4-pdf-search` container.
+pub const DEFAULT_PDF_SEARCH_ENDPOINT: &str = "http://hoover4-pdf-search:13500";
+
+/// Where the in-PDF search service answers. `PDF_SEARCH_ENDPOINT` overrides the default.
 ///
-/// It is a **child process of this server**, not a service of its own (see
-/// `server_extra::run_pdf_search_server`), so loopback is the right default and the
-/// variable exists only so a deployment that moves it does not need a rebuild. This is
-/// not `PDF_TO_HTML_ENDPOINT`: that names the page-rendering container, which speaks a
-/// different protocol entirely (POST of raw PDF bytes, HTML back) and answers
-/// `GET requests are not supported` to anything sent here.
+/// This is not `PDF_TO_HTML_ENDPOINT`. That variable names the page-rendering container,
+/// which sends HTML back for the PDF bytes and refuses a `GET`.
 pub fn pdf_search_endpoint() -> String {
     std::env::var("PDF_SEARCH_ENDPOINT")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "http://127.0.0.1:13500".to_string())
+        .unwrap_or_else(|| DEFAULT_PDF_SEARCH_ENDPOINT.to_string())
 }
 
 /// Longest a single in-PDF search of the website may take. The sidecar parses and scans

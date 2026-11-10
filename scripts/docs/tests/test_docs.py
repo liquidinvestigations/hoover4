@@ -185,11 +185,11 @@ class AuditTests(unittest.TestCase):
 class HookTests(unittest.TestCase):
     def test_legacy_walker_includes_owned_markdown_in_vendor_paths(self):
         names = {str(ROOT / "main_services/regex_entity_scanner/vendored/README.md"),
-                 str(ROOT / "website/backend/pdf-viewer/_server/dist/engines/README.md")}
+                 str(ROOT / "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/document-evidence/report.md")}
         paths = set(PROSE.walk([str(ROOT / "main_services/regex_entity_scanner/vendored"),
-                                str(ROOT / "website/backend/pdf-viewer/_server/dist")], names))
+                                str(ROOT / "docs/quality-assurance/capture-reports")], names))
         self.assertIn(str(ROOT / "main_services/regex_entity_scanner/vendored/README.md"), paths)
-        self.assertNotIn(str(ROOT / "website/backend/pdf-viewer/_server/dist/engines/README.md"), paths)
+        self.assertNotIn(str(ROOT / "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/document-evidence/report.md"), paths)
 
     def test_rule_lists_match(self):
         self.assertEqual(HOOK.PHRASES, PROSE._PHRASES)
@@ -230,7 +230,7 @@ class HookTests(unittest.TestCase):
     def test_owned_vendor_readme_is_checked_and_upstream_is_preserved(self):
         data = {"file_path": "main_services/regex_entity_scanner/vendored/README.md", "content": "Limits worth knowing."}
         self.assertIn('"deny"', self.payload("Write", data))
-        data["file_path"] = "website/backend/pdf-viewer/_server/dist/engines/README.md"
+        data["file_path"] = "docs/quality-assurance/capture-reports/2026-09-11/chat/batch-8/chat/document-evidence/report.md"
         self.assertEqual(self.payload("Write", data), "")
 
     def test_patch_and_multiedit_are_denied(self):

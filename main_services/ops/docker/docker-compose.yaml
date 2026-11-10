@@ -720,6 +720,8 @@ services:
       - MANTICORE_URL=http://manticore:9308
       - MANTICORE_VECTORS_URL=http://manticore-vectors:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
+      # In-document PDF search (service hoover4-pdf-search).
+      - PDF_SEARCH_ENDPOINT=http://hoover4-pdf-search:13500
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
       - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
@@ -824,6 +826,31 @@ services:
       - ./pdf-to-html:/app
     entrypoint: ["/usr/bin/python", "/app/pdf2html_server.py"]
     working_dir: /app
+
+  # In-document PDF search for the website, with the native PDFium library. Each search
+  # runs in its own process, 4 at most, and the process exits after its request.
+  # The memory limit is fixed. An out-of-memory kill stops one search process, and the
+  # server answers that request with an error. Docker restarts the container if the
+  # server process stops.
+  hoover4-pdf-search:
+    logging: *logging
+    container_name: hoover4-pdf-search
+    build:
+      context: ../../pdf_search
+      dockerfile: Dockerfile
+    image: hoover4-pdf-search:local
+    init: true
+    restart: unless-stopped
+    memswap_limit: 12G
+    mem_limit: 12G
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:13500/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - hoover4
 
 networks:
   hoover4:
