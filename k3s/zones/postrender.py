@@ -21,8 +21,10 @@ manifests/zone-pods.yaml therefore puts every pod of the zone on its home node a
 Usage: postrender.py <zone namespace>
 The system Python runs this file, because the post-renderer needs PyYAML.
 """
+import fnmatch
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -39,6 +41,42 @@ import settings  # noqa: E402
 import zonestate  # noqa: E402
 
 MEMORY = json.loads((HERE / 'memory-limits.json').read_text())['zone']
+# The workloads of each openDesk application, by name pattern. A disabled application (operator setting app.<name>)
+# renders zero replicas and keeps its claims, so an enable restores it with its data.
+APP_WORKLOADS = {
+    'nextcloud': ('opendesk-nextcloud-*',),
+    'collabora': ('collabora-*',),
+    'cryptpad': ('cryptpad*',),
+    'element': ('opendesk-element*', 'opendesk-synapse*', 'opendesk-matrix-*', 'matrix-*', 'element-*', 'opendesk-well-known*',
+                'synapse-*', 'mas*', 'lk-jwt*'),
+    'jitsi': ('jitsi-*',),
+    'openproject': ('openproject-*',),
+    'xwiki': ('xwiki*',),
+    'notes': ('impress-*', 'notes-*'),
+}
+
+
+def operator_values(zone):
+    """The effective operator settings of a zone: the saved revision in HOOVER4_SETTINGS_REVISION, else the newest.
+    An installation without operator state gets the defaults of the registry."""
+    import importlib.util
+    path = HERE.parent / 'platform/operator/settings.py'
+    spec = importlib.util.spec_from_file_location('operator_settings', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    folder = settings.SITE.operator_state() if settings.SITE else None
+    revision = os.environ.get('HOOVER4_SETTINGS_REVISION')
+    overrides = {}
+    if folder and (folder / 'desired.json').exists():
+        overrides = module.State(folder).overrides(int(revision) if revision else None)
+    return module.effective(f'zone:{zone}', overrides.get(f'zone:{zone}', {}))
+
+
+def disabled_app(name, values):
+    for app, patterns in APP_WORKLOADS.items():
+        if values.get(f'app.{app}') == 'false' and any(fnmatch.fnmatchcase(name, p) for p in patterns):
+            return app
+    return None
 CONTROLLERS = {'Deployment': 'deployment', 'StatefulSet': 'statefulset', 'DaemonSet': 'daemonset', 'CronJob': 'cronjob'}
 # The chart stores that run in Kata. volumes: the volume or claim template name and its mount directory in the store
 # container. user: uid:gid of the store process, which also owns a new file system. The command of the container,
@@ -233,6 +271,11 @@ def openproject_worker(doc, extra):
 
 def overlay(documents, namespace):
     zone = Zone(namespace)
+    values = operator_values(namespace)
+    for key, value in values.items():
+        if key.startswith('memory.'):
+            workload, name = key[len('memory.'):].rsplit('.', 1)
+            MEMORY.setdefault(workload, {})[name] = value
     extra, claims = [], {}
     for doc in documents:
         if not isinstance(doc, dict):
@@ -292,6 +335,8 @@ def overlay(documents, namespace):
         cpu_policy.apply(doc)
         memory(doc)
         if zone.disabled and kind != 'CronJob':
+            doc['spec']['replicas'] = 0
+        elif kind in ('Deployment', 'StatefulSet') and disabled_app(name, values):
             doc['spec']['replicas'] = 0
     for doc in documents:
         if isinstance(doc, dict) and doc.get('kind') == 'PersistentVolumeClaim':

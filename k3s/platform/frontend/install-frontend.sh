@@ -37,7 +37,7 @@ first_bind=${binds%% *}
 python3 "$source_dir/zones/zones.py" >/dev/null
 source "$private/zones/frontend.env"
 cluster=$(kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{" "}{end}')
-cluster+=$(python3 -c 'import json,sys;print(" ".join(h["wg_ip"] for h in json.load(open(sys.argv[1]))["hosts"].values()))' "$private/hosts.json")
+cluster+=$(python3 -c 'import json,sys;print(" ".join(h["wg_ip"] for h in json.load(open(sys.argv[1]))["hosts"].values()))' <(python3 "$source_dir/settings.py" hosts))
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 for name in binds ingress cluster vpn tls_dir dns_credentials suffix; do printf '%s=%q\n' "$name" "${!name}"; done > "$work/site.env"

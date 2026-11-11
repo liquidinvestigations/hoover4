@@ -22,7 +22,8 @@ The steps of apply, in order:
      The installer replaces outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      gate.py adds the sign-in service of the zone gate.
-  7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/).
+  7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). An installation with
+     stores = local in the site file gets its Secrets from setup.py local-secrets and its objects from manifests.py.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig.
 openDesk needs Helm 3 and helmfile in k3s/private/bin/opendesk and the release in k3s/private/downloads.
@@ -243,6 +244,12 @@ def opendesk(zone):
 
 
 def hoover(zone):
+    installation = next((h for h in (settings.SITE.hoovers.values() if settings.SITE else []) if h.zone == zone), None)
+    if installation is not None and installation.stores == 'local':
+        # The local store layout runs the Compose stores in the Hoover namespace (../hoover/manifests.py).
+        run(sys.executable, SOURCE / 'hoover' / 'setup.py', zone, 'local-secrets')
+        run(sys.executable, SOURCE / 'hoover' / 'manifests.py', installation.name, 'apply')
+        return
     env = dict(os.environ, KATA_NS=zone)
     run(sys.executable, STORES / 'creds.py', zone)
     for store in ('clickhouse', 'manticore', 'manticore-vectors', 'garage'):

@@ -7,6 +7,7 @@ release and the Helm tools. install-runner.sh starts it as a systemd user servic
 The runner uses the kubeconfig of the ServiceAccount zone-runner (runner-rights.yaml). It can change the zone
 namespaces, the shared call services and the operation ConfigMaps only. It updates the HTTPS frontend through an SSH
 key that can run only /opt/hoover-frontend/sync on the public host, and it sends that script only the zone names.
+It also runs the settings Apply operations of the operator state (apply.py), one at a time.
 The operations and their steps:
   create-zone   register (zone state with the home node), frontend, install (zone.py apply), calls
   upgrade-zone  frontend, install, calls
@@ -85,6 +86,8 @@ class Operation:
   # before the install. The zones need their names during the install.
   self.run(sys.executable,'-c','import sys;sys.path.insert(0,"zones");import zone;zone.register(sys.argv[1],sys.argv[2])',self.zone,self.home)
  def step_frontend(self):
+  # A single-node site runs the frontend on this host with a local CA.
+  if settings.HOST.get('frontend_local'):return self.run('bash','platform/frontend/install-local-frontend.sh')
   # The key runs only the sync script, which reads the zone names from standard input. The connection uses no SSH
   # configuration file, so no other key of the operator user can open a shell instead.
   config=dict(line.split(' ',1) for line in subprocess.check_output(['ssh','-G',settings.HOST['frontend_ssh']],text=True).splitlines() if ' ' in line)
@@ -94,9 +97,22 @@ class Operation:
  def step_calls(self):self.run(sys.executable,'platform/calls/install-calls.py')
  def step_delete(self):
   if self.zone in zones.zone_names():self.run(sys.executable,'zones/zone.py','delete',self.zone)
+def settings_apply():
+ """Run the active settings Apply of the operator state (apply.py). A failed Apply waits for a retry in the portal."""
+ sys.path.insert(0,str(source/'platform/operator'));import apply
+ site=apply.site();state=apply.operator_settings.State(site.operator_state())
+ op=state.active()
+ if op is None or op.status not in ('running','queued'):return False
+ log=site.operator_state()/'logs'/f'{op.id}.log';log.parent.mkdir(parents=True,exist_ok=True)
+ done=state.run(apply.executors(site,log))
+ print(json.dumps({'apply':done.id,'status':done.status,'error':done.error[:300]}),flush=True)
+ return True
 def main():
  once='--once' in sys.argv
  while True:
+  try:
+   if settings.SITE is not None and settings_apply():continue
+  except Exception as error:print(json.dumps({'apply_error':str(error)[:300]}),flush=True)
   try:
    items=operations()
    # A running operation is one that the runner was doing when it stopped, so it continues first.

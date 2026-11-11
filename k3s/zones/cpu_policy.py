@@ -18,6 +18,19 @@ import fnmatch,json,os,pathlib,subprocess,sys
 lab=pathlib.Path(__file__).resolve().parent
 sys.path.insert(0,str(lab.parent));import settings
 POLICY=json.loads((lab/'cpu-policy.json').read_text())
+def _operator_values():
+ """The cluster settings cpu.* of the operator state (../platform/operator/settings.py), which replace the file values."""
+ import importlib.util
+ if not settings.SITE or not (settings.SITE.operator_state()/'desired.json').exists():return {}
+ spec=importlib.util.spec_from_file_location('operator_settings',lab.parent/'platform/operator/settings.py')
+ module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+ revision=os.environ.get('HOOVER4_SETTINGS_REVISION')
+ overrides=module.State(settings.SITE.operator_state()).overrides(int(revision) if revision else None)
+ return module.effective('cluster',overrides.get('cluster',{}))
+_values=_operator_values()
+if _values:
+ POLICY['oversubscription']=int(_values['cpu.oversubscription']);POLICY['allocation']=_values['cpu.allocation']
+ POLICY['limit']=_values['cpu.limit'];POLICY['slowStart']['limit']=_values['cpu.slow_start_limit']
 KINDS={'Deployment':'deployment','StatefulSet':'statefulset','DaemonSet':'daemonset','CronJob':'cronjob'}
 def millicores(value):
  text=str(value);return float(text[:-1]) if text.endswith('m') else float(text)*1000

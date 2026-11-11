@@ -43,6 +43,13 @@ PRIVATE = HERE / 'private'
 DEFAULT_SITE = PRIVATE / 'hoover4-site.ini'
 STORAGE_IDENTITY = REPO / 'main_services/processing/tasks/storage_identity.json'
 
+# The fixed address of the local node of a single-node site. The host script puts it on the dummy link hoover4, so
+# k3s, the registry, the HTTPS frontend and the local DNS server keep one address when the LAN address changes.
+LOCAL_ADDRESS = '10.254.54.1'
+# The fixed Service address of the cluster ingress, inside the default k3s Service range 10.43.0.0/16.
+INGRESS_ADDRESS = '10.43.0.80'
+REGISTRY_PORT = 5000
+
 ROLES = ('control-plane', 'worker', 'public', 'registry', 'data', 'calls', 'gpu')
 SINGLE = ('control-plane', 'worker', 'public', 'registry', 'data')
 TIERS = ('nvme', 'ssd', 'hdd')
@@ -568,6 +575,45 @@ def project(site, node_name):
     return out
 
 
+def node_address(site, node):
+    """The address that the other nodes and the pods use for a node: the VPN address, else the LAN address, else the
+    fixed local address of a single-node site."""
+    if node.vpn_address:
+        return node.vpn_address
+    if node.lan_address:
+        return node.lan_address
+    if site.single and node.local:
+        return LOCAL_ADDRESS
+    raise SiteError(f'[node.{node.name}] has no vpn_address and no lan_address.')
+
+
+def legacy_settings(site):
+    """The values of the earlier private/settings.json, which the scripts of platform/, zones/ and tools/ read through
+    settings.py. Each value comes from the site file."""
+    public = site.with_role('public')[0]
+    registry = site.with_role('registry')[0]
+    binds = [a for a in (public.vpn_address, public.public_address) if a] or [node_address(site, public)]
+    out = {
+        'suffix': site.suffix,
+        'registry_node': registry.name,
+        'registry_endpoint': f'{node_address(site, registry)}:{REGISTRY_PORT}',
+        'ingress_node': public.name,
+        'ingress_address': INGRESS_ADDRESS,
+        'frontend_bind': binds,
+        'turn_listen': binds,
+        'frontend_local': public.local,
+        'hoover_data': {'roots': {n.name: n.data_root for n in site.with_role('data')}, 'extra': {}},
+    }
+    if site.vpn_cidr:
+        out['vpn_cidr'] = site.vpn_cidr
+    if not public.local:
+        out['frontend_ssh'] = public.ssh_address
+    if public.tls_dns_credentials_file:
+        out['frontend_tls'] = f'/etc/letsencrypt/live/{site.suffix}'
+        out['frontend_dns_credentials'] = public.tls_dns_credentials_file
+    return out
+
+
 def legacy_hosts(site):
     """The site in the format of hosts.json, which the host scripts of hosts/ read."""
     hosts = {}
@@ -579,8 +625,11 @@ def legacy_hosts(site):
             'public': f'{node.public_address}:{node.wireguard_port}' if node.public_address else None,
             'lan_ip': node.lan_address or None, 'onprem': node.onprem, 'reserved': node.reserved,
             'tiers': list(node.storage_tiers), 'avx2': node.avx2,
+            'local': node.local, 'single': site.single, 'architecture': node.architecture,
+            'node_ip': node_address(site, node), 'vg': node.lvm_volume_group,
+            'physical_volumes': list(node.lvm_physical_volumes),
         }
-    return {'server': site.control_plane, 'user': site.operator_user, 'hosts': hosts}
+    return {'server': site.control_plane, 'user': site.operator_user, 'suffix': site.suffix, 'hosts': hosts}
 
 
 # ----------------------------------------------------------------------------------------------------------------------

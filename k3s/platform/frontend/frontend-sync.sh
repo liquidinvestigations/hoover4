@@ -13,25 +13,36 @@
 # The Keycloak admin routes and the admin routes of Synapse and lk-jwt answer 403 outside the VPN (vpn in site.env).
 # When the certificate lacks the name *.<zone>.<suffix> of a zone, certbot adds it with the DNS challenge. The list
 # replaces the names of a deleted zone at that time. A second run with the same zones changes nothing.
+# On the local node of a single-node site, install-local-frontend.sh runs this script as the operator user with
+# HOOVER_FRONTEND_DIR=k3s/private/frontend and tls_mode=internal in site.env. Caddy then issues the certificates from its
+# local CA, keeps its admin API on 127.0.0.1:2029 for a reload, and certbot does not run.
 set -euo pipefail
-here=/opt/hoover-frontend
+here=${HOOVER_FRONTEND_DIR:-/opt/hoover-frontend}
 source "$here/site.env"
+if [ "${tls_mode:-}" = internal ]; then
+  tls_line='tls internal'
+  globals="admin 127.0.0.1:2029
+	local_certs
+	storage file_system ${here}/data"
+else
+  tls_line="tls /run/credentials/hoover-frontend.service/fullchain.pem /run/credentials/hoover-frontend.service/privkey.pem"
+  globals="admin off
+	storage file_system /var/lib/hoover-frontend"
+fi
 zones=()
 while read -r zone; do
   [ -n "$zone" ] || continue
   [[ $zone =~ ^zone-[a-z0-9]{1,12}$ ]] || { echo "refused zone name" >&2; exit 1; }
   zones+=("$zone")
 done
-credentials=/run/credentials/hoover-frontend.service
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 {
 cat <<CADDY
 {
-	admin off
+	${globals}
 	# Without a limit Caddy waits for every open websocket before it stops, so a restart could take minutes.
 	grace_period 5s
-	storage file_system /var/lib/hoover-frontend
 	skip_install_trust
 	default_bind ${binds}
 }
@@ -60,7 +71,7 @@ cat <<CADDY
 }
 # The gate of one zone. The argument is the zone domain <zone>.<suffix>.
 (gate) {
-	tls ${credentials}/fullchain.pem ${credentials}/privkey.pem
+	${tls_line}
 	@cluster remote_ip ${cluster}
 	@admin {
 		not remote_ip ${vpn}
@@ -106,10 +117,21 @@ for zone in "${zones[@]}"; do
 done
 # The operator portal has its own login (../operator/).
 for host in "${extra_hosts[@]}"; do
-  printf '%s {\n\ttls %s/fullchain.pem %s/privkey.pem\n\timport upstream\n}\n' "$host" "$credentials" "$credentials"
+  printf '%s {\n\t%s\n\timport upstream\n}\n' "$host" "$tls_line"
 done
 } > "$work/Caddyfile"
 "$here/caddy" adapt --config "$work/Caddyfile" --adapter caddyfile >/dev/null
+if [ "${tls_mode:-}" = internal ]; then
+  if ! cmp -s "$work/Caddyfile" "$here/Caddyfile"; then
+    install -m 0644 "$work/Caddyfile" "$here/Caddyfile"
+    # A running frontend loads the file through its admin API. A stopped frontend reads it at its start.
+    "$here/caddy" reload --config "$here/Caddyfile" --adapter caddyfile --address 127.0.0.1:2029 2>/dev/null || true
+    echo "frontend: zones ${zones[*]:-none}, changed: Caddyfile"
+  else
+    echo "frontend: zones ${zones[*]:-none}, changed: nothing"
+  fi
+  exit 0
+fi
 names=("*.${suffix}")
 for zone in "${zones[@]}"; do names+=("*.${zone}.${suffix}"); done
 changed=''

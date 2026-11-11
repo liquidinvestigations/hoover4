@@ -3,6 +3,8 @@
 
 The zone pages list each zone with its resource use and operations. A create, upgrade or delete request becomes an
 operation ConfigMap, which runner.py runs. A create names the home node of the zone.
+The settings page (settings.html) reads and saves the operator settings and starts Apply operations through
+portal_settings.py. runner.py runs the Apply operations on the control-plane host.
 The gateway sets X-Forwarded-User after the operator login, and network policy lets only the gateway connect.
 A POST needs the operator origin, so another site cannot send one with the operator session cookie.
 """
@@ -91,6 +93,17 @@ def onboarding(zone):
  secret=api('GET',f'/api/v1/namespaces/{zone}/secrets/ums-nubus-credentials')
  return {'zone':zone,'portal':f'https://portal.{zone}.{SUFFIX}/','username':'Administrator',
   'password':base64.b64decode(secret['data']['administrator_password']).decode()}
+def nodes():
+ """The allocatable CPUs and memory of each node, for the hardware suggestions."""
+ out={}
+ for n in api('GET','/api/v1/nodes')['items']:
+  a=n['status']['allocatable'];m=a['memory']
+  mib=int(m[:-2])//1024 if m.endswith('Ki') else int(m[:-2]) if m.endswith('Mi') else int(m)//2**20
+  out[n['metadata']['name']]={'cpus':int(a['cpu']) if a['cpu'].isdigit() else int(a['cpu'][:-1])//1000,'memory_mib':mib}
+ return out
+def portal_settings():
+ import portal_settings as module
+ return module
 class Handler(SimpleHTTPRequestHandler):
  def reply(self,code,data):
   raw=json.dumps(data).encode();self.send_response(code)
@@ -98,9 +111,17 @@ class Handler(SimpleHTTPRequestHandler):
  def do_POST(self):
   actor=self.headers.get('X-Forwarded-User','')
   if self.headers.get('Origin')!=ORIGIN or not actor:return self.reply(403,{'error':'The request must come from the operator website.'})
-  try:body=json.loads(self.rfile.read(min(int(self.headers.get('Content-Length') or 0),4096)) or b'{}')
+  try:body=json.loads(self.rfile.read(min(int(self.headers.get('Content-Length') or 0),262144)) or b'{}')
   except ValueError:return self.reply(400,{'error':'The request body is not JSON.'})
   parts=self.path.strip('/').split('/')
+  if len(parts)==2 and parts[0]=='settings':
+   module=portal_settings()
+   if parts[1] not in module.ACTIONS:return self.reply(404,{'error':'Unknown request.'})
+   try:result=module.ACTIONS[parts[1]](actor,body)
+   except module.Refused as error:return self.reply(error.status,{'error':str(error),'problems':error.problems})
+   except (OSError,ValueError,KeyError) as error:return self.reply(503,{'error':f'The operator state is unavailable: {error}'})
+   print(json.dumps({'time':time.time(),'actor':actor,'request':self.path,'result':'accepted'}),flush=True)
+   return self.reply(200,result)
   try:
    if parts==['operations']:result=create_operation(actor,body)
    elif len(parts)==3 and parts[0]=='operations' and parts[2]=='retry':result=retry(parts[1])
@@ -113,9 +134,10 @@ class Handler(SimpleHTTPRequestHandler):
   self.reply(200,result)
  def do_GET(self):
   routes={'/status.json':(status,'Cluster resource measurements are unavailable.'),'/events.json':(events,'The cluster event feed is unavailable.'),
-   '/zones.json':(zones,'The zone list is unavailable.')}
+   '/zones.json':(zones,'The zone list is unavailable.'),
+   '/settings.json':(lambda:portal_settings().overview(nodes()),'The operator settings are unavailable.')}
   if self.path not in routes:return super().do_GET()
-  if self.path=='/zones.json' and not self.headers.get('X-Forwarded-User'):return self.reply(403,{'error':'The request must come through the operator login.'})
+  if self.path in ('/zones.json','/settings.json') and not self.headers.get('X-Forwarded-User'):return self.reply(403,{'error':'The request must come through the operator login.'})
   produce,failure=routes[self.path]
   try:raw=json.dumps(produce()).encode();self.send_response(200)
   except Exception:raw=json.dumps({'error':failure}).encode();self.send_response(503)

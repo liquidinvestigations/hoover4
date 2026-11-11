@@ -200,6 +200,8 @@ class Target:
     nfs: dict = field(default_factory=dict)
     source: object = None
     tree: Path = site_config.REPO
+    # The zone setting app.hoover. A disabled installation renders zero replicas and keeps its claims and Secrets.
+    enabled: bool = True
 
     @property
     def ns(self):
@@ -227,7 +229,11 @@ class Target:
 
 
 def resolve_revision(tree=site_config.REPO):
-    """The commit of the source tree. The images hold this commit, without the local changes of the checkout."""
+    """The commit of the images. ../deploy-k3s resolves it once per deployment and passes it in HOOVER4_REVISION.
+    Without the variable it is the commit of the source tree. The images hold this commit, without the local changes
+    of the checkout."""
+    if os.environ.get('HOOVER4_REVISION'):
+        return os.environ['HOOVER4_REVISION']
     return subprocess.run(['git', '-C', str(tree), 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
 
 
@@ -238,16 +244,21 @@ def find_hoover(site, name):
     raise RenderError(f'the site file has no [hoover.<name>] section with the name or zone {name}.')
 
 
-def target_from_site(site_path, name, revision=None, state=None, nfs=None):
-    """The Target of an installation, with the saved operator settings of its desired revision."""
+def target_from_site(site_path, name, revision=None, state=None, nfs=None, settings_revision=None):
+    """The Target of an installation, with the saved operator settings of its desired revision.
+
+    settings_revision names another saved revision, for example the revision that an apply operation pinned.
+    """
     site = site_config.read(site_path)
     hoover = find_hoover(site, name)
     folder = Path(state) if state else site.operator_state()
-    overrides = operator_settings.State(folder).overrides() if (folder / 'desired.json').exists() else {}
+    overrides = operator_settings.State(folder).overrides(settings_revision) if (folder / 'desired.json').exists() else {}
     values = operator_settings.effective(f'hoover:{hoover.name}', overrides.get(f'hoover:{hoover.name}', {}))
+    zone_values = operator_settings.effective(f'zone:{hoover.zone}', overrides.get(f'zone:{hoover.zone}', {}))
+    enabled = zone_values['app.hoover'] == 'true' and zone_values['zone.enabled'] == 'true'
     source = site_config.read_source_ini(hoover.source_ini, check_paths=False) if hoover.source_ini else None
     return Target(site=site, hoover=hoover, values=values, revision=revision or resolve_revision(), nfs=nfs or {},
-                  source=source)
+                  source=source, enabled=enabled)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -322,7 +333,7 @@ def workload(target, kind, name, spec, replicas=1, labels=None, spread=False, cl
     template = {'metadata': {'labels': labels}, 'spec': spec}
     if annotations:
         template['metadata']['annotations'] = annotations
-    body = {'replicas': replicas, 'selector': {'matchLabels': {'app.kubernetes.io/name': name}}, 'template': template}
+    body = {'replicas': replicas if target.enabled else 0, 'selector': {'matchLabels': {'app.kubernetes.io/name': name}}, 'template': template}
     if kind == 'Deployment':
         body['strategy'] = {'type': 'Recreate'}
     else:
@@ -378,7 +389,9 @@ def dataset_mounts(target):
 
     A migrated install keeps the container paths of its source ini, because the dataset rows store them. Its
     read-only folders stay in place as host folders of the home node. Its writable folders are claims, which the
-    migration fills. Another install has the NFS folders of ../platform/hoover-data/hoover_data.py below /data.
+    migration fills. A new install of a single-node site has the claims dataset-testdata and dataset-uploads below
+    /data, because its pods share the one node and need no NFS server. Another install has the NFS folders of
+    ../platform/hoover-data/hoover_data.py below /data.
     """
     if target.source:
         out = []
@@ -387,6 +400,10 @@ def dataset_mounts(target):
                       {'hostPath': {'path': m['host_path'], 'type': 'Directory'}})
             out.append({'name': m['name'], 'path': m['container_path'], 'writable': m['writable'], 'volume': volume})
         return out
+    if target.site.single:
+        return [{'name': n, 'path': f'/data/{n}', 'writable': w,
+                 'volume': {'persistentVolumeClaim': {'claimName': f'dataset-{n}', 'readOnly': not w}}}
+                for n, w in (('testdata', False), ('uploads', True))]
     data_nodes = [n.name for n in target.site.with_role('data')]
     node = target.hoover.home_node if target.hoover.home_node in data_nodes else data_nodes[0]
     server = target.nfs.get(node)
@@ -1000,12 +1017,14 @@ def main(argv):
     parser.add_argument('command', nargs='?', default='show', choices=('show', 'apply', 'diff'))
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
     parser.add_argument('--revision', help='the source revision of the images. The default is the commit of the tree.')
+    parser.add_argument('--settings-revision', type=int, help='the saved operator settings revision. The default is the newest.')
     args = parser.parse_args(argv)
     kubectl = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG]
     site = site_config.read(args.site)
     hoover = find_hoover(site, args.installation)
     nfs = {} if hoover.source_ini else nfs_addresses(kubectl, site)
-    target = target_from_site(args.site, args.installation, revision=args.revision, nfs=nfs)
+    target = target_from_site(args.site, args.installation, revision=args.revision, nfs=nfs,
+                              settings_revision=args.settings_revision)
     rendered = render(target)
     if args.command == 'show':
         print(rendered)

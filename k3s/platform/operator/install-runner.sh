@@ -38,16 +38,22 @@ KUBECONFIG
 )
 mv "$folder/kubeconfig.new" "$folder/kubeconfig"
 [ -s "$folder/ssh-key" ] || ssh-keygen -q -t ed25519 -N '' -C hoover-zone-runner -f "$folder/ssh-key"
-ssh_host=$(python3 "$source_dir/settings.py" get frontend_ssh '')
-line="restrict,command=\"sudo -n /opt/hoover-frontend/sync\" $(cat "$folder/ssh-key.pub")"
-ssh "$ssh_host" "grep -qxF '$line' ~/.ssh/authorized_keys || echo '$line' >> ~/.ssh/authorized_keys"
+# A single-node site runs its frontend on this host, so the runner needs no SSH key there.
+if [ "$(python3 "$source_dir/settings.py" get frontend_local false)" != true ]; then
+  ssh_host=$(python3 "$source_dir/settings.py" get frontend_ssh '')
+  line="restrict,command=\"sudo -n /opt/hoover-frontend/sync\" $(cat "$folder/ssh-key.pub")"
+  ssh "$ssh_host" "grep -qxF '$line' ~/.ssh/authorized_keys || echo '$line' >> ~/.ssh/authorized_keys"
+fi
+# The unit name belongs to this checkout, so a runner of another installation on the same host keeps its own unit.
+unit=hoover4-operator-runner
 mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/hoover-operator.service <<UNIT
+cat > ~/.config/systemd/user/$unit.service <<UNIT
 [Unit]
-Description=Hoover zone runner
+Description=Hoover4 operator runner of ${source_dir}
 [Service]
 WorkingDirectory=${source_dir}
 Environment=KUBECONFIG=${folder}/kubeconfig
+Environment=HOOVER4_SITE=${source_dir}/private/hoover4-site.ini
 ExecStart=/usr/bin/python3 ${source_dir}/platform/operator/runner.py
 Restart=always
 RestartSec=10
@@ -56,6 +62,6 @@ WantedBy=default.target
 UNIT
 sudo -n loginctl enable-linger "$(id -un)"
 systemctl --user daemon-reload
-systemctl --user enable -q hoover-operator
-systemctl --user restart hoover-operator
-systemctl --user --no-pager status hoover-operator | head -3
+systemctl --user enable -q $unit
+systemctl --user restart $unit
+systemctl --user --no-pager status $unit | head -3

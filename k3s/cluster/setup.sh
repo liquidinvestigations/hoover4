@@ -2,7 +2,7 @@
 # Set up the cluster on the k3s nodes: node labels, RuntimeClasses, cert-manager and TopoLVM.
 # Run it on a host with kubectl, helm, python3 and the admin kubeconfig. A second run changes nothing.
 # KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig.
-# SITE names the site file with the storage tiers and the AVX2 flag of each node. The default is k3s/private/hosts.json.
+# The site file (settings.py) gives the storage tiers and the AVX2 flag of each node.
 # HELM names the helm command. The default is k3s/private/bin/helm, else helm.
 set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
@@ -10,7 +10,8 @@ if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi
 cd "$(dirname "$0")"
 PRIVATE=$(realpath ../private)
 export KUBECONFIG=${KUBECONFIG:-$PRIVATE/kubeconfig}
-SITE=${SITE:-$PRIVATE/hosts.json}
+# SITE names a hosts.json file. Without it, settings.py writes the hosts.json form of the site file.
+if [ -z "${SITE:-}" ]; then SITE=$(mktemp); python3 ../settings.py hosts > "$SITE"; fi
 if [ -z "${HELM:-}" ]; then
   if [ -x "$PRIVATE/bin/helm" ]; then HELM=$PRIVATE/bin/helm; else HELM=helm; fi
 fi
@@ -31,6 +32,10 @@ for name, host in site["hosts"].items():
     if labels:
         print(name, " ".join(labels))
 PY
+# The lvmd label selects the lvmd configuration of the volume group of each node (topolvm_values.py).
+python3 topolvm_values.py "$SITE" labels | while read -r node label; do kubectl label node "$node" "$label" --overwrite; done
+values=$(mktemp --suffix=.json)
+python3 topolvm_values.py "$SITE" > "$values"
 
 kubectl apply -f runtimeclasses.yaml
 
@@ -66,8 +71,8 @@ helm_install cert-manager cert-manager jetstack/cert-manager "$CERT_MANAGER_VERS
 # The TopoLVM webhook ignores these namespaces, as the TopoLVM install guide says.
 kubectl create namespace topolvm-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl label namespace kube-system topolvm-system topolvm.io/webhook=ignore --overwrite
-helm_install topolvm topolvm-system topolvm/topolvm "$TOPOLVM_CHART_VERSION" topolvm-values.yaml
+helm_install topolvm topolvm-system topolvm/topolvm "$TOPOLVM_CHART_VERSION" "$values"
 
-kubectl get nodes -L storage.hoover/enrolled,storage.tier/hdd,storage.tier/nvme,cpu.hoover/avx2
+kubectl get nodes -L storage.hoover/enrolled,storage.hoover/lvmd,cpu.hoover/avx2
 kubectl get runtimeclass,storageclass
 kubectl -n topolvm-system get pods -o wide

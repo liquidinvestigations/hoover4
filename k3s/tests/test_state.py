@@ -46,7 +46,7 @@ def test_registry_holds_the_cluster_controls_and_the_new_worker_variables():
 def test_every_setting_states_type_scope_services_and_apply_mode():
     for setting in S.REGISTRY.values():
         assert setting.scope in ('hoover', 'zone', 'cluster')
-        assert setting.apply in ('restart', 'reconcile', 'expand', 'fixed')
+        assert setting.apply in ('restart', 'reconcile', 'expand', 'fixed', 'schedule')
         assert setting.services
         assert setting.check(setting.default) == setting.default.lower() if setting.kind == 'bool' else True
         if setting.default != '' or not setting.empty:
@@ -242,6 +242,11 @@ def test_an_interrupted_apply_resumes_at_its_step_after_a_restart(state):
         state.start_apply('abc123', ['render'])
     restarted = S.State(state.folder)
     assert restarted.active().id == op.id
+    # A failed operation waits for an explicit retry. A runner restart alone does not run it.
+    assert restarted.run(recorder(log)).status == 'failed'
+    assert restarted.retry(op.id, actor='admin').status == 'queued'
+    with pytest.raises(S.SettingsError):
+        restarted.retry(op.id)
     done = restarted.run(recorder(log))
     assert done.status == 'succeeded' and done.attempts == 2
     assert [entry[0] for entry in log] == ['render', 'stores', 'stores', 'workers']
@@ -295,3 +300,42 @@ def test_state_files_hold_no_temporary_files(state):
     leftovers = [p for p in Path(state.folder).rglob('*.tmp')]
     assert leftovers == []
     assert os.stat(state.folder / 'desired.json').st_size > 0
+
+
+# The Apply plan of the portal and the runner ---------------------------------------------------------------------------
+
+def apply_module():
+    import importlib.util
+    import sys
+    if 'operator_apply' not in sys.modules:
+        spec = importlib.util.spec_from_file_location('operator_apply', REPO / 'k3s/platform/operator/apply.py')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules['operator_apply'] = module
+        spec.loader.exec_module(module)
+    return sys.modules['operator_apply']
+
+
+def test_the_apply_plan_names_one_step_for_each_changed_part(state):
+    A = apply_module()
+    site = config.parse((FIXTURES / 'single-node.ini').read_text().replace('@REPO@', str(REPO)))
+    assert A.plan(state, site) == ['record']
+    state.save(0, {SCOPE: {'main_services.common_workers': '5'}, 'zone:zone-a': {'app.xwiki': 'false', 'app.hoover': 'false',
+               'backup.opendesk.enabled': 'true'}, 'cluster': {'cpu.oversubscription': '3'}})
+    steps = A.plan(state, site)
+    assert steps == sorted(steps, key=steps.index)
+    assert set(steps) == {'hoover:main', 'apps:zone-a', 'schedule', 'zone:zone-a'}
+    assert 'backups' in A.services(state, site) and 'xwiki' in A.services(state, site)
+    log = []
+    op = state.start_apply('abc', steps)
+    runners = A.executors(site, '/dev/null', wait=lambda ns: log.append(ns))
+    assert runners['schedule'](op, {}) == ['backups'] and runners['record'](op, {}) == []
+    with pytest.raises(KeyError):
+        runners['unknown:x']
+
+
+def test_backup_policies_keep_their_ranges(state):
+    with pytest.raises(S.SettingsError):
+        state.save(0, {'zone:zone-a': {'backup.opendesk.copies': '1'}})
+    with pytest.raises(S.SettingsError):
+        state.save(0, {'zone:zone-a': {'backup.hoover.copies': '3'}})
+    assert state.save(0, {'cluster': {'backup.platform.copies': '2'}}) == 1

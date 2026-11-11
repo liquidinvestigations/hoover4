@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Install, update, start, stop and check a k3s site of Hoover and openDesk. Standard library only.
+
+Usage:
+  deploy-k3s render    --target NODE... [--revision REF] [--manifests]   print the configuration. Changes nothing.
+  deploy-k3s check     --target NODE...                                  check the hosts and the site. Changes nothing.
+  deploy-k3s bootstrap --target NODE...                                  write the reviewed bootstrap script of each node
+  deploy-k3s up        --target NODE... [--revision REF] [--steps STEP...] [--start]
+  deploy-k3s up        --resume RECORD
+  deploy-k3s down      --target NODE... [--steps STEP...]
+  deploy-k3s down      --resume RECORD
+  deploy-k3s status    [RECORD]                                          print the records
+
+--target names nodes of the site file, or `all`. Every command except status needs it.
+--site names the site file. The default is $HOOVER4_SITE, else k3s/private/hoover4-site.ini.
+--revision names the commit of the images and of the remote checkouts. The driver resolves it once, at the start of
+an up, and the record keeps it. A resumed record keeps its revision. The default is HEAD.
+up installs or updates the hosts, k3s, the registry, the images, the platform services and the zones, in this order.
+up --start starts what down stopped: k3s, then the stores, Temporal, the applications and the ingress.
+down stops the ingress, the applications and workers, Temporal, the stores, and then k3s. It cancels no workflow.
+--steps runs only the named steps of the plan. render prints the plan.
+A failed or stopped run keeps its record. `up --resume RECORD` continues at the first unfinished step.
+
+A copy of this file outside a checkout first clones the repository:
+  deploy-k3s --checkout DIR [--repository URL] <command> ...
+It then runs the deploy-k3s of that checkout with the other arguments.
+"""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPOSITORY = 'https://github.com/liquidinvestigations/hoover4'
+
+
+def bootstrap_checkout(argv):
+    """Clone the repository when this file is not inside a checkout, and run the deploy-k3s of the checkout."""
+    if (HERE / 'driver' / 'deploy.py').exists():
+        return argv
+    if '--checkout' not in argv:
+        raise SystemExit('this deploy-k3s is outside a hoover4 checkout. Give --checkout DIR.')
+    i = argv.index('--checkout')
+    checkout = Path(argv[i + 1]).expanduser()
+    rest = argv[:i] + argv[i + 2:]
+    url = REPOSITORY
+    if '--repository' in rest:
+        j = rest.index('--repository')
+        url = rest[j + 1]
+        rest = rest[:j] + rest[j + 2:]
+    if not (checkout / '.git').exists():
+        subprocess.run(['git', 'clone', url, str(checkout)], check=True)
+    os.execv(sys.executable, [sys.executable, str(checkout / 'k3s' / 'deploy-k3s'), *rest])
+
+
+def main(argv):
+    argv = bootstrap_checkout(argv)
+    import argparse
+    import json
+    sys.path.insert(0, str(HERE))
+    sys.path.insert(0, str(HERE / 'driver'))
+    import config
+    import deploy
+    import records
+
+    parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('command', choices=('render', 'check', 'bootstrap', 'up', 'down', 'status'))
+    parser.add_argument('record', nargs='?')
+    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE') or str(config.DEFAULT_SITE))
+    parser.add_argument('--target', nargs='+', default=[])
+    parser.add_argument('--revision', default='HEAD')
+    parser.add_argument('--steps', nargs='+', default=[])
+    parser.add_argument('--resume')
+    parser.add_argument('--start', action='store_true')
+    parser.add_argument('--manifests', action='store_true')
+    args = parser.parse_args(argv)
+
+    try:
+        site = config.read(args.site)
+    except (config.SiteError, OSError) as error:
+        raise SystemExit(f'deploy-k3s: the site file {args.site} has problems: {error}')
+    ctx = deploy.Context(args.site, site)
+
+    if args.command == 'status':
+        ids = [args.record] if args.record else ctx.records.list()
+        for record_id in ids:
+            r = ctx.records.load(record_id)
+            print(json.dumps({k: r[k] for k in ('id', 'command', 'targets', 'revision', 'status', 'error')} |
+                             {'steps': {s['name']: s['state'] for s in r['steps']}}, indent=1))
+        applied = ctx.records.applied()
+        print(json.dumps({'applied': applied and applied['id'], 'applied_revision': applied and applied['revision'],
+                          'previous_revision': (ctx.records.previous() or {}).get('revision'),
+                          'stopped': ctx.records.stopped()}, indent=1))
+        return 0
+
+    if args.resume:
+        if args.command not in ('up', 'down'):
+            raise SystemExit('--resume belongs to up and down.')
+        record = ctx.records.load(args.resume)
+        if record['command'] != args.command:
+            raise SystemExit(f'the record {args.resume} belongs to {record["command"]}, not {args.command}.')
+        targets = record['targets']
+    else:
+        targets = list(site.nodes) if args.target == ['all'] else args.target
+        if not targets:
+            raise SystemExit(f'deploy-k3s {args.command} needs --target with nodes of the site: {", ".join(site.nodes)}, or all.')
+        unknown = [t for t in targets if t not in site.nodes]
+        if unknown:
+            raise SystemExit(f'deploy-k3s: {", ".join(unknown)} is not a node of the site. The nodes are: {", ".join(site.nodes)}.')
+
+    try:
+        if args.command == 'render':
+            revision = deploy.resolve_revision(ctx.repo, args.revision)
+            print(json.dumps(deploy.render(ctx, targets, revision, args.manifests), indent=1, default=list))
+            return 0
+        if args.command == 'check':
+            problems, state = deploy.check(ctx, targets)
+            print(json.dumps({'problems': problems, 'state': state}, indent=1, default=list))
+            return 1 if problems else 0
+        if args.command == 'bootstrap':
+            for name in targets:
+                node = site.nodes[name]
+                if node.local:
+                    print(deploy.write_local_bootstrap(ctx, node))
+                else:
+                    revision = deploy.resolve_revision(ctx.repo, args.revision)
+                    print(deploy.write_remote_scripts(ctx, node, revision) / 'bootstrap.sh')
+            return 0
+    except deploy.StepFailed as error:
+        raise SystemExit(f'deploy-k3s: {error}')
+
+    try:
+        ctx.records.lock()
+    except records.Busy as error:
+        raise SystemExit(f'deploy-k3s: {error}')
+    try:
+        if args.resume:
+            ctx.revision = record['revision']
+            steps = deploy.plan(ctx, record['command'], targets, start=record.get('start', False))
+            names = [s['name'] for s in record['steps']]
+            missing = [n for n in names if n not in steps]
+            if missing:
+                raise SystemExit(f'deploy-k3s: the plan of this checkout has no step {", ".join(missing)}. '
+                                 f'Use the checkout of the record, or start a new {record["command"]}.')
+        else:
+            revision = deploy.resolve_revision(ctx.repo, args.revision)
+            ctx.revision = revision
+            steps = deploy.select(deploy.plan(ctx, args.command, targets, start=args.start), args.steps)
+            complete = not args.steps and not args.start and set(targets) == set(site.nodes)
+            record = ctx.records.new(args.command, targets, revision, list(steps), start=args.start, complete=complete,
+                                     checkout_changes=deploy.dirty_files(ctx.repo),
+                                     applied_before=(ctx.records.applied() or {}).get('revision'))
+            print(json.dumps({'record': record['id'], 'revision': revision, 'steps': list(steps)}), flush=True)
+        return deploy.execute(ctx, record, steps)
+    except deploy.StepFailed as error:
+        raise SystemExit(f'deploy-k3s: {error}')
+    finally:
+        ctx.records.unlock()
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

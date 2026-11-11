@@ -48,7 +48,8 @@ def prepare(sha):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--revision', default='HEAD')
+    # ../deploy-k3s resolves the revision once per deployment and passes it in HOOVER4_REVISION.
+    parser.add_argument('--revision', default=__import__('os').environ.get('HOOVER4_REVISION') or 'HEAD')
     parser.add_argument('names', nargs='*')
     args = parser.parse_args()
     sha = commit(args.revision)

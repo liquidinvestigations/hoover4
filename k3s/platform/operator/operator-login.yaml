@@ -220,7 +220,10 @@ spec:
     spec:
       # The portal reads cluster events and the zone namespaces. It writes zone operations as ConfigMaps.
       serviceAccountName: portal
-      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+      # The portal runs on the control-plane node as the operator user, because it reads and writes the operator state
+      # of that host (portal_settings.py). start-web-tools.sh sets the node, the user and the paths.
+      nodeSelector: {kubernetes.io/hostname: CONTROL_PLANE}
+      securityContext: {runAsNonRoot: true, runAsUser: OPERATOR_UID, runAsGroup: OPERATOR_GID, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: portal
           image: docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd
@@ -231,22 +234,43 @@ spec:
             - {name: PORTAL_ORIGIN, value: 'https://operator.hoover.test'}
             - {name: PORTAL_SUFFIX, value: hoover.test}
             - {name: PORTAL_CGROUP, value: /host-cgroup}
+            - {name: PORTAL_REPO, value: /repo}
+            - {name: HOOVER4_SITE, value: /site/hoover4-site.ini}
+            - {name: PYTHONPATH, value: /app}
+            - {name: PYTHONDONTWRITEBYTECODE, value: '1'}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /, port: http}}
           resources:
             requests: {cpu: 10m, memory: 24Mi}
-            limits: {cpu: 200m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 192Mi}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           volumeMounts:
             - {name: app, mountPath: /app, readOnly: true}
             - {name: cgroup, mountPath: /host-cgroup, readOnly: true}
+            # The settings registry reads the k3s folder, deploy.py, hoover4.ini.release and the storage identities.
+            # The private folder of the checkout stays outside the pod, apart from the operator state and the site file.
+            - {name: k3s, mountPath: /repo/k3s, readOnly: true}
+            - {name: private, mountPath: /repo/k3s/private}
+            - {name: state, mountPath: /repo/k3s/private/operator}
+            - {name: site, mountPath: /site/hoover4-site.ini, readOnly: true}
+            - {name: deploy, mountPath: /repo/deploy.py, readOnly: true}
+            - {name: release, mountPath: /repo/hoover4.ini.release, readOnly: true}
+            - {name: identity, mountPath: /repo/main_services/processing/tasks/storage_identity.json, readOnly: true}
       volumes:
+        - {name: k3s, hostPath: {path: REPO/k3s, type: Directory}}
+        - {name: private, emptyDir: {sizeLimit: 1Mi}}
+        - {name: state, hostPath: {path: STATE, type: DirectoryOrCreate}}
+        - {name: site, hostPath: {path: SITE_FILE, type: File}}
+        - {name: deploy, hostPath: {path: REPO/deploy.py, type: File}}
+        - {name: release, hostPath: {path: REPO/hoover4.ini.release, type: File}}
+        - {name: identity, hostPath: {path: REPO/main_services/processing/tasks/storage_identity.json, type: File}}
         - name: app
           configMap:
             name: portal
-            items: [{key: portal-server.py, path: portal-server.py}, {key: index.html, path: portal/index.html}]
+            items: [{key: portal-server.py, path: portal-server.py}, {key: portal_settings.py, path: portal_settings.py},
+                    {key: index.html, path: portal/index.html}, {key: settings.html, path: portal/settings.html}]
         - name: cgroup
-          hostPath: {path: /sys/fs/cgroup/kubepods.slice, type: Directory}
+          hostPath: {path: POD_CGROUP, type: Directory}
 ---
 apiVersion: v1
 kind: Service

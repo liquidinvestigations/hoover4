@@ -499,7 +499,14 @@ def main():
     parser.add_argument("--only", nargs="+", choices=steps, help="do these steps only")
     parser.add_argument("--yes", action="store_true", help="do not ask before the partition change")
     parser.add_argument("--check", action="store_true", help="show the state of the host")
+    parser.add_argument("--hosts", help="the hosts.json form of the site file, instead of the SITE of this copy")
+    parser.add_argument("--node", help="the node of this host in --hosts")
     args = parser.parse_args()
+    global THIS, SITE, HOSTS, SCRIPT
+    if args.hosts:
+        import json
+        SITE = json.load(open(args.hosts))
+        THIS, HOSTS, SCRIPT = args.node, SITE["hosts"], f"root-install.py --node {args.node}"
     if THIS is None or THIS not in HOSTS:
         fail("this file has no host. Run write-host-copies.py, then run the copy of this host.")
     if os.geteuid() != 0:

@@ -12,7 +12,8 @@ Registry
   Scopes: hoover (one value for each Hoover installation of the site file), zone (one value for each zone),
   cluster (one value). A scope id is `hoover:<name>`, `zone:<zone>` or `cluster`.
   Apply modes: restart (the services restart with the new value), reconcile (the set of objects changes),
-  expand (a volume grows, never shrinks), fixed (the value cannot change after the first apply).
+  expand (a volume grows, never shrinks), fixed (the value cannot change after the first apply), schedule (the
+  backup scheduler reads the value, and no service changes).
 
 State, in one folder on the control-plane host (config.Site.operator_state())
   revisions/<n>.json   the explicit operator values (overrides) of revision n. A written revision never changes.
@@ -306,6 +307,20 @@ ZONE_SETTINGS = [Setting('zone.enabled', 'zone', 'bool', 'true', ('zone',), 'rec
 ZONE_SETTINGS += [Setting(f'app.{name}', 'zone', 'bool', 'true', (name,), 'reconcile', 'switch') for name in APPLICATIONS]
 
 
+# The backup policies. The site file names the destination ([backup] node and path). Each policy is weekly: a
+# zone gets one openDesk copy a week and keeps 2 or 3, a Hoover collection gets at most one copy a week after its first
+# ingestion or a complete reprocessing and keeps 1 or 2, and the platform recovery set keeps 1 to 3 weekly copies.
+# Mode schedule: the backup scheduler reads the applied value, and no service restarts.
+BACKUP_SETTINGS = [
+    Setting('backup.opendesk.enabled', 'zone', 'bool', 'false', ('backups',), 'schedule', 'backup'),
+    Setting('backup.opendesk.copies', 'zone', 'int', '3', ('backups',), 'schedule', 'backup', minimum=2, maximum=3),
+    Setting('backup.hoover.enabled', 'zone', 'bool', 'false', ('backups',), 'schedule', 'backup'),
+    Setting('backup.hoover.copies', 'zone', 'int', '2', ('backups',), 'schedule', 'backup', minimum=1, maximum=2),
+    Setting('backup.platform.enabled', 'cluster', 'bool', 'false', ('backups',), 'schedule', 'backup'),
+    Setting('backup.platform.copies', 'cluster', 'int', '3', ('backups',), 'schedule', 'backup', minimum=1, maximum=3),
+]
+
+
 def _zone_memory():
     data = json.loads((K3S / 'zones/memory-limits.json').read_text())
     out = []
@@ -328,7 +343,7 @@ def _cpu_policy():
 
 
 def build_registry():
-    items = _ini_settings(deploy_module()) + CLUSTER_HOOVER + ZONE_SETTINGS + _zone_memory() + _cpu_policy()
+    items = _ini_settings(deploy_module()) + CLUSTER_HOOVER + ZONE_SETTINGS + BACKUP_SETTINGS + _zone_memory() + _cpu_policy()
     registry = {}
     for item in items:
         if item.key in registry:
@@ -612,6 +627,18 @@ class State:
             write_json(self.folder / 'active.json', {'id': op.id})
             return op
 
+    def retry(self, operation_id, actor=''):
+        """Queue a failed operation again. The runner continues it at its failed step with its pinned revisions."""
+        with self._lock():
+            op = self.operation(operation_id)
+            if op.status != 'failed':
+                raise SettingsError(f'operation {op.id} is {op.status}. Only a failed operation can run again.')
+            op.status = 'queued'
+            op.attempts += 1
+            op.error = f'queued again by {actor or "the operator"} after: {op.error}'
+            self._write_operation(op)
+            return op
+
     def abandon(self, operation_id, actor=''):
         """End a failed operation without applying it. applied.json stays unchanged."""
         with self._lock():
@@ -635,9 +662,10 @@ class State:
             if op is None:
                 return None
             overrides = self.overrides(op.desired_revision)
+            if op.status == 'failed':
+                # A failed operation waits for retry(). A restarted runner continues a running or queued operation.
+                return op
             with self._lock():
-                if op.status == 'failed':
-                    op.attempts += 1
                 op.status, op.error = 'running', ''
                 self._write_operation(op)
             while True:

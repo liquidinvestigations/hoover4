@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings - Hoover cluster operations</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1.5rem 6rem;background:#f4f6f8;color:#192938}
+h1{font-size:1.8rem;margin-bottom:.3rem}h2{font-size:1.25rem;margin-top:2rem}h3{font-size:1.05rem;margin:1.5rem 0 .4rem}
+a{color:#1d5fa8}table{width:100%;border-collapse:collapse;background:#fff}th,td{text-align:left;padding:.35rem .5rem;border-bottom:1px solid #dde3e8;vertical-align:top}
+th{font-size:.85rem;color:#4a5b6b}td.key{font-family:ui-monospace,monospace;font-size:.85rem;word-break:break-all}
+input,select,button{font:inherit}input[type=text]{width:12rem}input[aria-invalid=true],select[aria-invalid=true]{border:2px solid #b3261e}
+.problem{color:#b3261e;font-size:.85rem}.muted{color:#4a5b6b;font-size:.85rem}.changed td{background:#fff7d6}.saved{font-size:.8rem;color:#1d5fa8}
+button{padding:.35rem .8rem;border:1px solid #1d5fa8;background:#fff;color:#1d5fa8;border-radius:4px;cursor:pointer}
+button.primary{background:#1d5fa8;color:#fff}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #f2a900}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #c5ced6;padding:.7rem 1.5rem;display:flex;gap:1rem;align-items:center;justify-content:center}
+.panel{background:#fff;border:1px solid #dde3e8;padding:.8rem 1rem;margin:.6rem 0}.failed{color:#b3261e}.done{color:#1e7a3c}
+.controls{display:flex;gap:1rem;flex-wrap:wrap;align-items:end}.controls label{display:flex;flex-direction:column;font-size:.85rem;gap:.2rem}
+.notice{border-left:4px solid #f2a900;padding:.4rem .8rem;background:#fffbea}
+pre{white-space:pre-wrap;font-size:.8rem;background:#f4f6f8;padding:.5rem;max-height:14rem;overflow:auto}
+</style>
+<p><a href="/">Back to cluster operations</a></p>
+<h1>Settings</h1>
+<p id="summary" aria-live="polite">The settings are loading.</p>
+
+<section aria-labelledby="pending-title">
+<h2 id="pending-title">Saved changes to apply</h2>
+<div id="pending"></div>
+</section>
+
+<section aria-labelledby="operation-title">
+<h2 id="operation-title">Apply operation</h2>
+<div id="operation"></div>
+</section>
+
+<section aria-labelledby="edit-title">
+<h2 id="edit-title">Edit settings</h2>
+<div class="controls">
+<label>Applies to <select id="scope"></select></label>
+<label>Group <select id="group"><option value="">All groups</option></select></label>
+<label>Find a setting <input id="filter" type="search" placeholder="worker, memory, backup"></label>
+<label><span><input id="only-changed" type="checkbox"> Only values that differ from the default</span></label>
+</div>
+<div id="backup"></div>
+<div id="tables"></div>
+</section>
+
+<div class="bar" role="region" aria-label="Unsaved changes">
+<span id="dirty" aria-live="polite">No unsaved changes.</span>
+<button id="discard" type="button" disabled>Discard</button>
+<button id="save" type="button" class="primary" disabled>Save</button>
+<span id="save-result" aria-live="polite"></span>
+</div>
+
+<script>
+let data = null;
+const edits = {};          // scope -> key -> value, or null to remove the saved value
+let problems = {};
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...children) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...children); return e; };
+
+async function post(path, body) {
+ const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+ const result = await response.json().catch(() => ({error: 'The portal did not answer with JSON.'}));
+ if (!response.ok) { const error = Error(result.error || `The request failed with status ${response.status}.`); error.problems = result.problems || {}; throw error; }
+ return result;
+}
+
+function scopeLabel(id) {
+ if (id === 'cluster') return 'Cluster';
+ const [kind, name] = id.split(':');
+ return kind === 'zone' ? `Zone ${name}` : `Hoover installation ${name}`;
+}
+
+function dirtyCount() { return Object.values(edits).reduce((n, v) => n + Object.keys(v).length, 0); }
+
+function updateBar() {
+ const n = dirtyCount();
+ $('dirty').textContent = n ? `${n} unsaved ${n === 1 ? 'change' : 'changes'}.` : 'No unsaved changes.';
+ $('save').disabled = $('discard').disabled = n === 0;
+}
+
+function renderSummary() {
+ const a = data.applied;
+ const applied = a.revision ? `Revision ${a.revision} is applied (${a.applied || 'time unknown'}).` : 'No revision is applied yet. The defaults are in use.';
+ const saved = data.revision !== a.revision ? ` Revision ${data.revision} is saved and waits for Apply.` : '';
+ $('summary').textContent = applied + saved;
+}
+
+function renderPending() {
+ const box = $('pending');
+ if (!data.pending.length) { box.replaceChildren(el('p', {textContent: 'The saved settings equal the applied settings.'})); return; }
+ const rows = data.pending.map(p => el('tr', {}, el('td', {textContent: scopeLabel(p.scope)}), el('td', {className: 'key', textContent: p.key}),
+  el('td', {textContent: p.from}), el('td', {textContent: p.to})));
+ const table = el('table', {}, el('thead', {}, el('tr', {}, ...['Applies to', 'Setting', 'Applied value', 'Saved value'].map(t => el('th', {textContent: t})))), el('tbody', {}, ...rows));
+ const busy = data.active && data.active.status !== 'failed';
+ const button = el('button', {className: 'primary', type: 'button', textContent: 'Apply', disabled: !!data.active});
+ button.onclick = async () => {
+  button.disabled = true;
+  try { await post('/settings/apply', {revision: data.revision}); $('save-result').textContent = 'Apply started.'; await load(); }
+  catch (error) { $('save-result').textContent = error.message; button.disabled = false; }
+ };
+ box.replaceChildren(table,
+  el('p', {textContent: `Affected services: ${data.services.join(', ') || 'none'}.`}),
+  el('p', {textContent: `Apply steps: ${data.steps.join(', ')}.`}),
+  data.active ? el('p', {className: 'muted', textContent: busy ? 'An Apply operation runs now. Apply is available after it ends.' : 'Retry or abandon the failed operation before a new Apply.'}) : '',
+  button);
+}
+
+function renderOperation() {
+ const box = $('operation');
+ const op = data.active || data.operations[0];
+ if (!op) { box.replaceChildren(el('p', {textContent: 'No Apply operation has run.'})); return; }
+ const steps = el('ol', {}, ...op.steps.map(s => el('li', {className: s.status === 'failed' ? 'failed' : s.status === 'done' ? 'done' : '',
+  textContent: `${s.name}: ${s.status}${s.finished ? ` at ${s.finished}` : s.started ? ` since ${s.started}` : ''}`})));
+ const parts = [el('p', {textContent: `Operation ${op.id} applies revision ${op.revision} with source ${op.source}. State: ${op.status}. Attempt ${op.attempts}.`}), steps];
+ if (op.changed.length) parts.push(el('p', {textContent: `Changed so far: ${op.changed.join(', ')}.`}));
+ if (op.status === 'failed') {
+  parts.push(el('p', {className: 'failed', role: 'alert', textContent: op.error}));
+  parts.push(el('p', {textContent: 'The applied revision is unchanged. The services listed above as changed run the new values. Retry continues at the failed step. Abandon ends the operation, and a new Save and Apply can replace the values.'}));
+  const retry = el('button', {type: 'button', className: 'primary', textContent: 'Retry'});
+  const abandon = el('button', {type: 'button', textContent: 'Abandon'});
+  retry.onclick = async () => { retry.disabled = true; try { await post('/settings/retry', {id: op.id}); await load(); } catch (e) { $('save-result').textContent = e.message; } };
+  abandon.onclick = async () => { abandon.disabled = true; try { await post('/settings/abandon', {id: op.id}); await load(); } catch (e) { $('save-result').textContent = e.message; } };
+  parts.push(el('p', {}, retry, ' ', abandon));
+ }
+ if (op.log.length) parts.push(el('details', {}, el('summary', {textContent: 'Output of the operation'}), el('pre', {textContent: op.log.join('\n')})));
+ box.replaceChildren(el('div', {className: 'panel'}, ...parts));
+}
+
+function control(setting, scope, value) {
+ let input;
+ if (setting.kind === 'bool' || setting.choices.length) {
+  input = el('select');
+  for (const choice of setting.kind === 'bool' ? ['true', 'false'] : setting.choices) input.append(el('option', {value: choice, textContent: choice}));
+ } else {
+  input = el('input', {type: 'text', spellcheck: false});
+  if (setting.kind === 'int' || setting.kind === 'float') input.inputMode = 'decimal';
+ }
+ input.value = value;
+ input.setAttribute('aria-label', setting.key);
+ const problem = problems[`${scope.id}/${setting.key}`];
+ if (problem) input.setAttribute('aria-invalid', 'true');
+ input.onchange = () => {
+  edits[scope.id] = edits[scope.id] || {};
+  if (input.value === scope.effective[setting.key]) delete edits[scope.id][setting.key];
+  else edits[scope.id][setting.key] = input.value;
+  input.closest('tr').classList.toggle('changed', setting.key in edits[scope.id]);
+  updateBar();
+ };
+ return input;
+}
+
+function range(s) {
+ if (s.choices.length || s.kind === 'bool') return '';
+ const parts = [];
+ if (s.minimum !== null) parts.push(`at least ${s.minimum}`);
+ if (s.maximum !== null) parts.push(`at most ${s.maximum}`);
+ if (s.kind === 'size') parts.push('a size such as 512Mi or 20Gi');
+ return parts.join(', ');
+}
+
+function renderBackup(scope) {
+ const box = $('backup');
+ if (scope.id.startsWith('hoover:')) { box.replaceChildren(); return; }
+ const d = data.backup_destination;
+ box.replaceChildren(el('div', {className: 'panel'}, el('h3', {textContent: 'Backup destination'}),
+  d ? el('p', {textContent: `Backups go to ${d.path} on node ${d.node}. The site file sets this destination.`})
+    : el('p', {textContent: 'The site file names no backup destination. Add a [backup] section with node and path to turn on backups.'}),
+  el('p', {className: 'notice', textContent: 'Keep the backup storage on another site. A copy on the same hosts does not survive a loss of those hosts.'})));
+}
+
+function renderTables() {
+ const scope = data.scopes.find(s => s.id === $('scope').value) || data.scopes[0];
+ renderBackup(scope);
+ const kind = scope.id.split(':')[0];
+ const filter = $('filter').value.trim().toLowerCase();
+ const group = $('group').value;
+ const onlyChanged = $('only-changed').checked;
+ const byGroup = {};
+ for (const s of data.registry) {
+  if (s.scope !== kind || (group && s.group !== group)) continue;
+  if (filter && !s.key.toLowerCase().includes(filter) && !s.services.join(' ').toLowerCase().includes(filter)) continue;
+  const pending = (edits[scope.id] || {})[s.key];
+  const value = pending !== undefined && pending !== null ? pending : scope.effective[s.key];
+  if (onlyChanged && value === s.default) continue;
+  (byGroup[s.group] = byGroup[s.group] || []).push([s, value]);
+ }
+ const sections = [];
+ for (const [name, rows] of Object.entries(byGroup)) {
+  const body = rows.map(([s, value]) => {
+   const suggestion = scope.suggestions[s.key];
+   const saved = s.key in scope.overrides;
+   const extra = [];
+   if (saved) {
+    const reset = el('button', {type: 'button', textContent: 'Use default'});
+    reset.onclick = () => { edits[scope.id] = edits[scope.id] || {}; edits[scope.id][s.key] = null; updateBar(); reset.closest('tr').classList.add('changed'); reset.disabled = true; };
+    extra.push(reset);
+   }
+   if (suggestion && suggestion !== value) {
+    const use = el('button', {type: 'button', textContent: `Use ${suggestion}`});
+    use.onclick = () => { const input = use.closest('tr').querySelector('input,select'); input.value = suggestion; input.onchange(); };
+    extra.push(' ', use);
+   }
+   const problem = problems[`${scope.id}/${s.key}`];
+   const row = el('tr', {className: (edits[scope.id] || {})[s.key] !== undefined ? 'changed' : ''},
+    el('td', {className: 'key'}, s.key, saved ? el('div', {className: 'saved', textContent: 'Saved value'}) : ''),
+    el('td', {}, control(s, scope, value), problem ? el('div', {className: 'problem', textContent: problem}) : '', range(s) ? el('div', {className: 'muted', textContent: range(s)}) : ''),
+    el('td', {textContent: s.default || '(empty)'}),
+    el('td', {textContent: suggestion || ''}),
+    el('td', {textContent: scope.applied[s.key]}),
+    el('td', {className: 'muted', textContent: `${s.services.join(', ')} (${s.apply})`}),
+    el('td', {}, ...extra));
+   if (s.group === 'backup' && !data.backup_destination) row.querySelectorAll('input,select').forEach(i => i.disabled = true);
+   return row;
+  });
+  sections.push(el('h3', {textContent: data.groups[name] || name}),
+   el('table', {}, el('thead', {}, el('tr', {}, ...['Setting', 'Value', 'Default', 'Suggested', 'Applied', 'Changes', ''].map(t => el('th', {textContent: t})))), el('tbody', {}, ...body)));
+ }
+ $('tables').replaceChildren(...(sections.length ? sections : [el('p', {textContent: 'No setting matches the filter.'})]));
+}
+
+async function load() {
+ try {
+  const response = await fetch('/settings.json', {cache: 'no-store'});
+  const result = await response.json();
+  if (!response.ok) throw Error(result.error);
+  const first = !data;
+  data = result;
+  if (first) {
+   $('scope').replaceChildren(...data.scopes.map(s => el('option', {value: s.id, textContent: scopeLabel(s.id)})));
+   const groups = [...new Set(data.registry.map(s => s.group))];
+   $('group').append(...groups.map(g => el('option', {value: g, textContent: data.groups[g] || g})));
+  }
+  renderSummary(); renderPending(); renderOperation();
+  // A refresh keeps the edits, the focus and the scroll position of the table.
+  if (first || (!dirtyCount() && !document.activeElement.closest('#tables'))) renderTables();
+ } catch (error) { $('summary').textContent = `The settings are unavailable: ${error.message} Reload the page to try again.`; }
+}
+
+$('save').onclick = async () => {
+ $('save').disabled = true;
+ try {
+  const result = await post('/settings/save', {base: data.revision, changes: edits});
+  for (const k of Object.keys(edits)) delete edits[k];
+  problems = {};
+  $('save-result').textContent = `Saved as revision ${result.revision}. Apply it when you are ready.`;
+  const keep = $('scope').value;
+  data = null; await load();
+  $('scope').value = keep; renderTables();
+ } catch (error) {
+  problems = error.problems || {};
+  $('save-result').textContent = error.message;
+  renderTables();
+ }
+ updateBar();
+};
+$('discard').onclick = () => { for (const k of Object.keys(edits)) delete edits[k]; problems = {}; $('save-result').textContent = ''; renderTables(); updateBar(); };
+for (const id of ['scope', 'group', 'filter', 'only-changed']) $(id).addEventListener('input', renderTables);
+load();
+setInterval(load, 5000);
+</script>

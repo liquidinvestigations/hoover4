@@ -7,6 +7,10 @@ The token files come from the operator and stay in the staging folder.
 
 One host runs the k3s server with its embedded datastore. The other hosts join it as agents.
 Install the server first. Each node uses its wg0 address, and flannel VXLAN runs over wg0.
+The local node of a single-node site uses the fixed address on the dummy link hoover4 (root-install-local.py), runs
+k3s and its pods in hoover4.slice, and writes its admin kubeconfig to /etc/rancher/k3s/hoover4-admin.yaml, because
+/etc/rancher/k3s/k3s.yaml can belong to another k3s user of the workstation. The driver ../deploy-k3s passes the site
+with --hosts and --node and the destination of the kubeconfig with --kubeconfig-out.
 
 The script does these steps. A second run writes the same files and restarts k3s only when a file changed.
 A generated file that differs only in its comment lines is current. A comment change does not restart k3s.
@@ -20,6 +24,8 @@ Commands:
   root-install-k3s-<host>.py --dry-run   Show the changes. Change nothing.
   root-install-k3s-<host>.py             Install.
   --staged DIR                           Read the staged files from DIR. The default is the folder of the script.
+  --hosts FILE --node NAME               Read the site from FILE and install NAME, instead of THIS and SITE.
+  --kubeconfig-out FILE                  Copy the admin kubeconfig of the server to FILE for the operator user.
 The script runs with Python 3.9, the version of RHEL 9.
 """
 import argparse
@@ -43,10 +49,32 @@ KATA_SHA256 = "66b35b06f6b41b56f8606ddf3ed3e5660b0971d1e309d903457c4056a0b9eff0"
 INSTALL_SH_SHA256 = "46177d4c99440b4c0311b67233823a8e8a2fc09693f6c89af1a7161e152fbfad"
 # The site file names the server node, the operator user and, for each host, wg_ip, onprem and the
 # kubelet system-reserved value. hosts.example.json shows the format.
-HOSTS = SITE["hosts"] if SITE else {}
-SERVER = SITE["server"] if SITE else None
-SERVER_URL = f"https://{HOSTS[SERVER]['wg_ip']}:6443" if SITE else None
-USER = SITE["user"] if SITE else None
+HOSTS = {}
+SERVER = SERVER_URL = USER = None
+KUBECONFIG_OUT = None
+
+
+def use_site(site, this):
+    """Set the site values of the script."""
+    global THIS, SITE, HOSTS, SERVER, SERVER_URL, USER
+    THIS, SITE = this, site
+    HOSTS = site["hosts"] if site else {}
+    SERVER = site["server"] if site else None
+    SERVER_URL = f"https://{address(HOSTS[SERVER])}:6443" if site else None
+    USER = site["user"] if site else None
+
+
+def address(host):
+    return host.get("wg_ip") or host.get("node_ip") or host.get("lan_ip")
+
+
+def single(host):
+    return bool(host.get("single") and host.get("local"))
+
+
+def arch(host):
+    return host.get("architecture") or "amd64"
+
 
 K3S_DIR = "/etc/rancher/k3s"
 CONTAINERD_DROPIN = "/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d/runtimes.toml"
@@ -157,21 +185,25 @@ def staged(name):
 
 def verify():
     me = HOSTS[THIS]
-    out = subprocess.run(["ip", "-4", "-o", "addr", "show", "wg0"], stdout=subprocess.PIPE, text=True).stdout
-    if f" {me['wg_ip']}/" not in out:
-        fail(f"wg0 does not have {me['wg_ip']}. Use the script of this host.")
-    if me["onprem"]:
+    interface = ["hoover4"] if single(me) else ["wg0"]
+    out = subprocess.run(["ip", "-4", "-o", "addr", "show", *interface], stdout=subprocess.PIPE, text=True).stdout
+    if f" {address(me)}/" not in out:
+        fail(f"{interface[0]} does not have {address(me)}. Use the script of this host, or run root-install-local.py.")
+    if me["onprem"] or single(me):
         for path in ["/var/lib/rancher", "/var/lib/kubelet"]:
             if subprocess.run(["findmnt", "-rn", path], stdout=subprocess.DEVNULL).returncode != 0:
                 fail(f"{path} is not mounted. Run root-install-{THIS}.py first.")
-    sums = open(staged("k3s-sha256sum-amd64.txt")).read()
-    expected = re.search(r"(?m)^([0-9a-f]{64})\s+k3s$", sums).group(1)
+    sums = open(staged(f"k3s-sha256sum-{arch(me)}.txt")).read()
+    binary = "k3s" if arch(me) == "amd64" else "k3s-arm64"
+    expected = re.search(rf"(?m)^([0-9a-f]{{64}})\s+{binary}$", sums).group(1)
     checks = [
         ("k3s", sha(staged("k3s")), expected),
         ("install-k3s.sh", sha(staged("install-k3s.sh")), INSTALL_SH_SHA256),
-        ("kata-go-static.tar.zst", sha(staged("kata-go-static.tar.zst")), KATA_SHA256),
         ("gvisor.tar.zstd", sha(staged("gvisor.tar.zstd"), "sha512"), open(staged("gvisor.tar.zstd.sha512")).read().split()[0]),
     ]
+    # A GPU node runs no Kata, and stage-k3s.sh stages Kata for amd64 only.
+    if kata(me):
+        checks.append(("kata-go-static.tar.zst", sha(staged("kata-go-static.tar.zst")), KATA_SHA256))
     for name, actual, wanted in checks:
         if actual != wanted:
             fail(f"{name} has the digest {actual}, not {wanted}")
@@ -179,6 +211,10 @@ def verify():
     token = "server-token" if THIS == SERVER else "agent-token"
     if len(open(staged(token)).read().strip()) < 32:
         fail(f"{token} is too short")
+
+
+def kata(host):
+    return arch(host) == "amd64"
 
 
 def install_runtimes():
@@ -196,6 +232,10 @@ def install_runtimes():
         link = f"/usr/local/bin/{name}"
         if os.path.realpath(link) != f"{GVISOR_DIR}/{name}":
             run(["ln", "-sfn", f"{GVISOR_DIR}/{name}", link])
+    if not kata(HOSTS[THIS]):
+        write_file(RUNSC_CONFIG, RUNSC_TOML)
+        write_file(CONTAINERD_DROPIN, RUNTIMES_TOML.split("# Kata Containers")[0])
+        return
     kata_version = open("/opt/kata/VERSION").read().strip() if os.path.exists("/opt/kata/VERSION") else ""
     if kata_version != KATA_VERSION:
         run(["rm", "-rf", "/opt/kata"])
@@ -222,8 +262,8 @@ def k3s_config():
     me = HOSTS[THIS]
     lines = [
         f"node-name: {THIS}",
-        f"node-ip: {me['wg_ip']}",
-        "flannel-iface: wg0",
+        f"node-ip: {address(me)}",
+        "flannel-iface: " + ("hoover4" if single(me) else "wg0"),
         "kubelet-arg:",
         "  # One node can hold several zones. A zone has about 50 pods, and the node pod network is a /24.",
         "  - max-pods=250",
@@ -231,12 +271,18 @@ def k3s_config():
         f"  - system-reserved={me['reserved']}",
         "  - eviction-hard=memory.available<500Mi,nodefs.available<5%,imagefs.available<5%",
     ]
+    if single(me):
+        lines += [
+            "  # k3s and the pods share hoover4.slice, whose limits keep memory for the other services of the host.",
+            "  - cgroup-root=/hoover4",
+            f"write-kubeconfig: {K3S_DIR}/hoover4-admin.yaml",
+        ]
     if THIS == SERVER:
         lines = [
-            f"advertise-address: {me['wg_ip']}",
+            f"advertise-address: {address(me)}",
             "tls-san:",
-            f"  - {me['wg_ip']}",
-            "flannel-backend: vxlan",
+            f"  - {address(me)}",
+            "flannel-backend: " + ("host-gw" if single(me) else "vxlan"),
             f"token-file: {K3S_DIR}/token",
             f"agent-token-file: {K3S_DIR}/agent-token",
             'write-kubeconfig-mode: "0600"',
@@ -248,7 +294,8 @@ def k3s_config():
         ] + lines
     else:
         lines = [f"server: {SERVER_URL}", f"token-file: {K3S_DIR}/agent-token"] + lines
-    write_file(f"{K3S_DIR}/config.yaml", "\n".join(lines) + "\n", mode=0o600)
+    # The file names the token files and holds no secret. The k3s kubectl reads it as the operator user.
+    write_file(f"{K3S_DIR}/config.yaml", "\n".join(lines) + "\n", mode=0o644)
     if THIS == SERVER:
         write_file(f"{K3S_DIR}/token", open(staged("server-token")).read().strip() + "\n", mode=0o600, secret=True)
     write_file(f"{K3S_DIR}/agent-token", open(staged("agent-token")).read().strip() + "\n", mode=0o600, secret=True)
@@ -273,7 +320,9 @@ def wait_server():
         return
     deadline = time.time() + 300
     while time.time() < deadline:
-        out = subprocess.run(["/usr/local/bin/k3s", "kubectl", "get", "node", THIS, "--no-headers"],
+        out = subprocess.run(["/usr/local/bin/k3s", "kubectl", "--kubeconfig",
+                              f"{K3S_DIR}/hoover4-admin.yaml" if single(HOSTS[THIS]) else f"{K3S_DIR}/k3s.yaml",
+                              "get", "node", THIS, "--no-headers"],
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout
         if " Ready " in out:
             say("  " + out.strip())
@@ -285,10 +334,13 @@ def wait_server():
     kube = os.path.join(user.pw_dir, ".kube")
     os.makedirs(kube, exist_ok=True)
     os.chown(kube, user.pw_uid, user.pw_gid)
-    shutil.copy(f"{K3S_DIR}/k3s.yaml", f"{kube}/config")
-    os.chown(f"{kube}/config", user.pw_uid, user.pw_gid)
-    os.chmod(f"{kube}/config", 0o600)
-    say(f"  copied the admin kubeconfig to {kube}/config")
+    source = f"{K3S_DIR}/hoover4-admin.yaml" if single(HOSTS[THIS]) else f"{K3S_DIR}/k3s.yaml"
+    target = KUBECONFIG_OUT or f"{kube}/config"
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    shutil.copy(source, target)
+    os.chown(target, user.pw_uid, user.pw_gid)
+    os.chmod(target, 0o600)
+    say(f"  copied the admin kubeconfig to {target}")
 
 
 def main():
@@ -296,7 +348,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="show the changes and change nothing")
     parser.add_argument("--staged", help="the folder of the staged files. The default is the folder of the script.")
+    parser.add_argument("--hosts", help="the hosts.json form of the site file")
+    parser.add_argument("--node", help="the node of this host in --hosts")
+    parser.add_argument("--kubeconfig-out", help="the destination of the admin kubeconfig")
     args = parser.parse_args()
+    global KUBECONFIG_OUT
+    if args.hosts:
+        import json
+        use_site(json.load(open(args.hosts)), args.node)
+    else:
+        use_site(SITE, THIS)
+    KUBECONFIG_OUT = args.kubeconfig_out
     if THIS is None or THIS not in HOSTS:
         fail("this file has no host. Run write-host-copies.py, then run the copy of this host.")
     if args.staged:

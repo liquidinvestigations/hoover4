@@ -14,8 +14,8 @@ metadata:
   name: registry-data
   namespace: registry
 spec:
+  # The default storage class of the site (../../cluster/topolvm_values.py).
   accessModes: [ReadWriteOnce]
-  storageClassName: hdd-ext4
   resources:
     requests:
       storage: 60Gi
