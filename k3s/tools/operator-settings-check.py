@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the settings page of the operator portal in a browser. Usage: operator-settings-check.py <phase> [args]
 
-The browser signs in to https://operator.<suffix>/ as admin with k3s/private/operator-login/admin-password, else the
-development password, and opens settings.html. Each phase acts through the page as an operator does:
+The browser signs in to the operator portal as admin and opens settings.html. The password comes from
+k3s/private/operator-login/admin-password, else it is the development password. Each phase uses the page as an operator does.
   invalid <scope> <key> <value>     enter a value, Save, and expect a marked refusal and no new revision
   save <scope> <key> <value>        enter a value and Save. Expect a new revision in the pending table.
   apply [timeout]                   press Apply and wait until the operation succeeds or fails
@@ -38,7 +38,13 @@ def password():
 
 
 async def js(tab, code):
-    return await tab.evaluate(code, await_promise=True, return_by_value=True)
+    """Return the value of a page expression. nodriver returns some values, such as an empty string or an array, as a
+    RemoteObject, so the page sends every value as JSON text."""
+    text = await tab.evaluate(f'Promise.resolve({code}).then(v => JSON.stringify(v === undefined ? null : v))',
+                              await_promise=True, return_by_value=True)
+    if not isinstance(text, str):
+        raise RuntimeError(f'the page script failed: {text}'[:300])
+    return json.loads(text)
 
 
 async def login(tab):

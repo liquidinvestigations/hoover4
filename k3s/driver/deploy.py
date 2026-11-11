@@ -39,8 +39,9 @@ STOP_ORDER = ['stop:ingress', 'stop:applications', 'stop:temporal', 'stop:stores
 START_ORDER = ['start:stores', 'start:temporal', 'start:applications', 'start:ingress']
 # tier() puts each Deployment and StatefulSet of a zone into a shutdown tier by its name. A name without a store word
 # and without a Temporal word is an application. The ingress tier holds the ingress controller and the zone gates.
+# Keycloak counts as a store, because the openDesk LDAP server reads its keys at start.
 STORE_WORDS = ('clickhouse', 'manticore', 'garage', 'cassandra', 'elasticsearch', 'zookeeper', 'postgres', 'redis',
-               'memcached', 'seaweedfs', 'minio', 'mariadb', 'nats', 'ldap')
+               'memcached', 'seaweedfs', 'minio', 'mariadb', 'nats', 'ldap', 'keycloak')
 TEMPORAL_WORDS = ('temporal',)
 
 
@@ -236,11 +237,9 @@ class LocalArch:
         self.ctx.run(['/usr/local/bin/k3s-killall.sh'], sudo=True, capture=True)
 
     def start(self):
-        for unit in ('hoover4-address.service', 'hoover4-dns.service', 'k3s.service'):
+        # The pods reach the zone names through the frontend, so it starts with k3s.
+        for unit in ('hoover4-address.service', 'hoover4-dns.service', 'k3s.service', 'hoover4-frontend.service'):
             self.ctx.run(['/usr/bin/systemctl', 'start', unit], sudo=True)
-
-    def start_frontend(self):
-        self.ctx.run(['/usr/bin/systemctl', 'start', 'hoover4-frontend.service'], sudo=True)
 
 
 class Remote:
@@ -581,15 +580,16 @@ def cluster_steps(ctx):
         'frontend': step_frontend,
         'monitoring': step_script('bash', '@platform/monitoring/install-dashboards.sh'),
         'operator': step_operator,
-        'calls': step_script(sys.executable, '@platform/calls/install-calls.py'),
         'hoover-data': step_script(sys.executable, '@platform/hoover-data/install-hoover-data.py'),
-        'gpu-proxy': step_script(sys.executable, '@hoover/gpu.py', 'apply'),
+        'gpu-proxy': step_script(sys.executable, '@hoover/gpu.py', 'install'),
     }
     if ctx.site.single:
         # The Hoover pods of a single-node site share one node, so their dataset folders are claims and need no NFS.
         del steps['hoover-data']
     for hoover in ctx.site.hoovers.values():
         steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone, hoover.home_node)
+    # The call services join the Jitsi of every zone, so they follow the zones.
+    steps['calls'] = step_script(sys.executable, '@platform/calls/install-calls.py')
     return steps
 
 
@@ -599,7 +599,12 @@ def cluster_steps(ctx):
 
 def tier(namespace, name):
     lowered = name.lower()
-    if namespace == 'ingress' or lowered.endswith('-gate') or lowered.startswith('oauth2-proxy'):
+    # The ingress controller carries the calls of the pods to the zone names, for example the sign-in of an
+    # application at its zone Keycloak, so it stops and starts with the stores. The frontend, the zone gates and the
+    # Hoover proxies take the requests of the users, so they stop first and start last.
+    if namespace == 'ingress':
+        return 'stores'
+    if lowered == 'gate' or lowered.endswith('-gate') or lowered.startswith('oauth2-proxy'):
         return 'ingress'
     # The stores of Temporal, for example temporal-cassandra, belong to the stores.
     if any(w in lowered for w in STORE_WORDS):
@@ -645,10 +650,6 @@ def stop_tier(group):
         # Each workload ends through its own shutdown. The workers drain their activities in their grace period.
         for namespace, kind, name, _ in found:
             wait_pods_gone(ctx, namespace, kind, name)
-        if group == 'ingress':
-            for node in ctx.site.nodes.values():
-                if node.local and node.has('public'):
-                    ctx.run(['/usr/bin/systemctl', 'stop', 'hoover4-frontend.service'], sudo=True)
         return {'stopped': len(found)}
     return run
 
@@ -678,12 +679,8 @@ def start_tier(group):
         for namespace, kind, name in started:
             stopped.pop(f'{namespace}/{kind}/{name}', None)
         ctx.records.save_stopped(stopped)
-        if group == 'ingress':
-            for node in ctx.site.nodes.values():
-                if node.local and node.has('public'):
-                    LocalArch(ctx, node).start_frontend()
-            if not stopped:
-                ctx.records.clear_stopped()
+        if group == 'ingress' and not stopped:
+            ctx.records.clear_stopped()
         return {'started': len(started)}
     return run
 

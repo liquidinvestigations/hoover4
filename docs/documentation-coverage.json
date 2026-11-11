@@ -3084,6 +3084,33 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+    },
+    {
+      "id": "F-admin-49",
+      "source": [
+        "k3s/deploy-k3s",
+        "k3s/driver/deploy.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#deploy-a-site"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is a command-line tool. It has no interface."
+    },
+    {
+      "id": "F-admin-50",
+      "source": [
+        "k3s/platform/operator/portal_settings.py",
+        "k3s/platform/operator/apply.py",
+        "k3s/platform/operator/portal/settings.html"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#save-and-apply-operator-settings"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The page belongs to the operator portal of a k3s site, which the manuals do not show. The browser check keeps its screenshots in the private folder of the site."
     }
   ],
   "routes": {

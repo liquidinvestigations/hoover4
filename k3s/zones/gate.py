@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config  # noqa: E402
 import settings  # noqa: E402
 
 IMAGE = 'quay.io/oauth2-proxy/oauth2-proxy:v7.12.0@sha256:786bed0f000c0f8a7b31619244ebab02406a8856a4faf3f5fb1df61fbd6c30ed'
@@ -57,7 +58,16 @@ def objects(zone):
                  'volumeMounts': [{'name': 'secrets', 'mountPath': '/secrets', 'readOnly': True}]}
     pod = {'automountServiceAccountToken': False, 'enableServiceLinks': False, 'initContainers': [redis], 'containers': [container],
            'volumes': [{'name': 'secrets', 'secret': {'secretName': 'gate-oidc', 'items': [{'key': 'client-secret', 'path': 'client-secret'}]}}]}
-    return {'apiVersion': 'v1', 'kind': 'List', 'items': [
+    extra = []
+    ca = config.local_ca(settings.SITE) if settings.SITE else ''
+    if ca:
+        # The Keycloak of the zone has a certificate of the local CA of a single-node site.
+        args += ['--provider-ca-file=/ca/local-ca.crt', '--use-system-trust-store=true']
+        container['volumeMounts'].append({'name': 'local-ca', 'mountPath': '/ca', 'readOnly': True})
+        pod['volumes'].append({'name': 'local-ca', 'configMap': {'name': 'local-ca'}})
+        extra.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'local-ca', 'namespace': zone},
+                      'data': {'local-ca.crt': ca}})
+    return {'apiVersion': 'v1', 'kind': 'List', 'items': extra + [
         {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
          'spec': {'replicas': 1, 'selector': {'matchLabels': LABELS}, 'template': {'metadata': {'labels': LABELS}, 'spec': pod}}},
         {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},

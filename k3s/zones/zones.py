@@ -13,6 +13,13 @@ out=settings.PRIVATE/'zones'
 # The openDesk release is not in Git. The operator unpacks it into the private folder.
 OPENDESK=settings.PRIVATE/'downloads/opendesk-v1.19.1/src'
 ZONE_NAME=re.compile(r'zone-[a-z0-9]{1,12}')
+
+def local_ca():
+ """The local CA of the frontend for the trust bundle of a zone, when the frontend runs on the local node."""
+ path=settings.PRIVATE/'frontend/local-ca.crt'
+ if not settings.HOST.get('frontend_local') or not path.exists():return {}
+ return {'certificateAuthorities':{'values':{'hoover4-local-ca.crt':path.read_text()}}}
+
 def zone_names():
  try:return list(zonestate.load()['zones'])
  except zonestate.ZoneStateError:
@@ -83,8 +90,9 @@ def zone_values(zone,data,storage_class):
   'apps':apps,
   'antivirus':{'icap':{'host':None},'milter':{'host':None}},
   'certificate':{'create':False},
-  # The frontend has a public certificate, so the bundle of the zone is the Mozilla bundle that openDesk composes.
-  'trust':{'create':True,'secret':{'mount':True,'name':'hoover-ca-bundle'}},
+  # The bundle of the zone is the Mozilla bundle that openDesk composes. A local frontend adds its local CA
+  # (../platform/frontend/install-local-frontend.sh), because the pods reach the zone names through that frontend.
+  'trust':{'create':True,'secret':{'mount':True,'name':'hoover-ca-bundle'},**local_ca()},
   'cluster':{'networking':{'ipFamilies':'IPv4'},'service':{'type':'ClusterIP'}},
   # The file system volumes of the apps use the default tier of the zone on its home node.
   'persistence':{'storageClassNames':{'RWO':storage_class}},

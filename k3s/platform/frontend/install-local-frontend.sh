@@ -28,7 +28,7 @@ if [ "${1:-}" = --ca ]; then
   name="Hoover4 local site CA"
   mkdir -p "$HOME/.pki/nssdb"
   [ -f "$HOME/.pki/nssdb/cert9.db" ] || certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password
-  find "$HOME/.pki" "$HOME/.mozilla" "$HOME/.config/mozilla" -name cert9.db 2>/dev/null | while read -r db; do
+  { find "$HOME/.pki" "$HOME/.mozilla" "$HOME/.config/mozilla" -name cert9.db 2>/dev/null || true; } | while read -r db; do
     certutil -d "sql:$(dirname "$db")" -D -n "$name" 2>/dev/null || true
     certutil -d "sql:$(dirname "$db")" -A -t C,, -n "$name" -i "$folder/local-ca.crt"
     echo "trusted in $(dirname "$db")"

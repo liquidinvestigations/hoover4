@@ -119,8 +119,10 @@ def run_command(argv, op, log):
         f.flush()
         result = subprocess.run([str(a) for a in argv], env=env, stdout=f, stderr=subprocess.STDOUT)
     if result.returncode:
-        tail = Path(log).read_text().strip().splitlines()[-3:]
-        raise ApplyFailed(f'{Path(str(argv[1])).name} exited with code {result.returncode}: ' + ' | '.join(tail))
+        # A kubectl error can print a whole object on one line. The page shows the start of each line, and the log keeps all.
+        tail = [line if len(line) <= 300 else line[:300] + '...' for line in Path(log).read_text().strip().splitlines()[-3:]]
+        raise ApplyFailed(f'{Path(str(argv[1])).name} exited with code {result.returncode}: ' + ' | '.join(tail)
+                          + f' The full output is in {log}.')
 
 
 def kubectl(*args):
@@ -152,7 +154,7 @@ def wait_hoover(namespace, timeout=900):
         if refused or time.monotonic() > deadline:
             events = refused or events
             raise ApplyFailed(f"the volume {claim} did not grow to {short[0]['spec']['resources']['requests']['storage']}. "
-                              f"{events[-1] if events else 'No event names the cause.'} Check the free space of the volume "
+                              f"{events[-1].rstrip('.') + '.' if events else 'No event names the cause.'} Check the free space of the volume "
                               f"group with vgs, then retry, or abandon the operation and save a smaller size.")
         time.sleep(5)
 

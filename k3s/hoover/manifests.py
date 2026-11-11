@@ -136,6 +136,9 @@ INTERNET = {'hoover4-mcp-whois', 'hoover4-mcp-metasearch', 'hoover4-mcp-browser'
 # Container ports of the services that publish none in Compose.
 PORTS = {'hoover4-tika': [9998], 'hoover4-clamav': [8000], 'hoover4-web-tor': [9050, 9051], 'hoover4-pdf-search': [13500],
          'zookeeper': [2181], 'temporal-ui': [8080], 'clickhouse-monitoring': [3000], 'ch-ui': [5521]}
+# Ports that the other containers reach without a published port in Compose. Garage nodes and garage-init use the RPC
+# port 3901 (main_services/ops/docker/garage/garage.toml).
+INTERNAL_PORTS = {'garage': [3901]}
 # The Kubernetes names of the services that keep another name in the cluster.
 NAMES = {'hoover4-website': 'hoover-website', 'hoover4-ops': 'hoover-operations'}
 # The Secret items of the key files. A file without an item stays absent, and its feature stays off.
@@ -202,6 +205,8 @@ class Target:
     tree: Path = site_config.REPO
     # The zone setting app.hoover. A disabled installation renders zero replicas and keeps its claims and Secrets.
     enabled: bool = True
+    # The local CA of the frontend of a single-node site, which oauth2-proxy trusts for the Keycloak of the zone.
+    local_ca: str = ''
 
     @property
     def ns(self):
@@ -258,7 +263,7 @@ def target_from_site(site_path, name, revision=None, state=None, nfs=None, setti
     enabled = zone_values['app.hoover'] == 'true' and zone_values['zone.enabled'] == 'true'
     source = site_config.read_source_ini(hoover.source_ini, check_paths=False) if hoover.source_ini else None
     return Target(site=site, hoover=hoover, values=values, revision=revision or resolve_revision(), nfs=nfs or {},
-                  source=source, enabled=enabled)
+                  source=source, enabled=enabled, local_ca=site_config.local_ca(site))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -346,10 +351,18 @@ def workload(target, kind, name, spec, replicas=1, labels=None, spread=False, cl
             'spec': body}
 
 
+# The stores and Temporal answer at their name before they are ready, as a Compose name does. Garage reaches its own
+# RPC port through its name while garage-init sets its layout, and the store pods are not ready before that.
+NOT_READY_NAMES = {'garage', 'temporal', 'temporal-cassandra', 'temporal-elasticsearch', 'clickhouse', 'manticore',
+                   'manticore-vectors', 'zookeeper'}
+
+
 def service(target, name, port_list, selector=None):
-    return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': name, 'namespace': target.ns},
-            'spec': {'selector': {'app.kubernetes.io/name': selector or name},
-                     'ports': [{'name': f'p{p}', 'port': p, 'targetPort': p} for p in port_list]}}
+    spec = {'selector': {'app.kubernetes.io/name': selector or name},
+            'ports': [{'name': f'p{p}', 'port': p, 'targetPort': p} for p in port_list]}
+    if name in NOT_READY_NAMES:
+        spec['publishNotReadyAddresses'] = True
+    return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': name, 'namespace': target.ns}, 'spec': spec}
 
 
 def external(target, name):
@@ -366,10 +379,16 @@ def ports(name, service_def):
     for p in service_def.get('ports') or []:
         text = str(p.get('target') if isinstance(p, dict) else p)
         found.append(int(text.rsplit(':', 1)[-1].split('/')[0]))
-    return found or PORTS.get(name, [])
+    return sorted(set(found or PORTS.get(name, [])) | set(INTERNAL_PORTS.get(name, [])))
 
 
-def probe(service_def):
+def probe(service_def, name=None):
+    """The readiness probe of a Compose healthcheck.
+
+    A Compose check can name its own service, which resolves to the container itself. In the cluster that name is the
+    Service address, which routes only to ready pods, so the check of a pod that is not ready could never pass. A shell
+    check names the pod address instead.
+    """
     test = (service_def.get('healthcheck') or {}).get('test')
     if not test or (isinstance(test, list) and test[0] == 'NONE'):
         return None
@@ -377,6 +396,8 @@ def probe(service_def):
         command = ['sh', '-c', test]
     else:
         command = ['sh', '-c', test[1]] if test[0] == 'CMD-SHELL' else list(test[1:])
+    if name and command[:2] == ['sh', '-c'] and re.search(rf'(?<![\w.-]){re.escape(name)}:\d', command[2]):
+        command = ['sh', '-c', re.sub(rf'(?<![\w.-]){re.escape(name)}:(\d)', r'$(hostname -i):\1', command[2])]
     return {'exec': {'command': command}, 'periodSeconds': 15, 'timeoutSeconds': 13, 'failureThreshold': 6}
 
 
@@ -402,7 +423,7 @@ def dataset_mounts(target):
         return out
     if target.site.single:
         return [{'name': n, 'path': f'/data/{n}', 'writable': w,
-                 'volume': {'persistentVolumeClaim': {'claimName': f'dataset-{n}', 'readOnly': not w}}}
+                 'volume': {'persistentVolumeClaim': {'claimName': f'dataset-{n}'}}}
                 for n, w in (('testdata', False), ('uploads', True))]
     data_nodes = [n.name for n in target.site.with_role('data')]
     node = target.hoover.home_node if target.hoover.home_node in data_nodes else data_nodes[0]
@@ -550,7 +571,7 @@ def container(name, service_def, image, env, memory, mounted, cpu=None, command=
         c['args'] = cmd if isinstance(cmd, list) else ['sh', '-c', cmd]
     if service_def.get('working_dir'):
         c['workingDir'] = service_def['working_dir']
-    check = probe(service_def)
+    check = probe(service_def, name)
     if check:
         c['readinessProbe'] = check
     security = {}
@@ -725,7 +746,10 @@ def translated(target, services, mounts, deploy):
             job.pop('readinessProbe', None)
             spec = pod_spec(target, [job], pod_volumes, node=node)
             spec['restartPolicy'] = 'OnFailure'
-            items.append({'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': {'name': f'garage-init-{image_tag(target.revision)[:12]}', 'namespace': target.ns,
+            # The template of a Job cannot change, and a setting such as volume.garage-data changes its environment, so
+            # the name holds a hash of the pod spec. A new value starts a new Job, which sets the new layout.
+            digest = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:8]
+            items.append({'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': {'name': f'garage-init-{image_tag(target.revision)[:12]}-{digest}', 'namespace': target.ns,
                                                                               'labels': {'app.kubernetes.io/name': 'garage-init', PART: 'garage-init'}},
                           'spec': {'backoffLimit': 6, 'ttlSecondsAfterFinished': 86400,
                                    'template': {'metadata': {'labels': {'app.kubernetes.io/name': 'garage-init'}}, 'spec': spec}}})
@@ -848,7 +872,13 @@ def proxy(target):
          'volumeMounts': [{'name': 'config', 'mountPath': '/config', 'readOnly': True},
                           {'name': 'secrets', 'mountPath': '/secrets', 'readOnly': True}]}
     vols = [{'name': 'config', 'configMap': {'name': 'oauth2-proxy'}}, {'name': 'secrets', 'secret': {'secretName': 'oauth2-proxy'}}]
-    return [config_map(target, 'oauth2-proxy', {'alpha.yaml': json.dumps(alpha, indent=1)}),
+    extra = []
+    if target.local_ca:
+        alpha['providers'][0]['caFiles'] = ['/ca/local-ca.crt']
+        c['volumeMounts'].append({'name': 'local-ca', 'mountPath': '/ca', 'readOnly': True})
+        vols.append({'name': 'local-ca', 'configMap': {'name': 'local-ca'}})
+        extra.append(config_map(target, 'local-ca', {'local-ca.crt': target.local_ca}))
+    return extra + [config_map(target, 'oauth2-proxy', {'alpha.yaml': json.dumps(alpha, indent=1)}),
             workload(target, 'Deployment', 'oauth2-proxy', pod_spec(target, [c], vols)), service(target, 'oauth2-proxy', [4180])]
 
 
@@ -979,7 +1009,13 @@ def objects(target):
 
 def render(target):
     """The List text of an installation. The same Target gives the same text."""
-    return json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': objects(target)}, indent=1, sort_keys=True)
+    items = objects(target)
+    if not target.enabled:
+        # A disabled installation keeps every object and every claim, with zero replicas.
+        for item in items:
+            if item['kind'] in ('Deployment', 'StatefulSet'):
+                item['spec']['replicas'] = 0
+    return json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': items}, indent=1, sort_keys=True)
 
 
 # The kinds that prune() checks. Secrets belong to setup.py and stay. Claims stay, because they hold data.

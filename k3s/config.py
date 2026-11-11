@@ -614,6 +614,16 @@ def legacy_settings(site):
     return out
 
 
+def local_ca(site):
+    """The root certificate of the local CA of the HTTPS frontend, when the frontend runs on the local node of the site.
+
+    ../platform/frontend/install-local-frontend.sh writes it. The pods that call the zone names over HTTPS trust it.
+    """
+    public = site.with_role('public')
+    path = PRIVATE / 'frontend' / 'local-ca.crt'
+    return path.read_text() if public and public[0].local and path.exists() else ''
+
+
 def legacy_hosts(site):
     """The site in the format of hosts.json, which the host scripts of hosts/ read."""
     hosts = {}

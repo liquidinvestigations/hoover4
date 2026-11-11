@@ -71,7 +71,7 @@ k3s/deploy-k3s up --target all --start
 k3s/deploy-k3s status
 ```
 
-- `up` installs the hosts, k3s, the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the calls services, the GPU proxy and each zone, in this order.
+- `up` installs the hosts, k3s, the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
 - The driver resolves `--revision` once. The record of the run keeps the commit, and every step and node gets it.
   The images carry this commit. Local changes of the checkout stay unchanged, and the record lists them.
@@ -79,9 +79,13 @@ k3s/deploy-k3s status
   `deploy-k3s up --resume <record>` continues at the first unfinished step with the same revision.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.
   The earlier applied record moves to `deploy/previous.json`, so a failed update can return to its revision with `up --revision`.
-- `down` scales the ingress and the zone gates to zero, then the applications and workers, then Temporal, then the stores, and then stops k3s.
-  `deploy/stopped.json` keeps the replica counts. `up --start` starts k3s and restores the stores, Temporal, the applications and the ingress in this order.
+- `down` scales the zone gates and the login proxy of each Hoover installation to zero, then the applications and workers, then Temporal, then the stores, and then stops the HTTPS frontend and k3s.
+  The stores tier holds the databases, Keycloak, the LDAP server and the ingress controller, because the applications and the gates need them at start.
+  `deploy/stopped.json` keeps the replica counts. `up --start` starts k3s and the HTTPS frontend, then restores the stores, Temporal, the applications and the gates in this order.
   The workers end through their grace period, and no workflow is cancelled.
+- The tools step installs pinned downloads from [driver/artifacts.json](driver/artifacts.json) into `private/bin/`.
+  The platform scripts use Helm 4. The openDesk helmfile uses Helm 3 from `private/bin/opendesk/`.
+- The calls step runs after the zones, because the calls services read Secrets of the zones.
 - The local node of a single-node site uses the adapter `local-arch`. It runs the root scripts [hosts/root-install-local.py](hosts/root-install-local.py) and [hosts/root-install-k3s.py](hosts/root-install-k3s.py) with `sudo -n`.
   The bootstrap script of the local node installs copies of these scripts into `/usr/local/libexec/hoover4` and a sudo rule for them and the units of the site. The driver uses a copy when it equals the source.
 - A remote node uses the adapter `remote`. The driver checks it over SSH with read-only commands.
@@ -94,6 +98,10 @@ k3s and every pod run in `hoover4.slice`. The node value `reserved` sets the mem
 The k3s data and the kubelet folder are volumes of the volume group of the node. TopoLVM uses the free space of the group.
 The admin kubeconfig is `private/kubeconfig`. k3s writes it as `/etc/rancher/k3s/hoover4-admin.yaml`, because `/etc/rancher/k3s/k3s.yaml` can belong to another k3s user of the host.
 A new Hoover installation of a single-node site keeps its dataset folders `testdata` and `uploads` on claims, so it needs no NFS server.
+The frontend step adds the local CA to the trust store of the host and to the NSS stores of the operator user, so a browser of the host trusts the site.
+`tools/write-password-table.py` writes the logins of the site into `private/passwords.md`.
+`tools/local-site-check.py [--restart]` checks the storage, a registry pull and a restart of the host services of a single-node site.
+`tools/zone-data-check.py <zone> write|read` writes one item into each openDesk application of a zone and reads it back.
 
 ## Choose the stores and the Temporal backend.
 
@@ -131,6 +139,7 @@ They also hold the openDesk applications and memory limits of each zone, and the
 - The settings page of the operator portal (`https://operator.<suffix>/settings.html`) edits the saved values, shows the hardware suggestions, the pending changes, the affected services and the Apply operation, and offers Retry and Abandon.
   [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The operator runner (unit `hoover4-operator-runner` of the operator user) runs them.
   A failed operation waits for Retry or Abandon. A restarted runner continues a running operation.
+  `tools/operator-settings-check.py` drives the page in a browser: an invalid value, a save, Apply, Retry, Abandon and Use default.
 - The zone settings `app.<name>` turn openDesk applications and Hoover off and on. An application that is off has zero replicas and keeps its claims.
   The zone memory limits and the cluster CPU policy reach the zone render through [zones/postrender.py](zones/postrender.py).
 - The backup policies are settings: `backup.opendesk.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.

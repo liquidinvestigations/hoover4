@@ -128,9 +128,10 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
     assert steps[:7] == ['host:dev:prerequisites', 'host:dev:software', 'host:dev:settings', 'host:dev:storage',
                          'host:dev:stage', 'host:dev:k3s', 'host:dev:dns']
     for before, after in (('host:dev:k3s', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
-                          ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator')):
+                          ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator'),
+                          ('zone:zone-a', 'calls')):
         assert steps.index(before) < steps.index(after)
-    assert steps[-1] == 'zone:zone-a'
+    assert steps[-1] == 'calls'
 
 
 def test_remote_plan_puts_the_control_plane_first_and_gpu_nodes_last(env):
@@ -298,8 +299,8 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
     record = ctx.records.new('down', ['dev'], rev, list(steps))
     assert deploy.execute(ctx, record, steps) == 0
     scaled = [c[c.index('scale') + 2] for c in env.commands() if c[0] == 'kubectl' and 'scale' in c]
-    assert scaled == ['haproxy-ingress', 'zone-a-gate', 'nextcloud', 'website', 'hoover-workers', 'temporal',
-                      'postgresql', 'temporal-cassandra', 'clickhouse']
+    assert scaled == ['zone-a-gate', 'nextcloud', 'website', 'hoover-workers', 'temporal',
+                      'haproxy-ingress', 'postgresql', 'temporal-cassandra', 'clickhouse']
     assert ctx.records.stopped()['hoover-zone-a/deployment/website'] == 2
     sudo = [c for c in env.commands() if c[0] == 'sudo']
     assert ['sudo', '-n', '/usr/bin/systemctl', 'stop', 'k3s.service'] in sudo
@@ -314,8 +315,8 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
     finally:
         del os.environ['FAKE_READY']
     scaled = [(c[c.index('scale') + 2], c[-1]) for c in env.commands() if c[0] == 'kubectl' and 'scale' in c]
-    assert [s[0] for s in scaled] == ['clickhouse', 'temporal-cassandra', 'postgresql', 'temporal', 'website',
-                                      'hoover-workers', 'nextcloud', 'haproxy-ingress', 'zone-a-gate']
+    assert [s[0] for s in scaled] == ['clickhouse', 'temporal-cassandra', 'haproxy-ingress', 'postgresql', 'temporal',
+                                      'website', 'hoover-workers', 'nextcloud', 'zone-a-gate']
     assert ('website', '--replicas=2') in scaled
     assert ctx.records.stopped() == {}
     assert ctx.records.applied() is None

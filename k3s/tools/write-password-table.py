@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Write every deployment login and password in clear text at the top of INFRASTRUCTURE_INVENTORY.md.
+"""Write every deployment login and password in clear text into k3s/private/passwords.md, which Git ignores.
+
+The hoover4 inventory keeps no credential values, so the table stays in the private folder of the site.
 
 The script reads the live cluster Secrets, so the table shows the values that the services use.
 It replaces the block between the two marker lines and prints only the row count.
@@ -10,9 +12,10 @@ import base64,json,os,pathlib,subprocess,sys
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'zones'));import zonestate
 root=pathlib.Path(__file__).resolve().parent;settings.use_kubeconfig()
-INVENTORY=root.parents[1]/'INFRASTRUCTURE_INVENTORY.md'
+INVENTORY=settings.PRIVATE/'passwords.md'
 BEGIN='<!-- lab passwords begin: write-password-table.py writes this block -->';END='<!-- lab passwords end -->'
-ZONES=list(zonestate.load()['zones'])
+# A site without zones yet has no zone state file.
+ZONES=list(zonestate.load()['zones']) if zonestate.PATH.exists() else []
 def secret(namespace,name):
  try:item=json.loads(subprocess.check_output(['kubectl','-n',namespace,'get','secret',name,'-o','json'],text=True,stderr=subprocess.DEVNULL))
  except subprocess.CalledProcessError:return None

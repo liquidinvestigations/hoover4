@@ -217,6 +217,26 @@ def login_flow(zone, stop, errors):
         errors.append(error)
 
 
+def nextcloud_config(zone):
+    """Restart Nextcloud when it runs without the configuration of the management Job.
+
+    A Nextcloud pod that starts before Redis is ready keeps the minimal configuration, and answers every request for
+    files.<zone>.<suffix> with a trusted domain error. The OpenProject bootstrap then fails, because it calls Nextcloud.
+    The configuration is in the database after the management Job, so a new pod loads it.
+    """
+    if not kubectl('-n', zone, 'get', 'deployment', 'opendesk-nextcloud-aio', '--ignore-not-found', '-o', 'name').strip():
+        return
+    domains = subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec',
+                              'deployment/opendesk-nextcloud-aio', '--',
+                              'php', '/var/www/html/occ', 'config:system:get', 'trusted_domains'],
+                             capture_output=True, text=True).stdout
+    if f'files.{zone}.{settings.SUFFIX}' in domains:
+        return
+    kubectl('-n', zone, 'rollout', 'restart', 'deployment/opendesk-nextcloud-aio')
+    kubectl('-n', zone, 'rollout', 'status', 'deployment/opendesk-nextcloud-aio', '--timeout=600s')
+    step('nextcloud-restart', zone=zone, reason='the configuration of the management Job was missing')
+
+
 def opendesk(zone):
     import threading
     stop = threading.Event()
@@ -232,6 +252,7 @@ def opendesk(zone):
             step('helmfile', zone=zone, result='first pass failed, the login flow follows')
             run('bash', HERE / 'zone-login-no-mfa.sh', zone)
             helmfile(zone, 'apply')
+        nextcloud_config(zone)
         failed = run('helm', 'list', '-n', zone, '--failed', '-q', env=helmfile_env(zone), quiet=True).stdout.split()
         for release in failed:
             step('helmfile-sync', zone=zone, release=release)
@@ -241,6 +262,10 @@ def opendesk(zone):
         helper.join()
     if errors:
         raise errors[0]
+    # The portal server reads the portal data once at its start. On a new zone it can start before the portal
+    # consumer wrote the data, and then it answers every page with an error until it restarts.
+    kubectl('-n', zone, 'rollout', 'restart', 'deployment/ums-portal-server')
+    kubectl('-n', zone, 'rollout', 'status', 'deployment/ums-portal-server', '--timeout=300s')
 
 
 def hoover(zone):

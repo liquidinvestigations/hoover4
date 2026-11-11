@@ -1,20 +1,80 @@
 {
- "comment": "The pinned operator tools of the control-plane host. deploy-k3s downloads each file once into k3s/private/downloads, verifies its sha256 digest and installs the named member. The digests are the published release digests.",
+ "comment": "The pinned operator tools of the control-plane host. deploy-k3s downloads each file once into k3s/private/downloads, verifies its sha256 digest and installs the named member. The digests are the published release digests. The platform scripts use Helm 4 (bin/helm). openDesk v1.19.1 and its helmfile use Helm 3 (bin/opendesk/helm).",
  "tools": [
-  {"name": "helm", "version": "v3.22.1", "url": "https://get.helm.sh/helm-v3.22.1-linux-{arch}.tar.gz",
-   "sha256": {"amd64": "896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea", "arm64": "4c29e286b279d170fa048ddfc3e4e83dcd069ca9c52102766ba672d7149e694d"},
-   "member": "linux-{arch}/helm", "install": ["bin/helm", "bin/opendesk/helm"]},
-  {"name": "helmfile", "version": "v1.8.2", "url": "https://github.com/helmfile/helmfile/releases/download/v1.8.2/helmfile_1.8.2_linux_{arch}.tar.gz",
-   "sha256": {"amd64": "f179485c5bb9f8e20fbd8ea16d8807915988aba4d60131ee864fb3232452716e"},
-   "member": "helmfile", "install": ["bin/opendesk/helmfile"]},
-  {"name": "yq", "version": "v4.54.1", "url": "https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_{arch}",
-   "sha256": {"amd64": "8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f"},
-   "member": "", "install": ["bin/opendesk/yq"]},
-  {"name": "helm-diff", "version": "v3.15.15", "url": "https://github.com/databus23/helm-diff/releases/download/v3.15.15/helm-diff-linux-{arch}.tgz",
-   "sha256": {"amd64": "504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9"},
-   "member": "diff/", "install": ["bin/opendesk/plugins/diff/"]},
-  {"name": "opendesk", "version": "v1.19.1", "url": "https://gitlab.opencode.de/bmi/opendesk/deployment/opendesk/-/archive/v1.19.1/opendesk-v1.19.1.tar.gz",
-   "sha256": {"amd64": "e8eacdc81b563ae7258d6db544488f212f47c69f6d0e84ac6b9e5aa61b664935", "arm64": "e8eacdc81b563ae7258d6db544488f212f47c69f6d0e84ac6b9e5aa61b664935"},
-   "member": "opendesk-v1.19.1/", "install": ["downloads/opendesk-v1.19.1/src/"]}
+  {
+   "name": "helm",
+   "version": "v4.3.1",
+   "url": "https://get.helm.sh/helm-v4.3.1-linux-{arch}.tar.gz",
+   "sha256": {
+    "amd64": "0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b",
+    "arm64": "8cf8f66ecbc252ac8f7f06cca68aba88508ddfde3a6a34feb1678ad1694b4f88"
+   },
+   "member": "linux-{arch}/helm",
+   "install": [
+    "bin/helm"
+   ]
+  },
+  {
+   "name": "helm3",
+   "version": "v3.22.1",
+   "url": "https://get.helm.sh/helm-v3.22.1-linux-{arch}.tar.gz",
+   "sha256": {
+    "amd64": "896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea",
+    "arm64": "4c29e286b279d170fa048ddfc3e4e83dcd069ca9c52102766ba672d7149e694d"
+   },
+   "member": "linux-{arch}/helm",
+   "install": [
+    "bin/opendesk/helm"
+   ]
+  },
+  {
+   "name": "helmfile",
+   "version": "v1.8.2",
+   "url": "https://github.com/helmfile/helmfile/releases/download/v1.8.2/helmfile_1.8.2_linux_{arch}.tar.gz",
+   "sha256": {
+    "amd64": "f179485c5bb9f8e20fbd8ea16d8807915988aba4d60131ee864fb3232452716e"
+   },
+   "member": "helmfile",
+   "install": [
+    "bin/opendesk/helmfile"
+   ]
+  },
+  {
+   "name": "yq",
+   "version": "v4.54.1",
+   "url": "https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_{arch}",
+   "sha256": {
+    "amd64": "8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f"
+   },
+   "member": "",
+   "install": [
+    "bin/opendesk/yq"
+   ]
+  },
+  {
+   "name": "helm-diff",
+   "version": "v3.15.15",
+   "url": "https://github.com/databus23/helm-diff/releases/download/v3.15.15/helm-diff-linux-{arch}.tgz",
+   "sha256": {
+    "amd64": "504e99410611daa70702362e1b10dc74929df8a912cb3f6b5d21d1ee9d0cb7d9"
+   },
+   "member": "diff/",
+   "install": [
+    "bin/opendesk/plugins/diff/"
+   ]
+  },
+  {
+   "name": "opendesk",
+   "version": "v1.19.1",
+   "url": "https://gitlab.opencode.de/bmi/opendesk/deployment/opendesk/-/archive/v1.19.1/opendesk-v1.19.1.tar.gz",
+   "sha256": {
+    "amd64": "e8eacdc81b563ae7258d6db544488f212f47c69f6d0e84ac6b9e5aa61b664935",
+    "arm64": "e8eacdc81b563ae7258d6db544488f212f47c69f6d0e84ac6b9e5aa61b664935"
+   },
+   "member": "opendesk-v1.19.1/",
+   "install": [
+    "downloads/opendesk-v1.19.1/src/"
+   ]
+  }
  ]
 }

@@ -211,6 +211,19 @@ def test_internet_tools_follow_the_setting(tmp_path):
     assert tor['securityContext']['readOnlyRootFilesystem'] is True
 
 
+def test_garage_init_job_name_follows_its_spec(tmp_path, single):
+    """A Job template cannot change, so a new Garage size gives a new Job name and the same size the same name."""
+    def job(items):
+        jobs = [i for i in items if i['kind'] == 'Job' and i['metadata']['name'].startswith('garage-init-')]
+        assert len(jobs) == 1
+        return jobs[0]
+    first = job(single)
+    grown = job(items_of(target('single-node.ini', 'main', tmp_path, overrides={'volume.garage-data': '25Gi'})))
+    assert env(containers(first)[0])['GARAGE_CAPACITY'] != env(containers(grown)[0])['GARAGE_CAPACITY']
+    assert first['metadata']['name'] != grown['metadata']['name']
+    assert job(items_of(target('single-node.ini', 'main', tmp_path)))['metadata']['name'] == first['metadata']['name']
+
+
 def test_service_commands_and_limits_follow_compose(tmp_path, single):
     t = target('single-node.ini', 'main', tmp_path)
     ini = tmp_path / 'hoover4.ini'
@@ -383,3 +396,36 @@ def test_registry_services_cover_the_changed_compose_services(tmp_path):
         checked += 1
     assert wrong == {}, json.dumps(wrong, indent=0)
     assert checked > 80
+
+
+# A new installation of a single-node site, and the application switch ------------------------------------------------
+
+def test_a_new_single_node_installation_keeps_its_datasets_on_claims(tmp_path):
+    text = re.sub(r'source_ini = .*\n', '', site_text('single-node.ini'))
+    path = tmp_path / 'new.ini'
+    path.write_text(text)
+    t = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'no-state', nfs={})
+    items = items_of(t)
+    claims = {i['metadata']['name'] for i in items if i['kind'] == 'PersistentVolumeClaim'}
+    assert {'dataset-testdata', 'dataset-uploads'} <= claims
+    volumes = {v['name']: v for v in get(items, 'StatefulSet', 'hoover-workers')['spec']['template']['spec']['volumes']}
+    sources = [v.get('persistentVolumeClaim') for v in volumes.values() if v.get('persistentVolumeClaim', {}).get('claimName', '').startswith('dataset-')]
+    assert {'claimName': 'dataset-testdata'} in sources
+    mounts = [m for c in get(items, 'StatefulSet', 'hoover-workers')['spec']['template']['spec']['containers'] for m in c.get('volumeMounts', [])]
+    assert any(m['mountPath'] == '/data/testdata' and m.get('readOnly') for m in mounts)
+    assert not [v for v in volumes.values() if 'nfs' in v or 'hostPath' in v and 'dataset' in v['name']]
+
+
+def test_a_disabled_hoover_renders_zero_replicas_and_keeps_its_claims(tmp_path):
+    S = operator_settings()
+    state = S.State(tmp_path / 'state')
+    state.save(0, {'zone:zone-a': {'app.hoover': 'false'}})
+    path = tmp_path / 'single.ini'
+    path.write_text(site_text('single-node.ini'))
+    t = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'state', nfs=NFS)
+    items = items_of(t)
+    assert all(i['spec']['replicas'] == 0 for i in items if i['kind'] in ('Deployment', 'StatefulSet'))
+    assert [i for i in items if i['kind'] == 'PersistentVolumeClaim']
+    # The pinned revision 0 has no override, so the installation runs.
+    t0 = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'state', nfs=NFS, settings_revision=0)
+    assert t0.enabled

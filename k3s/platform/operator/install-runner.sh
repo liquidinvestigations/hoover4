@@ -16,6 +16,8 @@ export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 folder=$private/operator-runner
 mkdir -p "$folder"
 chmod 700 "$folder"
+# The rights name these namespaces. The calls and the zones fill them later, and a single-node site keeps hoover-data empty.
+for namespace in calls hoover-data extensions; do kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -; done
 kubectl apply -f "$source_dir/platform/operator/runner-rights.yaml"
 (cd "$source_dir/zones" && python3 -c 'import zone; zone.cluster()')
 token=''

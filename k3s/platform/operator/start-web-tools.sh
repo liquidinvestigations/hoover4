@@ -15,8 +15,9 @@ mkdir -p "$login"
 # The cookie secret must be 32 bytes. The existing files keep sessions valid across reinstalls.
 [ -s "$login/client-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/client-secret"
 [ -s "$login/cookie-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(16), end="")' > "$login/cookie-secret"
-# A host with public addresses keeps its own admin password in k3s/private/operator-login/admin-password. The manifest
-# then gets the bcrypt hash of that password instead of the hash of the development password admin.
+# The admin password is k3s/private/operator-login/admin-password. The script makes a random one when the file is
+# missing, so no installation keeps the development password admin. The manifest gets its bcrypt hash.
+[ -s "$login/admin-password" ] || python3 -c 'import secrets; print(secrets.token_urlsafe(18))' > "$login/admin-password"
 hash_rule=''
 if [ -s "$login/admin-password" ]; then
   # Dex reads bcrypt hashes. caddy hash-password reads one line from stdin.
@@ -33,9 +34,10 @@ mkdir -p "$state"
 # The pods of a single-node site run below hoover4.slice (../../hosts/root-install-local.py).
 pod_cgroup=/sys/fs/cgroup/kubepods.slice
 [ -d /sys/fs/cgroup/hoover4.slice ] && pod_cgroup=/sys/fs/cgroup/hoover4.slice
-python3 "$source_dir/zones/cpu_policy.py" --render operator-login.yaml | sed -e "s/hoover\.test/$(python3 "$source_dir/settings.py" suffix)/g" -e "$hash_rule" \
-  -e "s|CONTROL_PLANE|$control_plane|; s|OPERATOR_UID|$(id -u)|; s|OPERATOR_GID|$(id -g)|; s|POD_CGROUP|$pod_cgroup|" \
-  -e "s|REPO/|$(realpath "$source_dir/..")/|g; s|path: STATE,|path: $state,|; s|path: SITE_FILE,|path: $site_file,|" | kubectl apply -f -
+# The node, user and path values go into the YAML first, so the numbers stay numbers in the JSON of cpu_policy.py.
+sed -e "s|CONTROL_PLANE|$control_plane|; s|OPERATOR_UID|$(id -u)|; s|OPERATOR_GID|$(id -g)|; s|POD_CGROUP|$pod_cgroup|" \
+  -e "s|REPO/|$(realpath "$source_dir/..")/|g; s|path: STATE,|path: $state,|; s|path: SITE_FILE,|path: $site_file,|" operator-login.yaml |
+  python3 "$source_dir/zones/cpu_policy.py" --render - | sed -e "s/hoover\.test/$(python3 "$source_dir/settings.py" suffix)/g" -e "$hash_rule" | kubectl apply -f -
 kubectl -n operator-portal create secret generic operator-login --from-file="$login/client-secret" --from-file="$login/cookie-secret" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n operator-portal create configmap dex-templates --from-file=password.html=dex-password.html --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n operator-portal create configmap portal --from-file=portal-server.py --from-file=portal_settings.py \

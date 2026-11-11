@@ -45,14 +45,14 @@ MEMORY = json.loads((HERE / 'memory-limits.json').read_text())['zone']
 # renders zero replicas and keeps its claims, so an enable restores it with its data.
 APP_WORKLOADS = {
     'nextcloud': ('opendesk-nextcloud-*',),
-    'collabora': ('collabora-*',),
+    'collabora': ('collabora', 'collabora-*'),
     'cryptpad': ('cryptpad*',),
-    'element': ('opendesk-element*', 'opendesk-synapse*', 'opendesk-matrix-*', 'matrix-*', 'element-*', 'opendesk-well-known*',
-                'synapse-*', 'mas*', 'lk-jwt*'),
+    # The names of openDesk v1.19.1, checked against a deployed zone on 2026-11-11.
+    'element': ('element-*', 'matrix-*', 'opendesk-matrix-*', 'opendesk-provisioning-synapse'),
     'jitsi': ('jitsi-*',),
     'openproject': ('openproject-*',),
     'xwiki': ('xwiki*',),
-    'notes': ('impress-*', 'notes-*'),
+    'notes': ('impress-*',),
 }
 
 
