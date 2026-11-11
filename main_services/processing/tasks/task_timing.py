@@ -532,11 +532,13 @@ class _Recorder:
                 with get_collection_client(collectionname) as client:
                     insert_durable(client, table, rows, column_names=columns)
         except Exception as exc:  # noqa: BLE001 - never fail an ingest over telemetry
+            from database.clickhouse import GLOBAL_DB
+
             self._insert_dropped += len(rows)
             self._warn(
                 "task_timing: insert into %s.%s failed, %d rows dropped "
                 "(%d total this process): %s",
-                collectionname or "Hoover4_Processing",
+                collectionname or GLOBAL_DB,
                 table,
                 len(rows),
                 self._insert_dropped,

@@ -210,9 +210,6 @@ error_rate_alert_percent = 5
 
 # ---- development tools ----
 
-# This switch starts the Serena MCP server for a coding agent on this host, on 127.0.0.1 only.
-serena_enabled = false
-serena_port = 21940
 # True starts a container that signs in every request as proxy_username. Use it only for development.
 development_auth_backdoor_enabled = false
 proxy_username = admin
@@ -250,8 +247,8 @@ tesseract_cpu_port = 21921
 ocr_pdf_port = 21922
 regex_entity_scanner_port = 21925
 mcp_collections_port = 21930
-mcp_metasearch_port = 21931
-mcp_browser_port = 21932
+mcp_metasearch_port = 21941
+mcp_browser_port = 21942
 mcp_whois_port = 21934
 mcp_todo_port = 21935
 internal_search_agent_port = 21936

@@ -13,10 +13,12 @@ def part_lists(items, limit: int):
     return [items[index::count] for index in range(count)] if count else []
 
 
-async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, detect=False, automatic=False):
+async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, detect=False, automatic=False,
+                        host=""):
     """Return preparation and variant outcomes without moving text through workflows.
 
     `detect` runs the OCR detection stage on the prepared sources that have OCR pages.
+    `host` is the host queue of the worker that holds the plan folder (tasks/host_queue.py).
     """
     preparation = {}
     variants = {}
@@ -88,7 +90,8 @@ async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, 
                     workflow.execute_child_workflow(
                         PdfPartGroup.run,
                         PdfPartGroupParams(cursor_context.collectionname, cursor_context.collection_dataset,
-                                           cursor_context.plan_hash, cursor_context.op_id, engine, group),
+                                           cursor_context.plan_hash, cursor_context.op_id, engine, group,
+                                           host=host),
                         id=f"pdf-cursor-{workflow.info().workflow_id}-{group[0].item_hash}-{engine}")
                     for group in groups], return_exceptions=True)
                 results = []

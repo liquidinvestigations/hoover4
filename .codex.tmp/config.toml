@@ -9,14 +9,11 @@ hooks = true
 [agents]
 max_concurrent_threads_per_session = 2
 
-[mcp_servers.serena]
-url = "http://127.0.0.1:21940/mcp"
-
 [mcp_servers.hoover4-web-search]
-url = "http://127.0.0.1:21931/mcp"
+url = "http://127.0.0.1:21941/mcp"
 
 [mcp_servers.hoover4-browser]
-url = "http://127.0.0.1:21932/mcp"
+url = "http://127.0.0.1:21942/mcp"
 
 [mcp_servers.hoover4-browser.http_headers]
 x-hoover4-chat-session = "host-mcp-client"

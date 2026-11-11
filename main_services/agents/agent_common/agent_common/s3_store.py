@@ -19,10 +19,12 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_common import storage_identity
+
 log = logging.getLogger(__name__)
 
 #: The bucket for everything that belongs to no collection.
-BUCKET_NAME = os.getenv("S3_SYSTEM_BUCKET", "hoover4-system")
+BUCKET_NAME = storage_identity.setting("system_bucket")
 
 #: Everything an agent writes lives under here. See the module docstring.
 DERIVED_PREFIX = "derived/chat-artifacts"
@@ -49,8 +51,8 @@ def get_s3_client():
 
     return Minio(
         _endpoint(),
-        access_key=os.getenv("S3_ACCESS_KEY", "hoover4-blobs-rw"),
-        secret_key=os.getenv("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0"),
+        access_key=storage_identity.setting("s3_access_key"),
+        secret_key=storage_identity.setting("s3_secret_key"),
         secure=_secure(),
     )
 

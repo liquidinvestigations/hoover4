@@ -461,6 +461,10 @@ def test_every_worker_installs_the_timing_interceptor():
     ]
     assert workers, "no Worker(...) construction found in run_worker.py"
     for call in workers:
+        if call.keywords and call.keywords[0].arg is None:
+            # `Worker(**config)` rebuilds a worker from the config of a checked one
+            # (`tuned_workers`), so it keeps that worker's interceptors.
+            continue
         interceptors = next(
             (kw.value for kw in call.keywords if kw.arg == "interceptors"), None
         )

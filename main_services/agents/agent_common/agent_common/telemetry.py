@@ -9,9 +9,11 @@ import threading
 import time
 from contextlib import contextmanager
 
+from agent_common import storage_identity
+
 log = logging.getLogger(__name__)
 
-GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
+GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE") or storage_identity.global_database()
 
 #: Short, because this runs on a request path. A telemetry write that takes longer than this has
 #: already cost more than the row is worth.

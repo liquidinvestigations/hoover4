@@ -478,7 +478,9 @@ async fn list_shard_dim_checks(probe_dim: u32) -> Vec<AiShardDimCheck> {
 
     let mut out = Vec::new();
     for col in collections {
-        let db = format!("Hoover4_Collection_{}", col.collectionname);
+        let Ok(db) = crate::db_utils::clickhouse_utils::collection_db_name(&col.collectionname) else {
+            continue;
+        };
         #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
         struct ShardRow {
             shard_name: String,
@@ -507,7 +509,7 @@ async fn list_shard_dim_checks(probe_dim: u32) -> Vec<AiShardDimCheck> {
             let vectors = if s.shard_name.ends_with("_vectors") {
                 s.shard_name.clone()
             } else {
-                format!("{}_vectors", s.shard_name)
+                crate::db_utils::manticore_utils::physical_table(&format!("{}_vectors", s.shard_name))
             };
             let knn_dims = match &http {
                 Some(h) => probe_knn_dims(h, &manticore, &vectors).await,

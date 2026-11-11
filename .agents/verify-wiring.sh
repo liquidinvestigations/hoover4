@@ -8,37 +8,63 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pass=0; fail=0; skip=0
-serena_up=0
 ok()   { echo "PASS  $*"; pass=$((pass+1)); }
 no()   { echo "FAIL  $*"; fail=$((fail+1)); }
 sk()   { echo "SKIP  $*"; skip=$((skip+1)); }
 
-# 1. The four MCP endpoints answer an MCP initialize, not merely a TCP connect.
-for entry in "serena 21940" "web-search 21931" "browser 21932" "whois 21934"; do
-    set -- $entry
-    name="$1" port="$2"
+# 1. The three MCP endpoints of the harness answer an MCP initialize, not merely a TCP
+# connect, and each harness port is the port that hoover4.ini publishes for its service.
+mcp_ports=$(python3 - "$REPO_ROOT" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+
+root = Path(sys.argv[1])
+servers = json.loads((root / ".agents/harnesses/mcp-servers.json").read_text())["mcpServers"]
+keys = {"hoover4-web-search": "mcp_metasearch_port", "hoover4-browser": "mcp_browser_port",
+        "hoover4-whois": "mcp_whois_port"}
+ini = root / "hoover4.ini"
+configured = {}
+if ini.is_file():
+    spec = importlib.util.spec_from_file_location("deploy", root / "deploy.py")
+    deploy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(deploy)
+    try:
+        cfg = deploy.Config(ini)
+        configured = {name: cfg.get("main_services", key) for name, key in keys.items()}
+    except deploy.DeployError as exc:
+        print("ini-error %s" % str(exc).splitlines()[0])
+for name, server in servers.items():
+    port = str(urlsplit(server["url"]).port)
+    print(name, port, configured.get(name, "-"))
+PY
+)
+while read -r name port configured; do
+    if [ "$name" = ini-error ]; then
+        no "hoover4.ini is refused by deploy.py: $port $configured"
+        continue
+    fi
+    if [ "$configured" = - ]; then
+        sk "$name: no hoover4.ini port to compare with $port"
+    elif [ "$configured" = "$port" ]; then
+        ok "$name harness port $port is the port hoover4.ini publishes"
+    else
+        no "$name harness port $port differs from the hoover4.ini port $configured"
+    fi
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
         -X POST "http://127.0.0.1:$port/mcp" \
         -H 'Content-Type: application/json' \
         -H 'Accept: application/json, text/event-stream' \
         -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"1"}}}')
     case "$code" in
-        200) ok "$name /mcp answers initialize"; [ "$name" != "serena" ] || serena_up=1 ;;
+        200) ok "$name /mcp answers initialize" ;;
         404) no "$name /mcp is 404 -- the server is still on the SSE-only transport" ;;
         000) sk "$name is not listening on $port" ;;
         *)   no "$name /mcp returned HTTP $code" ;;
     esac
-done
-
-# 2. Serena resolves a real symbol in this repo (the only proof that counts).
-if [ "$serena_up" = 0 ]; then
-    sk "serena symbol probe needs the local service"
-elif python3 "$HERE/serena-probe.py" --transport http --url http://127.0.0.1:21940/mcp \
-        --symbol insert_text_pages 2>/dev/null | grep -q parse_common.py; then
-    ok "serena resolves insert_text_pages to parse_common.py"
-else
-    no "serena did not resolve a known symbol -- read 'docker logs hoover4-serena', not the harness error"
-fi
+done <<< "$mcp_ports"
 
 # 3. The skills are reachable under every path a harness looks in.
 for p in .agents/skills .claude/skills; do
@@ -145,7 +171,7 @@ import tomllib
 
 with open(sys.argv[1], "rb") as handle:
     data = tomllib.load(handle)
-expected = {"serena", "hoover4-web-search", "hoover4-browser", "hoover4-whois"}
+expected = {"hoover4-web-search", "hoover4-browser", "hoover4-whois"}
 headers = data.get("mcp_servers", {}).get("hoover4-browser", {}).get("http_headers", {})
 hooks = data.get("hooks", {})
 session_hooks = hooks.get("SessionStart", [])
@@ -177,7 +203,7 @@ print("ok" if valid else "fail")
 PY
 )
 [ "$codex_config" = ok ] \
-    && ok "Codex config declares hooks, four MCP servers, headers, and two-agent concurrency" \
+    && ok "Codex config declares hooks, three MCP servers, headers, and two-agent concurrency" \
     || no "Codex config has an incorrect project setting"
 
 if command -v codex >/dev/null 2>&1; then
@@ -185,7 +211,7 @@ if command -v codex >/dev/null 2>&1; then
     codex_status=$?
     if [ "$codex_status" = 0 ] \
        && printf '%s' "$codex_mcp" | grep -q 'hoover4-browser' \
-       && printf '%s' "$codex_mcp" | grep -q 'serena'; then
+       && printf '%s' "$codex_mcp" | grep -q 'hoover4-whois'; then
         ok "Codex loads the project config and lists its MCP servers"
     else
         no "Codex did not load the project MCP configuration"
@@ -402,7 +428,7 @@ for name, current in (("mcp", mcp), ("hooks", hooks), ("permissions", perms), ("
     template = json.loads((harness / f"cursor-{name}.json").read_text(encoding="utf-8"))
     template.pop("_comment", None)
     templates_match = templates_match and current == template
-expected = {"serena", "hoover4-web-search", "hoover4-browser", "hoover4-whois"}
+expected = {"hoover4-web-search", "hoover4-browser", "hoover4-whois"}
 allow = set(perms.get("mcpAllowlist") or [])
 commands = [
     item.get("command", "")
@@ -424,7 +450,7 @@ valid = (
     and any("cursor-wrap.py before-shell" in command for command in commands)
     and any("cursor-wrap.py pre-tool-use" in command for command in commands)
     and any("cursor-wrap.py subagent-start" in command for command in commands)
-    and "Mcp(serena:*)" in cli_allow
+    and "Mcp(hoover4-whois:*)" in cli_allow
     and "Shell(git)" in cli_allow
     and "Shell(docker)" in cli_allow
 )
@@ -468,7 +494,7 @@ import sys
 
 perms = json.loads(open(sys.argv[1], encoding="utf-8").read())
 settings = json.loads(open(sys.argv[2], encoding="utf-8").read())
-expected = {"serena:*", "hoover4-web-search:*", "hoover4-browser:*", "hoover4-whois:*"}
+expected = {"hoover4-web-search:*", "hoover4-browser:*", "hoover4-whois:*"}
 valid = (
     set(perms.get("mcpAllowlist") or []) == expected
     and settings.get("telemetry.telemetryLevel") == "off"
@@ -497,7 +523,7 @@ with open(sys.argv[1]) as handle:
 servers = data.get("mcpServers", {})
 headers = servers.get("hoover4-browser", {}).get("headers", {})
 valid = (
-    set(servers) == {"serena", "hoover4-web-search", "hoover4-browser", "hoover4-whois"}
+    set(servers) == {"hoover4-web-search", "hoover4-browser", "hoover4-whois"}
     and all("url" in server for server in servers.values())
     and headers.get("x-hoover4-chat-session") == "host-mcp-client"
     and headers.get("x-hoover4-user") == "host"
@@ -506,7 +532,7 @@ print("ok" if valid else "fail")
 PY
 )
 [ "$kimi_mcp" = ok ] \
-    && ok "Kimi project mcp.json declares the four servers and the browser headers" \
+    && ok "Kimi project mcp.json declares the three servers and the browser headers" \
     || no "Kimi project mcp.json has an incorrect server entry"
 
 kimi_template=$(python3 - "$REPO_ROOT/.agents/harnesses/kimi-user.toml" <<'PY'
@@ -523,7 +549,7 @@ valid = (
     data.get("telemetry") is False
     and data.get("default_permission_mode") == "auto"
     and data.get("background", {}).get("max_running_tasks") == 2
-    and len(owned) == 8
+    and len(owned) == 7
     and len(hooks) == 5
     and all(".agents/hooks" in command for command in commands)
     and all("git rev-parse --show-toplevel" in command for command in commands)

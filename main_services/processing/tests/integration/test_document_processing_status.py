@@ -30,6 +30,8 @@ def test_viewer_processing_query_distinguishes_ended_pending_active_and_empty(st
     _, client, _, _ = storage
     source = backend_source("api/documents/get_document_sources.rs")
     sql = source.split('const DOCUMENT_PROCESSING_SQL: &str = r#"', 1)[1].split('"#;', 1)[0]
+    from database.clickhouse import GLOBAL_DB
+    sql = sql.replace("{global_database}", GLOBAL_DB)
     for parameter in ("dataset", "hash", "dataset", "dataset", "dataset", "hash"):
         sql = sql.replace("?", "{" + parameter + ":String}", 1)
     prefix = "viewer" + uuid4().hex

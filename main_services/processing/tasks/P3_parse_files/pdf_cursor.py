@@ -9,6 +9,7 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
 from tasks.heartbeat import HEARTBEAT_TIMEOUT
+from tasks.host_queue import execute_pinned
 from tasks.failure_chain import is_cancellation, exception_chain
 from tasks.P3_parse_files.batch_runner import (
     FileResult, StageBatchParams, COMMON_QUEUE, OCR_PDF_QUEUE,
@@ -80,6 +81,8 @@ class PdfPartGroupParams:
     results: list[FileResult] = field(default_factory=list)
     history_events: int = PDF_HISTORY_EVENTS
     history_bytes: int = PDF_HISTORY_BYTES
+    # The host queue of the worker that holds the plan folder (tasks/host_queue.py).
+    host: str = ""
 
 
 @workflow.defn
@@ -91,7 +94,8 @@ class PdfPartGroup:
         while params.source_index < len(params.sources):
             source = params.sources[params.source_index]
             try:
-                progress = await workflow.execute_activity(
+                # The cursor reads the source file in the plan folder, so it runs on its host.
+                progress = await execute_pinned(
                     "run_ocr_pdf_part_cursor",
                     PdfPartCursorParams(params.collectionname, params.collection_dataset,
                                         params.plan_hash, params.op_id, params.engine,
@@ -102,7 +106,7 @@ class PdfPartGroup:
                             PDF_PART_WINDOW, max(1, source.part_count - params.after)))),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=0),
-                    task_queue=OCR_PDF_QUEUE,
+                    queue=OCR_PDF_QUEUE, host=params.host,
                 )
             except ActivityError as exc:
                 if is_cancellation(exc) or is_pdf_identity_change(exc):
@@ -115,7 +119,7 @@ class PdfPartGroup:
                 result = progress.result
                 if result is None:
                     try:
-                        result = await workflow.execute_activity(
+                        result = await execute_pinned(
                             "pdf_ocr_finalize_cursor",
                             PdfPartCursorParams(params.collectionname, params.collection_dataset,
                                                 params.plan_hash, params.op_id, params.engine,
@@ -125,7 +129,7 @@ class PdfPartGroup:
                                 "pdf_ocr_finalize_batch", [source.file_size_bytes])),
                             heartbeat_timeout=HEARTBEAT_TIMEOUT,
                             retry_policy=RetryPolicy(maximum_attempts=0),
-                            task_queue=COMMON_QUEUE,
+                            queue=COMMON_QUEUE, host=params.host,
                         )
                     except ActivityError as exc:
                         if is_cancellation(exc) or is_pdf_identity_change(exc):

@@ -27,14 +27,18 @@ from contextlib import contextmanager
 import clickhouse_connect
 from clickhouse_connect.driver.httputil import get_pool_manager
 
+from database import storage_identity
+
 log = logging.getLogger(__name__)
 
 CLICKHOUSE_HOST = 'clickhouse'
-CLICKHOUSE_USER = 'hoover4'
-CLICKHOUSE_PASS = 'hoover4'
+# The database names and the user come from database/storage_identity.py. Without its
+# variables they are Hoover4_Processing, Hoover4_Collection_<name> and hoover4.
+CLICKHOUSE_USER = storage_identity.setting('clickhouse_user')
+CLICKHOUSE_PASS = storage_identity.setting('clickhouse_password')
 
-GLOBAL_DB = 'Hoover4_Processing'
-COLLECTION_DB_PREFIX = 'Hoover4_Collection_'
+GLOBAL_DB = storage_identity.global_database()
+COLLECTION_DB_PREFIX = storage_identity.collection_database_prefix()
 
 _MIGRATIONS_ROOT = pathlib.Path(__file__).parent.resolve()
 GLOBAL_MIGRATIONS_PATH = str(_MIGRATIONS_ROOT / 'db_global_migrations')

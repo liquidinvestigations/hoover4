@@ -58,8 +58,9 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "hoover4-blobs-rw")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0")
 #: Fallback bucket, for a caller that names none. There is a bucket per collection, so a
 #: request carries the one it means: a service with a single configured bucket would read
-#: one collection's source and write another collection's derived object.
-S3_BUCKET = os.getenv("S3_BUCKET", "hoover4-system")
+#: one collection's source and write another collection's derived object. Compose sets
+#: S3_SYSTEM_BUCKET, the system bucket of the storage identity.
+S3_BUCKET = os.getenv("S3_BUCKET") or os.getenv("S3_SYSTEM_BUCKET", "hoover4-system")
 S3_SECURE = os.getenv("S3_ENDPOINT", "").startswith("https://")
 
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")

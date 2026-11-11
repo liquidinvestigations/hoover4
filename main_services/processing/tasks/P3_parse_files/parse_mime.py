@@ -4,6 +4,8 @@ from temporalio import activity
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Tuple, Set
 import subprocess
+
+from tasks import sandbox
 import threading
 import mimetypes
 import os
@@ -31,7 +33,7 @@ def _run_file_multi(file_path: str) -> Tuple[List[str], List[str], List[str]]:
 
     def _collect_values(cmd: List[str], is_extension: bool = False) -> List[str]:
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = sandbox.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 return []
             out = res.stdout
@@ -461,7 +463,7 @@ def _detect_from_name(params: DetectMimeParams) -> Dict[str, Any]:
 def _magic_output(file_path: str) -> str:
     """`file -kbpL` in its human-readable form, which names two things MIME does not."""
     try:
-        res = subprocess.run(["file", "-kbpL", file_path], capture_output=True, text=True)
+        res = sandbox.run(["file", "-kbpL", file_path], capture_output=True, text=True)
     except Exception:
         return ""
     if res.returncode != 0:

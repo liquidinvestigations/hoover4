@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+
+from tasks import sandbox
 import tempfile
 import time
 
@@ -32,7 +34,7 @@ def _run_conversion(command: list[str]) -> int:
     from tasks.heartbeat import worker_is_stopping
 
     try:
-        process = subprocess.Popen(
+        process = sandbox.Popen(
             command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )

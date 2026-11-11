@@ -33,6 +33,7 @@ from collection_search_server.backends import (
     collection_db,
     manticore_vectors_query,
     manticore_query_options,
+    physical_table,
     with_retries,
 )
 
@@ -114,7 +115,7 @@ def _vector_tables(collectionname: str, existing: set[str]) -> list[str]:
     )
     tables = []
     for row in rows:
-        name = f"{row.get('shard_name') or ''}_vectors"
+        name = physical_table(f"{row.get('shard_name') or ''}_vectors")
         # Ledger-derived names are trusted, but the table name is interpolated into
         # SQL, so the regex is the belt to that braces.
         if _VECTORS_TABLE_RE.match(name) and name in existing:

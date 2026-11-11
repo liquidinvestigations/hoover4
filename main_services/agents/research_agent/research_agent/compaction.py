@@ -75,13 +75,14 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import httpx
+from agent_common import storage_identity
 
 from research_agent import images, model_params, thread_index
 from research_agent.run_messages import RunMessage, apply_record
 
 log = logging.getLogger(__name__)
 
-GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
+GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE") or storage_identity.global_database()
 
 #: Fraction of the model's context window at which compaction fires. Configuration
 #: (`AGENT_COMPACTION_FRACTION`) can change it.

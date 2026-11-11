@@ -28,11 +28,15 @@ PLAN_GROUP_SIZE = 100
 # which is a different failure from the one the siblings fix.
 MAX_PLAN_DRIVERS = 8
 
+# Hosts one plan may claim. Each lost host costs one download of the plan.
+PLAN_HOST_ATTEMPTS = 3
+
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
     from tasks.failure_chain import is_cancellation, failure_message
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
+    from tasks.host_queue import claim_plan_host, execute_pinned, host_lost, plan_host_claimed
     from tasks.P3_parse_files.batch_runner import (
         FILE_BASE_SECONDS,
         OCR_PDF_QUEUE_PATCH,
@@ -367,14 +371,6 @@ class ExecuteSinglePlan:
         # Download timeout: 900s base + time at 100 kbps
         dl_secs = 900 + math.ceil(total_bytes / BPS_100_K)
 
-        # 2) Download locally (TODO: pin activity to worker)
-        dl = await workflow.execute_activity(
-            download_plan_files,
-            DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=[{k: v for k, v in it.items() if k != "file_names"} for it in items], base_temp_dir=params.base_temp_dir),
-            start_to_close_timeout=timedelta(seconds=dl_secs),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
 
         # 3) Process the downloaded files. The plan's items are split across several
         # sibling workflows rather than driven from one.
@@ -410,46 +406,77 @@ class ExecuteSinglePlan:
                         for it in unique_items) if h
         ]
 
-        item_groups = [
-            unique_items[i:i + PLAN_GROUP_SIZE]
-            for i in range(0, len(unique_items), PLAN_GROUP_SIZE)
-        ] or [[]]
+        # 2) Download the files into a folder of one worker, and run the stages and the
+        # cleanup of the plan on the host queues of that worker (tasks/host_queue.py). When
+        # the host stops polling, the plan claims another host and downloads again there.
+        # The stages write by item hash, so a second run of a stage writes the same rows.
+        # An execution without the claim (plan_host_claimed) downloads once, on the shared
+        # queue, as before the claim existed.
+        claims = plan_host_claimed()
+        for attempt in range(PLAN_HOST_ATTEMPTS if claims else 1):
+            host = ""
+            if claims:
+                host = await workflow.execute_activity(
+                    claim_plan_host, task_queue="processing-common-queue",
+                    start_to_close_timeout=timedelta(minutes=1), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                )
+            try:
+                dl = await execute_pinned(
+                    download_plan_files,
+                    DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=[{k: v for k, v in it.items() if k != "file_names"} for it in items], base_temp_dir=params.base_temp_dir),
+                    queue="processing-common-queue", host=host,
+                    start_to_close_timeout=timedelta(seconds=dl_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                )
+                item_groups = [
+                    unique_items[i:i + PLAN_GROUP_SIZE]
+                    for i in range(0, len(unique_items), PLAN_GROUP_SIZE)
+                ] or [[]]
 
-        def _group_factory(index, group):
-            return lambda: workflow.execute_child_workflow(
-                ProcessItemsBatched.run,
-                ProcessItemsBatchedParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash,
-                    out_dir=dl.get("out_dir"),
-                    items=group,
-                    op_id=params.op_id,
-                ),
-                id=f"process-batches-{params.collection_dataset}-{params.plan_hash}-{index}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(params.collection_dataset),
-            )
+                def _group_factory(index, group):
+                    return lambda: workflow.execute_child_workflow(
+                        ProcessItemsBatched.run,
+                        ProcessItemsBatchedParams(
+                            collectionname=params.collectionname,
+                            collection_dataset=params.collection_dataset,
+                            plan_hash=params.plan_hash,
+                            out_dir=dl.get("out_dir"),
+                            items=group,
+                            op_id=params.op_id,
+                            host=host,
+                        ),
+                        id=f"process-batches-{params.collection_dataset}-{params.plan_hash}-{index}",
+                        task_queue="processing-common-queue",
+                        search_attributes=dataset_search_attributes(params.collection_dataset),
+                    )
 
-        group_results = await run_with_window(
-            [_group_factory(i, g) for i, g in enumerate(item_groups)],
-            MAX_PLAN_DRIVERS,
-        )
-        for res in group_results:
-            if isinstance(res, Exception):
-                raise res
+                group_results = await run_with_window(
+                    [_group_factory(i, g) for i, g in enumerate(item_groups)],
+                    MAX_PLAN_DRIVERS,
+                )
+                for res in group_results:
+                    if isinstance(res, Exception):
+                        raise res
 
-        # Delete timeout: time at 100 kbps
-        del_secs = 900+math.ceil(total_bytes / BPS_100_K)
+                # Delete timeout: time at 100 kbps
+                del_secs = 900+math.ceil(total_bytes / BPS_100_K)
 
-        # 4) Cleanup (TODO: pin activity to worker)
-        await workflow.execute_activity(
-            cleanup_plan_dir,
-            CleanupPlanDirParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, base_temp_dir=params.base_temp_dir),
-            start_to_close_timeout=timedelta(seconds=del_secs),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
+                # 4) Cleanup, on the host of the folder.
+                await execute_pinned(
+                    cleanup_plan_dir,
+                    CleanupPlanDirParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, base_temp_dir=params.base_temp_dir),
+                    queue="processing-common-queue", host=host,
+                    start_to_close_timeout=timedelta(seconds=del_secs),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                )
+                break
+            except Exception as exc:
+                if not host or not host_lost(exc) or attempt == PLAN_HOST_ATTEMPTS - 1:
+                    raise
+                log.warning("[P2] plan %s lost its host %s, claiming another", params.plan_hash, host)
 
         # 5) Date resolution. Reads what the parse stages just wrote (tika_metadata,
         # email_headers.date_sent_known) plus P0's archive mtimes, and writes the
@@ -562,6 +589,8 @@ class ProcessItemsBatchedParams:
     out_dir: str
     items: list
     op_id: str = ""
+    # The host queue of the worker that downloaded the plan (tasks/host_queue.py).
+    host: str = ""
 
 
 @workflow.defn
@@ -622,16 +651,17 @@ class ProcessItemsBatched:
                 # on the earlier queue.
                 queue = OCR_QUEUE
             try:
-                batch = await workflow.execute_activity(
+                batch = await execute_pinned(
                     name,
                     arg,
+                    queue=queue,
+                    host=params.host,
                     result_type=BatchResult,
                     start_to_close_timeout=timedelta(seconds=timeout),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     # No attempt limit. The runner fails the stage after consecutive
                     # attempts that finish no new file.
                     retry_policy=RetryPolicy(maximum_attempts=0),
-                    task_queue=queue,
                 )
                 return batch.results
             except ActivityError as exc:
@@ -729,14 +759,14 @@ class ProcessItemsBatched:
             volume_items = [item for item in items if is_volume_name(item.file_names)
                             or any(n.lower().endswith((".rar", ".zip")) for n in item.file_names)]
             if split_version and volume_items:
-                sizes = await workflow.execute_activity(
+                sizes = await execute_pinned(
                     split_set_sizes,
                     StageBatchParams(collectionname=params.collectionname,
                                      collection_dataset=params.collection_dataset,
                                      plan_hash=params.plan_hash, files=volume_items, op_id=params.op_id),
+                    queue=STAGE_QUEUES["extract_archive_batch"], host=params.host,
                     start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                    task_queue=STAGE_QUEUES["extract_archive_batch"])
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
                 items = [dataclasses.replace(item, file_size_bytes=max(item.file_size_bytes,
                                                                        int(sizes.get(item.item_hash, 0))))
                          for item in items]
@@ -763,7 +793,8 @@ class ProcessItemsBatched:
                     sources, run_stage,
                     cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None,
                     detect=workflow.patched(OCR_DETECTION_PATCH),
-                    automatic=workflow.patched("automatic-ocr-v1"))
+                    automatic=workflow.patched("automatic-ocr-v1"),
+                    host=params.host)
                 for i in indexes:
                     if files[i].item_hash in preparation:
                         put(i, "make_pdf_preview" if preparation[files[i].item_hash].task_name == "make_pdf_preview" else "pdf_process",

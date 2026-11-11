@@ -198,7 +198,7 @@ class HeartbeatClock:
 
 
 def with_heartbeat(fn=None, *, interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS):
-    """Decorate a sync activity so its body always heartbeats while it runs.
+    """Decorate an activity so its body always heartbeats while it runs.
 
     Apply directly under ``@activity.defn``::
 
@@ -226,14 +226,37 @@ def with_heartbeat(fn=None, *, interval_seconds: float = HEARTBEAT_INTERVAL_SECO
     motivated this whole change is untouched: a body that never runs never
     starts a pump, so the server still times it out on the heartbeat clock.
 
+    An async activity gets a task on its event loop that beats, because the heartbeat
+    of an async activity belongs to its loop and not to a thread.
+
     This does NOT replace in-loop heartbeats. Where a loop exists, a
     ``HeartbeatClock`` inside it reports genuine progress (and shows an
     advancing count in ``temporal workflow describe``), while this only proves
     the worker thread is alive. Both are wanted.
     """
     import functools
+    import inspect
 
     def decorate(fn):
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def beating(*args, **kwargs):
+                import asyncio
+
+                async def pump():
+                    while True:
+                        await asyncio.sleep(interval_seconds)
+                        send_heartbeat(fn.__name__)
+
+                task = asyncio.get_running_loop().create_task(pump()) if activity.in_activity() else None
+                try:
+                    return await fn(*args, **kwargs)
+                finally:
+                    if task is not None:
+                        task.cancel()
+
+            return beating
+
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             with heartbeat_pump(fn.__name__, interval_seconds=interval_seconds):

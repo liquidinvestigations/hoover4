@@ -28,6 +28,8 @@ RUN pip install --no-cache-dir ./agent_common
 # The store, importable as `database.chat_todos` exactly as it is in the worker. Only
 # the modules: the migration directories are applied by the pipeline, never from here.
 COPY ./processing/database/*.py ./database/
+# database/storage_identity.py reads the storage names from this file beside the package.
+COPY ./processing/tasks/storage_identity.json ./tasks/storage_identity.json
 
 COPY ./agents/agent_todo_server/pyproject.toml ./
 COPY ./agents/agent_todo_server/agent_todo_server/ ./agent_todo_server/

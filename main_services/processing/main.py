@@ -957,7 +957,7 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "clamav", "ocr", "nlp", "embed", "indexing", "index-planner", "email-graph", "operations", "chat"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "clamav", "ocr", "nlp", "embed", "indexing", "index-planner", "email-graph", "operations", "chat", "preview"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all.
 
@@ -971,6 +971,8 @@ def worker(worker_type: str | None = None):
 
     # Map to function names in tasks.run_worker
     if worker_type:
+        from tasks.run_worker import install_slot_metrics
+        install_slot_metrics()
         # Run single worker in current process
         if worker_type == "common":
             from tasks.run_worker import run_common_worker
@@ -1002,6 +1004,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "operations":
             from tasks.run_worker import run_operations_worker
             asyncio.run(run_operations_worker())
+        elif worker_type == "preview":
+            from tasks.run_worker import run_preview_worker
+            asyncio.run(run_preview_worker())
         elif worker_type == "chat":
             from tasks.run_worker import run_chat_worker
             asyncio.run(run_chat_worker())
@@ -1010,6 +1015,7 @@ def worker(worker_type: str | None = None):
         return
 
     # No type: spawn subprocesses for each worker and monitor/restart
+    import os
     import signal
     import time
     from tasks.run_worker import graceful_shutdown_timeout
@@ -1068,10 +1074,20 @@ def worker(worker_type: str | None = None):
     # person waiting on the other end, so it must exist before anything competes for the
     # host's memory. It polls chat-queue, chat-model-queue and agent-tool-queue, and never
     # the ingestion queue.
-    for wt in (["chat", "tika", "clamav", "ocr", "nlp", "embed"]
-               + ["indexing"] * indexing_count
-               + ["email-graph", "index-planner"]
-               + ["common"] * common_count):
+    spawn = (["chat", "tika", "clamav", "ocr", "nlp", "embed"]
+             + ["indexing"] * indexing_count
+             + ["email-graph", "index-planner"]
+             + ["common"] * common_count)
+    selected = os.environ.get("HOOVER4_WORKERS", "")
+    if selected.strip():
+        allowed = {name.strip() for name in selected.split(",") if name.strip()}
+        # `preview` runs only on request. By default the OCR process serves its queue.
+        optional = ["preview"]
+        unknown = allowed - set(spawn) - set(optional)
+        if unknown or not allowed:
+            raise click.ClickException("HOOVER4_WORKERS contains no workers or unknown workers.")
+        spawn = [wt for wt in spawn + optional if wt in allowed]
+    for wt in spawn:
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

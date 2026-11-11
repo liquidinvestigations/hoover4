@@ -44,6 +44,8 @@ import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Callable, Iterator, Optional, Sequence
+
+from tasks import sandbox
 from xml.etree import ElementTree as ET
 
 from tasks.P3_parse_files.parse_office_xml import _local, _shared_strings
@@ -866,7 +868,7 @@ class JsonCells:
         import tempfile
 
         self._stderr = tempfile.TemporaryFile()
-        self._process = subprocess.Popen(
+        self._process = sandbox.Popen(
             [JSON_TABLE_BINARY, self.path], stdout=subprocess.PIPE, stderr=self._stderr,
             stdin=subprocess.DEVNULL, bufsize=1 << 20)
         names: dict[int, str] = {}
@@ -961,6 +963,10 @@ def read_cells(path: str, reader: str, *, encodings: Sequence[str] = (),
     if reader == READER_ODS_STREAM:
         return read_ods_cells(path, on_progress=on_progress)
     if reader == READER_CALAMINE:
+        if sandbox.enabled():
+            # Native code reads the file, so it runs in a sandboxed child (tasks/sandbox_cells.py).
+            from tasks.sandbox_cells import cells
+            return cells("calamine", path, on_progress=on_progress)
         return read_calamine_cells(path, on_progress=on_progress)
     if reader == "json":
         return _ClosingStream(JsonCells(path, on_progress))
@@ -971,8 +977,12 @@ def read_cells(path: str, reader: str, *, encodings: Sequence[str] = (),
     if reader == "sqlite":
         from tasks.P3_parse_files.table_sqlite import read_sqlite_cells, SqliteLimits
         from tasks.P3_parse_files.table_formats import MAX_ROWS_PER_SHEET, MAX_SHEETS
-        return read_sqlite_cells(path, SqliteLimits(max_rows=MAX_ROWS_PER_SHEET + 1,
-            max_sheets=MAX_SHEETS + 1, time_limit_seconds=time_limit_seconds), on_progress=on_progress)
+        limits = {"max_rows": MAX_ROWS_PER_SHEET + 1, "max_sheets": MAX_SHEETS + 1,
+                  "time_limit_seconds": time_limit_seconds}
+        if sandbox.enabled():
+            from tasks.sandbox_cells import cells
+            return cells("sqlite", path, limits, on_progress=on_progress)
+        return read_sqlite_cells(path, SqliteLimits(**limits), on_progress=on_progress)
     raise ValueError(f"no table reader named {reader!r}")
 
 

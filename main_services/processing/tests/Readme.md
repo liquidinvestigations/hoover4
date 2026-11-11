@@ -5,6 +5,7 @@
 | [unit/](unit) | nothing running, pure logic, run inside the worker container |
 | [integration/](integration) | a live stack |
 | [fixtures/](fixtures) | small inputs checked in beside the tests |
+| [replay/](replay/Readme.md) | nothing running, replays recorded plan histories inside the worker container |
 | [conftest.py](conftest.py) | shared fixtures and collection settings for both |
 
 Format regression tests read `<HOOVER4_TESTDATA>/file-types`.

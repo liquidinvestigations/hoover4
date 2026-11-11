@@ -4,6 +4,8 @@ from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass
 import subprocess
+
+from tasks import sandbox
 import json
 import os
 import math
@@ -30,7 +32,7 @@ def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
         "-show_streams",
         file_path,
     ]
-    res = subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
+    res = sandbox.run(cmd, capture_output=True, timeout=timeout_seconds)
     if res.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {res.stderr[:200]} {res.stdout[:200]}")
     try:
@@ -165,7 +167,7 @@ def video_extract_frames_and_subtitles(params: VideoExtractParams) -> Dict[str, 
                 "-qscale:v", "2",
                 frame_pattern,
             ]
-            subprocess.run(cmd_frames, capture_output=True, timeout=timeout_seconds)
+            sandbox.run(cmd_frames, capture_output=True, timeout=timeout_seconds)
 
             # 2) Extract subtitles (if present) to .srt files
             # We first probe for subtitle streams and then extract each one.
@@ -188,7 +190,7 @@ def video_extract_frames_and_subtitles(params: VideoExtractParams) -> Dict[str, 
                     "-map", f"0:{idx}",
                     out_srt,
                 ]
-                subprocess.run(cmd_sub, capture_output=True, timeout=timeout_seconds)
+                sandbox.run(cmd_sub, capture_output=True, timeout=timeout_seconds)
     except BaseException:
         # Cancellation is now deliverable here, and a half-written frames
         # directory would otherwise survive the retry.

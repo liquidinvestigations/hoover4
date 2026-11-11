@@ -330,7 +330,8 @@ def test_descriptor_page_cancellation_removes_its_temporary_directory(monkeypatc
     with pytest.raises(CancelledError):
         asyncio.run(admin.OcrRunPlan()._run_page(
             plan_params(), ocr_rerun.OcrRunPlanPage([image("i")], [], "i"), 3))
-    assert env.names() == ["download_plan_files", "cleanup_plan_dir"]
+    # A new run claims the host of the run before its first download (tasks/host_queue.py).
+    assert env.names() == ["claim_plan_host", "download_plan_files", "cleanup_plan_dir"]
     assert env.calls[-1][2].plan_hash == "plan-1-page-3"
 
 

@@ -34,8 +34,7 @@ INFRASTRUCTURE_INVENTORY.md
 # Clones of the Liquid upstream repositories, worked on locally. They carry their own git
 # history and their own remotes, so nothing under here is ever tracked by this repository.
 external/
-.serena/*
-!.serena/project.yml
+.serena/
 
 **/*.pyc
 **/__pycache__

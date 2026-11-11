@@ -28,11 +28,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_common import s3_store
+from agent_common import s3_store, storage_identity
 
 log = logging.getLogger(__name__)
 
-GLOBAL_DB = "Hoover4_Processing"
+GLOBAL_DB = storage_identity.global_database()
 
 #: A ClickHouse insert on the tool's critical path. Short on purpose: an artifact is a
 #: nicety, and the tool result is what the user is waiting for.

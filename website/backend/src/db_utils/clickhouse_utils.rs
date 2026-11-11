@@ -17,11 +17,15 @@ use std::time::{Duration, Instant};
 
 use common::current_user::CurrentUser;
 
+use super::storage_identity;
 use crate::api::admin::collections::collectionname_valid;
 use crate::auth::permissions::{self, PermissionSet};
 
-/// Name of the global ClickHouse database.
-pub const GLOBAL_DB: &str = "Hoover4_Processing";
+/// Name of the global ClickHouse database, `Hoover4_Processing` without
+/// `HOOVER4_CLICKHOUSE_DB_PREFIX` (see [`super::storage_identity`]).
+pub fn global_db() -> String {
+    super::storage_identity::global_database()
+}
 
 /// Configured ClickHouse URL (from `CLICKHOUSE_URL`, with a localhost default).
 pub fn clickhouse_url() -> String {
@@ -31,8 +35,8 @@ pub fn clickhouse_url() -> String {
 fn client_with_database(database: &str) -> clickhouse::Client {
     clickhouse::Client::default()
         .with_url(clickhouse_url())
-        .with_user("hoover4")
-        .with_password("hoover4")
+        .with_user(storage_identity::value(&storage_identity::CLICKHOUSE_USER))
+        .with_password(storage_identity::value(&storage_identity::CLICKHOUSE_PASSWORD))
         .with_database(database)
         .with_option("async_insert", "1")
         .with_option("wait_for_async_insert", "1")
@@ -40,7 +44,7 @@ fn client_with_database(database: &str) -> clickhouse::Client {
 
 /// Client bound to the global database `Hoover4_Processing`.
 pub fn get_global_client() -> clickhouse::Client {
-    client_with_database(GLOBAL_DB)
+    client_with_database(&global_db())
 }
 
 /// `Hoover4_Collection_<collectionname>`, validating the slug first.
@@ -52,7 +56,7 @@ pub fn collection_db_name(collectionname: &str) -> anyhow::Result<String> {
     if !collectionname_valid(collectionname) {
         anyhow::bail!("invalid collectionname: {collectionname:?}");
     }
-    Ok(format!("Hoover4_Collection_{collectionname}"))
+    Ok(super::storage_identity::collection_database(collectionname))
 }
 
 /// The `collectionname` a dataset belongs to, or an error naming the dataset.

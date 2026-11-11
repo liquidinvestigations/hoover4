@@ -10,7 +10,6 @@ Everything [deploy.py](../../../deploy.py) feeds to compose.
 | [cassandra-entrypoint.sh](cassandra-entrypoint.sh) | `temporal-cassandra`'s entrypoint, which writes `file_cache_size_in_mb` and then starts the image's own entrypoint |
 | [garage/](garage) | the object store's configuration and its layout bootstrap |
 | [pdf-to-html/](pdf-to-html) | the conversion service image |
-| [serena/](serena) | the symbol-server image and its entrypoint |
 | [temporal-dynamicconfig/](temporal-dynamicconfig) | workflow-server tuning, bind-mounted as a **directory**. [deploy.py](../../../deploy.py) renders `generated.yaml` there, and the server reads that file |
 | `clickhouse-server-config-override.xml` | the column store's settings overlay |
 | [extra/](extra) | the vendor's original config, kept for diffing against the override |

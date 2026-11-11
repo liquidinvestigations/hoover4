@@ -20,6 +20,8 @@ import json
 import logging
 import os
 import subprocess
+
+from tasks import sandbox
 import tempfile
 from typing import Dict, List
 
@@ -125,7 +127,7 @@ def has_black_square(bucket: str, blob_key: str) -> bool:
     with tempfile.TemporaryDirectory(prefix="hoover4-pdf-text-layer-") as folder:
         path = os.path.join(folder, "part.pdf")
         get_s3_client().fget_object(bucket, blob_key, path)
-        text = subprocess.run(["pdftotext", "-q", "-enc", "UTF-8", path, "-"], capture_output=True,
+        text = sandbox.run(["pdftotext", "-q", "-enc", "UTF-8", path, "-"], capture_output=True,
                               timeout=300, check=True).stdout.decode("utf-8", "replace")
     return BLACK_SQUARE in text
 

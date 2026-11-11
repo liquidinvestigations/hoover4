@@ -18,8 +18,8 @@ metasearch and whois come up only when `internet_tools_enabled` is on, via
 | Server | Directory | Port | Used by | What it does |
 |---|---|---|---|---|
 | Collection search | [`collection_search_server/`](collection_search_server/README.md) | 21930 | both agents | ACL-bounded full-text search of the user's own documents (Manticore + ClickHouse) |
-| Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: `web_search` over a list of queries across the scrapers, DuckDuckGo and GDELT news, Wikipedia, Wikidata, Crossref and two web archives, fused with RRF and reranked once by the GPU cross-encoder |
-| Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | `read_page` over a list of URLs, plus six tools for driving a page, routed to one Chromium **per chat**, with automatic page capture |
+| Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21941 | full research | **The** web search: `web_search` over a list of queries across the scrapers, DuckDuckGo and GDELT news, Wikipedia, Wikidata, Crossref and two web archives, fused with RRF and reranked once by the GPU cross-encoder |
+| Browser | [`browser_use_server/`](browser_use_server/README.md) | 21942 | full research | `read_page` over a list of URLs, plus six tools for driving a page, routed to one Chromium **per chat**, with automatic page capture |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | `whois_lookup` over a list of domains |
 | Todo | [`agent_todo_server/`](agent_todo_server/Readme.md) | 21935 | both agents | `update_plan` over one plan per conversation, and the workspace tools `read_file` / `write_file` / `patch_file` |
 
@@ -316,8 +316,8 @@ client on this machine (Claude Code reads it automatically):
 
 | Entry | URL | Tools |
 |---|---|---|
-| `hoover4-web-search` | `http://127.0.0.1:21931/mcp` | `web_search`, `list_search_sources` |
-| `hoover4-browser` | `http://127.0.0.1:21932/mcp` | the 30 Playwright tools |
+| `hoover4-web-search` | `http://127.0.0.1:21941/mcp` | `web_search`, `list_search_sources` |
+| `hoover4-browser` | `http://127.0.0.1:21942/mcp` | the 30 Playwright tools |
 | `hoover4-whois` | `http://127.0.0.1:21934/mcp` | `whois_lookup` |
 
 The browser entry sends a fixed `x-hoover4-chat-session: host-mcp-client`, so a host client

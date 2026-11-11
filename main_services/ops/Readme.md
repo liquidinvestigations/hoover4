@@ -2,20 +2,6 @@
 
 This directory provides the runtime environment for Hoover4 main services. The [docker/](docker) folder contains Docker Compose definitions and configuration overrides used to run processing dependencies.
 
-## Serena (dev tooling, optional)
-
-[docker/serena/](docker/serena) builds the Serena MCP server image and [docker/compose/serena.yaml](docker/compose/serena.yaml) is
-its optional overlay. Serena gives the host-side coding agent symbolic code navigation
-(python + rust) over this repository. It can read and write the whole checkout, so it is
-published on `127.0.0.1:21940` only. The repo is mounted at the identical absolute path
-as on the host (`HOOVER4_REPO_ROOT`, set by [deploy.py](../../deploy.py)), and all language-server state
-(venvs, cargo target/registry, Serena home) lives in the `serena_state` folder under
-`[storage] volumes_path`, never in the checkout. Resets never empty that folder or remove the
-container, and it is deployed as its
-own compose project so that a `down` or a `--reset` on the main stack cannot select it. The
-MCP endpoint is `http://127.0.0.1:21940/mcp` over streamable HTTP (see [.mcp.json](../../.mcp.json) at the
-repo root, and [docker/serena/entrypoint.sh](docker/serena/entrypoint.sh) for why that transport and not SSE).
-
 ## Docker Compose Services
 
 The stack includes:
@@ -62,9 +48,6 @@ The compose stack and the published set differ on purpose, for four services.
 
 Every other image already copies its code in at build time and needs no host mount, in
 compose or in the published set.
-
-`serena` is built here and is not published. It is a development tool, read and mutated
-only from inside a running compose stack. It is not ported to Nomad.
 
 ### Temporal's throughput knobs
 
@@ -168,7 +151,6 @@ compose network, on `8080`.
 | tesseract-cpu | `localhost:21921` | the CPU OCR twin; `/health` lists the languages the image can actually serve |
 | ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row ([main_services/ocr_pdf/Readme.md](../ocr_pdf/Readme.md) explains what that absence prevents) |
 | regex-entity-scanner | `localhost:21925` | the pattern scanner the P4 stage calls |
-| serena | `http://127.0.0.1:21940/mcp` | symbolic code navigation for the host-side agent, dev tooling only |
 
 Credentials for the two ClickHouse consoles come from the generated `.env` next to the
 compose files, which [deploy.py](../../deploy.py) renders from `hoover4.ini`. No credential value belongs in

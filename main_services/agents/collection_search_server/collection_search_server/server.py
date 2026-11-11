@@ -60,6 +60,7 @@ from collection_search_server.backends import (
     collection_db,
     ManticoreRefused,
     manticore_query,
+    physical_table,
     prepare_match_query,
     with_retries,
 )
@@ -554,7 +555,7 @@ def _shard_tables(collectionname: str) -> list[str]:
         "SELECT DISTINCT shard_name FROM manticore_shards FINAL ORDER BY shard_name DESC",
         database=collection_db(collectionname),
     )
-    return [f"{r['shard_name']}_pages" for r in rows if r.get("shard_name")]
+    return [physical_table(f"{r['shard_name']}_pages") for r in rows if r.get("shard_name")]
 
 
 def list_collections() -> list[CollectionInfo]:

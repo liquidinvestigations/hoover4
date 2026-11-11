@@ -5,6 +5,8 @@ from temporalio.exceptions import ApplicationError
 from typing import Dict, Any
 from dataclasses import dataclass
 import subprocess
+
+from tasks import sandbox
 import json
 import os
 import math
@@ -39,7 +41,7 @@ def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
         "-show_streams",
         file_path,
     ]
-    res = subprocess.run(cmd, capture_output=True, timeout=timeout_seconds)
+    res = sandbox.run(cmd, capture_output=True, timeout=timeout_seconds)
     if res.returncode != 0:
         if _NOT_MEDIA_MARKER in (res.stderr or b""):
             raise UndecodableMedia(

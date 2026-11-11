@@ -4,6 +4,8 @@ import os
 import shutil
 import signal
 import subprocess
+
+from tasks import sandbox
 import tempfile
 import time
 from pathlib import Path
@@ -38,7 +40,7 @@ def preview_timeout(size: int) -> int:
 def convert_office(source: str, folder: str, timeout: int) -> str:
     """Convert with a separate profile and stop the process group on interruption."""
     profile = Path(folder, "profile").as_uri()
-    process = subprocess.Popen(
+    process = sandbox.Popen(
         ["soffice", f"-env:UserInstallation={profile}", "--headless", "--norestore",
          "--convert-to", "pdf", "--outdir", folder, source],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,

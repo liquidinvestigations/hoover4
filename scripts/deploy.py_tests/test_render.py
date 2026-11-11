@@ -739,7 +739,6 @@ def test_folder_that_cannot_be_created_halts(tmp_path):
 def test_folders_of_the_side_are_created(tmp_path):
     root = tmp_path / "parent" / "volumes"
     cfg = _storage(root)
-    cfg.values["main_services"]["serena_enabled"] = "false"
 
     deploy.create_volume_folders(cfg, "main")
 
@@ -776,7 +775,7 @@ def _all_compose_documents():
     """(side of the file, file name, document) for every compose file of both sides."""
     out = []
     for name, document in _compose_documents():
-        out.append(("serena" if name == "serena.yaml" else "main", name, document))
+        out.append(("main", name, document))
     for name, document in _ai_compose_documents():
         out.append(("ai", name, document))
     return out
@@ -829,11 +828,10 @@ def test_row_image_is_the_image_of_its_service():
     for side, _name, document in _all_compose_documents():
         for service, definition in (document.get("services") or {}).items():
             if "image" in definition:
-                images[(service, "main" if side == "serena" else side)] = definition["image"]
+                images[(service, side)] = definition["image"]
 
     for row in deploy.VOLUMES:
-        side = "main" if row.side == "serena" else row.side
-        assert images[(row.image_service, side)] == row.image, row.name
+        assert images[(row.image_service, row.side)] == row.image, row.name
 
 
 def test_elasticsearch_folder_is_where_the_process_writes():
@@ -846,8 +844,6 @@ def test_elasticsearch_folder_is_where_the_process_writes():
 
 def _class_before_folders(name):
     """The class each volume had under the volume-removing reset code."""
-    if name == "serena_state":
-        return "protected"
     if name in ("ai_models_cache", "qwen_flash_hf", "qwen_flash_cache", "easyocr_models_cache"):
         return "cache"
     if name in ("temporal_cassandra", "temporal_elasticsearch"):
@@ -2273,7 +2269,6 @@ SAMPLE_VALUES_OVER_DEFAULTS = {
 #: (release value, development value).
 DEVELOPMENT_DIFFERENCES = {
     ("main_services", "website_release_mode"): ("true", "false"),
-    ("main_services", "serena_enabled"): ("false", "true"),
     ("main_services", "development_auth_backdoor_enabled"): ("false", "true"),
 }
 
@@ -2453,3 +2448,74 @@ def test_a_model_server_that_exits_while_loading_stops_the_deploy(monkeypatch):
         deploy.wait_for_model_server(_vllm_cfg(), _running_rt("exited"), clock=clock,
                                      sleep=clock.sleep)
     assert "exited" in str(refused.value)
+
+
+SOURCE_INI = FIXTURES / "source-ini"
+#: The settings that a Compose source ini can hold after this checkout removed them.
+#: The migration reader of the cluster port reads the source schema, so it must accept
+#: these keys while the strict schema refuses them.
+REMOVED_DEVELOPMENT_SETTINGS = ("[main_services] serena_enabled", "[main_services] serena_port")
+
+
+def test_a_source_ini_with_serena_settings_is_refused_by_the_strict_schema():
+    message = _refusal(SOURCE_INI / "compose-with-serena.ini")
+    assert "has %d configuration problems" % len(REMOVED_DEVELOPMENT_SETTINGS) in message
+    for label in REMOVED_DEVELOPMENT_SETTINGS:
+        assert "%s is removed. No setting replaces it. Delete it." % label in message
+
+
+def test_a_source_ini_without_its_removed_settings_keeps_its_resources(tmp_path):
+    source = (SOURCE_INI / "compose-with-serena.ini").read_text(encoding="utf-8")
+    kept = [line for line in source.splitlines()
+            if not line.startswith(("serena_enabled", "serena_port"))]
+    path = tmp_path / "hoover4.ini"
+    path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+    cfg = deploy.Config(path)
+
+    assert cfg.get("storage", "volumes_path") == "/srv/hoover4-volumes"
+    assert cfg.get("main_services", "mcp_metasearch_port") == "21931"
+    assert cfg.get("main_services", "mcp_browser_port") == "21932"
+    assert ("main_services", "mcp_metasearch_port") in cfg.explicit
+    assert {(row.name, row.side) for row in deploy.side_volumes(cfg, "main")} == {
+        (row.name, row.side) for row in deploy.VOLUMES if row.side == "main"}
+
+
+def test_the_retained_mcp_ports_are_the_harness_ports():
+    servers = json.loads((REPO_ROOT / ".agents/harnesses/mcp-servers.json")
+                         .read_text(encoding="utf-8"))["mcpServers"]
+    keys = {"hoover4-web-search": "mcp_metasearch_port",
+            "hoover4-browser": "mcp_browser_port", "hoover4-whois": "mcp_whois_port"}
+    assert set(servers) == set(keys)
+    for name, key in keys.items():
+        assert servers[name]["url"] == "http://127.0.0.1:%s/mcp" % (
+            deploy.DEFAULTS["main_services"][key])
+
+
+STORAGE_IDENTITY = REPO_ROOT / "main_services/processing/tasks/storage_identity.json"
+RUST_STORAGE_IDENTITY = REPO_ROOT / "website/backend/src/db_utils/storage_identity.rs"
+AGENT_STORAGE_IDENTITY = REPO_ROOT / "main_services/agents/agent_common/agent_common/storage_identity.py"
+RUST_SETTING = re.compile(
+    r'pub const ([A-Z0-9_]+): Setting = Setting \{ variable: "([^"]+)", default: "([^"]*)" \};')
+
+
+def test_the_rust_and_agent_storage_identities_are_copies_of_the_definition():
+    settings = json.loads(STORAGE_IDENTITY.read_text(encoding="utf-8"))["settings"]
+    rust = {name.lower(): (variable, default) for name, variable, default
+            in RUST_SETTING.findall(RUST_STORAGE_IDENTITY.read_text(encoding="utf-8"))}
+    spec = importlib.util.spec_from_file_location("agent_storage_identity", AGENT_STORAGE_IDENTITY)
+    agent = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(agent)
+    assert set(rust) == set(settings) == set(agent.SETTINGS)
+    for name, value in settings.items():
+        assert rust[name] == (value["variable"], value["default"]), name
+        assert agent.SETTINGS[name] == (value["variable"], value["default"], value["pattern"]), name
+
+
+def test_the_compose_files_render_no_storage_identity_variable():
+    """Compose keeps the default names, so no compose file sets a name prefix."""
+    for _side, name, document in _all_compose_documents():
+        text = json.dumps(document)
+        for variable in ("HOOVER4_CLICKHOUSE_DB_PREFIX", "HOOVER4_MANTICORE_TABLE_PREFIX",
+                         "HOOVER4_HISTORY_SOURCE", "HOOVER4_HOST_QUEUE", "HOOVER4_PROXY_SECRET"):
+            assert variable not in text, (name, variable)

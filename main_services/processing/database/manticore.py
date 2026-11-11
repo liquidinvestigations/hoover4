@@ -32,6 +32,8 @@ import logging
 import os
 import re
 
+from database import storage_identity
+
 log = logging.getLogger(__name__)
 
 # <collectionname>_<digits>_pages|_vectors, the SHARDED table families.
@@ -120,8 +122,8 @@ def get_manticore_client(endpoint: str = TEXT):
     options = {
         "host": host,
         "port": 9306,
-        "user": "manticore",
-        "password": "manticore",
+        "user": storage_identity.setting("manticore_user"),
+        "password": storage_identity.setting("manticore_password"),
         "database": "Manticore",
         "connection_timeout": 10,
     }
@@ -227,6 +229,15 @@ def _execute_ddl(sql, endpoint: str = TEXT):
         log.info("SQL Executed OK.")
 
 
+def table_prefix() -> str:
+    """The prefix of the physical table names, ``HOOVER4_MANTICORE_TABLE_PREFIX``.
+
+    Empty by default. The shard ledger in ClickHouse keeps the logical shard names
+    without the prefix (database/storage_identity.py).
+    """
+    return storage_identity.setting("manticore_table_prefix")
+
+
 def shard_table_name(collectionname: str, shard_index: int) -> str:
     """Return the physical table name of a logical shard.
 
@@ -237,7 +248,7 @@ def shard_table_name(collectionname: str, shard_index: int) -> str:
     validate_collectionname(collectionname)
     if not isinstance(shard_index, int) or isinstance(shard_index, bool) or shard_index < 1:
         raise ValueError(f'shard_index must be a positive integer, got {shard_index!r}')
-    return f'{collectionname}_{shard_index}_{PAGES_TABLE_SUFFIX}'
+    return f'{table_prefix()}{collectionname}_{shard_index}_{PAGES_TABLE_SUFFIX}'
 
 
 def shard_table_from_name(shard_name: str) -> str:
@@ -265,7 +276,7 @@ def vectors_table_name(collectionname: str, shard_index: int) -> str:
     validate_collectionname(collectionname)
     if not isinstance(shard_index, int) or isinstance(shard_index, bool) or shard_index < 1:
         raise ValueError(f'shard_index must be a positive integer, got {shard_index!r}')
-    return f'{collectionname}_{shard_index}_{VECTORS_TABLE_SUFFIX}'
+    return f'{table_prefix()}{collectionname}_{shard_index}_{VECTORS_TABLE_SUFFIX}'
 
 
 def vectors_table_from_name(shard_name: str) -> str:
@@ -467,7 +478,7 @@ def vfs_table_name(collectionname: str) -> str:
     """The structure-index table of a collection (``testdata_vfs``)."""
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
-    return f'{collectionname}_{VFS_TABLE_SUFFIX}'
+    return f'{table_prefix()}{collectionname}_{VFS_TABLE_SUFFIX}'
 
 
 def vfs_table_ddl(table_name: str) -> str:
@@ -511,7 +522,7 @@ def entities_table_name(collectionname: str) -> str:
     """The term-search table of a collection (``testdata_entities``)."""
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
-    return f'{collectionname}_{ENTITIES_TABLE_SUFFIX}'
+    return f'{table_prefix()}{collectionname}_{ENTITIES_TABLE_SUFFIX}'
 
 
 def entities_table_ddl(table_name: str) -> str:
@@ -690,7 +701,7 @@ def list_shard_tables(collectionname: str) -> list[str]:
     """
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
-    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(collectionname)))
+    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(table_prefix() + collectionname)))
     return sorted(t for t in (_list_all_tables(TEXT) + _list_all_tables(VECTORS)) if pattern.match(t))
 
 
@@ -725,7 +736,7 @@ def drop_collection_vector_tables(collectionname: str) -> list[str]:
     """Drop a collection's disposable vectors tables from the vectors endpoint."""
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
-    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(collectionname)))
+    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(table_prefix() + collectionname)))
     tables = sorted(table for table in _list_all_tables(VECTORS)
                     if pattern.match(table) and table.endswith(f"_{VECTORS_TABLE_SUFFIX}"))
     for table in tables:
@@ -785,10 +796,14 @@ def manticore_migrate():
                 "Collection %s: ensured %d shard tables exist",
                 collectionname, len(rows),
             )
+    # Another installation can share the daemon under another prefix, so only the
+    # tables of this prefix are dropped.
+    prefix = table_prefix()
     for table in _list_all_tables(TEXT):
-        if table.endswith(f"_{VECTORS_TABLE_SUFFIX}"):
-            _execute_ddl(f"drop table if exists {table}", TEXT)
-            log.warning("Dropped old vectors table %s. Run reindex-collection with --vectors-only.", table)
+        if not table.endswith(f"_{VECTORS_TABLE_SUFFIX}") or not table.startswith(prefix):
+            continue
+        _execute_ddl(f"drop table if exists {table}", TEXT)
+        log.warning("Dropped old vectors table %s. Run reindex-collection with --vectors-only.", table)
     log.info("ManticoreSearch migration OK.")
 
 

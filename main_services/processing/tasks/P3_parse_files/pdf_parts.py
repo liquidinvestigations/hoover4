@@ -9,6 +9,8 @@ import re
 import tempfile
 from contextlib import contextmanager
 
+from tasks import sandbox
+
 import logging
 
 from temporalio import activity
@@ -146,7 +148,7 @@ def page_needs(path: str, count: int, pages: list[str]) -> list[int]:
     from tasks.P3_parse_files.parse_pdf import _PDF_SUBPROCESS_TIMEOUT_S
     import subprocess
     sizes = {}
-    info = subprocess.run(["pdfinfo", "-f", "1", "-l", str(count), path],
+    info = sandbox.run(["pdfinfo", "-f", "1", "-l", str(count), path],
                           capture_output=True, timeout=_PDF_SUBPROCESS_TIMEOUT_S, check=True)
     for match in re.finditer(r"^Page\s+(\d+) size:\s+([\d.]+) x ([\d.]+) pts",
                              info.stdout.decode("utf-8", "replace"), re.M):
@@ -156,7 +158,7 @@ def page_needs(path: str, count: int, pages: list[str]) -> list[int]:
     if generic:
         for page in range(1, count + 1):
             sizes.setdefault(page, float(generic[1]) * float(generic[2]))
-    images = subprocess.run(["pdfimages", "-list", path], capture_output=True,
+    images = sandbox.run(["pdfimages", "-list", path], capture_output=True,
                             timeout=_PDF_SUBPROCESS_TIMEOUT_S, check=True)
     coverage = {}
     for line in images.stdout.decode("utf-8", "replace").splitlines():

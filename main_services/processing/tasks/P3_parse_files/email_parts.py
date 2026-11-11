@@ -9,6 +9,8 @@ import logging
 import re
 import subprocess
 
+from tasks import sandbox
+
 log = logging.getLogger(__name__)
 
 #: The defect of a signed body part whose signed content could not be read.
@@ -45,7 +47,7 @@ def _signed_cms_message(part: Message) -> Message | None:
     if _cms_content_oid(payload) != _SIGNED_DATA_OID:
         return None
     try:
-        result = subprocess.run(
+        result = sandbox.run(
             ["openssl", "cms", "-verify", "-inform", "DER", "-nosigs", "-noverify"],
             input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             timeout=10, check=False, start_new_session=True,

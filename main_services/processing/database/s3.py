@@ -18,23 +18,26 @@ log = logging.getLogger(__name__)
 from minio import Minio
 from minio.error import S3Error
 
+from database import storage_identity
+
 S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "garage:3900")
-S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "hoover4-blobs-rw")
-S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "hoover4-garage-blob-secret-key-0")
+# The key and the bucket names come from database/storage_identity.py.
+S3_ACCESS_KEY = storage_identity.setting("s3_access_key")
+S3_SECRET_KEY = storage_identity.setting("s3_secret_key")
 
 #: Everything that is not a collection's data: chat artifacts, and anything else global.
 #:
 #: Its own bucket rather than a prefix inside a collection's, so that "P0 must never walk
 #: derived material" stops being a prefix check somebody has to remember and becomes a
 #: structural property. A scan of a collection's bucket cannot reach it at all.
-SYSTEM_BUCKET = os.environ.get("S3_SYSTEM_BUCKET", "hoover4-system")
+SYSTEM_BUCKET = storage_identity.setting("system_bucket")
 
 #: Prefix of a collection's own bucket. Per-collection *stores* are impossible. Garage
 #: has one shared metadata database and globally content-addressed data blocks, but
 #: per-collection buckets are not, and they are what makes a collection's objects
 #: enumerable without prefix filtering and deletable in one call. Block dedup is global,
 #: so the split costs no storage.
-COLLECTION_BUCKET_PREFIX = os.environ.get("S3_COLLECTION_BUCKET_PREFIX", "hoover4-c-")
+COLLECTION_BUCKET_PREFIX = storage_identity.setting("collection_bucket_prefix")
 
 
 def collection_bucket(collectionname: str) -> str:

@@ -2,7 +2,7 @@
 """Merge tracked Cursor user settings into the live user configuration files.
 
 Host-specific auto-run text is copied from the live Claude user settings, never from
-a tracked file. The tracked template has only the four MCP servers, git, and local
+a tracked file. The tracked template has only the three MCP servers, git, and local
 container work.
 """
 
@@ -23,7 +23,6 @@ SETTINGS_TEMPLATE = ROOT / ".agents" / "harnesses" / "cursor-user-settings.json"
 CLI_ALLOW = [
     "Shell(git)",
     "Shell(docker)",
-    "Mcp(serena:*)",
     "Mcp(hoover4-web-search:*)",
     "Mcp(hoover4-browser:*)",
     "Mcp(hoover4-whois:*)",

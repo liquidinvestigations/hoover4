@@ -88,7 +88,7 @@ fn entities_table(collectionname: &str) -> anyhow::Result<String> {
     if !crate::api::admin::collections::collectionname_valid(collectionname) {
         anyhow::bail!("invalid collection name: {collectionname:?}");
     }
-    Ok(format!("{collectionname}_entities"))
+    Ok(crate::db_utils::manticore_utils::physical_table(&format!("{collectionname}_entities")))
 }
 
 /// Terms matching `needle` in any of `columns`, across every collection the query reaches.

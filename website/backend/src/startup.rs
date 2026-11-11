@@ -9,6 +9,7 @@ use std::time::Duration;
 /// error into a hard, logged exit. The server must not start up looking healthy
 /// while every DB-backed route silently fails.
 pub async fn ensure_clickhouse_reachable() -> anyhow::Result<()> {
+    crate::db_utils::storage_identity::check()?;
     const ATTEMPTS: usize = 10;
     const DELAY: Duration = Duration::from_secs(2);
 

@@ -1,17 +1,13 @@
 {
-  "_comment": "Canonical MCP server list. Every server is streamable HTTP on loopback once serena's entrypoint moves to --transport streamable-http; that one change makes the same four endpoints usable from Claude Code, Codex, opencode, Gemini CLI and Cursor with no stdio shim anywhere. Ports come from hoover4.ini, not from these literals: web-search 21931, browser 21932, whois 21934, serena 21940.",
+  "_comment": "Canonical MCP server list. Every server is streamable HTTP on loopback, so Claude Code, Codex, opencode, Gemini CLI and Cursor use the same three endpoints with no stdio shim. The ports are the [main_services] mcp_*_port values of hoover4.ini: web-search 21941, browser 21942, whois 21934.",
   "mcpServers": {
-    "serena": {
-      "type": "http",
-      "url": "http://127.0.0.1:21940/mcp"
-    },
     "hoover4-web-search": {
       "type": "http",
-      "url": "http://127.0.0.1:21931/mcp"
+      "url": "http://127.0.0.1:21941/mcp"
     },
     "hoover4-browser": {
       "type": "http",
-      "url": "http://127.0.0.1:21932/mcp",
+      "url": "http://127.0.0.1:21942/mcp",
       "headers": {
         "x-hoover4-chat-session": "host-mcp-client",
         "x-hoover4-user": "host"

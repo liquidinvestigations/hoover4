@@ -6,6 +6,8 @@ import os
 import re
 import hashlib
 import subprocess
+
+from tasks import sandbox
 import mimetypes
 from typing import Dict, Tuple, List, Any, Set
 import pyarrow as pa
@@ -65,10 +67,10 @@ def _detect_mime_and_encoding(file_path: str) -> Tuple[str, str]:
     mime_type = "application/octet-stream"
     encoding = "binary"
     try:
-        res = subprocess.run(["file", "--mime-type", file_path], capture_output=True, text=True)
+        res = sandbox.run(["file", "--mime-type", file_path], capture_output=True, text=True)
         if res.returncode == 0 and ": " in res.stdout:
             mime_type = res.stdout.strip().split(": ", 1)[1]
-        res_enc = subprocess.run(["file", "--mime-encoding", file_path], capture_output=True, text=True)
+        res_enc = sandbox.run(["file", "--mime-encoding", file_path], capture_output=True, text=True)
         if res_enc.returncode == 0 and ": " in res_enc.stdout:
             encoding = res_enc.stdout.strip().split(": ", 1)[1]
     except Exception:

@@ -17,16 +17,24 @@ from typing import Any, Callable, NamedTuple, TypeVar
 
 import requests
 
+from agent_common import storage_identity
+
 log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = float(os.getenv("BACKEND_TIMEOUT_SECONDS", "30"))
 
-GLOBAL_DB = "Hoover4_Processing"
+# The database and table names come from agent_common/storage_identity.py.
+GLOBAL_DB = storage_identity.global_database()
 
 
 def collection_db(collectionname: str) -> str:
     """The ClickHouse database holding one collection's data."""
-    return f"Hoover4_Collection_{collectionname}"
+    return storage_identity.collection_database(collectionname)
+
+
+def physical_table(logical: str) -> str:
+    """The Manticore table of a logical name such as ``<shard>_pages``."""
+    return storage_identity.manticore_table(logical)
 
 
 def _clickhouse_url() -> str:
@@ -50,8 +58,8 @@ def clickhouse_query(sql: str, database: str, params: dict[str, Any] | None = No
     """
     query_params = {
         "database": database, "async_insert": 1, "wait_for_async_insert": 1,
-        "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
-        "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
+        "user": storage_identity.setting("clickhouse_user"),
+        "password": storage_identity.setting("clickhouse_password"),
         "default_format": "JSONEachRow",
     }
     for key, value in (params or {}).items():
@@ -145,7 +153,7 @@ def _manticore_query(url: str, sql: str) -> list[dict]:
     response = requests.post(
         f"{url}/sql",
         params={"mode": "raw"},
-        auth=("manticore", "manticore"),
+        auth=(storage_identity.setting("manticore_user"), storage_identity.setting("manticore_password")),
         data={"query": sql},
         timeout=manticore_search_timeout_seconds() + 5,
     )

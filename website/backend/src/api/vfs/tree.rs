@@ -90,7 +90,9 @@ async fn structure_table(user: &CurrentUser, collection_dataset: &str) -> anyhow
     if !collectionname_valid(&collectionname) {
         anyhow::bail!("invalid collection name for dataset {collection_dataset:?}");
     }
-    Ok(format!("{collectionname}_vfs"))
+    Ok(crate::db_utils::manticore_utils::physical_table(&format!(
+        "{collectionname}_vfs"
+    )))
 }
 
 /// The SQL one page of children resolves to.
@@ -505,7 +507,8 @@ pub async fn vfs_search_datasets(
     let results = fan_out(targets, |target| async move {
         let collectionname = target.collectionname();
         let datasets = by_collection.get(collectionname).cloned().unwrap_or_default();
-        let sql = datasets_search_sql(&format!("{collectionname}_vfs"), &datasets, cleaned, fetch, options_clause);
+        let table = crate::db_utils::manticore_utils::physical_table(&format!("{collectionname}_vfs"));
+        let sql = datasets_search_sql(&table, &datasets, cleaned, fetch, options_clause);
         manticore_search_sql_uncached::<NodeRow>(sql).await
     })
     .await?;

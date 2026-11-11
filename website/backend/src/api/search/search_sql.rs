@@ -112,7 +112,9 @@ pub fn shard_table_name(shard_name: &str) -> anyhow::Result<String> {
     if !collectionname_valid(collectionname) {
         anyhow::bail!("invalid shard name: {shard_name:?} (bad collectionname)");
     }
-    Ok(format!("{shard_name}_pages"))
+    Ok(crate::db_utils::manticore_utils::physical_table(&format!(
+        "{shard_name}_pages"
+    )))
 }
 
 /// FROM clause for one shard. One table, no join, see the module doc.

@@ -25,6 +25,8 @@ import logging
 import os
 import shutil
 import subprocess
+
+from tasks import sandbox
 import tempfile
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
@@ -81,7 +83,7 @@ def _policy(work_dir: str, input_path: str) -> str:
 
 
 def _run(cmd: List[str], work_dir: str, timeout_seconds: int, env: Optional[dict] = None) -> None:
-    res = subprocess.run(cmd, cwd=work_dir, capture_output=True, timeout=timeout_seconds,
+    res = sandbox.run(cmd, cwd=work_dir, capture_output=True, timeout=timeout_seconds,
                          env=env)
     if res.returncode != 0:
         raise RuntimeError(f"{cmd[0]} failed: {res.stderr[:300]!r}")
@@ -170,6 +172,7 @@ def make_image_preview(params: ImagePreviewParams) -> str | SkippedOutcome:
     import pyarrow as pa
     from PIL import Image, UnidentifiedImageError
 
+    from tasks.P3_parse_files.image_loader import image_sizes
     from database.clickhouse import get_collection_client, insert_parser_arrow
     from database.s3 import collection_bucket, get_s3_client
 
@@ -192,8 +195,15 @@ def make_image_preview(params: ImagePreviewParams) -> str | SkippedOutcome:
         try:
             out_path = make_preview_file(params.file_path, kind, work_dir,
                                          params.timeout_seconds)
-            with Image.open(out_path) as img:
-                width, height = img.size
+            if sandbox.enabled():
+                # Pillow reads the converter output in a sandboxed child (tasks/sandbox.py).
+                size = image_sizes([out_path])[0]
+                if size is None:
+                    raise UnidentifiedImageError(f"no image header in {out_path}")
+                width, height = size
+            else:
+                with Image.open(out_path) as img:
+                    width, height = img.size
         # A missing converter binary raises `FileNotFoundError` and fails the step, so
         # an image without the binary does not read as a file without a preview.
         except (RuntimeError, subprocess.TimeoutExpired, UnidentifiedImageError) as exc:

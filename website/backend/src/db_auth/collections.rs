@@ -178,7 +178,7 @@ pub async fn collection_db_ready(collectionname: &str) -> anyhow::Result<bool> {
     let client = get_global_client();
     let count: u64 = client
         .query("SELECT count() FROM system.tables WHERE database = ? AND name = ?")
-        .bind(format!("Hoover4_Collection_{collectionname}"))
+        .bind(crate::db_utils::clickhouse_utils::collection_db_name(collectionname)?)
         .bind(LAST_COLLECTION_MIGRATION_TABLE.trim())
         .fetch_one()
         .await?;

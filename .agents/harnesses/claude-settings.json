@@ -6,7 +6,6 @@
       "mcp__hoover4-browser",
       "mcp__hoover4-web-search",
       "mcp__hoover4-whois",
-      "mcp__serena",
       "Bash(docker exec *)",
       "Bash(./.agents/*)",
       "Bash(./deploy *)",

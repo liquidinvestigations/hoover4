@@ -61,10 +61,7 @@ Re-run it scoped, any one of these is enough:
   grep -rn 'PATTERN' --include='*.rs' --include='*.py' .
   grep -rn 'PATTERN' --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ .
   grep -rn 'PATTERN' main_services/processing/tasks
-  rg 'PATTERN' -t rust website/backend/src
-
-To find a symbol rather than a string, ask serena (find_symbol,
-find_referencing_symbols) instead -- it answers from an index, not a walk."""
+  rg 'PATTERN' -t rust website/backend/src"""
 
 
 def split_segments(cmd):

@@ -599,7 +599,7 @@ WITH
     latest_operation AS (
         SELECT p.op_id AS op_id, o.state AS state
         FROM operation_plans AS p FINAL
-        INNER JOIN Hoover4_Processing.operations AS o FINAL ON o.op_id = p.op_id
+        INNER JOIN {global_database}.operations AS o FINAL ON o.op_id = p.op_id
         WHERE p.collection_dataset = ? AND p.plan_hash IN plans
         ORDER BY p.listed_at DESC, o.started_at DESC, p.op_id DESC LIMIT 1)
 SELECT
@@ -624,7 +624,10 @@ struct ProcessingStatusRow {
 async fn get_processing_status(identifier: &DocumentIdentifier) -> anyhow::Result<DocumentProcessingStatus> {
     let client = get_client_for_dataset(&identifier.collection_dataset).await?;
     let row: ProcessingStatusRow = client
-        .query(DOCUMENT_PROCESSING_SQL)
+        .query(&DOCUMENT_PROCESSING_SQL.replace(
+            "{global_database}",
+            &crate::db_utils::storage_identity::global_database(),
+        ))
         .bind(&identifier.collection_dataset).bind(&identifier.file_hash)
         .bind(&identifier.collection_dataset).bind(&identifier.collection_dataset)
         .bind(&identifier.collection_dataset).bind(&identifier.file_hash)

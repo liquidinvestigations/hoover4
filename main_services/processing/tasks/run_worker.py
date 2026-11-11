@@ -7,12 +7,16 @@ import os
 import signal
 from datetime import timedelta
 from temporalio.client import Client
-from temporalio.worker import Worker
+from temporalio.worker import (
+    FixedSizeSlotSupplier, ResourceBasedSlotConfig, ResourceBasedSlotSupplier,
+    ResourceBasedTunerConfig, Worker, WorkerTuner,
+)
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from .operation_failure_capture import (
     OperationFailureInterceptor, capture_operation_failure,
 )
+from .host_queue import PINNED_QUEUES, SharedSlots, host_name, pinned
 from .payload_guard import PayloadGuardInterceptor
 from .task_timing import TaskTimingInterceptor, attach_temporal_client
 from .worker_memory import ActivityMemoryInterceptor, watch_memory
@@ -67,6 +71,111 @@ def graceful_shutdown_timeout() -> timedelta:
     return timedelta(seconds=seconds)
 
 
+#: The worker settings that a tuner replaces.
+_SLOT_KEYS = ("max_concurrent_activities", "max_concurrent_workflow_tasks",
+              "max_concurrent_local_activities")
+
+
+def _activity_supplier(slots: int, shared: bool):
+    """The activity slots of one queue.
+
+    ``HOOVER4_SLOT_TUNER=resource`` hands out between 1 and ``slots`` slots, fewer when
+    the memory or the CPU use of the system is above ``HOOVER4_TUNER_TARGET_MEMORY`` or
+    ``HOOVER4_TUNER_TARGET_CPU``. In a Kata pod the system is the VM of the pod. The
+    resource supplier reads the system use, so two workers of one process see the same
+    load. Otherwise a fixed count, which two workers of one queue share.
+    """
+    if os.getenv("HOOVER4_SLOT_TUNER", "").strip() == "resource":
+        targets = ResourceBasedTunerConfig(
+            target_memory_usage=float(os.getenv("HOOVER4_TUNER_TARGET_MEMORY", "0.8")),
+            target_cpu_usage=float(os.getenv("HOOVER4_TUNER_TARGET_CPU", "0.9")))
+        return ResourceBasedSlotSupplier(
+            ResourceBasedSlotConfig(minimum_slots=1, maximum_slots=slots), targets)
+    return SharedSlots(slots) if shared else FixedSizeSlotSupplier(slots)
+
+
+def tuned_workers(workers) -> list:
+    """Rebuild the workers with a tuner, and add the host queue worker of each pinned queue.
+
+    A worker keeps its configured concurrency as the most activity slots. With
+    ``HOOVER4_HOST_QUEUE`` set, a worker of a queue in ``PINNED_QUEUES`` gets a second
+    worker on the host queue, with the activities only, and both share the slots. Without
+    the host name and without the resource tuner, the workers stay as they are.
+    """
+    host = host_name()
+    resource = os.getenv("HOOVER4_SLOT_TUNER", "").strip() == "resource"
+    out = []
+    for worker in workers:
+        twin = bool(host) and worker.task_queue in PINNED_QUEUES
+        if not (twin or resource):
+            out.append(worker)
+            continue
+        config = worker.config()
+        slots = config.get("max_concurrent_activities") or 100
+        tuner = WorkerTuner.create_composite(
+            workflow_supplier=FixedSizeSlotSupplier(config.get("max_concurrent_workflow_tasks") or 100),
+            activity_supplier=_activity_supplier(slots, twin),
+            local_activity_supplier=FixedSizeSlotSupplier(config.get("max_concurrent_local_activities") or 100))
+        for key in _SLOT_KEYS:
+            config.pop(key, None)
+        config["tuner"] = tuner
+        out.append(Worker(**config))
+        if twin and config.get("activities"):
+            out.append(Worker(**{**config, "task_queue": pinned(worker.task_queue, host),
+                                 "workflows": [], "max_cached_workflows": 0}))
+    return out
+
+
+#: The slot gauges of the SDK. install_slot_metrics() sets it, and log_slots() reads it.
+_SLOT_METRICS = None
+_SLOT_GAUGES = ("temporal_worker_task_slots_available", "temporal_worker_task_slots_used")
+# The resource gauges of the SDK have no "temporal_" prefix.
+_RESOURCE_GAUGES = ("resource_slots_mem_usage", "resource_slots_cpu_usage")
+
+
+def install_slot_metrics() -> None:
+    """With the resource tuner, keep the SDK metrics of this process in a buffer.
+
+    Call it before the first client connects, because the client uses the default
+    runtime. log_slots() then logs the slot gauges, so the log shows the tuner change the
+    slots.
+    """
+    global _SLOT_METRICS
+    if os.getenv("HOOVER4_SLOT_TUNER", "").strip() != "resource" or _SLOT_METRICS is not None:
+        return
+    from temporalio.runtime import MetricBuffer, Runtime, TelemetryConfig
+    _SLOT_METRICS = MetricBuffer(100_000)
+    Runtime.set_default(Runtime(telemetry=TelemetryConfig(metrics=_SLOT_METRICS)), error_if_already_set=False)
+
+
+async def log_slots(name: str, interval_seconds: float = 60) -> None:
+    """Log the changed activity slot gauges once in each interval.
+
+    The resource-based supplier publishes the used slots and the memory and CPU use that
+    it reads, but no available slots.
+    """
+    last: dict = {}
+    while _SLOT_METRICS is not None:
+        await asyncio.sleep(interval_seconds)
+        current = dict(last)
+        for update in _SLOT_METRICS.retrieve_updates():
+            metric = update.metric.name
+            if metric in _SLOT_GAUGES and update.attributes.get("worker_type") == "ActivityWorker":
+                current[update.attributes.get("task_queue", ""), metric.rsplit("_", 1)[1]] = update.value
+            elif metric in _RESOURCE_GAUGES:
+                current["", metric] = update.value
+        if current == last:
+            continue
+        usage = ", ".join(f"{metric.split('_')[-2]} {current[key]:.0f} %" for key in sorted(current)
+                          if key[0] == "" for metric in [key[1]])
+        for queue in sorted({q for q, _ in current if q}):
+            text = f"{current.get((queue, 'used'))} used"
+            if current.get((queue, "available")) is not None:
+                text += f", {current[queue, 'available']} available"
+            log.info("%s: activity slots of %s: %s%s", name, queue, text, f" ({usage})" if usage else "")
+        last = current
+
+
 async def run_until_signalled(*workers: Worker) -> None:
     """Run workers until they finish or the process is asked to stop.
 
@@ -86,6 +195,7 @@ async def run_until_signalled(*workers: Worker) -> None:
     """
     from tasks.red_flags import load_calibration
     load_calibration()
+    workers = tuned_workers(workers)
     loop = asyncio.get_running_loop()
     name = ", ".join(w.task_queue for w in workers)
     stopping = False
@@ -109,12 +219,14 @@ async def run_until_signalled(*workers: Worker) -> None:
             # without it). The worker still runs; it just dies abruptly.
             log.warning("%s: cannot install a %s handler", name, signum)
 
-    # The memory log runs beside the workers and stops when they have shut down.
+    # The memory and slot logs run beside the workers and stop when they have shut down.
     memory = loop.create_task(watch_memory(name))
+    slots = loop.create_task(log_slots(name))
     try:
         await asyncio.gather(*(worker.run() for worker in workers))
     finally:
         memory.cancel()
+        slots.cancel()
     log.info("%s: shut down", name)
 
 
@@ -264,6 +376,7 @@ async def run_common_worker():
     from .P_upload.workflows import IngestUploadBatches, UploadQueue
     from .P1_compute_plans.activities import count_new_blobs, compute_plans
     from .P1_compute_plans.workflows import ComputePlans
+    from .host_queue import claim_plan_host, host_queue_alive
     from .P2_execute_plan.activities import (
         list_pending_plans,
         get_plan_items_metadata,
@@ -522,6 +635,8 @@ async def run_common_worker():
             get_plan_items_metadata,
             download_plan_files,
             cleanup_plan_dir,
+            claim_plan_host,
+            host_queue_alive,
             mark_plan_finished,
             ensure_temp_dir_exists,
             record_processing_error_groups,
@@ -715,7 +830,6 @@ async def run_ocr_worker():
     from .P3_parse_files.pdf_parts import run_ocr_pdf_parts_batch, run_ocr_pdf_part_cursor
     from .P_admin.updates.activities import detect_update_files
     from .P3_parse_files.image_pdf import make_image_pdf_batch
-    from .P3_parse_files.pdf_preview import make_pdf_preview_batch
     from .visibility import ensure_search_attributes
 
     log.info("Starting OCR worker...")
@@ -761,15 +875,32 @@ async def run_ocr_worker():
           max_concurrent_activity_task_polls=pdf_slots*2,
           max_concurrent_workflow_task_polls=pdf_slots*2,
         )
-        preview_worker = Worker(
-            client, interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
-            workflow_runner=sandboxed_runner(), task_queue="processing-preview-queue",
-            graceful_shutdown_timeout=graceful_shutdown_timeout(),
-            workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
-            workflows=[], activities=[make_pdf_preview_batch], activity_executor=preview_executor,
-            max_concurrent_activities=preview_slots,
-        )
+        preview_worker = make_preview_worker(client, preview_executor, preview_slots)
         await run_until_signalled(image_worker, pdf_worker, preview_worker)
+
+
+def make_preview_worker(client, executor, slots):
+    # The OCR process serves this queue in the default worker set. A deployment without
+    # OCR selects the separate `preview` worker, so Office-to-PDF previews still run.
+    from .P3_parse_files.pdf_preview import make_pdf_preview_batch
+    return Worker(
+        client, interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
+        workflow_runner=sandboxed_runner(), task_queue="processing-preview-queue",
+        graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
+        workflows=[], activities=[make_pdf_preview_batch], activity_executor=executor,
+        max_concurrent_activities=slots,
+    )
+
+
+async def run_preview_worker():
+    from .visibility import ensure_search_attributes
+    log.info("Starting preview worker...")
+    client = await Client.connect("temporal:7233")
+    await ensure_search_attributes(client)
+    slots = worker_concurrency("pdf_preview", 2)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=slots) as executor:
+        await run_until_signalled(make_preview_worker(client, executor, slots))
 
 
 async def run_nlp_worker():

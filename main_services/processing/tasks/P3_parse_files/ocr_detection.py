@@ -15,6 +15,8 @@ other files of its plan and the file stays selected.
 import logging
 import os
 import subprocess
+
+from tasks import sandbox
 import tempfile
 import time
 from typing import List, Optional, Sequence
@@ -112,7 +114,7 @@ def render_page(path: str, page: int) -> Optional[bytes]:
     with tempfile.TemporaryDirectory(prefix="hoover4-ocr-detection-") as folder:
         out = os.path.join(folder, "page")
         try:
-            result = subprocess.run(
+            result = sandbox.run(
                 ["pdftoppm", "-r", str(RENDER_DPI), "-f", str(page), "-l", str(page), "-jpeg",
                  "-jpegopt", "quality=88", "-singlefile", path, out],
                 capture_output=True, timeout=RENDER_TIMEOUT_SECONDS)

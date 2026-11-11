@@ -83,7 +83,10 @@ pub async fn list_permitted_collection_tree(
         .await?.into_iter().collect();
     for collection in &mut tree {
         collection.display_name = names.get(&collection.collectionname).filter(|name| !name.is_empty()).cloned();
-        let table = format!("{}_vfs", collection.collectionname);
+        let table = crate::db_utils::manticore_utils::physical_table(&format!(
+            "{}_vfs",
+            collection.collectionname
+        ));
         let response = manticore_search_sql_uncached::<FolderPresenceRow>(format!(
             "SELECT collection_dataset FROM {table} WHERE parent_key IN ({}) AND kind != 1 GROUP BY collection_dataset LIMIT {} {} ;",
             collection.datasets.iter().map(|dataset| quoted_manticore_string(&dataset_root_key(&dataset.collection_dataset))).collect::<Vec<_>>().join(", "),

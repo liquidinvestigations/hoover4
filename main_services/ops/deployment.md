@@ -71,8 +71,6 @@ ocr_pdf_enabled       = true
 
 # A visitor must not get `dx serve`.
 website_release_mode  = true
-# Serena is development tooling.
-serena_enabled        = false
 
 # The reverse proxy reaches this private address.
 website_bind_ip       = <private-ip>

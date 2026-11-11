@@ -207,12 +207,12 @@ on them damages the agent's work.
 
 ## MCP servers
 
-Four servers, all streamable HTTP on loopback, ports from `hoover4.ini`:
-`hoover4-web-search`, `hoover4-browser`, `hoover4-whois`, and `serena` for symbol-level
-navigation and editing.
+Three servers, all streamable HTTP on loopback, ports from `hoover4.ini`:
+`hoover4-web-search` on 21941, `hoover4-browser` on 21942 and `hoover4-whois` on 21934.
+`.agents/verify-wiring.sh` compares each harness port with the port that `hoover4.ini` publishes.
 
 The Codex browser entry sends the public static session headers in the tracked project
-config. The four server entries remain optional, so Codex can start while the stack is down.
+config. The three server entries remain optional, so Codex can start while the stack is down.
 
 `hoover4-mcp-collections` and `hoover4-mcp-todo` are deliberately absent from the host-side
 configuration: their tools require a header only the chat tier can supply (the permitted
@@ -372,8 +372,7 @@ These links also permit direct review.
 | Rust and Dioxus | [The Rust rules](../../.agents/rules/rust-dioxus.md) describe component constraints. |
 | Python pipeline | [The pipeline rules](../../.agents/rules/pipeline-python.md) describe worker constraints. |
 | Migrations | [The migration rules](../../.agents/rules/migrations.md) preserve applied checksums. |
-| Editing tools | [The symbol editing reference](../../.agents/skills/editing-code/reference/serena-edits.md) describes bounded edits. |
-| Code discovery | [The source map](../../.agents/skills/finding-code/reference/repo-map.md) and [symbol calls](../../.agents/skills/finding-code/reference/serena-calls.md) describe scoped reads. |
+| Code discovery | [The source map](../../.agents/skills/finding-code/reference/repo-map.md) describes scoped reads. |
 | Role selection evidence | [The retained study](../../.agents/skills/planning-work/reference/triage-marker-study.md) records its method. |
 | Organizer role | [The organizer instructions](../../.claude/agents/organizer.md) define shared-checkout ownership. |
 | Executor roles | [The light executor](../../.claude/agents/executor-light.md) and [heavy executor](../../.claude/agents/executor-heavy.md) define implementation responsibilities. |

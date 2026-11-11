@@ -48,6 +48,31 @@ the volume `worker_temp_files`, so a recreated worker container keeps the copies
 progress. When a copy is missing all the same, each reader raises the non-retryable
 `TempCopyMissing` error that names the path. It does not detect a type for the path.
 
+#### Run a plan on one worker host.
+
+A deployment with several worker hosts sets `HOOVER4_HOST_QUEUE` to a name that is unique
+for each host, for example the pod name. [host_queue.py](host_queue.py) describes the contract.
+
+- `ExecuteSinglePlan` and `OcrRunPlan` run `claim_plan_host` on the shared common queue.
+  The download, every stage and the cleanup of the plan then use the queues
+  `<queue>@<host>` of that host. `ProcessItemsBatched` and `PdfPartGroup` read the host
+  from their input.
+- A process with a host name also polls `<queue>@<host>` for the six queues that read
+  the plan folder. The shared queue and the host queue of one process share its slots.
+- A pinned activity waits at most 10 minutes to start. Then `host_queue_alive` asks
+  Temporal for the pollers of the host queue. A host without a poller in 120 seconds is
+  lost. `ExecuteSinglePlan` then claims another host and downloads again, at most three
+  hosts in total. `OcrRunPlan` fails, and the operator runs it again.
+- Without `HOOVER4_HOST_QUEUE`, the claim returns an empty host, and every activity uses
+  the shared queue as on one host.
+- The patch marker `plan-host-queue` separates new executions from executions that started
+  before the claim existed. Those keep the shared queues. The earlier `k3s` branch claimed
+  a host without the marker. An installation with histories from that branch sets
+  `HOOVER4_HISTORY_SOURCE=k3s-branch`. The default is `compose`. A wrong value fails the
+  replay of the open plans, so the value must match the source of the histories.
+- [tests/replay/](../tests/replay/Readme.md) replays Compose histories and histories of
+  both claim forms.
+
 ### P3 - Parse Files
 
 Parses files by type (archives, email, PDF, audio, video, images, OCR, and Tika-based extraction) and writes structured content.
@@ -62,6 +87,24 @@ The text stage gives authoritative vCard detection priority over mail detection.
 Card and calendar text unfolds property lines and decodes quoted-printable values and text escapes.
 Card binary values become size markers. Calendar binary properties are omitted.
 Malformed property lines retain their source text.
+
+#### Run the parser tools in a sandbox.
+
+`HOOVER4_PARSER_SANDBOX=bwrap` runs each external tool of P0 and P3 in bubblewrap through
+[sandbox.py](sandbox.py). The tools are `file`, 7-Zip, qpdf, the poppler tools, ffmpeg,
+ImageMagick, LibreOffice, `readpst`, `openssl` and the JSON table reader. The sandbox also runs the
+image header reader and the calamine and SQLite table readers ([sandbox_cells.py](sandbox_cells.py)),
+because they are native code that reads an untrusted file.
+
+- A tool has no network, an empty environment and a read-only root.
+- The plan folders, the dataset mounts of `HOOVER4_DATASET_MOUNTS`, `/data`, the secrets and
+  the control files are empty. The folder of each path in the arguments is visible again.
+  A dataset path is read-only.
+- A shell command string is refused.
+- The sandbox needs the `bwrap` binary of the worker image and a runtime that allows a new
+  user namespace. A rootless Podman container allows it.
+
+Without the setting, each tool runs in the worker process as before.
 
 ### P4 - Extract Entities (NLP/NER)
 
@@ -438,6 +481,16 @@ Workers are split into dedicated queues to control throughput and resource usage
 
 - `agent-tool-queue`, `tool_call` of every agent run (`agent_tool_concurrency`, 16 slots).
   A slot is one tool call in flight. A section dispatch takes no tool slot.
+
+`HOOVER4_WORKERS` is an optional comma list of the processes that `main.py worker` starts,
+from the default set and the optional `preview` process. The `preview` process serves the
+Office preview queue for a deployment that runs no OCR process. An unknown name stops
+the start. Without the variable, the default set starts.
+
+`HOOVER4_SLOT_TUNER=resource` gives each queue between 1 and its configured activity slots.
+It lowers the slots when the memory or the CPU use of the host is above
+`HOOVER4_TUNER_TARGET_MEMORY` (default 0.8) or `HOOVER4_TUNER_TARGET_CPU` (default 0.9),
+and each process logs its slots once a minute. Without the variable, the slots are fixed.
 
 ### How the numbers are chosen
 

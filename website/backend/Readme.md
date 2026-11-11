@@ -9,7 +9,6 @@ The Rust server half of the Dioxus application: HTTP API, authentication, datast
 | [src/db_chat/](src/db_chat) | chat persistence and the per-session turn lock |
 | [src/db_utils/](src/db_utils) | datastore clients, query builders, and the single place a full-text match argument is constructed |
 | [tests/](tests) | stack integration tests; fixture guard checks run without a live stack |
-| [pdf-viewer/](pdf-viewer) | the viewer distribution this server hands to the client |
 
 `target/` is this crate's build output, tens of gigabytes, and the reason every search here
 must be scoped.
@@ -17,6 +16,11 @@ must be scoped.
 Every protected request requires an established identity.
 [Session middleware](src/auth/session_middleware.rs) resolves the forwarded identity or an existing session cookie.
 Website routes do not create sessions.
+`HOOVER4_PROXY_SECRET` is absent in a Compose deployment, and the network boundary decides who can assert an identity.
+With a value, the middleware accepts a forwarded identity only with the same value in `X-Hoover-Proxy`.
+An empty value refuses every forwarded identity.
+`HOOVER4_ADMIN_GROUPS` is a comma list of administrator groups, `admin` and `superuser` by default.
+The database, table and bucket names come from [the storage identity](src/db_utils/storage_identity.rs), and the start refuses an invalid name prefix.
 [The route policy](src/auth/route_policy.rs) defines the request requirements.
 Every full-text match argument uses the [shared builder](src/db_utils/manticore_match.rs).
 

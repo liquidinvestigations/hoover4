@@ -29,9 +29,11 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+from database import storage_identity
+
 log = logging.getLogger(__name__)
 
-GLOBAL_DB = "Hoover4_Processing"
+GLOBAL_DB = storage_identity.global_database()
 
 #: An object younger than this is never treated as an orphan. A capture in flight has its
 #: bytes written seconds before its row, and a sweeper racing that window would delete a

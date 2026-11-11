@@ -17,10 +17,11 @@ from typing import Any, Optional
 from urllib.parse import quote
 
 import httpx
+from agent_common import storage_identity
 
 log = logging.getLogger(__name__)
 
-GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
+GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE") or storage_identity.global_database()
 
 
 @dataclass

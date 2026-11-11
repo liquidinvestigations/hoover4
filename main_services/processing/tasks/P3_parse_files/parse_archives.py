@@ -8,6 +8,8 @@ import json
 import sys
 import time
 import signal
+
+from tasks import sandbox
 import logging
 from tasks.heartbeat import heartbeat_pump, with_heartbeat, worker_is_stopping
 from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatchParams, run_batch
@@ -45,7 +47,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
         os.makedirs(out_dir)
         cmd = [sys.executable, "-m", "tasks.P3_parse_files.mail_containers",
                params.archive_path, out_dir, kind]
-        child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        child = sandbox.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  stdin=subprocess.DEVNULL, start_new_session=True)
         started = time.monotonic()
         try:
@@ -112,7 +114,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     # makes reliability worse.
     try:
         with heartbeat_pump(f"7z {params.archive_hash[:8]}"):
-            res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=3600)
+            res = sandbox.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=3600)
     except subprocess.TimeoutExpired:
         shutil.rmtree(out_dir, ignore_errors=True)
         raise RuntimeError(f"7z extraction timed out for {params.archive_path}")
@@ -258,7 +260,7 @@ def extract_split_set(collectionname: str, volume_set, entry_hash: str) -> Dict[
         try:
             # stdin=DEVNULL: 7-Zip asks for a missing volume on stdin otherwise.
             with heartbeat_pump(f"7z set {entry_hash[:8]}"):
-                res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
+                res = sandbox.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
                                      timeout=split_extraction_seconds(volume_set.size))
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"7z extraction timed out for the split set of {entry[1]}")

@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import re
 import subprocess
+
+from tasks import sandbox
 import sys
 import tempfile
 from email import policy
@@ -282,7 +284,7 @@ def _readpst_embedded(path: str, root_folder) -> dict[tuple[str, ...], list[byte
     messages: dict[tuple[str, ...], list[bytes]] = {}
     ambiguous: set[tuple[str, ...]] = set()
     with tempfile.TemporaryDirectory(prefix="hoover4-readpst-") as temporary:
-        result = subprocess.run(
+        result = sandbox.run(
             # One job: parallel jobs can write two exports to one file name.
             ["readpst", "-e", "-D", "-t", "e", "-q", "-j", "0", "-o", temporary, path],
             capture_output=True, stdin=subprocess.DEVNULL, timeout=1800,

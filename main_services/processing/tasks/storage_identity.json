@@ -1,0 +1,36 @@
+{
+  "_comment": "The storage identity of one installation: the environment variable that sets each name or credential, and its Compose default. database/storage_identity.py reads this file. website/backend/src/db_utils/storage_identity.rs and main_services/agents/agent_common/agent_common/storage_identity.py hold copies, and tests compare them with this file.",
+  "settings": {
+    "clickhouse_database_prefix": {"variable": "HOOVER4_CLICKHOUSE_DB_PREFIX", "default": "Hoover4", "pattern": "[A-Za-z_][A-Za-z0-9_]*"},
+    "manticore_table_prefix": {"variable": "HOOVER4_MANTICORE_TABLE_PREFIX", "default": "", "pattern": "([a-z][a-z0-9_]*)?"},
+    "system_bucket": {"variable": "S3_SYSTEM_BUCKET", "default": "hoover4-system", "pattern": "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]"},
+    "collection_bucket_prefix": {"variable": "S3_COLLECTION_BUCKET_PREFIX", "default": "hoover4-c-", "pattern": "[a-z0-9][a-z0-9.-]*"},
+    "clickhouse_user": {"variable": "CLICKHOUSE_USER", "default": "hoover4", "pattern": ".+"},
+    "clickhouse_password": {"variable": "CLICKHOUSE_PASSWORD", "default": "hoover4", "pattern": ".*"},
+    "manticore_user": {"variable": "MANTICORE_USER", "default": "manticore", "pattern": ".+"},
+    "manticore_password": {"variable": "MANTICORE_PASSWORD", "default": "manticore", "pattern": ".*"},
+    "s3_access_key": {"variable": "S3_ACCESS_KEY", "default": "hoover4-blobs-rw", "pattern": ".+"},
+    "s3_secret_key": {"variable": "S3_SECRET_KEY", "default": "hoover4-garage-blob-secret-key-0", "pattern": ".+"}
+  },
+  "names": {
+    "global_database": "{clickhouse_database_prefix}_Processing",
+    "collection_database": "{clickhouse_database_prefix}_Collection_{collectionname}",
+    "manticore_table": "{manticore_table_prefix}{logical_table}",
+    "collection_bucket": "{collection_bucket_prefix}{collectionname_with_hyphens}"
+  },
+  "cases": [
+    {"environment": {}, "collectionname": "my_docs",
+     "global_database": "Hoover4_Processing", "collection_database": "Hoover4_Collection_my_docs",
+     "manticore_table": "my_docs_vfs", "collection_bucket": "hoover4-c-my-docs"},
+    {"environment": {"HOOVER4_CLICKHOUSE_DB_PREFIX": "zone_a", "HOOVER4_MANTICORE_TABLE_PREFIX": "zone_a_",
+                     "S3_COLLECTION_BUCKET_PREFIX": "zone-a-c-"}, "collectionname": "my_docs",
+     "global_database": "zone_a_Processing", "collection_database": "zone_a_Collection_my_docs",
+     "manticore_table": "zone_a_my_docs_vfs", "collection_bucket": "zone-a-c-my-docs"}
+  ],
+  "invalid": [
+    {"HOOVER4_CLICKHOUSE_DB_PREFIX": "1zone"},
+    {"HOOVER4_CLICKHOUSE_DB_PREFIX": "zone-a"},
+    {"HOOVER4_MANTICORE_TABLE_PREFIX": "Zone_"},
+    {"HOOVER4_MANTICORE_TABLE_PREFIX": "zone a"}
+  ]
+}

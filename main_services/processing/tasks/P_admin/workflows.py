@@ -13,6 +13,7 @@ from temporalio.exceptions import ActivityError, ApplicationError, CancelledErro
 
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
+    from tasks.host_queue import claim_plan_host, execute_pinned, plan_host_claimed
     from tasks.P_admin.activities import (
         CollectionDatabaseParams,
         PurgeDatasetParams,
@@ -459,6 +460,23 @@ class OcrRunPlan:
     `RerunOcr` counts it as a failed plan.
     """
 
+    # The downloads, stages and cleanups of this run use the queues of one host
+    # (tasks/host_queue.py). The run claims the host at its first download. A lost host
+    # fails the run, and the operator runs it again. An execution without the claim
+    # (plan_host_claimed) uses the shared queues.
+    _host: str | None = None
+
+    async def _claim_host(self) -> str:
+        if self._host is None:
+            host = ""
+            if plan_host_claimed():
+                host = await workflow.execute_activity(
+                    claim_plan_host, task_queue="processing-common-queue",
+                    start_to_close_timeout=timedelta(minutes=1), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+            self._host = host
+        return self._host
+
     @workflow.run
     async def run(self, params: "OcrRunPlanParams") -> dict:
         parts_version = workflow.patched("ocr-run-pdf-parts")
@@ -475,7 +493,8 @@ class OcrRunPlan:
         )
         total_bytes = sum(file.file_size_bytes for file in work.files)
         if work.files:
-            downloaded = await workflow.execute_activity(
+            await self._claim_host()
+            downloaded = await execute_pinned(
                 download_plan_files,
                 DownloadPlanFilesParams(
                     collectionname=params.collectionname,
@@ -486,6 +505,7 @@ class OcrRunPlan:
                             "s3_url": file.s3_url} for file in work.files],
                     base_temp_dir=OCR_RUN_TEMP_DIR,
                 ),
+                queue="processing-common-queue", host=self._host,
                 # The rule of ExecuteSinglePlan: 900 s and the size at 100 kbit/s.
                 start_to_close_timeout=timedelta(seconds=900 + math.ceil(total_bytes / 12_500)),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -526,10 +546,11 @@ class OcrRunPlan:
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         if work.files:
-            await workflow.execute_activity(
+            await execute_pinned(
                 cleanup_plan_dir,
                 CleanupPlanDirParams(params.collectionname, params.collection_dataset,
                                      params.plan_hash, OCR_RUN_TEMP_DIR),
+                queue="processing-common-queue", host=self._host,
                 start_to_close_timeout=timedelta(seconds=900 + math.ceil(total_bytes / 12_500)),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -592,7 +613,8 @@ class OcrRunPlan:
         indexed_count = 0
         try:
             if work.files:
-                downloaded = await workflow.execute_activity(
+                await self._claim_host()
+                downloaded = await execute_pinned(
                     download_plan_files,
                     DownloadPlanFilesParams(params.collectionname, params.collection_dataset,
                                             temp_plan,
@@ -600,6 +622,7 @@ class OcrRunPlan:
                                               "file_size_bytes": file.file_size_bytes,
                                               "s3_url": file.s3_url} for file in work.files],
                                             OCR_RUN_TEMP_DIR),
+                    queue="processing-common-queue", host=self._host,
                     start_to_close_timeout=timedelta(seconds=900 + math.ceil(total_bytes / 12_500)),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
@@ -616,10 +639,11 @@ class OcrRunPlan:
                 indexed_count = len(pending)
         finally:
             if work.files:
-                await asyncio.shield(workflow.execute_activity(
+                await asyncio.shield(execute_pinned(
                     cleanup_plan_dir,
                     CleanupPlanDirParams(params.collectionname, params.collection_dataset,
                                          temp_plan, OCR_RUN_TEMP_DIR),
+                    queue="processing-common-queue", host=self._host,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options))
         return len(work.files), indexed_count
 
@@ -638,7 +662,7 @@ class OcrRunPlan:
                 return []
             starts[name, engine] = workflow.now()
             try:
-                batch = await workflow.execute_activity(
+                batch = await execute_pinned(
                     name,
                     StageBatchParams(
                         collectionname=params.collectionname,
@@ -655,7 +679,7 @@ class OcrRunPlan:
                     # No attempt limit, as in the group workflow of ingestion. The runner
                     # fails the stage after consecutive attempts that finish no new file.
                     retry_policy=RetryPolicy(maximum_attempts=0),
-                    task_queue=STAGE_QUEUES[name],
+                    queue=STAGE_QUEUES[name], host=self._host,
                 )
                 return list(zip(chosen, batch.results))
             except ActivityError as exc:
@@ -701,7 +725,8 @@ class OcrRunPlan:
                 from tasks.P3_parse_files.pdf_cursor import PDF_CURSOR_PATCH
                 preparation, variants = await run_pdf_chain(
                     sources, pdf_stages,
-                    cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None)
+                    cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None,
+                    host=self._host or "")
                 outcomes["pdf_prepare_batch", ""] = [(file, preparation[file.item_hash])
                                                       for file in pdf_files if file.item_hash in preparation]
                 for engine in OCR_ENGINES:

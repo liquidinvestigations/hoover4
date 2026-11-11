@@ -56,7 +56,7 @@ It recreates services that still use an older image.
 
 `hoover4.ini` at the repository root is the single source. It is gitignored. Two
 samples ship beside it, `hoover4.ini.release` and `hoover4.ini.development`. Release
-is the default a fresh checkout copies. Development runs the development server and Serena,
+is the default a fresh checkout copies. Development runs the development server,
 and it turns on a container that bypasses sign-in. [deploy.py](../../deploy.py) renders `hoover4.ini` into the generated `.env` files
 next to the compose files.
 

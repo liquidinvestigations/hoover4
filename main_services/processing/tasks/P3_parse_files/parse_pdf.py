@@ -9,6 +9,8 @@ import json
 import math
 import tempfile
 import subprocess
+
+from tasks import sandbox
 import logging
 log = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ _PDF_SUBPROCESS_TIMEOUT_S = 900
 
 def _run_qpdf(args: List[str]) -> subprocess.CompletedProcess:
     cmd = ["qpdf"] + args
-    return subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
+    return sandbox.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
                           timeout=_PDF_SUBPROCESS_TIMEOUT_S)
 
 
@@ -100,7 +102,7 @@ def _qpdf_json(path: str) -> Dict[str, Any]:
 
 def _maybe_pdftotext(path: str) -> Optional[str]:
     try:
-        res = subprocess.run(["pdftotext", "-enc", "UTF-8", "-layout", path, "-"],
+        res = sandbox.run(["pdftotext", "-enc", "UTF-8", "-layout", path, "-"],
                              capture_output=True, stdin=subprocess.DEVNULL,
                              timeout=_PDF_SUBPROCESS_TIMEOUT_S)
         if res.returncode == 0:
@@ -327,7 +329,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
         # Insert image rows and pdfs_image relationships
         from hashlib import sha3_256
 
-        from tasks.P3_parse_files.image_loader import image_dimensions
+        from tasks.P3_parse_files.image_loader import image_sizes
         rows_img_cd: List[str] = []
         rows_img_hash: List[str] = []
         rows_img_w: List[int] = []
@@ -339,6 +341,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
         rows_link_page: List[int] = []
         rows_link_img: List[str] = []
 
+        sizes = image_sizes(image_paths)
         for idx, p in enumerate(image_paths):
             try:
                 with open(p, "rb") as f:
@@ -348,9 +351,9 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
                 continue
             # Real dimensions, from the header. They are what the OCR size gate reads
             # to skip icons and rules, and a stored 0x0 would make every extracted image
-            # look ungated. `image_dimensions` returns None for a format Pillow cannot
+            # look ungated. `image_sizes` gives None for a format Pillow cannot
             # open, and 0 then means "unknown" rather than "tiny".
-            size = image_dimensions(data)
+            size = sizes[idx]
             rows_img_cd.append(collection_dataset)
             rows_img_hash.append(ih)
             rows_img_w.append(size[0] if size else 0)

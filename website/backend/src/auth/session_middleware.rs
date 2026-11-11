@@ -49,8 +49,36 @@ struct HeaderIdentity {
     groups: Vec<String>,
 }
 
+/// Whether the request may assert an identity in its forwarded headers.
+///
+/// `HOOVER4_PROXY_SECRET` absent keeps the trust of a Compose deployment: the network
+/// boundary decides who reaches the website. A set value requires the same value in the
+/// `X-Hoover-Proxy` header, which the identity proxy of a cluster deployment adds. An
+/// empty value refuses every forwarded identity.
+fn proxy_secret_ok(headers: &axum::http::HeaderMap) -> bool {
+    proxy_secret_matches(std::env::var("HOOVER4_PROXY_SECRET"), headers)
+}
+
+fn proxy_secret_matches(
+    secret: Result<String, std::env::VarError>,
+    headers: &axum::http::HeaderMap,
+) -> bool {
+    match secret {
+        Err(std::env::VarError::NotPresent) => true,
+        Err(_) => false,
+        Ok(secret) if secret.is_empty() => false,
+        Ok(secret) => headers
+            .get("x-hoover-proxy")
+            .and_then(|value| value.to_str().ok())
+            == Some(secret.as_str()),
+    }
+}
+
 fn parse_headers(request: &Request) -> Option<HeaderIdentity> {
     let headers = request.headers();
+    if !proxy_secret_ok(headers) {
+        return None;
+    }
     let username = headers
         .get("x-forwarded-user")
         .or_else(|| headers.get("X-Forwarded-User"))
@@ -98,8 +126,24 @@ fn parse_headers(request: &Request) -> Option<HeaderIdentity> {
     })
 }
 
+/// The groups whose members are administrators: the comma list
+/// `HOOVER4_ADMIN_GROUPS`, or `admin` and `superuser` when the variable is absent.
+fn admin_groups() -> Vec<String> {
+    admin_groups_from(std::env::var("HOOVER4_ADMIN_GROUPS").ok())
+}
+
+fn admin_groups_from(value: Option<String>) -> Vec<String> {
+    value
+        .unwrap_or_else(|| "admin,superuser".to_string())
+        .split(',')
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
 fn is_admin_from_groups(groups: &[String]) -> bool {
-    groups.iter().any(|g| g == "admin" || g == "superuser")
+    let allowed = admin_groups();
+    groups.iter().any(|group| allowed.iter().any(|name| name == group))
 }
 
 fn should_sync(username: &str) -> bool {
@@ -517,6 +561,43 @@ async fn run_authenticated(
     }
 
     response
+}
+
+#[cfg(test)]
+mod proxy_settings_tests {
+    use super::*;
+
+    fn headers(proxy: Option<&str>) -> axum::http::HeaderMap {
+        let mut headers = axum::http::HeaderMap::new();
+        if let Some(value) = proxy {
+            headers.insert("x-hoover-proxy", value.parse().unwrap());
+        }
+        headers
+    }
+
+    #[test]
+    fn an_absent_secret_keeps_the_compose_trust() {
+        assert!(proxy_secret_matches(Err(std::env::VarError::NotPresent), &headers(None)));
+    }
+
+    #[test]
+    fn a_set_secret_needs_the_same_proxy_header() {
+        let secret = || Ok("s3cret".to_string());
+        assert!(proxy_secret_matches(secret(), &headers(Some("s3cret"))));
+        assert!(!proxy_secret_matches(secret(), &headers(Some("other"))));
+        assert!(!proxy_secret_matches(secret(), &headers(None)));
+    }
+
+    #[test]
+    fn an_empty_secret_refuses_every_forwarded_identity() {
+        assert!(!proxy_secret_matches(Ok(String::new()), &headers(Some(""))));
+    }
+
+    #[test]
+    fn admin_groups_default_to_admin_and_superuser() {
+        assert_eq!(admin_groups_from(None), vec!["admin", "superuser"]);
+        assert_eq!(admin_groups_from(Some(" ops , ,root".into())), vec!["ops", "root"]);
+    }
 }
 
 #[cfg(test)]

@@ -52,7 +52,6 @@ The samples differ only in these keys of `[main_services]`.
 | Key | Release sample | Development sample |
 |---|---|---|
 | `website_release_mode` | `true` | `false` |
-| `serena_enabled` | `false` | `true` |
 | `development_auth_backdoor_enabled` | `false` | `true` |
 
 Both samples set `internet_tools_enabled = false` and `web_tor_enabled = true`. Tor therefore
@@ -126,6 +125,7 @@ complete list.
 | `[main_services] tesseract_languages`, `[ai_services] easyocr_languages` and `[operations] change_ocr_languages_cap` | Delete them. Automatic OCR selects the languages of each page. |
 | `[main_services] cassandra_version`, `elasticsearch_version`, `temporal_version`, `temporal_ui_version`, `garage_version` and `garage_image_digest` | Delete them. The compose files hold the versions. |
 | `[main_services] embeddings_cpu_port`, `gpu_fallback` and `agent_compaction_model` | Delete them. |
+| `[main_services] serena_enabled` and `serena_port` | Delete them. The Serena development server is removed. |
 | `[main_services] agent_packs_planner`, `agent_packs_organizer`, `agent_packs_subagent`, `agent_plan_run_budget`, `research_concurrency`, `agent_max_page_tokens` and `agent_completion_reserve_tokens` | Delete them. |
 | `[cluster]` | Delete the section. Give the registry address to [publish-images.sh](../../main_services/ops/publish-images.sh) as its first argument. |
 
@@ -490,8 +490,8 @@ all. Widen `website_bind_ip` only to the single private address the identity pro
 and reach the infrastructure ports through an ssh tunnel.
 
 Everything else in this group is a port key: the datastores, the workflow service and its
-stores, the admin consoles, the processing services, the MCP servers, the two agent services,
-and the symbol-navigation server. [main_services/ops/Readme.md](../../main_services/ops/Readme.md) lists them with their
+stores, the admin consoles, the processing services, the MCP servers and the two agent services.
+[main_services/ops/Readme.md](../../main_services/ops/Readme.md) lists them with their
 defaults and what each answers.
 
 ### Temporal history shards
@@ -545,10 +545,6 @@ the size, and ignores `container_log_max_files`.
 The versions of the workflow service and its UI, the history and visibility stores, and the
 object store are literals of [the main compose file](../../main_services/ops/docker/docker-compose.yaml). The object store is
 pinned by digest as well as tag. No `hoover4.ini` key selects a version.
-
-`serena_enabled` and `serena_port` control the symbol-navigation server, which is development
-tooling and is published on loopback only. The code default of `serena_enabled` is `true`. The
-release sample sets `false`, and the development sample sets `true`.
 
 ## `[dataset_mount.*]`
 
@@ -735,8 +731,8 @@ literally. This index maps each key to the group above that explains it.
 - `agent_max_output_tokens`
 - `llm_streaming`
 - `internet_tools_enabled`
-- `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
-- `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
+- `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`
+- `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `mcp_shared_secret_file`, `chat_control_dir`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
 - `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `manticore_vectors_sql_port`, `manticore_vectors_http_port`, `garage_s3_port`
 - `garage_admin_port`, `redis_port`, `temporal_grpc_port`, `temporal_http_port`

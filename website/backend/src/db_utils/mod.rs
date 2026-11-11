@@ -5,6 +5,7 @@ pub use clickhouse_utils::collectionname_of_dataset;
 pub mod decompose_spans;
 pub mod manticore_match;
 pub mod manticore_utils;
+pub mod storage_identity;
 
 /// The blob store's credentials, from the environment.
 ///
@@ -19,16 +20,15 @@ pub mod manticore_utils;
 /// implementations do not work here.
 pub fn s3_credentials() -> (String, String) {
     (
-        std::env::var("S3_ACCESS_KEY").unwrap_or_else(|_| "hoover4-blobs-rw".to_string()),
-        std::env::var("S3_SECRET_KEY")
-            .unwrap_or_else(|_| "hoover4-garage-blob-secret-key-0".to_string()),
+        storage_identity::value(&storage_identity::S3_ACCESS_KEY),
+        storage_identity::value(&storage_identity::S3_SECRET_KEY),
     )
 }
 
 /// The bucket for everything that belongs to no collection, such as chat artifacts and
 /// the like. A collection's own objects are in [`collection_bucket`].
 pub fn system_bucket() -> String {
-    std::env::var("S3_SYSTEM_BUCKET").unwrap_or_else(|_| "hoover4-system".to_string())
+    storage_identity::value(&storage_identity::SYSTEM_BUCKET)
 }
 
 /// One collection's bucket: its ingested blobs and everything derived from them.
@@ -43,8 +43,7 @@ pub fn system_bucket() -> String {
 /// `main_services/processing/database/s3.py`, and both test suites read
 /// `main_services/processing/tasks/collection_bucket_cases.json`.
 pub fn collection_bucket(collectionname: &str) -> String {
-    let prefix = std::env::var("S3_COLLECTION_BUCKET_PREFIX")
-        .unwrap_or_else(|_| "hoover4-c-".to_string());
+    let prefix = storage_identity::value(&storage_identity::COLLECTION_BUCKET_PREFIX);
     format!("{prefix}{}", collectionname.replace('_', "-"))
 }
 

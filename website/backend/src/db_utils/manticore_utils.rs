@@ -179,12 +179,19 @@ fn decode_search_response<T: DeserializeOwned>(body: &str) -> anyhow::Result<Raw
     Ok(response)
 }
 
+/// The physical table of a logical Manticore table name, with
+/// `HOOVER4_MANTICORE_TABLE_PREFIX` (see [`super::storage_identity`]).
+pub fn physical_table(logical: &str) -> String {
+    super::storage_identity::manticore_table(logical)
+}
+
 /// Build an authenticated request to a Manticore endpoint.
 pub(crate) fn manticore_request(
     client: &reqwest::Client,
     url: impl reqwest::IntoUrl,
 ) -> reqwest::RequestBuilder {
-    client.post(url).basic_auth("manticore", Some("manticore"))
+    use super::storage_identity::{value, MANTICORE_PASSWORD, MANTICORE_USER};
+    client.post(url).basic_auth(value(&MANTICORE_USER), Some(value(&MANTICORE_PASSWORD)))
 }
 
 fn validate_manticore_status(status: reqwest::StatusCode, body: &str) -> anyhow::Result<()> {

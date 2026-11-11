@@ -9,6 +9,7 @@ This directory centralizes database utilities and schema definitions used by the
 - [clickhouse.py](clickhouse.py) - ClickHouse client configuration and migration runner.
 - [manticore.py](manticore.py) - Manticore index maintenance and search configuration utilities.
 - [s3.py](s3.py) - S3 client helpers and bucket naming for the Garage blob store.
+- [storage_identity.py](storage_identity.py) - the database, table and bucket names and the store users of an installation.
 - [chat_todos.py](chat_todos.py) - chat and agent-run todo lists: validation, storage, and the
   questions that decide whether the agent gets nagged. A new completion needs a reason,
   done and replaced items keep their ids, an identical write adds no version, and a bare
@@ -52,6 +53,27 @@ can never succeed.
 
 `chat_messages.usage_json` stores answer citation status and the available tool scope.
 The worker also preserves this metadata in the stored model reply.
+
+## Configure the storage identity.
+
+[tasks/storage_identity.json](../tasks/storage_identity.json) defines each name and store user once, with its
+environment variable and its Compose default. [storage_identity.py](storage_identity.py) reads it.
+The website ([storage_identity.rs](../../../website/backend/src/db_utils/storage_identity.rs)) and the agent services
+([agent_common/storage_identity.py](../../agents/agent_common/agent_common/storage_identity.py)) hold copies, and tests compare them with the file.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `HOOVER4_CLICKHOUSE_DB_PREFIX` | `Hoover4` | The databases `<prefix>_Processing` and `<prefix>_Collection_<name>`. |
+| `HOOVER4_MANTICORE_TABLE_PREFIX` | empty | The prefix of each physical Manticore table. The shard ledger keeps the names without the prefix. |
+| `S3_SYSTEM_BUCKET`, `S3_COLLECTION_BUCKET_PREFIX` | `hoover4-system`, `hoover4-c-` | The system bucket and the collection buckets. |
+| `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` | the Compose development user | The ClickHouse user of the process. |
+| `MANTICORE_USER`, `MANTICORE_PASSWORD` | the Compose development user | The Manticore user of the process. |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | the Compose development key | The Garage key of the process. |
+
+A Compose deployment sets none of the two prefixes, so its names stay as the sections below state.
+A prefix outside its allowed form stops the process at start, and the error names only the variable.
+Use the same values in the workers, the website and the agent services.
+A reader of a stored object still takes the bucket from the stored path.
 
 ## The two databases
 

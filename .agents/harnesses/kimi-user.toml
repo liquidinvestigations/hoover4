@@ -38,11 +38,6 @@ reason = "hoover4 harness"
 
 [[permission.rules]]
 decision = "allow"
-pattern = "mcp__serena__*"
-reason = "hoover4 harness"
-
-[[permission.rules]]
-decision = "allow"
 pattern = "mcp__hoover4-web-search__*"
 reason = "hoover4 harness"
 

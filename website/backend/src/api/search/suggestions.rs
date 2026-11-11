@@ -120,8 +120,14 @@ async fn tables_for(collections: &[String], kind: TableKind) -> anyhow::Result<V
                     tables.push((search_sql::shard_table_name(&shard)?, salt.clone()));
                 }
             }
-            TableKind::Entities => tables.push((format!("{collection}_entities"), salt)),
-            TableKind::Folders => tables.push((format!("{collection}_vfs"), salt)),
+            TableKind::Entities => tables.push((
+                crate::db_utils::manticore_utils::physical_table(&format!("{collection}_entities")),
+                salt,
+            )),
+            TableKind::Folders => tables.push((
+                crate::db_utils::manticore_utils::physical_table(&format!("{collection}_vfs")),
+                salt,
+            )),
         }
     }
     Ok(tables)
