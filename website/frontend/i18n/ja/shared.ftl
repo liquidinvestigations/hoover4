@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = 未解決の質問を指定する
 shared-boards-the-board-was-created = ボードを作成しました。
 shared-boards-added-a-hint = ヒントを追加しました{ $grown }
 shared-boards-rejected = { $value }を却下しました{ $grown }
+shared-boards-was-replaced-by = { $value } は { $value2 } に置き換えられました
 shared-boards-the-board-was-finished-it-is = ボードを終了しました。完了しています。
 shared-boards-the-board-was-finished-it-is-2 = ボードを終了しました。完了していますが、回答が得られていない目標が1件あります。
 shared-boards-the-board-was-finished-it-is-2-2 = ボードを終了しました。完了していますが、回答が得られていない目標が { $n } 件あります。

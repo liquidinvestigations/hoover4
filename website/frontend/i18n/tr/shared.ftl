@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Bir açık soru belirtin ya da bi
 shared-boards-the-board-was-created = Pano oluşturuldu.
 shared-boards-added-a-hint = İpucu eklendi{ $grown }
 shared-boards-rejected = Reddedildi: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value }, { $value2 } ile değiştirildi
 shared-boards-the-board-was-finished-it-is = Pano bitirildi. Tamamlandı.
 shared-boards-the-board-was-finished-it-is-2 = Pano bitirildi. Tamamlandı ve 1 hedef yanıtsız.
 shared-boards-the-board-was-finished-it-is-2-2 = Pano bitirildi. Tamamlandı ve { $n } hedef yanıtsız.

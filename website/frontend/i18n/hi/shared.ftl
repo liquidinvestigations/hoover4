@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = कोई अनसुलझा �
 shared-boards-the-board-was-created = बोर्ड बनाया गया।
 shared-boards-added-a-hint = संकेत जोड़ा{ $grown }
 shared-boards-rejected = अस्वीकृत { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } को { $value2 } से बदल दिया गया
 shared-boards-the-board-was-finished-it-is = बोर्ड समाप्त किया गया। वह पूर्ण है।
 shared-boards-the-board-was-finished-it-is-2 = बोर्ड समाप्त किया गया। वह पूर्ण है, और 1 लक्ष्य का उत्तर नहीं मिला।
 shared-boards-the-board-was-finished-it-is-2-2 = बोर्ड समाप्त किया गया। वह पूर्ण है, और { $n } लक्ष्यों के उत्तर नहीं मिले।

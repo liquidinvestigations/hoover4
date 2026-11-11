@@ -182,6 +182,11 @@ pub struct BoardDefinition {
     pub max_parallel: u8,
     pub internet_tools: bool,
     pub created_ms: i64,
+    /// The language code stored at creation. Every text that the worker writes for the board
+    /// uses it. Empty on a board created before the column held a value: the worker then uses
+    /// the saved languages of the owner.
+    #[serde(default)]
+    pub language: String,
 }
 
 /// One resolved citation of a board fact.
@@ -218,6 +223,11 @@ pub struct BoardFact {
     pub rejected_ms: i64,
     #[serde(default)]
     pub rejected_reason: String,
+    /// The finding that replaced this one (`fact_replaced`), else empty. A replaced finding
+    /// is also `rejected`, and `rejected_by`, `rejected_ms` and `rejected_reason` describe the
+    /// replacement.
+    #[serde(default)]
+    pub replaced_by: String,
     /// For a correction: the facts of the rejected review that it corrects.
     #[serde(default)]
     pub corrects: Vec<String>,
@@ -618,7 +628,7 @@ mod tests {
         let fact = |id: &str, slug: &str| BoardFact {
             fact_id: id.into(), kind: "sourced".into(), text: String::new(), intent_id: String::new(),
             session_id: String::new(), open_questions: vec![], problems: vec![], rejected: false,
-            rejected_by: String::new(), rejected_ms: 0, rejected_reason: String::new(), corrects: vec![],
+            rejected_by: String::new(), rejected_ms: 0, rejected_reason: String::new(), replaced_by: String::new(), corrects: vec![],
             created_by: String::new(), created_ms: 0, citations: vec![], slug: slug.into(),
             title: String::new(), summary: String::new(),
         };
@@ -626,7 +636,7 @@ mod tests {
             board: BoardDefinition {
                 board_id: "b".into(), owner: "o".into(), title: "t".into(), goal: "g".into(),
                 context: String::new(), collections: vec![], llm_model: String::new(), max_parallel: 1,
-                internet_tools: false, created_ms: 0,
+                internet_tools: false, created_ms: 0, language: String::new(),
             },
             status: "active".into(), explores_used: 0, reasons_done: 0, stall_count: 0,
             review_statement: String::new(), answers_proposed: vec![], answers_accepted: vec![],

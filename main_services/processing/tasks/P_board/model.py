@@ -90,6 +90,11 @@ REVIEW_PROPOSED = "review_proposed"
 #: attempt, or it closed without a result.
 FINAL_ASSESSMENT_ENDED = "final_assessment_ended"
 
+#: An operator replaced the finding of an intent with a new node (`board-replace-fact`). The
+#: subject is the old finding. The payload holds `new_fact_id`, `intent_id`, `kind` and
+#: `reason`. The actor is `repair`.
+FACT_REPLACED = "fact_replaced"
+
 #: A derived row of the event log: one status transition of the board, written by
 #: `board_plan` after its causal event. The fold ignores it. Its id is
 #: `status_changed:<causal event id>:<ordinal>`.

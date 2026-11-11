@@ -114,14 +114,15 @@ def goal_texts(facts) -> dict:
 
 def render_brief(board, facts, citations, hints, intent, collections, steps: int,
                  labels: list | None = None, internet: bool = False,
-                 rejected: dict | None = None) -> str:
+                 rejected: dict | None = None, replaced: dict | None = None) -> str:
     """The user row of an explore turn with `steps` model steps. The facts of the intent's
     `from` list and the background have their full text, and other facts have their label.
     `internet` is the effective web setting of the board. An empty `collections` list gives the
-    brief of a web-only board."""
+    brief of a web-only board. A `replaced` finding is hidden and is not a rejected finding."""
     rejected = rejected or {}
+    replaced = replaced or {}
     rejected_lines = [f"- {f.fact_id}: {clip_fact(strip_labels(f.text))} Rejected because: {rejected[f.fact_id] or 'no reason given'}"
-                      for f in facts if f.fact_id in rejected]
+                      for f in facts if f.fact_id in rejected and f.fact_id not in replaced]
     hint_lines = "\n".join(f"- {h}" for h in reversed(hints)) or "- none"
     sources = ", ".join(intent.from_facts) or "origin"
     brief = f"\n{intent.brief}" if intent.brief else ""
@@ -218,7 +219,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
     other_ids = [f.fact_id for f in live if f.kind not in (m.GOAL, m.SOURCED, m.NOT_FOUND)]
     questions = open_question_keys(folded, facts)
     rejected_lines = [f"- {f.fact_id}: {clip_fact(strip_labels(f.text))} Rejected because: {folded.rejected[f.fact_id] or 'no reason given'}"
-                      for f in facts if f.fact_id in folded.rejected]
+                      for f in facts if f.fact_id in folded.rejected and f.fact_id not in folded.replaced]
     stall_text = ("\nThe board is stalled: the last explores found no new sourced fact. Propose a "
                   "different kind of direction, or answer the goals with a statement of what was "
                   "searched.\n" if stalled else "")

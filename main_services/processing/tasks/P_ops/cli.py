@@ -190,3 +190,166 @@ def request_cancel(op_id: str) -> str:
         return await handle.result()
 
     return asyncio.run(_cancel())
+
+
+# ----------------------------------------------------------------- board repair
+
+#: The reason of a replacement that `board-replace-fact` records in the `fact_replaced` event.
+REPLACE_REASON = "The stored text was not the report of the explore. The report replaces it."
+#: The seconds that `board-replace-fact` waits for the command writer.
+REPLACE_WAIT_SECONDS = 180
+
+
+def replace_request_id(fact_id: str) -> str:
+    """The request id of the replacement of one finding. A second run names the same
+    request, so it writes nothing new."""
+    return f"replace_fact:{fact_id}:1"
+
+
+def pinned_report(owner: str, session_id: str, answer_seq: int) -> dict:
+    """The report version `{name, version}` of a finding: the report of the first conversion
+    row of the session after the answer, else the report that the answer row pinned. Empty
+    when neither names one."""
+    import json
+
+    from database.clickhouse import get_global_client
+    from tasks.P_board import model as m
+
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT seq, role, tool_output, usage_json FROM chat_messages FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} AND seq >= {q:UInt32} "
+            "AND ((role = 'tool' AND tool_name = {t:String}) OR (role = 'assistant' AND seq = {q:UInt32})) "
+            "ORDER BY seq",
+            parameters={"u": owner, "s": session_id, "q": int(answer_seq), "t": m.SUBMIT_FACT_TOOL},
+        ).result_rows
+
+    def report_of(text: str, key: str = "report") -> dict:
+        try:
+            value = json.loads(text or "{}").get(key)
+        except (ValueError, AttributeError):
+            return {}
+        ok = (isinstance(value, dict) and isinstance(value.get("name"), str)
+              and isinstance(value.get("version"), int) and value["version"] > 0)
+        return {"name": value["name"], "version": value["version"]} if ok else {}
+
+    for _seq, role, tool_output, _usage in rows:
+        if role == "tool" and report_of(tool_output):
+            return report_of(tool_output)
+    for _seq, role, _output, usage_json in rows:
+        if role == "assistant" and report_of(usage_json):
+            return report_of(usage_json)
+    return {}
+
+
+def classify_report(board, intent, version) -> dict:
+    """The small call of `convert_explore_report` for a report version: the kind, the open
+    questions and the slug in the board language. The second attempt turns off the
+    reasoning phase. When both attempts fail, the values of the code
+    (`conversion.fallback_args`). Each call is an `llm_call_events` row of kind
+    `board_convert`."""
+    import time
+
+    from tasks.llm_endpoints import chat_model, endpoint as llm_endpoint
+    from tasks.P_agent import summarize
+    from tasks.P_agent.model_timeouts import TIMEOUTS
+    from tasks.P_board import activities as act
+    from tasks.P_board import conversion
+
+    model = chat_model()
+    language = act.board_language(board)
+    error = ""
+    for attempt in range(conversion.CONVERT_ATTEMPTS):
+        body = conversion.request_body(model, act._task_text(intent), version.name, version.content,
+                                       version.citations, attempt == 0, language)
+        started = time.monotonic()
+        try:
+            response = summarize.post_or_raise(
+                llm_endpoint(), body,
+                timeout=(act.CONVERT_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
+        except summarize.TransportFailure as exc:
+            error = str(exc)
+            act._record_llm_call(board.owner, board.board_id, model, {},
+                                 int((time.monotonic() - started) * 1000), False, error, 0,
+                                 kind="board_convert")
+            continue
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if response.status_code >= 400:
+            error = f"the request was refused: HTTP {response.status_code}: {response.text[:200]}"
+            act._record_llm_call(board.owner, board.board_id, model, {}, latency_ms, False, error, 0,
+                                 kind="board_convert")
+            continue
+        reply = response.json()
+        usage = (reply.get("usage") or {}) if isinstance(reply, dict) else {}
+        try:
+            args = conversion.parse_reply(reply)
+        except conversion.MalformedConversion as exc:
+            error = f"the reply is malformed: {exc}"
+            act._record_llm_call(board.owner, board.board_id, model, usage, latency_ms, False, error,
+                                 len(response.text), kind="board_convert")
+            continue
+        act._record_llm_call(board.owner, board.board_id, model, usage, latency_ms, True, "",
+                             len(response.text), kind="board_convert")
+        return args
+    return conversion.fallback_args(version.content, version.citations, error)
+
+
+def board_replace_fact(board_id: str, fact_id: str, reason: str = REPLACE_REASON) -> dict:
+    """Submit the `replace_fact` command that replaces finding `fact_id` with its pinned
+    report, and return `{"request_id", "state", "fact_id", "error"}`.
+
+    A run whose request exists already sends no model call and submits nothing: it returns
+    the state of that request. Otherwise the run checks the finding as the command writer
+    does, reads the pinned report version, runs the small call, and submits the command.
+    The dispatcher starts the command writer of the board on its next pass, and this
+    function waits up to `REPLACE_WAIT_SECONDS` for the receipt.
+    """
+    import click
+
+    from database import board_commands as bc
+    from database import boards
+    from database import chat_workspace as store
+    from tasks.P_board import activities as act
+    from tasks.P_board import commands as cmd
+    from tasks.P_board import conversion
+
+    request_id = replace_request_id(fact_id)
+    board = boards.read_board(board_id)
+    if board is None or board.is_deleted:
+        raise click.ClickException(f"The board {board_id} does not exist or is dropped.")
+    if not any(i.request_id == request_id for i in bc.read_inputs(board_id)):
+        _events, facts, folded = act._read(board)
+        fact = next((f for f in facts if f.fact_id == fact_id), None)
+        if fact is None:
+            raise click.ClickException(f"The board has no fact {fact_id}.")
+        if fact_id in folded.rejected:
+            raise click.ClickException(f"The fact {fact_id} is rejected or replaced already.")
+        intent = folded.intents.get(fact.intent_id) if fact.intent_id else None
+        if intent is None or intent.fact_id != fact_id:
+            raise click.ClickException(f"The fact {fact_id} is not the finding of its intent.")
+        report = pinned_report(board.owner, fact.session_id, fact.answer_seq)
+        version = (store.read_version(board.owner, fact.session_id, report["name"], report["version"])
+                   if report else None)
+        if version is None:
+            raise click.ClickException(f"The session {fact.session_id} has no pinned report for {fact_id}.")
+        args = classify_report(board, intent, version)
+        kind, citations, problems = conversion.resolve(version.content, args["kind"], version.citations)
+        if args.get("model_error"):
+            problems.insert(0, "the kind and the open questions came from the code, the model call "
+                               f"failed: {args['model_error']}")
+        new_fact = {"kind": kind, "claimed_kind": args["kind"], "text": version.content,
+                    "session_id": fact.session_id, "answer_seq": fact.answer_seq,
+                    "slug": args["slug"][:conversion.MAX_SLUG_CHARS],
+                    "open_questions": args["open_questions"], "problems": problems, "report": report}
+        bc.submit(board_id, request_id, cmd.REPLACE_FACT, cmd.REPAIR_ACTOR,
+                  {"fact_id": fact_id, "reason": reason, "fact": new_fact, "citations": citations})
+    deadline = time.monotonic() + REPLACE_WAIT_SECONDS
+    while True:
+        receipt = bc.read_receipts(board_id).get(request_id)
+        if receipt is not None and receipt.state in (bc.COMMITTED, bc.REJECTED):
+            return {"request_id": request_id, "state": receipt.state,
+                    "fact_id": str((receipt.result or {}).get("fact_id") or ""), "error": receipt.error}
+        if time.monotonic() >= deadline:
+            return {"request_id": request_id, "state": receipt.state if receipt else "pending",
+                    "fact_id": "", "error": ""}
+        time.sleep(TAIL_INTERVAL_SECONDS)

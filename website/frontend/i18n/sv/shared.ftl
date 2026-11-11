@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Ange en öppen fråga eller skriv
 shared-boards-the-board-was-created = Utredningstavlan skapades.
 shared-boards-added-a-hint = Lade till en ledtråd{ $grown }
 shared-boards-rejected = Avvisade { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } ersattes av { $value2 }
 shared-boards-the-board-was-finished-it-is = Utredningstavlan avslutades. Den är komplett.
 shared-boards-the-board-was-finished-it-is-2 = Utredningstavlan avslutades. Den är komplett, och 1 mål är obesvarat.
 shared-boards-the-board-was-finished-it-is-2-2 = Utredningstavlan avslutades. Den är komplett, och { $n } mål är obesvarade.

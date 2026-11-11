@@ -123,8 +123,12 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
     let mut depth: HashMap<String, u32> = HashMap::new();
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
-    let fact_of_intent: HashMap<&str, &BoardFact> =
-        input.facts.iter().filter(|f| !f.intent_id.is_empty()).map(|f| (f.intent_id.as_str(), f)).collect();
+    // An intent has one finding, and a replaced finding (`replaced_by`) beside its
+    // replacement. Both show, the replaced one dimmed.
+    let mut facts_of_intent: HashMap<&str, Vec<&BoardFact>> = HashMap::new();
+    for fact in input.facts.iter().filter(|f| !f.intent_id.is_empty()) {
+        facts_of_intent.entry(fact.intent_id.as_str()).or_default().push(fact);
+    }
     let mut goals: Vec<&BoardFact> = input.facts.iter().filter(|f| f.kind == "goal").collect();
     goals.sort_by_key(|f| (f.fact_id != "goal", f.fact_id.len(), f.fact_id.clone()));
     let goal_ids: HashSet<&str> = goals.iter().map(|g| g.fact_id.as_str()).collect();
@@ -178,7 +182,7 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
                         edges.push(GraphEdge { src: from.clone(), dst: intent.intent_id.clone(), kind: EdgeKind::Flow });
                     }
                 }
-                if let Some(fact) = fact_of_intent.get(intent.intent_id.as_str()) {
+                for fact in facts_of_intent.get(intent.intent_id.as_str()).into_iter().flatten() {
                     depth.insert(fact.fact_id.clone(), d + 1);
                     nodes.push(fact_node(fact, d + 1));
                     edges.push(GraphEdge { src: intent.intent_id.clone(), dst: fact.fact_id.clone(), kind: EdgeKind::Flow });
@@ -622,6 +626,7 @@ mod tests {
             rejected_by: String::new(),
             rejected_ms: 0,
             rejected_reason: String::new(),
+            replaced_by: String::new(),
             corrects: vec![],
             created_by: String::new(),
             created_ms: 0,
@@ -681,6 +686,22 @@ mod tests {
         assert_eq!((depth["goal"], depth["goal-2"]), (5, 5));
         // origin to i1.1, i1.1 to f1.1, f1.1 to i2.1, i2.1 to f2.1. The goal gets no edge.
         assert_eq!(graph.edges.len(), 4);
+    }
+
+    #[test]
+    fn a_replaced_finding_shows_dimmed_beside_its_replacement() {
+        let mut old = fact("fact-placeholder", "inferred", "i1.1");
+        old.rejected = true;
+        old.replaced_by = "finding-report".into();
+        let graph = build_graph(&input(
+            vec![fact("origin", "origin", ""), fact("goal", "goal", ""), old, fact("finding-report", "sourced", "i1.1")],
+            vec![intent("i1.1", &["origin"], 1)],
+        ));
+        let node = |id: &str| graph.nodes.iter().find(|n| n.id == id).unwrap();
+        assert!(node("fact-placeholder").dimmed && node("fact-placeholder").rejected);
+        assert!(!node("finding-report").dimmed);
+        assert_eq!((node("fact-placeholder").depth, node("finding-report").depth), (2, 2));
+        assert_eq!(graph.edges.iter().filter(|e| e.src == "i1.1").count(), 2);
     }
 
     #[test]

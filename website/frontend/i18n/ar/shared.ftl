@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = سمِّ سؤالًا مفتوح�
 shared-boards-the-board-was-created = أُنشئت اللوحة.
 shared-boards-added-a-hint = أُضيف تلميح{ $grown }
 shared-boards-rejected = رُفض { $value }{ $grown }
+shared-boards-was-replaced-by = استُبدل { $value } بـ{ $value2 }
 shared-boards-the-board-was-finished-it-is = أُنهيت اللوحة. وهي مكتملة.
 shared-boards-the-board-was-finished-it-is-2 = أُنهيت اللوحة. وهي مكتملة، وهناك هدف واحد بلا إجابة.
 shared-boards-the-board-was-finished-it-is-2-2 = أُنهيت اللوحة. وهي مكتملة، وهناك { $n } أهداف بلا إجابة.

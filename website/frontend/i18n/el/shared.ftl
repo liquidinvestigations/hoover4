@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Ορίστε ένα ανοιχτ�
 shared-boards-the-board-was-created = Ο ερευνητικός πίνακας δημιουργήθηκε.
 shared-boards-added-a-hint = Προστέθηκε υπόδειξη{ $grown }
 shared-boards-rejected = Απορρίφθηκε: { $value }{ $grown }
+shared-boards-was-replaced-by = Το { $value } αντικαταστάθηκε από το { $value2 }
 shared-boards-the-board-was-finished-it-is = Ο ερευνητικός πίνακας ολοκληρώθηκε. Είναι πλήρης.
 shared-boards-the-board-was-finished-it-is-2 = Ο ερευνητικός πίνακας ολοκληρώθηκε. Είναι πλήρης και 1 στόχος δεν έχει απαντηθεί.
 shared-boards-the-board-was-finished-it-is-2-2 = Ο ερευνητικός πίνακας ολοκληρώθηκε. Είναι πλήρης και { $n } στόχοι δεν έχουν απαντηθεί.

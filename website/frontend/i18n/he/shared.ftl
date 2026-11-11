@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = יש לציין שאלה פתוח
 shared-boards-the-board-was-created = הלוח נוצר.
 shared-boards-added-a-hint = נוסף רמז{ $grown }
 shared-boards-rejected = נדחה: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } הוחלף ב-{ $value2 }
 shared-boards-the-board-was-finished-it-is = הלוח הושלם. הוא שלם.
 shared-boards-the-board-was-finished-it-is-2 = הלוח הושלם. הוא שלם, ויעד אחד נותר ללא מענה.
 shared-boards-the-board-was-finished-it-is-2-2 = הלוח הושלם. הוא שלם, ו-{ $n } יעדים נותרו ללא מענה.

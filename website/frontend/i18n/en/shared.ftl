@@ -168,6 +168,7 @@ shared-boards-name-an-open-question-or-write = Name an open question or write a 
 shared-boards-the-board-was-created = The board was created.
 shared-boards-added-a-hint = Added a hint{ $grown }
 shared-boards-rejected = Rejected { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } was replaced by { $value2 }
 shared-boards-the-board-was-finished-it-is = The board was finished. It is complete.
 shared-boards-the-board-was-finished-it-is-2 = The board was finished. It is complete, and 1 goal is not answered.
 shared-boards-the-board-was-finished-it-is-2-2 = The board was finished. It is complete, and { $n } goals are not answered.

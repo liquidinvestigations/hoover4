@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = Benennen Sie eine offene Frage od
 shared-boards-the-board-was-created = Das Board wurde erstellt.
 shared-boards-added-a-hint = Hinweis hinzugefügt{ $grown }
 shared-boards-rejected = Abgelehnt: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } wurde durch { $value2 } ersetzt
 shared-boards-the-board-was-finished-it-is = Das Board wurde beendet. Es ist vollständig.
 shared-boards-the-board-was-finished-it-is-2 = Das Board wurde beendet. Es ist vollständig, und 1 Ziel ist nicht beantwortet.
 shared-boards-the-board-was-finished-it-is-2-2 = Das Board wurde beendet. Es ist vollständig, und { $n } Ziele sind nicht beantwortet.

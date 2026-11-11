@@ -1,7 +1,7 @@
-//! The agent language control of the chat composer: the flag and the code of the language
-//! that the agent answers in. A click opens the settings page in a new tab. When the page
-//! gets the focus again, the control reads the settings again, so a change in that tab
-//! shows here and applies to the next message.
+//! The agent language control of the chat composer and the board creation form: the flag and
+//! the code of the language that the agent answers in. A click opens the settings page in a
+//! new tab. When the page gets the focus again, the control reads the settings again, so a
+//! change in that tab shows here and applies to the next message or the new board.
 
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::md_navigation_icons::MdArrowDropDown};

@@ -8,6 +8,11 @@
 //! so Create board stays disabled while the group shows the source error. The collections
 //! cannot change after creation, and the internet tools can when the deployment enables them
 //! (the board settings popup).
+//!
+//! The agent language control beside Create board shows the language that the board gets. The
+//! server stores the owner's agent language on the board at creation, and the board writes
+//! every text in it. A click opens the language settings in a new tab. The board settings
+//! popup shows the language read-only.
 
 use common::board_types::{BoardCreateRequest, MAX_GOALS};
 use dioxus::prelude::*;
@@ -16,6 +21,7 @@ use dioxus_free_icons::{icons::md_navigation_icons::MdArrowBack, Icon};
 use crate::api::board_api::{board_command_status, create_board_command, new_request_id};
 use crate::api::error_util::user_facing_message;
 use crate::api::storage_api::collections_overview;
+use crate::components::chat_components::agent_language::AgentLanguageControl;
 use crate::components::admin_components::{ErrorBar, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT, LABEL, LINK, SUBHEADING};
 use crate::routes::Route;
 use crate::tr;
@@ -248,7 +254,7 @@ pub fn AiBoardCreatePage() -> Element {
                             p { class: "x-board-source-error", style: SOURCE_ERROR, "{text}" }
                         }
                     }
-                    div {
+                    div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
                         button {
                             class: "x-board-create",
                             style: BTN_PRIMARY,
@@ -277,6 +283,11 @@ pub fn AiBoardCreatePage() -> Element {
                             },
                             if busy() { {tr!("chat-board-create-creating-board")} } else { {tr!("chat-board-create-create-board")} }
                         }
+                        span { style: "flex: 1;" }
+                        span { class: "x-board-language-label", style: "font-size: var(--x-text-detail); color: var(--x-ink);",
+                            {tr!("chat-board-create-board-language")}
+                        }
+                        AgentLanguageControl {}
                     }
                 }
             }

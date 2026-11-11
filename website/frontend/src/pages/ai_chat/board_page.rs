@@ -64,6 +64,8 @@ use crate::components::search_components::search_panel_left_view::SearchResultsS
 use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::pages::admin::llm_reports::format_utc_ms;
 use crate::routes::Route;
+use crate::i18n::flag_src;
+use crate::pages::settings_page::language_name;
 use crate::tr;
 
 /// Seconds between two reads while the board is active or an explore runs.
@@ -576,6 +578,7 @@ fn BoardSettings(
     // A board without collections has the web as its only source.
     let web_only = snap.board.collections.is_empty();
     let collections = collections_text(&snap.board.collections);
+    let language = snap.board.language.clone();
     let pause_label = match snap.status.as_str() {
         "active" => Some((tr!("ai-chat-board-pause-the-board"), true)),
         "paused" => Some((tr!("ai-chat-board-resume-the-board"), false)),
@@ -620,6 +623,17 @@ fn BoardSettings(
                 div { style: SUBHEADING, {tr!("ai-chat-board-collections")} }
                 p { style: "margin: 4px 0;", "{collections}" }
                 p { style: HELP_TEXT, {tr!("ai-chat-board-the-collections-are-fixed-when")} }
+                div { style: SUBHEADING, {tr!("ai-chat-board-language")} }
+                if language.is_empty() {
+                    p { class: "x-board-language", style: "margin: 4px 0;", {tr!("ai-chat-board-the-agent-language-of-the-owner")} }
+                } else {
+                    p { class: "x-board-language", "data-board-language": "{language}",
+                        style: "margin: 4px 0; display: flex; gap: 6px; align-items: center;",
+                        img { src: flag_src(&language), alt: "", width: "18", height: "18", style: "border-radius: 50%;" }
+                        "{language_name(&language)}"
+                    }
+                }
+                p { style: HELP_TEXT, {tr!("ai-chat-board-the-language-is-fixed-when")} }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px;",
                     if let Some((label, paused)) = pause_label {
                         button {
@@ -983,7 +997,7 @@ fn BoardOverview(
 const EVENT_ROWS: usize = 200;
 
 /// The actors that are the system: their name shows in italic, and a person's in bold.
-const SYSTEM_ACTORS: [&str; 4] = ["dispatcher", "reason", "explore", "worker"];
+const SYSTEM_ACTORS: [&str; 5] = ["dispatcher", "reason", "explore", "worker", "repair"];
 
 /// The name of an actor on the page. The stored actor `reason` is the assessment step.
 fn actor_label(actor: &str) -> &str {
@@ -1045,7 +1059,8 @@ pub(crate) fn BoardStatistics(snap: BoardSnapshot) -> Element {
     let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     let intents = |state: &str| snap.intents.iter().filter(|i| i.state == state).count();
     let facts = |kind: &str| snap.facts.iter().filter(|f| f.kind == kind && !f.rejected).count();
-    let rejected = snap.facts.iter().filter(|f| f.rejected).count();
+    // A replaced finding is not counted as rejected: the finding that replaced it counts.
+    let rejected = snap.facts.iter().filter(|f| f.rejected && f.replaced_by.is_empty()).count();
     let intent_line = count_line(&[
         (intents("concluded"), "concluded", true), (intents("running"), "running", true),
         (intents("open"), "open", true), (intents("question"), "with a question", false),
@@ -1307,7 +1322,12 @@ fn FactDetail(
             if fact.rejected {
                 div { class: "x-board-fact-rejection", style: "border-left: 3px solid; border-left-color: var(--x-danger); padding: 4px 10px; margin: 6px 0;",
                     div { style: "color: var(--x-danger); font-weight: 500;",
-                        if fact.rejected_ms > 0 {
+                        if !fact.replaced_by.is_empty() {
+                            NodeText {
+                                text: tr!("ai-chat-board-this-finding-was-replaced-by", new: snap.slug_of(&fact.replaced_by), date: format_utc_ms(fact.rejected_ms)),
+                                links: links.clone(),
+                            }
+                        } else if fact.rejected_ms > 0 {
                             {tr!("ai-chat-board-rejected-this-finding-on-the", rejected_by: rejected_by.to_string(), format_utc_ms_fact_rejected_ms: (format_utc_ms(fact.rejected_ms)).to_string())}
                         } else {
                             {tr!("ai-chat-board-rejected-this-finding-the-board", rejected_by: rejected_by.to_string())}
@@ -1817,6 +1837,7 @@ mod tests {
     #[test]
     fn a_system_actor_is_italic_and_a_person_bold() {
         assert!(actor_style("dispatcher").contains("italic"));
+        assert!(actor_style("repair").contains("italic"));
         assert!(actor_style("admin").contains("600"));
         assert_eq!(actor_label("reason"), "assessment");
     }
@@ -1908,7 +1929,7 @@ mod tests {
         let fact = |id: &str, kind: &str, session: &str| BoardFact {
             fact_id: id.into(), kind: kind.into(), text: String::new(), intent_id: String::new(),
             session_id: session.into(), open_questions: vec![], problems: vec![], rejected: false,
-            rejected_by: String::new(), rejected_ms: 0, rejected_reason: String::new(), corrects: vec![],
+            rejected_by: String::new(), rejected_ms: 0, rejected_reason: String::new(), replaced_by: String::new(), corrects: vec![],
             created_by: String::new(), created_ms: 0, citations: vec![], slug: format!("slug-{id}"),
             title: String::new(), summary: String::new(),
         };
@@ -1916,7 +1937,7 @@ mod tests {
             board: common::board_types::BoardDefinition {
                 board_id: "b".into(), owner: "o".into(), title: "t".into(), goal: "g".into(),
                 context: String::new(), collections: vec![], llm_model: String::new(), max_parallel: 1,
-                internet_tools: false, created_ms: 0,
+                internet_tools: false, created_ms: 0, language: String::new(),
             },
             status: "active".into(), explores_used: 0, reasons_done: 0, stall_count: 0,
             review_statement: String::new(), answers_proposed: vec![], answers_accepted: vec![],

@@ -61,7 +61,7 @@ Under **Agent language**, select the language that the AI agent answers in.
 **Same as the interface** uses the interface language.
 Each choice is saved at once. The agent uses a new agent language from your next message.
 In a chat, the button with the flag beside **Send** shows the agent language. Select it to open your language settings in a new tab.
-A board uses the agent language of its owner. A board whose owner saved no language uses the language of its creation.
+A board keeps the agent language that you had when you created it. A later change of your settings does not change the board.
 An AI model produced the translations. Documents, file names and earlier answers keep their own language.
 Arabic and Hebrew show in the left-to-right layout.
 
@@ -978,13 +978,14 @@ Select a card to open the board.
 4. Select the collections to search. **Collections** selects or clears every collection. A board without collections searches the web only and needs **Internet tools**.
 5. Enter initial hints when you have useful leads.
 6. Set **Internet tools** when the investigation must compare documents with online sources.
-7. Select **Create board**.
+7. Check the agent language beside **Create board**. The board writes its findings, titles, summaries and assessments in this language. To change it, select the flag. Your language settings open in a new tab.
+8. Select **Create board**.
 
-<a href="img/board-create.png"><img src="img/board-create.png" alt="Board creation form with goals, background context, hints, collections, and Internet tools" width="100%"></a>
+<a href="img/board-create.png"><img src="img/board-create.png" alt="Board creation form with goals, background context, hints, collections, Internet tools and the board language" width="100%"></a>
 
-<img src="crops/chat-new-new-board-and-1-more.png" align="right" width="40%" alt="Red frames mark New board, Internet tools and Create board.">
+<img src="crops/chat-new-new-board-and-1-more.png" align="right" width="40%" alt="Red frames mark New board, Collections, Internet tools and Create board.">
 
-The collections stay fixed after creation.
+The collections and the language stay fixed after creation.
 Write goals that you can review separately.
 For example, separate a question about dates from a question about competing explanations.
 A hint supplies a lead. A goal defines an answer that the board must provide.
@@ -1160,11 +1161,11 @@ A newer assessment can invalidate a decision on an older proposal.
 ### Change board settings.
 
 Select **Settings** above the graph to open the board settings.
-The dialog lists the fixed collections and available controls.
+The dialog lists the fixed collections, the fixed board language and the available controls.
 **Internet tools** changes access for later explores. Running explores keep their earlier setting.
 Use **Pause the board** or **Resume the board** when the current state offers that action.
 
-<a href="img/board-settings.png"><img src="img/board-settings.png" alt="Board settings with Internet tools, fixed collections, Close, and Drop the board controls" width="100%"></a>
+<a href="img/board-settings.png"><img src="img/board-settings.png" alt="Board settings with Internet tools, fixed collections, the fixed board language, Close, and Drop the board controls" width="100%"></a>
 
 <br clear="right">
 

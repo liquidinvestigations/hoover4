@@ -234,7 +234,30 @@ sequenceDiagram
   Its start commands that wait take board model slots and explores of its budget.
 - **Producers.** A person request id has the prefix `web:`. A worker request id names its
   logical step, for example `reason_started:{n}`, `explore_started:{intent}:{attempt}` or
-  `final_ended:final-{budget}`. A worker writes no input for a dropped board.
+  `final_ended:final-{budget}`. A worker writes no input for a dropped board. The operator
+  repair `main.py board-replace-fact` writes `replace_fact:{fact}:1` with the actor `repair`.
+
+### Replacement of a finding
+
+`main.py board-replace-fact --board <id> --fact <id>` replaces a finding whose stored text is
+not the report of its explore, such as a finding that an older conversion stored as
+"placeholder". It reads the report version that the explore pinned: the report of the first
+conversion row of the session after the answer, else the report of the answer row. It runs the
+small request of the explore end (`P_ops/cli.classify_report`), resolves the handles of the
+report, and submits `replace_fact`. A run whose request exists already makes no model request
+and submits nothing.
+
+The writer refuses a fact that does not exist, that is rejected or replaced already, or that is
+not the finding of its intent. It stores the new finding under a new id from
+`Allocator.claim`, in the prefix and words of the board language, with its citations and its
+label row, and writes one `fact_replaced` event: the subject is the old id, and the payload
+names `new_fact_id`, `intent_id`, `kind` and `reason`. The old node keeps its row. The fold
+adds it to the rejected facts and records it in `replaced`, and the new finding becomes the
+fact of the intent with the conclusion sequence, the goals and the review state of the old
+one. The replacement is not a budget event, and the budget and the explore steps count only
+the rejections of a person. It gives no revision allowance. The rejected-findings block of a
+later prompt leaves the old finding out. The page shows the old node dimmed, as a rejected
+finding, and the event line "<old> was replaced by <new>" with the reason.
 
 ## Node identity
 
@@ -527,7 +550,7 @@ writer decides it. A refused command shows its reason above the board.
 
 | Action | Command and effect |
 |---|---|
-| Create | `create_board`. The website writes the definition, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. Every readable collection is selected at first, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
+| Create | `create_board`. The website writes the definition with the agent language of the owner (`boards.language`), which the form shows beside Create board and the settings popup shows read-only, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. Every readable collection is selected at first, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
 | Settings | `set_internet_tools`. The website writes a new version of the `boards` row, and the command writes `settings_changed`. Explores that run keep the setting they started with. The website refuses to turn off the internet tools of a board without collections, and it then writes no row and no command. |
 | Add hint | `add_hint` writes `hint_added`. The next assessment reads it. It also opens intents that asked a question. |
 | Add goal | `add_goal` writes the goal fact in the first free slot and `goal_added`, at any status but dropped, up to 6 goals. The next assessment reads the goal. A board in review or complete becomes active. |

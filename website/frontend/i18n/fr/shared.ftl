@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Nommez une question ouverte ou r�
 shared-boards-the-board-was-created = Le tableau d’enquête a été créé.
 shared-boards-added-a-hint = Indice ajouté{ $grown }
 shared-boards-rejected = Rejeté : { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } a été remplacé par { $value2 }
 shared-boards-the-board-was-finished-it-is = Le tableau d’enquête est terminé. Il est complet.
 shared-boards-the-board-was-finished-it-is-2 = Le tableau d’enquête est terminé. Il est complet, et 1 objectif n’a pas de réponse.
 shared-boards-the-board-was-finished-it-is-2-2 = Le tableau d’enquête est terminé. Il est complet, et { $n } objectifs n’ont pas de réponse.

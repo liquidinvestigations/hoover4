@@ -793,3 +793,81 @@ def test_a_recovered_question_key_binds_once(store):
     store.submit("b1", "q:1", cmd.EXPLORE_QUESTION, OWNER, {"fact_id": fact_id, "index": 1})
     store.run_commands("b1")
     assert receipt(store, "q:1").state == bc.REJECTED
+
+
+# ------------------------------------------------------------------------ replacement
+
+
+def _replace(store, old, text="# Rapport complet\n\nLe contrat date de 2001 [D1].", slug="contrat 2001",
+             request_id=None, board_id="b1"):
+    request_id = request_id or f"replace_fact:{old}:1"
+    store.submit(board_id, request_id, cmd.REPLACE_FACT, cmd.REPAIR_ACTOR, {
+        "fact_id": old, "reason": "the text was a placeholder",
+        "fact": {"kind": m.SOURCED, "claimed_kind": m.SOURCED, "text": text, "session_id": "s",
+                 "answer_seq": 7, "slug": slug, "open_questions": ["Qui a signé ?"], "problems": []},
+        "citations": [{"label": "D1", "collection_dataset": "enron", "collectionname": "enron",
+                       "file_hash": "h", "path": "/a", "page_id": 1, "quote": "q", "quote_verified": 1}]})
+    store.run_commands(board_id)
+    return receipt(store, request_id, board_id)
+
+
+def test_a_replacement_moves_the_intent_to_a_new_finding_and_keeps_the_budget(store):
+    slugs(store)
+    create(store)
+    _language(store, "fr")
+    reason(store, 1, [intent("Find the contract", 1, slug="contrat")])
+    old = explore(store, "intention-contrat", fact="placeholder", slug="placeholder")
+    before = folded(store)
+    done = _replace(store, old)
+    assert done.state == bc.COMMITTED
+    new = done.result["fact_id"]
+    assert new == "constat-contrat-2001"
+    after = folded(store)
+    assert after.intents["intention-contrat"].fact_id == new
+    assert after.replaced == {old: new} and old in after.rejected
+    assert (after.max_explores, after.explore_steps) == (before.max_explores, before.explore_steps)
+    assert after.fact_count == before.fact_count and after.person_rejections == 0
+    assert after.concluded_seq[new] == before.concluded_seq[old]
+    row = next(f for f in store.read_facts("b1") if f.fact_id == new)
+    assert (row.text.startswith("# Rapport complet"), row.created_by, row.intent_id) == (
+        True, cmd.REPAIR_ACTOR, "intention-contrat")
+    assert [c.fact_id for c in store.read_citations("b1") if c.fact_id == new] == [new]
+    assert {r.node_id: r.slug for r in store.read_labels(["b1"])}[new] == new
+    [event] = [e for e in store.read_events("b1") if e.event_type == m.FACT_REPLACED]
+    assert (event.subject, event.actor, event.payload["new_fact_id"]) == (old, cmd.REPAIR_ACTOR, new)
+    assert new in visible(store)
+
+
+def test_a_second_replacement_and_a_replacement_of_a_goal_are_refused(store):
+    slugs(store)
+    create(store)
+    reason(store, 1, [intent("Find the contract", 1, slug="contract")])
+    old = explore(store, "intent-contract", fact="placeholder")
+    assert _replace(store, old).state == bc.COMMITTED
+    again = _replace(store, old, request_id="replace_fact:again")
+    assert again.state == bc.REJECTED and "replaced already" in again.error
+    goal = _replace(store, "goal-01", request_id="replace_fact:goal")
+    assert goal.state == bc.REJECTED and "not the finding of its intent" in goal.error
+    missing = _replace(store, "finding-none", request_id="replace_fact:none")
+    assert missing.state == bc.REJECTED
+    retried = _replace(store, old)
+    assert retried.state == bc.COMMITTED, "the same request returns its receipt"
+    assert len([e for e in store.read_events("b1") if e.event_type == m.FACT_REPLACED]) == 1
+
+
+def test_a_replaced_finding_is_not_in_the_rejected_block_of_a_brief_or_an_assessment(store):
+    from tasks.P_board.prompts import render_brief, render_reason
+
+    slugs(store)
+    create(store)
+    reason(store, 1, [intent("Find the contract", 1, slug="contract")])
+    old = explore(store, "intent-contract", fact="placeholder")
+    _replace(store, old)
+    f = folded(store)
+    board = store.read_board("b1")
+    facts = [x for x in store.read_facts("b1") if x.fact_id in visible(store)]
+    target = f.intents["intent-contract"]
+    brief = render_brief(board, facts, [], [], target, ["enron"], 60, [], False, f.rejected, f.replaced)
+    assert "placeholder" not in brief.split("<rejected>")[1].split("</rejected>")[0]
+    prompt = render_reason(board, f, facts, [], False)
+    assert "Rejected because" not in prompt

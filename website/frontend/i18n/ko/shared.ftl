@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = 미해결 질문을 지정하거�
 shared-boards-the-board-was-created = 보드를 만들었습니다.
 shared-boards-added-a-hint = 힌트를 추가했습니다{ $grown }
 shared-boards-rejected = { $value }을(를) 거부했습니다{ $grown }
+shared-boards-was-replaced-by = { $value }이(가) { $value2 }(으)로 대체되었습니다
 shared-boards-the-board-was-finished-it-is = 보드를 마쳤습니다. 완료된 상태입니다.
 shared-boards-the-board-was-finished-it-is-2 = 보드를 마쳤습니다. 완료된 상태이며, 답하지 못한 목표가 1개 있습니다.
 shared-boards-the-board-was-finished-it-is-2-2 = 보드를 마쳤습니다. 완료된 상태이며, 답하지 못한 목표가 { $n }개 있습니다.

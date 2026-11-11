@@ -12,6 +12,7 @@
 | Collections | Select every listed collection, or clear them all. | It is checked when every collection is selected, indeterminate when some are, and clear when none are. A click on a checked box clears every collection. A click on a clear or indeterminate box selects every collection. |
 | Collection checkbox | Select or clear one collection. | Every readable collection is selected at first. The boxes stay active when none is selected. |
 | Internet tools | Let the explores search the web and read web pages. | It shows only when `internet_tools_enabled` is true, and it is on at first. |
+| Agent language | Show the agent language that the board gets, and open the language settings in a new tab. | It is beside Create board. The control reads the settings again when the page gets the focus. The board keeps the language of its creation. |
 | Create board | Create the board and open it. | It is disabled while no source is selected. The Sources group then shows "Select a collection or turn on internet tools.", or "Select at least one collection." when the deployment has no internet tools. |
 
 ## Controls of the board page
@@ -22,7 +23,7 @@
 | Pan | Move the graph view with a press and a drag on the pane. | A drag of at most 4 pixels stays a click on the node under the pointer. |
 | Zoom out / Zoom in | Show the graph at 50, 75, 100 or 125 %. | The address holds the zoom. The pane keeps its middle graph point. |
 | Show the board overview | Show the board overview in the detail pane. | It is over the top-right corner of the graph pane and shows only while a node is selected. |
-| Settings | Open the settings popup: internet tools, pause or resume, drop. | The collections are fixed at creation. Hide internet tools when `internet_tools_enabled` is false. The internet tools checkbox of a board without collections is disabled, with the reason "A board without collections needs internet tools.". The popup and the statistics show "None" for a board without collections. |
+| Settings | Open the settings popup: internet tools, pause or resume, drop. | The collections and the language are fixed at creation, and the popup shows them read-only. Hide internet tools when `internet_tools_enabled` is false. The internet tools checkbox of a board without collections is disabled, with the reason "A board without collections needs internet tools.". The popup and the statistics show "None" for a board without collections. |
 | Open the explore chat | Open the chat of the selected intent or finding. | It is at the right of the detail pane title, for a node with a chat. |
 | Citation card | Open the explore chat of the finding in a new tab with the document or the web page selected. | The card opens the document at the words of its quote. |
 | Reject finding / Reject correction | Reject the selected finding or correction with a reason. | The background context and the goals cannot be rejected. |
@@ -47,4 +48,5 @@ A button of a person action stays disabled until the board's command writer deci
 A board that used 300 explores shows a notice with a link to the create form. Its answer decisions stay available.
 A proposed answer whose findings are all not-found findings says that the records do not answer the goal.
 A finding that arrives while the board waits for review or after its completion shows `unreviewed` on its card and in its detail pane. It changes no answer and does not reopen the board. An acceptance marks as reviewed only the unreviewed findings that the page showed when the person decided. An accepted answer marks only the findings of its goal. A finding that arrives after the page loaded stays unreviewed.
+A replaced finding shows dimmed, as a rejected finding does. Its pane names the finding that replaced it and the reason, and its event line reads "<old> was replaced by <new>".
 A rejection with a correction allows the board one revised intent for the goal of that rejection, with an objective that repeats an earlier one. An unchanged repeat with the same words stays refused, and an intent of another goal cannot use the correction.

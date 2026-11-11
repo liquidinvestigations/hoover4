@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Indica una domanda aperta o scriv
 shared-boards-the-board-was-created = La bacheca è stata creata.
 shared-boards-added-a-hint = Suggerimento aggiunto{ $grown }
 shared-boards-rejected = Rifiutato: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } è stato sostituito da { $value2 }
 shared-boards-the-board-was-finished-it-is = La bacheca è stata conclusa. È completa.
 shared-boards-the-board-was-finished-it-is-2 = La bacheca è stata conclusa. È completa, ma 1 obiettivo non ha risposta.
 shared-boards-the-board-was-finished-it-is-2-2 = La bacheca è stata conclusa. È completa, ma { $n } obiettivi non hanno risposta.

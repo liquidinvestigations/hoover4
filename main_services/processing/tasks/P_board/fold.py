@@ -77,6 +77,10 @@ The rules:
   and so does a move back to active by an event without `review_semantics`. A move back to
   active by a newer event covers nothing. An unreviewed finding changes no accepted answer
   and no status.
+* **Replacement.** A `fact_replaced` event adds the old finding to the rejected facts and
+  makes the new finding the fact of the intent. It keeps the conclusion sequence, the goals
+  and the unreviewed state of the old finding. It is not a budget event: the budget and the
+  explore steps count only the rejections of a person. It gives no revision allowance.
 * **Question bindings.** An assessment intent can name open questions by key
   (`<fact id>#<1-based index>`). A key is bound while an intent that is not failed holds it.
   The fold keeps the first holder in event order. A failed intent releases its keys.
@@ -159,8 +163,11 @@ class Folded:
     invalid_reasons: int = 0
     checkpoint: dict = field(default_factory=dict)
     hints: list[str] = field(default_factory=list)
-    #: Rejected fact id to the reason that the person gave.
+    #: Rejected fact id to the reason that the person gave. A replaced finding is here too,
+    #: with the reason of its replacement, so every rule of a rejected fact applies to it.
     rejected: dict = field(default_factory=dict)
+    #: Replaced finding id to the id of the finding that replaced it (`fact_replaced`).
+    replaced: dict = field(default_factory=dict)
     intents: dict = field(default_factory=dict)
     fact_count: int = 0
     sourced_count: int = 0
@@ -250,8 +257,13 @@ class Folded:
         """The counts that the budget formula reads."""
         return {"goals": len(self.initial_goals) + len(self.goals_added), "hints": len(self.hints),
                 "questions": len(self.questions_explored),
-                "corrections": len(self.rejected) + self.review_rejections,
+                "corrections": self.person_rejections + self.review_rejections,
                 "extensions": self.extensions}
+
+    @property
+    def person_rejections(self) -> int:
+        """The facts that a person rejected. A replacement is not a rejection of a person."""
+        return len(self.rejected) - len(self.replaced)
 
     @property
     def max_explores(self) -> int:
@@ -261,7 +273,7 @@ class Folded:
     @property
     def explore_steps(self) -> int:
         """The model steps of one explore turn."""
-        corrections = len(self.rejected) + self.review_rejections + len(self.goals_added)
+        corrections = self.person_rejections + self.review_rejections + len(self.goals_added)
         return min(m.MAX_EXPLORE_STEPS, m.BASE_EXPLORE_STEPS
                    + corrections * m.CORRECTION_EXPLORE_STEPS + len(self.hints) * m.HINT_EXPLORE_STEPS)
 
@@ -434,6 +446,8 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
                 intent.state = m.OPEN
     elif kind == m.FACT_REJECTED:
         folded.rejected[event.subject] = str(data.get("reason", ""))
+    elif kind == m.FACT_REPLACED:
+        _replace(folded, event.subject, data)
     elif kind == m.PAUSE_REQUESTED and folded.status == m.ACTIVE:
         run.status(m.PAUSED)
     elif kind == m.RESUME_REQUESTED and folded.status == m.PAUSED:
@@ -548,6 +562,24 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
             intent.last_error = str(data.get("error", ""))
             intent.state = m.FAILED if intent.attempts >= m.MAX_ATTEMPTS else m.OPEN
             folded.stall_count += 1
+
+
+def _replace(folded: Folded, old: str, data: dict) -> None:
+    """A replaced finding: the old id joins the rejected facts, and the new id takes its
+    place as the finding of the intent, with its conclusion, its goals and its review state."""
+    new = str(data.get("new_fact_id", ""))
+    if not new or old in folded.rejected:
+        return
+    folded.rejected[old] = str(data.get("reason", ""))
+    folded.replaced[old] = new
+    intent = folded.intents.get(str(data.get("intent_id", "")))
+    if intent is not None and intent.fact_id == old:
+        intent.fact_id = new
+    if old in folded.concluded_seq:
+        folded.concluded_seq[new] = folded.concluded_seq[old]
+    if old in folded.finding_goals:
+        folded.finding_goals[new] = folded.finding_goals[old]
+    folded.unreviewed = [new if x == old else x for x in folded.unreviewed]
 
 
 def _cover(folded: Folded, data: dict) -> None:

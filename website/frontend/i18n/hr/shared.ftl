@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = Navedite otvoreno pitanje ili nap
 shared-boards-the-board-was-created = Ploča je stvorena.
 shared-boards-added-a-hint = Dodan je naputak{ $grown }
 shared-boards-rejected = Odbijeno: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } zamijenjen je s { $value2 }
 shared-boards-the-board-was-finished-it-is = Ploča je dovršena. Potpuna je.
 shared-boards-the-board-was-finished-it-is-2 = Ploča je dovršena. Potpuna je, a 1 cilj nema odgovor.
 shared-boards-the-board-was-finished-it-is-2-2 = Ploča je dovršena. Potpuna je, a broj ciljeva bez odgovora je { $n }.

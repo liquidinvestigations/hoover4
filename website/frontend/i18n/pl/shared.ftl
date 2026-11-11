@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Wskaż otwarte pytanie lub napisz
 shared-boards-the-board-was-created = Tablicę utworzono.
 shared-boards-added-a-hint = Dodano wskazówkę{ $grown }
 shared-boards-rejected = Odrzucono { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } zastąpiono przez { $value2 }
 shared-boards-the-board-was-finished-it-is = Tablicę zakończono. Jest ukończona.
 shared-boards-the-board-was-finished-it-is-2 = Tablicę zakończono. Jest ukończona, a 1 cel pozostaje bez odpowiedzi.
 shared-boards-the-board-was-finished-it-is-2-2 = Tablicę zakończono. Jest ukończona, a cele bez odpowiedzi: { $n }.

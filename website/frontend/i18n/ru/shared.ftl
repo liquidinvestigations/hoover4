@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Укажите открытый �
 shared-boards-the-board-was-created = Доска создана.
 shared-boards-added-a-hint = Добавлена подсказка{ $grown }
 shared-boards-rejected = Отклонено: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } заменено на { $value2 }
 shared-boards-the-board-was-finished-it-is = Доска завершена. Работа над ней закончена.
 shared-boards-the-board-was-finished-it-is-2 = Доска завершена. Работа над ней закончена, и 1 цель остаётся без ответа.
 shared-boards-the-board-was-finished-it-is-2-2 = Доска завершена. Работа над ней закончена, и без ответа остаются цели: { $n }.

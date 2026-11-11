@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = Noem een open vraag of schrijf ee
 shared-boards-the-board-was-created = Het bord is aangemaakt.
 shared-boards-added-a-hint = Een hint toegevoegd{ $grown }
 shared-boards-rejected = { $value } afgewezen{ $grown }
+shared-boards-was-replaced-by = { $value } is vervangen door { $value2 }
 shared-boards-the-board-was-finished-it-is = Het bord is afgerond. Het is volledig.
 shared-boards-the-board-was-finished-it-is-2 = Het bord is afgerond. Het is volledig, en 1 doel is niet beantwoord.
 shared-boards-the-board-was-finished-it-is-2-2 = Het bord is afgerond. Het is volledig, en { $n } doelen zijn niet beantwoord.

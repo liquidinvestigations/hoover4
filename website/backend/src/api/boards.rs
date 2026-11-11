@@ -96,8 +96,8 @@ struct BoardRow {
     max_parallel: u8,
     explore_step_budget: u16,
     internet_tools: u8,
-    /// The agent language of the owner at creation. An explore uses it when the owner has
-    /// saved no language.
+    /// The agent language of the owner at creation. The worker writes every text of the board
+    /// in it, and a later change of the owner's settings does not change it.
     language: String,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
     created_at: OffsetDateTime,
@@ -393,6 +393,8 @@ fn order_events(events: Vec<EventRow>) -> Vec<EventRow> {
 #[derive(Default)]
 struct EventFacts {
     rejections: HashMap<String, (String, i64, String)>,
+    /// The replaced finding to the finding that replaced it (`fact_replaced`).
+    replaced: HashMap<String, String>,
     corrects: HashMap<String, Vec<String>>,
     /// The open question that each intent `i0.N` follows.
     asked: HashMap<String, BoardQuestionRef>,
@@ -407,6 +409,12 @@ fn event_facts(events: &[EventRow]) -> EventFacts {
             "fact_rejected" => {
                 let reason = payload["reason"].as_str().unwrap_or("").to_string();
                 out.rejections.insert(event.subject.clone(), (event.actor.clone(), millis(event.created_at), reason));
+            }
+            // A replaced finding shows as rejected, with the replacement as its rejection.
+            "fact_replaced" => {
+                let reason = payload["reason"].as_str().unwrap_or("").to_string();
+                out.rejections.insert(event.subject.clone(), (event.actor.clone(), millis(event.created_at), reason));
+                out.replaced.insert(event.subject.clone(), payload["new_fact_id"].as_str().unwrap_or("").to_string());
             }
             "reason_result" if payload["outcome"] == "review" && payload.get("proposals").is_none() => {
                 last_review = strings(&payload["review"]["from"]);
@@ -470,6 +478,7 @@ fn board_fact(f: FactRow, marks: &EventFacts, citations: Vec<BoardCitation>) -> 
         rejected_by: rejection.as_ref().map(|r| r.0.clone()).unwrap_or_default(),
         rejected_ms: rejection.as_ref().map(|r| r.1).unwrap_or(0),
         rejected_reason: rejection.map(|r| r.2).unwrap_or_default(),
+        replaced_by: marks.replaced.get(&f.fact_id).cloned().unwrap_or_default(),
         corrects: marks.corrects.get(&f.fact_id).cloned().unwrap_or_default(),
         created_by: f.created_by,
         citations,
@@ -545,7 +554,7 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
         .await?;
     let events = client
         .query("SELECT ?fields FROM board_events FINAL WHERE board_id IN ? \
-                AND event_type IN ('fact_rejected', 'review_rejected', 'reason_result') ORDER BY created_at, event_id")
+                AND event_type IN ('fact_rejected', 'fact_replaced', 'review_rejected', 'reason_result') ORDER BY created_at, event_id")
         .bind(&ids)
         .fetch_all::<EventRow>()
         .await?;
@@ -846,21 +855,33 @@ pub async fn board_fact_for_intent(user: &CurrentUser, board_id: String,
     if facts.is_empty() {
         return Ok(None);
     }
+    // The conclusion of the intent, and each replacement of its finding (`fact_replaced`
+    // names the intent in its payload).
     let events = client
-        .query("SELECT ?fields FROM board_events FINAL WHERE board_id = ? AND event_type = 'explore_concluded' AND subject = ?")
+        .query("SELECT ?fields FROM board_events FINAL WHERE board_id = ? AND \
+                ((event_type = 'explore_concluded' AND subject = ?) OR \
+                 (event_type = 'fact_replaced' AND JSONExtractString(payload_json, 'intent_id') = ?))")
         .bind(&board_id)
+        .bind(&intent_id)
         .bind(&intent_id)
         .fetch_all::<EventRow>()
         .await?;
     let published = published(&events);
-    let concluded: HashSet<String> = events
-        .iter()
-        .filter_map(|e| serde_json::from_str::<serde_json::Value>(&e.payload_json).ok())
-        .filter_map(|p| p["fact_id"].as_str().map(str::to_string))
-        .collect();
+    let mut concluded: HashSet<String> = HashSet::new();
+    let mut replaced: HashSet<String> = HashSet::new();
+    for event in &events {
+        let payload: serde_json::Value = serde_json::from_str(&event.payload_json).unwrap_or_default();
+        if event.event_type == "fact_replaced" {
+            replaced.insert(event.subject.clone());
+            concluded.extend(payload["new_fact_id"].as_str().map(str::to_string));
+        } else {
+            concluded.extend(payload["fact_id"].as_str().map(str::to_string));
+        }
+    }
     Ok(facts
         .into_iter()
-        .find(|f| is_visible(f, &published) && (f.request_id.is_empty() || concluded.contains(&f.fact_id)))
+        .find(|f| is_visible(f, &published) && !replaced.contains(&f.fact_id)
+            && (f.request_id.is_empty() || concluded.contains(&f.fact_id)))
         .map(|f| f.fact_id))
 }
 
@@ -896,6 +917,7 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value,
         "board_created" => fixed("The board was created.".to_string()),
         "hint_added" => (format!("Added a hint{grown}"), text("text")),
         "fact_rejected" => (format!("Rejected {}{grown}", slug(subject)), text("reason")),
+        "fact_replaced" => (format!("{} was replaced by {}", slug(subject), slug(&text("new_fact_id"))), text("reason")),
         "pause_requested" => fixed("A pause was requested.".to_string()),
         "resume_requested" => fixed("A resume was requested.".to_string()),
         "review_accepted" => match payload["unanswered"].as_array().map(|a| a.len()).unwrap_or(0) {
@@ -1123,6 +1145,7 @@ async fn read_snapshot(board: BoardRow) -> anyhow::Result<BoardSnapshot> {
             llm_model: board.llm_model,
             max_parallel: board.max_parallel,
             internet_tools: board.internet_tools != 0 && super::chat::gate::internet_tools_enabled(),
+            language: board.language,
         },
     })
 }
@@ -1367,6 +1390,20 @@ mod tests {
         assert_eq!(marks.rejections["f1.1"], ("alice".to_string(), 10_000, "wrong year".to_string()));
         assert_eq!(marks.corrects["c1"], vec!["f1.2".to_string(), "f2.1".to_string()]);
         assert_eq!(marks.corrects["c2"], vec!["f3.1".to_string()]);
+    }
+
+    #[test]
+    fn a_replaced_finding_is_rejected_by_the_repair_and_names_its_replacement() {
+        let mut replaced = event("fact_replaced", "fact-placeholder",
+                                 serde_json::json!({"new_fact_id": "finding-contract-2001", "reason": "placeholder text"}), 50);
+        replaced.actor = "repair".to_string();
+        let marks = event_facts(&[replaced]);
+        assert_eq!(marks.rejections["fact-placeholder"], ("repair".to_string(), 50_000, "placeholder text".to_string()));
+        assert_eq!(marks.replaced["fact-placeholder"], "finding-contract-2001");
+        let slug = |id: &str| id.to_string();
+        let line = summarise("fact_replaced", "fact-placeholder",
+                             &serde_json::json!({"new_fact_id": "finding-contract-2001", "reason": "placeholder text"}), &slug, None);
+        assert_eq!(line, ("fact-placeholder was replaced by finding-contract-2001".to_string(), "placeholder text".to_string()));
     }
 
     #[test]

@@ -35,6 +35,12 @@ covers the named findings that are still unreviewed, concluded at or before `see
 for an answer, belong to its goal. An acceptance without `seen_seq` covers no finding. Every
 new event carries `review_semantics` (`model.REVIEW_SEMANTICS`), and the fold reads it.
 
+**Replacement.** `replace_fact` (actor `repair`, written by `main.py board-replace-fact`)
+stores a new finding for the intent of an existing finding, under a new id from
+`Allocator.claim`, with its citations and its label row, and writes one `fact_replaced`
+event. The writer refuses it when the old finding does not exist, is not the finding of its
+intent, or is rejected or replaced already. The old node keeps its row.
+
 **Revision allowances.** A rejection records `revision_allowance_version` and the goals
 that its correction may revise. An intent that names a correction keeps it only when the
 correction is available, not named by an earlier intent of the reply, in the scope of the
@@ -85,6 +91,10 @@ EXPLORE_END = "explore_end"
 REVIEW_PROPOSED = "review_proposed"
 FINAL_ENDED = "final_ended"
 ASSIGN_LABELS = "assign_labels"
+#: The command of the operator repair `board-replace-fact` (actor `repair`).
+REPLACE_FACT = "replace_fact"
+#: The actor of `REPLACE_FACT`.
+REPAIR_ACTOR = "repair"
 #: The commands that start work. The dispatcher counts their pending inputs as taken slots.
 START_KINDS = (START_REASON, START_EXPLORE)
 
@@ -697,6 +707,43 @@ def _assign_labels(ctx: Context, body: dict, alloc: Allocator, prepared: Prepare
                                 "model": str(entry.get("model") or ""), "created_at": entry.get("created_at")})
 
 
+def _replace_fact(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
+    """Replace the finding of an intent with a new node. The body holds `fact_id` (the old
+    finding), `reason`, and `fact` and `citations` in the shape of `explore_end`. The old
+    node stays and counts as rejected, and the intent names the new node. The command is not
+    a budget event and gives no revision allowance."""
+    f = ctx.folded
+    _live(ctx)
+    old_id = _text(body, "fact_id")
+    old = next((x for x in ctx.facts if x.fact_id == old_id), None)
+    if old is None:
+        raise Rejected(f"The board has no fact {old_id}.")
+    if old_id in f.rejected:
+        raise Rejected(f"The fact {old_id} is rejected or replaced already.")
+    intent = f.intents.get(old.intent_id) if old.intent_id else None
+    if intent is None or intent.fact_id != old_id:
+        raise Rejected(f"The fact {old_id} is not the finding of its intent.")
+    fact = dict(body.get("fact") or {})
+    text = str(fact.get("text") or "")
+    kind = str(fact.get("kind") or "")
+    if kind not in m.EXPLORE_KINDS or not text.strip():
+        raise Rejected("The new finding needs a text and an explore kind.")
+    new_id = alloc.claim("fact", str(fact.get("slug") or ""), text, f"replace:{old_id}")
+    _fact(ctx, prepared, new_id, kind, text, REPAIR_ACTOR, intent_id=old.intent_id,
+          session_id=str(fact.get("session_id") or old.session_id),
+          answer_seq=int(fact.get("answer_seq") or old.answer_seq or 0),
+          open_questions=fact.get("open_questions"), problems=fact.get("problems"))
+    for citation in body.get("citations") or []:
+        prepared.citations.append({**citation, "fact_id": new_id})
+    _label(alloc, prepared, new_id, "fact")
+    _event(ctx, prepared, m.FACT_REPLACED, old_id,
+           {"new_fact_id": new_id, "intent_id": old.intent_id, "kind": kind,
+            "reason": _text(body, "reason"), "citations": len(body.get("citations") or []),
+            **({"report": fact["report"]} if isinstance(fact.get("report"), dict) else {})},
+           f"{m.FACT_REPLACED}:{ctx.request_id}", actor=REPAIR_ACTOR)
+    prepared.result["fact_id"] = new_id
+
+
 HANDLERS = {
     CREATE_BOARD: _create_board, ADD_HINT: _add_hint, REJECT_FACT: _reject_fact,
     SET_PAUSED: _set_paused, SET_INTERNET_TOOLS: _set_internet_tools,
@@ -704,7 +751,7 @@ HANDLERS = {
     EXPLORE_QUESTION: _explore_question, EXTEND_BUDGET: _extend_budget,
     START_REASON: _start_reason, REASON_RESULT: _reason_result, START_EXPLORE: _start_explore,
     EXPLORE_END: _explore_end, REVIEW_PROPOSED: _review_proposed, FINAL_ENDED: _final_ended,
-    ASSIGN_LABELS: _assign_labels,
+    ASSIGN_LABELS: _assign_labels, REPLACE_FACT: _replace_fact,
 }
 
 
@@ -845,7 +892,8 @@ def step(board_id: str) -> bool:
 __all__ = [
     "ADD_GOAL", "ADD_HINT", "ANSWER_DECISION", "ASSIGN_LABELS", "Allocator", "CREATE_BOARD", "Context",
     "EXPLORE_END", "EXPLORE_QUESTION", "EXTEND_BUDGET", "FINAL_ENDED", "IDENTITY_SETTING", "LIMIT_TEXT",
-    "PERSON_KINDS", "Prepared", "REASON_RESULT", "REJECT_FACT", "REVIEW_DECISION", "REVIEW_PROPOSED",
+    "PERSON_KINDS", "Prepared", "REASON_RESULT", "REJECT_FACT", "REPAIR_ACTOR", "REPLACE_FACT",
+    "REVIEW_DECISION", "REVIEW_PROPOSED",
     "Rejected", "SET_INTERNET_TOOLS", "SET_PAUSED", "SLUG_IDENTITY", "START_EXPLORE", "START_KINDS",
     "START_REASON", "apply", "context", "identity_version", "prepare", "slug_stem", "step",
 ]

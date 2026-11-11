@@ -122,9 +122,9 @@
     {
       "image": "docs/user-manual/img/board-create.png",
       "scenario": "website/browser-tests/730-manual-doc-board-create.ini",
-      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
-      "captured_at": "2026-10-17T19:47:33+00:00",
-      "sha256": "e3f1b09cc3683fe29b0079ddacd597be54a7961f7d0053ec63ab6e4cb19d07c3"
+      "revision": "015390bb9ba81c8e7eff65007a00620486e72f61",
+      "captured_at": "2026-11-11T16:10:48.859823+00:00",
+      "sha256": "c6b06d688cedb46d119ae2d6df60e882ef4fdef48e57729225a80bb96fdf8bbf"
     },
     {
       "image": "docs/user-manual/img/board-events.png",
@@ -192,9 +192,9 @@
     {
       "image": "docs/user-manual/img/board-settings.png",
       "scenario": "website/browser-tests/772-manual-board-settings.ini",
-      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
-      "captured_at": "2026-10-17T21:08:31+00:00",
-      "sha256": "34e056c1c9cc8426ca2e8b57c7c29a98600d066f6ade9293b216ea011c8f559e"
+      "revision": "015390bb9ba81c8e7eff65007a00620486e72f61",
+      "captured_at": "2026-11-11T16:10:48.860043+00:00",
+      "sha256": "74507c785fb1146994e48dbc03689d824b8a5da384d0c854263d49122d635ea3"
     },
     {
       "image": "docs/user-manual/img/board-statistics.png",

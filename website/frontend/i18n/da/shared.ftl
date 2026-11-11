@@ -169,6 +169,7 @@ shared-boards-name-an-open-question-or-write = Angiv et åbent spørgsmål, elle
 shared-boards-the-board-was-created = Tavlen blev oprettet.
 shared-boards-added-a-hint = Tilføjede et vink{ $grown }
 shared-boards-rejected = Afviste { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } blev erstattet af { $value2 }
 shared-boards-the-board-was-finished-it-is = Tavlen blev afsluttet. Den er komplet.
 shared-boards-the-board-was-finished-it-is-2 = Tavlen blev afsluttet. Den er komplet, og 1 mål er ikke besvaret.
 shared-boards-the-board-was-finished-it-is-2-2 = Tavlen blev afsluttet. Den er komplet, og { $n } mål er ikke besvaret.

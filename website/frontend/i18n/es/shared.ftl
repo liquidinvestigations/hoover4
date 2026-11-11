@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = Indica una pregunta abierta o esc
 shared-boards-the-board-was-created = El tablero se creó.
 shared-boards-added-a-hint = Se añadió una pista{ $grown }
 shared-boards-rejected = Se rechazó { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } se sustituyó por { $value2 }
 shared-boards-the-board-was-finished-it-is = El tablero se finalizó. Está completo.
 shared-boards-the-board-was-finished-it-is-2 = El tablero se finalizó. Está completo, y 1 objetivo no tiene respuesta.
 shared-boards-the-board-was-finished-it-is-2-2 = El tablero se finalizó. Está completo, y { $n } objetivos no tienen respuesta.

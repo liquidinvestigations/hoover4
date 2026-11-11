@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = Indică o întrebare deschisă sa
 shared-boards-the-board-was-created = Tabloul a fost creat.
 shared-boards-added-a-hint = Sugestie adăugată{ $grown }
 shared-boards-rejected = Respins: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } a fost înlocuit cu { $value2 }
 shared-boards-the-board-was-finished-it-is = Tabloul a fost finalizat. Este complet.
 shared-boards-the-board-was-finished-it-is-2 = Tabloul a fost finalizat. Este complet, iar un obiectiv nu are răspuns.
 shared-boards-the-board-was-finished-it-is-2-2 = Tabloul a fost finalizat. Este complet, iar numărul obiectivelor fără răspuns este { $n }.

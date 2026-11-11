@@ -742,7 +742,8 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
         seq = _next_seq(board.owner, session_id)
         text = render_brief(board, facts, boards.read_citations(board.board_id),
                             folded.hints, intent, collections, folded.explore_steps,
-                            boards.read_labels([board.board_id]), web, folded.rejected)
+                            boards.read_labels([board.board_id]), web, folded.rejected,
+                            folded.replaced)
         task = explore_task(intent, facts, folded, collections, web)
         language = explore_language(board)
         _write_turn_rows(board.owner, session_id, seq, text, turn_uuid,

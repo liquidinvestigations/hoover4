@@ -167,6 +167,7 @@ shared-boards-name-an-open-question-or-write = Indique uma questão em aberto ou
 shared-boards-the-board-was-created = O quadro foi criado.
 shared-boards-added-a-hint = Pista adicionada{ $grown }
 shared-boards-rejected = Rejeitado: { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } foi substituído por { $value2 }
 shared-boards-the-board-was-finished-it-is = O quadro foi concluído. Está completo.
 shared-boards-the-board-was-finished-it-is-2 = O quadro foi concluído. Está completo e 1 objetivo não tem resposta.
 shared-boards-the-board-was-finished-it-is-2-2 = O quadro foi concluído. Está completo e { $n } objetivos não têm resposta.

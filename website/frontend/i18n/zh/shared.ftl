@@ -170,6 +170,7 @@ shared-boards-name-an-open-question-or-write = 请指定一个待解答问题，
 shared-boards-the-board-was-created = 调查板已创建。
 shared-boards-added-a-hint = 已添加提示{ $grown }
 shared-boards-rejected = 已拒绝 { $value }{ $grown }
+shared-boards-was-replaced-by = { $value } 已被 { $value2 } 替换
 shared-boards-the-board-was-finished-it-is = 调查板已结束，内容完整。
 shared-boards-the-board-was-finished-it-is-2 = 调查板已结束，内容完整，有 1 个目标未得到回答。
 shared-boards-the-board-was-finished-it-is-2-2 = 调查板已结束，内容完整，有 { $n } 个目标未得到回答。

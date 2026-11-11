@@ -46,6 +46,23 @@ def activate_board_node_ids():
     print(f"board_node_identity_version {before} -> {after}")
 
 
+@cli.command(name="board-replace-fact")
+@click.option("--board", "board_id", required=True, help="The board id.")
+@click.option("--fact", "fact_id", required=True, help="The id of the finding to replace.")
+def board_replace_fact(board_id: str, fact_id: str):
+    """Replace a board finding with the report of its explore.
+
+    The command reads the report version that the explore pinned, runs the small call for
+    the kind, the open questions and the slug, and submits `replace_fact`. The old node stays
+    on the board as replaced. A second run with the same ids submits nothing.
+    """
+    from tasks.P_ops.cli import board_replace_fact as replace, end_process
+
+    result = replace(board_id, fact_id)
+    print(f"{result['request_id']} {result['state']} {result['fact_id']} {result['error']}".rstrip())
+    end_process(0 if result["state"] in ("committed", "prepared", "pending") else 1)
+
+
 @cli.command()
 @click.argument("collectionname", type=str)
 def ensure_collection(collectionname: str):
