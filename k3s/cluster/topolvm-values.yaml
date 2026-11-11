@@ -1,0 +1,62 @@
+# TopoLVM chart 17.3.0 settings for the storage tiers. Each node with a tier holds its stateful pods without replication.
+# Each tier is one volume group and one device class. The on-prem hosts have hdd. The public host has nvme.
+# lvmd stops when a volume group of its configuration is missing, so each kind of node gets its own lvmd
+# configuration. Their node selectors must not overlap. A node with two tiers needs a configuration with both.
+lvmd:
+  deviceClasses:
+    - name: hdd
+      volume-group: tier-hdd
+      default: true
+      spare-gb: 10
+  nodeSelector:
+    storage.tier/hdd: "true"
+  additionalConfigs:
+    - tolerations: []
+      nodeSelector:
+        storage.tier/nvme: "true"
+      deviceClasses:
+        - name: nvme
+          volume-group: tier-nvme
+          default: true
+          spare-gb: 10
+# The node plugin runs on every node that is enrolled for stateful pods.
+node:
+  nodeSelector:
+    storage.hoover/enrolled: "true"
+storageClasses:
+  - name: hdd-ext4
+    storageClass:
+      fsType: ext4
+      isDefaultClass: true
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      additionalParameters:
+        topolvm.io/device-class: hdd
+  # For PVCs with volumeMode Block, which the Kata stores format inside the guest.
+  - name: hdd-block
+    storageClass:
+      fsType: ext4
+      isDefaultClass: false
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      additionalParameters:
+        topolvm.io/device-class: hdd
+  - name: nvme-ext4
+    storageClass:
+      fsType: ext4
+      isDefaultClass: false
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      additionalParameters:
+        topolvm.io/device-class: nvme
+  - name: nvme-block
+    storageClass:
+      fsType: ext4
+      isDefaultClass: false
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      additionalParameters:
+        topolvm.io/device-class: nvme
+# The volumes are thick LVs, and TopoLVM snapshots need thin LVs.
+snapshot:
+  enabled: false

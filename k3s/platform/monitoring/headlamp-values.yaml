@@ -1,0 +1,14 @@
+# The operator gateway authenticates every request before it reaches Headlamp.
+# Headlamp then uses the read-only cluster-viewer service account for cluster requests.
+config:
+  baseURL: /headlamp
+  unsafeUseServiceAccountToken: true
+serviceAccount:
+  create: false
+  name: cluster-viewer
+clusterRoleBinding:
+  create: false
+nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+resources:
+  requests: {cpu: 50m, memory: 128Mi}
+  limits: {cpu: '1', memory: 512Mi}

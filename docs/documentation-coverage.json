@@ -3045,6 +3045,45 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The setting changes worker and storage behavior. It has no interface."
+    },
+    {
+      "id": "F-admin-46",
+      "source": [
+        "k3s/hoover/manifests.py",
+        "k3s/hoover/compose.py",
+        "k3s/hoover/zone_ini.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md",
+        "k3s/Compose_Parity.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+    },
+    {
+      "id": "F-admin-47",
+      "source": [
+        "k3s/config.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#write-the-site-file"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+    },
+    {
+      "id": "F-admin-48",
+      "source": [
+        "k3s/platform/operator/settings.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#save-and-apply-operator-settings"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
     }
   ],
   "routes": {

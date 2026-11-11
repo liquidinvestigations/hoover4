@@ -1,0 +1,15 @@
+{
+ "server": "node-b",
+ "user": "operator",
+ "hosts": {
+  "node-a": {"wg_ip": "10.0.0.1", "key": "WireGuard public key of node-a", "port": 51821, "public": "203.0.113.10:51821",
+             "lan_ip": null, "onprem": false, "reserved": "memory=4Gi,cpu=1",
+             "tiers": ["nvme"], "avx2": true},
+  "node-b": {"wg_ip": "10.0.0.2", "key": "WireGuard public key of node-b", "port": 51820, "public": null,
+             "lan_ip": "192.0.2.10", "onprem": true, "reserved": "memory=6Gi,cpu=2",
+             "tiers": ["hdd"], "avx2": true},
+  "node-c": {"wg_ip": "10.0.0.3", "key": "WireGuard public key of node-c", "port": 51820, "public": null,
+             "lan_ip": "192.0.2.11", "onprem": true, "reserved": "memory=6Gi,cpu=2",
+             "tiers": ["hdd"], "avx2": false}
+ }
+}

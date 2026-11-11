@@ -1,0 +1,63 @@
+controller:
+  type: daemonset
+alloy:
+  enableReporting: false
+  # The Alloy pods form a cluster, so one pod reads the Kubernetes events of all namespaces.
+  clustering:
+    enabled: true
+  mounts:
+    varlog: true
+  securityContext:
+    runAsUser: 0
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: '1', memory: 512Mi}
+  configMap:
+    content: |
+      // Each Alloy pod reads the logs of the pods on its own node. The chart sets HOSTNAME to the node name.
+      discovery.kubernetes "pods" {
+        role = "pod"
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + sys.env("HOSTNAME")
+        }
+      }
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label = "container"
+        }
+      }
+      loki.source.kubernetes "pods" {
+        targets = discovery.relabel.pods.output
+        forward_to = [loki.write.local.receiver]
+      }
+      // With clustering one pod of the cluster reads the events. When that pod changes, the next pod can send the events
+      // of the last hour again.
+      loki.source.kubernetes_events "events" {
+        forward_to = [loki.write.local.receiver]
+        job_name = "kubernetes-events"
+        clustering {
+          enabled = true
+        }
+      }
+      loki.source.journal "k3s" {
+        path = "/var/log/journal"
+        matches = "_SYSTEMD_UNIT=k3s.service _SYSTEMD_UNIT=k3s-agent.service"
+        labels = {job = "k3s-journal"}
+        forward_to = [loki.write.local.receiver]
+      }
+      loki.write "local" {
+        endpoint {
+          url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+        }
+      }

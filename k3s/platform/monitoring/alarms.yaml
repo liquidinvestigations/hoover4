@@ -1,0 +1,75 @@
+# The alarms of the cluster. install-dashboards.sh applies this file after kube-prometheus-stack.
+# Prometheus evaluates them every 30 s. The alarms fire in Prometheus (operator portal, /prometheus/alerts).
+# The kube-prometheus-stack default rules stay on beside them.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: topolvm-node
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [topolvm-system]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: topolvm
+      app.kubernetes.io/component: node
+  podMetricsEndpoints:
+    - port: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hoover-alarms
+  namespace: monitoring
+spec:
+  groups:
+    - name: hoover-storage
+      rules:
+        # TopoLVM keeps 10 GB of each volume group free, so a new volume fails before the group is full.
+        - alert: VolumeGroupAlmostFull
+          expr: topolvm_volumegroup_available_bytes / topolvm_volumegroup_size_bytes < 0.10
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: 'Volume group {{ $labels.device_class }} on {{ $labels.node }} has less than 10 % free space.'
+        # A Kata store has a block volume. The kubelet reports 0 free bytes and 0 inodes for it, because the file system
+        # is in the guest, so the rule covers only volumes with inodes. The alarm of a block volume is VolumeGroupAlmostFull.
+        - alert: VolumeAlmostFull
+          expr: >-
+            kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 0.10
+            and on (namespace, persistentvolumeclaim) kubelet_volume_stats_inodes > 0
+          for: 1m
+          labels: {severity: warning}
+          annotations:
+            summary: 'Volume {{ $labels.persistentvolumeclaim }} in {{ $labels.namespace }} has less than 10 % free space.'
+        # On the on-prem hosts /var/lib/rancher and /var/lib/kubelet are their own LVs. On the public host they are on /.
+        # The kubelet removes images above 85 % use and pods below 5 % free space. The alarm fires before both.
+        - alert: ContainerVolumeAlmostFull
+          expr: >-
+            node_filesystem_avail_bytes{mountpoint=~"/|/var/lib/rancher|/var/lib/kubelet"}
+            / node_filesystem_size_bytes{mountpoint=~"/|/var/lib/rancher|/var/lib/kubelet"} < 0.20
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: '{{ $labels.mountpoint }} on {{ $labels.instance }} has less than 20 % free space.'
+    - name: hoover-workloads
+      rules:
+        # The kubelet evicts pods below 500 MiB of free memory.
+        - alert: NodeMemoryLow
+          expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+          for: 2m
+          labels: {severity: critical}
+          annotations:
+            summary: '{{ $labels.instance }} has less than 10 % of its memory available.'
+        - alert: ContainerOutOfMemory
+          expr: >-
+            max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"})
+            and on (namespace, pod, container) increase(kube_pod_container_status_restarts_total[10m]) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: 'Container {{ $labels.container }} of {{ $labels.namespace }}/{{ $labels.pod }} stopped at its memory limit.'
+        - alert: PodRestarts
+          expr: increase(kube_pod_container_status_restarts_total[15m]) >= 3
+          labels: {severity: warning}
+          annotations:
+            summary: 'Container {{ $labels.container }} of {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf "%.0f" }} times in 15 minutes.'

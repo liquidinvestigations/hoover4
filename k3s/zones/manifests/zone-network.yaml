@@ -1,0 +1,23 @@
+# zone.py applies this file in each zone namespace and replaces ZONE with the zone name.
+# Zone pods accept connections from the same zone, the Hoover namespace of the zone, the ingress, and Prometheus.
+# The shared call services in the namespace calls reach only the XMPP port.
+# Other zones reach a zone only through the HTTPS frontend, as any public client does.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zone-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: hoover-ZONE}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}
+    # The shared Jitsi video bridge in the namespace calls joins the zone Prosody over XMPP.
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: calls}}
+      ports:
+        - {protocol: TCP, port: 5222}

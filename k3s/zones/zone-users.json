@@ -1,0 +1,10 @@
+{
+ "users": [
+  {"username": "gabriel", "firstname": "Gabriel", "lastname": "Demo"},
+  {"username": "stefan", "firstname": "Stefan", "lastname": "Demo"},
+  {"username": "stephan", "firstname": "Stephan", "lastname": "Demo"},
+  {"username": "andreea", "firstname": "Andreea", "lastname": "Demo"},
+  {"username": "cosmin", "firstname": "Cosmin", "lastname": "Demo"},
+  {"username": "chrystelle", "firstname": "Chrystelle", "lastname": "Demo"}
+ ]
+}

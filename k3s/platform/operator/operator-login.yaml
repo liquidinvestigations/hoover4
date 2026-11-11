@@ -1,0 +1,366 @@
+# This file defines one login gateway for the local operator portal.
+# start-web-tools.sh creates the operator-login secret with the client secret and the cookie secret.
+# The development login is admin with the password admin. k3s/private/operator-login/admin-password replaces that password.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: operator-portal
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway
+  namespace: operator-portal
+data:
+  alpha.yaml: |
+    server:
+      BindAddress: 0.0.0.0:4180
+    upstreamConfig:
+      upstreams:
+        - id: dex
+          path: /dex/
+          uri: http://dex.operator-portal.svc.cluster.local:5556
+        - id: grafana
+          path: ^/grafana/(.*)$
+          rewriteTarget: /$1
+          uri: http://monitor-grafana.monitoring.svc.cluster.local
+        - id: prometheus
+          path: ^/prometheus/(.*)$
+          rewriteTarget: /$1
+          uri: http://monitor-kube-prometheus-st-prometheus.monitoring.svc.cluster.local:9090
+        - id: headlamp
+          path: /headlamp/
+          uri: http://headlamp.monitoring.svc.cluster.local
+        - id: portal
+          path: /
+          uri: http://portal.operator-portal.svc.cluster.local:8080
+    injectRequestHeaders:
+      - name: X-Forwarded-User
+        values:
+          - claimSource:
+              claim: preferred_username
+    providers:
+      - id: dex
+        provider: oidc
+        name: Operator login
+        clientID: operator-portal
+        clientSecretFile: /etc/operator-login/client-secret
+        loginURL: https://operator.hoover.test/dex/auth
+        redeemURL: http://dex.operator-portal.svc.cluster.local:5556/dex/token
+        scope: openid email profile
+        oidcConfig:
+          issuerURL: https://operator.hoover.test/dex
+          skipDiscovery: true
+          jwksURL: http://dex.operator-portal.svc.cluster.local:5556/dex/keys
+          emailClaim: email
+          audienceClaims: [aud]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: operator-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: operator-gateway}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: operator-gateway}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:0d989b27d90d5e527fb2b045d864c4001c3104bdd763b3211b7e9ba2110380ea
+          args:
+            - --alpha-config=/etc/gateway/alpha.yaml
+            - --cookie-secret-file=/etc/operator-login/cookie-secret
+            # The HTTPS frontend terminates TLS, so the browser receives a secure cookie.
+            - --cookie-secure=true
+            - --cookie-expire=12h
+            - --email-domain=*
+            - --redirect-url=https://operator.hoover.test/oauth2/callback
+            - --skip-provider-button
+            - --skip-auth-route=^/dex/
+          ports: [{name: http, containerPort: 4180}]
+          readinessProbe: {httpGet: {path: /ping, port: http}}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/gateway, readOnly: true}
+            - {name: secrets, mountPath: /etc/operator-login, readOnly: true}
+      volumes:
+        - {name: config, configMap: {name: gateway}}
+        - name: secrets
+          secret:
+            secretName: operator-login
+            items: [{key: client-secret, path: client-secret}, {key: cookie-secret, path: cookie-secret}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: operator-portal
+spec:
+  selector: {app.kubernetes.io/name: operator-gateway}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex
+  namespace: operator-portal
+data:
+  config.yaml: |
+    issuer: https://operator.hoover.test/dex
+    storage:
+      type: memory
+    web:
+      http: 0.0.0.0:5556
+    # Dex uses its embedded templates unless this directory is set.
+    frontend:
+      dir: /srv/dex/web
+      issuer: Operator portal
+    oauth2:
+      skipApprovalScreen: true
+    enablePasswordDB: true
+    staticPasswords:
+      # Dex matches the login field against this email value.
+      - email: admin
+        username: admin
+        preferredUsername: admin
+        userID: 2410ecde-9aba-41d0-9424-7ac71c54ae5d
+        hash: $2b$10$6JmRL63Cexlv0zvN7jxxyetx02/FEgE5dllhBOf8Y8jsYKxHjfbSC
+    staticClients:
+      - id: operator-portal
+        name: Operator portal
+        secretEnv: OPERATOR_PORTAL_CLIENT_SECRET
+        redirectURIs: [https://operator.hoover.test/oauth2/callback]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dex
+  namespace: operator-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: dex}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: dex}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: dex
+          image: ghcr.io/dexidp/dex:v2.46.0@sha256:fd4ab5d117005b927433133f1d7db7cc30fbb537c377912b75b349edff47df01
+          # The image entrypoint renders templates into /tmp. Dex reads secretEnv without it.
+          command: [dex, serve, /etc/dex/config.yaml]
+          env:
+            - name: OPERATOR_PORTAL_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: operator-login, key: client-secret}}
+          ports: [{name: http, containerPort: 5556}]
+          readinessProbe: {httpGet: {path: /dex/healthz, port: http}}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dex
+              readOnly: true
+            # Dex labels its local password field as an email address. This template labels it as a username.
+            - name: templates
+              mountPath: /srv/dex/web/templates/password.html
+              subPath: password.html
+              readOnly: true
+      volumes:
+        - {name: config, configMap: {name: dex}}
+        - {name: templates, configMap: {name: dex-templates}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dex
+  namespace: operator-portal
+spec:
+  selector: {app.kubernetes.io/name: dex}
+  ports: [{name: http, port: 5556, targetPort: http}]
+---
+# The HTTPS frontend forwards the operator host name to this gateway through the cluster ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway
+  namespace: operator-portal
+spec:
+  ingressClassName: haproxy
+  rules:
+    - host: operator.hoover.test
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: gateway, port: {name: http}}}}]
+---
+# The portal page reads cluster slice usage from the host cgroup files.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  namespace: operator-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: portal}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: portal}
+    spec:
+      # The portal reads cluster events and the zone namespaces. It writes zone operations as ConfigMaps.
+      serviceAccountName: portal
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: portal
+          image: docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd
+          args: [python3, /app/portal-server.py]
+          env:
+            - {name: PORTAL_ADDRESS, value: 0.0.0.0}
+            - {name: PORTAL_PORT, value: '8080'}
+            - {name: PORTAL_ORIGIN, value: 'https://operator.hoover.test'}
+            - {name: PORTAL_SUFFIX, value: hoover.test}
+            - {name: PORTAL_CGROUP, value: /host-cgroup}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /, port: http}}
+          resources:
+            requests: {cpu: 10m, memory: 24Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: app, mountPath: /app, readOnly: true}
+            - {name: cgroup, mountPath: /host-cgroup, readOnly: true}
+      volumes:
+        - name: app
+          configMap:
+            name: portal
+            items: [{key: portal-server.py, path: portal-server.py}, {key: index.html, path: portal/index.html}]
+        - name: cgroup
+          hostPath: {path: /sys/fs/cgroup/kubepods.slice, type: Directory}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+  namespace: operator-portal
+spec:
+  selector: {app.kubernetes.io/name: portal}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+# Grafana trusts the gateway user header, so only the gateway and Prometheus may connect.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana-from-gateway
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: grafana}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: operator-portal}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: operator-gateway}}
+        - podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}
+---
+# Headlamp uses its own read-only service account, so only the gateway may connect.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: headlamp-from-gateway
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: headlamp}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: operator-portal}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: operator-gateway}}
+---
+# Clients reach the portal page and Dex only through the gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backends-from-gateway
+  namespace: operator-portal
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/name, operator: In, values: [portal, dex]}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: operator-gateway}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portal
+  namespace: operator-portal
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-portal-events
+rules:
+  - apiGroups: ['']
+    resources: [events]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: operator-portal-events
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: operator-portal-events}
+subjects: [{kind: ServiceAccount, name: portal, namespace: operator-portal}]
+---
+# The zone pages list the zone namespaces and the nodes for a new zone, and show the onboarding login of a zone Administrator.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-portal-zones
+rules:
+  - apiGroups: ['']
+    resources: [namespaces, nodes]
+    verbs: [list]
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [ums-nubus-credentials]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: operator-portal-zones
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: operator-portal-zones}
+subjects: [{kind: ServiceAccount, name: portal, namespace: operator-portal}]
+---
+# The portal writes each zone operation as a ConfigMap, and operator/runner.py on the host runs it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: portal-operations
+  namespace: operator-portal
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    verbs: [get, list, create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: portal-operations
+  namespace: operator-portal
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: portal-operations}
+subjects: [{kind: ServiceAccount, name: portal, namespace: operator-portal}]

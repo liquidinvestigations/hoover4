@@ -23,6 +23,11 @@ gain.ndjson
 # may cite it, which is why it can be wiped safely.
 plans/
 hoover4.ini
+# The site file of a cluster installation names hosts, addresses and secret files.
+hoover4-site.ini
+# The cluster deployment keeps its site state, secrets, kubeconfigs, operator state and
+# generated files here.
+/k3s/private/
 # The real host detail — addresses, users, credentials, the network in front of the demo
 # box. Deliberately at the top level so a scratch wipe cannot take it, and deliberately
 # never tracked: docs/ and the skills are public.

@@ -1,0 +1,11 @@
+# A Maven repository with the XWiki extensions that the lab installs. openDesk blocks the public extension store,
+# so XWiki installs from this repository. An init container copies it into the XWiki pod.
+# The first stage downloads each extension with its dependencies from the XWiki Nexus.
+FROM docker.io/library/maven:3.9-eclipse-temurin-21 AS fetch
+ARG EXTENSIONS="org.xwiki.contrib.llm:application-ai-llm-models-ui:0.11:xar"
+RUN for artifact in $EXTENSIONS; do \
+      mvn -q -B -Dmaven.repo.local=/repo dependency:get -Dtransitive=true -Dartifact="$artifact" \
+        -DremoteRepositories=xwiki::::https://nexus.xwiki.org/nexus/content/groups/public || exit 1; \
+    done && find /repo -name '_remote.repositories' -delete && find /repo -name '*.lastUpdated' -delete
+FROM docker.io/library/busybox:1.37
+COPY --from=fetch /repo /repo

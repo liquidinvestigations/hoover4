@@ -1,0 +1,43 @@
+# A read-only Maven repository for XWiki extension installs. openDesk blocks the public extension store.
+# ../images/xwiki-extensions builds the image. busybox httpd serves the files from the image, so it writes nothing.
+# zone.py replaces IMAGE_TAG and applies this file once for all zones. It runs in gVisor on any node.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: extensions
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xwiki-extensions
+  namespace: extensions
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: xwiki-extensions}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: xwiki-extensions}
+    spec:
+      runtimeClassName: gvisor
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: httpd
+          image: registry.hoover.internal/hoover/xwiki-extensions:IMAGE_TAG
+          command: [httpd, -f, -p, '8080', -h, /]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {tcpSocket: {port: 8080}, periodSeconds: 10}
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {cpu: 500m, memory: 64Mi}
+          securityContext: {runAsUser: 65534, runAsGroup: 65534, runAsNonRoot: true, readOnlyRootFilesystem: true,
+            allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xwiki-extensions
+  namespace: extensions
+spec:
+  selector: {app.kubernetes.io/name: xwiki-extensions}
+  ports: [{name: http, port: 80, targetPort: http}]

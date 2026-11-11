@@ -1,0 +1,42 @@
+<!-- One admin, the zone user and a user for each Hoover service. hoover.py replaces ZONE_PREFIX with the zone prefix,
+     for example zone_a, and SERVICE_USERS with the users of service_users.py.
+     Passwords come from the hoover-stores Secret through the environment.
+     The zone user reaches only the databases of the zone prefix. The default user is removed. -->
+<clickhouse>
+    <profiles>
+        <default>
+            <max_threads>2</max_threads>
+            <max_insert_threads>1</max_insert_threads>
+            <max_block_size>8192</max_block_size>
+            <max_download_threads>1</max_download_threads>
+            <input_format_parallel_parsing>0</input_format_parallel_parsing>
+            <output_format_parallel_formatting>0</output_format_parallel_formatting>
+            <max_memory_usage>402653184</max_memory_usage>
+            <max_bytes_before_external_group_by>134217728</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>134217728</max_bytes_before_external_sort>
+            <log_queries>1</log_queries>
+        </default>
+    </profiles>
+    <users>
+        <default remove="remove"/>
+        <hoover_admin>
+            <password from_env="CH_ADMIN_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <grants><query>GRANT ALL ON *.* WITH GRANT OPTION</query></grants>
+        </hoover_admin>
+        <ZONE_PREFIX>
+            <password from_env="CH_ZONE_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SELECT, INSERT, ALTER, CREATE DATABASE, CREATE TABLE, CREATE VIEW, DROP TABLE, DROP VIEW, TRUNCATE, OPTIMIZE, SHOW ON ZONE_PREFIX.*</query>
+                <query>GRANT SELECT, INSERT, ALTER, CREATE DATABASE, CREATE TABLE, CREATE VIEW, DROP TABLE, DROP VIEW, TRUNCATE, OPTIMIZE, SHOW ON ZONE_PREFIX_global.*</query>
+                <query>GRANT SELECT, INSERT, ALTER, CREATE DATABASE, CREATE TABLE, CREATE VIEW, DROP DATABASE, DROP TABLE, DROP VIEW, TRUNCATE, OPTIMIZE, SHOW ON ZONE_PREFIX_*.*</query>
+            </grants>
+        </ZONE_PREFIX>
+<!-- SERVICE_USERS -->
+    </users>
+</clickhouse>

@@ -1,0 +1,32 @@
+{
+ "about": "CPU policy of the cluster workloads. cpu_policy.py applies it. Memory requests and limits stay unchanged. The slow-start workloads get a higher limit, because they load many classes or caches at start.",
+ "oversubscription": 6,
+ "allocation": "150m",
+ "limit": "3",
+ "slowStart": {
+  "limit": "8",
+  "workloads": [
+   "*/statefulset/xwiki",
+   "*/deployment/openproject-web",
+   "*/deployment/openproject-worker-default",
+   "*/deployment/opendesk-nextcloud-aio",
+   "*/deployment/collabora",
+   "*/statefulset/element-synapse-main",
+   "*/statefulset/element-synapse-media-repo",
+   "*/deployment/element-matrix-authentication-service",
+   "*/statefulset/ums-keycloak",
+   "*/deployment/ums-udm-rest-api",
+   "*/statefulset/ums-umc-server",
+   "*/deployment/impress-backend",
+   "*/deployment/jitsi-jicofo",
+   "calls/deployment/jvb"
+  ]
+ },
+ "continuous": {
+  "ingress/deployment/haproxy-ingress": "30m",
+  "monitoring/statefulset/prometheus-monitor-kube-prometheus-st-prometheus": "30m"
+ },
+ "skipNamespaces": [
+  "kube-system"
+ ]
+}

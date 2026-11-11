@@ -1,7 +1,8 @@
 # Deploying
 
-`./deploy` at the repository root is the only entry point. It renders configuration, repairs
-the container network, and then drives the container runtime.
+`./deploy` at the repository root is the only entry point of the Compose deployment. It renders
+configuration, repairs the container network, and then drives the container runtime.
+[The cluster deployment](../../k3s/Readme.md) renders Kubernetes objects from the same Compose files.
 
 ## Contents
 

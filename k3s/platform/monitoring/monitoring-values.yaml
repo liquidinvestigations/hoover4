@@ -1,0 +1,92 @@
+# install-dashboards.sh replaces MONITOR_NODE with the server node of hosts.json and hoover.test with the suffix.
+# The alarms fire in Prometheus. Alertmanager is off, so no alarm leaves the cluster.
+alertmanager:
+  enabled: false
+defaultRules:
+  disabled:
+    # Alertmanager is off on purpose.
+    PrometheusNotConnectedToAlertmanagers: true
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+prometheus:
+  prometheusSpec:
+    # The operator gateway removes this path prefix before it forwards a request.
+    externalUrl: https://operator.hoover.test/prometheus/
+    routePrefix: /
+    retention: 2d
+    nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+    # The PodMonitor of the TopoLVM volume groups and the alarm rules come from install-dashboards.sh without Helm labels.
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retentionSize: 4GB
+    resources:
+      requests: {cpu: 250m, memory: 512Mi}
+      limits: {cpu: '2', memory: 2Gi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 8Gi
+prometheusOperator:
+  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: '1', memory: 512Mi}
+  admissionWebhooks:
+    patch:
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: 500m, memory: 128Mi}
+grafana:
+  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: '1', memory: 512Mi}
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki-gateway.monitoring.svc.cluster.local
+  # The operator gateway authenticates the user and removes the /grafana prefix.
+  grafana.ini:
+    server:
+      root_url: https://operator.hoover.test/grafana/
+      serve_from_sub_path: false
+    auth:
+      disable_login_form: true
+      disable_signout_menu: true
+    auth.proxy:
+      enabled: true
+      header_name: X-Forwarded-User
+      header_property: username
+      auto_sign_up: true
+    users:
+      auto_assign_org_role: Admin
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+kube-state-metrics:
+  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+prometheus-node-exporter:
+  # The pod mounts of the kubelet and containerd stay out of the filesystem metrics.
+  extraArgs:
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+|var/lib/rancher/k3s/.+)($|/)
+    - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs)$
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 128Mi}

@@ -1,0 +1,51 @@
+deploymentMode: Monolithic
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: '2026-01-01'
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 48h
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+singleBinary:
+  replicas: 1
+  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: '2', memory: 1Gi}
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+gateway:
+  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
+  # The chart requires one gateway on each node. On one node the old pod must stop before the new one starts.
+  deploymentStrategy: {type: RollingUpdate, rollingUpdate: {maxSurge: 0, maxUnavailable: 1}}
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 250m, memory: 128Mi}

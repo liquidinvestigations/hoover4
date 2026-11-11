@@ -1,0 +1,24 @@
+{
+ "schemaVersion": 1,
+ "zones": {
+  "zone-a": {
+   "enabled": true,
+   "home": "public-node",
+   "namespaces": [
+    "zone-a",
+    "hoover-zone-a"
+   ]
+  },
+  "zone-b": {
+   "enabled": true,
+   "home": "server-node",
+   "namespaces": [
+    "zone-b",
+    "hoover-zone-b"
+   ],
+   "tiers": {
+    "default": ["hdd"]
+   }
+  }
+ }
+}

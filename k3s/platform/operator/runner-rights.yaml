@@ -1,0 +1,175 @@
+# The rights of the zone runner (runner.py). The runner uses the token of the ServiceAccount zone-runner, which
+# install-runner.sh writes into k3s/private/operator-runner/kubeconfig.
+# - In a zone namespace it has every right through the RoleBinding zone-runner, which zone.py creates with each zone
+#   namespace. It binds the ClusterRole zone-admin.
+# - Outside the zone namespaces it can create, change and delete zone namespaces and RoleBindings, bind zone-admin,
+#   read the nodes and the zone pod policy, update the XWiki extension repository, run the shared call services,
+#   read the Services of the Hoover NFS servers, and update the operation ConfigMaps of the portal.
+# - The ValidatingAdmissionPolicy zone-runner-scope refuses a namespace or a RoleBinding outside the zone namespaces,
+#   and a RoleBinding to a ClusterRole other than zone-admin.
+# - The ValidatingAdmissionPolicy hoover-pod-limits (../../zones/manifests/zone-pods.yaml) refuses host access in the
+#   pods of the zone namespaces, calls and extensions. The admin kubeconfig applies it, and the runner cannot change it.
+# The runner cannot read or change any other object.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zone-runner
+  namespace: operator-portal
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zone-runner-token
+  namespace: operator-portal
+  annotations:
+    kubernetes.io/service-account.name: zone-runner
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: zone-admin
+rules:
+  - apiGroups: ['*']
+    resources: ['*']
+    verbs: ['*']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: zone-runner
+rules:
+  - apiGroups: ['']
+    resources: [namespaces]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, list, create, patch, update, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames: [zone-admin]
+    verbs: [bind]
+  - apiGroups: ['']
+    resources: [nodes]
+    verbs: [get, list]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [mutatingadmissionpolicies, mutatingadmissionpolicybindings]
+    resourceNames: [hoover-zone-pods]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: zone-runner
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zone-runner
+  namespace: operator-portal
+rules:
+  - apiGroups: ['']
+    resources: [configmaps]
+    verbs: [get, list, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zone-runner
+  namespace: operator-portal
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+# The shared call services (../calls/install-calls.py) and the XWiki extension repository of the zones.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zone-runner
+  namespace: calls
+rules:
+  - apiGroups: ['', apps, networking.k8s.io]
+    resources: [secrets, services, deployments, ingresses]
+    verbs: [get, list, watch, create, patch, update, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zone-runner
+  namespace: calls
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zone-runner
+  namespace: extensions
+rules:
+  - apiGroups: ['', apps]
+    resources: [services, deployments]
+    verbs: [get, list, create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zone-runner
+  namespace: extensions
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+# The Hoover manifests name the address of the NFS server of each data node (../hoover-data/).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zone-runner
+  namespace: hoover-data
+rules:
+  - apiGroups: ['']
+    resources: [services]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zone-runner
+  namespace: hoover-data
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: zone-runner-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [namespaces]
+      - apiGroups: [rbac.authorization.k8s.io]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [rolebindings]
+  matchConditions:
+    - name: zone-runner
+      expression: request.userInfo.username == 'system:serviceaccount:operator-portal:zone-runner'
+  validations:
+    - expression: "request.resource.resource != 'namespaces' || request.name.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')"
+      message: The zone runner changes only zone namespaces.
+    - expression: "request.resource.resource != 'rolebindings' || request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')"
+      message: The zone runner changes RoleBindings only in zone namespaces.
+    # The charts bind only Roles of their namespace. The runner binds no ClusterRole except zone-admin.
+    - expression: "request.resource.resource != 'rolebindings' || request.operation == 'DELETE' || object.roleRef.kind == 'Role' || object.roleRef.name == 'zone-admin'"
+      message: The zone runner binds no ClusterRole except zone-admin.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: zone-runner-scope
+spec:
+  policyName: zone-runner-scope
+  validationActions: [Deny]

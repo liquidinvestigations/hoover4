@@ -1,0 +1,33 @@
+# The external HTTPS frontend sends plain HTTP to this ingress. It is reachable only inside the cluster and from the host.
+controller:
+  ingressClass: haproxy
+  ingressClassResource:
+    enabled: true
+  config:
+    # TLS ends at the HTTPS frontend, so the ingress must not redirect to HTTPS.
+    ssl-redirect: "false"
+    use-forwarded-proto: "true"
+    # Requests on the HTTP port come from the HTTPS frontend, so the ingress trusts its X-Forwarded-Proto header.
+    fronting-proxy-port: "80"
+    # The ingress sends requests to the Service address, so a new pod gets requests without an ingress reload.
+    service-upstream: "true"
+    # The access log goes to stdout. req.fhdr keeps the full User-Agent. req.hdr returns only the part after the last comma.
+    syslog-endpoint: stdout
+    syslog-format: raw
+    config-frontend: |
+      http-request capture req.fhdr(User-Agent) len 120
+    # openDesk recommends these limits for its large headers.
+    config-global: |
+      tune.bufsize 65536
+      tune.http.maxhdr 256
+  # install-ingress.sh sets service.clusterIP from ingress_address and nodeSelector from ingress_node of settings.json.
+  # The HTTPS frontend on the public host sends its requests to that fixed Service address.
+  service:
+    type: ClusterIP
+    httpsPorts: []
+  # The CPU request is near the measured continuous use. The memory limit follows the zone limit rule.
+  resources:
+    requests: {cpu: 30m, memory: 128Mi}
+    limits: {cpu: '3', memory: 512Mi}
+  metrics:
+    enabled: true

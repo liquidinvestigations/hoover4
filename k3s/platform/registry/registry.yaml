@@ -1,0 +1,133 @@
+# The image registry of the cluster. It holds the images that the workstation builds: the block mount tools, the
+# Nextcloud and XWiki additions and Hoover. install-registry.sh replaces NODE, HOST_IP and CONFIG_HASH before it
+# applies this file. nginx listens on the VPN address of the node through hostPort with hostIP, without TLS.
+# A pull (GET and HEAD) needs no login, so the nodes pull through the mirror in /etc/rancher/k3s/registries.yaml
+# without credentials. A push or delete needs the user push from the Secret registry-push.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-data
+  namespace: registry
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: hdd-ext4
+  resources:
+    requests:
+      storage: 60Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-nginx
+  namespace: registry
+data:
+  nginx.conf: |
+    worker_processes 1;
+    events { worker_connections 256; }
+    http {
+      access_log off;
+      server {
+        listen 5000;
+        client_max_body_size 0;
+        chunked_transfer_encoding on;
+        location = /ready { proxy_pass http://127.0.0.1:5002/v2/; }
+        # podman sends credentials only after a challenge to its first request, GET /v2/.
+        # containerd asks for manifests and blobs directly, so the nodes pull without a login.
+        location = /v2/ {
+          auth_basic registry;
+          auth_basic_user_file /etc/nginx/auth/htpasswd;
+          add_header Docker-Distribution-Api-Version registry/2.0 always;
+          proxy_pass http://127.0.0.1:5002;
+        }
+        location /v2/ {
+          limit_except GET HEAD {
+            auth_basic registry;
+            auth_basic_user_file /etc/nginx/auth/htpasswd;
+          }
+          proxy_pass http://127.0.0.1:5002;
+          proxy_set_header Host $http_host;
+          proxy_request_buffering off;
+          proxy_buffering off;
+          proxy_read_timeout 900;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: registry
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: registry
+      annotations:
+        hoover.dev/config: CONFIG_HASH
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: NODE
+      enableServiceLinks: false
+      containers:
+        - name: registry
+          image: docker.io/library/registry:3.0.0
+          env:
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+            - name: OTEL_TRACES_EXPORTER
+              value: none
+            # Only nginx in the same pod reaches the registry.
+            - name: REGISTRY_HTTP_ADDR
+              value: 127.0.0.1:5002
+            - name: REGISTRY_HTTP_RELATIVEURLS
+              value: "true"
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {cpu: "2", memory: 512Mi}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+        - name: nginx
+          image: docker.io/library/nginx:1.30.6-alpine
+          ports:
+            - name: http
+              containerPort: 5000
+              hostIP: HOST_IP
+              hostPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5000
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: "1", memory: 128Mi}
+          volumeMounts:
+            - name: nginx
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: auth
+              mountPath: /etc/nginx/auth
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: registry-data
+        - name: nginx
+          configMap:
+            name: registry-nginx
+        - name: auth
+          secret:
+            secretName: registry-push

@@ -1,0 +1,35 @@
+{
+ "about": "Memory limits of the zone workloads, by <kind>/<name> and container. postrender.py writes them into each Helm render, and the Hoover tools read the Hoover part. The rule: the larger of 1.5 times the peak of the browser load test with 16 tabs of eight users and the peak plus 256 MiB, rounded up to 128 MiB. The peak is the host cgroup of the pod, with its sandbox. A workload with no measured peak keeps the chart value. Collabora keeps 2048Mi, because it sizes its threads by the visible CPUs and needs more than 1 GiB on a node with 32 CPUs. Jicofo keeps 768Mi for its Java heap of 512 MiB. A Kata VM reserves its limit, so the store limits stay small.",
+ "zone": {
+  "statefulset/xwiki": {"xwiki": "2816Mi"},
+  "deployment/openproject-web": {"openproject": "4224Mi"},
+  "deployment/impress-backend": {"impress-backend": "1664Mi"},
+  "deployment/openproject-worker-default": {"openproject": "1408Mi"},
+  "deployment/collabora": {"collabora-online": "3200Mi"},
+  "deployment/opendesk-nextcloud-aio": {"aio": "1280Mi"},
+  "deployment/cryptpad": {"cryptpad": "640Mi"},
+  "deployment/jitsi-jicofo": {"jitsi": "768Mi"},
+  "statefulset/element-synapse-media-repo": {"synapse": "640Mi"},
+  "statefulset/element-synapse-main": {"synapse": "512Mi"},
+  "statefulset/ums-umc-server": {"main": "512Mi", "sssd-sidecar": "256Mi"},
+  "deployment/ums-umc-server": {"proxy": "384Mi"},
+  "deployment/ums-umc-gateway": {"main": "512Mi"},
+  "deployment/element-element-web": {"element-web": "512Mi"},
+  "statefulset/redis-master": {"redis": "256Mi"},
+  "deployment/memcached": {"memcached": "256Mi"},
+  "statefulset/ums-provisioning-nats": {"main": "384Mi"},
+  "statefulset/postgresql": {"postgresql": "1Gi"},
+  "deployment/seaweedfs-all-in-one": {"seaweedfs": "1Gi"}
+ },
+ "hoover": {
+  "hoover-website": "768Mi",
+  "hoover-operations": "1Gi",
+  "migrate": "1Gi",
+  "temporal": "1Gi",
+  "oauth2-proxy": "128Mi",
+  "clickhouse": "1536Mi",
+  "manticore": "768Mi",
+  "manticore-vectors": "768Mi",
+  "garage": "256Mi"
+ }
+}

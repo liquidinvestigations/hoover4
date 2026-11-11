@@ -1,0 +1,9 @@
+# The openDesk Nextcloud image with the Assistant and its OpenAI-compatible provider app.
+# openDesk turns the app store off and mounts the app directory read-only, so the apps must be in the image.
+# The app store lists both releases for Nextcloud 33. The checksums pin the downloaded release files.
+FROM registry.opencode.de/bmi/opendesk/components/platform-development/images/opendesk-nextcloud:33.0.9@sha256:0f4802fbedf9406dc4ef4364bc91121482518cccce93e3769c12cdd6b9481d48
+USER root
+ADD --checksum=sha256:f4b06292172762d322cb5cc71f11533dee5e9310e7cb77fc0e74ada9816cab89 https://github.com/nextcloud-releases/assistant/releases/download/v3.5.0/assistant-v3.5.0.tar.gz /tmp/assistant.tar.gz
+ADD --checksum=sha256:ca08bcde90962e8f920f00db664a9cb286a3073a165099f38e742ec4c4da3717 https://github.com/nextcloud-releases/integration_openai/releases/download/v4.5.2/integration_openai-v4.5.2.tar.gz /tmp/integration_openai.tar.gz
+RUN tar -C /var/www/html/apps -xzf /tmp/assistant.tar.gz && tar -C /var/www/html/apps -xzf /tmp/integration_openai.tar.gz && rm /tmp/*.tar.gz
+USER 101

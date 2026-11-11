@@ -1,0 +1,30 @@
+{{velocity}}
+## Point the LLM Application at the model of k3s/private/ai.json. Arguments: url (ends with /), model, token, context.
+## The script adds or updates the server "Hoover" and the model page AI.Models.<model>.
+## It deletes the example chat models, because their servers are not reachable from the zones.
+#set ($config = $xwiki.getDocument('AI.Code.AIConfig'))
+#set ($server = $config.getObject('AI.Code.AIConfigClass', 'Name', 'Hoover'))
+#if (!$server)#set ($server = $config.newObject('AI.Code.AIConfigClass'))#end
+$server.set('Name', 'Hoover')
+$server.set('url', '@url@')
+$server.set('token', '@token@')
+$server.set('Requestmode', 1)
+$config.save('Model server')
+#set ($page = $xwiki.getDocument("AI.Models.@model@"))
+#set ($model = $page.getObject('AI.Models.Code.ModelsClass'))
+#if (!$model)#set ($model = $page.newObject('AI.Models.Code.ModelsClass'))#end
+$model.set('model', '@model@')
+$model.set('serverName', 'Hoover')
+$model.set('type', 'llm')
+$model.set('contextSize', @context@)
+$model.set('groups', 'XWiki.XWikiAllGroup,XWiki.XWikiAdminGroup')
+$model.set('allowGuests', 0)
+$page.setTitle('@model@')
+$page.save('Model')
+#foreach ($example in ['AI.Models.gpt-4o', 'AI.Models.gpt-4o-mini', 'AI.Models.qwen2'])
+#if ($xwiki.exists($example))$xwiki.getDocument($example).delete()#end
+#end
+servers=#foreach ($o in $config.getObjects('AI.Code.AIConfigClass'))$o.getValue('Name') #end
+
+models=$services.query.xwql("from doc.object(AI.Models.Code.ModelsClass) as o where doc.fullName <> 'AI.Models.Code.ModelsTemplate'").execute()
+{{/velocity}}

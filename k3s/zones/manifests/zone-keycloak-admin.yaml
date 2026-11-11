@@ -1,0 +1,23 @@
+# The openDesk chart routes only /realms/, /resources/ and /fingerprintjs on the Keycloak host.
+# This route adds the Keycloak admin console for the operator. zone.py replaces ZONE and SUFFIX with the zone name and suffix.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak-admin-console
+spec:
+  ingressClassName: haproxy
+  rules:
+  - host: id.ZONE.SUFFIX
+    http:
+      paths:
+      - path: /admin/
+        pathType: Prefix
+        backend:
+          service:
+            name: ums-keycloak-extensions-proxy
+            port:
+              name: http
+  tls:
+  - hosts:
+    - id.ZONE.SUFFIX
+    secretName: opendesk-certificates-tls

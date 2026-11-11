@@ -22,6 +22,7 @@ It is the successor to [hoover-search](https://github.com/liquidinvestigations/h
 | [Garage object storage](main_services/ops/docker/garage/Readme.md) | Original bytes and derived document or chat artifacts. |
 | [AI services](ai_services/README.md) | Optional GPU embeddings, reranking, NER, OCR, and self-hosted model servers. |
 | [Website](website/Readme.md) | Dioxus Rust backend and WebAssembly frontend for users and administrators. |
+| [Cluster deployment](k3s/Readme.md) | Site file, operator settings and Kubernetes render of Hoover and openDesk on k3s. |
 
 [The architecture diagram](docs/architecture/Readme.md#the-components-have-separate-responsibilities) shows these relationships.
 

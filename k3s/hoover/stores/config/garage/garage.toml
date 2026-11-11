@@ -1,0 +1,19 @@
+# Single-node Garage for the Hoover of one zone. The RPC secret and the admin token come from the environment.
+# metadata_fsync and data_fsync are on, so an acknowledged write is on the volume. hoover4 keeps the defaults (off).
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+metadata_fsync = true
+data_fsync = true
+replication_factor = 1
+block_ram_buffer_max = "32MiB"
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "us-east-1"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage"
+
+[admin]
+api_bind_addr = "[::]:3903"

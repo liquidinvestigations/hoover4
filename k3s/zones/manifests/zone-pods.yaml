@@ -1,0 +1,127 @@
+# Every pod of a zone runs on the home node of the zone, and in gVisor unless it names another runtime.
+# A pod with the label hoover.dev/node=<node> runs on that node, and a pod with hoover.dev/placement=any runs on any node.
+# The Hoover manifests use them for the worker pods, which spread over the nodes, and for the services that reach the
+# internet from the public node.
+# The policy covers Helm hook Jobs too, because Helm does not pass hooks through the post-renderer.
+# zone.py labels each zone namespace with hoover.dev/home-node=<node>. A pod that names a RuntimeClass keeps it,
+# for example a Kata store. A pod with the label hoover.dev/runtime=runc keeps the default runtime: this is the record
+# of a runtime exception.
+# The ValidatingAdmissionPolicy hoover-pod-limits refuses host access in the zone namespaces and in the namespaces calls
+# and extensions, where the zone runner can create workloads. It matches the namespace by its name, so a label change
+# does not remove it. It refuses a host path, the host PID and IPC namespaces, a privileged container, and a
+# capability in a pod without a RuntimeClass. Only coturn in calls may use the host network and NET_BIND_SERVICE. In a
+# zone namespace a pod runs in gVisor or Kata, and only the StatefulSet pods of the recorded exceptions run with runc.
+# An NFS volume names a path of its own zone, /<zone>/ or /extra/<zone>/ (../../platform/hoover-data/).
+# zone.py writes the hash of this file into the annotation hoover.dev/source-hash. The zone runner cannot change these
+# objects. It stops when the annotation does not match its source.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: hoover-zone-pods
+  annotations: {hoover.dev/source-hash: SOURCE_HASH}
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  failurePolicy: Fail
+  reinvocationPolicy: Never
+  variables:
+    - name: labels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+    - name: node
+      expression: >
+        variables.labels.exists(k, k == "hoover.dev/node") ? variables.labels["hoover.dev/node"]
+          : namespaceObject.metadata.labels["hoover.dev/home-node"]
+    - name: anywhere
+      expression: variables.labels.exists(k, k == "hoover.dev/placement") && variables.labels["hoover.dev/placement"] == "any"
+  mutations:
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >
+          (variables.anywhere ? []
+            : has(object.spec.nodeSelector) ? [JSONPatch{op: "add", path: "/spec/nodeSelector/kubernetes.io~1hostname",
+              value: variables.node}]
+            : [JSONPatch{op: "add", path: "/spec/nodeSelector", value: {"kubernetes.io/hostname": variables.node}}])
+          + (has(object.spec.runtimeClassName)
+              || (has(object.metadata.labels) && object.metadata.labels.exists(k, k == "hoover.dev/runtime")
+                  && object.metadata.labels["hoover.dev/runtime"] == "runc")
+            ? [] : [JSONPatch{op: "add", path: "/spec/runtimeClassName", value: "gvisor"}])
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: hoover-zone-pods
+spec:
+  policyName: hoover-zone-pods
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - {key: hoover.dev/home-node, operator: Exists}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: hoover-pod-limits
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods", "pods/ephemeralcontainers"]
+  matchConditions:
+    - name: limited-namespace
+      expression: request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$') || request.namespace in ['calls', 'extensions']
+  variables:
+    - name: zone
+      expression: request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')
+    - name: labels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+    - name: coturn
+      expression: request.namespace == 'calls' && variables.labels.exists(k, k == 'app.kubernetes.io/name') && variables.labels['app.kubernetes.io/name'] == 'coturn'
+    - name: runc
+      expression: variables.labels.exists(k, k == 'hoover.dev/runtime') && variables.labels['hoover.dev/runtime'] == 'runc'
+    - name: containers
+      expression: "object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : [])"
+    - name: ephemeral
+      expression: "has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers : []"
+    - name: zonename
+      expression: "request.namespace.startsWith('hoover-') ? request.namespace.substring(7) : request.namespace"
+  validations:
+    - expression: "!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath))"
+      message: A pod here cannot mount a host path.
+    - expression: >
+        !has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.nfs) || (variables.zone
+          && (v.nfs.path.startsWith('/' + variables.zonename + '/') || v.nfs.path.startsWith('/extra/' + variables.zonename + '/'))))
+      message: An NFS volume names a data folder of its own zone.
+    - expression: "!(has(object.spec.hostPID) && object.spec.hostPID) && !(has(object.spec.hostIPC) && object.spec.hostIPC)"
+      message: A pod here cannot use the host PID or IPC namespace.
+    - expression: "!(has(object.spec.hostNetwork) && object.spec.hostNetwork) || variables.coturn"
+      message: Only coturn in calls can use the host network.
+    - expression: "variables.coturn || variables.containers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0))"
+      message: Only coturn in calls can use a host port.
+    - expression: >
+        variables.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged)
+        && variables.ephemeral.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged)
+      message: A pod here cannot have a privileged container.
+    - expression: >
+        variables.ephemeral.all(c, !has(c.securityContext) || !has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add))
+        && (has(object.spec.runtimeClassName) || variables.containers.all(c, !has(c.securityContext) || !has(c.securityContext.capabilities)
+          || !has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.all(a, variables.coturn && a == 'NET_BIND_SERVICE')))
+      message: A pod without a RuntimeClass cannot add a capability. Only coturn adds NET_BIND_SERVICE.
+    - expression: >
+        !variables.zone || (has(object.spec.runtimeClassName) ? object.spec.runtimeClassName in ['gvisor', 'kata']
+          : variables.runc && object.metadata.name.matches('^(ums-umc-server|ums-ldap-server-primary|ums-ldap-notifier)-[0-9]+$'))
+      message: A zone pod runs in gVisor or Kata. Only the recorded exceptions run with runc.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: hoover-pod-limits
+spec:
+  policyName: hoover-pod-limits
+  validationActions: [Deny]

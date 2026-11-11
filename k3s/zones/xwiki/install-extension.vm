@@ -1,0 +1,22 @@
+{{velocity}}
+## Install one extension on the main wiki and print the job state and the error lines of its log.
+## Arguments: id and version.
+#set($present = $services.extension.installed.getInstalledExtension('@id@', 'wiki:xwiki'))
+#if ($present && "$present.id.version" == '@version@')
+state=ALREADY_INSTALLED
+#else
+#set($job = $services.extension.install('@id@', '@version@', 'wiki:xwiki'))
+#end
+#if ($job)
+$job.join()
+state=$job.status.state
+#foreach ($event in $job.status.logTail)
+#if ($event.level.toString() == 'ERROR' || $event.level.toString() == 'WARN')
+$event.level: $event.formattedMessage #if($event.throwable)CAUSE: $event.throwable #if($event.throwable.cause)$event.throwable.cause #if($event.throwable.cause.cause)$event.throwable.cause.cause#end#end#end
+#end
+#end
+#elseif (!$present)
+error=$services.extension.lastError
+#end
+installed=$services.extension.installed.getInstalledExtension('@id@', 'wiki:xwiki').id
+{{/velocity}}

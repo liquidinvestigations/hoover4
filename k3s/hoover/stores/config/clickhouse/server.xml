@@ -1,0 +1,78 @@
+<!-- Server settings for a small ClickHouse of one zone. Sources: the ClickHouse low-memory guidance and the hoover4 override.
+     Caches are small, background pools are small, and system logs other than query_log, part_log and
+     asynchronous_insert_log are removed. The memory cap follows the container limit inside the guest. -->
+<clickhouse>
+    <logger>
+        <level>warning</level>
+        <console>1</console>
+        <log remove="1"/>
+        <errorlog remove="1"/>
+    </logger>
+    <listen_host>0.0.0.0</listen_host>
+    <max_server_memory_usage>0</max_server_memory_usage>
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+    <cache_size_to_ram_max_ratio>0.2</cache_size_to_ram_max_ratio>
+    <mark_cache_size>67108864</mark_cache_size>
+    <index_mark_cache_size>16777216</index_mark_cache_size>
+    <uncompressed_cache_size>0</uncompressed_cache_size>
+    <index_uncompressed_cache_size>0</index_uncompressed_cache_size>
+    <primary_index_cache_size>33554432</primary_index_cache_size>
+    <query_condition_cache_size>16777216</query_condition_cache_size>
+    <compiled_expression_cache_size>16777216</compiled_expression_cache_size>
+    <compiled_expression_cache_elements_size>1000</compiled_expression_cache_elements_size>
+    <mmap_cache_size>256</mmap_cache_size>
+    <max_concurrent_queries>64</max_concurrent_queries>
+    <max_thread_pool_size>256</max_thread_pool_size>
+    <max_thread_pool_free_size>8</max_thread_pool_free_size>
+    <concurrent_threads_soft_limit_num>2</concurrent_threads_soft_limit_num>
+    <background_pool_size>4</background_pool_size>
+    <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
+    <background_move_pool_size>1</background_move_pool_size>
+    <background_fetches_pool_size>1</background_fetches_pool_size>
+    <background_common_pool_size>2</background_common_pool_size>
+    <background_schedule_pool_size>16</background_schedule_pool_size>
+    <background_message_broker_schedule_pool_size>1</background_message_broker_schedule_pool_size>
+    <background_distributed_schedule_pool_size>1</background_distributed_schedule_pool_size>
+    <background_buffer_flush_schedule_pool_size>1</background_buffer_flush_schedule_pool_size>
+    <merge_tree>
+        <merge_max_block_size>1024</merge_max_block_size>
+        <number_of_free_entries_in_pool_to_lower_max_size_of_merge>4</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+        <number_of_free_entries_in_pool_to_execute_mutation>4</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>4</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+    </merge_tree>
+    <asynchronous_metric_log remove="1"/>
+    <metric_log remove="1"/>
+    <query_metric_log remove="1"/>
+    <query_thread_log remove="1"/>
+    <query_views_log remove="1"/>
+    <session_log remove="1"/>
+    <text_log remove="1"/>
+    <trace_log remove="1"/>
+    <crash_log remove="1"/>
+    <error_log remove="1"/>
+    <opentelemetry_span_log remove="1"/>
+    <zookeeper_log remove="1"/>
+    <latency_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <blob_storage_log remove="1"/>
+    <backup_log remove="1"/>
+    <s3queue_log remove="1"/>
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </query_log>
+    <part_log>
+        <database>system</database>
+        <table>part_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </part_log>
+    <asynchronous_insert_log>
+        <database>system</database>
+        <table>asynchronous_insert_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </asynchronous_insert_log>
+</clickhouse>

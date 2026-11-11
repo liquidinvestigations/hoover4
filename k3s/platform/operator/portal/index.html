@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hoover cluster operations</title>
+<style>body{font:18px system-ui,sans-serif;max-width:960px;margin:4rem auto;padding:0 1.5rem;background:#f4f6f8;color:#192938}h1{font-size:2rem}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}table{width:100%;border-collapse:collapse;font-size:15px;background:white}td,th{border-bottom:1px solid #d1dbe3;padding:.4rem;text-align:left;vertical-align:top}article{background:white;padding:1.5rem;border:1px solid #d1dbe3;border-radius:8px}a{color:#075b98;font-weight:600}p{line-height:1.5}small{color:#435766}pre{white-space:pre-wrap;font-size:12px;max-height:20rem;overflow:auto}ul{margin:0;padding-left:1rem}form{display:flex;gap:1rem;flex-wrap:wrap;align-items:end}</style>
+<h1>Hoover cluster operations</h1>
+<p>The operator portal provides cluster diagnostics and zone management.</p>
+<p id="status" aria-live="polite">Cluster measurements are loading.</p>
+<p><small>These values cover the cluster slice. Headlamp node totals include other host processes.</small></p>
+<main>
+<article><h2>Cluster resources</h2><p><a href="/headlamp/">Open Headlamp.</a></p><p>Inspect deployments, pods, events, storage, and runtime logs.</p></article>
+<article><h2>Metrics and logs</h2><p><a href="/grafana/">Open Grafana.</a></p><p>Inspect resource dashboards. Use Explore to search the Loki log source.</p></article>
+<article><h2>Service health</h2><p><a href="/prometheus/targets">Open Prometheus targets.</a></p><p>Inspect scrape status and query collected metrics.</p></article>
+</main>
+<h2>Zones</h2>
+<p>Each zone is one tenant with its own openDesk. Its portal uses the zone identity service, and its login is separate from this operator login.</p>
+<p id="zones-status" aria-live="polite">The zone list is loading.</p>
+<table><thead><tr><th>Zone</th><th>Use</th><th>Actions</th></tr></thead><tbody id="zones"></tbody></table>
+<p id="onboarding" aria-live="polite"></p>
+<h3>Create a zone</h3>
+<form id="create"><label>Zone name <input name="zone" required pattern="zone-[a-z0-9]{1,12}" placeholder="zone-c"></label>
+<label>Home node <select name="home" id="home" required></select></label>
+
+<button>Create the zone</button></form>
+<p><small>A create takes about 30 minutes. All pods and volumes of a zone stay on its home node. A create, upgrade or delete restarts the shared call services and the HTTPS frontend, so calls that run at that time end.</small></p>
+<h3>Operations</h3>
+<p id="operations-status" aria-live="polite"></p>
+<table><thead><tr><th>Time</th><th>Operator</th><th>Operation</th><th>State</th><th>Output</th></tr></thead><tbody id="operations"></tbody></table>
+<h2>Recent events</h2>
+<p id="events-status" aria-live="polite">The event feed is loading.</p>
+<table><thead><tr><th>Time</th><th>Type</th><th>Object</th><th>Reason</th><th>Message</th></tr></thead><tbody id="events"></tbody></table>
+<p>The operator login gives access to every tool on this page. <a href="/oauth2/sign_out">Sign out.</a></p>
+<small>Monitoring covers Kubernetes pod output, Kubernetes events, and the k3s service journal after collection starts.</small>
+<script>
+let previous;
+async function update() {
+ try {
+  const result = await fetch('/status.json');
+  const data = await result.json();
+  if (!result.ok) throw Error(data.error);
+  const cpu = previous ? `CPU use is ${((data.cpu_usage_usec-previous.cpu_usage_usec)/1e6/(data.time-previous.time)).toFixed(2)} cores of 8.` : 'CPU measurement is pending.';
+  document.getElementById('status').textContent = `The cluster uses ${(data.memory_current/2**30).toFixed(2)} GiB of ${(data.memory_max/2**30).toFixed(0)} GiB. ${cpu} File cache uses ${(data.memory_file_cache/2**30).toFixed(2)} GiB.`;
+  previous = data;
+ } catch (error) { document.getElementById('status').textContent = 'Cluster measurements are unavailable.'; }
+}
+async function updateEvents() {
+ const status = document.getElementById('events-status');
+ try {
+  const result = await fetch('/events.json');
+  const data = await result.json();
+  if (!result.ok) throw Error(data.error);
+  const rows = data.map(item => {
+   const row = document.createElement('tr');
+   for (const value of [new Date(item.time).toLocaleString(), item.type, `${item.namespace} ${item.object}`, item.reason, item.count > 1 ? `${item.message} (${item.count} times)` : item.message]) {
+    const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+   }
+   return row;
+  });
+  document.getElementById('events').replaceChildren(...rows);
+  status.textContent = `The feed shows ${data.length} recent warnings.`;
+ } catch (error) { status.textContent = 'The cluster event feed is unavailable.'; }
+}
+function cell(...children) { const td = document.createElement('td'); td.append(...children); return td; }
+function button(label, action) { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = action; return b; }
+async function post(path, body) {
+ const result = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+ const data = await result.json();
+ if (!result.ok) throw Error(data.error || 'The request failed.');
+ return data;
+}
+async function act(path, body, done) {
+ const status = document.getElementById('zones-status');
+ try { await post(path, body); status.textContent = done; updateZones(); } catch (error) { status.textContent = error.message; }
+}
+const size = bytes => bytes == null ? 'unknown' : `${(bytes/2**30).toFixed(1)} GiB`;
+async function updateZones() {
+ const status = document.getElementById('zones-status');
+ try {
+  const result = await fetch('/zones.json');
+  const data = await result.json();
+  if (!result.ok) throw Error(data.error);
+  document.getElementById('zones').replaceChildren(...data.zones.map(zone => {
+   const row = document.createElement('tr');
+   const link = document.createElement('a'); link.href = zone.portal; link.textContent = zone.name;
+   const use = zone.cpu == null ? 'The use is unavailable.' : `CPU ${zone.cpu.toFixed(2)} cores, memory ${size(zone.memory)}, requested volumes ${size(zone.storage)}.`;
+   const login = button('Show the onboarding login', async () => {
+    const out = document.getElementById('onboarding');
+    try { const d = await post(`/zones/${zone.name}/onboarding`); out.textContent = `Give this login to the tenant administrator of ${d.zone}. Portal ${d.portal}, user name ${d.username}, password ${d.password}.`; }
+    catch (error) { out.textContent = error.message; }
+   });
+   const upgrade = button('Upgrade the zone', () => act('/operations', {kind: 'upgrade-zone', zone: zone.name}, `The upgrade of ${zone.name} is queued.`));
+   const remove = button('Delete the zone', () => {
+    const typed = prompt(`The delete removes all data of ${zone.name}. Type the zone name to confirm.`);
+    if (typed !== null) act('/operations', {kind: 'delete-zone', zone: zone.name, confirm: typed}, `The delete of ${zone.name} is queued.`);
+   });
+   row.append(cell(link, document.createElement('br'), zone.phase === 'Active' ? '' : zone.phase), cell(use), cell(login, ' ', upgrade, ' ', remove));
+   return row;
+  }));
+  const home = document.getElementById('home');
+  if (!home.options.length) home.replaceChildren(...data.nodes.map(node => new Option(node, node)));
+  status.textContent = `The cluster has ${data.zones.length} zones.`;
+  document.getElementById('operations').replaceChildren(...data.operations.map(op => {
+   const row = document.createElement('tr');
+   const steps = JSON.parse(op.steps || '[]').map(s => `${s.name} ${s.state}`).join(', ');
+   const log = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Last output lines';
+   const text = document.createElement('pre'); text.textContent = op.log; log.append(summary, text);
+   const state = [op.state, op.step ? `at ${op.step}` : '', op.error].filter(Boolean).join(' ');
+   row.append(cell(new Date(op.created).toLocaleString()), cell(op.actor), cell(`${op.kind} ${op.zone}`, document.createElement('br'), steps),
+    cell(state, ' ', op.state === 'failed' ? button('Run again', () => act(`/operations/${op.name}/retry`, {}, 'The operation is queued again.')) : ''), cell(log));
+   return row;
+  }));
+  document.getElementById('operations-status').textContent = data.operations.length ? '' : 'No operation has run.';
+ } catch (error) { status.textContent = 'The zone list is unavailable.'; }
+}
+document.getElementById('create').onsubmit = event => {
+ event.preventDefault(); const form = new FormData(event.target);
+ act('/operations', {kind: 'create-zone', zone: form.get('zone'), home: form.get('home')}, `The create of ${form.get('zone')} is queued.`);
+};
+update(); setInterval(update, 5000); updateEvents(); setInterval(updateEvents, 15000); updateZones(); setInterval(updateZones, 10000);
+</script>
+</html>

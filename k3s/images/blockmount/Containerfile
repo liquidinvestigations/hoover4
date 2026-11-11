@@ -1,0 +1,14 @@
+# Static BusyBox, mke2fs, resize2fs and su-exec with their libraries and the musl loader, and the block mount script.
+# An init container copies /busybox, /run.sh and /musl into a shared emptyDir. run.sh starts these programs through
+# the loader, so the store image needs no e2fsprogs, no su-exec and no musl.
+FROM docker.io/library/alpine:3.22 AS tools
+RUN apk add --no-cache busybox-static e2fsprogs e2fsprogs-extra su-exec \
+ && mkdir /musl \
+ && cp /bin/busybox.static /busybox \
+ && cp /lib/ld-musl-x86_64.so.1 /sbin/mke2fs /usr/lib/libext2fs.so.2 /usr/lib/libcom_err.so.2 /usr/lib/libblkid.so.1 \
+       /usr/lib/libuuid.so.1 /usr/lib/libe2p.so.2 /usr/lib/libeconf.so.0 /sbin/su-exec /usr/sbin/resize2fs /musl/
+FROM scratch
+COPY --from=tools /busybox /busybox
+COPY --from=tools /musl /musl
+COPY run.sh /run.sh
+ENTRYPOINT ["/busybox"]

@@ -1,0 +1,12 @@
+{{velocity}}
+## List the classes of the LLM Application with their fields, and the pages that hold their objects.
+#foreach ($name in $xwiki.classList)
+#if ($name.startsWith('AI.'))
+#set ($class = $xwiki.getDocument($name).xWikiClass)
+$name: #foreach ($p in $class.properties)$p.name($p.classType) #end
+
+#set ($docs = $services.query.xwql("from doc.object($name) as o").execute())
+  objects in: $docs
+#end
+#end
+{{/velocity}}

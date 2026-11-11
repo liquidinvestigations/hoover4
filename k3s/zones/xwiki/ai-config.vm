@@ -1,0 +1,15 @@
+{{velocity}}
+## Print each field of the LLM Application configuration and model objects. Secret fields print as set or empty.
+#foreach ($ref in ['AI.Code.AIConfig:AI.Code.AIConfigClass', 'AI.Models.Default:AI.Models.Code.ModelsClass', 'AI.Models.gpt-4o:AI.Models.Code.ModelsClass', 'AI.Code.ChatWidgetConfig:AI.Code.ChatWidgetConfigClass'])
+#set ($parts = $ref.split(':'))
+#set ($doc = $xwiki.getDocument($parts[0]))
+#foreach ($obj in $doc.getObjects($parts[1]))
+$parts[0] #$obj.number:
+#foreach ($name in $obj.propertyNames)
+#set ($value = "$!obj.getValue($name)")
+#if ($name.toLowerCase().contains('token') || $name.toLowerCase().contains('key') || $name.toLowerCase().contains('secret'))#set ($value = "#if($value != '')set#{else}empty#end")#end
+  $name = $value
+#end
+#end
+#end
+{{/velocity}}
