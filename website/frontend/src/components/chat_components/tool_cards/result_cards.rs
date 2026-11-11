@@ -236,8 +236,11 @@ pub fn QuestionCard(tool_input: String, tool_output: String, running: bool) -> E
 }
 
 /// "an" before a kind that starts with a vowel, such as "inferred", else "a".
-/// The kind, text and open questions of a `submit_board_fact` call.
-fn board_fact_input(tool_input: &str) -> (String, String, Vec<String>) {
+/// The kind, text, slug and open questions of a `submit_board_fact` row. The board writes
+/// the kind, the slug and the questions. The text of the finding is the report, so the row
+/// has no `fact` field. A row of an older turn has one, and the text is returned for it.
+/// **Mirrors `submit_schema` in `main_services/processing/tasks/P_board/conversion.py`.**
+fn board_fact_input(tool_input: &str) -> (String, String, String, Vec<String>) {
     let input = serde_json::from_str::<serde_json::Value>(tool_input).unwrap_or_default();
     let input = input.get("input").unwrap_or(&input);
     let kind = match input.get("kind").and_then(|value| value.as_str()).unwrap_or("") {
@@ -245,22 +248,23 @@ fn board_fact_input(tool_input: &str) -> (String, String, Vec<String>) {
         _ => "unknown",
     };
     let fact = input.get("fact").and_then(|value| value.as_str()).unwrap_or("").to_string();
+    let slug = input.get("slug").and_then(|value| value.as_str()).unwrap_or("").to_string();
     let questions = input
         .get("open_questions")
         .and_then(|value| value.as_array())
         .map(|list| list.iter().filter_map(|q| q.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
-    (kind.to_string(), fact, questions)
+    (kind.to_string(), fact, slug, questions)
 }
 
-/// The finding of a board explore turn. The board writes it after the answer, when it
-/// converts the report of the turn (`by` is `board` in the output). An older explore turn
+/// The classification of a board finding. The board writes it after the answer, when it
+/// stores the report of the turn as the finding (`by` is `board` in the output). An older explore turn
 /// called the tool itself, inside its tool group. [`BoardFactSummary`] under the answer
 /// states the kind and the open questions.
 #[component]
 pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> Element {
     let expanded = use_signal(|| false);
-    let (kind, fact, questions) = board_fact_input(&tool_input);
+    let (kind, fact, slug, questions) = board_fact_input(&tool_input);
     let content = tool_content(&tool_output);
     let failure = content.as_ref().and_then(tool_failure);
     let by_board = content.as_ref().and_then(|value| value.get("by")).and_then(|value| value.as_str()) == Some("board");
@@ -271,7 +275,11 @@ pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> 
     };
     rsx! { CardShell { chip: "Board finding", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
-        div { style: "white-space: pre-wrap; font-size: var(--x-text-sm);", "{fact}" }
+        if !fact.is_empty() {
+            div { style: "white-space: pre-wrap; font-size: var(--x-text-sm);", "{fact}" }
+        } else if !slug.is_empty() {
+            div { style: "font-family: monospace; font-size: var(--x-text-sm); color: var(--x-ink-muted);", "{slug}" }
+        }
         for (index, question) in questions.into_iter().enumerate() {
             div { key: "{index}", style: "font-size: var(--x-text-sm); color: var(--x-ink-muted);", {tr!("cards-result-cards-open-question", question: question.to_string())} }
         }
@@ -291,7 +299,7 @@ pub struct ChatBoard(pub Memo<Option<(String, String)>>);
 /// applies.
 #[component]
 pub fn BoardFactSummary(tool_input: String) -> Element {
-    let (kind, _, questions) = board_fact_input(&tool_input);
+    let (kind, _, _, questions) = board_fact_input(&tool_input);
     let chat_board = try_consume_context::<ChatBoard>();
     let board = chat_board.and_then(|board| board.0.read().clone());
     let fact = use_resource(move || {
@@ -442,6 +450,16 @@ pub fn TodoSummary(snapshot: common::chat_types::TodoSnapshot) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_board_fact_row_reads_without_and_with_the_older_fact_field() {
+        let new = r#"{"kind": "sourced", "open_questions": ["Qui ?"], "slug": "année-parution"}"#;
+        assert_eq!(board_fact_input(new),
+                   ("sourced".into(), String::new(), "année-parution".into(), vec!["Qui ?".to_string()]));
+        let old = r#"{"fact": "The board approved [D1].", "kind": "inferred", "open_questions": []}"#;
+        assert_eq!(board_fact_input(old),
+                   ("inferred".into(), "The board approved [D1].".into(), String::new(), vec![]));
+    }
 
     #[test]
     fn the_row_label_names_a_following_page() {

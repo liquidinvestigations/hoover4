@@ -49,11 +49,11 @@ SHORT_FACT_WORDS = 40
 PROMPT_FACT_CHARS = 40000
 
 
-def clip_fact(text: str) -> str:
-    """`text`, cut to `PROMPT_FACT_CHARS` characters with a marker when it is longer."""
-    if len(text) <= PROMPT_FACT_CHARS:
+def clip_fact(text: str, limit: int = PROMPT_FACT_CHARS) -> str:
+    """`text`, cut to `limit` characters with a marker when it is longer."""
+    if len(text) <= limit:
         return text
-    return text[:PROMPT_FACT_CHARS].rstrip() + " [cut: the finding has more text]"
+    return text[:limit].rstrip() + " [cut: the finding has more text]"
 
 
 def short_fact(fact, label) -> str:
@@ -169,7 +169,8 @@ def render_brief(board, facts, citations, hints, intent, collections, steps: int
         "claim that no such record exists elsewhere. At the end of the report, list at most 3 "
         "questions that the task leaves open. Known answers and source caveats are not open "
         "questions. The board reads the finding only from that file after your turn ends. Text "
-        "in the chat reply does not reach the board."
+        "in the chat reply does not reach the board. The board shows the report as the finding, so "
+        "start it with a heading that names the result."
     )
 
 
@@ -191,9 +192,14 @@ def open_question_keys(folded, facts) -> list[tuple[str, str]]:
 
 
 def render_reason(board, folded, facts, citations, stalled: bool, final: bool = False,
-                  internet: bool = False) -> str:
+                  internet: bool = False, language: str = "en") -> str:
     """The prompt of one reason call. A final call asks for answers only. `internet` is the
-    effective web setting of the board, as `render_brief` receives it."""
+    effective web setting of the board, as `render_brief` receives it. `language` is the
+    board language (`activities.board_language`): the reply writes its objectives, briefs,
+    slugs and statements in it, and keeps the JSON keys and the node ids as they are."""
+    from tasks.P_agent.language import english_name
+
+    name = english_name(language)
     where = ("on the web" if not board.collections else
              "in the document collections and on the web" if internet else
              "in the document collections")
@@ -262,7 +268,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "- If there is no open intent, you must return answers or intents.\n"
             f"- Each intent lists at least one id in `from`. A direction that no fact leads to lists "
             f"{background}, the background context.\n"
-            "- `slug` names the direction of an intent in two to four lowercase English words.\n"
+            f"- `slug` names the direction of an intent in two to four lowercase words in {name}.\n"
             "- `questions` lists the keys of the open questions below that the intent explores. "
             "It is optional. Use only listed keys. A question key goes in `questions` only, and "
             "the fact that holds the question goes in `from`. For example, an intent that explores "
@@ -285,6 +291,9 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "\"slug\": \"leader in minutes\", \"correction\": \"correction-minutes\"}.\n")
     return (
         task +
+        f"- Write objectives, briefs, questions and answer statements in {name}, also when the "
+        "goals or the facts are in another language. The JSON keys stay in English.\n"
+        "- Copy each id exactly as the lists below write it, with its accents and other marks.\n"
         "- Name goals, facts and corrections by their ids in `from`, `goal` and `correction` "
         "fields only. Do not write ids in statements or objectives.\n"
         "- An answer lists the sourced facts that state it. An inferred fact cannot support an "

@@ -65,10 +65,22 @@ def test_the_function_schema_has_no_large_length_limit():
     assert all(limit <= 1000 for limit in limits(body["tools"]))
 
 
-def test_a_long_fact_is_kept_in_full():
-    fact = "Approved [D1]. " + "x" * 40_500
-    args = conversion.parse_reply(call_reply({"fact": fact, "kind": "sourced"}))
-    assert args["fact"] == fact.strip()
+def test_the_function_has_no_fact_field_and_names_the_board_language():
+    schema = conversion.submit_schema("fr")["function"]["parameters"]
+    assert set(schema["properties"]) == {"kind", "open_questions", "slug"}
+    assert schema["required"] == ["kind", "open_questions"]
+    assert "in French" in schema["properties"]["slug"]["description"]
+    body = conversion.request_body("q-model", "Trouver", "report.md", "Approuvé [D1].", CITATIONS,
+                                   language="fr")
+    assert "words in French" in body["messages"][0]["content"]
+    assert body["tools"] == [conversion.submit_schema("fr")]
+    assert body["max_tokens"] == conversion.CONVERSION_MAX_TOKENS
+
+
+def test_the_convert_retry_policy_has_the_attempts_of_the_conversion():
+    from tasks.P_board.workflows import EXTERNAL_RETRY
+
+    assert EXTERNAL_RETRY.maximum_attempts == conversion.CONVERT_ATTEMPTS
 
 
 def test_a_prompt_cuts_a_long_fact_and_keeps_a_short_one():
@@ -80,27 +92,27 @@ def test_a_prompt_cuts_a_long_fact_and_keeps_a_short_one():
 
 
 def test_a_valid_call_is_read_and_a_malformed_call_is_refused():
-    args = conversion.parse_reply(call_reply({"fact": "Approved [D1].", "kind": "sourced",
-                                              "open_questions": ["Who paid?"]}))
-    assert args == {"fact": "Approved [D1].", "kind": "sourced", "open_questions": ["Who paid?"],
-                    "slug": ""}
+    args = conversion.parse_reply(call_reply({"kind": "sourced", "open_questions": ["Who paid?"]}))
+    assert args == {"kind": "sourced", "open_questions": ["Who paid?"], "slug": ""}
+    # A `fact` field, as an older row or a model holds it, is ignored.
+    older = conversion.parse_reply(call_reply({"fact": "placeholder", "kind": "inferred", "slug": "a-b"}))
+    assert older == {"kind": "inferred", "open_questions": [], "slug": "a-b"}
     for bad in ({"choices": [{"message": {"content": "text"}}]},
-                call_reply({"fact": "", "kind": "sourced"}),
-                call_reply({"fact": "x", "kind": "maybe"}),
-                call_reply({"fact": "x", "kind": "inferred", "open_questions": ["a", "b", "c", "d"]}),
-                call_reply({"fact": "x", "kind": "inferred", "slug": "x" * 81})):
+                call_reply({"kind": "maybe"}),
+                call_reply({"kind": "inferred", "open_questions": ["a", "b", "c", "d"]}),
+                call_reply({"kind": "inferred", "open_questions": [""]}),
+                call_reply({"kind": "inferred", "slug": "x" * 81})):
         with pytest.raises(conversion.MalformedConversion):
             conversion.parse_reply(bad)
 
 
 def test_resolve_keeps_the_report_handles_only_and_downgrades_an_unsourced_fact():
-    kind, rows, problems = conversion.resolve(
-        {"fact": "Approved [D1], [W1] and [D7].", "kind": "sourced"}, CITATIONS)
+    kind, rows, problems = conversion.resolve("Approved [D1], [W1] and [D7].", "sourced", CITATIONS)
     assert kind == m.SOURCED
     assert [r["label"] for r in rows] == ["D1", "W1"]
     assert rows[1]["path"] == "http://a.example/y" and rows[0]["quote_verified"] == 1
     assert "D7" in problems[0]
-    kind, rows, problems = conversion.resolve({"fact": "Approved.", "kind": "sourced"}, CITATIONS)
+    kind, rows, problems = conversion.resolve("Approved.", "sourced", CITATIONS)
     assert kind == m.INFERRED and rows == [] and "became inferred" in problems[0]
 
 
@@ -249,6 +261,122 @@ def test_the_second_attempt_turns_off_reasoning_and_drops_a_refused_hint(board, 
     assert len(sent) == 2 and "chat_template_kwargs" not in sent[1]
 
 
+REPORT_TEXT = ("# Approval of the hedge\n\nThe board approved the hedge on 4 May 2001 [D1].\n\n"
+               "## Open questions\n\n- Who paid?\n")
+
+
+def _report(turn, text=REPORT_TEXT):
+    turn["rows"] = [answer(report=REPORT)]
+    turn["versions"][("report.md", 2)] = store_mod.FileVersion(
+        OWNER, "s", "report.md", 2, content=text, citations=CITATIONS)
+
+
+def _replies(monkeypatch, reply=None, status=200, error=None):
+    sent = []
+
+    def post(endpoint, body, timeout=None):
+        sent.append(body)
+        if error is not None:
+            raise error
+        return SimpleNamespace(status_code=status, json=lambda: reply, text=json.dumps(reply))
+
+    monkeypatch.setattr(summarize, "post_or_raise", post)
+    return sent
+
+
+def _last_attempt(monkeypatch):
+    monkeypatch.setattr(activities.activity, "in_activity", lambda: True)
+    monkeypatch.setattr(activities.activity, "info", lambda: SimpleNamespace(attempt=2))
+
+
+def _stored_fact(board):
+    board.run_commands("b1")
+    [row] = [f for f in board.read_facts("b1") if f.intent_id == "intent-approval"]
+    return row
+
+
+def test_the_finding_is_the_report_and_never_the_text_of_the_model(board, turn, monkeypatch):
+    """The model of the demo wrote the fact "placeholder". The finding is the report, so a
+    report without that word can never be stored as it."""
+    assert "placeholder" not in REPORT_TEXT
+    _report(turn)
+    _replies(monkeypatch, call_reply({"fact": "placeholder", "kind": "sourced",
+                                      "open_questions": ["Who paid?"], "slug": "hedge-approval"}))
+    assert activities.convert_explore_report(request()) == "fact"
+    body = end_of(board)
+    assert body["fact"]["text"] == REPORT_TEXT and body["fact"]["problems"] == []
+    assert body["fact"]["open_questions"] == ["Who paid?"] and body["fact"]["kind"] == m.SOURCED
+    assert [c["label"] for c in body["citations"]] == ["D1"]
+    assert "fact" not in turn["written"][0], "the conversion row stores the small call only"
+    row = _stored_fact(board)
+    assert row.text == REPORT_TEXT and row.fact_id == "finding-hedge-approval"
+
+
+@pytest.mark.parametrize("failure", ["malformed", "transport"])
+def test_the_last_failed_attempt_stores_the_report_with_the_values_of_the_code(
+        board, turn, monkeypatch, failure):
+    _report(turn)
+    _last_attempt(monkeypatch)
+    if failure == "transport":
+        _replies(monkeypatch, error=summarize.TransportFailure("read timed out"))
+    else:
+        _replies(monkeypatch, {"choices": [{"message": {"content": "no call"}}]})
+    assert activities.convert_explore_report(request()) == "fact"
+    fact = end_of(board)["fact"]
+    assert end_of(board)["end"] == m.EXPLORE_CONCLUDED
+    assert fact["text"] == REPORT_TEXT and fact["kind"] == m.SOURCED and fact["open_questions"] == []
+    assert fact["slug"] == "approval-of-the-hedge"
+    assert fact["problems"][0].startswith("the kind and the open questions came from the code, "
+                                          "the model call failed: ")
+    assert turn["written"][0]["model_error"]
+    assert _stored_fact(board).fact_id == "finding-approval-of-hedge"
+
+
+def test_a_refused_request_stores_the_report_at_once_and_an_uncited_report_is_inferred(
+        board, turn, monkeypatch):
+    _report(turn, "No minutes of 2001 name an approval.")
+    sent = _replies(monkeypatch, {"error": "bad request"}, status=400)
+    assert activities.convert_explore_report(request()) == "fact"
+    assert len(sent) == 1
+    fact = end_of(board)["fact"]
+    assert fact["kind"] == m.INFERRED and "HTTP 400" in fact["problems"][0]
+    assert fact["text"] == "No minutes of 2001 name an approval."
+
+
+def test_a_transport_failure_before_the_last_attempt_is_raised(board, turn, monkeypatch):
+    _report(turn)
+    _replies(monkeypatch, error=summarize.TransportFailure("read timed out"))
+    with pytest.raises(summarize.TransportFailure):
+        activities.convert_explore_report(request())
+    assert turn["written"] == []
+
+
+def test_an_older_conversion_row_with_a_fact_field_gives_the_report_as_the_finding(
+        board, turn, monkeypatch):
+    _report(turn)
+    turn["conversion"] = {"seq": 9, "args": {"fact": "placeholder", "kind": "inferred",
+                                             "open_questions": ["Who paid?"], "slug": "temp-placeholder"}}
+    sent = _replies(monkeypatch, call_reply({"kind": "sourced", "open_questions": []}))
+    assert activities.convert_explore_report(request()) == "fact"
+    assert sent == [], "a retry reuses the stored call"
+    fact = end_of(board)["fact"]
+    assert fact["text"] == REPORT_TEXT and fact["claimed_kind"] == m.INFERRED
+    assert fact["open_questions"] == ["Who paid?"]
+
+
+def test_a_french_board_names_french_in_the_small_request_and_takes_the_french_prefix(
+        board, turn, monkeypatch):
+    from dataclasses import replace as replace_row
+
+    board.boards["b1"] = replace_row(board.boards["b1"], language="fr")
+    _report(turn, "# Année de parution\n\nLe livre parut en 2001 [D1].")
+    sent = _replies(monkeypatch, call_reply({"kind": "sourced", "open_questions": [],
+                                             "slug": "Année-Parution"}))
+    assert activities.convert_explore_report(request()) == "fact"
+    assert "words in French" in sent[0]["messages"][0]["content"]
+    assert _stored_fact(board).fact_id == "constat-année-parution"
+
+
 def test_a_failed_explore_is_not_sent_again(board):
     board.submit("b1", "explore_end:intent-approval:1", cmd.EXPLORE_END, "explore",
                  {"intent_id": "intent-approval", "attempt": 1, "end": m.EXPLORE_FAILED,
@@ -319,9 +447,8 @@ def test_the_conversion_names_sources_and_keeps_the_web_handles_of_a_web_only_fi
     assert "cited sources state the finding" in system and "cited documents" not in system
     assert "cited sources state the finding" in schema and "cited documents" not in schema
     assert "the sources examined" in system
-    args = conversion.parse_reply(call_reply({"fact": "The hedge was approved [W1].",
-                                              "kind": "sourced", "open_questions": []}))
-    kind, rows, problems = conversion.resolve(args, web)
+    args = conversion.parse_reply(call_reply({"kind": "sourced", "open_questions": []}))
+    kind, rows, problems = conversion.resolve("The hedge was approved [W1].", args["kind"], web)
     assert kind == m.SOURCED and problems == []
     assert [r["label"] for r in rows] == ["W1"]
     assert rows[0]["path"] == "http://a.example/y" and rows[0]["quote"] == "the hedge was approved"
@@ -391,13 +518,15 @@ def test_a_board_whose_collections_are_gone_fails_and_does_not_become_web_only(
 
 
 @pytest.mark.parametrize("settings,stored,expected", [
-    ({"agent.language": "fr", "ui.language": "de"}, "es", "fr"),
-    ({"ui.language": "de"}, "es", "de"),
+    ({"agent.language": "fr", "ui.language": "de"}, "es", "es"),
+    ({"ui.language": "de"}, "es", "es"),
     ({}, "es", "es"),
     ({}, "", "en"),
     ({"agent.language": "xx"}, "pt", "pt"),
+    ({"agent.language": "fr", "ui.language": "de"}, "", "fr"),
+    ({"ui.language": "de"}, "", "de"),
 ])
-def test_an_explore_takes_the_owner_language_then_the_board_language(
+def test_an_explore_takes_the_board_language_then_the_owner_language(
         board, opening, monkeypatch, settings, stored, expected):
     from dataclasses import replace as replace_row
 
@@ -430,19 +559,15 @@ def _count_text(counts: dict) -> str:
 
 
 def test_the_38_row_fixture_counts_survive_report_finding_and_answer():
-    """The synthetic 38-row table gives the retained counts. A report that states them, a
-    finding that keeps them and an answer that keeps them raise no number problem. A
-    finding or an answer that changes them is marked, and keeps its text."""
+    """The synthetic 38-row table gives the retained counts. The finding is the report, so
+    it keeps them. An answer that keeps them raises no number problem."""
     from tasks.P_board.contracts import parse_reason
 
     counts = _state_counts()
     assert counts == EXPECTED and sum(counts.values()) == 38
     report = (f"# Monitored bills\n\nThe table holds 38 bills. By state: {_count_text(counts)} [D1]. "
               "The counts come from the state column of all 38 rows, with no filter.")
-    finding = f"Of the 38 monitored bills, the states are {_count_text(counts)} [D1]."
-    assert conversion.number_problems(finding, report) == []
-    wrong = "Of the 44 monitored bills, the states are GA 20, MO 9, TN 6, SC 6 [D1]."
-    assert conversion.number_problems(wrong, report) == ["numbers that the report does not hold: 6, 20, 44"]
+    finding = report
     reply = json.dumps({"answers": [{"goal": "goal-01", "from": ["fact-bills"],
                                      "statement": f"The 38 bills by state: {_count_text(counts)}."}]})
     payload = parse_reason(reply, {"fact-bills"}, {"fact-bills"}, [], idle=True, goal_ids=["goal-01"],
@@ -467,51 +592,6 @@ def test_the_explore_task_keeps_the_focused_objective_apart_from_the_brief():
     assert task["goals"] == [{"text": "Who led the delegation?", "source": "goal-01"}]
     assert task["allowed_sources"]["text"] == "collections: enron; the web is not allowed"
     assert list(task)[0] == "objective"
-
-
-# ------------------------------------------------------- escapes and number diagnostics
-
-
-def test_the_call_arguments_are_decoded_once_and_keep_literal_backslashes():
-    """The function arguments are one JSON text. Its escapes decode once: a `\\u2019`
-    escape is an apostrophe, a written backslash stays one backslash, and a written
-    backslash-u stays text. No global unescape runs on the fact."""
-    raw = ('{"fact": "The memo\\u2019s path is C:\\\\Reports\\\\2021 and the text shows \\\\u2019 as written [D1].",'
-           ' "kind": "sourced", "open_questions": []}')
-    reply = {"choices": [{"message": {"tool_calls": [
-        {"function": {"name": m.SUBMIT_FACT_TOOL, "arguments": raw}}]}}]}
-    fact = conversion.parse_reply(reply)["fact"]
-    assert fact == "The memo’s path is C:\\Reports\\2021 and the text shows \\u2019 as written [D1]."
-    assert "\\\\" not in fact
-    same = conversion.parse_reply(call_reply({"fact": fact, "kind": "sourced", "open_questions": []}))
-    assert same["fact"] == fact
-
-
-def test_the_number_check_is_a_diagnostic_that_misses_swaps_and_flags_valid_totals():
-    """The number tokens of a finding are compared as a set. A swap of two values that the
-    report holds gives no problem, and a correct derived total gives one. Neither refuses
-    the finding, so the check cannot prove or disprove numerical accuracy."""
-    report = "Northside recorded 42 complaints and Riverside recorded 17 complaints [D1]."
-    swapped = "Northside recorded 17 complaints and Riverside recorded 42 complaints [D1]."
-    assert conversion.number_problems(swapped, report) == []
-    total = "The two offices recorded 59 complaints together, 42 and 17 [D1]."
-    assert conversion.number_problems(total, report) == ["numbers that the report does not hold: 59"]
-    args = conversion.check_args({"fact": total, "kind": "inferred", "open_questions": []})
-    assert args["fact"] == total and args["kind"] == "inferred"
-    dated = "Approval rose from 40% in March 2020 to 55% on 4 May 2021 [D1]."
-    assert conversion.number_problems(dated, dated) == []
-
-
-def test_a_wrapper_tag_line_of_the_request_is_removed_from_the_fact():
-    """A model copied `</fact>` after the finding. The tag line goes, and a tag inside a
-    sentence stays as written."""
-    tagged = "No document read states who approved the transfers [D1].\n</fact>"
-    assert conversion.check_args({"fact": tagged, "kind": "sourced"})["fact"] == (
-        "No document read states who approved the transfers [D1].")
-    inline = "The memo quotes the text <report> as written [D1]."
-    assert conversion.check_args({"fact": inline, "kind": "sourced"})["fact"] == inline
-    with pytest.raises(conversion.MalformedConversion):
-        conversion.check_args({"fact": "<fact>\n</fact>", "kind": "sourced"})
 
 
 def test_opening_retry_keeps_language_after_settings_change(board, opening, monkeypatch):

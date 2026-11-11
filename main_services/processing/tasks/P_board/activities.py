@@ -15,8 +15,10 @@ start runs nothing.
 An explore is an ordinary chat turn: `open_explore_turn` writes the session, the user row and
 the stream row that `send_message` writes for a person, and the turn runs as `AgentRun`. The
 turn writes its result as a workspace report. `conclude_explore` reads the end of the turn:
-a failure, or the report to convert. `convert_explore_report` turns the pinned
-report version into the fact with one model request (`conversion.py`) and submits it.
+a failure, or the report to convert. `convert_explore_report` stores the pinned report
+version as the finding, unchanged, with the kind and the open questions of one small model
+request (`conversion.py`), and submits it. Every text of a board is in the board language
+(`board_language`).
 """
 
 import asyncio
@@ -512,7 +514,8 @@ def board_reason(task: ReasonTask) -> str:
     if folded.status != m.ACTIVE and not task.final:
         return "skipped"
     prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final,
-                           internet=effective_internet_tools(bool(board.internet_tools)))
+                           internet=effective_internet_tools(bool(board.internet_tools)),
+                           language=board_language(board))
     # The first request keeps the reasoning phase, which a new board needs
     # to declare its first intents. On a board with history the model can reason until the
     # cap, so a cut or empty reply goes to a second request without reasoning.
@@ -794,15 +797,24 @@ def _opening_language(board, session_id: str, seq: int, turn_uuid: str) -> str:
         return language
 
 
-def explore_language(board) -> str:
-    """The agent language of an explore: the saved agent language of the owner, then the
-    saved interface language, then the language stored on the board at creation."""
+def board_language(board) -> str:
+    """The language of every text of a board: the language stored on the board at
+    creation. A board created before the column held a value takes the saved agent language
+    of the owner, then the saved interface language, then English. A later change of the
+    owner's settings does not change the language of a board that has one."""
     from database.user_settings import read_user_settings
     from tasks.P_agent.language import agent_language, supported_code
 
+    stored = supported_code(board.language)
+    if stored:
+        return stored
     saved = read_user_settings(board.owner)
-    interface = supported_code(saved.get("ui.language")) or board.language
-    return agent_language(saved.get("agent.language"), interface)
+    return agent_language(saved.get("agent.language"), supported_code(saved.get("ui.language")) or "")
+
+
+def explore_language(board) -> str:
+    """The agent language of a new explore turn: the board language (`board_language`)."""
+    return board_language(board)
 
 
 def _turn_rows(owner: str, session_id: str, turn_seq: int) -> list[dict]:
@@ -949,18 +961,31 @@ def _task_text(intent) -> str:
 CONVERT_CONNECT_SECONDS = 10
 
 
+def _last_attempt() -> bool:
+    """Whether this run of `convert_explore_report` is its last attempt
+    (`conversion.CONVERT_ATTEMPTS`). Outside an activity, as in a test, it is not."""
+    from tasks.P_board.conversion import CONVERT_ATTEMPTS
+
+    return activity.in_activity() and activity.info().attempt >= CONVERT_ATTEMPTS
+
+
 @activity.defn
 @with_heartbeat
 def convert_explore_report(req: TurnRequest) -> str:
-    """Turn the pinned report of an explore turn into its fact, and submit the fact.
+    """Store the pinned report of an explore turn as its finding, and submit it.
 
-    The request goes to the agent model (`llm_endpoints.chat_model`) with only the fact
-    function (`conversion.py`). The checked arguments are stored as the conversion row of
-    the turn before the fact is submitted, so a retry reuses them and sends no request. A
-    transport failure and a malformed reply are raised, so Temporal sends the request once
-    more. The second attempt turns off the reasoning phase (`conversion.request_body`). A
-    refused request (4xx) cannot change in a second request and is raised as not retryable.
-    After the last attempt the workflow records `explore_failed`.
+    The text of the finding is the report version, unchanged. One small request to the agent
+    model (`llm_endpoints.chat_model`) gives the kind, the open questions and the slug
+    (`conversion.py`), in the board language. The checked arguments are stored as the
+    conversion row of the turn before the finding is submitted, so a retry reuses them and
+    sends no request. A row of an older turn can hold a `fact` field, and the finding is
+    still the report text.
+
+    A transport failure and a malformed reply are raised before the last attempt, so
+    Temporal sends the request once more. The second attempt turns off the reasoning phase
+    (`conversion.request_body`). In the last attempt, and at once for a refused request
+    (4xx), the finding is stored with the values of the code (`conversion.fallback_args`)
+    and a problem that names the failure. The explore then ends in `explore_concluded`.
     """
     from temporalio.exceptions import ApplicationError
 
@@ -997,15 +1022,23 @@ def convert_explore_report(req: TurnRequest) -> str:
         if intent is None:
             return "skipped"
         model = chat_model()
+        language = board_language(board)
         retry = activity.in_activity() and activity.info().attempt > 1
 
         def send(reasoning: bool):
             body = conversion.request_body(model, _task_text(intent), version.name,
-                                           version.content, version.citations, reasoning)
+                                           version.content, version.citations, reasoning,
+                                           language)
             return summarize.post_or_raise(
                 llm_endpoint(), body,
                 timeout=(CONVERT_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
 
+        def code_values(error: str) -> dict:
+            log.warning("[P_board] the small call of %s failed, the code gives the kind: %s",
+                        req.intent_id, error)
+            return conversion.fallback_args(version.content, version.citations, error)
+
+        args = None
         started = time.monotonic()
         try:
             response = send(reasoning=not retry)
@@ -1017,30 +1050,40 @@ def convert_explore_report(req: TurnRequest) -> str:
             _record_llm_call(board.owner, board.board_id, model, {},
                              int((time.monotonic() - started) * 1000), False, str(exc), 0,
                              kind="board_convert")
-            raise
-        latency_ms = int((time.monotonic() - started) * 1000)
-        if response.status_code >= 400:
-            error = f"HTTP {response.status_code}: {response.text[:200]}"
-            _record_llm_call(board.owner, board.board_id, model, {}, latency_ms, False, error, 0,
-                             kind="board_convert")
-            raise ApplicationError(f"the conversion request was refused: {error}", non_retryable=True)
-        reply = response.json()
-        usage = reply.get("usage") or {} if isinstance(reply, dict) else {}
-        try:
-            args = conversion.parse_reply(reply)
-        except conversion.MalformedConversion as exc:
-            _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, False, str(exc),
-                             len(response.text), kind="board_convert")
-            raise ApplicationError(f"the conversion reply is malformed: {exc}") from exc
-        _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, True, "",
-                         len(response.text), kind="board_convert")
+            if not _last_attempt():
+                raise
+            args = code_values(str(exc))
+        if args is None:
+            latency_ms = int((time.monotonic() - started) * 1000)
+            if response.status_code >= 400:
+                error = f"HTTP {response.status_code}: {response.text[:200]}"
+                _record_llm_call(board.owner, board.board_id, model, {}, latency_ms, False, error, 0,
+                                 kind="board_convert")
+                args = code_values(f"the request was refused: {error}")
+        if args is None:
+            reply = response.json()
+            usage = reply.get("usage") or {} if isinstance(reply, dict) else {}
+            try:
+                args = conversion.parse_reply(reply)
+            except conversion.MalformedConversion as exc:
+                _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, False, str(exc),
+                                 len(response.text), kind="board_convert")
+                if not _last_attempt():
+                    raise ApplicationError(f"the conversion reply is malformed: {exc}") from exc
+                args = code_values(f"the reply is malformed: {exc}")
+            else:
+                _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, True, "",
+                                 len(response.text), kind="board_convert")
         _write_conversion_row(board.owner, session_id, turn_uuid, args, report, model)
-    kind, citations, problems = conversion.resolve(args, version.citations)
-    problems += conversion.number_problems(args["fact"], version.content)
+    kind, citations, problems = conversion.resolve(version.content, args["kind"], version.citations)
+    if args.get("model_error"):
+        problems.insert(0, "the kind and the open questions came from the code, the model call "
+                           f"failed: {args['model_error']}")
     if not boards.board_is_live(board.board_id):
         return "skipped"
-    fact = {"kind": kind, "claimed_kind": args["kind"], "text": args["fact"],
-            "session_id": session_id, "answer_seq": answer_seq, "slug": args["slug"][:80],
+    fact = {"kind": kind, "claimed_kind": args["kind"], "text": version.content,
+            "session_id": session_id, "answer_seq": answer_seq,
+            "slug": args["slug"][:conversion.MAX_SLUG_CHARS],
             "open_questions": args["open_questions"], "problems": problems,
             "report": report}
     _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",

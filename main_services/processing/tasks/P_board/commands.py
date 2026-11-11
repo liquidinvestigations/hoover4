@@ -19,11 +19,14 @@ the same rows again and never allocates a second id. The receipt keeps the reque
 after the closed workflow history is gone.
 
 **Node identity.** `board_node_identity_version` 2 gives each new node a permanent slug id:
-`intent-<words>`, `fact-<words>`, `correction-<words>`, `goal-01` to `goal-06` and
-`background`. A collision with another node id, slug or reservation of the board takes `-2`,
-`-3` and so on. The words come from the model's candidate, else from the node text, else
-from a word of the node kind. Version 1, the value of an absent setting, keeps the legacy
-forms. Existing nodes keep their ids in both versions.
+`<prefix>-<words>` for an intent, a finding and a correction, `goal-01` to `goal-06` and
+`background`. The prefix is the type word of the board language (`node_words.PREFIXES`):
+`intent`, `finding` and `correction` in English. The words come from the model's candidate,
+else from the node text, in the canonical form (NFC, lowercase) of `node_words`. A node
+without words takes `<prefix>-1`. A collision with another node id, slug or reservation of
+the board takes `-2`, `-3` and so on. Version 1, the value of an absent setting, keeps the
+legacy forms. Existing nodes keep their ids in both versions, so an older finding keeps
+`fact-`.
 
 **Review coverage.** A person's acceptance can name the board state that the page showed:
 `seen_seq`, the `snapshot_seq` of that state, and `seen_unreviewed`, its unreviewed
@@ -45,7 +48,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from tasks.P_board import model as m
-from tasks.P_board.contracts import STOP_WORDS, TYPE_WORDS, is_duplicate, same_objective, slug_words
+from tasks.P_board import node_words
+from tasks.P_board.contracts import STOP_WORDS, is_duplicate, same_objective, slug_words
 from tasks.P_board.fold import (
     Folded, available_corrections, canonical_events, earlier_objectives, explores_left, fold,
     in_scope, may_explore, visible_facts,
@@ -84,8 +88,6 @@ ASSIGN_LABELS = "assign_labels"
 #: The commands that start work. The dispatcher counts their pending inputs as taken slots.
 START_KINDS = (START_REASON, START_EXPLORE)
 
-#: The words of a slug when neither the candidate nor the text has one.
-KIND_WORDS = {"intent": "direction", "fact": "finding", "correction": "note"}
 #: Ids that no new slug takes.
 RESERVED = ({m.BACKGROUND_ID, m.ORIGIN, m.FIRST_GOAL_ID}
             | {m.goal_id_for(n) for n in range(2, 100)} | {m.goal_slot_id(n) for n in range(1, 100)})
@@ -162,16 +164,18 @@ def activate_slug_identity() -> tuple[int, int]:
     return before, identity_version()
 
 
-def slug_stem(candidate: str, text: str, kind: str) -> str:
-    """The words of a new slug: the candidate's words, else the text's words, else the word
-    of the kind. Type words and stop words are left out, at most 4 words and 40 characters."""
+def slug_stem(candidate: str, text: str, language: str = "en") -> str:
+    """The words of a new slug: the candidate's words, else the text's words, else empty.
+    The type words of the board `language` (`node_words.type_words`) and the English stop
+    words are left out, at most 4 words and 40 characters. The words are canonical (NFC,
+    lowercase)."""
+    types = node_words.type_words(language)
     for source in (candidate, strip_labels(text or "")):
-        words = [w for w in slug_words(str(source or "").replace("-", " "), 40)
-                 if w not in TYPE_WORDS and w not in STOP_WORDS]
+        words = [w for w in slug_words(str(source or ""), 40) if w not in types and w not in STOP_WORDS]
         stem = "-".join(slug_words(" ".join(words), 4))
         if stem:
             return stem
-    return KIND_WORDS.get(kind, kind)
+    return ""
 
 
 class Allocator:
@@ -179,6 +183,9 @@ class Allocator:
 
     def __init__(self, ctx: Context):
         self.ctx = ctx
+        #: The board language, which gives the prefix and the words of a new id. A board
+        #: without a stored language takes English.
+        self.language = node_words.language_code(getattr(ctx.board, "language", "") if ctx.board else "")
         self.assigned: dict = {}
         self.taken = set(RESERVED)
         self.taken |= {f.fact_id for f in ctx.all_facts}
@@ -186,21 +193,30 @@ class Allocator:
         self.taken |= {e.subject for e in ctx.events if e.event_type == m.QUESTION_EXPLORED}
         self.taken |= {row.slug for row in ctx.labels.values() if row.slug}
         self.taken |= set(ctx.assignments.values())
+        self.taken = {node_words.canonical(t) for t in self.taken}
 
     def claim(self, kind: str, candidate: str, text: str, creation_key: str) -> str:
-        """The permanent id of a new node. A creation key that an earlier receipt allocated
-        keeps its id."""
+        """The permanent id of a new node: `<prefix>-<words>` in the board language. A
+        collision takes `-2`, `-3` and so on. A node without words takes `<prefix>-1`,
+        `<prefix>-2` and so on. A creation key that an earlier receipt allocated keeps its
+        id."""
         known = self.ctx.assignments.get(creation_key) or self.assigned.get(creation_key)
         if known:
             return known
-        base = f"{kind}-{slug_stem(candidate, text, kind)}"
-        node_id, number = base, 2
+        head = node_words.prefix(self.language, kind)
+        stem = slug_stem(candidate, text, self.language)
+        if stem:
+            base = node_words.canonical(f"{head}-{stem}")
+            node_id, number = base, 2
+        else:
+            base, number = head, 1
+            node_id = f"{base}-1"
         while node_id in self.taken:
             node_id, number = f"{base}-{number}", number + 1
         return self.take(creation_key, node_id)
 
     def take(self, creation_key: str, node_id: str) -> str:
-        self.taken.add(node_id)
+        self.taken.add(node_words.canonical(node_id))
         self.assigned[creation_key] = node_id
         return node_id
 

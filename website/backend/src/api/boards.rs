@@ -824,6 +824,19 @@ pub async fn board_fact_for_intent(user: &CurrentUser, board_id: String,
                                    intent_id: String) -> anyhow::Result<Option<String>> {
     owned_board(user, &board_id).await?;
     let client = get_global_client();
+    // A board explore chat names an intent id outside ASCII by its `node_key`.
+    let intent_id = if intent_id.is_ascii() && intent_id.starts_with('x') {
+        let ids: Vec<String> = client
+            .query("SELECT DISTINCT intent_id FROM board_intents FINAL WHERE board_id = ?")
+            .bind(&board_id)
+            .fetch_all()
+            .await?;
+        ids.into_iter()
+            .find(|id| !id.is_ascii() && common::board_types::node_key(id) == intent_id)
+            .unwrap_or(intent_id)
+    } else {
+        intent_id
+    };
     let facts = client
         .query("SELECT ?fields FROM board_facts FINAL WHERE board_id = ? AND intent_id = ?")
         .bind(&board_id)
@@ -1236,7 +1249,7 @@ pub async fn board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<
         .fetch_all()
         .await?;
     for intent_id in running {
-        let workflow_id = format!("board-explore-{board_id}-{intent_id}");
+        let workflow_id = common::board_types::explore_workflow_id(&board_id, &intent_id);
         if let Err(e) = crate::api::chat::cancel_workflow(&workflow_id).await {
             tracing::warn!("could not cancel {workflow_id}: {e:#}");
         }

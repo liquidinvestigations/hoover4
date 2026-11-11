@@ -123,11 +123,27 @@ def test_a_duplicate_slug_gets_two_then_three_against_stored_and_batch_slugs():
     assert lb.unique_slug("fact-raptor", {"fact-raptor", "fact-raptor-2"}) == "fact-raptor-3"
     _f, _folded, nodes = nodes_of()
     intent, fact, correction = nodes
-    stored = {"x": LabelRow("b1", "x", "fact", "fact-raptor", "T", "s", "h")}
+    stored = {"x": LabelRow("b1", "x", "fact", "finding-raptor", "T", "s", "h")}
     entry = {"slug": "raptor", "title": "T", "summary": "s"}
     other = lb.Node("f9.9", "fact", "sourced fact\n\nother", "other")
     rows = lb.node_rows("b1", [fact, other], stored, {"f1.1": entry, "f9.9": entry}, "dgemma")
-    assert [r.slug for r in rows] == ["fact-raptor-2", "fact-raptor-3"]
+    assert [r.slug for r in rows] == ["finding-raptor-2", "finding-raptor-3"]
+
+
+def test_a_duplicate_slug_of_another_script_compares_in_canonical_form():
+    """A slug is NFC and lowercase. A decomposed or capital form of a taken slug is the same
+    slug, and takes `-2`."""
+    taken = {"constat-année-parution"}
+    assert lb.unique_slug("Constat-Anne\u0301e-Parution", taken) == "constat-année-parution-2"
+    assert lb.unique_slug("constatare-anulare-alegeri", set()) == "constatare-anulare-alegeri"
+    assert lb.unique_slug("استنتاج-تاريخ", {"استنتاج-تاريخ"}) == "استنتاج-تاريخ-2"
+    _f, _folded, nodes = nodes_of()
+    fact = nodes[1]
+    entry = {"slug": "année-parution", "title": "Année de parution", "summary": "s"}
+    [row] = lb.node_rows("b1", [fact], {}, {"f1.1": entry}, "dgemma", "fr")
+    assert row.slug == "constat-année-parution"
+    [row] = lb.node_rows("b1", [fact], {}, {"f1.1": {**entry, "slug": "出版年份"}}, "dgemma", "zh")
+    assert row.slug == "发现-出版年份"
 
 
 def test_a_changed_source_keeps_its_slug_and_gets_a_new_title():
@@ -152,7 +168,7 @@ def test_a_failed_attempt_counts_and_the_second_gives_the_fallback_label():
     assert lb.pending_nodes([fact], {"f1.1": first}) == [fact]
     second = lb.node_rows("b1", [fact], {"f1.1": first}, {}, "dgemma")[0]
     assert second.model == lb.FALLBACK_MODEL and second.attempts == 0
-    assert second.slug == "fact-kaminski-refused-the"
+    assert second.slug == "finding-kaminski-refused-the"
     assert second.title == "Kaminski refused the valuations."
     assert lb.pending_nodes([fact], {"f1.1": second}) == []
 
@@ -263,3 +279,39 @@ def test_the_label_prompt_asks_for_no_ids():
     from tasks.P_board.labels import label_prompt
 
     assert "Do not copy ids such as goal-01 or fact-... into a title or summary." in label_prompt([], [])
+
+
+# ----------------------------------------------------------- the board language
+
+
+def test_the_label_and_summary_prompts_name_the_board_language():
+    from tasks.P_board.labels import label_prompt, summary_prompt
+
+    prompt = label_prompt(["Qui a approuvé ?"], [], "fr")
+    assert "Write every slug, title and summary in French" in prompt
+    assert "lowercase words in French" in prompt and "English words" not in prompt
+    assert "in Romanian:" in summary_prompt("Origin: x", "ro")
+    assert "in English" in label_prompt([], [])
+
+
+def test_a_long_finding_is_cut_for_the_label_call_and_a_short_one_keeps_its_source():
+    short = "Kaminski refused the valuations [D1]."
+    long_text = "word " * 5000
+    f = facts() + [FactRow("b1", "constat-long", m.SOURCED, long_text, created_at=T0 + timedelta(seconds=4))]
+    nodes = {n.node_id: n for n in lb.label_nodes(f, fold(board(), events(), f))}
+    assert nodes["f1.1"].source == "sourced fact\n\n" + "Kaminski refused the valuations."
+    assert short.startswith(nodes["f1.1"].body.rstrip("."))
+    body = nodes["constat-long"].body
+    assert body.endswith("[cut: the finding has more text]")
+    assert len(body) <= lb.LABEL_SOURCE_CHARS + len(" [cut: the finding has more text]")
+
+
+def test_a_slug_loses_the_type_words_of_its_language_and_keeps_its_letters():
+    reply = json.dumps({"labels": [
+        {"id": "a", "slug": "constat-année-parution", "title": "Année de parution", "summary": "Le livre parut."},
+        {"id": "b", "slug": "发现 出版年份", "title": "出版年份", "summary": "该书出版于2001年。"}]})
+    parsed = parse_labels(reply, {"a": "x", "b": "y"}, "fr")
+    assert parsed["a"]["slug"] == "année-parution"
+    assert parsed["b"]["slug"] == "发现-出版年份", "the Chinese finding word is a type word of zh only"
+    assert parse_labels(reply, {"b": "y"}, "zh")["b"]["slug"] == "出版年份"
+    assert parse_board_summary("该调查板研究该书的出版年份。") == "该调查板研究该书的出版年份。"

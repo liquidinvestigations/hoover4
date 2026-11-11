@@ -67,10 +67,12 @@ report names the file and version and opens it in the workspace pane
 ([workspace_pane.rs](workspace_pane.rs)), and the chat text of the answer follows the report in a muted colour.
 The pane is read-only, and the address holds its file and version
 (`DocViewerState::workspace_file`).
-A board explore turn writes a report. The board then writes a `submit_board_fact` row after
-the answer, and its card says "Submitted by the board". Under the answer, the board fact
-summary (`x-board-fact-summary`) states the kind of the fact and its open questions. An
-older explore turn has the call as a card inside the group before its answer.
+A board explore turn writes a report, and the report becomes the board finding. The board
+then writes a `submit_board_fact` row after the answer with the kind, the slug and the open
+questions, and its card says "Submitted by the board". A row of an older turn also holds the
+fact text, and the card shows it. Under the answer, the board fact summary
+(`x-board-fact-summary`) states the kind of the fact and its open questions. An older explore
+turn has the call as a card inside the group before its answer.
 
 ## Internet access stays fixed for a conversation.
 

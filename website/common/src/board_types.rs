@@ -12,6 +12,35 @@ use serde::{Deserialize, Serialize};
 /// chat history leaves these sessions out, and a person cannot post into one.
 pub const BOARD_SESSION_PREFIX: &str = "board-";
 
+/// The form of a board node id inside a system identifier: the id when it is ASCII, else `x`
+/// and the first 16 hex digits of the SHA-256 of its UTF-8 bytes. A board in another language
+/// can have node ids with letters outside ASCII.
+///
+/// **Mirrored in `main_services/processing/tasks/P_board/node_words.py`** (`node_key`).
+pub fn node_key(node_id: &str) -> String {
+    if node_id.is_ascii() {
+        return node_id.to_string();
+    }
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(node_id.as_bytes());
+    let hex: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
+    format!("x{hex}")
+}
+
+/// The chat session of the explores of an intent: `board-<board_id>-<node_key>`.
+///
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`session_id_for`).
+pub fn session_id_for(board_id: &str, intent_id: &str) -> String {
+    format!("{BOARD_SESSION_PREFIX}{board_id}-{}", node_key(intent_id))
+}
+
+/// The id of the explore workflow of an intent: `board-explore-<board_id>-<node_key>`.
+///
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`explore_workflow_id`).
+pub fn explore_workflow_id(board_id: &str, intent_id: &str) -> String {
+    format!("board-explore-{board_id}-{}", node_key(intent_id))
+}
+
 /// Whether a chat session belongs to a board.
 pub fn is_board_session(session_id: &str) -> bool {
     session_id.starts_with(BOARD_SESSION_PREFIX)
@@ -19,7 +48,9 @@ pub fn is_board_session(session_id: &str) -> bool {
 
 /// The board and the intent of a board explore session `board-<board_id>-<intent_id>`, or
 /// `None` for another session. A board id is hex, so the first `-` after the prefix ends it,
-/// and the hyphens of a slug intent id stay in the intent id.
+/// and the hyphens of a slug intent id stay in the intent id. For an intent id outside ASCII,
+/// the second value is its `node_key`. `BoardSnapshot::resolve_node` and the server accept
+/// that key in place of the id.
 ///
 /// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`session_id_for`).
 pub fn board_of_session(session_id: &str) -> Option<(String, String)> {
@@ -451,17 +482,30 @@ impl BoardSnapshot {
     }
 
     /// The storage id of the node that an address names: by slug first, then by storage id,
-    /// so a link written before the slugs keeps working.
+    /// so a link written before the slugs keeps working. Then the same two lookups in
+    /// lowercase, because a stored slug is lowercase. Last, the `node_key` of an intent id
+    /// outside ASCII, which a board explore chat names (`board_of_session`).
+    ///
+    /// The caller gives `key` in Unicode NFC, the form of every stored slug. The page does that
+    /// with the browser (`board_page.rs`, `nfc`).
     pub fn resolve_node(&self, key: &str) -> Option<String> {
         if key.is_empty() {
             return None;
         }
-        let by_slug = self.facts.iter().find(|f| f.slug == key).map(|f| f.fact_id.clone())
-            .or_else(|| self.intents.iter().find(|i| i.slug == key).map(|i| i.intent_id.clone()));
-        by_slug.or_else(|| {
-            self.facts.iter().find(|f| f.fact_id == key).map(|f| f.fact_id.clone())
-                .or_else(|| self.intents.iter().find(|i| i.intent_id == key).map(|i| i.intent_id.clone()))
-        })
+        let find = |key: &str| {
+            let by_slug = self.facts.iter().find(|f| f.slug == key).map(|f| f.fact_id.clone())
+                .or_else(|| self.intents.iter().find(|i| i.slug == key).map(|i| i.intent_id.clone()));
+            by_slug.or_else(|| {
+                self.facts.iter().find(|f| f.fact_id == key).map(|f| f.fact_id.clone())
+                    .or_else(|| self.intents.iter().find(|i| i.intent_id == key).map(|i| i.intent_id.clone()))
+            })
+        };
+        find(key)
+            .or_else(|| find(&key.to_lowercase()))
+            .or_else(|| {
+                self.intents.iter().find(|i| !i.intent_id.is_ascii() && node_key(&i.intent_id) == key)
+                    .map(|i| i.intent_id.clone())
+            })
     }
 
     /// The nodes that a text of this board can name (`board_text::link_nodes`).
@@ -593,6 +637,37 @@ mod tests {
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
             not_answered: vec![], unreviewed: vec![], snapshot_seq: 0,
         }
+    }
+
+    #[test]
+    fn a_node_id_outside_ascii_enters_a_system_id_as_a_hash() {
+        // The vectors are the values of `node_words.node_key` in the worker.
+        assert_eq!(node_key("intent-check-contracts-2"), "intent-check-contracts-2");
+        assert_eq!(node_key("intent-année-parution"), "xac95dd8d72ef4c12");
+        assert_eq!(node_key("意图-出版年份"), "x00a21e373eb3316f");
+        assert_eq!(session_id_for("0a1b2c", "intent-check-contracts-2"), "board-0a1b2c-intent-check-contracts-2");
+        assert_eq!(session_id_for("0a1b2c", "intent-année-parution"), "board-0a1b2c-xac95dd8d72ef4c12");
+        assert_eq!(explore_workflow_id("0a1b2c", "i1.2"), "board-explore-0a1b2c-i1.2");
+        assert_eq!(board_of_session(&session_id_for("0a1b2c", "intent-année-parution")),
+                   Some(("0a1b2c".to_string(), "xac95dd8d72ef4c12".to_string())));
+    }
+
+    #[test]
+    fn an_address_with_letters_outside_ascii_names_its_node() {
+        let mut snap = snapshot();
+        snap.facts[0].fact_id = "constat-année-parution".into();
+        snap.facts[0].slug = "constat-année-parution".into();
+        snap.intents = vec![BoardIntent {
+            intent_id: "intent-année-parution".into(), from_facts: vec![], objective: String::new(),
+            brief: String::new(), state: "open".into(), attempts: 0, session_id: String::new(),
+            fact_id: String::new(), question: String::new(), last_error: String::new(), created_ms: 0,
+            slug: "intent-année-parution".into(), title: String::new(), summary: String::new(), asked: None,
+            questions: vec![], origin: String::new(), own: false,
+        }];
+        assert_eq!(snap.resolve_node("constat-année-parution").as_deref(), Some("constat-année-parution"));
+        assert_eq!(snap.resolve_node("Constat-Année-Parution").as_deref(), Some("constat-année-parution"));
+        assert_eq!(snap.resolve_node("xac95dd8d72ef4c12").as_deref(), Some("intent-année-parution"));
+        assert_eq!(snap.resolve_node("x0000000000000000"), None);
     }
 
     #[test]

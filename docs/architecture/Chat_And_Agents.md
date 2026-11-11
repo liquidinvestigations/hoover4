@@ -61,7 +61,7 @@ its model-server constants. No page and no `server_settings` key chooses another
 worker ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py)) and the agent services
 ([research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)) send every model call to
 `LLM_BASE_URL`: agent turns, titles, summaries, follow-up suggestions, board labels, board
-assessments and report conversions. The server keeps one paged KV cache for every request,
+assessments and the call that classifies a board finding. The server keeps one paged KV cache for every request,
 so a short call does not remove the cached prefix of a conversation. The worker gives an
 error for a turn when `LLM_MODEL` is empty, and the agent service does not insert a model id
 of its own.
@@ -259,8 +259,10 @@ of an older definition does not change.
 
 The opening row of a run stores the structured task of the turn (`task` in `usage_json`)
 when the user row has one. A board explore turn has one: the objective, the context, the
-known facts, the scope and the expected output. The checks read the task through
-`facts.task_of`. Each decision records the digest of the task that it read.
+known facts, the scope and the expected output. Its agent language is the language of the
+board, and the report of the turn becomes the board finding without a change
+([Boards](Boards.md)). The checks read the task through `facts.task_of`. Each decision
+records the digest of the task that it read.
 
 For each event the worker stores one decision before it writes any row of it. A retry reads
 the stored decision and writes the same rows at the same keys. An action is a note, a skill

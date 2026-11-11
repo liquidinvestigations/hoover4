@@ -75,6 +75,20 @@ const TEXTAREA: &str = "border: 1px solid; border-color: var(--x-border-strong);
 const PANEL: &str = "border: 1px solid; border-color: var(--x-border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: white;";
 const PRE: &str = "white-space: pre-wrap; font-size: var(--x-text-detail); background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px; max-height: 260px; overflow: auto;";
 
+/// The node key of an address in Unicode NFC, the form of every stored slug, so a slug typed
+/// with combining accents names its node. The browser does the normalization. A server render
+/// keeps the key as it is.
+fn nfc(key: &str) -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        String::from(web_sys::js_sys::JsString::from(key).normalize("NFC"))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        key.to_string()
+    }
+}
+
 #[component]
 pub fn AiBoardPage(board_id: String, selected: String, zoom: String, assessment: String) -> Element {
     // No top padding: the header row has the height of the logo box of the left bar, so the
@@ -309,7 +323,7 @@ fn BoardExplorer(
     use_effect(move || {
         let key = selected.read().clone();
         let _ = layout.read();
-        let Some(id) = snapshot.peek().as_ref().and_then(|s| s.resolve_node(&key)) else { return };
+        let Some(id) = snapshot.peek().as_ref().and_then(|s| s.resolve_node(&nfc(&key))) else { return };
         if *scrolled_for.peek() == id {
             return;
         }
@@ -337,7 +351,7 @@ fn BoardExplorer(
         };
     };
 
-    let selected_id = snap.resolve_node(&selected.read()).unwrap_or_default();
+    let selected_id = snap.resolve_node(&nfc(&selected.read())).unwrap_or_default();
     let (graph, positions) = layout.read().clone();
     let level = parse_zoom(&zoom.read());
     let scale = f64::from(level) / 100.0;

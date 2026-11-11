@@ -7,9 +7,11 @@ dropped intent or a downgraded fact is visible in the board events.
 
 import json
 import re
+import unicodedata
 
 from tasks.llm_json import THINK_PATTERN, extract_json
 from tasks.P_board import model as m
+from tasks.P_board.node_words import LEGACY_TYPE_WORDS, canonical, match_node_id, type_words
 
 WORD_PATTERN = re.compile(r"[a-z0-9]{3,}")
 STOP_WORDS = {"the", "and", "for", "with", "from", "that", "this", "what", "which", "their",
@@ -143,6 +145,38 @@ def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_id
     return answers
 
 
+def _match_ids(items, known: set, problems: list) -> list:
+    """`items` with each node id of `goal`, `correction`, `from` and `questions` matched to a
+    known id (`node_words.match_node_id`). An id that matches no known id stays as written,
+    so the later checks name it. A match that ignored marks is named in `problems`."""
+    fixed: dict = {}
+
+    def one(value):
+        if not isinstance(value, str) or value in known:
+            return value
+        found, without_marks = match_node_id(value, known)
+        if found is None:
+            return value
+        if without_marks:
+            fixed[value] = found
+        return found
+
+    out = []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict):
+            item = dict(item)
+            for key in ("goal", "correction"):
+                if key in item:
+                    item[key] = one(item[key])
+            for key in ("from", "questions"):
+                if isinstance(item.get(key), list):
+                    item[key] = [one(v) for v in item[key]]
+        out.append(item)
+    for written, found in fixed.items():
+        problems.append(f"read the id {written} as {found}: the ids differ only in their marks")
+    return out
+
+
 def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str],
                  idle: bool, goal_ids: list[str] | None = None,
                  not_found_ids: set | None = None, goal_texts: dict | None = None,
@@ -186,6 +220,10 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
 
     `dropped_answers` lists the goals whose only answer the checks dropped.
 
+    A node id of the reply that is not a known id is matched first (`_match_ids`): the
+    canonical form (NFC, lowercase), then the form without marks when exactly one known id
+    has it. The match without marks is named in the problems.
+
     An intent keeps its position in the reply (`position`, from 1), so a dropped intent does
     not renumber the others. Its `slug` is a candidate name. Its `goal` is kept when it names
     a goal of `goal_ids`. Its `questions` keep only keys
@@ -205,7 +243,11 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         payload.update(outcome="invalid", error=str(exc))
         return payload
     problems = payload["problems"]
+    keys = question_keys.keys() if isinstance(question_keys, dict) else (question_keys or ())
+    known = (set(valid_ids) | set(goal_ids) | set(not_found_ids or ()) | set(corrections or {})
+             | {str(k) for k in keys})
     entries = _answer_entries(data, goal_ids)
+    entries = None if entries is None else _match_ids(entries, known, problems)
     dropped: list[str] = []
     answers = _parse_answers(entries or [], set(valid_ids), set(sourced_ids), set(not_found_ids or ()),
                              goal_ids, goal_texts or {}, closed, problems, dropped, fact_texts)
@@ -214,6 +256,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     items = data.get("intents")
     if items is None and isinstance(data.get("intent"), dict):
         items = [data["intent"]]
+    if isinstance(items, list):
+        items = _match_ids(items, known, problems)
     kept = []
     seen = list(earlier)
     if isinstance(question_keys, dict):
@@ -303,19 +347,38 @@ TITLE_WORDS = 5
 SUMMARY_WORDS = 24
 BOARD_SUMMARY_WORDS = 20
 
-SLUG_WORD_PATTERN = re.compile(r"[a-z0-9]+")
-#: Words of a slug that name a node type. The kind prefix of the slug gives the type.
-TYPE_WORDS = {"intent", "fact", "correction", "origin", "goal", "background"}
+#: Words of a slug that name a node type in every language. A board also removes the prefix
+#: words of its language (`node_words.type_words`).
+TYPE_WORDS = LEGACY_TYPE_WORDS
+
+
+def _is_word_char(c: str) -> bool:
+    """A letter, a mark or a digit: general category `L*`, `M*` or `N*`."""
+    return unicodedata.category(c)[0] in "LMN"
+
+
+def word_runs(text: str) -> list[str]:
+    """The runs of letters, marks and digits of the canonical text (NFC, lowercase)."""
+    runs, current = [], []
+    for c in canonical(text):
+        if _is_word_char(c):
+            current.append(c)
+        elif current:
+            runs.append("".join(current))
+            current = []
+    if current:
+        runs.append("".join(current))
+    return runs
 
 
 def slug_words(text: str, limit: int = SLUG_WORDS) -> list[str]:
-    """The lowercase letter and digit runs of a text, at most `limit`, within `SLUG_CHARS`.
-    Accents and other marks are removed first, so `Ștefan` gives `stefan`."""
-    import unicodedata
-
-    plain = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii")
+    """The canonical words of a text (`word_runs`), at most `limit`, within `SLUG_CHARS`
+    characters. Marks stay, so `Ștefan` gives `ștefan`. A first word longer than
+    `SLUG_CHARS`, such as a sentence of a script without spaces, is cut to `SLUG_CHARS`."""
     words: list[str] = []
-    for word in SLUG_WORD_PATTERN.findall(plain.lower()):
+    for word in word_runs(text):
+        if not words and len(word) > SLUG_CHARS:
+            return [word[:SLUG_CHARS]] if limit else []
         if len(words) >= limit or len("-".join(words + [word])) > SLUG_CHARS:
             break
         words.append(word)
@@ -337,13 +400,14 @@ def drop_goal_phrase(text: str) -> str:
     return TRAILING_GOAL_PATTERN.sub(lambda m: m.group("end"), text.strip())
 
 
-def parse_labels(text: str, sources: dict) -> dict:
+def parse_labels(text: str, sources: dict, language: str = "en") -> dict:
     """The checked labels of one reply, by node id: `{"slug", "title", "summary"}`.
 
     `sources` maps each node id that the call asked for to the text that a fallback reads.
     An entry for another id is dropped. An entry without a title or a summary is dropped, so
     its node counts a failed attempt. A slug that is empty after the clean-up comes from the
-    first 3 words of the title, then from the first 3 words of the source text. A trailing
+    first 3 words of the title, then from the first 3 words of the source text. The type
+    words of the board `language` leave the slug (`node_words.type_words`). A trailing
     "for goal-01" of a title or a summary is removed. A reply without a JSON object gives no
     label.
     """
@@ -363,8 +427,9 @@ def parse_labels(text: str, sources: dict) -> dict:
         summary = cut_words(drop_goal_phrase(str(entry.get("summary") or "")), SUMMARY_WORDS)
         if not title or not summary:
             continue
-        words = [w for w in slug_words(str(entry.get("slug") or "").replace("-", " "), SLUG_WORDS + 1)
-                 if w not in TYPE_WORDS][:SLUG_WORDS]
+        types = type_words(language)
+        words = [w for w in slug_words(str(entry.get("slug") or ""), SLUG_WORDS + 1)
+                 if w not in types][:SLUG_WORDS]
         words = words or slug_words(title, 3) or slug_words(sources[node_id], 3)
         if not words:
             continue
@@ -379,6 +444,6 @@ def parse_board_summary(text: str) -> str:
 
     for line in THINK_PATTERN.sub("", text or "").splitlines():
         line = strip_label(line).strip().strip('"')
-        if SLUG_WORD_PATTERN.search(line.lower()):
+        if word_runs(line):
             return cut_words(line, BOARD_SUMMARY_WORDS)
     return ""

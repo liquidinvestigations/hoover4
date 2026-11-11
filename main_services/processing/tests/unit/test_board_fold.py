@@ -1043,3 +1043,44 @@ def test_the_reason_prompt_shows_a_question_key_beside_its_fact():
     source = inspect.getsource(prompts.render_reason)
     assert "A question key goes in `questions` only" in source
     assert '\\"questions\\": [\\"fact-lease-terms#2\\"]' in source and '[\\"fact-lease-terms\\"]' in source
+
+
+# ------------------------------------------------- node ids written by a model
+
+
+def test_a_reply_id_with_other_case_or_without_its_marks_reads_as_the_known_id():
+    valid = {"constat-année-parution", "background"}
+    reply = json.dumps({
+        "answers": [{"goal": "goal-01", "from": ["Constat-Année-Parution"], "statement": "Paru en 2001."}],
+        "intents": [{"from": ["constat-annee-parution"], "goal": "goal-01", "objective": "Trouver l'éditeur",
+                     "slug": "éditeur", "questions": ["constat-annee-parution#1"]}]})
+    payload = parse_reason(reply, valid, valid - {"background"}, [], idle=True, goal_ids=["goal-01"],
+                           question_keys={"constat-année-parution#1": "constat-année-parution"})
+    assert payload["proposals"][0]["from"] == ["constat-année-parution"]
+    assert payload["intents"][0]["from"] == ["constat-année-parution"]
+    assert payload["intents"][0]["questions"] == ["constat-année-parution#1"]
+    marks = [p for p in payload["problems"] if "differ only in their marks" in p]
+    assert marks == ["read the id constat-annee-parution as constat-année-parution: the ids differ only in their marks",
+                     "read the id constat-annee-parution#1 as constat-année-parution#1: the ids differ only in their marks"]
+
+
+def test_a_reply_id_without_marks_that_two_ids_share_is_not_read():
+    valid = {"constat-année", "constat-annee"}
+    reply = json.dumps({"intents": [{"from": ["constat-annèe"], "objective": "Trouver X"}]})
+    payload = parse_reason(reply, valid, set(), [], idle=True, goal_ids=["goal-01"])
+    assert "intents" not in payload
+    assert any("unknown or rejected fact" in p for p in payload["problems"])
+
+
+def test_the_reason_prompt_names_the_board_language_and_asks_for_exact_ids():
+    from tasks.P_board.prompts import render_reason
+
+    rows = [FactRow("b1", "goal-01", m.GOAL, "Who runs the mill?"),
+            FactRow("b1", "background", m.ORIGIN, "The investigation.")]
+    b = BoardRow("b1", "admin", "t", "g", collections=["enron"])
+    for final in (False, True):
+        prompt = render_reason(b, fold(b, [], rows), rows, [], stalled=False, final=final, language="ro")
+        assert "Write objectives, briefs, questions and answer statements in Romanian" in prompt
+        assert "Copy each id exactly" in prompt
+    prompt = render_reason(b, fold(b, [], rows), rows, [], stalled=False, language="ro")
+    assert "lowercase words in Romanian" in prompt and "English words" not in prompt

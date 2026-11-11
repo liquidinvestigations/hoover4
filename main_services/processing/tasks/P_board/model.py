@@ -4,6 +4,8 @@ A board is a long-running investigation: a goal, board facts, intents that agent
 and the events of every action. `docs/architecture/Boards.md` describes the whole system.
 """
 
+from tasks.P_board.node_words import node_key
+
 #: The queue of `BoardDispatcher`, `BoardExplore` and their short activities.
 #: **Mirrored in `website/backend/src/api/boards.rs`.** The names move together.
 BOARD_TASK_QUEUE = "board-queue"
@@ -218,14 +220,18 @@ def parse_question_key(key: str) -> tuple[str, int] | None:
 
 
 def session_id_for(board_id: str, intent_id: str) -> str:
-    """The chat session of an intent. Every attempt of it runs there."""
-    return f"{SESSION_PREFIX}{board_id}-{intent_id}"
+    """The chat session of an intent. Every attempt of it runs there. A non-ASCII intent id
+    enters it as a hash (`node_words.node_key`). **Mirrored in
+    `website/common/src/board_types.rs`** (`session_id_for`)."""
+    return f"{SESSION_PREFIX}{board_id}-{node_key(intent_id)}"
 
 
 def explore_workflow_id(board_id: str, intent_id: str) -> str:
     """The id of the `BoardExplore` of an intent. Temporal refuses a second open workflow
-    with one id, so one intent never has two explores at once."""
-    return f"board-explore-{board_id}-{intent_id}"
+    with one id, so one intent never has two explores at once. A non-ASCII intent id enters
+    it as a hash (`node_words.node_key`). **Mirrored in `website/common/src/board_types.rs`**
+    (`explore_workflow_id`)."""
+    return f"board-explore-{board_id}-{node_key(intent_id)}"
 
 
 # Legacy identifiers. An event without explicit node metadata names its nodes this way, and

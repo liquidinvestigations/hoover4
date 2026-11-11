@@ -20,9 +20,11 @@ reason does and uses no board model slot.
 
 `BoardExplore` runs one intent: one explore turn, an ordinary `AgentRun` child on
 `chat-queue` that writes a workspace report, then `conclude_explore`, and for a report
-`convert_explore_report` on `chat-model-queue`. The conversion is one model request with two
-attempts. After its last attempt, `record_explore_end` records `explore_failed` with the
-report version. A cancellation records `explore_cancelled`.
+`convert_explore_report` on `chat-model-queue`. The report is the finding. One small model
+request with two attempts gives its kind and open questions, and the last attempt stores the
+finding with the values of the code when the request fails. Only a failure that escapes the
+activity, such as a missing report or an activity timeout, makes `record_explore_end` record
+`explore_failed` with the report version. A cancellation records `explore_cancelled`.
 
 **A change that schedules a different command for an existing history event needs the drain
 of `tasks/Readme.md`.** Terminate `board-dispatcher`, cancel every `board-explore-*` workflow,
@@ -83,7 +85,8 @@ _SHORT = timedelta(seconds=120)
 #: keys, so a repeat is harmless (`tasks/Readme.md`, retries).
 STORAGE_RETRY = RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS)
 #: The retry of an activity that sends one external model request: one more attempt after
-#: one second.
+#: one second. `conversion.CONVERT_ATTEMPTS` mirrors the count, because the last attempt of
+#: `convert_explore_report` stores the finding with the values of the code.
 EXTERNAL_RETRY = RetryPolicy(maximum_attempts=2, initial_interval=timedelta(seconds=1))
 
 
@@ -267,7 +270,7 @@ class BoardDispatcher:
 
 @workflow.defn
 class BoardExplore:
-    """Run one intent as one explore turn, and convert its report into the fact."""
+    """Run one intent as one explore turn, and store its report as the finding."""
 
     @workflow.run
     async def run(self, task: ExploreTask) -> str:

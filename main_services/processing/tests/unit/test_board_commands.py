@@ -117,12 +117,12 @@ def test_new_intent_ids_are_slugs_with_collision_suffixes_and_keep_their_positio
                       "intent-check-contracts-2": "intent-check-contracts-2"}
 
 
-def test_a_slug_falls_back_to_the_text_then_to_the_kind_word(store):
+def test_a_slug_falls_back_to_the_text_then_to_a_number(store):
     slugs(store)
     create(store)
     reason(store, 1, [intent("Find the Raptor valuation memo", 1, slug="intent"),
-                      intent("?? !!", 2)])
-    assert sorted(folded(store).intents) == ["intent-direction", "intent-raptor-valuation-memo"], (
+                      intent("?? !!", 2), intent("¿¡ …", 3)])
+    assert sorted(folded(store).intents) == ["intent-1", "intent-2", "intent-raptor-valuation-memo"], (
         "a type word or a stop word is no slug word")
 
 
@@ -133,9 +133,9 @@ def test_a_fact_takes_its_slug_and_a_reserved_name_is_never_taken(store):
     [intent_id] = folded(store).intents
     assert intent_id == "intent-memo", "the candidate is a type word, so the text gives the slug"
     fact_id = explore(store, intent_id, slug="contract payment")
-    assert fact_id == "fact-contract-payment" and fact_id not in cmd.RESERVED
+    assert fact_id == "finding-contract-payment" and fact_id not in cmd.RESERVED
     assert receipt(store, "explore_end:intent-memo:1").prepared["assignments"] == {
-        "fact:intent-memo": "fact-contract-payment"}
+        "fact:intent-memo": "finding-contract-payment"}
     [row] = [f for f in store.read_facts("b1") if f.fact_id == fact_id]
     assert (row.session_id, row.answer_seq, row.request_id) == ("s", 7, "explore_end:intent-memo:1")
 
@@ -201,14 +201,14 @@ def test_an_interrupted_command_writes_the_same_rows_on_retry(store, cut):
     with pytest.raises(RuntimeError):
         cmd.step("b1")
     if cut != "receipt_committed":
-        assert "fact-memo-found" not in visible(store), "no reader sees a fact before its event"
+        assert "finding-memo-found" not in visible(store), "no reader sees a fact before its event"
     # A concurrent command waits behind the prepared one.
     store.submit("b1", "hint:1", cmd.ADD_HINT, OWNER, {"text": "h"})
     store.run_commands("b1")
-    assert visible(store).count("fact-memo-found") == 1
-    assert [r.fact_id for r in store.read_facts("b1") if r.kind == m.SOURCED] == ["fact-memo-found"]
+    assert visible(store).count("finding-memo-found") == 1
+    assert [r.fact_id for r in store.read_facts("b1") if r.kind == m.SOURCED] == ["finding-memo-found"]
     f = folded(store)
-    assert f.intents["intent-memo"].fact_id == "fact-memo-found"
+    assert f.intents["intent-memo"].fact_id == "finding-memo-found"
     events = canonical_events(store.read_events("b1"))
     assert [e.event_type for e in events][-2:] == [m.EXPLORE_CONCLUDED, m.HINT_ADDED]
     assert [e.payload["seq"] for e in events] == list(range(1, len(events) + 1))
@@ -423,18 +423,69 @@ def test_a_retried_conclusion_returns_the_submitted_end(store, monkeypatch):
     assert activities.convert_explore_report(request) == "fact"
 
 
-def test_a_slug_stem_is_ascii_and_bounded():
-    assert cmd.slug_stem("", "Zahlung an Société Générale über 5 Mio.", "fact") == "zahlung-an-societe-generale"
-    long = cmd.slug_stem("internationalization-responsibilities-counterparty-reconciliation-statements", "", "fact")
+def test_a_slug_stem_keeps_letters_of_every_script_and_is_bounded():
+    assert cmd.slug_stem("", "Zahlung an Société Générale über 5 Mio.", "de") == "zahlung-an-société-générale"
+    long = cmd.slug_stem("internationalization-responsibilities-counterparty-reconciliation-statements", "")
     assert len(long) <= 40 and long.startswith("internationalization")
-    assert cmd.slug_stem("", "", "correction") == "note"
-    assert cmd.slug_stem("", "日本語のみ", "intent") == "direction"
+    assert cmd.slug_stem("", "") == ""
+    assert cmd.slug_stem("", "日本語のみ", "ja") == "日本語のみ"
+    # A decomposed accent becomes the composed letter (NFC), and capitals become lowercase.
+    assert cmd.slug_stem("Constat Anne\u0301e Parution", "", "fr") == "année-parution"
+    assert cmd.slug_stem("constatare anulare alegeri", "", "ro") == "anulare-alegeri"
+    # The type words of another language stay words: `fund` is the Danish finding word.
+    assert cmd.slug_stem("hedge fund transfers", "", "en") == "hedge-fund-transfers"
+    assert cmd.slug_stem("fund overførsler", "", "da") == "overførsler"
 
 
 def test_a_session_of_a_slug_intent_names_its_intent():
     session = m.session_id_for("0a1b2c", "intent-check-contracts-2")
     assert session == "board-0a1b2c-intent-check-contracts-2"
     assert len(m.explore_workflow_id("0" * 32, "intent-" + "x" * 40 + "-99")) < 200
+
+
+def test_a_node_id_outside_ascii_enters_the_session_and_the_workflow_as_a_hash():
+    """The vectors are the values of `node_key` in `website/common/src/board_types.rs`."""
+    assert m.session_id_for("0a1b2c", "i1.2") == "board-0a1b2c-i1.2"
+    assert m.session_id_for("0a1b2c", "intent-année-parution") == "board-0a1b2c-xac95dd8d72ef4c12"
+    assert m.explore_workflow_id("0a1b2c", "意图-出版年份") == "board-explore-0a1b2c-x00a21e373eb3316f"
+    assert m.session_id_for("0a1b2c", "intent-année-parution").isascii()
+
+
+def _language(store, code, board_id="b1"):
+    from dataclasses import replace
+
+    store.boards[board_id] = replace(store.boards[board_id], language=code)
+
+
+@pytest.mark.parametrize("code,slug,fact_slug,intent_id,fact_id", [
+    ("fr", "Année Parution", "année-parution", "intention-année-parution", "constat-année-parution"),
+    ("ro", "anulare alegeri", "Anulare-Alegeri", "intenție-anulare-alegeri", "constatare-anulare-alegeri"),
+    ("ar", "تاريخ العقد", "تاريخ-العقد", "مقصد-تاريخ-العقد", "استنتاج-تاريخ-العقد"),
+    ("zh", "出版年份", "发现 出版年份", "意图-出版年份", "发现-出版年份"),
+    ("en", "contract payment", "contract-payment", "intent-contract-payment", "finding-contract-payment"),
+])
+def test_new_ids_take_the_prefix_and_the_words_of_the_board_language(
+        store, code, slug, fact_slug, intent_id, fact_id):
+    slugs(store)
+    create(store)
+    _language(store, code)
+    reason(store, 1, [intent("Find it", 1, slug=slug)])
+    assert sorted(folded(store).intents) == [intent_id]
+    assert explore(store, intent_id, slug=fact_slug) == fact_id
+    labels = {r.node_id: r.slug for r in store.read_labels(["b1"])}
+    assert labels[fact_id] == fact_id and labels[intent_id] == intent_id
+    reason(store, 2, [intent("Find it in another way", 1, slug=slug)])
+    assert f"{intent_id}-2" in folded(store).intents, "a taken canonical slug gets -2"
+
+
+def test_an_older_finding_keeps_its_fact_prefix_beside_new_findings(store):
+    slugs(store)
+    create(store)
+    reason(store, 1, [intent("Find the memo", 1, slug="memo"), intent("Find the bank", 2, slug="bank")])
+    store.publish_facts([FactRow("b1", "fact-memo-found", m.SOURCED, "The memo [D1].", intent_id="x",
+                                 created_at=T0)], [])
+    assert explore(store, "intent-bank", slug="memo found") == "finding-memo-found"
+    assert "fact-memo-found" in {f.fact_id for f in store.read_facts("b1")}
 
 
 def test_finishing_a_review_lists_the_goals_without_a_proposal(store):

@@ -657,7 +657,7 @@ and `vllm_port`.
 
 | variable | value |
 |---|---|
-| `LLM_BASE_URL`, `LLM_MODEL` | the model server at `vllm_port`. It serves agent turns of chats and board explores, and every short call: conversation titles and summaries, follow-up suggestions, board labels, board assessments and report conversions. |
+| `LLM_BASE_URL`, `LLM_MODEL` | the model server at `vllm_port`. It serves agent turns of chats and board explores, and every short call: conversation titles and summaries, follow-up suggestions, board labels, board assessments and the classification of board findings. |
 | `LLM_VISION_MODELS` | the served model. Both catalog refreshes mark it `supports_vision`, and an agent turn sends it the images of tool results. |
 | `LLM_PROVIDER_NAME` | `selfhosted`, the catalog name of the endpoint |
 | `LLM_SEND_TEMPERATURE` | `false`, so the server applies the sampling values of the checkpoint |

@@ -1,11 +1,16 @@
 //! Links to board nodes in the text of statements, facts, labels, events and assessment
 //! checks.
 //!
-//! A model or a person can name a node by its storage id (`fact-raptor-hedges`, the legacy
-//! `f1.1`, `i2.3` or `c0c5`) or by its slug (`goal-01`). `link_nodes` finds those names as
-//! whole words and returns the text in parts, so the page can show each name as a link with
-//! the node title. A word is a name only when it holds a hyphen or a digit, so ordinary words
-//! such as `goal`, `origin` or `background`, which are also legacy ids and slugs, stay text.
+//! A model or a person can name a node by its storage id (`finding-raptor-hedges`,
+//! `constat-année-parution`, the older `fact-raptor-hedges`, the legacy `f1.1`, `i2.3` or
+//! `c0c5`) or by its slug (`goal-01`). `link_nodes` finds those names as whole words and
+//! returns the text in parts, so the page can show each name as a link with the node title.
+//! A word character is a letter or a digit of any script, `-`, `.` or `_`, and a combining
+//! mark that follows such a character. The comparison ignores case. A word is a name only
+//! when it holds a hyphen or a digit, so ordinary words such as `goal`, `origin` or
+//! `background`, which are also legacy ids and slugs, stay text. A name inside a run of
+//! letters stays text, so a name in a text without spaces, such as Chinese, links only when a
+//! space or a punctuation mark is beside it.
 //!
 //! The parser leaves these spans as text: fenced code blocks, inline code, Markdown links,
 //! URLs, and citation handles such as `[D1]` or `[W2]`.
@@ -41,7 +46,26 @@ pub enum TextPart {
 }
 
 fn word_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_'
+    c.is_alphanumeric() || c == '-' || c == '.' || c == '_'
+}
+
+/// A combining mark of the common ranges: Latin, Greek and Cyrillic accents, Hebrew points,
+/// Arabic vowel marks, the Devanagari signs and the Japanese sound marks. The standard
+/// library has no general category, and a mark outside these ranges ends a word.
+fn mark(c: char) -> bool {
+    matches!(c,
+        '\u{0300}'..='\u{036F}' | '\u{0483}'..='\u{0489}' | '\u{0591}'..='\u{05BD}' | '\u{05BF}'
+        | '\u{05C1}'..='\u{05C2}' | '\u{05C4}'..='\u{05C5}' | '\u{05C7}' | '\u{0610}'..='\u{061A}'
+        | '\u{064B}'..='\u{065F}' | '\u{0670}' | '\u{06D6}'..='\u{06DC}' | '\u{06DF}'..='\u{06E4}'
+        | '\u{06E7}'..='\u{06E8}' | '\u{06EA}'..='\u{06ED}' | '\u{0900}'..='\u{0903}'
+        | '\u{093A}'..='\u{094F}' | '\u{0951}'..='\u{0957}' | '\u{0962}'..='\u{0963}'
+        | '\u{1AB0}'..='\u{1AFF}' | '\u{1DC0}'..='\u{1DFF}' | '\u{20D0}'..='\u{20FF}'
+        | '\u{3099}'..='\u{309A}' | '\u{FE20}'..='\u{FE2F}')
+}
+
+/// A character inside a word: a word character, or a mark after one.
+fn in_word(c: char) -> bool {
+    word_char(c) || mark(c)
 }
 
 /// The byte length of a span at `rest` that the parser leaves as text, or 0.
@@ -80,8 +104,8 @@ fn skipped(rest: &str) -> usize {
 /// The parts of `text`, with each whole-word name of a node in `nodes` as a node part.
 pub fn link_nodes(text: &str, nodes: &[LinkNode]) -> Vec<TextPart> {
     let find = |word: &str| {
-        let word = word.to_ascii_lowercase();
-        nodes.iter().position(|n| n.id.to_ascii_lowercase() == word || (!n.slug.is_empty() && n.slug == word))
+        let word = word.to_lowercase();
+        nodes.iter().position(|n| n.id.to_lowercase() == word || (!n.slug.is_empty() && n.slug.to_lowercase() == word))
     };
     let mut parts: Vec<TextPart> = Vec::new();
     let mut plain = String::new();
@@ -97,11 +121,11 @@ pub fn link_nodes(text: &str, nodes: &[LinkNode]) -> Vec<TextPart> {
             continue;
         }
         let c = rest.chars().next().unwrap_or(' ');
-        let starts_word = word_char(c) && !previous.is_some_and(word_char);
+        let starts_word = word_char(c) && !previous.is_some_and(in_word);
         if starts_word {
-            let run = rest.find(|ch: char| !word_char(ch)).unwrap_or(rest.len());
+            let run = rest.find(|ch: char| !in_word(ch)).unwrap_or(rest.len());
             let word = rest[..run].trim_end_matches(['.', '-', '_']);
-            let named = (word.contains('-') || word.chars().any(|ch| ch.is_ascii_digit()))
+            let named = (word.contains('-') || word.chars().any(|ch| ch.is_numeric()))
                 .then(|| find(word))
                 .flatten();
             if let Some(node) = named {
@@ -185,6 +209,30 @@ mod tests {
             assert_eq!(link_nodes(literal, &nodes()), vec![text(literal)], "{literal}");
         }
         assert_eq!(link_nodes("[D12] supports f1.1", &nodes()), vec![text("[D12] supports "), node("f1.1", 0)]);
+    }
+
+    #[test]
+    fn slugs_in_other_scripts_become_node_parts() {
+        let nodes = vec![
+            LinkNode { id: "constat-année-parution".into(), slug: "constat-année-parution".into(), title: "Année".into() },
+            LinkNode { id: "constatare-anulare-alegeri".into(), slug: "constatare-anulare-alegeri".into(), title: String::new() },
+            LinkNode { id: "استنتاج-تاريخ-العقد".into(), slug: "استنتاج-تاريخ-العقد".into(), title: String::new() },
+            LinkNode { id: "发现-出版年份".into(), slug: "发现-出版年份".into(), title: String::new() },
+            LinkNode { id: "निष्कर्ष-तारीख".into(), slug: "निष्कर्ष-तारीख".into(), title: String::new() },
+        ];
+        assert_eq!(link_nodes("Voir constat-année-parution.", &nodes),
+                   vec![text("Voir "), node("constat-année-parution", 0), text(".")]);
+        assert_eq!(link_nodes("Vezi Constatare-Anulare-Alegeri, apoi", &nodes),
+                   vec![text("Vezi "), node("Constatare-Anulare-Alegeri", 1), text(", apoi")]);
+        assert_eq!(link_nodes("انظر استنتاج-تاريخ-العقد هنا", &nodes),
+                   vec![text("انظر "), node("استنتاج-تاريخ-العقد", 2), text(" هنا")]);
+        assert_eq!(link_nodes("见 发现-出版年份。", &nodes), vec![text("见 "), node("发现-出版年份", 3), text("。")]);
+        // A Devanagari vowel sign is a mark inside the word, so the whole slug is one name.
+        assert_eq!(link_nodes("देखें निष्कर्ष-तारीख", &nodes), vec![text("देखें "), node("निष्कर्ष-तारीख", 4)]);
+        // A longer word and a word inside a run of letters stay text.
+        for literal in ["constat-année-parutions", "xconstat-année-parution", "见发现-出版年份"] {
+            assert_eq!(link_nodes(literal, &nodes), vec![text(literal)], "{literal}");
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ explore, and the explore ends in one board fact with resolved citations. A perso
 board under AI Chat, adds hints and goals, rejects facts, starts the explore of an open
 question, and accepts or rejects the result.
 
-The interface calls a board fact a **finding**. Stored slugs, tool names, and payload fields retain `fact`.
+The interface calls a board fact a **finding**. A new finding id starts with the finding word of the board language, such as `finding-`. Older ids, tool names, and payload fields retain `fact`.
 
 The page uses display terms for several stored concepts. The **assessment** is the
 model call that reads the board and declares intents or proposes the goal answers: the code calls
@@ -16,8 +16,14 @@ context of the board. An **open question** is a question that an explore fact le
 board, stored in the fact's `open_questions`.
 
 A board uses the chat stack for its agent work. An explore writes a workspace report, as a
-chat turn does, and one model request converts the report into the fact. A board adds no
-agent tool and no agent or model route.
+chat turn does, and the report becomes the finding without a change. One small model request
+gives its kind and open questions. A board adds no agent tool and no agent or model route.
+
+Every text of a board is in the **board language**: the language stored on the board at
+creation (`boards.language`). The explores, the labels, the card summaries, the board summary
+and the assessments use it, and a later change of the owner's settings does not change it. A
+board created before the column held a value takes the saved agent language of the owner,
+then the saved interface language, then English (`activities.board_language`).
 
 ## Contents
 
@@ -84,9 +90,13 @@ The command tables have no age limit. A receipt keeps the identity of a request 
 node ids of its command after the Temporal history of the command is gone. A drop deletes
 their rows with the other board rows.
 
-The explore of an intent runs in the chat session `board-{board_id}-{intent_id}`. A board id
-is hex, so the first hyphen after the board id ends it, and the hyphens of a slug intent id
-stay in the intent id.
+The explore of an intent runs in the chat session `board-{board_id}-{intent_key}`. The intent
+key is the intent id when it is ASCII, else `x` and the first 16 hex digits of the SHA-256 of
+the id (`node_words.node_key`, mirrored in `common::board_types::node_key`). The explore
+workflow id `board-explore-{board_id}-{intent_key}` uses the same key. Every id written before
+the localized slugs is ASCII, so its session and its workflow keep their ids. A board id is
+hex, so the first hyphen after the board id ends it, and the hyphens of a slug intent id stay
+in the intent id. The board page and the server read an `x` key back to its intent.
 
 A board fact has one of six kinds.
 
@@ -135,9 +145,11 @@ Each step handles up to 20 commands. The writer makes no model call and takes no
 slot.
 
 `BoardExplore` runs one intent. It opens a chat turn, runs it as an `AgentRun` child, and
-concludes it. When the turn wrote a report, it converts the report into the fact
-(`convert_explore_report` on `chat-model-queue`, 2 attempts). After the last attempt,
-`record_explore_end` records `explore_failed` with the report version. The end of the
+concludes it. When the turn wrote a report, it stores the report as the finding
+(`convert_explore_report` on `chat-model-queue`, 2 attempts). When the small request fails in
+the last attempt, the finding is stored with the values of the code. Only a failure that
+leaves the activity, such as a missing report or an activity timeout, makes
+`record_explore_end` record `explore_failed` with the report version. The end of the
 explore is an `explore_end` command with the request id `explore_end:{intent}:{attempt}`, so
 a retry of the conclusion or the conversion returns the end that it submitted and never reads
 a later answer of the session.
@@ -148,15 +160,18 @@ a later answer of the session.
 or a board summary whose source text changed (`labels.label_due`). A board with a command
 that waits is not named. The dispatcher then starts `label_board` on `chat-model-queue`, one
 at a time, outside the board model slots. One call of the summarisation model labels up to 8
-nodes, from the full text of each node.
+nodes, from the text of each node. The text of a fact is cut to 12,000 characters
+(`labels.LABEL_SOURCE_CHARS`), so a fact of that length or less keeps its source hash. The
+prompts ask for the slug words, the titles and the summaries in the board language. A
+changed prompt changes no source hash, so an existing label stays as it is.
 
 | Node | Slug | Title and summary |
 |---|---|---|
 | background context | `background`, fixed | none, the text shows |
 | goal | `goal-01` to `goal-06`, fixed from the goal slot | none, the text shows |
-| intent | `intent-<words>` | generated from the objective and the brief |
-| fact | `fact-<words>` | generated from the kind and the text without `[Dn]` handles |
-| correction | `correction-<words>` | generated from the text |
+| intent | `<intent prefix>-<words>` | generated from the objective and the brief |
+| fact | `<finding prefix>-<words>`, `fact-<words>` for an older fact | generated from the kind and the text without `[Dn]` handles |
+| correction | `<correction prefix>-<words>` | generated from the text |
 | the board | none | 10 to 15 words, from the origin, every goal, and the titles of the intents, the live facts and the corrections |
 
 A node with a slug id has its id as its slug from its creation, and `label_board` adds its
@@ -232,16 +247,24 @@ it.
 |---|---|---|---|
 | background context | `origin` | `background` | the creation request |
 | goal | `goal`, `goal-2` to `goal-6` | `goal-01` to `goal-06` | the goal request, with the first free slot |
-| assessment intent | `i{reason}.{k}` | `intent-<words>` | the assessment and the position of the intent in the reply |
-| question intent | `i0.{n}` | `intent-<words>` | the question request |
-| explore fact | `f{reason}.{k}` | `fact-<words>` | the intent |
-| correction | `c<hash>` | `correction-<words>` | the correction request |
+| assessment intent | `i{reason}.{k}` | `<intent prefix>-<words>` | the assessment and the position of the intent in the reply |
+| question intent | `i0.{n}` | `<intent prefix>-<words>` | the question request |
+| explore fact | `f{reason}.{k}` | `<finding prefix>-<words>` | the intent |
+| correction | `c<hash>` | `<correction prefix>-<words>` | the correction request |
 
-A version 2 id is its final slug. The words come from the model's candidate (`slug` of an
-intent in the assessment reply or of the converted `submit_board_fact` call), else from the node text,
-else from a word of the node kind. The writer removes type words and stop words, keeps at
-most 4 words and 40 characters, and adds `-2`, `-3` and so on when another node id, slug or
-reserved name of the board has the id. Every existing node keeps its id, so a board can hold
+A version 2 id is its final slug. The prefix is the type word of the board language
+([P_board/node_words.py](../../main_services/processing/tasks/P_board/node_words.py)): `intent`, `finding` and `correction` in English,
+`intention`, `constat` and `correction` in French. A finding written before the localized
+prefixes keeps its `fact-` id. The kind of a node comes from its row, never from its prefix.
+The fixed ids `background` and `goal-NN` are the same in every language.
+
+The words come from the model's candidate (`slug` of an intent in the assessment reply or of
+the `submit_board_fact` call), else from the node text. A word is a run of Unicode letters,
+marks and digits, after Unicode NFC and lowercase, so `Année` stays `année`. The writer removes
+the type words of the board language and of English, and English stop words, keeps at most 4
+words and 40 characters, and adds `-2`, `-3` and so on when another node id, slug or reserved
+name of the board has the id. The comparison is exact on the canonical form. A node without
+words takes `<prefix>-1`, `<prefix>-2` and so on. Every existing node keeps its id, so a board can hold
 both forms. A goal slot reads both forms, so the first legacy goal `goal` holds slot 1 and a
 later goal is `goal-02`. The fold reads the explicit `intent_id` and `origin` of a new event,
 and derives a legacy id only for a legacy event without them.
@@ -250,14 +273,22 @@ and derives a legacy id only for a legacy event without them.
 
 Older statements, fact texts and labels can name a node by its id or slug, for example
 "Fact f1.1 provides" or "for goal-2". `common::board_text::link_nodes` finds such names as
-whole words and shows each one as a link with the node title. A word is a name only when it
-holds a hyphen or a digit, so the words `goal`, `origin` and `background` stay text. Code,
+whole words and shows each one as a link with the node title. A word character is a letter or
+a digit of any script, `-`, `.` or `_`, and a combining mark after such a character. The
+comparison ignores case. A word is a name only when it holds a hyphen or a digit, so the words
+`goal`, `origin` and `background` stay text. A name inside a run of letters stays text, so in
+a text without spaces a name links only beside a space or a punctuation mark. The page gives an
+address value to `resolve_node` in Unicode NFC, with the normalization of the browser. Code,
 Markdown links, URLs and citation handles such as `[D1]` stay text. The board page links names
 in answer statements, fact texts, intent objectives, event lines and assessment checks. The
 graph shows the node title in place of a name in a label (`board_text::name_nodes`).
 
 The assessment prompt asks for ids only in the `from` and `goal` fields, and an intent names
-its goal in its `goal` field. The label prompt asks for no ids, and the label code removes a
+its goal in its `goal` field. It asks for the objectives, the briefs, the questions and the
+answer statements in the board language, with the JSON keys in English and each id copied
+exactly. An id of the reply that is not a known id is matched in canonical form, then without
+its marks (NFKD, `M*` removed) when exactly one known id matches. The problems of the reply
+name a match without marks. The label prompt asks for no ids, and the label code removes a
 trailing phrase such as "for goal-01" from a title or a summary.
 
 ## The fold
@@ -450,25 +481,33 @@ answer.
 `explore_failed`, and the files stay in the workspace. A turn with a report returns its
 version for the conversion.
 
-`convert_explore_report` sends one request to the agent model with the task, the text of the
-pinned report version and its verified citations, and offers only the `submit_board_fact`
-function with a named tool choice ([P_board/conversion.py](../../main_services/processing/tasks/P_board/conversion.py)). The request holds no
-narration, earlier draft, tool row or reasoning. The function takes the fact with inline
-handles, its kind, at most 3 open questions and an optional slug candidate. The schema asks
-for a fact of at most 40,000 characters, but the check keeps a longer fact in full. A board
-prompt that shows the full text of a fact cuts it to 40,000 characters and marks the cut
-(`prompts.clip_fact`). A reply without a valid call fails the attempt, and Temporal sends the request once more. The second
-request turns off the reasoning phase of the model, because a reply that reaches the token
-limit usually ran out in its reasoning. A provider that refuses that hint gets the request
-without it. The first request keeps reasoning, because it gives the more accurate kind. The activity
-stores the checked call as a `submit_board_fact` tool row of the turn before it submits the
-fact, so a later attempt reuses the row and sends no request. The transcript shows the row as
-"Submitted by the board", and under the answer what the turn gave to the board. Each handle
-of the fact resolves against the citations of the report version. A handle that the report
-does not hold is dropped with a problem, and a sourced fact without a verified citation
-becomes inferred. The fact goes with its session, answer position and report version as an
-`explore_end` command, and the writer gives the fact its id. An older explore turn that
-called `submit_board_fact` itself keeps its rows, and the page still shows them.
+`convert_explore_report` stores the pinned report version as the finding, without a change.
+No model call writes the finding text. One small request to the agent model gets the task,
+the report text and its verified citations, and offers only the `submit_board_fact` function
+with a named tool choice ([P_board/conversion.py](../../main_services/processing/tasks/P_board/conversion.py)). The function returns the
+kind, at most 3 open questions that the report names, and a slug candidate in the board
+language. It has no field for the finding text. The request allows 4,096 output tokens. A
+reply without a valid call fails the attempt, and Temporal sends the request once more. The
+second request turns off the reasoning phase of the model. A provider that refuses that hint
+gets the request without it.
+
+When the request fails in the last attempt, or at once when the provider refuses it (4xx), the
+code gives the values: kind `sourced` when the report holds a verified citation, else
+`inferred`, no open question, and the slug words of the report heading. The first problem of
+the finding names the failure. The explore ends in `explore_concluded`.
+
+The activity stores the call arguments as a `submit_board_fact` tool row of the turn before it
+submits the finding, so a later attempt reuses the row and sends no request. A row of an older
+turn holds a `fact` field. A retry ignores it and uses the report text. The transcript shows
+the row as "Submitted by the board", with the kind, the slug or the older fact text, and the
+open questions, and under the answer what the turn gave to the board. Each handle of the
+report resolves against the verified citations of the report version. A handle without a
+verified citation is named in the problems, and a sourced finding without a verified citation
+becomes inferred. A board prompt that shows the full text of a finding cuts it to 40,000
+characters and marks the cut (`prompts.clip_fact`). The finding goes with its session, answer
+position and report version as an `explore_end` command, and the writer gives it its id. An
+older explore turn that called `submit_board_fact` itself keeps its rows, and the page still
+shows them.
 
 Citation labels are local to one chat session. The worker removes them from a fact before the
 fact enters another prompt, and the citation rows keep the document identity. The fact pane
