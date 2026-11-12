@@ -318,6 +318,15 @@ def test_verify_fails_when_the_node_differs_from_the_bundle(env, monkeypatch):
     monkeypatch.setenv('FAKE_ETCD', '')
     with pytest.raises(deploy.StepFailed, match='no etcd role'):
         remote.verify()
+    monkeypatch.setenv('FAKE_ETCD', 'true')
+    # Without sudo the root-only configuration is unreadable. The node arguments of the running k3s count instead.
+    report.write_text(good_report(folder, unit='k3s', iface='', cluster_init=False, config_sha256=''))
+    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['server', '--cluster-init', 'true', '--flannel-iface', 'wg0'])
+    assert remote.verify()
+    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['server', '--flannel-iface', 'eth0'])
+    with pytest.raises(deploy.StepFailed) as error:
+        remote.verify()
+    assert "flannel-iface is 'eth0'" in str(error.value) and 'no cluster-init' in str(error.value)
 
 
 def test_a_remote_stop_and_start_complete_after_the_operator_acts(env, monkeypatch):
@@ -525,6 +534,10 @@ def test_the_exported_tree_holds_the_commit_and_links_the_private_folder(env):
     assert (tree / 'k3s/private').resolve() == env.private.resolve()
     first = source.fingerprint(tree)
     assert source.export(env.repo, env.private, rev) == tree and source.fingerprint(tree) == first
+    # A step that imports a module writes bytecode into the tree. That is not a change of the source.
+    (tree / 'k3s/__pycache__').mkdir(parents=True, exist_ok=True)
+    (tree / 'k3s/__pycache__/config.cpython-39.pyc').write_bytes(b'bytecode')
+    assert source.fingerprint(tree) == first
     (tree / 'file.txt').write_text('changed\n')
     assert source.fingerprint(tree) != first
     with pytest.raises(source.SourceError):
@@ -644,3 +657,32 @@ def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatc
     with pytest.raises(deploy.StepFailed, match='not arm64'):
         deploy.image_references(ctx, ['hoover/hoover-vllm:000000000000'], architecture='arm64')
     assert deploy.gpu_architecture(ctx) == 'arm64'
+
+
+@pytest.mark.parametrize('state, starts', [('missing', True), ('failed', True), ('active', False), ('activating', False)])
+def test_the_cluster_root_route_runs_a_failed_unit_again(monkeypatch, state, starts):
+    # A resume after a failed root step gets the same unit name. Only a running or successful unit starts nothing.
+    import types
+    import hostroute
+    node = types.SimpleNamespace(name='server-a', local=False, ssh_address='op@server-a')
+    root = hostroute.ClusterRoot('kubeconfig', hostroute.Shell(node))
+    monkeypatch.setattr(hostroute, 'unit_state', lambda shell, unit: (state, '', ''))
+    calls = []
+    monkeypatch.setattr(root, 'kubectl', lambda *a, input=None: calls.append(a) or (0, 'Succeeded'))
+    root.start('hoover4-x-server-a', command=['true'])
+    assert any(a[0] == 'apply' for a in calls) == starts
+
+
+def test_an_on_delete_statefulset_waits_for_its_ready_replicas(monkeypatch):
+    # kubectl rollout status refuses an OnDelete StatefulSet, for example the Kata stores of a zone.
+    import types
+    items = [{'kind': 'StatefulSet', 'metadata': {'name': 'clickhouse-kata'},
+              'spec': {'replicas': 1, 'updateStrategy': {'type': 'OnDelete'}}},
+             {'kind': 'Deployment', 'metadata': {'name': 'website'}, 'spec': {'replicas': 1}}]
+    calls = []
+    ctx = types.SimpleNamespace(kubeconfig='kc',
+                                kubectl=lambda *a, check=False: json.dumps({'items': items if 'deployments,statefulsets' in a else []}),
+                                run=lambda argv, capture=False, check=True: calls.append(argv) or (0, ''))
+    deploy.wait_rollouts(ctx, 'zone-a')
+    assert calls[0][5:7] == ['wait', 'statefulset/clickhouse-kata'] and '--for=jsonpath={.status.readyReplicas}=1' in calls[0]
+    assert calls[1][5:8] == ['rollout', 'status', 'deployment/website']

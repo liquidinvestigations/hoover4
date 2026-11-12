@@ -84,10 +84,11 @@ table=[BEGIN,'','## Deployment logins and passwords','',
  'Run `k3s/tools/verify-lab-logins.py` to check every login.',
  'The XWiki superadmin is off, because openDesk turns it on only in debug mode. Administrator is an XWiki admin.','',
  '| Login | Address | User | Password | Note |','|---|---|---|---|---|',*[f'| {a} | {b} | `{c}` | `{d}` | {e} |' for a,b,c,d,e in rows],'',END]
-text=place(INVENTORY.read_text(),table,BEGIN,END)
+# A new site has no table yet. Its first run writes the title line.
+text=place(INVENTORY.read_text() if INVENTORY.exists() else '# Logins and passwords\n',table,BEGIN,END)
 users=[USERS_BEGIN,'','## Zone users','',
  'Each user is a normal user with every application, Hoover included, in every zone that `zone-users.py` prepares.',
  'A user has the same password in every zone and on every host. The hosts are in the sections below.','',
  '| User | Password |','|---|---|',*[f"| `{e['username']}` | `{passwords.get(e['username'],'(not created yet)')}` |" for e in fixture],'',USERS_END]
 text=place(text,users,USERS_BEGIN,USERS_END)
-INVENTORY.write_text(text);print(f'wrote {len(rows)} logins and {len(fixture)} zone users')
+INVENTORY.write_text(text);INVENTORY.chmod(0o600);print(f'wrote {len(rows)} logins and {len(fixture)} zone users')

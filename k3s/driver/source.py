@@ -58,7 +58,9 @@ def link(tree, private):
     """Point k3s/private of the tree to the private folder of the checkout."""
     path = Path(tree) / 'k3s' / 'private'
     path.parent.mkdir(exist_ok=True)
-    target = os.path.relpath(Path(private).resolve(), path.parent.resolve())
+    # An absolute link: the operator portal mounts the k3s folder of the tree and an empty folder over its private
+    # link. A relative link resolves to the root of the container there, and the container runtime refuses the mount.
+    target = str(Path(private).resolve())
     if path.is_symlink() and os.readlink(path) == target:
         return
     if path.is_symlink() or path.exists():
@@ -71,7 +73,8 @@ def fingerprint(tree):
     tree = Path(tree)
     digest = hashlib.sha256()
     for root, dirs, files in os.walk(tree):
-        dirs.sort()
+        # Python writes __pycache__ folders into the tree when a step imports a module. They are not source.
+        dirs[:] = sorted(d for d in dirs if d != '__pycache__')
         rel_root = Path(root).relative_to(tree)
         if rel_root == Path('k3s'):
             dirs[:] = [d for d in dirs if d != 'private']

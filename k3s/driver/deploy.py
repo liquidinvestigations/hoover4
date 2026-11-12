@@ -483,12 +483,16 @@ class Remote:
         unit = 'k3s' if self.node.name == self.ctx.site.control_plane else 'k3s-agent'
         if found['units'].get(unit) != 'active':
             problems.append(f'{unit} is {found["units"].get(unit)}')
-        if found.get('flannel_iface') != expected_interface(self.ctx.site, self.node):
-            problems.append(f'flannel-iface is {found.get("flannel_iface")!r}, not {expected_interface(self.ctx.site, self.node)!r}')
+        # The k3s configuration is readable by root only. Without a sudo route the report has no configuration, and
+        # the arguments that the running k3s recorded on its node show the interface and cluster-init instead.
+        args = node_args(self.ctx, self.node.name) if not found.get('config_sha256') else []
+        interface = found.get('flannel_iface') or arg_value(args, '--flannel-iface')
+        if interface != expected_interface(self.ctx.site, self.node):
+            problems.append(f'flannel-iface is {interface!r}, not {expected_interface(self.ctx.site, self.node)!r}')
         if not node_ready(self.ctx, self.node.name):
             problems.append('the node is not Ready')
         if self.node.name == self.ctx.site.control_plane:
-            if not found['cluster_init']:
+            if not found['cluster_init'] and arg_value(args, '--cluster-init') != 'true':
                 problems.append('the k3s configuration has no cluster-init')
             etcd = node_label(self.ctx, self.node.name, 'node-role.kubernetes.io/etcd')
             if found['datastore'] not in ('etcd', 'unreadable') or (found['datastore'] == 'unreadable' and etcd != 'true'):
@@ -632,6 +636,24 @@ def node_label(ctx, name, label):
     code, out = read(['kubectl', '--kubeconfig', ctx.kubeconfig, 'get', 'node', name, '-o',
                       f'jsonpath={{.metadata.labels.{escaped}}}'])
     return out.strip() if code == 0 else ''
+
+
+def node_args(ctx, name):
+    """The k3s arguments that the node recorded in its annotation k3s.io/node-args, or an empty list."""
+    if not ctx.kubeconfig.exists():
+        return []
+    try:
+        r = subprocess.run(['kubectl', '--kubeconfig', str(ctx.kubeconfig), 'get', 'node', name, '-o',
+                            r'jsonpath={.metadata.annotations.k3s\.io/node-args}'], capture_output=True, text=True,
+                           timeout=60)
+        args = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        return []
+    return [str(a) for a in args] if isinstance(args, list) else []
+
+
+def arg_value(args, name):
+    return next((args[i + 1] for i, a in enumerate(args[:-1]) if a == name), '')
 
 
 # The root scripts of a node bundle, from the hosts folder of the pinned tree.
@@ -914,8 +936,14 @@ def wait_rollouts(ctx, namespace, timeout=1800):
         name = item['metadata']['name']
         if item['spec'].get('replicas', 1) == 0:
             continue
-        code, out = ctx.run(['kubectl', '--kubeconfig', ctx.kubeconfig, '-n', namespace, 'rollout', 'status',
-                             f'{item["kind"].lower()}/{name}', f'--timeout={timeout}s'], capture=True, check=False)
+        if (item['spec'].get('updateStrategy') or {}).get('type') == 'OnDelete':
+            # kubectl rollout status refuses an OnDelete StatefulSet. Its ready replicas show that it runs.
+            code, out = ctx.run(['kubectl', '--kubeconfig', ctx.kubeconfig, '-n', namespace, 'wait',
+                                 f'statefulset/{name}', f'--for=jsonpath={{.status.readyReplicas}}={item["spec"].get("replicas", 1)}',
+                                 f'--timeout={timeout}s'], capture=True, check=False)
+        else:
+            code, out = ctx.run(['kubectl', '--kubeconfig', ctx.kubeconfig, '-n', namespace, 'rollout', 'status',
+                                 f'{item["kind"].lower()}/{name}', f'--timeout={timeout}s'], capture=True, check=False)
         if code:
             raise StepFailed(f'{namespace}/{item["kind"].lower()}/{name} did not become ready: {out.strip()[-300:]}')
     claims = json.loads(ctx.kubectl('-n', namespace, 'get', 'pvc', '-o', 'json', check=False) or '{"items": []}')['items']

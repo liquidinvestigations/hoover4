@@ -25,6 +25,9 @@ printf 'push:%s\n' "$(printf '%s' "$password" | openssl passwd -apr1 -salt "$sal
 (umask 077; printf '{"auths": {"%s": {"auth": "%s"}}}\n' "$endpoint" "$(printf 'push:%s' "$password" | base64 -w0)" > "$private/registry-auth.json")
 # The hash of this file restarts the pod when the nginx configuration changes.
 hash=$(sha256sum registry.yaml | cut -c1-16)
-sed "s/NODE/$node/; s/HOST_IP/${endpoint%:*}/; s/CONFIG_HASH/$hash/" registry.yaml | kubectl apply -f -
+# A server-side apply sets only the fields of the manifest. An adopted claim keeps the storage class that an earlier
+# tool set, because a claim spec does not change after its creation.
+sed "s/NODE/$node/; s/HOST_IP/${endpoint%:*}/; s/CONFIG_HASH/$hash/" registry.yaml |
+  kubectl apply --server-side --force-conflicts --field-manager=hoover4-registry -f -
 kubectl -n registry rollout status deployment/registry --timeout=300s
 python3 node-registries.py

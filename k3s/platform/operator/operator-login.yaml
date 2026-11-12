@@ -115,7 +115,9 @@ spec:
             - name: PROXY_SECRET
               valueFrom: {secretKeyRef: {name: operator-login, key: proxy-secret}}
             - {name: NGINX_ENVSUBST_FILTER, value: '^PROXY_SECRET$'}
-          readinessProbe: {tcpSocket: {host: 127.0.0.1, port: 8081}}
+          # The hop listens on the loopback address of the pod. A tcpSocket probe with that host would dial the
+          # loopback address of the node, so the probe runs inside the container.
+          readinessProbe: {exec: {command: [wget, -q, -O, /dev/null, 'http://127.0.0.1:8081/healthz']}}
           resources:
             requests: {cpu: 10m, memory: 16Mi}
             limits: {cpu: 200m, memory: 64Mi}

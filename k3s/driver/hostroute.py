@@ -7,8 +7,8 @@ Root through the cluster. A node that is Ready in the cluster runs a root comman
 host, which a privileged pod with the host PID namespace starts with nsenter, as ../platform/registry/node-registries.py
 does. The admin kubeconfig gives that right. The unit keeps running when k3s or the pod stops, so a restart of k3s
 does not end the command. The unit writes its output into /var/log/hoover4/<unit>.log, and the driver reads its state
-with systemctl show over the user shell. A second call with the same unit name reads the result of the earlier run and
-starts nothing.
+with systemctl show over the user shell. A second call with the same unit name reads the result of a running or
+successful run and starts nothing. A failed unit runs again.
 The pod receives each file that it installs as base64 in an environment value, with its SHA-256. No secret value goes
 into a command argument, a pod or a log: a token reaches a node only in the private bundle of the user shell.
 """
@@ -124,8 +124,11 @@ class ClusterRoot:
         return run(['kubectl', '--kubeconfig', self.kubeconfig, *args], input=input, timeout=120)
 
     def start(self, unit, files=(), command=None, timeout=300):
-        """Install files and start the command as a unit. A unit that exists already starts nothing."""
-        if command and unit_state(self.shell, unit)[0] != 'missing':
+        """Install files and start the command as a unit. A running or finished unit starts nothing.
+
+        A failed unit starts again, so a resume after a fix runs the command again. The pod resets the failed unit.
+        """
+        if command and unit_state(self.shell, unit)[0] not in ('missing', 'failed'):
             return
         pod = cluster_pod(self.shell.node.name, unit, list(files), command)
         name = pod['metadata']['name']
