@@ -1,5 +1,6 @@
 **/target
 **/dist
+!frontend/assets/embed-pdf/_viewer/dist
 LICENSES
 LICENSE
 temp

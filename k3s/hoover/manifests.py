@@ -143,6 +143,11 @@ PORTS = {'hoover4-tika': [9998], 'hoover4-clamav': [8000], 'hoover4-web-tor': [9
 INTERNAL_PORTS = {'garage': [3901]}
 # The Kubernetes names of the services that keep another name in the cluster.
 NAMES = {'hoover4-website': 'hoover-website', 'hoover4-ops': 'hoover-operations'}
+# The address of the agent API of the website inside the namespace.
+AGENT_API_BASE_URL = 'http://hoover-website:8080'
+# The pods that call the agent API of the website. The API checks its own token on each request.
+AGENT_API_CLIENTS = ['hoover-workers', 'hoover-singletons', 'hoover-operations', 'hoover4-mcp-collections',
+                     'hoover4-full-research-agent', 'hoover4-internal-search-agent']
 # The Secret items of the key files. A file without an item stays absent, and its feature stays off.
 SECRET_FILES = {'llm_api_key': 'gpu-token', 'mcp_shared_secret': 'mcp-shared-secret',
                 'browser_fetch_token': 'browser-fetch-token', 'factcheck_api_key': 'factcheck-api-key'}
@@ -290,6 +295,16 @@ def quantity(text, default):
 
 def kube_name(name):
     return NAMES.get(name, name)
+
+
+def renamed_hosts(text):
+    """A Compose environment value with the hosts of NAMES replaced by their cluster names, for example
+    `http://hoover4-website:8080` becomes `http://hoover-website:8080`."""
+    if not isinstance(text, str):
+        return text
+    for old, new in NAMES.items():
+        text = re.sub(rf'(?<=//){re.escape(old)}(?=[:/]|$)', new, text)
+    return text
 
 
 def tier(target, claim):
@@ -702,9 +717,13 @@ def translated(target, services, mounts, deploy):
             continue
         svc = services[name]
         app = role in ('app', 'ui') or name == 'temporal'
-        env = {k: v for k, v in svc.get('environment', {}).items()}
+        env = {k: renamed_hosts(v) for k, v in svc.get('environment', {}).items()}
         if app:
             env.update(common if role == 'app' else {})
+        if role == 'app':
+            # The worker coordinator, the collections server and the research agents call the agent API of the
+            # website. Their code default names the Compose host.
+            env.setdefault('AGENT_API_BASE_URL', AGENT_API_BASE_URL)
         pod_volumes, mounted, claims = volumes(target, name, svc, mounts if role == 'app' else [])
         configs |= {v['configMap']['name'] for v in pod_volumes if 'configMap' in v}
         memory, cpu = limits(svc)
@@ -935,7 +954,9 @@ def network(target):
     frontend = [n.public_address or n.vpn_address for n in target.site.with_role('public') if n.public_address or n.vpn_address]
     items = [
         policy('website-from-proxy', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'hoover-website'}}, 'policyTypes': ['Ingress'],
-                                      'ingress': [{'from': [{'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}}],
+                                      'ingress': [{'from': [{'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}},
+                                                            {'podSelector': {'matchExpressions': [{'key': 'app.kubernetes.io/name', 'operator': 'In',
+                                                                                                   'values': AGENT_API_CLIENTS}]}}],
                                                    'ports': [{'port': 8080}]}]}),
         # Workers and dependencies take connections only from the namespace. The proxy also takes them from the ingress.
         policy('namespace-only', {'podSelector': {'matchExpressions': [{'key': 'app.kubernetes.io/name', 'operator': 'NotIn',

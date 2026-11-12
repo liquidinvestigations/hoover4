@@ -268,9 +268,23 @@ def test_network_policy_keeps_internet_services_away_from_stores(single):
     rules = policy['spec']['egress'][1]['to'][0]['podSelector']['matchExpressions']
     assert rules == [{'key': 'hoover.dev/store', 'operator': 'DoesNotExist'}]
     website = get(single, 'NetworkPolicy', 'website-from-proxy')['spec']['ingress'][0]
-    assert website['from'] == [{'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}}]
+    assert website['from'][0] == {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}}
+    assert website['from'][1]['podSelector']['matchExpressions'][0]['values'] == manifests.AGENT_API_CLIENTS
     for store in ('clickhouse', 'garage'):
         assert get(single, 'StatefulSet', store)['spec']['template']['metadata']['labels']['hoover.dev/store'] == store
+
+
+def test_agent_api_callers_reach_the_cluster_website(single):
+    names = {i['metadata']['name'] for i in workloads(single)}
+    present = [n for n in manifests.AGENT_API_CLIENTS if n in names]
+    assert {'hoover-workers', 'hoover-singletons', 'hoover4-mcp-collections'} <= set(present)
+    for name in present:
+        item = get(single, next(i['kind'] for i in workloads(single) if i['metadata']['name'] == name), name)
+        for c in item['spec']['template']['spec']['containers']:
+            assert env(c).get('AGENT_API_BASE_URL') == 'http://hoover-website:8080', (name, c['name'])
+    for item in workloads(single):
+        for c in containers(item):
+            assert not any('//hoover4-website' in str(v) for v in env(c).values()), item['metadata']['name']
 
 
 def test_second_render_is_equal(tmp_path):
