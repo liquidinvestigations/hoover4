@@ -14,17 +14,25 @@ verify Reads every file of the target again and compares its size, hash, owner a
        the number of entries and of differences, and exits with 1 on a difference or on a target entry that the
        manifest does not name.
 clear  Removes every entry of the target folder. migrate.py uses it before a new copy of an interrupted folder.
+pack   Writes the same entries as copy, with the same owner mapping and manifest rows, as a tar stream on standard
+       output, for a target on another host. The manifest is the last member, .hoover4-copy-manifest.jsonl. The
+       maps are the texts of the map files. The script needs no other file, so it can run from standard input.
 Usage: root_copy.py copy <source> <target> <uid map> <gid map> <manifest>
+       root_copy.py pack <source> <uid map text> <gid map text>
        root_copy.py verify <target> <manifest>
        root_copy.py clear <target>
 A map file holds the lines of /proc/<pid>/uid_map of the source runtime: inside, outside, count.
 """
 import hashlib
+import io
 import json
 import os
 import shutil
 import stat
 import sys
+import tarfile
+
+PACK_MANIFEST = '.hoover4-copy-manifest.jsonl'
 
 CHUNK = 4 * 1024 * 1024
 
@@ -134,6 +142,72 @@ def copy(source, target, uid_rows, gid_rows, manifest):
     print(json.dumps({'copied': entries, 'source': source, 'target': target}))
 
 
+class _Hashing:
+    """A reader that hashes what it reads and fails when the file grows or shrinks during the copy."""
+
+    def __init__(self, handle, size, name):
+        self.handle, self.left, self.name = handle, size, name
+        self.digest = hashlib.sha256()
+
+    def read(self, n=-1):
+        data = self.handle.read(n)
+        self.digest.update(data)
+        self.left -= len(data)
+        if self.left < 0 or (not data and self.left > 0):
+            raise SystemExit(f'{self.name} changed during the copy. Stop every source writer, then copy again.')
+        return data
+
+
+def pack(source, uid_rows, gid_rows, out):
+    """Write the source as a tar stream with mapped owners, then its manifest as the last member."""
+    rows = []
+    with tarfile.open(fileobj=out, mode='w|', format=tarfile.PAX_FORMAT) as tar:
+        info = os.lstat(source)
+        top = tarfile.TarInfo('.')
+        top.type, top.mode, top.mtime = tarfile.DIRTYPE, stat.S_IMODE(info.st_mode), info.st_mtime
+        top.uid, top.gid = inside_id(info.st_uid, uid_rows), inside_id(info.st_gid, gid_rows)
+        tar.addfile(top)
+        for root, dirs, files in os.walk(source):
+            dirs.sort()
+            relative_root = os.path.relpath(root, source)
+            for name in sorted(dirs) + sorted(files):
+                src = os.path.join(root, name)
+                rel = os.path.normpath(os.path.join(relative_root, name))
+                info = os.lstat(src)
+                uid, gid = inside_id(info.st_uid, uid_rows), inside_id(info.st_gid, gid_rows)
+                row = {'path': rel, 'mode': stat.S_IMODE(info.st_mode), 'source_owner': [info.st_uid, info.st_gid],
+                       'owner': [uid, gid]}
+                entry = tarfile.TarInfo(rel)
+                entry.uid, entry.gid, entry.mode, entry.mtime = uid, gid, stat.S_IMODE(info.st_mode), info.st_mtime
+                if stat.S_ISLNK(info.st_mode):
+                    entry.type, entry.linkname = tarfile.SYMTYPE, os.readlink(src)
+                    row.update(kind='link', link=entry.linkname)
+                    tar.addfile(entry)
+                elif stat.S_ISDIR(info.st_mode):
+                    entry.type = tarfile.DIRTYPE
+                    row.update(kind='dir')
+                    tar.addfile(entry)
+                elif stat.S_ISREG(info.st_mode):
+                    entry.size = info.st_size
+                    with open(src, 'rb') as handle:
+                        reader = _Hashing(handle, info.st_size, src)
+                        tar.addfile(entry, reader)
+                    if reader.left:
+                        raise SystemExit(f'{src} changed during the copy. Stop every source writer, then copy again.')
+                    row.update(kind='file', size=info.st_size, sha256=reader.digest.hexdigest())
+                else:
+                    row.update(kind='special')
+                rows.append(row)
+        info = os.lstat(source)
+        rows.append({'path': '.', 'kind': 'dir', 'mode': stat.S_IMODE(info.st_mode),
+                     'source_owner': [info.st_uid, info.st_gid],
+                     'owner': [inside_id(info.st_uid, uid_rows), inside_id(info.st_gid, gid_rows)]})
+        data = ''.join(json.dumps(r) + '\n' for r in rows).encode()
+        member = tarfile.TarInfo(PACK_MANIFEST)
+        member.size, member.mode = len(data), 0o600
+        tar.addfile(member, io.BytesIO(data))
+
+
 def verify(target, manifest):
     rows = [json.loads(line) for line in open(manifest)]
     named = {r['path'] for r in rows}
@@ -188,6 +262,8 @@ def main(argv):
         sys.exit(0 if verify(argv[1], argv[2]) else 1)
     elif len(argv) == 2 and argv[0] == 'clear':
         clear(argv[1])
+    elif len(argv) == 4 and argv[0] == 'pack':
+        pack(argv[1], parse_map(argv[2]), parse_map(argv[3]), sys.stdout.buffer)
     else:
         sys.exit(__doc__)
 

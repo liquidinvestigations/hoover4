@@ -19,7 +19,11 @@ Service gateway inside the cluster. ../../hoover/gpu.py sends the key on every p
 Model caches stay on the GPU node below <data_root>/gpu/<Compose volume folder>, so a new pod keeps the downloaded
 models. The images are hoover-ai-server, hoover-easyocr and hoover-vllm of the registry, which
 ../../images/build-hoover.py --gpu builds for the architecture of the GPU nodes.
-Usage: gpu_pool.py show|apply [--site FILE] [--revision REV] [--state FOLDER]
+The runtime comes from the settings revision in HOOVER4_SETTINGS_REVISION, which deploy-k3s and an Apply pin, else
+from the applied revision of the cluster scope. apply waits until every GPU workload runs its new revision.
+verify runs a short pod in the namespace that calls each port of the gateway Service with the pool key, which must
+answer 2xx (the model list of the model server, /health of the others), and without the key, which must answer 403.
+Usage: gpu_pool.py show|apply|verify [--site FILE] [--revision REV] [--state FOLDER]
 """
 import argparse
 import hashlib
@@ -196,35 +200,117 @@ def objects(site, runtime, revision, tree=site_config.REPO):
     return items
 
 
-def runtime_setting(site, state=None):
+def runtime_setting(site, state=None, revision=None):
+    """gpu.runtime of a settings revision: the pinned revision of the operation, else the applied revision."""
     folder = Path(state) if state else site.operator_state()
     sys.path.insert(0, str(K3S / 'platform/operator'))
     operator = manifests.operator_settings
-    overrides = operator.State(folder).overrides() if (folder / 'desired.json').exists() else {}
-    return operator.effective('cluster', overrides.get('cluster', {}))['gpu.runtime']
+    if not (folder / 'desired.json').exists():
+        return operator.effective('cluster', {})['gpu.runtime']
+    st = operator.State(folder)
+    if revision is None:
+        pinned = os.environ.get('HOOVER4_SETTINGS_REVISION')
+        revision = int(pinned) if pinned else st.applied_revision('cluster')
+    return operator.effective('cluster', st.overrides(revision).get('cluster', {}))['gpu.runtime']
+
+
+# The call of each port: the path that needs the key at the service, and the status without the key.
+CHECKS = {21960: '/v1/models', 21961: '/health', 21962: '/health'}
+CHECK_SCRIPT = r"""
+import json, os, sys, urllib.request, urllib.error
+key = os.environ['POOL_KEY']
+out, failed = [], False
+for port, path in json.loads(sys.argv[1]).items():
+    for with_key in (True, False):
+        request = urllib.request.Request(f'http://gateway.gpu-pool.svc.cluster.local:{port}{path}',
+                                         headers={'Authorization': f'Bearer {key}'} if with_key else {})
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                status = response.status
+        except urllib.error.HTTPError as error:
+            status = error.code
+        except OSError as error:
+            status = str(error)
+        good = (isinstance(status, int) and 200 <= status < 300) if with_key else status == 403
+        failed |= not good
+        out.append({'port': int(port), 'path': path, 'key': with_key, 'status': status, 'good': good})
+print(json.dumps(out))
+sys.exit(1 if failed else 0)
+"""
+
+
+def check_pod(ports):
+    return {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': 'gpu-pool-check', 'namespace': NS,
+                                                            'labels': {'app.kubernetes.io/name': 'gpu-pool-check'}},
+            'spec': {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
+                     'containers': [{'name': 'check', 'image': CHECK_IMAGE,
+                                     'command': ['python3', '-c', CHECK_SCRIPT, json.dumps({str(p): CHECKS[p] for p in ports})],
+                                     'env': [{'name': 'POOL_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-pool', 'key': 'pool-key'}}}],
+                                     'resources': {'limits': {'cpu': '200m', 'memory': '64Mi'}}}]}}
+
+
+CHECK_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
+
+
+def wait_rollouts(kubectl, timeout=1800):
+    """Wait for every GPU workload. A model server loads its weights for minutes, so the wait is long."""
+    names = subprocess.run(kubectl + ['-n', NS, 'get', 'deployments', '-o', 'name'], capture_output=True, text=True,
+                           check=True).stdout.split()
+    for name in names:
+        r = subprocess.run(kubectl + ['-n', NS, 'rollout', 'status', name, f'--timeout={timeout}s'],
+                           capture_output=True, text=True)
+        if r.returncode:
+            raise SystemExit(f'{name} of {NS} did not become ready: {r.stderr.strip()[-300:]}')
+
+
+def verify(kubectl, services, timeout=600):
+    """Call each port of the gateway with and without the pool key. Exit with the results on a failure."""
+    import time
+    ports = [p for n, (_, p, _) in SERVICES.items() if n in services]
+    subprocess.run(kubectl + ['-n', NS, 'delete', 'pod', 'gpu-pool-check', '--ignore-not-found', '--wait=true'], check=True,
+                   capture_output=True)
+    subprocess.run(kubectl + ['apply', '-f', '-'], input=json.dumps(check_pod(ports)), text=True, check=True,
+                   capture_output=True)
+    deadline = time.monotonic() + timeout
+    phase = ''
+    while time.monotonic() < deadline:
+        phase = subprocess.run(kubectl + ['-n', NS, 'get', 'pod', 'gpu-pool-check', '-o', 'jsonpath={.status.phase}'],
+                               capture_output=True, text=True).stdout.strip()
+        if phase in ('Succeeded', 'Failed'):
+            break
+        time.sleep(3)
+    logs = subprocess.run(kubectl + ['-n', NS, 'logs', 'gpu-pool-check'], capture_output=True, text=True).stdout.strip()
+    subprocess.run(kubectl + ['-n', NS, 'delete', 'pod', 'gpu-pool-check', '--wait=false'], capture_output=True)
+    print(logs)
+    if phase != 'Succeeded':
+        raise SystemExit(f'the GPU pool check ended in phase {phase or "unknown"}: {logs[-500:]}')
 
 
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('show', 'apply'))
+    parser.add_argument('command', choices=('show', 'apply', 'verify'))
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
     parser.add_argument('--revision')
     parser.add_argument('--state')
     args = parser.parse_args(argv)
     site = site_config.read(args.site)
+    kubectl = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG]
+    if args.command == 'verify':
+        verify(kubectl, {n: d for n, d in gpu_services().items() if n in SERVICES})
+        return
     revision = args.revision or manifests.resolve_revision()
     items = objects(site, runtime_setting(site, args.state), revision)
     text = json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': items}, indent=1, sort_keys=True)
     if args.command == 'show':
         print(text)
         return
-    kubectl = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG]
     key = Path(site.gpu_pool['api_key_file']).read_text().strip()
     secret = {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'gpu-pool', 'namespace': NS}, 'type': 'Opaque',
               'stringData': {'pool-key': key}}
     subprocess.run(kubectl + ['apply', '-f', '-'], input=json.dumps(items[0]), text=True, check=True)
     subprocess.run(kubectl + ['apply', '-f', '-'], input=json.dumps(secret), text=True, check=True, stdout=subprocess.DEVNULL)
     subprocess.run(kubectl + ['apply', '--server-side', '--force-conflicts', '--field-manager=hoover', '-f', '-'], input=text, text=True, check=True)
+    wait_rollouts(kubectl)
 
 
 if __name__ == '__main__':

@@ -14,6 +14,7 @@ sys.path.insert(0, str(REPO / 'k3s'))
 sys.path.insert(0, str(REPO / 'k3s/platform/operator'))
 import config  # noqa: E402
 import apply  # noqa: E402
+import oplock  # noqa: E402
 
 S = apply.operator_settings
 GROUP_TITLES = {'budget': 'Hoover resources', 'switch': 'Switches', 'tuning': 'Tunings', 'volume': 'Volume sizes',
@@ -83,7 +84,8 @@ def overview(nodes):
     for scope in apply.scopes(s):
         overrides = st.overrides(revision).get(scope, {})
         scopes.append({'id': scope, 'effective': st.effective(scope, revision),
-                       'applied': st.effective(scope, applied['revision']), 'overrides': overrides,
+                       'applied': st.effective(scope, st.applied_revision(scope, applied)),
+                       'applied_revision': st.applied_revision(scope, applied), 'overrides': overrides,
                        'suggestions': st.suggestions(scope)})
     pending = [{'scope': scope, 'key': key, 'from': old, 'to': new}
                for scope, diff in apply.changes(st, s, revision).items() for key, (old, new) in diff.items()]
@@ -93,6 +95,8 @@ def overview(nodes):
             'registry': [describe(x) for x in S.REGISTRY.values()], 'groups': GROUP_TITLES,
             'pending': pending, 'services': apply.services(st, s, revision), 'steps': apply.plan(st, s, revision),
             'active': operation_view(st, st.active()),
+            # A queued Apply waits while another site operation, for example a deployment, holds the site lock.
+            'site_operation': oplock.SiteLock(s.operator_state()).busy(),
             'operations': [operation_view(st, st.operation(p.stem)) for p in history],
             'backup_destination': backup, 'nodes': nodes}
 
@@ -137,8 +141,9 @@ def start(actor, body):
         raise Refused(f'The saved settings changed to revision {st.revision()}. Review the changes, then apply again.', status=409)
     if st.revision() == st.applied()['revision']:
         raise Refused('The saved settings are already applied.')
+    steps, scope_steps = apply.plan_scopes(st, s)
     try:
-        op = st.start_apply(apply.deployment_revision(s), apply.plan(st, s))
+        op = st.start_apply(apply.deployment_revision(s), steps, scope_steps)
     except S.OperationActive as error:
         raise Refused(str(error), status=409)
     return {'operation': op.id, 'steps': [x['name'] for x in op.steps]}

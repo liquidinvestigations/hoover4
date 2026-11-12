@@ -12,6 +12,21 @@ metadata:
   name: gateway
   namespace: operator-portal
 data:
+  # The portal accepts X-Forwarded-User only with the portal secret, so a host process that reaches the portal pod cannot
+  # act as an operator. Only this hop sends the secret, so Grafana, Prometheus and Headlamp never receive it.
+  # proxy_set_header replaces a copy that a client sent.
+  portal-hop.conf.template: |
+    server {
+      listen 127.0.0.1:8081;
+      location / {
+        proxy_pass http://portal.operator-portal.svc.cluster.local:8080;
+        proxy_set_header X-Operator-Proxy-Secret "${PROXY_SECRET}";
+        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_read_timeout 300s;
+        client_max_body_size 1m;
+      }
+    }
   alpha.yaml: |
     server:
       BindAddress: 0.0.0.0:4180
@@ -31,19 +46,16 @@ data:
         - id: headlamp
           path: /headlamp/
           uri: http://headlamp.monitoring.svc.cluster.local
+        # The portal hop of this pod adds the portal secret. It listens on the loopback address of the pod only.
         - id: portal
           path: /
-          uri: http://portal.operator-portal.svc.cluster.local:8080
+          uri: http://127.0.0.1:8081
+    # oauth2-proxy injects a header into the requests of every upstream, so the portal secret is not one of these.
     injectRequestHeaders:
       - name: X-Forwarded-User
         values:
           - claimSource:
               claim: preferred_username
-      # The portal accepts X-Forwarded-User only with this secret, so a host process that reaches the pod cannot act as an operator.
-      - name: X-Operator-Proxy-Secret
-        values:
-          - secretSource:
-              fromFile: /etc/operator-login/proxy-secret
     providers:
       - id: dex
         provider: oidc
@@ -97,12 +109,31 @@ spec:
           volumeMounts:
             - {name: config, mountPath: /etc/gateway, readOnly: true}
             - {name: secrets, mountPath: /etc/operator-login, readOnly: true}
+        - name: portal-hop
+          image: docker.io/library/nginx:1.29.3-alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14
+          env:
+            - name: PROXY_SECRET
+              valueFrom: {secretKeyRef: {name: operator-login, key: proxy-secret}}
+            - {name: NGINX_ENVSUBST_FILTER, value: '^PROXY_SECRET$'}
+          readinessProbe: {tcpSocket: {host: 127.0.0.1, port: 8081}}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/nginx/templates/default.conf.template, subPath: portal-hop.conf.template, readOnly: true}
+            - {name: hop-conf, mountPath: /etc/nginx/conf.d}
+            - {name: hop-cache, mountPath: /var/cache/nginx}
+            - {name: hop-run, mountPath: /var/run}
       volumes:
         - {name: config, configMap: {name: gateway}}
         - name: secrets
           secret:
             secretName: operator-login
-            items: [{key: client-secret, path: client-secret}, {key: cookie-secret, path: cookie-secret}, {key: proxy-secret, path: proxy-secret}]
+            items: [{key: client-secret, path: client-secret}, {key: cookie-secret, path: cookie-secret}]
+        - {name: hop-conf, emptyDir: {sizeLimit: 1Mi}}
+        - {name: hop-cache, emptyDir: {sizeLimit: 64Mi}}
+        - {name: hop-run, emptyDir: {sizeLimit: 1Mi}}
 ---
 apiVersion: v1
 kind: Service
@@ -246,7 +277,7 @@ spec:
             - name: PORTAL_PROXY_SECRET
               valueFrom: {secretKeyRef: {name: operator-login, key: proxy-secret}}
           ports: [{name: http, containerPort: 8080}]
-          readinessProbe: {httpGet: {path: /, port: http}}
+          readinessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
             requests: {cpu: 10m, memory: 24Mi}
             limits: {cpu: 500m, memory: 192Mi}

@@ -1110,7 +1110,10 @@ def main(argv):
     parser.add_argument('command', nargs='?', default='show', choices=('show', 'apply', 'diff'))
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
     parser.add_argument('--revision', help='the source revision of the images. The default is the commit of the tree.')
-    parser.add_argument('--settings-revision', type=int, help='the saved operator settings revision. The default is the newest.')
+    # A nested call, for example from ../zones/zone.py, gets the pinned revision of its operation in the environment.
+    parser.add_argument('--settings-revision', type=int,
+                        default=int(os.environ['HOOVER4_SETTINGS_REVISION']) if os.environ.get('HOOVER4_SETTINGS_REVISION') else None,
+                        help='the saved operator settings revision. The default is HOOVER4_SETTINGS_REVISION, else the newest.')
     args = parser.parse_args(argv)
     kubectl = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG]
     site = site_config.read(args.site)

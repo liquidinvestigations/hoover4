@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """The steps of an operator Apply and the commands that run them. The portal and runner.py use this module.
 
-plan() compares the saved revision with the applied revision and names one step for each part that changes:
+plan() compares the saved revision with the applied revision of each scope and names one step for each part that
+changes:
   hoover:<installation>   ../../hoover/manifests.py apply with the pinned settings revision, then a rollout wait and a
                           check that each claim has its size
-  apps:<zone>             ../../zones/apps.py, which turns openDesk applications off and on
-  zone:<zone>             ../../zones/zone.py apply, for the memory limits of a zone and the CPU policy
+  apps:<zone>             ../../zones/apps.py, which turns openDesk applications off and on, then a rollout wait
+  zone:<zone>             ../../zones/zone.py apply, for the memory limits of a zone and the CPU policy, then a rollout
+                          wait of the zone and its Hoover namespace
+  gpu-pool                ../gpu/gpu_pool.py apply for the cluster setting gpu.runtime, then a rollout wait and an
+                          authenticated call to each GPU service (gpu_pool.py verify)
   schedule                the backup policies. The backup scheduler reads the applied revision, and no service changes.
 A revision without a change gets the step record, so Apply still records it as applied.
+plan_scopes() also names the steps of each changed scope. The operation records a scope as applied when all of its
+steps finished, so a failed later step leaves only its own scopes pending.
 Each command gets the deployment revision in HOOVER4_REVISION and the settings revision in HOOVER4_SETTINGS_REVISION.
 Usage: apply.py plan     prints the steps of the saved revision
        apply.py run      runs the active operation once, as runner.py does
@@ -53,12 +59,12 @@ def scopes(s):
 
 
 def changes(state, s, revision=None):
-    """{scope: {key: (applied value, saved value)}} between the applied revision and a saved revision."""
+    """{scope: {key: (applied value, saved value)}} between the applied revision of each scope and a saved revision."""
     revision = state.revision() if revision is None else revision
-    applied = state.applied()['revision']
+    applied = state.applied()
     out = {}
     for scope in scopes(s):
-        before = state.effective(scope, applied)
+        before = state.effective(scope, state.applied_revision(scope, applied))
         after = state.effective(scope, revision)
         diff = {k: (before[k], after[k]) for k in after if before[k] != after[k]}
         if diff:
@@ -66,32 +72,47 @@ def changes(state, s, revision=None):
     return out
 
 
-def plan(state, s, revision=None):
-    steps = []
-
-    def add(step):
-        if step not in steps:
-            steps.append(step)
+def key_steps(s, scope, key):
+    """The steps that bring one changed key of a scope to the services."""
+    kind, _, name = scope.partition(':')
     zone_of = {h.zone: h.name for h in s.hoovers.values()}
+    if key.startswith('backup.'):
+        return ['schedule']
+    if kind == 'hoover':
+        return [f'hoover:{name}']
+    if kind == 'zone' and key in ('app.hoover', 'zone.enabled') and name in zone_of:
+        return [f'hoover:{zone_of[name]}'] + ([f'zone:{name}'] if key == 'zone.enabled' else [])
+    if kind == 'zone' and key.startswith('app.'):
+        return [f'apps:{name}']
+    if kind == 'zone':
+        return [f'zone:{name}']
+    if key.startswith('gpu.'):
+        # The GPU pool of the site runs the GPU services. A pool at an address runs outside the site, so the value
+        # changes no service of this site.
+        return ['gpu-pool'] if s.gpu_pool.get('nodes') else ['record']
+    # The CPU policy of the cluster reaches the services through the render of each zone.
+    return [f'zone:{zone}' for zone in sorted(zone_of)] or ['record']
+
+
+def plan_scopes(state, s, revision=None):
+    """(steps in order, {scope: [steps]}) of the changes of a saved revision."""
+    steps, by_scope = [], {}
     for scope, diff in changes(state, s, revision).items():
-        kind, _, name = scope.partition(':')
         for key in diff:
-            if key.startswith('backup.'):
-                add('schedule')
-            elif kind == 'hoover':
-                add(f'hoover:{name}')
-            elif kind == 'zone' and key in ('app.hoover', 'zone.enabled') and name in zone_of:
-                add(f'hoover:{zone_of[name]}')
-                if key == 'zone.enabled':
-                    add(f'zone:{name}')
-            elif kind == 'zone' and key.startswith('app.'):
-                add(f'apps:{name}')
-            elif kind == 'zone':
-                add(f'zone:{name}')
-            elif kind == 'cluster':
-                for zone in sorted(zone_of):
-                    add(f'zone:{zone}')
-    return steps or ['record']
+            for step in key_steps(s, scope, key):
+                if step not in steps:
+                    steps.append(step)
+                by_scope.setdefault(scope, [])
+                if step not in by_scope[scope]:
+                    by_scope[scope].append(step)
+    # The GPU pool runs before the zones, so the zones find the GPU services with the new runtime.
+    order = {'gpu-pool': 0}
+    steps.sort(key=lambda step: order.get(step, 1))
+    return (steps or ['record']), by_scope
+
+
+def plan(state, s, revision=None):
+    return plan_scopes(state, s, revision)[0]
 
 
 def services(state, s, revision=None):
@@ -130,15 +151,25 @@ def kubectl(*args):
     return subprocess.run(['kubectl', '--kubeconfig', kubeconfig, *args], capture_output=True, text=True)
 
 
-def wait_hoover(namespace, timeout=900):
-    """Wait for every workload of the namespace and for the size of every claim."""
+def wait_rollouts(namespace, timeout=900):
+    """Wait until every Deployment and StatefulSet of a namespace with replicas runs its current revision."""
     deadline = time.monotonic() + timeout
-    items = json.loads(kubectl('-n', namespace, 'get', 'deployments,statefulsets', '-o', 'json').stdout)['items']
-    for item in items:
+    r = kubectl('-n', namespace, 'get', 'deployments,statefulsets', '-o', 'json')
+    if r.returncode:
+        raise ApplyFailed(f'the workloads of {namespace} are unreadable: {r.stderr.strip()[-300:]}')
+    for item in json.loads(r.stdout)['items']:
+        if item['spec'].get('replicas', 1) == 0:
+            continue
         left = max(10, int(deadline - time.monotonic()))
         r = kubectl('-n', namespace, 'rollout', 'status', f"{item['kind'].lower()}/{item['metadata']['name']}", f'--timeout={left}s')
         if r.returncode:
             raise ApplyFailed(f"{item['kind']} {item['metadata']['name']} did not become ready: {r.stderr.strip()[-300:]}")
+    return deadline
+
+
+def wait_hoover(namespace, timeout=900):
+    """Wait for every workload of the namespace and for the size of every claim."""
+    deadline = wait_rollouts(namespace, timeout)
     while True:
         claims = json.loads(kubectl('-n', namespace, 'get', 'pvc', '-o', 'json').stdout)['items']
         short = [c for c in claims if c['status'].get('phase') == 'Bound' and
@@ -159,7 +190,8 @@ def wait_hoover(namespace, timeout=900):
         time.sleep(5)
 
 
-def executors(s, log, wait=wait_hoover):
+def executors(s, log, wait=wait_hoover, wait_namespaces=None):
+    wait_namespaces = wait_namespaces or (lambda names: [wait_rollouts(n) for n in names])
     by_name = {h.name: h for h in s.hoovers.values()}
 
     class Steps(dict):
@@ -173,11 +205,23 @@ def executors(s, log, wait=wait_hoover):
                     return [f'hoover:{name}']
                 return run
             if kind == 'apps':
-                return lambda op, overrides, name=name: (run_command([sys.executable, K3S / 'zones/apps.py', name], op, log),
-                                                         [f'apps:{name}'])[1]
+                def run(op, overrides, name=name):
+                    run_command([sys.executable, K3S / 'zones/apps.py', name], op, log)
+                    wait_namespaces([name])
+                    return [f'apps:{name}']
+                return run
             if kind == 'zone':
-                return lambda op, overrides, name=name: (run_command([sys.executable, K3S / 'zones/zone.py', 'apply', name], op, log),
-                                                         [f'zone:{name}'])[1]
+                def run(op, overrides, name=name):
+                    run_command([sys.executable, K3S / 'zones/zone.py', 'apply', name], op, log)
+                    wait_namespaces([name] + [h.namespace for h in s.hoovers.values() if h.zone == name])
+                    return [f'zone:{name}']
+                return run
+            if kind == 'gpu-pool':
+                def run(op, overrides):
+                    run_command([sys.executable, K3S / 'platform/gpu/gpu_pool.py', 'apply'], op, log)
+                    run_command([sys.executable, K3S / 'platform/gpu/gpu_pool.py', 'verify'], op, log)
+                    return ['gpu-pool']
+                return run
             if kind in ('schedule', 'record'):
                 return lambda op, overrides: ['backups'] if kind == 'schedule' else []
             raise KeyError(step)
@@ -195,7 +239,10 @@ def main(argv):
         log.parent.mkdir(parents=True, exist_ok=True)
         op = state.active()
         if op and op.status in ('running', 'queued'):
-            op = state.run(executors(s, log))
+            import oplock
+            with oplock.SiteLock(s.operator_state()) as lock:
+                lock.acquire('apply', op.id)
+                op = state.run(executors(s, log))
             print(json.dumps({'operation': op.id, 'status': op.status, 'error': op.error}))
     else:
         raise SystemExit(__doc__)

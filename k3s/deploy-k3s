@@ -13,8 +13,11 @@ Usage:
 
 --target names nodes of the site file, or `all`. Every command except status needs it.
 --site names the site file. The default is $HOOVER4_SITE, else k3s/private/hoover4-site.ini.
---revision names the commit of the images and of the remote checkouts. The driver resolves it once, at the start of
-an up, and the record keeps it. A resumed record keeps its revision. The default is HEAD.
+--revision names the commit of the images and of the scripts. The driver resolves it once, at the start of an up or a
+down, writes the tree of the commit with git archive into k3s/private/build/<commit>/ and runs the deploy-k3s of that
+tree, so every step runs the scripts of the commit and not the working files of the checkout. The record keeps the
+commit and the fingerprint of the tree. A resumed record keeps them. The default is HEAD for up, and the applied
+revision, else HEAD, for down.
 up installs or updates the hosts, k3s, the registry, the images, the platform services and the zones, in this order.
 up --start starts what down stopped: k3s, then the stores, Temporal, the applications and the ingress.
 down stops the ingress, the applications and workers, Temporal, the stores, and then k3s. It cancels no workflow.
@@ -62,6 +65,7 @@ def main(argv):
     import config
     import deploy
     import records
+    import source
 
     parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -130,8 +134,41 @@ def main(argv):
     except deploy.StepFailed as error:
         raise SystemExit(f'deploy-k3s: {error}')
 
+    tree = source.is_export(HERE.parent)
+    if not tree:
+        # The checkout writes the tree of the commit and hands the command to the deploy-k3s of that tree.
+        if args.resume:
+            revision = record['revision']
+        else:
+            wanted = args.revision
+            if args.command == 'down' and wanted == 'HEAD':
+                wanted = (ctx.records.applied() or {}).get('revision') or 'HEAD'
+            try:
+                revision = deploy.resolve_revision(ctx.repo, wanted)
+            except deploy.StepFailed as error:
+                raise SystemExit(f'deploy-k3s: {error}')
+        try:
+            folder = source.export(ctx.repo, ctx.private, revision)
+        except source.SourceError as error:
+            raise SystemExit(f'deploy-k3s: {error}')
+        rest = list(argv)
+        if '--revision' in rest:
+            i = rest.index('--revision')
+            del rest[i:i + 2]
+        if not args.resume:
+            rest += ['--revision', revision]
+        if '--site' not in rest:
+            rest += ['--site', str(Path(args.site).resolve())]
+        env = dict(os.environ, HOOVER4_CHECKOUT_CHANGES=json.dumps(deploy.dirty_files(ctx.repo)),
+                   HOOVER4_CHECKOUT=str(ctx.repo))
+        print(json.dumps({'tree': str(folder), 'revision': revision}), flush=True)
+        os.execve(sys.executable, [sys.executable, str(folder / 'k3s' / 'deploy-k3s'), *rest], env)
+    if not args.resume and args.revision not in (tree, 'HEAD'):
+        raise SystemExit(f'deploy-k3s: this tree holds {tree}, not {args.revision}.')
+    if args.resume and record['revision'] != tree:
+        raise SystemExit(f'deploy-k3s: the record {record["id"]} belongs to {record["revision"]}, and this tree holds {tree}.')
     try:
-        ctx.records.lock()
+        ctx.records.lock(args.command, f'{args.command}-{args.resume or tree[:12]}')
     except records.Busy as error:
         raise SystemExit(f'deploy-k3s: {error}')
     try:
@@ -144,13 +181,15 @@ def main(argv):
                 raise SystemExit(f'deploy-k3s: the plan of this checkout has no step {", ".join(missing)}. '
                                  f'Use the checkout of the record, or start a new {record["command"]}.')
         else:
-            revision = deploy.resolve_revision(ctx.repo, args.revision)
+            revision = tree
             ctx.revision = revision
             steps = deploy.select(deploy.plan(ctx, args.command, targets, start=args.start), args.steps)
             complete = not args.steps and not args.start and set(targets) == set(site.nodes)
             record = ctx.records.new(args.command, targets, revision, list(steps), start=args.start, complete=complete,
-                                     checkout_changes=deploy.dirty_files(ctx.repo),
-                                     applied_before=(ctx.records.applied() or {}).get('revision'))
+                                     checkout=os.environ.get('HOOVER4_CHECKOUT', ''),
+                                     checkout_changes=json.loads(os.environ.get('HOOVER4_CHECKOUT_CHANGES') or '[]'),
+                                     applied_before=(ctx.records.applied() or {}).get('revision'),
+                                     inputs=deploy.pinned_inputs(ctx, tree=HERE.parent))
             print(json.dumps({'record': record['id'], 'revision': revision, 'steps': list(steps)}), flush=True)
         return deploy.execute(ctx, record, steps)
     except deploy.StepFailed as error:

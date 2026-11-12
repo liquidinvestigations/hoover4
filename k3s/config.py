@@ -66,7 +66,8 @@ SITE_KEYS = {
 NODE_KEYS = {
     'roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_address': (False, 'text'),
     'architecture': (False, ('choice', ARCHITECTURES)), 'vpn_address': (False, 'address'),
-    'wireguard_public_key': (False, 'text'), 'wireguard_port': (False, 'port'), 'lan_address': (False, 'address'),
+    'wireguard_public_key': (False, 'text'), 'wireguard_port': (False, 'port'), 'vpn_interface': (False, 'interface'),
+    'lan_address': (False, 'address'),
     'onprem': (False, 'bool'), 'public_address': (False, 'address'), 'storage_tiers': (False, 'tiers'),
     'lvm_volume_group': (False, 'name_any'), 'lvm_physical_volumes': (False, 'devices'), 'reserved': (False, 'reserved'),
     'avx2': (False, 'bool'), 'data_root': (False, 'path'),
@@ -86,8 +87,8 @@ HOOVER_KEYS = {
 }
 # The defaults of the optional keys. A key without a default here is empty.
 DEFAULTS = {
-    'node': {'local': 'false', 'architecture': 'amd64', 'wireguard_port': '51820', 'onprem': 'false', 'avx2': 'true',
-             'data_root': '/srv/hoover-data'},
+    'node': {'local': 'false', 'architecture': 'amd64', 'wireguard_port': '51820', 'vpn_interface': 'wg0', 'onprem': 'false',
+             'avx2': 'true', 'data_root': '/srv/hoover-data'},
     'hoover': {'history_source': 'compose'},
 }
 # The secret files that each role reads. The control plane reads the files of the GPU pool, because it creates the
@@ -112,6 +113,7 @@ class Node:
     vpn_address: str = ''
     wireguard_public_key: str = ''
     wireguard_port: int = 51820
+    vpn_interface: str = 'wg0'
     lan_address: str = ''
     onprem: bool = False
     public_address: str = ''
@@ -193,6 +195,12 @@ def _value(label, kind, raw, problems):
     if isinstance(kind, tuple) and kind[0] == 'choice':
         if raw not in kind[1]:
             problems.append(f'{label} = {raw} is not one of {", ".join(kind[1])}.')
+            return None
+        return raw
+    if kind == 'interface':
+        # A Linux interface name has at most 15 characters.
+        if not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}', raw):
+            problems.append(f'{label} = {raw} is not a network interface name.')
             return None
         return raw
     if kind in ('text', 'name_any'):
@@ -647,7 +655,8 @@ def legacy_hosts(site):
     hosts = {}
     for node in site.nodes.values():
         hosts[node.name] = {
-            'wg_ip': node.vpn_address or None, 'key': node.wireguard_public_key, 'port': node.wireguard_port,
+            'wg_ip': node.vpn_address or None, 'wg_if': node.vpn_interface, 'key': node.wireguard_public_key,
+            'port': node.wireguard_port,
             'public': f'{node.public_address}:{node.wireguard_port}' if node.public_address else None,
             'lan_ip': node.lan_address or None, 'onprem': node.onprem, 'reserved': node.reserved,
             'tiers': list(node.storage_tiers), 'avx2': node.avx2,

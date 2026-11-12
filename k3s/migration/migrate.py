@@ -33,13 +33,30 @@ copy on, and no target service starts before the hashes of its copy are verified
             event is a timer or a cron start that ends after now passes as waiting, with the time that it waits for. A
             parent with open child workflows passes as waiting for them.
   users     Creates a zone user for each owner of migrated chats and boards (users()). It is not part of the sequence.
-Usage: migrate.py <step> <installation> [--run NAME] [--site FILE] [--revision REV] [--dry-run]
+Source and destination. The source containers and folders belong to the source host: this host, or the host of
+--source-host over SSH. --engine names their runtime: docker (rootful, so a file owner of the host is the owner inside
+the container) or podman (rootless, so the owners map through the uid and gid maps of the user namespace). The
+destination is the home node of the installation. When the home node is the local node of the site, the copy mounts
+each target volume on this host (root_copy.py copy). Otherwise the copy streams a tar with the mapped owners
+(root_copy.py pack) from the source host into a short pod on the home node that mounts the claim, and verifies the
+claim inside that pod against the manifest. The record of each claim keeps its UID and volume, and a resume refuses a
+claim with another identity. A remote destination imports the store images through the root route of the home node.
+Run inputs. plan writes inputs.json before the freeze: the commit of the render, the saved settings revision after the
+seed, the SHA-256 of the site file, the engine, the source host, the image ids and the storage identity. Every later
+step compares the site file and the commit with inputs.json, and every render uses the pinned settings revision. A
+changed input stops the step. The workers step records the settings revision of the installation as applied after its
+workloads are ready.
+Each mutating step holds the site operation lock (../oplock.py).
+Usage: migrate.py <step> <installation> [--run NAME] [--site FILE] [--revision REV] [--engine docker|podman]
+                  [--source-host HOST] [--dry-run]
        migrate.py status <installation> [--run NAME]
 """
 import argparse
 import base64
+import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -54,6 +71,9 @@ sys.path.insert(0, str(K3S / 'hoover'))
 import config as site_config  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 import manifests  # noqa: E402
+import oplock  # noqa: E402
+sys.path.insert(0, str(K3S / 'driver'))
+import hostroute  # noqa: E402
 
 STEPS = ('plan', 'freeze', 'record', 'stop', 'images', 'copy', 'secrets', 'stores', 'temporal', 'workers', 'resume')
 # The Compose services that take new work. freeze stops them first.
@@ -97,6 +117,47 @@ def sudo(*args, input=None, check=True):
     return run(['sudo', '-n', *args], input=input, check=check)
 
 
+class Source:
+    """The container runtime and the host of the source install. A command runs there, locally or over SSH."""
+    engine = 'docker'
+    host = ''
+
+    @classmethod
+    def argv(cls, argv):
+        argv = [str(a) for a in argv]
+        if not cls.host:
+            return argv
+        return ['ssh', *hostroute.SSH_OPTIONS, cls.host, '--', ' '.join(shlex.quote(a) for a in argv)]
+
+
+def src(argv, input=None, check=True, timeout=None):
+    """Run a command on the source host."""
+    return run(Source.argv(argv), input=input, check=check, timeout=timeout)
+
+
+def src_sudo(*args, input=None, check=True):
+    return src(['sudo', '-n', *args], input=input, check=check)
+
+
+def engine(*args):
+    return [Source.engine, *args]
+
+
+def owner_maps():
+    """The uid and gid maps of the source runtime. A rootful Docker keeps the owners of the host."""
+    if Source.engine == 'podman':
+        return src(['podman', 'unshare', 'cat', '/proc/self/uid_map']), src(['podman', 'unshare', 'cat', '/proc/self/gid_map'])
+    info = src(['docker', 'info', '--format', '{{json .SecurityOptions}}'], check=False)
+    if 'rootless' in info:
+        raise StepFailed('the source Docker runs rootless. Its owner maps are not supported. Use a rootful Docker or Podman.')
+    identity = '0 0 4294967295\n'
+    return identity, identity
+
+
+def site_fingerprint(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 class Run:
     """The folder and the step records of one migration run."""
 
@@ -132,18 +193,18 @@ class Run:
 # ----------------------------------------------------------------------------------------------------------------------
 
 def du(path):
-    out = sudo('du', '-sb', path)
+    out = src_sudo('du', '-sb', path)
     return int(out.split()[0])
 
 
 def owner(path):
-    return [int(x) for x in sudo('stat', '-c', '%u %g', path).split()]
+    return [int(x) for x in src_sudo('stat', '-c', '%u %g', path).split()]
 
 
 def image_ids(containers=STORE_CONTAINERS):
     out = {}
     for name in containers:
-        found = json.loads(run(['docker', 'inspect', name]))[0]
+        found = json.loads(src(engine('inspect', name)))[0]
         out[name] = {'reference': found['Config']['Image'], 'id': found['Image'].removeprefix('sha256:')}
     return out
 
@@ -177,10 +238,9 @@ def plan(r, dry_run=False):
     folders = {}
     for path, claim in claims.items():
         folders[path] = {'claim': claim, 'bytes': du(path), 'owner': owner(path)}
-    uid_map = run(['podman', 'unshare', 'cat', '/proc/self/uid_map'])
-    gid_map = run(['podman', 'unshare', 'cat', '/proc/self/gid_map'])
+    uid_map, gid_map = owner_maps()
     vg = r.site.nodes[hoover.home_node].lvm_volume_group
-    free = int(float(sudo('vgs', '--noheadings', '--units', 'b', '--nosuffix', '-o', 'vg_free', vg).strip()))
+    free = volume_group_free(r.site, hoover.home_node, vg)
     target = manifests.target_from_site(r.site_path, hoover.name, revision='0' * 40)
     sizes = {c: target.values.get(f'volume.{c}', target.values['volume.upload-tmp']) for c in set(claims.values())}
     sizes[WORKER_CLAIM] = target.values['volume.worker-temp-files']
@@ -212,8 +272,48 @@ def plan(r, dry_run=False):
     state = manifests.operator_settings.State(r.site.operator_state())
     result['settings_revision'] = state.seed(f'hoover:{hoover.name}', source, actor='migration')
     r.write('plan.json', result)
+    r.write('inputs.json', pinned_inputs(r, r.revision, result))
     return {'folders': len(folders), 'bytes': sum(f['bytes'] for f in folders.values()), 'free': free,
             'settings_revision': result['settings_revision']}
+
+
+def volume_group_free(site, node_name, vg):
+    """The free bytes of the volume group of the home node: vgs on the local node, else the TopoLVM node capacity."""
+    if site.nodes[node_name].local:
+        return int(float(sudo('vgs', '--noheadings', '--units', 'b', '--nosuffix', '-o', 'vg_free', vg).strip()))
+    annotations = json.loads(kubectl('get', 'node', node_name, '-o', 'jsonpath={.metadata.annotations}') or '{}')
+    values = [int(v) for k, v in annotations.items() if k.startswith('capacity.topolvm.io/') and v.isdigit()]
+    if not values:
+        raise StepFailed(f'the node {node_name} reports no TopoLVM capacity.')
+    return max(values)
+
+
+def pinned_inputs(r, revision, result):
+    """The inputs of the run, written once by plan."""
+    state = manifests.operator_settings.State(r.site.operator_state())
+    return {'revision': revision, 'settings_revision': state.revision(), 'site_fingerprint': site_fingerprint(r.site_path),
+            'engine': Source.engine, 'source_host': Source.host, 'images': result['images'],
+            'identity': result['identity'], 'home_node': r.hoover.home_node}
+
+
+def check_inputs(r, revision):
+    """Refuse a step whose site file, commit, engine or source host differ from inputs.json."""
+    inputs = r.read('inputs.json')
+    if inputs is None:
+        raise StepFailed('the run has no inputs.json. Run the plan step first.')
+    problems = []
+    if site_fingerprint(r.site_path) != inputs['site_fingerprint']:
+        problems.append('the site file changed')
+    if revision and revision != inputs['revision']:
+        problems.append(f'the revision {revision} is not the pinned {inputs["revision"]}')
+    if (Source.engine, Source.host) != (inputs['engine'], inputs['source_host']):
+        problems.append(f'the source is {Source.engine} on {Source.host or "this host"}, not {inputs["engine"]} on '
+                        f'{inputs["source_host"] or "this host"}')
+    if r.hoover.home_node != inputs['home_node'] or r.hoover.identity() != inputs['identity']:
+        problems.append('the home node or the storage identity of the installation changed')
+    if problems:
+        raise StepFailed('the inputs of the run changed: ' + '; '.join(problems) + '. Start a new run with --run.')
+    return inputs
 
 
 def parse_size(text):
@@ -229,7 +329,7 @@ def parse_size(text):
 # ----------------------------------------------------------------------------------------------------------------------
 
 def running(name):
-    r = subprocess.run(['docker', 'inspect', '-f', '{{.State.Running}}', name], capture_output=True, text=True)
+    r = subprocess.run(Source.argv(engine('inspect', '-f', '{{.State.Running}}', name)), capture_output=True, text=True)
     return r.returncode == 0 and r.stdout.strip() == 'true'
 
 
@@ -237,7 +337,7 @@ def stop(names, timeout):
     stopped = []
     for name in names:
         if running(name):
-            run(['docker', 'stop', '-t', str(timeout), name], timeout=timeout + 120)
+            src(engine('stop', '-t', str(timeout), name), timeout=timeout + 120)
             stopped.append(name)
     return stopped
 
@@ -251,7 +351,7 @@ def freeze(r):
 
 
 def temporal(*args):
-    return run(['docker', 'exec', 'temporal', 'temporal', *args, '--address', 'temporal:7233'], timeout=600)
+    return src(engine('exec', 'temporal', 'temporal', *args, '--address', 'temporal:7233'), timeout=600)
 
 
 def temporal_record(cli):
@@ -287,7 +387,7 @@ def clickhouse_counts(query):
 
 
 def source_clickhouse(sql):
-    return run(['docker', 'exec', '-i', 'clickhouse', 'clickhouse-client', '--user', 'hoover4', '--password', 'hoover4'], input=sql)
+    return src(engine('exec', '-i', 'clickhouse', 'clickhouse-client', '--user', 'hoover4', '--password', 'hoover4'), input=sql)
 
 
 def cells(text):
@@ -314,7 +414,7 @@ def manticore_tables(query):
 
 def source_manticore(container):
     def query(sql):
-        return run(['docker', 'exec', container, 'mysql', '-h0', '-P9306', '-umanticore', '-pmanticore', '--batch', '-e', sql], check=False)
+        return src(engine('exec', container, 'mysql', '-h0', '-P9306', '-umanticore', '-pmanticore', '--batch', '-e', sql), check=False)
     return query
 
 
@@ -330,7 +430,7 @@ def record(r):
     state['manticore'] = manticore_tables(source_manticore('manticore'))
     state['manticore_vectors'] = manticore_tables(source_manticore('manticore-vectors'))
     state['garage_buckets'] = sorted(line.split()[0] for line in
-                                     run(['docker', 'exec', 'garage', '/garage', 'bucket', 'list']).splitlines()[1:] if line.strip())
+                                     src(engine('exec', 'garage', '/garage', 'bucket', 'list')).splitlines()[1:] if line.strip())
     r.write('record.json', state)
     return {'namespaces': len(state['namespaces']), 'open': len(state['open']), 'tables': len(state['clickhouse']),
             'counts': state['counts']}
@@ -341,11 +441,11 @@ def stop_source(r):
     for group in STOP_ORDER:
         if 'temporal-cassandra' in group and running('temporal-cassandra'):
             # drain writes the commit log into the SSTables, so the copy holds no unflushed write.
-            run(['docker', 'exec', 'temporal-cassandra', 'nodetool', 'drain'], timeout=600)
+            src(engine('exec', 'temporal-cassandra', 'nodetool', 'drain'), timeout=600)
         stopped += stop(group, 120)
     # Every other container of the Compose project stops too, so no source writer remains.
-    names = run(['docker', 'ps', '--format', '{{.Names}}', '--filter', 'label=com.docker.compose.project=hoover4']).split()
-    names += [n for n in run(['docker', 'ps', '--format', '{{.Names}}']).split() if n.startswith('hoover4')]
+    names = src(engine('ps', '--format', '{{.Names}}', '--filter', 'label=com.docker.compose.project=hoover4')).split()
+    names += [n for n in src(engine('ps', '--format', '{{.Names}}')).split() if n.startswith('hoover4')]
     stopped += stop(sorted(set(names)), 60)
     left = [n for n in STORE_CONTAINERS + WRITERS + INTAKE if running(n)]
     if left:
@@ -357,12 +457,54 @@ def stop_source(r):
 # Images, copy and secrets
 # ----------------------------------------------------------------------------------------------------------------------
 
-def cluster_image_id(reference):
-    out = sudo('k3s', 'crictl', 'inspecti', '-o', 'json', reference, check=False)
+def home_is_local(r):
+    return r.site.nodes[r.hoover.home_node].local
+
+
+def home_root(r):
+    """The root route of the home node through the cluster (../driver/hostroute.py)."""
+    return hostroute.ClusterRoot(k3s_settings.KUBECONFIG, hostroute.Shell(r.site.nodes[r.hoover.home_node]))
+
+
+def cluster_image_id(reference, r=None):
+    if r is None or home_is_local(r):
+        out = sudo('k3s', 'crictl', 'inspecti', '-o', 'json', reference, check=False)
+    else:
+        shell = hostroute.Shell(r.site.nodes[r.hoover.home_node])
+        name = hashlib.sha256(reference.encode()).hexdigest()[:10]
+        unit = f'hoover4-inspect-{name}-{int(time.time())}'
+        path = f'/tmp/hoover4-inspect-{name}.json'
+        home_root(r).start(unit, (), ['/bin/sh', '-c', f'k3s crictl inspecti -o json {shlex.quote(reference)} > {path} '
+                                                       f'2>/dev/null; chmod 0644 {path}; true'])
+        home_root(r).wait(unit)
+        out = shell.run(f'cat {path}; rm -f {path}')[1]
     try:
         return json.loads(out)['status']['id'].removeprefix('sha256:')
     except (ValueError, KeyError):
         return ''
+
+
+def import_image(r, image_id, full, folder):
+    """Save a source image and import it into the containerd of the home node under the reference of the render."""
+    if home_is_local(r):
+        archive = Path(folder) / 'image.tar'
+        with open(archive, 'wb') as out:
+            subprocess.run(Source.argv(engine('save', image_id)), stdout=out, check=True, timeout=3600)
+        # The archive names the image by its id. ctr tags it with the reference of the render.
+        sudo('k3s', 'ctr', '-n', 'k8s.io', 'images', 'import', '--no-unpack=false', '--index-name', full, str(archive))
+        archive.unlink()
+        return
+    shell = hostroute.Shell(r.site.nodes[r.hoover.home_node])
+    path = f'/tmp/hoover4-image-{image_id[:12]}.tar'
+    save = subprocess.Popen(Source.argv(engine('save', image_id)), stdout=subprocess.PIPE)
+    receive = subprocess.run(shell.command(f'umask 077 && cat > {path}'), stdin=save.stdout, capture_output=True)
+    save.stdout.close()
+    if save.wait() or receive.returncode:
+        raise StepFailed(f'the transfer of {full} to {r.hoover.home_node} failed.')
+    unit = f'hoover4-import-{image_id[:12]}-{int(time.time())}'
+    home_root(r).start(unit, (), ['/bin/sh', '-c', f'k3s ctr -n k8s.io images import --no-unpack=false --index-name '
+                                                   f'{shlex.quote(full)} {path}; status=$?; rm -f {path}; exit $status'])
+    home_root(r).wait(unit, timeout=3600)
 
 
 def full_reference(reference):
@@ -378,13 +520,9 @@ def images(r):
         for name, image in wanted.items():
             reference = image['reference']
             full = full_reference(reference)
-            if cluster_image_id(full) != image['id'] and '@' not in full:
-                archive = Path(folder) / f'{name}.tar'
-                run(['podman', 'save', '-o', archive, image['id']], timeout=1800)
-                # The archive names the image by its id. ctr tags it with the reference of the render.
-                sudo('k3s', 'ctr', '-n', 'k8s.io', 'images', 'import', '--no-unpack=false', '--index-name', full, str(archive))
-                archive.unlink()
-            found = cluster_image_id(full)
+            if cluster_image_id(full, r) != image['id'] and '@' not in full:
+                import_image(r, image['id'], full, folder)
+            found = cluster_image_id(full, r)
             if found != image['id']:
                 raise StepFailed(f'the cluster image {full} has the id {found}, not the source id {image["id"]}.')
             result[name] = {'reference': full, 'id': found}
@@ -393,7 +531,9 @@ def images(r):
 
 
 def target(r, revision):
-    return manifests.target_from_site(r.site_path, r.hoover.name, revision=revision)
+    inputs = r.read('inputs.json') or {}
+    return manifests.target_from_site(r.site_path, r.hoover.name, revision=revision,
+                                      settings_revision=inputs.get('settings_revision'))
 
 
 def target_items(r, revision):
@@ -438,6 +578,7 @@ def bind_claims(r, claims):
         if not volume:
             raise StepFailed(f'the claim {c} has no volume after the bind pod.')
         handle = kubectl('get', 'pv', volume, '-o', 'jsonpath={.spec.csi.volumeHandle}').strip()
+        # The device path exists on the home node only. copy() uses it when the home node is this host.
         out[c] = f'/dev/{r.site.nodes[r.hoover.home_node].lvm_volume_group}/{handle}'
     return out
 
@@ -448,6 +589,81 @@ def ensure_unused(device):
         raise StepFailed(f'{device} is mounted at {mounted}. Stop the pod that uses it before the copy.')
 
 
+def claim_identity(ns, claim):
+    """The UID and the volume of a bound claim."""
+    found = json.loads(kubectl('-n', ns, 'get', 'pvc', claim, '-o', 'json'))
+    return {'uid': found['metadata']['uid'], 'volume': found['spec'].get('volumeName', '')}
+
+
+def copy_pod(r, claim):
+    """A short root pod on the home node that mounts one target claim at /target."""
+    return {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': 'migration-copy', 'namespace': r.hoover.namespace},
+            'spec': {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
+                     'nodeSelector': {'kubernetes.io/hostname': r.hoover.home_node},
+                     'containers': [{'name': 'copy', 'image': BIND_IMAGE, 'command': ['sleep', '86400'],
+                                     'securityContext': {'runAsUser': 0},
+                                     'resources': {'limits': {'memory': '512Mi'}},
+                                     'volumeMounts': [{'name': 'target', 'mountPath': '/target'}]}],
+                     'volumes': [{'name': 'target', 'persistentVolumeClaim': {'claimName': claim}}]}}
+
+
+EXTRACT = ("import sys, tarfile; tarfile.open(fileobj=sys.stdin.buffer, mode='r|')"
+           ".extractall('/target', numeric_owner=True, filter='fully_trusted')")
+
+
+def stream_copy(r, plan_data, claims):
+    """Copy each folder into its claim through a pod of the home node. A copied claim is not copied again."""
+    ns = r.hoover.namespace
+    script = (HERE / 'root_copy.py').read_bytes()
+    progress = r.read('copy.json', {})
+    for source, row in sorted(plan_data['folders'].items()):
+        claim = row['claim']
+        identity = claim_identity(ns, claim)
+        recorded = progress.get(claim, {})
+        if recorded.get('identity') and recorded['identity'] != identity:
+            raise StepFailed(f'the claim {claim} has the identity {identity}, not the recorded {recorded["identity"]}. '
+                             'It is another volume. Inspect it before a new run.')
+        if recorded.get('verified'):
+            continue
+        kubectl('-n', ns, 'delete', 'pod', 'migration-copy', '--ignore-not-found', '--wait=true')
+        kubectl('apply', '-f', '-', input=json.dumps(copy_pod(r, claim)))
+        kubectl('-n', ns, 'wait', '--for=condition=Ready', 'pod/migration-copy', '--timeout=600s')
+        exec_pod = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', ns, 'exec', '-i', 'migration-copy', '--']
+        try:
+            entries = run(exec_pod[:-1] + ['--', 'sh', '-c', 'ls -A /target | grep -vx lost+found | head -1']).strip()
+            if entries and not recorded.get('started'):
+                raise StepFailed(f'the claim {claim} is not empty and no copy of this run started it. Inspect it.')
+            if entries:
+                # An interrupted copy starts again from an empty volume.
+                run(exec_pod + ['python3', '-', 'clear', '/target'], input=script.decode())
+            progress[claim] = {'started': True, 'source': source, 'identity': identity, 'mode': 'stream'}
+            r.write('copy.json', progress)
+            started = time.monotonic()
+            packer = subprocess.Popen(Source.argv(['sudo', '-n', 'python3', '-', 'pack', source, plan_data['uid_map'],
+                                                   plan_data['gid_map']]),
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            packer.stdin.write(script)
+            packer.stdin.close()
+            extract = subprocess.run(exec_pod + ['python3', '-c', EXTRACT], stdin=packer.stdout, capture_output=True)
+            packer.stdout.close()
+            if packer.wait() or extract.returncode:
+                raise StepFailed(f'the stream of {source} into {claim} failed: '
+                                 f'{extract.stderr.decode(errors="replace")[-500:]}')
+            manifest = r.path(f'hashes-{claim}.jsonl')
+            manifest.write_text(run(exec_pod + ['sh', '-c', 'cat /target/.hoover4-copy-manifest.jsonl && '
+                                                            'mv /target/.hoover4-copy-manifest.jsonl /tmp/m.jsonl']))
+            out = run(exec_pod + ['python3', '-', 'verify', '/target', '/tmp/m.jsonl'], input=script.decode(), check=False)
+            verified = json.loads(out.strip().splitlines()[-1])
+            if verified['differences']:
+                raise StepFailed(f'the copy of {source} differs from its manifest: {verified["first"]}')
+            progress[claim].update(verified=True, files=verified['files'], bytes=verified['bytes'],
+                                   seconds=round(time.monotonic() - started, 1))
+            r.write('copy.json', progress)
+        finally:
+            kubectl('-n', ns, 'delete', 'pod', 'migration-copy', '--ignore-not-found', '--wait=false', check=False)
+    return {c: {k: v for k, v in p.items() if k in ('files', 'bytes', 'seconds')} for c, p in progress.items()}
+
+
 def copy(r, revision):
     plan_data = r.read('plan.json')
     if any(running(n) for n in STORE_CONTAINERS + WRITERS):
@@ -455,6 +671,9 @@ def copy(r, revision):
     objects, claims = claim_objects(r, revision)
     kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover', '-f', '-',
             input=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': objects}))
+    if not home_is_local(r):
+        bind_claims(r, claims)
+        return stream_copy(r, plan_data, claims)
     devices = bind_claims(r, claims)
     maps = r.path('maps')
     maps.mkdir(exist_ok=True)
@@ -477,7 +696,8 @@ def copy(r, revision):
             if progress.get(claim, {}).get('started'):
                 # An interrupted copy starts again from an empty volume.
                 sudo(sys.executable, str(script), 'clear', str(mount))
-            progress[claim] = {'started': True, 'source': source, 'device': device}
+            progress[claim] = {'started': True, 'source': source, 'device': device,
+                               'identity': claim_identity(r.hoover.namespace, claim)}
             r.write('copy.json', progress)
             started = time.monotonic()
             tmp_manifest = Path('/tmp') / f'hoover4-migration-{claim}.jsonl'
@@ -651,7 +871,12 @@ def workers(r, revision):
     for kind, name in (('statefulset', 'hoover-workers'), ('deployment', 'hoover-singletons'), ('deployment', 'hoover-operations'),
                        ('deployment', 'hoover-website')):
         wait_ready(ns, kind, name, 1800)
-    return {'objects': len(items)}
+    # The installation now runs the pinned settings revision, so its scope stops showing those values as pending.
+    inputs = r.read('inputs.json') or {}
+    if inputs.get('settings_revision') is not None:
+        state = manifests.operator_settings.State(r.site.operator_state())
+        state.record_scopes([f'hoover:{r.hoover.name}'], inputs['settings_revision'], f'migration:{r.folder.name}', revision)
+    return {'objects': len(items), 'settings_revision': inputs.get('settings_revision')}
 
 
 def next_wakeup(r, key):
@@ -793,7 +1018,11 @@ def main(argv):
     parser.add_argument('--revision')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--timeout', type=int, default=1800)
+    parser.add_argument('--engine', choices=('docker', 'podman'), default='docker',
+                        help='the runtime of the source containers. The default is docker.')
+    parser.add_argument('--source-host', default='', help='the SSH host of the source install. The default is this host.')
     args = parser.parse_args(argv)
+    Source.engine, Source.host = args.engine, args.source_host
     site = site_config.read(args.site)
     hoover = manifests.find_hoover(site, args.installation)
     r = Run(site, hoover, args.run, args.site)
@@ -820,13 +1049,25 @@ def main(argv):
     # The images of the cluster carry the revision of the applied deployment (deploy-k3s), which the render must name.
     applied = site.operator_state() / 'deploy' / 'applied.json'
     applied_revision = json.loads(applied.read_text()).get('revision') if applied.exists() else None
-    revision = args.revision or applied_revision or manifests.resolve_revision()
+    pinned = (r.read('inputs.json') or {}).get('revision')
+    revision = args.revision or pinned or applied_revision or manifests.resolve_revision()
+    r.revision = revision
+    if args.step != 'plan':
+        check_inputs(r, revision)
+    lock = oplock.SiteLock(site.operator_state())
+    try:
+        lock.acquire('migration', f'migration-{r.folder.name}-{args.step}')
+    except oplock.Busy as error:
+        raise StepFailed(str(error))
     functions = {'plan': lambda: plan(r), 'freeze': lambda: freeze(r), 'record': lambda: record(r), 'stop': lambda: stop_source(r),
                  'images': lambda: images(r), 'copy': lambda: copy(r, revision), 'secrets': lambda: secrets(r),
                  'stores': lambda: stores(r, revision), 'temporal': lambda: temporal_check(r),
                  'workers': lambda: workers(r, revision), 'resume': lambda: resume(r, args.timeout)}
     started = time.monotonic()
-    summary = functions[args.step]()
+    try:
+        summary = functions[args.step]()
+    finally:
+        lock.release()
     summary = {**(summary or {}), 'seconds': round(time.monotonic() - started, 1)}
     r.finish(args.step, summary)
     print(json.dumps({'step': args.step, 'state': 'done', 'summary': summary}))

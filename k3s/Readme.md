@@ -39,7 +39,7 @@ The default path is `k3s/private/hoover4-site.ini`. [tests/fixtures/](tests/fixt
 | Section | Keys |
 |---|---|
 | `[site]` | `name`, `suffix`, `control_plane`, and optional `operator_user`, `vpn_cidr`, `state_path` |
-| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_dns_credentials_file`, `gpu_api_key_file` |
+| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_dns_credentials_file`, `gpu_api_key_file` |
 | `[gpu_pool]` | `nodes` or `address`, and `api_key_file` |
 | `[backup]` | `node` and `path` of the backup destination |
 | `[hoover.<name>]` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir` |
@@ -48,6 +48,7 @@ The roles are `control-plane`, `worker`, `public`, `registry`, `data`, `calls` a
 The value `single` gives one host every role except `calls` and `gpu`.
 A site with one node needs no VPN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
+`vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here, and the installer adds no peer to a GPU node.
 
 Check a site file, or print the part that one node receives:
 
@@ -77,10 +78,15 @@ k3s/deploy-k3s status
 
 - `up` installs the hosts, k3s, the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
-- The driver resolves `--revision` once. The record of the run keeps the commit, and every step and node gets it.
-  The images carry this commit. Local changes of the checkout stay unchanged, and the record lists them.
+- The driver resolves `--revision` once and writes the tree of that commit with `git archive` into `private/build/<commit>/`.
+  It then runs the `deploy-k3s` of that tree, so every script and render of the run comes from the commit. Local changes of the checkout stay unchanged, and the record lists them.
 - Each run has a record in `<operator state>/deploy/records/`. A failed or stopped run keeps its finished steps.
-  `deploy-k3s up --resume <record>` continues at the first unfinished step with the same revision.
+  The record pins the commit, the fingerprint of its tree, the SHA-256 of the site file, the saved settings revision and the UID of `kube-system`.
+  `deploy-k3s up --resume <record>` continues at the first unfinished step with these inputs, and refuses a changed site file, a changed tree or another cluster.
+- The driver holds the site operation lock (`oplock.py`) while it runs. The settings Apply, the zone operations, the migration steps and the openDesk and platform backups take the same lock.
+  A settings save takes no lock, so a save during a run waits as a later revision.
+- A waiting or failed step stops the steps that depend on it: the later steps of its node and every cluster step. The steps of the other nodes still run.
+- A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.
   The earlier applied record moves to `deploy/previous.json`, so a failed update can return to its revision with `up --revision`.
 - `down` scales the zone gates and the login proxy of each Hoover installation to zero, then the applications and workers, then Temporal, then the stores, and then stops the HTTPS frontend and k3s.
@@ -92,10 +98,14 @@ k3s/deploy-k3s status
 - The calls step runs after the zones, because the calls services read Secrets of the zones.
 - The local node of a single-node site uses the adapter `local-arch`. It runs the root scripts [hosts/root-install-local.py](hosts/root-install-local.py) and [hosts/root-install-k3s.py](hosts/root-install-k3s.py) with `sudo -n`.
   The bootstrap script of the local node installs copies of these scripts into `/usr/local/libexec/hoover4` and a sudo rule for them and the units of the site. The driver uses a copy when it equals the source.
-- A remote node uses the adapter `remote`. The driver checks it over SSH with read-only commands.
-  It writes `bootstrap.sh`, `install.sh`, `README.txt` and the node part of the site into `private/deploy/remote/<node>/`.
-  The operator runs them on the node. The step waits until the node is Ready, so a run with a waiting node is not applied.
+- A remote node uses the adapter `remote`, with the steps `probe`, `bundle`, `stage`, `root` and `verify`.
+  `bundle` writes the node bundle into `private/deploy/remote/<node>/<commit>/` and copies it into `~/k3s-install/<commit>/` of the node: the root scripts of the commit, `hosts.json`, the node part of the site, the stage script, the token that the node needs, `bootstrap.sh` and `README.txt`.
+  The tokens of the site are in `private/staging/tokens/`. `tools/adopt-cluster.py tokens` copies the tokens of a running cluster there.
+  `root` runs the root scripts through `sudo -n`, or, for a node that is Ready in the cluster, through a privileged pod that starts a unit of the host ([driver/hostroute.py](driver/hostroute.py)).
+  A node without a route waits until the operator runs `bootstrap.sh` of the bundle once as root.
+  `verify` compares the node with the bundle: the script copies, the k3s version, the k3s configuration, the active unit, the Ready node, and etcd on the server.
   A node that SSH cannot reach fails its step with the SSH error, and the record stays resumable.
+  A remote `down` or `up --start` without a sudo route waits for the operator, and a resume finds the stopped or started unit.
 
 The local node of a single-node site gets the dummy link `hoover4` with the address `10.254.54.1`, a dnsmasq for the names below the suffix, and the units `hoover4-address`, `hoover4-dns` and `hoover4-frontend`.
 k3s and every pod run in `hoover4.slice`. The node value `reserved` sets the memory and CPU that stay with the rest of the host, for example a Compose stack.
@@ -106,6 +116,25 @@ The frontend step adds the local CA to the trust store of the host and to the NS
 `tools/write-password-table.py` writes the logins of the site into `private/passwords.md`.
 `tools/local-site-check.py [--restart]` checks the storage, a registry pull and a restart of the host services of a single-node site.
 `tools/zone-data-check.py <zone> write|read` writes one item into each openDesk application of a zone and reads it back.
+
+Every k3s server runs embedded etcd (`cluster-init`), also on a site with one node. One server is not highly available.
+A server that still runs SQLite converts to etcd at its next `root` step. The installer first stops k3s, copies the datastore, the token and the configuration into `/var/lib/hoover4-recovery/` with `SHA256SUMS`, and reads the copy again.
+After each start of the server, the installer verifies etcd with a snapshot. A host that already belongs to a cluster keeps its token: a staged token with another secret stops the installer before any change.
+
+## Adopt a running cluster.
+
+1. `tools/adopt-cluster.py inventory` writes the nodes, namespaces, claims, Secret names, images and storage identities of the cluster into `<operator state>/adoption/` and lists each difference from the site file.
+2. `tools/adopt-cluster.py runners` lists the runner units of the earlier tool. Stop them before the first run of this driver.
+3. `tools/adopt-cluster.py tokens` copies the tokens of the server into `private/staging/tokens/`.
+
+## Retire the local single-node site.
+
+`tools/local-retirement.py` preserves the local site and writes the removal script. It removes nothing.
+
+1. `inventory <folder>` records the units, mounts, volumes, link, DNS routing, claims and the protected resources.
+2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`root-install-k3s.py --preserve`).
+3. `verify <folder>` reads the archive again against its manifest.
+4. `removal <folder>` writes `remove-local-k3s.sh`. A person reviews it and runs it as root.
 
 ## Choose the stores and the Temporal backend.
 
@@ -138,7 +167,8 @@ They also hold the openDesk applications and memory limits of each zone, and the
 - A save names the revision that it changes. A save over a newer revision is refused.
 - A save changes no service. Apply starts one operation for the newest revision.
 - An operation records each step before and after it runs. A retry continues at its first unfinished step with the same revisions.
-- A failed operation keeps the applied revision and records the services that already changed.
+- A failed operation keeps the applied revision of each unfinished scope and records the services that already changed. A scope whose steps all finished gets its applied revision at once.
+- `gpu.runtime` applies the GPU pool (`gpu_pool.py apply`) and calls each GPU service with and without the pool key (`gpu_pool.py verify`). It changes no zone.
 - The values of an earlier Compose ini become saved values once. A saved value stays.
 - The settings page of the operator portal (`https://operator.<suffix>/settings.html`) edits the saved values, shows the hardware suggestions, the pending changes, the affected services and the Apply operation, and offers Retry and Abandon.
   [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The operator runner (unit `hoover4-operator-runner` of the operator user) runs them.
@@ -183,7 +213,10 @@ python3 k3s/platform/mcp-relay/install-relay.py <name> apply --ports compose
 - `record` keeps the Temporal namespaces, search attributes, counts and open workflows, the histories of the open workflows and the store contents.
 - `stop` stops Temporal and then the stores. The source data folders stay unchanged, and nothing deletes them.
 - `images` imports the store and Temporal images of the source into k3s, and checks their content ids.
-- `copy` copies each folder into its claim, maps the owners of the rootless Podman runtime, and verifies a SHA-256 of every file before any target service starts.
+- `--engine docker|podman` names the runtime of the source, and `--source-host` the SSH host of the source. A rootful Docker keeps the host owners, and rootless Podman maps them through its user namespace.
+- `plan` writes `inputs.json`: the commit, the settings revision, the site file SHA-256, the engine, the source host, the images and the storage identity. A later step with another input stops.
+- `copy` copies each folder into its claim with the mapped owners, and verifies a SHA-256 of every file before any target service starts.
+  A home node on this host gets the copy through a mount of the volume. Another home node gets a tar stream into a pod that mounts the claim, and the check runs in that pod. The record keeps the UID and volume of each claim.
 - `stores` starts only the stores and Temporal, and compares the store contents with the record. A table with a TTL clause can hold fewer rows, because ClickHouse removes expired rows at start.
 - `temporal` compares the Temporal namespaces, search attributes, counts and open workflows with the record. The workers start only after it passes.
 - `resume` waits until every open workflow of the record has new events or has closed.
@@ -198,12 +231,13 @@ A site with `[gpu_pool] address` uses a GPU host outside the site, for example t
 
 1. The node needs the NVIDIA driver and the NVIDIA container toolkit. `hosts/root-install-k3s.py` refuses a GPU node without them.
 2. `root-install-k3s.py` registers the runtime `runsc-nvproxy` (gVisor with GPU support), and labels and taints the node `hoover.dev/gpu=true`.
-3. `images/build-hoover.py --gpu` builds the images of the GPU services for the architecture of the GPU nodes.
+3. The driver step `gpu-images` builds the images of the GPU services for the architecture of the GPU nodes and checks that architecture in the registry. A GPU node of another architecture than this host builds them (`--builder`).
 4. The operator setting `gpu.runtime` selects `runsc` (RuntimeClass `gvisor-gpu`) or `runc` (RuntimeClass `nvidia`).
 
 When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <staging folder>` on a host of the node architecture.
 Run `root-install-k3s.py` on the node again, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
 The gateway of each GPU node accepts a request only with the pool key of `[gpu_pool] api_key_file`, on every port, and listens on the VPN address of the node for the other installations of the shared pool.
+The step `gpu-pool` waits for the GPU workloads and calls each port with the key, which must answer, and without it, which must answer 403.
 
 ## Place the call services.
 
@@ -221,6 +255,7 @@ Check a call from outside the site after a remote installation:
 ## Back up and restore.
 
 Backups are off until the site file has `[backup]`, the destination folder has its marker, and an operator turns a policy on in the portal.
+The `[backup]` node holds the destination. The capacity check, the marker check, the check of each copy and retention run on that node over its user shell.
 
 ```sh
 python3 k3s/platform/backups/backups.py enable    # writes the marker .hoover4-backup-destination into the destination
@@ -228,23 +263,37 @@ python3 k3s/platform/backups/backups.py status
 python3 k3s/platform/backups/backups.py verify <copy folder>
 python3 k3s/platform/backups/backups.py restore-hoover <copy folder> <installation>
 python3 k3s/platform/backups/backups.py restore-volumes <copy folder> <namespace>
+python3 k3s/platform/backups/backups.py fetch <copy path on the node> <local folder>
+python3 k3s/platform/backups/backups.py restore-zone <local copy folder> <zone>
+python3 k3s/platform/backups/backups.py recovery <local platform copy folder>
+python3 k3s/platform/backups/backups.py restore-platform <local platform copy folder>
 ```
 
 - The operator runner starts at most one due job each minute. [schedule.py](platform/backups/schedule.py) holds the rules: eligibility, the weekly limit, the slots and the retention.
 - A Hoover collection gets a copy after its first completed ingestion and after each complete reprocessing, at most once in 7 days, and keeps one or two copies.
 - openDesk and the platform recovery set get one copy each week, and keep two or three copies.
 - A missing marker pauses every job, so a missing remote mount does not fill the local disk.
+- A copy is made in `<operator state>/backups/staging/`, checked, sent to the node into `<generation>.partial`, checked there and renamed. A failed transfer or check keeps the older copies.
+- The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
+- The openDesk copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
+  Their CronJobs are suspended, and the stores keep running. After the copy, the recorded replicas and suspensions return.
+  The next runner tick restores a closure that a stopped job left.
+- The receipt queries use the ClickHouse of the store layout. The zone layout uses the zone user in the zone namespace. The local layout uses the Compose credentials.
+- The collection export reads each small frozen Manticore file whole, and a `.meta` file must be JSON. The archive entry gets the size of the bytes that the export read.
 - Make sure that the destination is on another site. The system cannot check this.
 - Each copy has `copy-manifest.json` with the SHA-256 of every file. A collection copy also holds the `manifest.json` of the export, which the import reads.
 - A collection copy fails when the JSON metadata of a Manticore table in the export does not parse, because the import refuses it.
 - An openDesk copy keeps one tar file for each claim, with the owners and modes. A Block claim of a Kata store is read through its store container, so the store must run. A claim that a pod owns holds temporary files and is not copied.
 - `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
 - A restore of an openDesk copy writes its claims into a new namespace with the same volume modes. A Block claim is written through a Kata pod, which makes its file system. The database dumps restore with `psql` and `mariadb` in that namespace.
+- `restore-zone` restores a complete openDesk copy into an installed zone of an isolated cluster. It closes the zone and stops its stores, except the databases.
+  It then applies the Secrets of the copy, replaces the content of each claim, imports the dumps, restarts the databases and opens the zone.
+  A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps.
 
 ## Run the tests.
 
 ```sh
-k3s/tests/run.sh             # render, state and driver
+k3s/tests/run.sh             # render, state (with the portal routes) and driver (with the host scripts)
 k3s/tests/run.sh migration backup
 k3s/tests/run.sh replay      # the workflow replay suite in the worker image
 ```

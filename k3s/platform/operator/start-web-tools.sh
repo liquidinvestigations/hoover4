@@ -15,8 +15,10 @@ mkdir -p "$login"
 # The cookie secret must be 32 bytes. The existing files keep sessions valid across reinstalls.
 [ -s "$login/client-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/client-secret"
 [ -s "$login/cookie-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(16), end="")' > "$login/cookie-secret"
-# The gateway sends the proxy secret to the portal with each request. The portal refuses an operator name without it.
-[ -s "$login/proxy-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/proxy-secret"
+# The portal hop of the gateway sends the proxy secret to the portal with each request. The portal refuses an operator
+# name without it. Each run makes a new secret, and the restart below gives it to the hop and the portal together.
+python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/proxy-secret.new"
+mv "$login/proxy-secret.new" "$login/proxy-secret"
 # The admin password is k3s/private/operator-login/admin-password. The script makes a random one when the file is
 # missing, so no installation keeps the development password admin. The manifest gets its bcrypt hash.
 [ -s "$login/admin-password" ] || python3 -c 'import secrets; print(secrets.token_urlsafe(18))' > "$login/admin-password"

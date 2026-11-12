@@ -7,7 +7,8 @@ from the site file. Run the copy of the host, root-install-<host>.py.
 The script has four steps and runs them in this order. Each step reads the state of the host
 first and skips the work that is already done. A second run continues after a failure.
 
-  wireguard  Add direct WireGuard peers to wg0. The two on-prem hosts connect over the LAN.
+  wireguard  Add direct WireGuard peers to the VPN interface of the host (vpn_interface of the site file, default wg0).
+             The two on-prem hosts connect over the LAN. The other peers and routes of the interface stay unchanged.
   software   Install the missing packages. Stop and disable Docker on the on-prem hosts.
   settings   Write the kernel module, sysctl, NetworkManager and SELinux settings for k3s.
   storage    Shrink the ext4 file system of /storage to 300 GiB on an on-prem host. Add an LVM
@@ -40,13 +41,20 @@ THIS = None
 SITE = None
 
 # Each host entry of the site file has these keys. hosts.example.json shows the format.
-#   wg_ip   the wg0 address        key     the WireGuard public key    port    the WireGuard listen port
+#   wg_ip   the VPN address        wg_if   the VPN interface           key     the WireGuard public key
+#   port    the WireGuard listen port
 #   public  "address:port" of a host that other hosts can reach from the internet, or null
 #   lan_ip  the LAN address of an on-prem host, or null                onprem  true for a host behind NAT
 HOSTS = SITE["hosts"] if SITE else {}
 SCRIPT = f"root-install-{THIS}.py"
 WG_IF = "wg0"
 WG_CONF = "/etc/wireguard/wg0.conf"
+
+
+def use_interface(name):
+    """Use the VPN interface of the host. A host can keep the interface of an existing VPN, for example a GPU host."""
+    global WG_IF, WG_CONF
+    WG_IF, WG_CONF = name, f"/etc/wireguard/{name}.conf"
 KEEPALIVE = 21
 
 # The package names on RHEL and on Debian. zstd unpacks the Kata Containers static release. The NFS client lets the
@@ -166,7 +174,7 @@ def peer_endpoint(name):
 
 
 def set_listen_port(lines, port):
-    """Return the lines of wg0.conf with ListenPort set in the [Interface] section."""
+    """Return the lines of the interface file with ListenPort set in the [Interface] section."""
     lines = list(lines)
     start = next((i for i, l in enumerate(lines) if l.strip().lower() == "[interface]"), None)
     if start is None:
@@ -182,7 +190,7 @@ def set_listen_port(lines, port):
 
 
 def peer_blocks(text):
-    """Return the lines of the [Peer] sections for the hosts that wg0.conf does not have."""
+    """Return the lines of the [Peer] sections for the hosts that the interface file does not have."""
     present = set(re.findall(r"^\s*PublicKey\s*=\s*(\S+)", text, re.M | re.I))
     blocks = []
     for name, peer in HOSTS.items():
@@ -219,7 +227,7 @@ def step_wireguard():
             code, stripped = read(["wg-quick", "strip", WG_IF])
             if code != 0:
                 fail(f"wg-quick strip {WG_IF} failed: {stripped}")
-            with tempfile.NamedTemporaryFile("w", dir="/run", prefix="wg0-", delete=False) as f:
+            with tempfile.NamedTemporaryFile("w", dir="/run", prefix=f"{WG_IF}-", delete=False) as f:
                 f.write(stripped)
             try:
                 change(["wg", "syncconf", WG_IF, f.name])
@@ -509,6 +517,7 @@ def main():
         THIS, HOSTS, SCRIPT = args.node, SITE["hosts"], f"root-install.py --node {args.node}"
     if THIS is None or THIS not in HOSTS:
         fail("this file has no host. Run write-host-copies.py, then run the copy of this host.")
+    use_interface(HOSTS[THIS].get("wg_if") or "wg0")
     if os.geteuid() != 0:
         fail("run the script as root")
     DRY = args.dry_run
@@ -516,7 +525,10 @@ def main():
         check()
         return
     chosen = [s for s in steps if s in (args.only or steps)]
-    if "storage" in chosen and HOSTS[THIS]["onprem"] and not DRY and not (os.environ.get("TMUX") or os.environ.get("STY")):
+    # Only the shrink of the file system needs tmux. A host whose partition exists already runs the step anywhere, for
+    # example from the deployment driver.
+    shrink_pending = HOSTS[THIS]["onprem"] and NEW_PART not in read(["sfdisk", "--dump", DISK])[1]
+    if "storage" in chosen and shrink_pending and not DRY and not (os.environ.get("TMUX") or os.environ.get("STY")):
         fail("the storage step must run inside tmux or screen. Start tmux, then run the script again.")
     if not DRY:
         LOG = open(f"/root/root-install-{THIS}.log", "a")

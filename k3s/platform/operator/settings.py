@@ -19,14 +19,19 @@ State, in one folder on the control-plane host (config.Site.operator_state())
   revisions/<n>.json   the explicit operator values (overrides) of revision n. A written revision never changes.
   desired.json         the newest revision number, and the one-time seed records
   suggestions.json     hardware suggestions. A suggestion is shown, and changes nothing until an operator saves it.
-  applied.json         the applied revision, the source revision of the deployment, and the previous applied record
+  applied.json         the applied revision, the source revision of the deployment, and the previous applied record.
+                       `revision` is the revision that every scope runs. `scopes` names a scope that runs a later
+                       revision, after a scoped deployment or a partly finished Apply verified that scope.
   operations/<id>.json one apply operation: its pinned revisions, its steps, its status and its last error
   active.json          the operation that owns the installation, until it succeeds or an operator abandons it
 Each file is written to a temporary file, synced and renamed, so a reader sees the old or the new file only.
 A save names the revision that the operator edited. A save over a newer revision is refused (StaleRevision).
 A save never starts an operation. Apply pins the newest revision and the source revision once. A retry or a runner
 restart continues the same operation with the same revisions, at its first unfinished step. A later saved revision
-waits for a new Apply. A failed operation keeps applied.json unchanged and records which services already changed.
+waits for a new Apply. A failed operation keeps the applied revision of each unfinished scope and records which services
+already changed. A scope whose steps all finished gets its applied revision at once (record_scopes()), so the
+portal shows only the changes that still wait. deploy-k3s records the scopes of the zones that it rendered and verified
+with its pinned revision in the same way.
 
 Usage: settings.py list                         prints the registry as JSON
        settings.py show <state-folder> <scope>  prints the effective values of a scope
@@ -451,6 +456,9 @@ class Operation:
     created: str = ''
     updated: str = ''
     attempts: int = 1
+    # {scope: [step names]}: the steps that bring each changed scope to desired_revision.
+    scope_steps: dict = field(default_factory=dict)
+    applied_scopes: list = field(default_factory=list)
 
     def next_step(self):
         for step in self.steps:
@@ -500,7 +508,46 @@ class State:
         return effective(scope_id, self.overrides(revision).get(scope_id, {}), self.registry)
 
     def applied(self):
-        return read_json(self.folder / 'applied.json', {'revision': 0, 'source_revision': '', 'operation': '', 'previous': None})
+        data = read_json(self.folder / 'applied.json', {'revision': 0, 'source_revision': '', 'operation': '', 'previous': None})
+        data.setdefault('scopes', {})
+        return data
+
+    def applied_revision(self, scope_id, applied=None):
+        """The settings revision that runs in one scope: its own record, else the revision of every scope."""
+        applied = applied or self.applied()
+        return (applied['scopes'].get(scope_id) or {}).get('revision', applied['revision'])
+
+    def record_scopes(self, scope_ids, revision, operation, source_revision=''):
+        """Record that the services of these scopes run a revision, after a step verified them.
+
+        An earlier revision never replaces a later one. The revision of every scope stays unchanged.
+        """
+        with self._lock():
+            data = self.applied()
+            for scope in scope_ids:
+                if self.applied_revision(scope, data) <= revision:
+                    data['scopes'][scope] = {'revision': revision, 'operation': operation,
+                                             'source_revision': source_revision, 'applied': now()}
+            self._normalize(data)
+            write_json(self.folder / 'applied.json', data)
+
+    def record_all(self, revision, operation, source_revision):
+        """Record that every scope runs a revision. A scope with a later revision keeps its own record."""
+        with self._lock():
+            previous = self.applied()
+            if revision < previous['revision']:
+                # A later revision already runs in every scope, for example after an Apply during a deployment.
+                return
+            data = {'revision': revision, 'source_revision': source_revision, 'operation': operation, 'applied': now(),
+                    'scopes': {k: v for k, v in previous['scopes'].items() if v['revision'] > revision}}
+            before = dict(previous)
+            before.pop('previous', None)
+            data['previous'] = before if before.get('revision') else None
+            write_json(self.folder / 'applied.json', data)
+
+    @staticmethod
+    def _normalize(data):
+        data['scopes'] = {k: v for k, v in data['scopes'].items() if v['revision'] > data['revision']}
 
     def save(self, base_revision, changes, actor='', note=''):
         """Save {scope id: {key: value or None}} over base_revision as a new revision. None removes an override.
@@ -524,11 +571,11 @@ class State:
                         current[key] = value
                 if not current:
                     overrides.pop(scope)
-            applied = self.applied()['revision']
-            if applied:
-                before_all = self.overrides(applied)
+            applied = self.applied()
+            if applied['revision'] or applied['scopes']:
                 for scope, values in checked.items():
-                    before = effective(scope, before_all.get(scope, {}), self.registry)
+                    revision_of_scope = self.applied_revision(scope, applied)
+                    before = effective(scope, self.overrides(revision_of_scope).get(scope, {}), self.registry)
                     after = effective(scope, overrides.get(scope, {}), self.registry)
                     for key in values:
                         setting = self.registry[key]
@@ -619,15 +666,18 @@ class State:
         op.updated = now()
         write_json(self.folder / 'operations' / f'{op.id}.json', asdict(op))
 
-    def start_apply(self, source_revision, steps):
-        """Create the apply operation of the newest revision. It pins that revision and the source revision."""
+    def start_apply(self, source_revision, steps, scope_steps=None):
+        """Create the apply operation of the newest revision. It pins that revision and the source revision.
+
+        scope_steps names the steps of each changed scope, so a scope is recorded as applied when its steps finished.
+        """
         with self._lock():
             active = self.active()
             if active:
                 raise OperationActive(f'operation {active.id} ({active.status}) owns the installation. '
                                       'Retry it or abandon it first.')
             op = Operation(id=f'op-{int(time.time())}-{uuid.uuid4().hex[:6]}', desired_revision=self.revision(),
-                           source_revision=source_revision, created=now(),
+                           source_revision=source_revision, created=now(), scope_steps=dict(scope_steps or {}),
                            steps=[{'name': name, 'status': 'pending', 'started': '', 'finished': ''} for name in steps])
             self._write_operation(op)
             write_json(self.folder / 'active.json', {'id': op.id})
@@ -693,12 +743,17 @@ class State:
                     step['status'], step['finished'] = 'done', now()
                     op.changed = sorted(set(op.changed) | set(changed))
                     self._write_operation(op)
+                done = {s['name'] for s in op.steps if s['status'] == 'done'}
+                ready = [scope for scope, names in op.scope_steps.items()
+                         if scope not in op.applied_scopes and set(names) <= done]
+                if ready:
+                    # A scope whose steps all finished runs the pinned revision, also when a later step fails.
+                    self.record_scopes(ready, op.desired_revision, op.id, op.source_revision)
+                    with self._lock():
+                        op.applied_scopes = sorted(set(op.applied_scopes) | set(ready))
+                        self._write_operation(op)
+            self.record_all(op.desired_revision, op.id, op.source_revision)
             with self._lock():
-                previous = self.applied()
-                previous.pop('previous', None)
-                write_json(self.folder / 'applied.json', {
-                    'revision': op.desired_revision, 'source_revision': op.source_revision, 'operation': op.id,
-                    'applied': now(), 'previous': previous if previous.get('revision') else None})
                 op.status = 'succeeded'
                 self._write_operation(op)
                 (self.folder / 'active.json').unlink()

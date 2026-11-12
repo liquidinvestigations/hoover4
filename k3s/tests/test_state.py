@@ -349,3 +349,98 @@ def test_backup_policies_keep_their_ranges(state):
     with pytest.raises(S.SettingsError):
         state.save(0, {'zone:zone-a': {'backup.hoover.copies': '3'}})
     assert state.save(0, {'cluster': {'backup.platform.copies': '2'}}) == 1
+
+
+# Scope-aware applied revisions ------------------------------------------------------------------------------------------
+
+def single_site():
+    return config.parse((FIXTURES / 'single-node.ini').read_text().replace('@REPO@', str(REPO)))
+
+
+def remote_site():
+    return config.parse((FIXTURES / 'remote.ini').read_text().replace('@REPO@', str(REPO)))
+
+
+def test_gpu_runtime_applies_the_gpu_pool_and_no_zone(state, monkeypatch):
+    A = apply_module()
+    site = remote_site()
+    state.save(0, {'cluster': {'gpu.runtime': 'runc'}})
+    steps, by_scope = A.plan_scopes(state, site)
+    assert steps == ['gpu-pool'] and by_scope == {'cluster': ['gpu-pool']}
+    # A site whose GPU pool runs at an address outside the site changes no service.
+    assert A.plan(state, single_site()) == ['record']
+    commands = []
+    monkeypatch.setattr(A, 'run_command', lambda argv, op, log: commands.append([str(a) for a in argv]))
+    op = state.start_apply('abc', steps, by_scope)
+    done = state.run(A.executors(site, '/dev/null'))
+    assert done.status == 'succeeded'
+    assert [c[1:] for c in commands] == [[str(REPO / 'k3s/platform/gpu/gpu_pool.py'), 'apply'],
+                                          [str(REPO / 'k3s/platform/gpu/gpu_pool.py'), 'verify']]
+    assert state.applied()['revision'] == 1 and op.scope_steps == {'cluster': ['gpu-pool']}
+
+
+def test_a_failed_gpu_check_keeps_the_runtime_pending(state, monkeypatch):
+    A = apply_module()
+    site = remote_site()
+    state.save(0, {'cluster': {'gpu.runtime': 'runc'}})
+
+    def run_command(argv, op, log):
+        if argv[-1] == 'verify':
+            raise A.ApplyFailed('the GPU pool check ended in phase Failed')
+    monkeypatch.setattr(A, 'run_command', run_command)
+    steps, by_scope = A.plan_scopes(state, site)
+    state.start_apply('abc', steps, by_scope)
+    assert state.run(A.executors(site, '/dev/null')).status == 'failed'
+    assert state.applied_revision('cluster') == 0
+    assert A.changes(state, site) == {'cluster': {'gpu.runtime': ('runsc', 'runc')}}
+
+
+def test_a_partly_finished_apply_records_the_finished_scopes_only(state):
+    A = apply_module()
+    site = single_site()
+    state.save(0, {SCOPE: {'main_services.common_workers': '5'}, 'zone:zone-a': {'app.xwiki': 'false'}})
+    steps, by_scope = A.plan_scopes(state, site)
+    assert by_scope == {SCOPE: ['hoover:main'], 'zone:zone-a': ['apps:zone-a']}
+    op = state.start_apply('abc', steps, by_scope)
+    assert [x['name'] for x in op.steps] == ['apps:zone-a', 'hoover:main']
+    calls = []
+
+    def ok(op, overrides):
+        calls.append('apps')
+        return ['xwiki']
+
+    def broken(op, overrides):
+        raise RuntimeError('the rollout of the workers failed')
+    failed = state.run({'apps:zone-a': ok, 'hoover:main': broken})
+    assert failed.status == 'failed' and failed.applied_scopes == ['zone:zone-a']
+    assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision(SCOPE) == 0
+    assert state.applied()['revision'] == 0
+    # Only the unfinished scope stays pending in the portal.
+    assert set(A.changes(state, site)) == {SCOPE}
+    # A save during the operation stays a later desired revision after the retry succeeds.
+    state.save(1, {SCOPE: {'main_services.common_workers': '7'}})
+    state.retry(op.id)
+    done = state.run({'apps:zone-a': ok, 'hoover:main': lambda op, o: []})
+    assert done.status == 'succeeded' and calls == ['apps']
+    assert state.applied()['revision'] == 1 and state.applied()['scopes'] == {}
+    assert A.changes(state, site) == {SCOPE: {'main_services.common_workers': ('5', '7')}}
+
+
+def test_scope_records_never_go_back(state):
+    state.save(0, {SCOPE: {'main_services.common_workers': '5'}})
+    state.save(1, {SCOPE: {'main_services.common_workers': '6'}})
+    state.record_scopes([SCOPE], 2, 'deploy:a', 'abc')
+    state.record_scopes([SCOPE], 1, 'deploy:b', 'abc')
+    assert state.applied_revision(SCOPE) == 2 and state.applied_revision('cluster') == 0
+    state.record_all(2, 'deploy:c', 'abc')
+    assert state.applied()['revision'] == 2 and state.applied()['scopes'] == {}
+    # A deployment that pinned an older revision does not undo a later Apply.
+    state.record_all(1, 'deploy:d', 'abc')
+    assert state.applied()['revision'] == 2 and state.applied()['operation'] == 'deploy:c'
+
+
+def test_fixed_settings_use_the_applied_revision_of_their_scope(state):
+    state.save(0, {SCOPE: {'main_services.temporal_history_shards': '64'}})
+    state.record_scopes([SCOPE], 1, 'deploy:a', 'abc')
+    with pytest.raises(S.SettingsError, match='fixed after the first apply'):
+        state.save(1, {SCOPE: {'main_services.temporal_history_shards': '128'}})

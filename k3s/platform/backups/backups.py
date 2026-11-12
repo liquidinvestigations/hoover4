@@ -16,10 +16,27 @@ Copies, below <destination>/<job key with / for :>/<generation>/:
   holds the file system of a Kata store, which only the guest of the store pod mounts, so the copy reads it through
   the store container with the busybox of ../../hoover/stores/podspec.py. A claim that a pod owns (a generic
   ephemeral volume) holds temporary files and is not copied.
-- platform: the k3s datastore, the operator state and the private files of the site (credentials included), which
-  together restore the cluster settings, the logins and the operator settings.
-Each copy is written into <generation>.partial, gets copy-manifest.json with the size and SHA-256 of every file, is read
-again against the manifest, and is then renamed. Only then does retention remove older copies.
+- platform: an etcd snapshot of the control-plane server with its token and k3s configuration (root-install-k3s.py
+  --snapshot through the root route of that node, ../../driver/hostroute.py), the operator state and the private files
+  of the site (credentials included), and recovery.json. recovery.json has format_version 2, the datastore etcd, the
+  execution host, the control plane, the destination node, the k3s version, the applied source and settings
+  revisions, the pinned tool versions and the application copies that a complete recovery needs. An etcd snapshot holds
+  no claim data, so the application copies are part of the recovery set. read_recovery() also reads a copy of the
+  earlier format, with the SQLite file k3s-state.db, for the conversion of an earlier installation. No new copy uses
+  SQLite.
+The copy of a job is made in <operator state>/backups/staging/ on this host. It gets copy-manifest.json with the size and
+SHA-256 of every file. It then goes over the user shell of the [backup] node into <destination>/<job>/<generation>.partial,
+is read again there against the manifest, and is renamed. Only then does retention remove older copies. A failed transfer
+or check leaves the older copies. The capacity check, the marker check, the check of the copy and retention run on the
+[backup] node.
+The openDesk job closes intake first: it scales the applications of the zone and of its Hoover installation to zero and
+suspends their CronJobs, and records the earlier replicas and suspensions in the state file. The stores keep running,
+because the dumps and the Block copies need them. After the copy the job restores the recorded values. A runner that
+finds a recorded closure without a running job restores it.
+The openDesk and platform jobs hold the site operation lock (../../oplock.py), so no deployment, Apply or migration
+changes the site during the copy.
+restore-zone restores a complete openDesk copy into a zone of an isolated cluster: the Secrets, the claims and the
+database dumps, with the applications stopped. On a failure the zone stays closed, and the state file names the step.
 A runner restart finds a job that runs (its process id and its export operation in the state) and waits for it.
 Receipts of a collection come from the table operations of the installation: the first finished add_dataset of each of
 its datasets, when none of its dataset operations still runs, is the ingestion receipt. A finished update_collection,
@@ -31,12 +48,18 @@ Usage: backups.py tick                      start the next due job, as the opera
        backups.py verify <copy folder>      read a copy again against its manifest
        backups.py restore-hoover <copy folder> <installation>     import a collection copy into an empty installation
        backups.py restore-volumes <copy folder> <namespace>       restore the claims of an openDesk copy into a namespace
+       backups.py fetch <copy path on the node> <local folder>    copy a copy of the destination node to this host
+       backups.py restore-zone <copy folder> <zone>               restore a complete openDesk copy into a closed zone
+       backups.py recovery <copy folder>                          print the recovery set of a platform copy
+       backups.py restore-platform <copy folder>                  print the root steps that restore a platform copy
 """
 import base64
 import hashlib
 import json
 import os
+import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -48,7 +71,10 @@ sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'hoover'))
 sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(K3S / 'driver'))
 import config as site_config  # noqa: E402
+import hostroute  # noqa: E402
+import oplock  # noqa: E402
 import podspec  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 import schedule  # noqa: E402
@@ -114,23 +140,40 @@ def save_state(s, data):
 
 
 def applied_values(s, scope):
+    """The effective values of a scope at its applied revision."""
     module = operator_module()
+    if not (s.operator_state() / 'desired.json').exists():
+        return module.effective(scope, {})
     state = module.State(s.operator_state())
-    applied = state.applied() if hasattr(state, 'applied') else None
-    revision = (applied or {}).get('revision') if isinstance(applied, dict) else None
-    overrides = state.overrides(revision) if (s.operator_state() / 'desired.json').exists() else {}
-    return module.effective(scope, overrides.get(scope, {}))
+    return module.effective(scope, state.overrides(state.applied_revision(scope)).get(scope, {}))
 
 
-def clickhouse(ns, sql):
-    return kubectl('-n', ns, 'exec', '-i', 'clickhouse-0', '--', 'clickhouse-client', '--user', 'hoover4', '--password', 'hoover4',
-                   '--format', 'JSONEachRow', input=sql)
+def clickhouse_command(hoover):
+    """(namespace, pod, container, shell command) of the ClickHouse client of an installation.
+
+    The local store layout runs ClickHouse in the Hoover namespace with the Compose credentials of its environment. The
+    zone layout runs it in the zone namespace, and the client uses the zone user, whose password the store container
+    holds in CH_ZONE_PASSWORD. No password appears in a command argument of this host.
+    """
+    if hoover.stores == 'zone':
+        user = hoover.zone.replace('-', '_')
+        return (hoover.zone, 'clickhouse-0', 'clickhouse',
+                f'exec clickhouse-client --user {user} --password "$CH_ZONE_PASSWORD" --format JSONEachRow')
+    return (hoover.namespace, 'clickhouse-0', None,
+            'exec clickhouse-client --user "${CLICKHOUSE_USER:-hoover4}" --password "${CLICKHOUSE_PASSWORD:-hoover4}" '
+            '--format JSONEachRow')
+
+
+def clickhouse(hoover, sql):
+    ns, pod, container, command = clickhouse_command(hoover)
+    return kubectl('-n', ns, 'exec', '-i', pod, *(['-c', container] if container else []), '--', 'sh', '-c', command,
+                   input=sql)
 
 
 def receipts(hoover, collection):
     """The ingestion and complete reprocessing receipts of one collection, from the operations table."""
     db = f'{hoover.clickhouse_database_prefix}_Processing'
-    rows = [json.loads(line) for line in clickhouse(hoover.namespace, (
+    rows = [json.loads(line) for line in clickhouse(hoover, (
         f"SELECT op_id, kind, collection_dataset, state, toUnixTimestamp(started_at) AS started, toUnixTimestamp(finished_at) AS finished "
         f"FROM {db}.operations FINAL WHERE collectionname = '{collection}' "
         f"AND kind IN ('add_dataset', 'delete_dataset', 'update_collection', 'update_dataset', 'rescan_dataset', 'execute_plans') "
@@ -165,7 +208,7 @@ def receipts_from_operations(rows):
 def collections(hoover):
     db = f'{hoover.clickhouse_database_prefix}_Processing'
     return [json.loads(line)['collectionname'] for line in clickhouse(
-        hoover.namespace, f'SELECT DISTINCT collectionname FROM {db}.collections FINAL').splitlines() if line.strip()]
+        hoover, f'SELECT DISTINCT collectionname FROM {db}.collections FINAL').splitlines() if line.strip()]
 
 
 def jobs(s, data):
@@ -186,16 +229,120 @@ def jobs(s, data):
     return out
 
 
+class Destination:
+    """The destination folder on the [backup] node. Every check, write and removal runs on that node."""
+
+    def __init__(self, s):
+        self.node = s.nodes[s.backup['node']]
+        self.path = s.backup['path']
+        self.shell = hostroute.Shell(self.node)
+
+    def run(self, script, timeout=600, input=None):
+        return self.shell.run(script, timeout=timeout, input=input)
+
+    def problem(self):
+        q = shlex.quote(self.path)
+        code, out = self.run(f'if [ ! -d {q} ]; then echo missing; elif [ ! -e {q}/{schedule.MARKER} ]; then echo marker; '
+                             'else echo ok; fi', timeout=60)
+        if code:
+            return f'the backup node {self.node.name} does not answer: {out[-200:]}'
+        state = out.strip().splitlines()[-1] if out.strip() else ''
+        if state == 'missing':
+            return f'the backup destination {self.path} on {self.node.name} does not exist.'
+        if state == 'marker':
+            return (f'the backup destination {self.path} on {self.node.name} has no {schedule.MARKER}. A mount may be '
+                    'missing. The jobs pause until the destination is mounted again.')
+        return ''
+
+    def free_bytes(self):
+        code, out = self.run(f'df -P -B1 {shlex.quote(self.path)} | tail -n 1', timeout=60)
+        if code:
+            raise SystemExit(f'the free space of {self.path} on {self.node.name} is unreadable: {out[-200:]}')
+        return int(out.split()[3])
+
+    def folder(self, key, generation):
+        return f'{self.path}/{key.replace(":", "/")}/{generation}'
+
+    def publish(self, local, key, generation):
+        """Copy a verified local copy to the node, check it there against its manifest, then rename it."""
+        final = self.folder(key, generation)
+        partial = final + '.partial'
+        code, out = self.run(f'rm -rf {shlex.quote(partial)}')
+        if code:
+            raise SystemExit(f'the old partial copy {partial} on {self.node.name} cannot be removed: {out[-200:]}')
+        try:
+            self.shell.send_tree(local, partial, timeout=24 * 3600)
+        except hostroute.RouteError as error:
+            raise SystemExit(f'the transfer to {self.node.name} failed: {error}')
+        code, out = self.run(f'python3 -c {shlex.quote(REMOTE_VERIFY)} {shlex.quote(partial)}', timeout=24 * 3600)
+        try:
+            checked = json.loads(out.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            checked = {'differences': [f'the check on {self.node.name} failed: {out[-200:]}']}
+        if code or checked['differences']:
+            self.run(f'rm -rf {shlex.quote(partial)}')
+            raise SystemExit(f'the copy {partial} on {self.node.name} differs from its manifest: {checked["differences"][:5]}')
+        code, out = self.run(f'rm -rf {shlex.quote(final)} && mv {shlex.quote(partial)} {shlex.quote(final)}')
+        if code:
+            raise SystemExit(f'the copy {partial} on {self.node.name} cannot be renamed: {out[-200:]}')
+        return final, checked
+
+    def remove(self, path):
+        if not path.startswith(self.path.rstrip('/') + '/'):
+            raise SystemExit(f'{path} is outside the backup destination {self.path}.')
+        self.run(f'rm -rf {shlex.quote(path)}')
+
+    def fetch(self, path, target):
+        """Copy a copy of the node into a local folder, for a restore."""
+        target = Path(target)
+        target.mkdir(parents=True, exist_ok=True)
+        reader = subprocess.Popen(self.shell.command(f'tar -C {shlex.quote(path)} -cf - .'), stdout=subprocess.PIPE)
+        subprocess.run(['tar', '-C', str(target), '-xf', '-'], stdin=reader.stdout, check=True)
+        reader.stdout.close()
+        if reader.wait():
+            raise SystemExit(f'the copy {path} on {self.node.name} cannot be read.')
+        return target
+
+
+# The check of a copy on the destination node: the size and SHA-256 of every file against copy-manifest.json. It runs
+# with the python3 of the node, so it needs no file of this repository there.
+REMOTE_VERIFY = r"""
+import hashlib, json, os, sys
+folder = sys.argv[1]
+wanted = json.load(open(os.path.join(folder, 'copy-manifest.json')))
+found = {}
+for root, _, files in os.walk(folder):
+    for name in files:
+        path = os.path.join(root, name)
+        rel = os.path.relpath(path, folder)
+        if rel == 'copy-manifest.json':
+            continue
+        digest = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(4 << 20), b''):
+                digest.update(chunk)
+        found[rel] = {'path': rel, 'bytes': os.path.getsize(path), 'sha256': digest.hexdigest()}
+differences = [r['path'] for r in wanted['files'] if found.get(r['path']) != r]
+differences += sorted(set(found) - {r['path'] for r in wanted['files']})
+print(json.dumps({'files': len(wanted['files']), 'bytes': sum(r['bytes'] for r in wanted['files']),
+                  'differences': differences}))
+"""
+
+
 def destination(s):
+    """(Destination, problem). The Destination is None when the site has no [backup] section."""
     if not s.backup:
         return None, 'the site file has no [backup] section.'
-    path = s.backup['path']
-    return path, schedule.destination_problem(path)
+    target = Destination(s)
+    return target, target.problem()
 
 
-def free_bytes(path):
-    usage = shutil.disk_usage(path)
-    return usage.free
+def staging(s):
+    return s.operator_state() / 'backups' / 'staging'
+
+
+def free_bytes(target):
+    return target.free_bytes()
 
 
 def running(record):
@@ -213,8 +360,8 @@ def tick(now=None):
     s = site()
     now = now or int(time.time())
     data = load_state(s)
-    path, problem = destination(s)
-    if path is None:
+    target, problem = destination(s)
+    if target is None:
         return {'state': 'off', 'reason': problem}
     data['paused'] = problem
     if problem:
@@ -222,13 +369,23 @@ def tick(now=None):
         return {'state': 'paused', 'reason': problem}
     if any(running(r) for r in data['jobs'].values()):
         return {'state': 'running', 'job': next(k for k, r in data['jobs'].items() if running(r))}
+    # A job that ended without restoring its closed zone, for example after a kill, has its closure restored now.
+    for key, record in data['jobs'].items():
+        if record.get('closed') and not running(record):
+            reopen(record['closed'])
+            data = load_state(s)
+            data['jobs'][key].pop('closed', None)
+            save_state(s, data)
+    holder = oplock.SiteLock(s.operator_state()).busy()
+    if holder:
+        return {'state': 'waiting', 'reason': f'the site operation {holder.get("kind")} {holder.get("id")} runs'}
     selected = jobs(s, data)
     for job in selected:
         record = data['jobs'].setdefault(job.key, {'copies': []})
         if job.weekly and not record.get('slot'):
             last = schedule.last_copy(record)
             record['slot'] = schedule.slot_after(job.key, last['finished'] if last else now)
-    start, blocked, slots = schedule.plan(selected, data['jobs'], now, free_bytes(path))
+    start, blocked, slots = schedule.plan(selected, data['jobs'], now, free_bytes(target))
     data['blocked'] = blocked
     for key, slot in slots.items():
         data['jobs'][key]['slot'] = slot
@@ -339,23 +496,99 @@ def helper_pod(ns, claim, node):
     return name
 
 
-def run_opendesk(s, zone, partial):
+DATABASES = ('postgresql', 'mariadb')
+
+
+def tier_of(namespace, name):
+    sys.path.insert(0, str(K3S / 'driver'))
+    import deploy
+    return deploy.tier(namespace, name)
+
+
+def close_zone(s, zone):
+    """Close the intake and the writers of a zone and its Hoover installation. Return the record of the earlier values.
+
+    The applications, gates and workers scale to zero and the CronJobs are suspended. The stores keep running.
+    """
+    namespaces = [zone] + [h.namespace for h in s.hoovers.values() if h.zone == zone]
+    record = {'namespaces': namespaces, 'workloads': {}, 'cronjobs': {}}
+    for ns in namespaces:
+        items = json.loads(kubectl('-n', ns, 'get', 'deployments,statefulsets,cronjobs', '-o', 'json'))['items']
+        for item in items:
+            kind, name = item['kind'].lower(), item['metadata']['name']
+            if kind == 'cronjob':
+                record['cronjobs'][f'{ns}/{name}'] = bool(item['spec'].get('suspend', False))
+            elif tier_of(ns, name) in ('applications', 'ingress', 'temporal'):
+                record['workloads'][f'{ns}/{kind}/{name}'] = item['spec'].get('replicas', 1)
+    return record
+
+
+def apply_closure(record):
+    for key in record['cronjobs']:
+        ns, name = key.split('/')
+        kubectl('-n', ns, 'patch', 'cronjob', name, '--type', 'merge', '-p', '{"spec":{"suspend":true}}')
+    for key, replicas in record['workloads'].items():
+        ns, kind, name = key.split('/')
+        if replicas:
+            kubectl('-n', ns, 'scale', kind, name, '--replicas=0')
+    # A scale request is not a stopped pod. The copy starts when no pod of a closed workload runs.
+    deadline = time.monotonic() + 900
+    for key, replicas in record['workloads'].items():
+        ns, kind, name = key.split('/')
+        while replicas and time.monotonic() < deadline:
+            if kubectl('-n', ns, 'get', kind, name, '-o', 'jsonpath={.status.replicas}', check=False).strip() in ('', '0'):
+                break
+            time.sleep(3)
+        else:
+            if replicas:
+                raise SystemExit(f'{key} still has pods after 900 s. The zone stays closed. Reopen it with backups.py tick.')
+
+
+def reopen(record):
+    """Restore the recorded replicas and CronJob suspensions."""
+    for key, replicas in record['workloads'].items():
+        ns, kind, name = key.split('/')
+        kubectl('-n', ns, 'scale', kind, name, f'--replicas={replicas}', check=False)
+    for key, suspended in record['cronjobs'].items():
+        ns, name = key.split('/')
+        kubectl('-n', ns, 'patch', 'cronjob', name, '--type', 'merge',
+                '-p', json.dumps({'spec': {'suspend': suspended}}), check=False)
+
+
+def run_opendesk(s, zone, partial, key=None):
     partial.mkdir(parents=True, exist_ok=True)
+    closed = close_zone(s, zone)
+    if key:
+        data = load_state(s)
+        data['jobs'].setdefault(key, {'copies': []})['closed'] = closed
+        save_state(s, data)
+    apply_closure(closed)
+    copy_opendesk(s, zone, partial)
+    reopen(closed)
+    if key:
+        data = load_state(s)
+        data['jobs'][key].pop('closed', None)
+        save_state(s, data)
+    (partial / 'closure.json').write_text(json.dumps(closed, indent=1))
+
+
+def copy_opendesk(s, zone, partial):
     pods = json.loads(kubectl('-n', zone, 'get', 'pods', '-o', 'json'))['items']
     names = {p['metadata']['name'] for p in pods}
     if 'postgresql-0' in names:
+        # --clean lets restore-zone replace the databases of a zone that the installer created.
         with open(partial / 'postgresql.sql', 'wb') as out:
-            kubectl('-n', zone, 'exec', 'postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', stdout=out)
+            kubectl('-n', zone, 'exec', 'postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean',
+                    '--if-exists', stdout=out)
     if 'mariadb-0' in names:
         with open(partial / 'mariadb.sql', 'wb') as out:
             kubectl('-n', zone, 'exec', 'mariadb-0', '--', 'sh', '-c',
                     'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"', stdout=out)
     claims = json.loads(kubectl('-n', zone, 'get', 'pvc', '-o', 'json'))['items']
-    databases = ('postgresql', 'mariadb')
     rows = []
     for item in claims:
         claim = item['metadata']['name']
-        if any(d in claim for d in databases) or any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', [])):
+        if any(d in claim for d in DATABASES) or any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', [])):
             continue
         mode = item['spec'].get('volumeMode') or 'Filesystem'
         target = partial / 'claims' / f'{claim}.tar'
@@ -378,69 +611,192 @@ def run_opendesk(s, zone, partial):
     os.chmod(partial / 'objects.json', 0o600)
 
 
+RECOVERY_FORMAT = 'hoover4-platform-recovery'
+# The private folders that hold no recovery input: builds, downloads, tool binaries and the staged k3s files of each
+# architecture. staging/tokens holds the site tokens and is part of the copy.
+PRIVATE_EXCLUDED = ['build', 'bin', 'browser-venv', 'checks', 'downloads', 'operator/backups', 'operator/deploy/logs',
+                    'staging/amd64', 'staging/arm64', 'deploy/remote']
+
+
+def snapshot_root(s, folder):
+    """Run root-install-k3s.py --snapshot on the control plane into folder there, through its root route."""
+    node = s.nodes[s.control_plane]
+    shell = hostroute.Shell(node)
+    user = s.operator_user or os.environ.get('USER', '')
+    hosts = s.operator_state() / 'backups' / 'hosts.json'
+    hosts.parent.mkdir(parents=True, exist_ok=True)
+    hosts.write_text(json.dumps(site_config.legacy_hosts(s)))
+    script = K3S / 'hosts' / 'root-install-k3s.py'
+    command = ['--hosts', '{hosts}', '--node', node.name, '--snapshot', folder, '--owner', user]
+    code, out = shell.run('sudo -n true', timeout=30)
+    if code == 0 or shell.run(f'sudo -n -l {hostroute.LIBEXEC}/root-install-k3s.py', timeout=30)[0] == 0:
+        remote_hosts = f'{folder}.hosts.json'
+        shell.run(f'umask 077 && cat > {shlex.quote(remote_hosts)}', input=hosts.read_text())
+        argv = [f'{hostroute.LIBEXEC}/root-install-k3s.py'] + [remote_hosts if a == '{hosts}' else a for a in command]
+        code, out = shell.run('sudo -n ' + ' '.join(shlex.quote(a) for a in argv), timeout=3600)
+        shell.run(f'rm -f {shlex.quote(remote_hosts)}')
+        if code:
+            raise SystemExit(f'the etcd snapshot on {node.name} failed: {out[-300:]}')
+        return 'sudo'
+    # The cluster route installs the script of this tree and runs it as a unit of the host.
+    root = hostroute.ClusterRoot(k3s_settings.KUBECONFIG, shell)
+    remote_hosts = '/var/lib/hoover4/backup-hosts.json'
+    unit = f'hoover4-snapshot-{int(time.time())}'
+    files = [(f'{hostroute.LIBEXEC}/root-install-k3s.py', script.read_bytes())]
+    argv = [f'{hostroute.LIBEXEC}/root-install-k3s.py'] + [remote_hosts if a == '{hosts}' else a for a in command]
+    wrapped = (f'install -d -m 0700 /var/lib/hoover4 && printf %s {shlex.quote(hosts.read_text())} > {remote_hosts} && '
+               + ' '.join(shlex.quote(a) for a in argv))
+    root.start(unit, files, ['/bin/sh', '-c', wrapped])
+    try:
+        root.wait(unit, timeout=3600)
+    except hostroute.RouteError as error:
+        raise SystemExit(f'the etcd snapshot on {node.name} failed: {error}')
+    return 'cluster'
+
+
+def application_copies(data):
+    """The newest verified copy of each application job, which a complete recovery restores after the cluster."""
+    out = {}
+    for key, record in data['jobs'].items():
+        if key == 'platform':
+            continue
+        last = schedule.last_copy(record)
+        if last:
+            out[key] = {'generation': last['generation'], 'path': last['path'], 'host': last.get('host', '')}
+    return out
+
+
 def run_platform(s, partial):
+    """An etcd snapshot of the control plane with its token, the private files and recovery.json."""
     partial.mkdir(parents=True, exist_ok=True)
-    # The SQLite backup API gives a consistent copy of the datastore while k3s runs.
-    script = ('import sqlite3,sys;src=sqlite3.connect("file:/var/lib/rancher/k3s/server/db/state.db?mode=ro",uri=True);'
-              'dst=sqlite3.connect(sys.argv[1]);src.backup(dst);dst.close()')
-    target = partial / 'k3s-state.db'
-    subprocess.run(['sudo', '-n', sys.executable, '-c', script, str(target)], check=True)
-    subprocess.run(['sudo', '-n', 'chown', f'{os.getuid()}:{os.getgid()}', str(target)], check=True)
+    node = s.nodes[s.control_plane]
+    shell = hostroute.Shell(node)
+    remote = f'/tmp/hoover4-platform-{int(time.time())}'
+    route = snapshot_root(s, remote)
+    try:
+        etcd = partial / 'etcd'
+        etcd.mkdir()
+        reader = subprocess.Popen(shell.command(f'tar -C {shlex.quote(remote)} -cf - .'), stdout=subprocess.PIPE)
+        subprocess.run(['tar', '-C', str(etcd), '-xf', '-'], stdin=reader.stdout, check=True)
+        reader.stdout.close()
+        if reader.wait():
+            raise SystemExit(f'the snapshot folder {remote} on {node.name} cannot be read.')
+    finally:
+        shell.run(f'rm -rf {shlex.quote(remote)}')
+    os.chmod(etcd, 0o700)
+    host = json.loads((etcd / 'host.json').read_text())
+    for name, digest in host['sha256'].items():
+        actual = hashlib.sha256((etcd / name).read_bytes()).hexdigest()
+        if actual != digest:
+            raise SystemExit(f'the snapshot file {name} changed in the transfer.')
     private = k3s_settings.PRIVATE
-    excluded = ['build', 'bin', 'browser-venv', 'checks', 'staging', 'operator/backups']
-    subprocess.run(['tar', '-C', str(private), '-cf', str(partial / 'private.tar'), *[f'--exclude=./{e}' for e in excluded], '.'], check=True)
+    subprocess.run(['tar', '-C', str(private), '-cf', str(partial / 'private.tar'),
+                    *[f'--exclude=./{e}' for e in PRIVATE_EXCLUDED], '.'], check=True)
     os.chmod(partial / 'private.tar', 0o600)
+    state = s.operator_state()
+    applied = json.loads((state / 'deploy' / 'applied.json').read_text()) if (state / 'deploy' / 'applied.json').exists() else {}
+    settings_applied = json.loads((state / 'applied.json').read_text()) if (state / 'applied.json').exists() else {}
+    recovery = {
+        'format': RECOVERY_FORMAT, 'format_version': 2, 'datastore': 'etcd', 'route': route,
+        'execution_host': socket.gethostname(), 'control_plane': node.name, 'destination_node': s.backup.get('node'),
+        'k3s_version': host['k3s_version'], 'snapshot': f'etcd/{host["snapshot"]}', 'token': 'etcd/token',
+        'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.name,
+        'source_revision': applied.get('revision', ''), 'settings_revision': settings_applied.get('revision', 0),
+        'settings_scopes': settings_applied.get('scopes', {}),
+        'artifacts': json.loads((K3S / 'driver' / 'artifacts.json').read_text()),
+        'application_copies': application_copies(load_state(s)),
+    }
+    (partial / 'recovery.json').write_text(json.dumps(recovery, indent=1, sort_keys=True))
+
+
+def read_recovery(folder):
+    """The recovery set of a platform copy. A copy of the earlier format holds the SQLite file k3s-state.db."""
+    folder = Path(folder)
+    path = folder / 'recovery.json'
+    if path.exists():
+        data = json.loads(path.read_text())
+        if data.get('format') != RECOVERY_FORMAT or data.get('format_version') != 2:
+            raise SystemExit(f'{path} has the format {data.get("format")} {data.get("format_version")}, which this '
+                             'version does not read.')
+        return data
+    if (folder / 'k3s-state.db').exists():
+        return {'format': RECOVERY_FORMAT, 'format_version': 1, 'datastore': 'sqlite', 'snapshot': 'k3s-state.db',
+                'token': None, 'private': 'private.tar', 'application_copies': {},
+                'note': 'A copy of the earlier format. It restores an earlier SQLite server, whose token is in '
+                        'private.tar only when the operator kept it there. Convert the restored server to etcd.'}
+    raise SystemExit(f'{folder} holds no platform recovery set.')
+
+
+def restore_platform_steps(folder):
+    """The root steps that restore a platform copy on the stopped server of an isolated cluster."""
+    data = read_recovery(folder)
+    if data['datastore'] != 'etcd':
+        return [f'This copy holds the SQLite datastore {data["snapshot"]}. Stop k3s on the server, copy it to '
+                '/var/lib/rancher/k3s/server/db/state.db with the token of the earlier server, start k3s, then run '
+                'root-install-k3s.py with --sqlite-copy to convert it to etcd.']
+    folder = Path(folder).resolve()
+    return [f'sudo /usr/local/libexec/hoover4/root-install-k3s.py --hosts <hosts.json> --node <server> '
+            f'--restore-snapshot {folder / data["snapshot"]} --token-file {folder / data["token"]}',
+            f'tar -C <checkout>/k3s/private -xf {folder / data["private"]}',
+            'Restore the application copies that recovery.json names: backups.py restore-zone for each openDesk copy '
+            'and backups.py restore-hoover for each collection copy, then sign in to each zone.']
 
 
 def run_job(key, generation):
     s = site()
-    path, problem = destination(s)
+    target, problem = destination(s)
     if problem:
         raise SystemExit(problem)
     data = load_state(s)
-    record = data['jobs'].setdefault(key, {'copies': []})
-    folder = Path(path) / key.replace(':', '/')
-    partial = folder / f'{generation}.partial'
+    data['jobs'].setdefault(key, {'copies': []})
+    partial = staging(s) / key.replace(':', '_') / f'{generation}.partial'
     shutil.rmtree(partial, ignore_errors=True)
+    partial.parent.mkdir(parents=True, exist_ok=True)
     started = time.time()
+    kind, _, rest = key.partition(':')
+    lock = oplock.SiteLock(s.operator_state())
     try:
-        kind, _, rest = key.partition(':')
+        if kind in ('opendesk', 'platform'):
+            # The copy is the consistency boundary of the zone or the cluster, so no other operation changes the site.
+            lock.acquire('backup', f'backup-{key}-{generation}')
         if kind == 'hoover':
             zone, collection = rest.split(':')
             run_hoover(s, zone, collection, generation, partial)
         elif kind == 'opendesk':
-            run_opendesk(s, rest, partial)
+            run_opendesk(s, rest, partial, key)
         else:
             run_platform(s, partial)
+        lock.release()
         rows = manifest(partial)
         (partial / MANIFEST).write_text(json.dumps({'job': key, 'generation': generation, 'files': rows}, indent=1))
         checked = verify(partial)
         if checked['differences']:
             raise SystemExit(f'the copy {partial} differs from its manifest: {checked["differences"][:5]}')
-        final = folder / generation
-        shutil.rmtree(final, ignore_errors=True)
-        os.replace(partial, final)
-        copy = {'generation': generation, 'path': str(final), 'finished': int(time.time()), 'bytes': checked['bytes'],
+        final, remote_check = target.publish(partial, key, generation)
+        copy = {'generation': generation, 'path': final, 'host': target.node.name,
+                'execution_host': socket.gethostname(), 'finished': int(time.time()), 'bytes': remote_check['bytes'],
                 'seconds': round(time.time() - started), 'verified': True}
     except BaseException as error:
+        lock.release()
         data = load_state(s)
         data['jobs'].setdefault(key, {'copies': []})['last_error'] = str(error)[:500]
         data['jobs'][key].pop('running', None)
         save_state(s, data)
         shutil.rmtree(partial, ignore_errors=True)
         raise
+    shutil.rmtree(partial, ignore_errors=True)
     data = load_state(s)
     record = data['jobs'].setdefault(key, {'copies': []})
     record['copies'].append(copy)
     record.pop('running', None)
     record.pop('slot', None)
     record.pop('last_error', None)
-    copies = {'hoover': 'backup.hoover.copies', 'opendesk': 'backup.opendesk.copies', 'platform': 'backup.platform.copies'}[key.split(':')[0]]
+    copies = {'hoover': 'backup.hoover.copies', 'opendesk': 'backup.opendesk.copies', 'platform': 'backup.platform.copies'}[kind]
     scope = 'cluster' if key == 'platform' else f'zone:{key.split(":")[1]}'
+    # Retention runs on the destination node, and only after the new copy was verified there.
     for old in schedule.retention(record, int(applied_values(s, scope)[copies])):
-        shutil.rmtree(old['path'], ignore_errors=True)
+        target.remove(old['path'])
         record['copies'].remove(old)
-        # A platform recovery set names the collection copies that it needs. A removed copy makes those sets obsolete.
     save_state(s, data)
     print(json.dumps({'job': key, **copy}))
 
@@ -509,27 +865,157 @@ def restore_volumes(folder, namespace):
     print(json.dumps({'namespace': namespace, 'claims': len(claims)}))
 
 
+def restore_zone(folder, zone):
+    """Restore a complete openDesk copy into a zone of an isolated cluster.
+
+    The zone must exist, for example after zone.py apply on the fixture cluster. The steps: verify the copy, close the
+    zone and stop its stores except the databases, apply the Secrets of the copy, replace the content of each claim,
+    import the database dumps, restart the databases, and open the zone with the replicas of the copy. Each step is
+    recorded in <operator state>/backups/restore-<zone>.json. A failure leaves the zone closed.
+    """
+    s = site()
+    folder = Path(folder)
+    if verify(folder)['differences']:
+        raise SystemExit(f'the copy {folder} differs from its manifest.')
+    if kubectl('get', 'namespace', zone, '--ignore-not-found', '-o', 'name').strip() == '':
+        raise SystemExit(f'the zone namespace {zone} does not exist. Install the zone first.')
+    if (folder / 'postgresql.sql').exists() and b'DROP DATABASE' not in (folder / 'postgresql.sql').read_bytes()[:1 << 20]:
+        raise SystemExit('the PostgreSQL dump of this copy has no DROP statements, because an earlier version made it. '
+                         'Restore it into a new database server by hand.')
+    record_path = s.operator_state() / 'backups' / f'restore-{zone}.json'
+    progress = json.loads(record_path.read_text()) if record_path.exists() else {'copy': str(folder), 'steps': []}
+    if progress['copy'] != str(folder):
+        raise SystemExit(f'{record_path} belongs to the restore of {progress["copy"]}. Remove it after its check.')
+
+    def step(name, function):
+        if name in progress['steps']:
+            return
+        function()
+        progress['steps'].append(name)
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(json.dumps(progress, indent=1))
+
+    lock = oplock.SiteLock(s.operator_state())
+    lock.acquire('restore', f'restore-{zone}')
+    try:
+        source = json.loads((folder / 'closure.json').read_text()) if (folder / 'closure.json').exists() else None
+        if 'closed' not in progress:
+            closed = close_zone(s, zone)
+            # The stores of the zone stop too, except the databases, which import the dumps.
+            for item in json.loads(kubectl('-n', zone, 'get', 'statefulsets', '-o', 'json'))['items']:
+                name = item['metadata']['name']
+                if tier_of(zone, name) == 'stores' and not any(d in name for d in DATABASES):
+                    closed['workloads'][f'{zone}/statefulset/{name}'] = item['spec'].get('replicas', 1)
+            progress['closed'] = closed
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_path.write_text(json.dumps(progress, indent=1))
+        step('close', lambda: apply_closure(progress['closed']))
+        step('secrets', lambda: restore_secrets(folder, zone))
+        step('claims', lambda: restore_claims(folder, zone))
+        step('databases', lambda: restore_databases(folder, zone))
+        # The replicas of the source zone apply when the copy names them. Otherwise the zone keeps its own.
+        opened = dict(progress['closed'])
+        if source:
+            opened['workloads'] = {k.replace(f'{source["namespaces"][0]}/', f'{zone}/', 1): v
+                                   for k, v in source['workloads'].items() if k.startswith(f'{source["namespaces"][0]}/')}
+            opened['workloads'].update({k: v for k, v in progress['closed']['workloads'].items() if k not in opened['workloads']})
+        step('open', lambda: reopen(opened))
+    finally:
+        lock.release()
+    print(json.dumps({'zone': zone, 'restored': str(folder), 'steps': progress['steps']}))
+
+
+def restore_secrets(folder, zone):
+    """Apply the Secrets of the copy. Service account tokens and Helm release records belong to the target."""
+    objects = json.loads((folder / 'objects.json').read_text())['items']
+    skipped = ('kubernetes.io/service-account-token', 'helm.sh/release.v1')
+    for item in objects:
+        if item['kind'] != 'Secret' or item.get('type') in skipped:
+            continue
+        metadata = {k: v for k, v in item['metadata'].items() if k in ('name', 'labels', 'annotations')}
+        metadata['namespace'] = zone
+        metadata.get('annotations', {}).pop('kubectl.kubernetes.io/last-applied-configuration', None)
+        kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover-restore', '-f', '-',
+                input=json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': metadata,
+                                  'type': item.get('type', 'Opaque'), 'data': item.get('data', {})}))
+
+
+def restore_claims(folder, zone):
+    """Replace the content of each claim of the copy. The workloads that mount the claims are stopped."""
+    claims = json.loads((folder / 'claims.json').read_text())
+    for row in claims:
+        claim = {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': row['claim'], 'namespace': zone},
+                 'spec': {'accessModes': ['ReadWriteOnce'], 'storageClassName': row['storage_class'],
+                          'volumeMode': row.get('volume_mode') or 'Filesystem',
+                          'resources': {'requests': {'storage': row['size']}}}}
+        if kubectl('-n', zone, 'get', 'pvc', row['claim'], '--ignore-not-found', '-o', 'name').strip() == '':
+            kubectl('apply', '-f', '-', input=json.dumps(claim))
+        kubectl('-n', zone, 'delete', 'pod', 'restore-write', '--ignore-not-found', '--wait=true')
+        kubectl('apply', '-f', '-', input=json.dumps(restore_pod(zone, row)))
+        kubectl('-n', zone, 'wait', '--for=condition=Ready', 'pod/restore-write', '--timeout=300s')
+        with open(folder / 'claims' / f'{row["claim"]}.tar', 'rb') as source:
+            subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', 'restore-write', '--',
+                            'sh', '-c', 'until grep -q " /data " /proc/mounts; do sleep 1; done; '
+                            'find /data -mindepth 1 -maxdepth 1 ! -name lost+found -exec rm -rf {} + && tar -C /data -xpf -'],
+                           stdin=source, check=True)
+        kubectl('-n', zone, 'delete', 'pod', 'restore-write', '--wait=true')
+
+
+def restore_databases(folder, zone):
+    """Import the dumps into the running database servers of the zone, then restart them with the restored Secrets."""
+    if (folder / 'postgresql.sql').exists():
+        with open(folder / 'postgresql.sql', 'rb') as dump:
+            subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', 'postgresql-0', '-c',
+                            'postgresql', '--', 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=0', '-q', '-d', 'postgres'],
+                           stdin=dump, check=True, stdout=subprocess.DEVNULL)
+    if (folder / 'mariadb.sql').exists():
+        with open(folder / 'mariadb.sql', 'rb') as dump:
+            subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', 'mariadb-0', '--',
+                            'sh', '-c', 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'], stdin=dump, check=True)
+    for name in ('postgresql-0', 'mariadb-0'):
+        kubectl('-n', zone, 'delete', 'pod', name, '--ignore-not-found', '--wait=true')
+    for name in ('postgresql', 'mariadb'):
+        if kubectl('-n', zone, 'get', 'statefulset', name, '--ignore-not-found', '-o', 'name').strip():
+            kubectl('-n', zone, 'rollout', 'status', f'statefulset/{name}', '--timeout=600s')
+
+
 def main(argv):
     if argv == ['tick']:
         print(json.dumps(tick()))
     elif argv == ['status']:
         s = site()
-        print(json.dumps({'destination': destination(s), **load_state(s)}, indent=1))
+        target, problem = destination(s)
+        print(json.dumps({'destination': {'node': target.node.name, 'path': target.path, 'problem': problem}
+                          if target else problem, **load_state(s)}, indent=1))
     elif len(argv) == 3 and argv[0] == 'run':
         run_job(argv[1], argv[2])
     elif argv == ['enable']:
-        path, _ = destination(site())
-        if path is None:
+        target, _ = destination(site())
+        if target is None:
             raise SystemExit('the site file has no [backup] section.')
-        Path(path).mkdir(parents=True, exist_ok=True)
-        (Path(path) / schedule.MARKER).write_text('This folder receives the backups of the hoover4 site.\n')
-        print(json.dumps({'destination': path, 'marker': schedule.MARKER}))
+        q = shlex.quote(target.path)
+        code, out = target.run(f'mkdir -p {q} && echo "This folder receives the backups of the hoover4 site." > '
+                               f'{q}/{schedule.MARKER}')
+        if code:
+            raise SystemExit(f'the destination {target.path} on {target.node.name} cannot be written: {out[-200:]}')
+        print(json.dumps({'destination': target.path, 'node': target.node.name, 'marker': schedule.MARKER}))
     elif len(argv) == 2 and argv[0] == 'verify':
         print(json.dumps(verify(argv[1])))
     elif len(argv) == 3 and argv[0] == 'restore-hoover':
         restore_hoover(argv[1], argv[2])
     elif len(argv) == 3 and argv[0] == 'restore-volumes':
         restore_volumes(argv[1], argv[2])
+    elif len(argv) == 3 and argv[0] == 'fetch':
+        target, problem = destination(site())
+        if problem:
+            raise SystemExit(problem)
+        print(json.dumps({'copy': str(target.fetch(argv[1], argv[2])), 'check': verify(argv[2])}))
+    elif len(argv) == 3 and argv[0] == 'restore-zone':
+        restore_zone(argv[1], argv[2])
+    elif len(argv) == 2 and argv[0] == 'recovery':
+        print(json.dumps(read_recovery(argv[1]), indent=1))
+    elif len(argv) == 2 and argv[0] == 'restore-platform':
+        print('\n'.join(restore_platform_steps(argv[1])))
     else:
         raise SystemExit(__doc__)
 

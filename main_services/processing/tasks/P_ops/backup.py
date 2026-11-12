@@ -441,6 +441,54 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
     ))
 
 
+#: A frozen table file up to this size is read whole before it enters the archive.
+SMALL_FILE_BYTES = 4 * 1024 * 1024
+
+
+def stable_read(path: str, attempts: int = 20, pause: float = 0.25) -> bytes:
+    """Read a small file until two reads in a row are equal, and a `.meta` file is valid JSON.
+
+    `tarfile.add` takes the size from `stat` and then copies that many bytes. A file that the
+    daemon rewrites between the two calls enters the archive cut to its earlier size, which is
+    how an export held a truncated `.meta`. The whole file is read here, and the archive entry
+    gets the size of the bytes that were read.
+    """
+    previous = None
+    for _ in range(attempts):
+        with open(path, "rb") as handle:
+            data = handle.read()
+        valid = True
+        if path.endswith(".meta"):
+            try:
+                json.loads(data)
+            except ValueError:
+                valid = False
+        if valid and data == previous:
+            return data
+        previous = data if valid else None
+        time.sleep(pause)
+    raise RuntimeError(
+        f"{path} kept changing during the freeze, so the export cannot hold a consistent "
+        f"copy of it. Stop the writers of the collection and export again."
+    )
+
+
+def _add_frozen_file(tar, local: str) -> int:
+    """Add one frozen table file to the archive and return its size."""
+    import io
+
+    if os.path.getsize(local) > SMALL_FILE_BYTES:
+        info = tar.gettarinfo(local, arcname=os.path.basename(local))
+        with open(local, "rb") as handle:
+            tar.addfile(info, handle)
+        return info.size
+    data = stable_read(local)
+    info = tar.gettarinfo(local, arcname=os.path.basename(local))
+    info.size = len(data)
+    tar.addfile(info, io.BytesIO(data))
+    return len(data)
+
+
 @activity.defn
 @with_heartbeat
 def export_manticore(params: ExportParams) -> ExportStoreResult:
@@ -502,8 +550,7 @@ def export_manticore(params: ExportParams) -> ExportStoreResult:
                             for source in files:
                                 local = source.replace(MANTICORE_DAEMON_DATA_ROOT,
                                                        MANTICORE_DATA_ROOT, 1)
-                                size = os.path.getsize(local)
-                                tar.add(local, arcname=os.path.basename(local))
+                                size = _add_frozen_file(tar, local)
                                 raw += size
                                 done += size
                                 phase.report(done, total)

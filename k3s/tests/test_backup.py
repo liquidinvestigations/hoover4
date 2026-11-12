@@ -199,3 +199,121 @@ def test_the_export_check_finds_a_truncated_manticore_meta_file(tmp_path):
         (tmp_path / 'manticore' / f'{name}.tar.zst').write_bytes(zstandard.ZstdCompressor().compress(raw.getvalue()))
     out = subprocess.run([sys.executable, '-c', backups.META_CHECK, str(tmp_path)], capture_output=True, text=True, check=True)
     assert json.loads(out.stdout) == ['cut.tar.zst:cut.meta']
+
+
+# The store client, the destination node, the recovery set and the zone closure ---------------------------------------
+
+import config  # noqa: E402
+from conftest import site_text  # noqa: E402
+
+
+def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password():
+    backups = backups_module()
+    remote = config.parse(site_text('remote.ini'))
+    ns, pod, container, command = backups.clickhouse_command(remote.hoovers['zone-a'])
+    assert (ns, pod, container) == ('zone-a', 'clickhouse-0', 'clickhouse')
+    assert '--user zone_a --password "$CH_ZONE_PASSWORD"' in command
+    ns, pod, container, command = backups.clickhouse_command(remote.hoovers['research'])
+    assert (ns, pod, container) == ('hoover-zone-c', 'clickhouse-0', None) and '${CLICKHOUSE_PASSWORD:-hoover4}' in command
+    calls = []
+    backups.kubectl = lambda *args, **kw: calls.append(args) or ''
+    backups.clickhouse(remote.hoovers['zone-a'], 'SELECT 1')
+    assert calls[0][:8] == ('-n', 'zone-a', 'exec', '-i', 'clickhouse-0', '-c', 'clickhouse', '--')
+    assert not any('hoover4' == a for a in calls[0])
+
+
+@pytest.fixture
+def local_destination(tmp_path):
+    backups = backups_module()
+    dest = tmp_path / 'dest'
+    text = site_text('single-node.ini').replace('path = /srv/hoover4-backups', f'path = {dest}')
+    s = config.parse(text)
+    return backups, s, dest
+
+
+def copy_folder(backups, folder, files):
+    folder.mkdir(parents=True)
+    for name, data in files.items():
+        (folder / name).write_bytes(data)
+    (folder / backups.MANIFEST).write_text(json.dumps({'files': backups.manifest(folder)}))
+    return folder
+
+
+def test_the_destination_node_checks_writes_verifies_and_keeps_older_copies(local_destination, tmp_path):
+    backups, s, dest = local_destination
+    target = backups.Destination(s)
+    assert 'does not exist' in target.problem()
+    dest.mkdir()
+    assert 'has no .hoover4-backup-destination' in target.problem()
+    (dest / schedule.MARKER).write_text('x')
+    assert target.problem() == '' and target.free_bytes() > 0
+    first = copy_folder(backups, tmp_path / 'one', {'a.sql': b'one'})
+    final, checked = target.publish(first, 'opendesk:zone-a', 'week-1')
+    assert final == f'{dest}/opendesk/zone-a/week-1' and checked['differences'] == []
+    assert (dest / 'opendesk/zone-a/week-1/a.sql').read_bytes() == b'one'
+    # A copy that changes in the transfer is refused on the node, and the older copy stays.
+    second = copy_folder(backups, tmp_path / 'two', {'a.sql': b'two'})
+    (second / 'a.sql').write_bytes(b'changed after the manifest')
+    with pytest.raises(SystemExit, match='differs from its manifest'):
+        target.publish(second, 'opendesk:zone-a', 'week-2')
+    assert not (dest / 'opendesk/zone-a/week-2.partial').exists()
+    assert (dest / 'opendesk/zone-a/week-1/a.sql').read_bytes() == b'one'
+    with pytest.raises(SystemExit, match='outside the backup destination'):
+        target.remove('/etc')
+    target.remove(final)
+    assert not (dest / 'opendesk/zone-a/week-1').exists()
+
+
+def test_the_recovery_set_names_etcd_and_reads_the_earlier_format(tmp_path):
+    backups = backups_module()
+    current = tmp_path / 'current'
+    current.mkdir()
+    (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 2,
+                                                        'datastore': 'etcd', 'snapshot': 'etcd/hoover4-platform-x',
+                                                        'token': 'etcd/token', 'private': 'private.tar'}))
+    assert backups.read_recovery(current)['datastore'] == 'etcd'
+    steps = backups.restore_platform_steps(current)
+    assert '--restore-snapshot' in steps[0] and '--token-file' in steps[0] and str(current / 'etcd/token') in steps[0]
+    earlier = tmp_path / 'earlier'
+    earlier.mkdir()
+    (earlier / 'k3s-state.db').write_bytes(b'sqlite')
+    assert backups.read_recovery(earlier)['datastore'] == 'sqlite'
+    assert 'convert it to etcd' in backups.restore_platform_steps(earlier)[0]
+    (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 3}))
+    with pytest.raises(SystemExit, match='does not read'):
+        backups.read_recovery(current)
+    assert 'staging/tokens' not in backups.PRIVATE_EXCLUDED and 'build' in backups.PRIVATE_EXCLUDED
+
+
+def test_the_zone_closure_records_and_restores_replicas_and_cronjobs(local_destination, monkeypatch):
+    backups, s, _ = local_destination
+    objects = {
+        'zone-a': [{'kind': 'Deployment', 'metadata': {'name': 'nextcloud'}, 'spec': {'replicas': 2}},
+                   {'kind': 'StatefulSet', 'metadata': {'name': 'postgresql'}, 'spec': {'replicas': 1}},
+                   {'kind': 'Deployment', 'metadata': {'name': 'zone-a-gate'}, 'spec': {'replicas': 1}},
+                   {'kind': 'CronJob', 'metadata': {'name': 'cleanup'}, 'spec': {'suspend': False}},
+                   {'kind': 'CronJob', 'metadata': {'name': 'paused'}, 'spec': {'suspend': True}}],
+        'hoover-zone-a': [{'kind': 'StatefulSet', 'metadata': {'name': 'hoover-workers'}, 'spec': {'replicas': 3}},
+                          {'kind': 'StatefulSet', 'metadata': {'name': 'clickhouse'}, 'spec': {'replicas': 1}}]}
+    calls = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        calls.append(args)
+        if 'deployments,statefulsets,cronjobs' in args:
+            return json.dumps({'items': objects[args[1]]})
+        return '0' if 'jsonpath={.status.replicas}' in args else ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    closed = backups.close_zone(s, 'zone-a')
+    assert closed['workloads'] == {'zone-a/deployment/nextcloud': 2, 'zone-a/deployment/zone-a-gate': 1,
+                                   'hoover-zone-a/statefulset/hoover-workers': 3}
+    assert closed['cronjobs'] == {'zone-a/cleanup': False, 'zone-a/paused': True}
+    backups.apply_closure(closed)
+    scaled = [a for a in calls if 'scale' in a]
+    assert ('-n', 'zone-a', 'scale', 'deployment', 'nextcloud', '--replicas=0') in scaled
+    assert not [a for a in scaled if 'postgresql' in a or 'clickhouse' in a]
+    calls.clear()
+    backups.reopen(closed)
+    assert ('-n', 'hoover-zone-a', 'scale', 'statefulset', 'hoover-workers', '--replicas=3') in calls
+    patches = {a[4]: a[-1] for a in calls if 'patch' in a}
+    assert json.loads(patches['paused']) == {'spec': {'suspend': True}}
+    assert json.loads(patches['cleanup']) == {'spec': {'suspend': False}}

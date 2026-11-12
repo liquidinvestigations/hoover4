@@ -99,14 +99,31 @@ class Operation:
  def step_calls(self):self.run(sys.executable,'platform/calls/install-calls.py')
  def step_delete(self):
   if self.zone in zones.zone_names():self.run(sys.executable,'zones/zone.py','delete',self.zone)
+WAITING={}
+def site_lock(kind,operation_id):
+ """Hold the site operation lock (../../oplock.py) for one operation, or return None while another operation holds it."""
+ import oplock
+ lock=oplock.SiteLock(settings.SITE.operator_state())
+ try:lock.acquire(kind,operation_id)
+ except oplock.Busy as error:
+  # The runner prints a wait once for each holder, not every 3 s.
+  if WAITING.get(operation_id)!=str(error):print(json.dumps({'waiting':operation_id,'reason':str(error)[:300]}),flush=True)
+  WAITING[operation_id]=str(error)
+  return None
+ return lock
 def settings_apply():
- """Run the active settings Apply of the operator state (apply.py). A failed Apply waits for a retry in the portal."""
+ """Run the active settings Apply of the operator state (apply.py). A failed Apply waits for a retry in the portal.
+ The Apply waits while another site operation, for example deploy-k3s, holds the site lock."""
  sys.path.insert(0,str(source/'platform/operator'));import apply
  site=apply.site();state=apply.operator_settings.State(site.operator_state())
  op=state.active()
  if op is None or op.status not in ('running','queued'):return False
- log=site.operator_state()/'logs'/f'{op.id}.log';log.parent.mkdir(parents=True,exist_ok=True)
- done=state.run(apply.executors(site,log))
+ lock=site_lock('apply',op.id)
+ if lock is None:return False
+ try:
+  log=site.operator_state()/'logs'/f'{op.id}.log';log.parent.mkdir(parents=True,exist_ok=True)
+  done=state.run(apply.executors(site,log))
+ finally:lock.release()
  print(json.dumps({'apply':done.id,'status':done.status,'error':done.error[:300]}),flush=True)
  return True
 def backup_tick():
@@ -129,7 +146,13 @@ def main():
    items=operations()
    # A running operation is one that the runner was doing when it stopped, so it continues first.
    pending=[i for i in items if i['data'].get('state')=='running']+[i for i in items if i['data'].get('state')=='queued']
-   if pending:Operation(pending[0]).execute();continue
+   if pending:
+    lock=site_lock('zone-operation',pending[0]['metadata']['name']) if settings.SITE is not None else None
+    if settings.SITE is None or lock is not None:
+     try:Operation(pending[0]).execute()
+     finally:
+      if lock is not None:lock.release()
+     continue
   except subprocess.CalledProcessError as error:print(json.dumps({'error':str(error)[:300]}),flush=True)
   if once:return
   time.sleep(3)

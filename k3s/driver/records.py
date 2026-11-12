@@ -2,27 +2,32 @@
 
 The folder is <operator state>/deploy (config.Site.operator_state()):
   records/<id>.json   one record for each up or down: the command, the targets, the revision that the driver resolved
-                      once, the steps with their state, the image references and the last error
+                      once, the pinned inputs (deploy.pinned_inputs()), the steps with their state, the image
+                      references with their digests and architectures, and the last error
   applied.json        a copy of the newest record of an up that finished
   previous.json       the copy that applied.json held before, so a failed update can return to it
   stopped.json        the replica counts that down recorded, which `up --start` restores
-  lock                the lock of the one driver that runs
+The driver holds the site operation lock of ../oplock.py while it runs, so no Apply, zone operation, migration step
+or backup consistency step changes the site at the same time.
 Each write goes to a temporary file, is synced and renamed, so a stopped driver leaves complete files.
 A step has the state pending, running, done, failed or waiting. A waiting step needs an operator action on a host,
-for example a remote installation script. A record with a step that is not done is not a finished deployment.
+for example a remote installation script. A pending step with blocked_by waits for that step.
+A record with a step that is not done is not a finished deployment.
 """
-import fcntl
 import json
 import os
 import time
+import sys
 import uuid
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import oplock  # noqa: E402
 
 STATES = ('pending', 'running', 'done', 'failed', 'waiting')
 
 
-class Busy(RuntimeError):
-    """Another driver holds the lock."""
+Busy = oplock.Busy
 
 
 def write_json(path, value):
@@ -51,19 +56,15 @@ class Records:
         self.folder = Path(folder)
         self._lock = None
 
-    def lock(self):
-        self.folder.mkdir(parents=True, exist_ok=True)
-        handle = open(self.folder / 'lock', 'a+')
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            handle.close()
-            raise Busy(f'another deploy-k3s holds {self.folder / "lock"}. Wait for it to end.')
-        self._lock = handle
+    def lock(self, kind='deploy', operation_id=None):
+        """Hold the site operation lock. Raise Busy while another operation holds it."""
+        lock = oplock.SiteLock(self.folder.parent)
+        lock.acquire(kind, operation_id or f'{kind}-{uuid.uuid4().hex[:8]}')
+        self._lock = lock
 
     def unlock(self):
         if self._lock:
-            self._lock.close()
+            self._lock.release()
             self._lock = None
 
     def path(self, record_id):

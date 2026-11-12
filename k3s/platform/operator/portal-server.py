@@ -7,8 +7,13 @@ The settings page (settings.html) reads and saves the operator settings and star
 portal_settings.py. runner.py runs the Apply operations on the control-plane host.
 The gateway sets X-Forwarded-User after the operator login, and network policy lets only the gateway pods connect.
 A process of the host can reach the pod address without the network policy, so the portal accepts X-Forwarded-User only
-together with X-Operator-Proxy-Secret, which only the gateway sets. The secret is the key proxy-secret of the Secret
-operator-login (start-web-tools.sh).
+together with X-Operator-Proxy-Secret. The secret is the key proxy-secret of the Secret operator-login
+(start-web-tools.sh). Only the portal hop of the gateway pod sets it (operator-login.yaml): it listens on the loopback
+address of that pod, removes a copy that a client sent and adds the secret, so Grafana, Prometheus and Headlamp never
+receive it.
+Every dynamic route needs the operator: status.json, events.json, zones.json, settings.json and every POST. The route
+is the path without its query. /healthz answers {"ok": true} without the operator and gives no other data. The static
+pages hold no data.
 A POST needs the operator origin, so another site cannot send one with the operator session cookie.
 """
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
@@ -113,6 +118,9 @@ def nodes():
 def portal_settings():
  import portal_settings as module
  return module
+def route(path):
+    """The path of a request without its query and fragment."""
+    return urllib.parse.urlsplit(path).path
 class Handler(SimpleHTTPRequestHandler):
  def reply(self,code,data):
   raw=json.dumps(data).encode();self.send_response(code)
@@ -122,7 +130,7 @@ class Handler(SimpleHTTPRequestHandler):
   if self.headers.get('Origin')!=ORIGIN or not actor:return self.reply(403,{'error':'The request must come from the operator website.'})
   try:body=json.loads(self.rfile.read(min(int(self.headers.get('Content-Length') or 0),262144)) or b'{}')
   except ValueError:return self.reply(400,{'error':'The request body is not JSON.'})
-  parts=self.path.strip('/').split('/')
+  parts=route(self.path).strip('/').split('/')
   if len(parts)==2 and parts[0]=='settings':
    module=portal_settings()
    if parts[1] not in module.ACTIONS:return self.reply(404,{'error':'Unknown request.'})
@@ -142,13 +150,20 @@ class Handler(SimpleHTTPRequestHandler):
   print(json.dumps({'time':time.time(),'actor':actor,'request':self.path,'result':'accepted'}),flush=True)
   self.reply(200,result)
  def do_GET(self):
-  routes={'/status.json':(status,'Cluster resource measurements are unavailable.'),'/events.json':(events,'The cluster event feed is unavailable.'),
-   '/zones.json':(zones,'The zone list is unavailable.'),
-   '/settings.json':(lambda:portal_settings().overview(nodes()),'The operator settings are unavailable.')}
-  if self.path not in routes:return super().do_GET()
-  if self.path in ('/zones.json','/settings.json') and not operator(self.headers):return self.reply(403,{'error':'The request must come through the operator login.'})
-  produce,failure=routes[self.path]
+  path=route(self.path)
+  if path=='/healthz':return self.reply(200,{'ok':True})
+  routes=ROUTES
+  if path not in routes:
+   if path.endswith('.json'):return self.reply(404,{'error':'Unknown request.'})
+   return super().do_GET()
+  if not operator(self.headers):return self.reply(403,{'error':'The request must come through the operator login.'})
+  produce,failure=routes[path]
+  produce=globals()[produce] if isinstance(produce,str) else produce
   try:raw=json.dumps(produce()).encode();self.send_response(200)
   except Exception:raw=json.dumps({'error':failure}).encode();self.send_response(503)
   self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
-ThreadingHTTPServer(ADDRESS,functools.partial(Handler,directory=str(ROOT))).serve_forever()
+def settings_overview():return portal_settings().overview(nodes())
+# The dynamic routes. The handler looks each function up at request time, so a test can replace it.
+ROUTES={'/status.json':('status','Cluster resource measurements are unavailable.'),'/events.json':('events','The cluster event feed is unavailable.'),
+ '/zones.json':('zones','The zone list is unavailable.'),'/settings.json':('settings_overview','The operator settings are unavailable.')}
+if __name__=='__main__':ThreadingHTTPServer(ADDRESS,functools.partial(Handler,directory=str(ROOT))).serve_forever()

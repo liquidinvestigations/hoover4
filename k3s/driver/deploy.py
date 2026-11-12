@@ -5,15 +5,36 @@ The driver reads the site file (../config.py) and runs the host scripts of ../ho
 run on the control-plane host.
 
 Host adapters:
-  local-arch      the local node on an Arch-based distribution. The driver runs the root scripts with sudo -n.
-  remote          a remote node with dnf or apt. The driver checks a remote node over SSH with read-only commands, and
-                  writes its bootstrap script, its installation script and the instructions into
-                  k3s/private/deploy/remote/<node>/. The operator runs them on the node. The step waits until the
-                  node is Ready in the cluster.
-The driver changes no remote host. render and check change no host and no cluster.
+  local-arch      the local node of a single-node site on an Arch-based distribution. The driver runs the root scripts
+                  with sudo -n.
+  remote          a node with dnf or apt, over SSH, or the local node of a site with more nodes, in a local shell.
+                  probe   reads the OS family, the architecture and the root routes of the node (hostroute.py).
+                  bundle  writes the node bundle into k3s/private/deploy/remote/<node>/<revision>/ and copies it into
+                          ~/k3s-install/<revision>/ of the node over the user shell: the root scripts of the pinned
+                          tree, hosts.json, the part of the site of the node, the token that the node needs, the stage
+                          script and bootstrap.sh with README.txt. The token files are private and stay out of logs.
+                  stage   downloads and verifies the k3s, gVisor and Kata files into the bundle on the node, as the
+                          operator user.
+                  root    runs the root scripts of the bundle through the first root route of the node: sudo -n, else
+                          the cluster for a Ready node. The cluster route also refreshes the copies of the scripts in
+                          /usr/local/libexec/hoover4. A node without a route waits: the operator runs bootstrap.sh of
+                          the bundle once as root, then resumes the record.
+                  verify  reads the installed state of the node (root-install-k3s.py --report) and compares it with the
+                          bundle: the script copies, the k3s version, the k3s configuration, the active unit, the
+                          Ready node, and etcd on the server. A difference fails the step.
+A waiting or failed step stops every step that depends on it: the later steps of its node and every cluster step.
+The steps of the other nodes still run. render and check change no host and no cluster.
+
+Pinned inputs. The record of an up or a down keeps the commit, the fingerprint of its exported tree (source.py), the
+SHA-256 of the site file, the settings revision of the operator state and the identity of the cluster (the UID of the
+namespace kube-system). A resume refuses a changed site file, a changed tree or another cluster. The commands of the
+steps get HOOVER4_REVISION and HOOVER4_SETTINGS_REVISION, so every render, also a nested one, uses the pinned values.
+A zone step records the scopes of its zone and its Hoover installations as applied with the pinned settings revision
+after their workloads are ready. A finished complete up records the revision for every scope.
 """
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -28,7 +49,9 @@ REPO = SOURCE.parent
 sys.path.insert(0, str(SOURCE))
 sys.path.insert(0, str(HERE))
 import config  # noqa: E402
+import hostroute  # noqa: E402
 import records as records_module  # noqa: E402
+import source as source_module  # noqa: E402
 
 ARTIFACTS = json.loads((HERE / 'artifacts.json').read_text())
 FAMILIES = {'arch': 'arch', 'cachyos': 'arch', 'endeavouros': 'arch', 'manjaro': 'arch',
@@ -122,6 +145,7 @@ class Context:
         self.records = records_module.Records(self.state / 'deploy')
         self.kubeconfig = Path(os.environ.get('KUBECONFIG') or self.private / 'kubeconfig')
         self.revision = None
+        self.settings_revision = None
         self.record = None
         self.shell = Shell()
 
@@ -130,7 +154,15 @@ class Context:
                'PATH': f"{self.private / 'bin'}:{os.environ.get('PATH', '')}"}
         if self.revision:
             env['HOOVER4_REVISION'] = self.revision
+        if self.settings_revision is not None:
+            env['HOOVER4_SETTINGS_REVISION'] = str(self.settings_revision)
         return env
+
+    def operator_state(self):
+        """The operator settings State of the site, or None before the first save."""
+        if not (self.state / 'desired.json').exists():
+            return None
+        return operator_settings_module().State(self.state)
 
     def run(self, argv, **kw):
         kw['env'] = dict(self.env(), **(kw.get('env') or {}))
@@ -144,6 +176,62 @@ class Context:
         path = self.private / 'deploy' / 'hosts.json'
         records_module.write_json(path, config.legacy_hosts(self.site))
         return path
+
+
+def operator_settings_module():
+    import importlib.util
+    if 'operator_settings' not in sys.modules:
+        spec = importlib.util.spec_from_file_location('operator_settings', SOURCE / 'platform/operator/settings.py')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules['operator_settings'] = module
+        spec.loader.exec_module(module)
+    return sys.modules['operator_settings']
+
+
+def site_fingerprint(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def cluster_identity(ctx):
+    """The UID of the namespace kube-system, or an empty text before the cluster answers."""
+    if not ctx.kubeconfig.exists():
+        return ''
+    code, out = read(['kubectl', '--kubeconfig', ctx.kubeconfig, 'get', 'namespace', 'kube-system', '-o',
+                      'jsonpath={.metadata.uid}'], timeout=20)
+    return out.strip() if code == 0 else ''
+
+
+def pinned_inputs(ctx, tree=None):
+    """The inputs that a record pins at its start."""
+    state = ctx.operator_state()
+    return {'site_fingerprint': site_fingerprint(ctx.site_path), 'site_file': str(ctx.site_path),
+            'settings_revision': state.revision() if state else 0, 'cluster_identity': cluster_identity(ctx),
+            'tree': str(tree) if tree else '', 'tree_fingerprint': source_module.fingerprint(tree) if tree else ''}
+
+
+def verify_inputs(ctx, record):
+    """Refuse a resume whose site file, tree or cluster changed. Record the cluster identity once it exists."""
+    inputs = record.get('inputs')
+    if not inputs:
+        return
+    problems = []
+    if site_fingerprint(ctx.site_path) != inputs['site_fingerprint']:
+        problems.append(f'the site file {ctx.site_path} changed after the start of the record')
+    if inputs.get('tree'):
+        tree = Path(inputs['tree'])
+        if source_module.is_export(tree) != record['revision']:
+            problems.append(f'the exported tree {tree} of {record["revision"][:12]} is missing')
+        elif source_module.fingerprint(tree) != inputs['tree_fingerprint']:
+            problems.append(f'the exported tree {tree} changed after the start of the record')
+    current = cluster_identity(ctx)
+    if inputs.get('cluster_identity') and current and current != inputs['cluster_identity']:
+        problems.append(f'the kubeconfig names another cluster ({current}, not {inputs["cluster_identity"]})')
+    if problems:
+        raise StepFailed('the record cannot resume: ' + '; '.join(problems) + '. Start a new run.')
+    if current and not inputs.get('cluster_identity'):
+        inputs['cluster_identity'] = current
+        ctx.records.save(record)
 
 
 def resolve_revision(repo, ref):
@@ -243,18 +331,22 @@ class LocalArch:
 
 
 class Remote:
-    """A remote node. The driver checks it over SSH with read-only commands and writes its scripts."""
+    """A node with dnf or apt. The driver reaches it with its user shell and runs the root scripts through a root route."""
     kind = 'remote'
+    STEPS = ('probe', 'bundle', 'stage', 'root', 'verify')
 
     def __init__(self, ctx, node):
         self.ctx, self.node = ctx, node
+        self.shell = hostroute.Shell(node)
 
     def ssh(self, command, timeout=40):
-        return read(['ssh', *SSH_OPTIONS, self.node.ssh_address, '--', command], timeout=timeout)
+        return self.shell.run(command, timeout=timeout)
 
     def probe(self):
-        """The OS family of the node. Raise StepFailed with the SSH error when the node does not answer."""
-        code, out = self.ssh('cat /etc/os-release; echo ==; uname -m; echo ==; sudo -n true && echo sudo-ok')
+        """The OS family of the node and its root routes. Raise StepFailed with the SSH error when the node does not answer."""
+        code, out = self.ssh('cat /etc/os-release; echo ==; uname -m; echo ==; sudo -n true 2>/dev/null && echo sudo-ok; '
+                             f'sudo -n -l {hostroute.LIBEXEC}/root-install-k3s.py >/dev/null 2>&1 && echo scoped-ok; '
+                             'echo "home=$HOME"')
         if code:
             raise StepFailed(f'node {self.node.name}: SSH to {self.node.ssh_address} failed with exit code {code}: '
                              f'{(out.splitlines() or ["no output"])[-1]}')
@@ -267,31 +359,181 @@ class Remote:
         if machine.strip() != expected:
             raise StepFailed(f'node {self.node.name}: the site file names {self.node.architecture}, '
                              f'and the host is {machine.strip()}.')
-        return {'family': family, 'sudo': 'sudo-ok' in rights}
+        home = (re.search(r'(?m)^home=(\S+)', rights) or [None, ''])[1]
+        return {'family': family, 'sudo': 'sudo-ok' in rights, 'scoped_sudo': 'scoped-ok' in rights,
+                'ready': node_ready(self.ctx, self.node.name), 'home': home}
 
     def steps(self):
-        return [f'host:{self.node.name}:probe', f'host:{self.node.name}:scripts']
+        return [f'host:{self.node.name}:{s}' for s in self.STEPS]
+
+    def bundle_path(self):
+        return f'k3s-install/{self.ctx.record["revision"][:12]}'
+
+    def route(self):
+        """The root route of the node: sudo, scoped (the bootstrap rule), cluster, or none."""
+        found = self.probe()
+        if found['sudo']:
+            return 'sudo'
+        if found['scoped_sudo']:
+            return 'scoped'
+        if found['ready'] and self.ctx.kubeconfig.exists():
+            return 'cluster'
+        return 'none'
+
+    def root_commands(self):
+        """The root commands of the node, as argv lists that read the bundle in the home folder of the operator user."""
+        user_home = (self.ctx.record.get('homes') or {}).get(self.node.name) or \
+            f'/home/{self.ctx.site.operator_user or "operator"}'
+        home = f'{user_home}/{self.bundle_path()}'
+        hosts = f'{home}/hosts.json'
+        out = [[f'{hostroute.LIBEXEC}/root-install.py', '--hosts', hosts, '--node', self.node.name, '--only', step]
+               for step in host_steps(self.node)]
+        k3s = [f'{hostroute.LIBEXEC}/root-install-k3s.py', '--hosts', hosts, '--node', self.node.name, '--staged', home]
+        if self.node.name == self.ctx.site.control_plane:
+            # A server that still runs SQLite converts to etcd only after a verified copy outside its datastore.
+            k3s += ['--sqlite-copy', '/var/lib/hoover4-recovery']
+        return out + [k3s]
 
     def execute(self, step):
         kind = step.rsplit(':', 1)[1]
         if kind == 'probe':
             found = self.probe()
             self.ctx.record.setdefault('families', {})[self.node.name] = found['family']
+            self.ctx.record.setdefault('homes', {})[self.node.name] = found['home']
             return found
-        if kind == 'scripts':
+        if kind == 'bundle':
             folder = write_remote_scripts(self.ctx, self.node, self.ctx.record['revision'])
-            if node_ready(self.ctx, self.node.name):
-                return {'scripts': str(folder)}
-            raise StepWaiting(f'node {self.node.name}: run the scripts in {folder} on the node as README.txt says, '
-                              f'then run deploy-k3s up --resume {self.ctx.record["id"]}.')
+            self.shell.send_tree(folder, self.bundle_path())
+            return {'bundle': str(folder), 'node_folder': f'~/{self.bundle_path()}', 'files': bundle_digests(folder)}
+        if kind == 'stage':
+            code, out = self.ssh(f'cd ~/{self.bundle_path()} && bash ./stage-k3s.sh {self.node.architecture} .', timeout=1800)
+            if code:
+                raise StepFailed(f'node {self.node.name}: stage-k3s.sh failed: {out[-300:]}')
+            return {}
+        if kind == 'root':
+            return self.root_step()
+        if kind == 'verify':
+            return self.verify()
         raise StepFailed(f'the remote adapter has no step {kind}')
 
+    def root_step(self):
+        route = self.route()
+        folder = remote_folder(self.ctx, self.node, self.ctx.record['revision'])
+        scripts = [(f'{hostroute.LIBEXEC}/{name}', (folder / name).read_bytes()) for name in REMOTE_SCRIPTS]
+        commands = self.root_commands()
+        if route in ('sudo', 'scoped'):
+            if route == 'sudo':
+                for path, _ in scripts:
+                    code, out = self.ssh(f'sudo -n install -D -m 0755 -o root -g root ~/{self.bundle_path()}/'
+                                         f'{Path(path).name} {path}')
+                    if code:
+                        raise StepFailed(f'node {self.node.name}: the install of {path} failed: {out[-300:]}')
+            else:
+                stale = self.stale_scripts(folder)
+                if stale:
+                    raise StepWaiting(f'node {self.node.name}: the installed root scripts {", ".join(stale)} differ from '
+                                      f'the bundle. Run sudo sh ~/{self.bundle_path()}/bootstrap.sh on the node once, '
+                                      f'then run deploy-k3s up --resume {self.ctx.record["id"]}.')
+            for argv in commands:
+                code, out = self.ssh('sudo -n ' + ' '.join(shlex.quote(a) for a in argv), timeout=7200)
+                if code:
+                    raise StepFailed(f'node {self.node.name}: {Path(argv[0]).name} failed: {out[-500:]}')
+            return {'route': route}
+        if route == 'cluster':
+            root = hostroute.ClusterRoot(self.ctx.kubeconfig, self.shell)
+            unit = f'hoover4-{self.ctx.record["id"].replace("T", "-")}-{self.node.name}'
+            script = ' && '.join(' '.join(shlex.quote(a) for a in argv) for argv in commands)
+            root.start(unit, scripts, ['/bin/sh', '-c', script])
+            try:
+                tail = root.wait(unit)
+            except hostroute.RouteError as error:
+                raise StepFailed(str(error))
+            return {'route': route, 'unit': unit, 'log': tail.splitlines()[-3:]}
+        raise StepWaiting(f'node {self.node.name}: no root route. Review ~/{self.bundle_path()}/bootstrap.sh on the node, '
+                          f'run sudo sh ~/{self.bundle_path()}/bootstrap.sh once, then run deploy-k3s up --resume '
+                          f'{self.ctx.record["id"]}.')
+
+    def stale_scripts(self, folder):
+        report = self.report(folder)
+        installed = report.get('scripts', {})
+        return [name for name in REMOTE_SCRIPTS
+                if installed.get(name) != file_digest(folder / name)]
+
+    def report(self, folder=None):
+        """The installed state of the node from root-install-k3s.py --report of the bundle, as the operator user."""
+        code, out = self.ssh(f'cd ~/{self.bundle_path()} && python3 ./root-install-k3s.py --report --hosts hosts.json '
+                             f'--node {shlex.quote(self.node.name)}', timeout=120)
+        if code:
+            raise StepFailed(f'node {self.node.name}: the report failed: {out[-300:]}')
+        return json.loads(out.strip().splitlines()[-1])
+
+    def verify(self):
+        folder = remote_folder(self.ctx, self.node, self.ctx.record['revision'])
+        found = self.report(folder)
+        problems = []
+        for name in REMOTE_SCRIPTS:
+            if found['scripts'].get(name) != file_digest(folder / name):
+                problems.append(f'{hostroute.LIBEXEC}/{name} differs from the bundle')
+        if K3S_VERSION not in found['k3s_version']:
+            problems.append(f'k3s is {found["k3s_version"] or "missing"}, not {K3S_VERSION}')
+        unit = 'k3s' if self.node.name == self.ctx.site.control_plane else 'k3s-agent'
+        if found['units'].get(unit) != 'active':
+            problems.append(f'{unit} is {found["units"].get(unit)}')
+        if found.get('flannel_iface') != expected_interface(self.ctx.site, self.node):
+            problems.append(f'flannel-iface is {found.get("flannel_iface")!r}, not {expected_interface(self.ctx.site, self.node)!r}')
+        if not node_ready(self.ctx, self.node.name):
+            problems.append('the node is not Ready')
+        if self.node.name == self.ctx.site.control_plane:
+            if not found['cluster_init']:
+                problems.append('the k3s configuration has no cluster-init')
+            etcd = node_label(self.ctx, self.node.name, 'node-role.kubernetes.io/etcd')
+            if found['datastore'] not in ('etcd', 'unreadable') or (found['datastore'] == 'unreadable' and etcd != 'true'):
+                problems.append(f'the datastore is {found["datastore"]}, and the node has no etcd role')
+        if problems:
+            raise StepFailed(f'node {self.node.name}: ' + '; '.join(problems) + '.')
+        return {'report': found}
+
+    def unit(self):
+        return 'k3s' if self.node.name == self.ctx.site.control_plane else 'k3s-agent'
+
+    def active(self):
+        code, out = self.ssh(f'systemctl is-active {self.unit()}')
+        return out.strip() == 'active'
+
     def stop(self):
-        raise StepWaiting(f'node {self.node.name}: run sudo systemctl stop k3s-agent k3s and '
-                          f'sudo /usr/local/bin/k3s-killall.sh on the node.')
+        """Stop k3s on the node. A node without a sudo route waits, and a resume finds the stopped unit."""
+        if not self.active():
+            return {'observed': 'inactive'}
+        route = self.route()
+        if route == 'sudo':
+            code, out = self.ssh(f'sudo -n systemctl stop {self.unit()} && sudo -n /usr/local/bin/k3s-killall.sh')
+            if code:
+                raise StepFailed(f'node {self.node.name}: the stop failed: {out[-300:]}')
+            return {'route': route}
+        if route == 'cluster':
+            root = hostroute.ClusterRoot(self.ctx.kubeconfig, self.shell)
+            unit = f'hoover4-stop-{self.ctx.record["id"].replace("T", "-")}-{self.node.name}'
+            # The kill script ends the pods of the node, so it runs in a unit of the host.
+            root.start(unit, (), ['/bin/sh', '-c', f'systemctl stop {self.unit()} && /usr/local/bin/k3s-killall.sh'])
+            deadline = time.monotonic() + 300
+            while time.monotonic() < deadline and self.active():
+                time.sleep(3)
+            if self.active():
+                raise StepFailed(f'node {self.node.name}: {self.unit()} still runs after the stop.')
+            return {'route': route}
+        raise StepWaiting(f'node {self.node.name}: run sudo systemctl stop {self.unit()} and '
+                          f'sudo /usr/local/bin/k3s-killall.sh on the node, then resume the record.')
 
     def start(self):
-        raise StepWaiting(f'node {self.node.name}: run sudo systemctl start k3s-agent or k3s on the node.')
+        """Start k3s on the node. A node without a sudo route waits, and a resume finds the active unit."""
+        if self.active():
+            return {'observed': 'active'}
+        if self.probe()['sudo']:
+            code, out = self.ssh(f'sudo -n systemctl start {self.unit()}')
+            if code:
+                raise StepFailed(f'node {self.node.name}: the start failed: {out[-300:]}')
+            return {'route': 'sudo'}
+        raise StepWaiting(f'node {self.node.name}: run sudo systemctl start {self.unit()} on the node, then resume the record.')
 
 
 LIBEXEC = Path('/usr/local/libexec/hoover4')
@@ -338,22 +580,38 @@ def write_local_bootstrap(ctx, node):
 
 
 def adapter(ctx, node):
-    return LocalArch(ctx, node) if node.local else Remote(ctx, node)
+    # The local adapter prepares the dummy link, the DNS server and the slice of a single-node workstation site. The
+    # local node of a site with more nodes is a server host, so it uses the remote adapter with a local shell.
+    return LocalArch(ctx, node) if node.local and ctx.site.single else Remote(ctx, node)
 
 
 def staging(ctx, architecture):
     return ctx.private / 'staging' / architecture
 
 
+def private_write(path, text):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+        f.write(text)
+
+
 def tokens(folder):
-    """The server and agent tokens of the cluster, made once."""
+    """Copy the server and agent tokens of the site into a staging folder.
+
+    The tokens of a site live in <staging>/tokens/, so the staging folder of every architecture gets the same tokens.
+    A token of an earlier staging folder becomes the site token. A new site gets random tokens once. The tokens of an
+    existing cluster come from k3s/tools/adopt-cluster.py tokens.
+    """
     import secrets
+    folder = Path(folder)
+    site_folder = folder.parent / 'tokens'
     for name in ('server-token', 'agent-token'):
-        path = Path(folder) / name
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with open(os.open(path, os.O_WRONLY | os.O_CREAT, 0o600), 'w') as f:
-                f.write(secrets.token_hex(32) + '\n')
+        site_path, path = site_folder / name, folder / name
+        if not site_path.exists():
+            private_write(site_path, path.read_text() if path.exists() else secrets.token_hex(32) + '\n')
+        if not path.exists() or path.read_text() != site_path.read_text():
+            private_write(path, site_path.read_text())
 
 
 def node_ready(ctx, name):
@@ -363,13 +621,28 @@ def node_ready(ctx, name):
     return code == 0 and ' Ready ' in f' {out} '
 
 
+def node_label(ctx, name, label):
+    if not ctx.kubeconfig.exists():
+        return ''
+    escaped = label.replace('.', '\\.')
+    code, out = read(['kubectl', '--kubeconfig', ctx.kubeconfig, 'get', 'node', name, '-o',
+                      f'jsonpath={{.metadata.labels.{escaped}}}'])
+    return out.strip() if code == 0 else ''
+
+
+# The root scripts of a node bundle, from the hosts folder of the pinned tree.
+REMOTE_SCRIPTS = ('root-install.py', 'root-install-k3s.py')
+K3S_VERSION = re.search(r'K3S_VERSION = "([^"]+)"', (SOURCE / 'hosts/root-install-k3s.py').read_text()).group(1)
+
 BOOTSTRAP = """#!/bin/sh
-# The reviewed bootstrap of node {node}. Run it once as root on the node: sh bootstrap.sh <checkout>
-# It installs the root scripts of revision {revision} from the checkout into /usr/local/libexec/hoover4, and lets the
-# operator user {user} run only these scripts with sudo and no password. It adds no other privilege.
+# The reviewed bootstrap of node {node}. Run it once as root on the node, from the folder of the bundle:
+#   sudo sh bootstrap.sh
+# It installs the root scripts of revision {revision} from this folder into {libexec}, and lets the operator user
+# {user} run only these scripts with sudo and no password. It adds no other privilege. The SHA-256 of each script
+# must match the value below, which the driver wrote.
 set -eu
-checkout=${{1:?the path of the hoover4 checkout}}
-install -d -m 0755 /usr/local/libexec/hoover4
+cd "$(dirname "$0")"
+install -d -m 0755 {libexec}
 {installs}
 cat > /etc/sudoers.d/90-hoover4 <<'SUDO'
 {sudoers}
@@ -378,62 +651,78 @@ chmod 0440 /etc/sudoers.d/90-hoover4
 visudo -cf /etc/sudoers.d/90-hoover4
 """
 
-INSTALL = """#!/bin/sh
-# Install or update node {node} ({family}, {architecture}) at revision {revision}. Run it as the operator user {user}.
-set -eu
-checkout=${{HOOVER4_CHECKOUT:-$HOME/hoover4}}
-[ -d "$checkout/.git" ] || git clone {remote} "$checkout"
-cd "$checkout"
-# A checkout with local changes stays unchanged. The script stops and names the changed files.
-if [ -n "$(git status --porcelain)" ]; then
-  echo "the checkout $checkout has local changes. Commit or move them, then run this script again:" >&2
-  git status --porcelain >&2
-  exit 3
-fi
-git fetch --quiet origin
-git -c advice.detachedHead=false checkout --quiet {revision}
-bash k3s/hosts/stage-k3s.sh {architecture} "$HOME/k3s-install"
-for step in {host_steps}; do
-  sudo -n /usr/local/libexec/hoover4/root-install.py --hosts "$HOME/k3s-install/hosts.json" --node {node} --only "$step"
-done
-sudo -n /usr/local/libexec/hoover4/root-install-k3s.py --hosts "$HOME/k3s-install/hosts.json" --node {node} --staged "$HOME/k3s-install"
-"""
-
 README = """Node {node} of site {site}: {family} host, {architecture}, roles {roles}, revision {revision}.
 
-1. Review bootstrap.sh. Clone the repository on the node, then run the script once as root:
-   sudo sh bootstrap.sh <checkout>
-2. Copy hosts.json, server-token and agent-token from k3s/private/staging/{architecture}/ of the control plane to
-   ~/k3s-install/ on the node. project.json in this folder shows the part of the site that the node receives.
-3. Run install.sh on the node as {user}. It stops and names the files when the checkout has local changes.
-4. On the control plane, run: deploy-k3s up --resume <record>. The step finishes when the node is Ready.
+deploy-k3s copies this bundle into ~/{bundle}/ on the node. It holds the root scripts of the revision, hosts.json,
+project.json (the part of the site of this node), the stage script and the token file that the node needs.
+The token files are private. Do not copy them elsewhere.
+The driver runs the root scripts through sudo -n, or through the cluster when the node is Ready. A node without
+either route needs this bootstrap once:
+1. Review bootstrap.sh and compare the SHA-256 values with the scripts of this folder.
+2. Run it once as root: sudo sh ~/{bundle}/bootstrap.sh
+3. On the control plane, run: deploy-k3s up --resume <record>.
 """
+
+
+def host_steps(node):
+    """The steps of root-install.py for a node. A GPU node keeps its VPN as it is, so it gets no wireguard step."""
+    steps = ['software', 'settings'] if node.has('gpu') else ['software', 'settings', 'storage']
+    if node.vpn_address and not node.has('gpu'):
+        steps = ['wireguard'] + steps
+    return steps
+
+
+def expected_interface(site, node):
+    return 'hoover4' if site.single and node.local else node.vpn_interface
+
+
+def file_digest(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def bundle_digests(folder):
+    """{file: SHA-256} of the files of a bundle that hold no secret."""
+    return {p.name: file_digest(p) for p in sorted(Path(folder).iterdir()) if p.is_file() and not p.name.endswith('-token')}
+
+
+def remote_folder(ctx, node, revision):
+    return ctx.private / 'deploy' / 'remote' / node.name / revision[:12]
 
 
 def write_remote_scripts(ctx, node, revision):
-    folder = ctx.private / 'deploy' / 'remote' / node.name
+    """Write the complete bundle of a node for one revision and return its folder."""
+    folder = remote_folder(ctx, node, revision)
     folder.mkdir(parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
     user = ctx.site.operator_user or 'operator'
     family = (ctx.record or {}).get('families', {}).get(node.name, 'unknown')
-    scripts = ['root-install.py', 'root-install-k3s.py']
-    installs = '\n'.join(f'install -m 0755 -o root -g root "$checkout/k3s/hosts/{s}" /usr/local/libexec/hoover4/{s}'
-                         for s in scripts)
-    sudoers = '\n'.join(f'{user} ALL=(root) NOPASSWD: /usr/local/libexec/hoover4/{s} *' for s in scripts)
-    host_steps = 'software settings' if node.has('gpu') else 'software settings storage'
-    if node.vpn_address and not node.has('gpu'):
-        host_steps = 'wireguard ' + host_steps
-    remote_url = read(['git', '-C', ctx.repo, 'remote', 'get-url', 'origin'])[1] or \
-        'https://github.com/liquidinvestigations/hoover4'
+    for name in REMOTE_SCRIPTS:
+        (folder / name).write_bytes((SOURCE / 'hosts' / name).read_bytes())
+        (folder / name).chmod(0o755)
+    (folder / 'stage-k3s.sh').write_bytes((SOURCE / 'hosts/stage-k3s.sh').read_bytes())
+    installs = '\n'.join(f'echo "{file_digest(folder / s)}  {s}" | sha256sum -c -\n'
+                         f'install -m 0755 -o root -g root {s} {hostroute.LIBEXEC}/{s}' for s in REMOTE_SCRIPTS)
+    sudoers = '\n'.join(f'{user} ALL=(root) NOPASSWD: {hostroute.LIBEXEC}/{s} *' for s in REMOTE_SCRIPTS)
     files = {
-        'bootstrap.sh': BOOTSTRAP.format(node=node.name, revision=revision, user=user, installs=installs, sudoers=sudoers),
-        'install.sh': INSTALL.format(node=node.name, family=family, architecture=node.architecture, revision=revision,
-                                     user=user, remote=remote_url, host_steps=host_steps),
+        'bootstrap.sh': BOOTSTRAP.format(node=node.name, revision=revision, user=user, installs=installs,
+                                         sudoers=sudoers, libexec=hostroute.LIBEXEC),
         'README.txt': README.format(node=node.name, site=ctx.site.name, family=family, architecture=node.architecture,
-                                    roles=', '.join(node.roles), revision=revision, user=user),
+                                    roles=', '.join(node.roles), revision=revision, bundle=f'k3s-install/{revision[:12]}'),
         'project.json': json.dumps(config.project(ctx.site, node.name), indent=1, default=list) + '\n',
+        'hosts.json': json.dumps(config.legacy_hosts(ctx.site), indent=1) + '\n',
     }
     for name, text in files.items():
         (folder / name).write_text(text)
+    # The server gets both tokens. An agent gets only the agent token.
+    staged = staging(ctx, node.architecture)
+    tokens(staged)
+    needed = ('server-token', 'agent-token') if node.name == ctx.site.control_plane else ('agent-token',)
+    for name in ('server-token', 'agent-token'):
+        if name in needed:
+            private_write(folder / name, (staged / name).read_text())
+        else:
+            (folder / name).unlink(missing_ok=True)
     return folder
 
 
@@ -514,20 +803,38 @@ def image_names(ctx):
              'hoover/blockmount:8'])
 
 
-def image_references(ctx):
-    """The images that the deployment uses, with the digest of each image in the registry."""
+MANIFEST_TYPES = ('application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,'
+                  'application/vnd.docker.distribution.manifest.v2+json,application/vnd.docker.distribution.manifest.list.v2+json')
+
+
+def registry_get(endpoint, path, accept=MANIFEST_TYPES):
+    request = urllib.request.Request(f'http://{endpoint}{path}', headers={'Accept': accept})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.headers.get('Docker-Content-Digest', ''), json.loads(response.read())
+
+
+def image_architectures(endpoint, repo, manifest):
+    """The architectures of an image manifest or index."""
+    if 'manifests' in manifest:
+        return sorted({m.get('platform', {}).get('architecture', '') for m in manifest['manifests']} - {'', 'unknown'})
+    _, blob = registry_get(endpoint, f'/v2/{repo}/blobs/{manifest["config"]["digest"]}', accept='*/*')
+    return [blob.get('architecture', '')]
+
+
+def image_references(ctx, names=None, architecture=None):
+    """{reference: {digest, architectures}} of images in the registry. architecture is the one that each must have."""
     endpoint = config.legacy_settings(ctx.site)['registry_endpoint']
     out = {}
-    for name in image_names(ctx):
+    for name in names if names is not None else image_names(ctx):
         repo, image_tag = name.rsplit(':', 1)
-        request = urllib.request.Request(f'http://{endpoint}/v2/{repo}/manifests/{image_tag}', method='HEAD', headers={
-            'Accept': 'application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,'
-                      'application/vnd.docker.distribution.manifest.v2+json'})
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                out[f'registry.hoover.internal/{name}'] = response.headers.get('Docker-Content-Digest', '')
-        except OSError as error:
+            digest, manifest = registry_get(endpoint, f'/v2/{repo}/manifests/{image_tag}')
+            architectures = image_architectures(endpoint, repo, manifest)
+        except (OSError, ValueError, KeyError) as error:
             raise StepFailed(f'the registry {endpoint} has no image {name}: {error}')
+        if architecture and architecture not in architectures:
+            raise StepFailed(f'the image {name} has the architectures {architectures}, not {architecture}.')
+        out[f'registry.hoover.internal/{name}'] = {'digest': digest, 'architectures': architectures}
     return out
 
 
@@ -540,8 +847,43 @@ def step_images(ctx):
                              ('xwiki-extensions', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}')):
         ctx.run(['bash', SOURCE / 'images/build-image.sh', SOURCE / 'images' / directory, image])
     ctx.run([sys.executable, SOURCE / 'images/build-hoover.py', '--revision', ctx.revision])
-    ctx.record['images'] = image_references(ctx)
-    return {'images': len(ctx.record['images'])}
+    arch = ctx.site.nodes[ctx.site.control_plane].architecture
+    ctx.record['images'] = image_references(ctx, architecture=arch)
+    return {'images': len(ctx.record['images']), 'architecture': arch}
+
+
+def gpu_image_names(ctx):
+    sys.path.insert(0, str(SOURCE / 'hoover'))
+    import compose
+    return [f'hoover/hoover-{n}:{ctx.revision[:12]}' for n in compose.GPU_IMAGES]
+
+
+def gpu_architecture(ctx):
+    nodes = [ctx.site.nodes[n] for n in ctx.site.gpu_pool.get('nodes', ())]
+    architectures = {n.architecture for n in nodes}
+    if len(architectures) != 1:
+        raise StepFailed(f'the GPU nodes have the architectures {sorted(architectures)}. One architecture is supported.')
+    return architectures.pop()
+
+
+def step_gpu_images(ctx):
+    """Build the GPU images for the architecture of the GPU nodes and verify the architecture of each in the registry.
+
+    build-hoover.py --gpu builds on a GPU node when its architecture differs from this host (--builder), because an
+    emulated build of the model server image is not practical.
+    """
+    import platform
+    arch = gpu_architecture(ctx)
+    local = {'x86_64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64'}.get(platform.machine(), platform.machine())
+    argv = [sys.executable, SOURCE / 'images/build-hoover.py', '--gpu', '--revision', ctx.revision]
+    builder = ''
+    if arch != local:
+        builder = ctx.site.gpu_pool['nodes'][0]
+        argv += ['--builder', builder]
+    ctx.run(argv)
+    references = image_references(ctx, gpu_image_names(ctx), architecture=arch)
+    ctx.record.setdefault('images', {}).update(references)
+    return {'gpu_images': len(references), 'architecture': arch, 'builder': builder or 'this host'}
 
 
 def step_frontend(ctx):
@@ -557,11 +899,54 @@ def step_frontend(ctx):
     return {}
 
 
+def wait_rollouts(ctx, namespace, timeout=1800):
+    """Wait until every Deployment and StatefulSet of a namespace with replicas is ready, and every claim is Bound."""
+    text = ctx.kubectl('-n', namespace, 'get', 'deployments,statefulsets', '-o', 'json', check=False)
+    try:
+        items = json.loads(text)['items']
+    except (ValueError, KeyError):
+        raise StepFailed(f'the workloads of {namespace} are unreadable')
+    for item in items:
+        name = item['metadata']['name']
+        if item['spec'].get('replicas', 1) == 0:
+            continue
+        code, out = ctx.run(['kubectl', '--kubeconfig', ctx.kubeconfig, '-n', namespace, 'rollout', 'status',
+                             f'{item["kind"].lower()}/{name}', f'--timeout={timeout}s'], capture=True, check=False)
+        if code:
+            raise StepFailed(f'{namespace}/{item["kind"].lower()}/{name} did not become ready: {out.strip()[-300:]}')
+    claims = json.loads(ctx.kubectl('-n', namespace, 'get', 'pvc', '-o', 'json', check=False) or '{"items": []}')['items']
+    # A claim with WaitForFirstConsumer and no pod stays Pending without a selected node. That is not a failure.
+    pending = [c['metadata']['name'] for c in claims if c.get('status', {}).get('phase') != 'Bound'
+               and 'volume.kubernetes.io/selected-node' in (c['metadata'].get('annotations') or {})]
+    if pending:
+        raise StepFailed(f'the claims {", ".join(pending)} of {namespace} are not Bound.')
+
+
+def record_settings(ctx, scopes):
+    """Record that scopes run the pinned settings revision, after their workloads are ready."""
+    state = ctx.operator_state()
+    if state is None or ctx.settings_revision is None:
+        return []
+    state.record_scopes(scopes, ctx.settings_revision, f'deploy:{ctx.record["id"]}', ctx.revision)
+    return scopes
+
+
 def step_zone(zone, home):
     def run(ctx):
         ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone, '--home', home])
-        return {}
+        hoovers = [h for h in ctx.site.hoovers.values() if h.zone == zone]
+        for namespace in [zone] + [h.namespace for h in hoovers]:
+            wait_rollouts(ctx, namespace)
+        scopes = record_settings(ctx, [f'zone:{zone}'] + [f'hoover:{h.name}' for h in hoovers])
+        return {'settings_revision': ctx.settings_revision, 'scopes': scopes}
     return run
+
+
+def step_gpu_pool(ctx):
+    """Apply the GPU pool with the pinned runtime, wait for it, and call each service with and without the key."""
+    ctx.run([sys.executable, SOURCE / 'platform/gpu/gpu_pool.py', 'apply'])
+    ctx.run([sys.executable, SOURCE / 'platform/gpu/gpu_pool.py', 'verify'])
+    return {'settings_revision': ctx.settings_revision}
 
 
 def step_operator(ctx):
@@ -576,17 +961,19 @@ def cluster_steps(ctx):
         'cluster': step_script('bash', '@cluster/setup.sh'),
         'registry': step_script('bash', '@platform/registry/install-registry.sh'),
         'images': step_images,
+        'gpu-images': step_gpu_images,
         'ingress': step_script('bash', '@platform/ingress/install-ingress.sh'),
         'frontend': step_frontend,
         'monitoring': step_script('bash', '@platform/monitoring/install-dashboards.sh'),
         'operator': step_operator,
         'hoover-data': step_script(sys.executable, '@platform/hoover-data/install-hoover-data.py'),
-        'gpu-pool': step_script(sys.executable, '@platform/gpu/gpu_pool.py', 'apply'),
+        'gpu-pool': step_gpu_pool,
         'gpu-proxy': step_script(sys.executable, '@hoover/gpu.py', 'install'),
     }
     if not ctx.site.gpu_pool.get('nodes'):
         # A pool at an address runs outside the site, for example on a Compose GPU host.
         del steps['gpu-pool']
+        del steps['gpu-images']
     if ctx.site.single:
         # The Hoover pods of a single-node site share one node, so their dataset folders are claims and need no NFS.
         del steps['hoover-data']
@@ -714,17 +1101,16 @@ def ordered_nodes(site, targets):
 
 def _start_node(a):
     def run(ctx):
-        a.start()
+        fields = a.start() or {}
         if a.node.name == ctx.site.control_plane:
             wait_api(ctx)
-        return {}
+        return fields
     return run
 
 
 def _stop_node(a):
     def run(ctx):
-        a.stop()
-        return {}
+        return a.stop() or {}
     return run
 
 
@@ -779,24 +1165,45 @@ def select(steps, only):
 # Execution
 # ----------------------------------------------------------------------------------------------------------------------
 
+def independent(step, other):
+    """True when step does not depend on the earlier step other: they act on different nodes."""
+    a, b = step.split(':'), other.split(':')
+    for prefix in (('host',), ('start', 'k3s'), ('stop', 'k3s')):
+        n = len(prefix)
+        if tuple(a[:n]) == prefix and tuple(b[:n]) == prefix and len(a) > n and len(b) > n and a[n] != b[n]:
+            return True
+    return False
+
+
 def execute(ctx, record, steps):
-    """Run the unfinished steps of a record in order. Return the exit code."""
+    """Run the unfinished steps of a record in order. Return the exit code.
+
+    A failed step ends the run. A waiting step blocks every later step that depends on it, and the run continues with
+    the independent steps, for example the host steps of the other nodes.
+    """
     ctx.record = record
     ctx.revision = record['revision']
+    ctx.settings_revision = (record.get('inputs') or {}).get('settings_revision')
     ctx.shell = Shell(ctx.records.folder / 'logs' / f'{record["id"]}.log')
 
     def on_signal(number, frame):
         raise KeyboardInterrupt
 
     previous = signal.signal(signal.SIGTERM, on_signal)
-    waiting = []
+    waiting, blocked = [], []
     record['status'] = 'running'
     record['error'] = ''
     ctx.records.save(record)
     try:
+        verify_inputs(ctx, record)
         for entry in record['steps']:
             name = entry['name']
             if entry['state'] == 'done':
+                continue
+            holding = [w for w in waiting + blocked if not independent(name, w)]
+            if holding:
+                blocked.append(name)
+                ctx.records.mark(record, name, 'pending', blocked_by=holding[0])
                 continue
             ctx.records.mark(record, name, 'running')
             print(json.dumps({'at': time.strftime('%H:%M:%S'), 'record': record['id'], 'step': name}), flush=True)
@@ -804,9 +1211,10 @@ def execute(ctx, record, steps):
                 fields = steps[name](ctx) or {}
             except StepWaiting as wait:
                 ctx.records.mark(record, name, 'waiting', message=str(wait))
-                waiting.append(str(wait))
+                waiting.append(name)
+                record.setdefault('messages', {})[name] = str(wait)
                 continue
-            except (StepFailed, config.SiteError, subprocess.SubprocessError, OSError) as error:
+            except (StepFailed, hostroute.RouteError, config.SiteError, subprocess.SubprocessError, OSError) as error:
                 ctx.records.mark(record, name, 'failed', error=str(error))
                 record['status'] = 'failed'
                 record['error'] = f'{name}: {error}'
@@ -816,7 +1224,14 @@ def execute(ctx, record, steps):
                       f'{record["revision"][:12]}. Fix the cause, then run: deploy-k3s {record["command"]} '
                       f'--resume {record["id"]}', file=sys.stderr)
                 return 2
+            entry.pop('blocked_by', None)
             ctx.records.mark(record, name, 'done', **fields)
+    except StepFailed as error:
+        record['status'] = 'failed'
+        record['error'] = str(error)
+        ctx.records.save(record)
+        print(f'deploy-k3s: {error}', file=sys.stderr)
+        return 2
     except KeyboardInterrupt:
         record['status'] = 'interrupted'
         record['error'] = 'the driver stopped before the end of the steps'
@@ -827,12 +1242,16 @@ def execute(ctx, record, steps):
     finally:
         signal.signal(signal.SIGTERM, previous)
     if waiting:
+        messages = [record['messages'][w] for w in waiting]
         record['status'] = 'waiting'
-        record['error'] = ' '.join(waiting)
+        record['error'] = ' '.join(messages) + (f' Blocked steps: {", ".join(blocked)}.' if blocked else '')
         ctx.records.save(record)
-        print('deploy-k3s: the deployment is not complete. ' + ' '.join(waiting), file=sys.stderr)
+        print('deploy-k3s: the deployment is not complete. ' + record['error'], file=sys.stderr)
         return 3
     if record['command'] == 'up' and record.get('complete'):
+        state = ctx.operator_state()
+        if state is not None and ctx.settings_revision is not None:
+            state.record_all(ctx.settings_revision, f'deploy:{record["id"]}', record['revision'])
         ctx.records.finish(record)
     else:
         record['status'] = 'done'

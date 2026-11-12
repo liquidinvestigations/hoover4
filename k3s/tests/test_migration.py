@@ -166,3 +166,62 @@ def test_a_step_waits_for_the_steps_before_it(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as stopped:
         migrate.main(['copy', 'main', '--site', str(site)])
     assert 'needs the steps plan, freeze, record, stop, images first' in str(stopped.value)
+
+
+def test_the_stream_pack_extracts_into_a_target_that_verifies(source):
+    src, target, maps, manifest = source
+    packer = subprocess.Popen([sys.executable, SCRIPT, 'pack', src, SMALL_UIDS, SMALL_UIDS], stdout=subprocess.PIPE)
+    extract = subprocess.run([sys.executable, '-c', migrate_module().EXTRACT.replace("'/target'", repr(str(target)))],
+                             stdin=packer.stdout)
+    packer.stdout.close()
+    assert packer.wait() == 0 and extract.returncode == 0
+    os.replace(target / root_copy.PACK_MANIFEST, manifest)
+    rows = {r['path']: r for r in map(json.loads, manifest.read_text().splitlines())}
+    assert rows['data/part/columns.bin']['owner'] == [101, 101]
+    assert os.stat(target / 'data/part/columns.bin').st_uid == 101
+    assert os.stat(target / 'commitlog/segment').st_mode & 0o777 == 0o600
+    assert os.readlink(target / 'latest') == 'data/part'
+    code, result = verify(target, manifest)
+    assert code == 0 and result['differences'] == 0 and result['files'] == 2
+
+
+def test_rootful_docker_keeps_the_owners_and_rootless_docker_is_refused(monkeypatch):
+    migrate = migrate_module()
+    migrate.Source.engine, migrate.Source.host = 'docker', ''
+    monkeypatch.setattr(migrate, 'src', lambda argv, **kw: '["name=seccomp,profile=builtin"]')
+    uid, gid = migrate.owner_maps()
+    assert root_copy.inside_id(165636, root_copy.parse_map(uid)) == 165636
+    monkeypatch.setattr(migrate, 'src', lambda argv, **kw: '["name=rootless"]')
+    with pytest.raises(SystemExit, match='rootless'):
+        migrate.owner_maps()
+    migrate.Source.engine = 'podman'
+    monkeypatch.setattr(migrate, 'src', lambda argv, **kw: ROOTLESS_UIDS)
+    assert migrate.owner_maps() == (ROOTLESS_UIDS, ROOTLESS_UIDS)
+    # A remote source runs each command over SSH with its arguments quoted.
+    migrate.Source.host = 'compose-host'
+    argv = migrate.Source.argv(['docker', 'exec', 'clickhouse', 'sh', '-c', 'echo a b'])
+    assert argv[0] == 'ssh' and argv[-1] == "docker exec clickhouse sh -c 'echo a b'"
+    migrate.Source.engine, migrate.Source.host = 'docker', ''
+
+
+def test_a_changed_input_stops_every_later_step(tmp_path):
+    migrate = migrate_module()
+    site_path = tmp_path / 'site.ini'
+    site_path.write_text(site_text('single-node.ini').replace('[site]\n', f'[site]\nstate_path = {tmp_path / "state"}\n', 1))
+    site = config.read(site_path)
+    r = migrate.Run(site, site.hoovers['main'], '1', site_path)
+    with pytest.raises(SystemExit, match='no inputs.json'):
+        migrate.check_inputs(r, 'a' * 40)
+    r.write('inputs.json', {'revision': 'a' * 40, 'settings_revision': 3, 'engine': 'docker', 'source_host': '',
+                            'site_fingerprint': migrate.site_fingerprint(site_path), 'images': {},
+                            'identity': site.hoovers['main'].identity(), 'home_node': 'dev'})
+    assert migrate.check_inputs(r, 'a' * 40)['settings_revision'] == 3
+    with pytest.raises(SystemExit, match='is not the pinned'):
+        migrate.check_inputs(r, 'b' * 40)
+    migrate.Source.engine = 'podman'
+    with pytest.raises(SystemExit, match='the source is podman'):
+        migrate.check_inputs(r, 'a' * 40)
+    migrate.Source.engine = 'docker'
+    site_path.write_text(site_path.read_text() + '\n')
+    with pytest.raises(SystemExit, match='the site file changed'):
+        migrate.check_inputs(r, 'a' * 40)

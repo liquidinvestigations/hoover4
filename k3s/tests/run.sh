@@ -2,8 +2,8 @@
 # Run the test suites of the cluster deployment code in containers. Usage: k3s/tests/run.sh [suite ...]
 # Without a suite it runs render, state and driver.
 #   render   the site file, the source ini reader and the Hoover render (test_config.py, test_render.py)
-#   state    the operator settings registry, revisions and apply operations (test_state.py)
-#   driver   the deployment driver deploy-k3s with fake ssh, sudo and kubectl commands (test_driver.py)
+#   state    the operator settings registry, revisions, apply operations and portal routes (test_state.py, test_portal.py)
+#   driver   the deployment driver with fake ssh, sudo and kubectl, and the host scripts (test_driver.py, test_hosts.py)
 #   migration the offline copy, its hashes and owner mapping, interruption and the plan rules (test_migration.py)
 #   backup   the backup schedule, eligibility, retention and restore manifests with controlled time (test_backup.py)
 #   replay   the workflow replay suite of the pipeline, in the worker image with the processing folder mounted read-only.
@@ -16,7 +16,7 @@ repo_root="$(cd -- "$tests_dir/../.." && pwd)"
 suites=("$@")
 [ ${#suites[@]} -eq 0 ] && suites=(render state driver)
 
-declare -A files=([render]="test_config.py test_render.py" [state]="test_state.py" [driver]="test_driver.py"
+declare -A files=([render]="test_config.py test_render.py" [state]="test_state.py test_portal.py" [driver]="test_driver.py test_hosts.py"
                  [migration]="test_migration.py" [backup]="test_backup.py")
 built=""
 status=0
