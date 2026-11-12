@@ -194,6 +194,9 @@ Rules in [.agents/rules/](.agents/rules) apply beside the code they govern.
 | Update documentation or comments. | Use `writing-project-docs`. |
 | Diagnose a runtime failure. | Use `debugging-the-stack`. |
 | Deploy or restart an authorized service. | Use `deploying-the-stack`. |
+| Apply and wait on cluster changes in batches. | Use `batching-cluster-changes`. |
+| Search for reports of a failure in a known product. | Use `researching-known-problems`. |
+| Find a file outside the repository on a host. | Use `searching-host-filesystems`. |
 | Verify a page or interaction. | Use `driving-the-browser`. |
 | Design interface layout, behavior, or text. | Use `designing-interfaces`. |
 | Inspect stored data. | Use `querying-the-datastores`. |
