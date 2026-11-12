@@ -229,18 +229,22 @@ REMOVAL = """#!/bin/sh
 # Remove the local k3s installation of node {node}. Review every line, then run it as root.
 # Generated from {inventory} at {time}. It keeps these protected resources unchanged:
 {protected}
+# Another project uses the k3s binary, kubectl, crictl and ctr, so the binaries, their links, k3s-killall.sh and
+# k3s-uninstall.sh stay. The script removes only the services, units, data, network and DNS setup of this site.
 set -eu
 systemctl stop hoover4-frontend.service hoover4-dns.service || true
 systemctl stop k3s.service || true
+# k3s-killall.sh stops the pods of the site, unmounts their folders and removes the CNI links and rules of k3s.
 [ -x /usr/local/bin/k3s-killall.sh ] && /usr/local/bin/k3s-killall.sh || true
 systemctl disable hoover4-frontend.service hoover4-dns.service hoover4-address.service k3s.service || true
 # The runner of the local site is a user unit of {user}. Run as {user}: systemctl --user disable --now hoover4-operator-runner
-# The uninstall script of k3s removes /var/lib/rancher/k3s, /etc/rancher/k3s and the k3s binaries. The kubeconfig link
-# /etc/rancher/k3s/k3s.yaml belongs to another project, so it is moved aside first and restored after.
-link=$(readlink /etc/rancher/k3s/k3s.yaml || true)
-[ -x /usr/local/bin/k3s-uninstall.sh ] && /usr/local/bin/k3s-uninstall.sh || true
-if [ -n "$link" ]; then install -d /etc/rancher/k3s && ln -sfn "$link" /etc/rancher/k3s/k3s.yaml; fi
+rm -rf /etc/systemd/system/k3s.service /etc/systemd/system/k3s.service.env /etc/systemd/system/k3s.service.d
+# /etc/rancher/k3s/k3s.yaml stays. The other files of the folder belong to this site.
+rm -f /etc/rancher/k3s/config.yaml /etc/rancher/k3s/token /etc/rancher/k3s/agent-token \\
+      /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/hoover4-admin.yaml
+rm -rf /run/k3s /run/flannel
 {volume_lines}
+rm -rf /var/lib/rancher/k3s /var/lib/kubelet
 rm -f /etc/systemd/system/hoover4-address.service /etc/systemd/system/hoover4-dns.service \\
       /etc/systemd/system/hoover4-frontend.service /etc/systemd/system/hoover4.slice
 rm -f /etc/systemd/resolved.conf.d/hoover4.conf
@@ -249,6 +253,7 @@ ip link delete hoover4 2>/dev/null || true
 rm -rf /opt/gvisor /opt/kata /etc/kata-containers /etc/gvisor /usr/local/libexec/hoover4
 rm -f /etc/sudoers.d/90-hoover4
 systemctl daemon-reload
+systemctl reset-failed k3s.service 2>/dev/null || true
 systemctl restart systemd-resolved
 echo "removed. Check: systemctl status k3s; findmnt /var/lib/rancher; ip link show hoover4; resolvectl query example.org"
 """

@@ -62,7 +62,11 @@ RestartSec=10
 [Install]
 WantedBy=default.target
 UNIT
-sudo -n loginctl enable-linger "$(id -un)"
+# An operator host without sudo gets lingering once through the cluster root route of the driver.
+if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
+  sudo -n loginctl enable-linger "$(id -un)" ||
+    { echo "lingering is off for $(id -un). Run as root once: loginctl enable-linger $(id -un)" >&2; exit 1; }
+fi
 systemctl --user daemon-reload
 systemctl --user enable -q $unit
 systemctl --user restart $unit

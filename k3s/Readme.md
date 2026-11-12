@@ -137,6 +137,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`root-install-k3s.py --preserve`).
 3. `verify <folder>` reads the archive again against its manifest.
 4. `removal <folder>` writes `remove-local-k3s.sh`. A person reviews it and runs it as root.
+   The script removes the services, units, data, volumes, link and DNS setup of the site. The k3s binary, `kubectl`, `crictl`, `ctr`, the k3s scripts and `/etc/rancher/k3s/k3s.yaml` stay, because another project uses them.
 
 ## Choose the stores and the Temporal backend.
 

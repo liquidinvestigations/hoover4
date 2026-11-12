@@ -158,10 +158,26 @@ def test_the_removal_script_needs_an_archive_and_keeps_the_protected_resources(t
     script = (tmp_path / 'remove-local-k3s.sh').read_text()
     assert '#   /etc/rancher/k3s/k3s.yaml: the kubeconfig link of another project' in script
     assert '#   /srv/compose-volumes: the stopped Compose volumes' in script
-    assert 'ln -sfn "$link" /etc/rancher/k3s/k3s.yaml' in script
+    # The k3s binary, its links and the k3s scripts belong also to another project, so no line removes them.
+    body = script.split('set -eu')[1]
+    assert 'k3s-uninstall.sh' not in body and '/usr/local/bin/k3s ' not in body
+    assert not any(f'/usr/local/bin/{c}' in body for c in ('kubectl', 'crictl', 'ctr'))
+    assert 'k3s.yaml' not in body.replace('# /etc/rancher/k3s/k3s.yaml stays.', '')
+    assert 'rm -rf /var/lib/rancher/k3s /var/lib/kubelet' in body
     assert "sed -i '\\# /var/lib/kubelet #d' /etc/fstab" in script
     assert 'rm -rf /srv' not in script and 'hoover-operator' not in script.split('set -eu')[1]
     # vgremove stays a comment, because another volume can use the group.
     assert '\nvgremove' not in script and '# Remove the group only when lvs shows no other volume' in script
     (tmp_path / 'claims/a.tar').write_bytes(b'changed')
     assert lr.verify(tmp_path)['differences'] == ['claims/a.tar']
+
+
+def test_an_install_after_the_sqlite_copy_starts_the_stopped_server(k3s, monkeypatch):
+    # install-k3s.sh skips the start when its unit file is unchanged, so the script restarts the unit itself.
+    k3s.use(site_text('remote.ini'), 'server-a')
+    commands = []
+    monkeypatch.setattr(k3s, 'run', lambda cmd, env=None, check=True: commands.append(cmd) or '')
+    monkeypatch.setattr(k3s, 'staged', lambda name: str(k3s.tmp / 'staged' / name))
+    monkeypatch.setattr(k3s.subprocess, 'run', lambda *a, **kw: type('R', (), {'returncode': 3})())
+    assert k3s.install_k3s() == 'k3s'
+    assert commands[-1] == ['systemctl', 'restart', 'k3s']

@@ -197,9 +197,13 @@ def cluster_identity(ctx):
     """The UID of the namespace kube-system, or an empty text before the cluster answers."""
     if not ctx.kubeconfig.exists():
         return ''
-    code, out = read(['kubectl', '--kubeconfig', ctx.kubeconfig, 'get', 'namespace', 'kube-system', '-o',
-                      'jsonpath={.metadata.uid}'], timeout=20)
-    return out.strip() if code == 0 else ''
+    # Only standard output counts: the kubectl of a k3s host writes configuration warnings with a time to stderr.
+    try:
+        r = subprocess.run(['kubectl', '--kubeconfig', str(ctx.kubeconfig), 'get', 'namespace', 'kube-system', '-o',
+                            'jsonpath={.metadata.uid}'], capture_output=True, text=True, timeout=20)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ''
+    return r.stdout.strip() if r.returncode == 0 else ''
 
 
 def pinned_inputs(ctx, tree=None):

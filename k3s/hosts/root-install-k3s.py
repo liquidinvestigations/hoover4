@@ -477,6 +477,9 @@ def install_k3s():
     env = dict(os.environ, INSTALL_K3S_SKIP_DOWNLOAD="true", INSTALL_K3S_SKIP_SELINUX_RPM="true",
                INSTALL_K3S_VERSION=K3S_VERSION, INSTALL_K3S_EXEC="server" if THIS == SERVER else "agent")
     run(["sh", staged("install-k3s.sh")], env=env)
+    # install-k3s.sh starts k3s only when its unit file changed. A changed configuration, or a k3s that the SQLite copy
+    # stopped, needs the restart here, else the unit stays stopped and the server never comes back.
+    run(["systemctl", "restart", unit])
     return unit
 
 
