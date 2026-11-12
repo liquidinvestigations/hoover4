@@ -42,12 +42,13 @@ The default path is `k3s/private/hoover4-site.ini`. [tests/fixtures/](tests/fixt
 | `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_dns_credentials_file`, `gpu_api_key_file` |
 | `[gpu_pool]` | `nodes` or `address`, and `api_key_file` |
 | `[backup]` | `node` and `path` of the backup destination |
-| `[hoover.<name>]` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir` |
+| `[hoover.<name>]` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
 
 The roles are `control-plane`, `worker`, `public`, `registry`, `data`, `calls` and `gpu`.
 The value `single` gives one host every role except `calls` and `gpu`.
 A site with one node needs no VPN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
+`extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
 `vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here, and the installer adds no peer to a GPU node.
 
 Check a site file, or print the part that one node receives:
@@ -126,6 +127,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 1. `tools/adopt-cluster.py inventory` writes the nodes, namespaces, claims, Secret names, images and storage identities of the cluster into `<operator state>/adoption/` and lists each difference from the site file.
 2. `tools/adopt-cluster.py runners` lists the runner units of the earlier tool. Stop them before the first run of this driver.
 3. `tools/adopt-cluster.py tokens` copies the tokens of the server into `private/staging/tokens/`.
+4. `tools/adopt-cluster.py settings` saves the explicit values of the `hoover4.ini` of each zone of the earlier tool once as operator settings. It lists the keys that this revision does not read.
 
 ## Retire the local single-node site.
 

@@ -47,6 +47,8 @@ PATHS = ('/etc/rancher/k3s/config.yaml', '/etc/rancher/k3s/token', '/etc/rancher
 PROTECTED = {'/etc/rancher/k3s/k3s.yaml': 'the kubeconfig link of another project',
              'hoover-operator.service': 'the runner of the remote cluster until its controlled replacement'}
 SKIP_NAMESPACES = ('kube-system', 'kube-public', 'kube-node-lease', 'default')
+# The registry holds images that a build of a commit makes again, and monitoring holds metrics and logs only.
+REBUILT_NAMESPACES = ('registry', 'monitoring')
 HELPER_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
 
 
@@ -173,13 +175,20 @@ def archive(dest):
     dest.mkdir(parents=True, exist_ok=True)
     os.chmod(dest, 0o700)
     # The writers, Temporal and the stores stop in their tiers, and stopped.json keeps the replicas for a restart.
-    subprocess.run([sys.executable, K3S / 'deploy-k3s', 'down', '--target', node.name, '--steps', 'stop:ingress',
+    subprocess.run([sys.executable, K3S / 'deploy-k3s', 'down', '--site', str(k3s_settings.SITE_FILE),
+                    '--target', node.name, '--steps', 'stop:ingress',
                     'stop:applications', 'stop:temporal', 'stop:stores'], check=True)
     claims = json.loads(kubectl('get', 'pvc', '-A', '-o', 'json'))['items']
-    namespaces = set()
+    namespaces, kept = set(), []
     for c in claims:
         ns, name = c['metadata']['namespace'], c['metadata']['name']
-        if ns in SKIP_NAMESPACES or any(o['kind'] == 'Pod' for o in c['metadata'].get('ownerReferences', [])):
+        if ns in SKIP_NAMESPACES + REBUILT_NAMESPACES or any(o['kind'] == 'Pod' for o in c['metadata'].get('ownerReferences', [])):
+            continue
+        volume = c['spec'].get('volumeName')
+        pv = json.loads(kubectl('get', 'pv', volume, '-o', 'json')) if volume else {}
+        if 'hostPath' in pv.get('spec', {}) or 'local' in pv.get('spec', {}):
+            # A host folder of the node, for example a Compose dataset folder, stays in place and is protected.
+            kept.append(f'{ns}/{name}')
             continue
         namespaces.add(ns)
         target = dest / 'claims' / ns / f'{name}.tar'
@@ -208,8 +217,9 @@ def archive(dest):
     subprocess.run(['tar', '-C', str(k3s_settings.PRIVATE), '-cf', str(dest / 'private.tar'),
                     *[f'--exclude=./{e}' for e in excluded], '.'], check=True)
     os.chmod(dest / 'private.tar', 0o600)
+    (dest / 'kept-in-place.json').write_text(json.dumps(kept, indent=1))
     rows = write_manifest(dest)
-    print(json.dumps({'archive': str(dest), 'files': len(rows), 'bytes': sum(r['bytes'] for r in rows),
+    print(json.dumps({'archive': str(dest), 'files': len(rows), 'bytes': sum(r['bytes'] for r in rows), 'kept': kept,
                       'next': 'Run as root: /usr/local/libexec/hoover4/root-install-k3s.py --hosts <hosts.json> --node '
                               f'{node.name} --preserve {dest}/k3s-server --owner {os.environ.get("USER", "")}, '
                               'then run local-retirement.py verify again after write_manifest.'}))

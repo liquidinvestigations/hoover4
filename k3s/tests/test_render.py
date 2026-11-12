@@ -555,3 +555,36 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
     assert ('tcp', 443) not in media and ('tcp', 443) in {(r['protocol'], r['port']) for r in rules['edge']}
     script = (REPO / 'k3s/hosts/root-install-public-firewall.sh').read_text()
     assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script
+
+
+@pytest.mark.parametrize('fixture,name', [('remote.ini', 'zone-a'), ('remote.ini', 'research'), ('single-node.ini', 'main')])
+def test_no_workload_names_a_volume_or_mount_twice(tmp_path, fixture, name):
+    import collections
+    for item in items_of(target(fixture, name, tmp_path)):
+        if item['kind'] not in ('Deployment', 'StatefulSet'):
+            continue
+        spec = item['spec']['template']['spec']
+        volumes = [v['name'] for v in spec.get('volumes', [])]
+        assert not [v for v, n in collections.Counter(volumes).items() if n > 1], item['metadata']['name']
+        for c in spec['containers'] + spec.get('initContainers', []):
+            paths = [m['mountPath'] for m in c.get('volumeMounts', [])]
+            assert not [p for p, n in collections.Counter(paths).items() if n > 1], (item['metadata']['name'], c['name'])
+
+
+def test_an_extra_dataset_folder_is_a_read_only_export_of_its_data_node(tmp_path):
+    text = site_text('remote.ini').replace('collection_bucket_prefix = zone-a-c-',
+                                           'collection_bucket_prefix = zone-a-c-\nextra_datasets = archive:worker-b:/storage/archive')
+    site = config.parse(text)
+    assert site.hoovers['zone-a'].extra_datasets == (('archive', 'worker-b', '/storage/archive'),)
+    assert config.parse(config.dump(site)) == site
+    assert config.legacy_settings(site)['hoover_data']['extra'] == {
+        'zone-a': [{'name': 'archive', 'node': 'worker-b', 'path': '/storage/archive'}]}
+    path = tmp_path / 'site.ini'
+    path.write_text(text)
+    t = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'no-state',
+                                   nfs={**NFS, 'worker-b': '10.43.0.12'})
+    mounts = {m['name']: m for m in manifests.dataset_mounts(t)}
+    assert mounts['archive']['path'] == '/data/archive' and mounts['archive']['writable'] is False
+    assert mounts['archive']['volume'] == {'nfs': {'server': '10.43.0.12', 'path': '/extra/zone-a/archive', 'readOnly': True}}
+    with pytest.raises(config.SiteError, match='not a node with the role data'):
+        config.parse(text.replace('archive:worker-b:', 'archive:edge:'))

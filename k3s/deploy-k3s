@@ -16,8 +16,8 @@ Usage:
 --revision names the commit of the images and of the scripts. The driver resolves it once, at the start of an up or a
 down, writes the tree of the commit with git archive into k3s/private/build/<commit>/ and runs the deploy-k3s of that
 tree, so every step runs the scripts of the commit and not the working files of the checkout. The record keeps the
-commit and the fingerprint of the tree. A resumed record keeps them. The default is HEAD for up, and the applied
-revision, else HEAD, for down.
+commit and the fingerprint of the tree. A resumed record keeps them. The default is HEAD. A tree of a commit before
+this export cannot run a down, so down also uses HEAD.
 up installs or updates the hosts, k3s, the registry, the images, the platform services and the zones, in this order.
 up --start starts what down stopped: k3s, then the stores, Temporal, the applications and the ingress.
 down stops the ingress, the applications and workers, Temporal, the stores, and then k3s. It cancels no workflow.
@@ -141,8 +141,6 @@ def main(argv):
             revision = record['revision']
         else:
             wanted = args.revision
-            if args.command == 'down' and wanted == 'HEAD':
-                wanted = (ctx.records.applied() or {}).get('revision') or 'HEAD'
             try:
                 revision = deploy.resolve_revision(ctx.repo, wanted)
             except deploy.StepFailed as error:

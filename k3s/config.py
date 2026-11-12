@@ -12,7 +12,8 @@ Sections:
   [gpu_pool]         optional. The GPU services: the GPU nodes of the site, or the address of a shared pool
   [backup]           optional. One node and one host folder that receive the backups
   [hoover.<name>]    one Hoover installation: its zone, home node, store layout, Temporal backend, history source,
-                     storage identity, and an optional source_ini of an earlier Compose install
+                     storage identity, an optional source_ini of an earlier Compose install, and optional
+                     extra_datasets: read-only dataset folders of data nodes, as name:node:/path
 
 The node roles are control-plane, worker, public, registry, data, calls and gpu. The value `single` gives one host
 every role except calls and gpu. A site with one node needs no VPN address and no public address.
@@ -83,7 +84,7 @@ HOOVER_KEYS = {
     'history_source': (False, ('choice', ('compose', 'k3s-branch'))),
     'clickhouse_database_prefix': (True, 'identity'), 'manticore_table_prefix': (True, 'identity'),
     'system_bucket': (True, 'identity'), 'collection_bucket_prefix': (True, 'identity'),
-    'source_ini': (False, 'path'), 'chat_control_dir': (False, 'path'),
+    'source_ini': (False, 'path'), 'chat_control_dir': (False, 'path'), 'extra_datasets': (False, 'datasets'),
 }
 # The defaults of the optional keys. A key without a default here is empty.
 DEFAULTS = {
@@ -144,6 +145,7 @@ class Hoover:
     history_source: str = 'compose'
     source_ini: str = ''
     chat_control_dir: str = ''
+    extra_datasets: tuple = ()
 
     @property
     def namespace(self):
@@ -284,6 +286,17 @@ def _value(label, kind, raw, problems):
         return raw
     if kind == 'identity':
         return raw
+    if kind == 'datasets':
+        # name:node:/absolute/path, separated by commas. Each is a read-only dataset folder of a data node.
+        items = []
+        for part in (p.strip() for p in raw.split(',') if p.strip()):
+            pieces = part.split(':', 2)
+            if len(pieces) != 3 or not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', pieces[0]) or not NAME.fullmatch(pieces[1]) \
+                    or not os.path.isabs(pieces[2]) or os.path.normpath(pieces[2]) != pieces[2].rstrip('/'):
+                problems.append(f'{label} has {part}, which is not name:node:/absolute/path.')
+                return None
+            items.append(tuple(pieces))
+        return tuple(items)
     raise AssertionError(kind)
 
 
@@ -480,6 +493,13 @@ def check(site, check_files=False):
                             f'Set clickhouse_database_prefix = {hoover.zone.replace("-", "_")}, or use stores = local.')
         if hoover.stores == 'zone' and hoover.source_ini:
             problems.append(f'{label} has a source_ini. A migrated Compose install uses stores = local.')
+        for name, node_name, _ in hoover.extra_datasets:
+            if node_name not in nodes or not nodes[node_name].has('data'):
+                problems.append(f'{label} extra_datasets names {node_name}, which is not a node with the role data.')
+            if name in ('testdata', 'uploads'):
+                problems.append(f'{label} extra_datasets uses the reserved name {name}.')
+        if hoover.extra_datasets and (hoover.source_ini or single):
+            problems.append(f'{label} has extra_datasets, which only an installation with NFS data folders reads.')
         if hoover.source_ini and hoover.temporal_backend != 'cassandra':
             problems.append(f'{label} has a source_ini. A Compose install keeps Temporal on Cassandra, so temporal_backend = cassandra.')
         # Each installation has its own namespace and its own stores. Two installations of one zone would share them.
@@ -524,7 +544,7 @@ def _text(value):
     if isinstance(value, bool):
         return 'true' if value else 'false'
     if isinstance(value, tuple):
-        return ', '.join(value)
+        return ', '.join(':'.join(v) if isinstance(v, tuple) else v for v in value)
     return str(value)
 
 
@@ -548,7 +568,7 @@ def dump(site):
         lines += ['', f'[hoover.{hoover.name}]']
         for key in HOOVER_KEYS:
             value = getattr(hoover, key)
-            if value != '' or key == 'manticore_table_prefix':
+            if value not in ('', ()) or key == 'manticore_table_prefix':
                 lines.append(f'{key} = {_text(value)}')
     return '\n'.join(lines) + '\n'
 
@@ -611,7 +631,9 @@ def legacy_settings(site):
         'turn_listen': binds,
         'frontend_local': public.local,
         **calls_settings(site),
-        'hoover_data': {'roots': {n.name: n.data_root for n in site.with_role('data')}, 'extra': {}},
+        'hoover_data': {'roots': {n.name: n.data_root for n in site.with_role('data')},
+                        'extra': {h.zone: [{'name': n, 'node': node, 'path': path} for n, node, path in h.extra_datasets]
+                                  for h in site.hoovers.values() if h.extra_datasets}},
     }
     if site.vpn_cidr:
         out['vpn_cidr'] = site.vpn_cidr

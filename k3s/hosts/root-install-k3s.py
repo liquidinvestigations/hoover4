@@ -676,8 +676,10 @@ def restore_snapshot(path, token_file):
     run(["systemctl", "stop", "k3s"])
     if not DRY and subprocess.run(["systemctl", "is-active", "-q", "k3s"]).returncode == 0:
         fail("k3s still runs. Stop it first.")
+    # k3s ends a reset with a shutdown request and an error line, also after a successful restore. The start and the
+    # etcd check below decide whether the restore worked.
     run(["/usr/local/bin/k3s", "server", "--cluster-reset", "--cluster-reset-restore-path", os.path.abspath(path),
-         "--token-file", os.path.abspath(token_file)])
+         "--token-file", os.path.abspath(token_file)], check=False)
     run(["systemctl", "start", "k3s"])
     wait_server()
     verify_etcd()

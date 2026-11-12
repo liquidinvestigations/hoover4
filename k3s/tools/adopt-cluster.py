@@ -12,7 +12,10 @@ identities of that cluster, so the driver keeps them.
               token value reaches a log, a command argument or the output. A server without an agent token gets the
               secret of the server token as agent token, which is the token that its agents already use.
   runners     Lists the operator runner units of the earlier tool on the control plane, as the user shell sees them.
-Usage: adopt-cluster.py inventory|tokens|runners [--site FILE]
+  settings    Saves the explicit values of the hoover4.ini of each installation of the earlier tool,
+              k3s/private/zones/<zone>/hoover4.ini, once as operator settings of the installation (State.seed), so the
+              first render keeps the values that the installation runs. A saved value stays.
+Usage: adopt-cluster.py inventory|tokens|runners|settings [--site FILE]
 """
 import argparse
 import json
@@ -30,7 +33,8 @@ import config  # noqa: E402
 import hostroute  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 
-IDENTITY_VARIABLES = ('CLICKHOUSE_DATABASE_PREFIX', 'MANTICORE_TABLE_PREFIX', 'SYSTEM_BUCKET', 'COLLECTION_BUCKET_PREFIX')
+# The environment variables of the storage identity, from main_services/processing/tasks/storage_identity.json.
+IDENTITY_VARIABLES = tuple(v['variable'] for v in json.loads(config.STORAGE_IDENTITY.read_text())['settings'].values())
 
 
 def kubectl_json(*args):
@@ -68,10 +72,12 @@ def inventory(site):
                         if e['name'] in IDENTITY_VARIABLES and 'value' in e:
                             identity[e['name']] = e['value']
             out['namespaces'][ns] = {'claims': claims, 'secrets': secrets, 'workloads': workloads, 'identity': identity}
+            if ns == hoover.namespace and not identity:
+                out['differences'].append(f'{ns} runs no workload with the storage identity variables')
             if ns == hoover.namespace and identity:
                 wanted = hoover.identity()
                 for key, value in identity.items():
-                    if wanted.get(key) != value:
+                    if key in wanted and wanted[key] != value:
                         out['differences'].append(f'{ns} runs {key} = {value}, and the site file names {wanted.get(key)}')
         home = nodes.get(hoover.home_node)
         if home is None:
@@ -141,13 +147,66 @@ def runners(site):
     print(json.dumps({'node': site.control_plane, 'units': [line.split()[0] for line in out.splitlines() if line.strip()]}))
 
 
+def read_earlier_ini(path):
+    """The SourceInstall of an ini of an earlier Hoover revision. A key that this revision does not know is left out
+    and listed, because the earlier image read it and this one does not."""
+    import re
+    import tempfile
+    text = Path(path).read_text()
+    unknown = []
+    if '[dataset_mount.' not in text:
+        # The cluster render names the dataset folders itself. The reader needs one mount, which no setting reads.
+        text += '\n[dataset_mount.testdata]\nhost_path = /nonexistent/testdata\ncontainer_path = /testdata\nwritable = false\n'
+    for _ in range(3):
+        try:
+            with tempfile.NamedTemporaryFile('w', suffix='.ini', dir=Path(path).parent) as handle:
+                handle.write(text)
+                handle.flush()
+                return config.read_source_ini(handle.name, check_paths=False), unknown
+        except config.SiteError as error:
+            found = re.findall(r'\[(\w+)\] (\w+) is not a known key', str(error))
+            if not found:
+                raise
+            for section, key in found:
+                unknown.append(f'[{section}] {key}')
+                lines, current = [], None
+                for line in text.splitlines():
+                    header = re.match(r'\s*\[(.+)\]\s*$', line)
+                    current = header.group(1) if header else current
+                    if current == section and re.match(rf'\s*{key}\s*=', line):
+                        continue
+                    lines.append(line)
+                text = '\n'.join(lines) + '\n'
+    raise SystemExit(f'{path} still has unknown keys after {unknown}')
+
+
+def settings(site):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('operator_settings', K3S / 'platform/operator/settings.py')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules['operator_settings'] = module
+    spec.loader.exec_module(module)
+    state = module.State(site.operator_state())
+    out = {}
+    for hoover in site.hoovers.values():
+        path = k3s_settings.PRIVATE / 'zones' / hoover.zone / 'hoover4.ini'
+        if not path.exists():
+            out[hoover.name] = f'{path} does not exist'
+            continue
+        source, unknown = read_earlier_ini(path)
+        revision = state.seed(f'hoover:{hoover.name}', source, actor='adoption')
+        out[hoover.name] = {'revision': revision, 'dropped': source.dropped + unknown,
+                            'keys': state._desired()['seeded'].get(f'hoover:{hoover.name}', {}).get('keys')}
+    print(json.dumps(out, indent=1))
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('inventory', 'tokens', 'runners'))
+    parser.add_argument('command', choices=('inventory', 'tokens', 'runners', 'settings'))
     parser.add_argument('--site', default=str(k3s_settings.SITE_FILE))
     args = parser.parse_args(argv)
     site = config.read(args.site)
-    {'inventory': inventory, 'tokens': tokens, 'runners': runners}[args.command](site)
+    {'inventory': inventory, 'tokens': tokens, 'runners': runners, 'settings': settings}[args.command](site)
 
 
 if __name__ == '__main__':

@@ -454,8 +454,16 @@ def dataset_mounts(target):
         raise RenderError(f'the NFS Service address of the data node {node} is unknown. Run '
                           'k3s/platform/hoover-data/install-hoover-data.py, or give the address to the render.')
     rows = [('testdata', f'/{target.zone}/testdata', False), ('uploads', f'/{target.zone}/uploads', True)]
-    return [{'name': n, 'path': f'/data/{n}', 'writable': w, 'volume': {'nfs': {'server': server, 'path': e, 'readOnly': not w}}}
-            for n, e, w in rows]
+    out = [{'name': n, 'path': f'/data/{n}', 'writable': w, 'volume': {'nfs': {'server': server, 'path': e, 'readOnly': not w}}}
+           for n, e, w in rows]
+    # An extra dataset folder of the site file is a read-only export of the NFS server of its data node.
+    for name, extra_node, _ in target.hoover.extra_datasets:
+        extra_server = target.nfs.get(extra_node)
+        if not extra_server:
+            raise RenderError(f'the NFS Service address of the data node {extra_node} is unknown.')
+        out.append({'name': name, 'path': f'/data/{name}', 'writable': False,
+                    'volume': {'nfs': {'server': extra_server, 'path': f'/extra/{target.zone}/{name}', 'readOnly': True}}})
+    return out
 
 
 def host_volume(claim_name):
@@ -765,8 +773,11 @@ def translated(target, services, mounts, deploy):
             workers = container('hoover-workers', svc, img, env, quantity(f"{target.budget['worker_memory_mib']}M", memory), mounted,
                                 cpu=target.budget['worker_cpus'], command=python + ['worker'], extra_env=[*credentials, *pod_env])
             workers['workingDir'] = '/app'
-            single_mounts = [m for m in mounted if m['name'] not in claims]
-            single_volumes = list(pod_volumes) + [{'name': 'worker-temp-files', 'emptyDir': {}}]
+            # The singletons keep their plan files in a folder of their own pod. The zone layout already gives the
+            # worker pods that folder as worker-temp-files, so the name appears once in each list.
+            single_mounts = [m for m in mounted if m['name'] not in claims and m['name'] != 'worker-temp-files']
+            single_volumes = [v for v in pod_volumes if v['name'] != 'worker-temp-files'] + \
+                [{'name': 'worker-temp-files', 'emptyDir': {}}]
             single_mounts.append({'name': 'worker-temp-files', 'mountPath': '/tmp/hoover4'})
             singles = container('hoover-singletons', svc, img, env, '3Gi', single_mounts, cpu=2, command=python + ['worker'],
                                 extra_env=[*credentials, value('HOOVER4_WORKERS', SINGLETONS)])
