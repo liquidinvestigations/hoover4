@@ -162,7 +162,8 @@ def test_the_removal_script_needs_an_archive_and_keeps_the_protected_resources(t
     body = script.split('set -eu')[1]
     assert 'k3s-uninstall.sh' not in body and '/usr/local/bin/k3s ' not in body
     assert not any(f'/usr/local/bin/{c}' in body for c in ('kubectl', 'crictl', 'ctr'))
-    assert 'k3s.yaml' not in body.replace('# /etc/rancher/k3s/k3s.yaml stays.', '')
+    commands = '\n'.join(line for line in body.splitlines() if not line.startswith('#'))
+    assert 'k3s.yaml' not in commands and 'hoover4-admin.yaml' not in commands
     assert 'rm -rf /var/lib/rancher/k3s /var/lib/kubelet' in body
     assert "sed -i '\\# /var/lib/kubelet #d' /etc/fstab" in script
     assert 'rm -rf /srv' not in script and 'hoover-operator' not in script.split('set -eu')[1]
@@ -181,3 +182,40 @@ def test_an_install_after_the_sqlite_copy_starts_the_stopped_server(k3s, monkeyp
     monkeypatch.setattr(k3s.subprocess, 'run', lambda *a, **kw: type('R', (), {'returncode': 3})())
     assert k3s.install_k3s() == 'k3s'
     assert commands[-1] == ['systemctl', 'restart', 'k3s']
+
+
+@pytest.mark.parametrize('script', ['root-install-k3s.py', 'root-install.py', 'root-install-local.py'])
+def test_the_root_scripts_accept_names_and_refuse_paths_and_links_out_of_their_folder(script, tmp_path):
+    module = load(script)
+    assert module.name_arg('5885ba402618') == '5885ba402618'
+    for value in ('/etc', '../x', 'a/b', '..', '.', '.hidden', '', 'a b', 'x;rm'):
+        with pytest.raises(SystemExit):
+            module.name_arg(value)
+    home = tmp_path / 'home'
+    (home / 'k3s-install' / 'rev').mkdir(parents=True)
+    assert module.below(str(home), 'k3s-install/rev') == str(home / 'k3s-install' / 'rev')
+    for relative in ('/etc/passwd', '../outside', 'k3s-install/../../outside', 'k3s-install//rev', ''):
+        with pytest.raises(SystemExit):
+            module.below(str(home), relative)
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (home / 'k3s-install' / 'escape').symlink_to(outside)
+    (home / 'k3s-install' / 'inner').symlink_to(home / 'k3s-install' / 'rev')
+    for relative in ('k3s-install/escape', 'k3s-install/escape/hosts.json', 'k3s-install/inner'):
+        with pytest.raises(SystemExit):
+            module.below(str(home), relative)
+
+
+def test_the_k3s_script_finds_the_bundle_and_snapshots_by_name(tmp_path, monkeypatch, capsys):
+    module = load('root-install-k3s.py')
+    user = type('User', (), {'pw_dir': str(tmp_path), 'pw_name': 'operator'})()
+    (tmp_path / 'k3s-install' / 'snapshots').mkdir(parents=True)
+    assert module.install_folder(user, 'abc') == str(tmp_path / 'k3s-install' / 'abc')
+    assert module.install_folder(user, 'snapshots', 'platform-1') == str(tmp_path / 'k3s-install/snapshots/platform-1')
+    with pytest.raises(SystemExit):
+        module.install_folder(user, 'snapshots', '../../etc')
+    monkeypatch.setenv('SUDO_USER', 'alice')
+    monkeypatch.setattr(module.os, 'geteuid', lambda: 0)
+    with pytest.raises(SystemExit):
+        module.operator_user('bob')
+    assert 'differs from the user alice' in capsys.readouterr().out

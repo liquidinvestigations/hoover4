@@ -113,9 +113,18 @@ def main(argv):
         if unknown:
             raise SystemExit(f'deploy-k3s: {", ".join(unknown)} is not a node of the site. The nodes are: {", ".join(site.nodes)}.')
 
+    def revision_of(ref):
+        # An exported tree has no git folder. Its commit is the commit of the export, and only HEAD names it.
+        exported = source.is_export(HERE.parent)
+        if exported:
+            if ref not in ('HEAD', exported, exported[:len(ref)]):
+                raise deploy.StepFailed(f'this exported tree holds {exported[:12]}. Run the command of a checkout for {ref}.')
+            return exported
+        return deploy.resolve_revision(ctx.repo, ref)
+
     try:
         if args.command == 'render':
-            revision = deploy.resolve_revision(ctx.repo, args.revision)
+            revision = revision_of(args.revision)
             print(json.dumps(deploy.render(ctx, targets, revision, args.manifests), indent=1, default=list))
             return 0
         if args.command == 'check':
@@ -128,7 +137,7 @@ def main(argv):
                 if node.local:
                     print(deploy.write_local_bootstrap(ctx, node))
                 else:
-                    revision = deploy.resolve_revision(ctx.repo, args.revision)
+                    revision = revision_of(args.revision)
                     print(deploy.write_remote_scripts(ctx, node, revision) / 'bootstrap.sh')
             return 0
     except deploy.StepFailed as error:

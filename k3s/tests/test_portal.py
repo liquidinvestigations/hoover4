@@ -108,3 +108,22 @@ def test_the_portal_probe_uses_the_health_route():
     portal = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'] == 'portal')
     probe = portal['spec']['template']['spec']['containers'][0]['readinessProbe']
     assert probe == {'httpGet': {'path': '/healthz', 'port': 'http'}}
+
+
+def test_zone_operations_accept_names_only(monkeypatch):
+    spec = importlib.util.spec_from_file_location('portal_server_names', OPERATOR / 'portal-server.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, 'zones', lambda: {'nodes': ['node-a']})
+    monkeypatch.setattr(module, 'operations', lambda: [])
+    created = []
+    monkeypatch.setattr(module, 'api', lambda method, path, body=None, content=None: created.append(body) or {})
+    for zone in ('/etc', 'zone-../x', 'zone-a/b', '../zone-a', 'zone-A', 'zone-' + 'a' * 13):
+        with pytest.raises(module.Refused):
+            module.create_operation('admin', {'kind': 'create-zone', 'zone': zone, 'home': 'node-a'})
+    with pytest.raises(module.Refused):
+        module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-a', 'home': '/srv'})
+    with pytest.raises(module.Refused):
+        module.onboarding('zone-a/../../secrets')
+    assert module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-a', 'home': 'node-a'})
+    assert created[0]['data']['zone'] == 'zone-a'

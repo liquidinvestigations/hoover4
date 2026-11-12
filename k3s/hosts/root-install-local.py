@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Prepare the local Arch-based host of a single-node site for k3s. Run it as root through ../deploy-k3s.
 
-The driver passes the hosts.json form of the site file (config.legacy_hosts) and the node name. The steps run in this
-order. Each step reads the state of the host first and skips the work that is already done, so a second run changes
+The driver writes the bundle ~<operator>/k3s-install/<revision> with the hosts.json form of the site file
+(config.legacy_hosts), and passes the bundle name and the node name. Arguments are names, and the rules of
+root-install-k3s.py apply. The private folder of the operator comes from the entry `private` of the local node in
+hosts.json. The steps run in this order. Each step reads the state of the host first and skips the work that is already done, so a second run changes
 nothing and a run after a failure continues.
   software   Install the missing pacman packages.
   settings   Write the kernel module and sysctl settings, the NetworkManager exception, the dummy link hoover4 with the
@@ -15,13 +17,16 @@ nothing and a run after a failure continues.
              ../platform/frontend/install-local-frontend.sh.
   trust      Add the local CA of the frontend to the system trust store.
 Commands:
-  root-install-local.py --hosts FILE --node NAME --private DIR [--only STEP ...] [--dry-run]
---dry-run prints the changes and changes nothing.
+  root-install-local.py --bundle NAME --node NODE [--only STEP ...] [--dry-run]
+  root-install-local.py --bundle NAME --node NODE --service start|stop
+--dry-run prints the changes and changes nothing. --service starts or stops the units of the site in their order. The
+stop also ends the containers of the pods with the kill script of k3s.
 """
 import argparse
 import json
 import os
 import pwd
+import re
 import subprocess
 import sys
 
@@ -301,26 +306,103 @@ def step_trust(host, ctx):
         change(['update-ca-trust'])
 
 
+# Names and paths of the arguments. The same rules are in root-install.py, root-install-local.py and
+# ../migration/root_copy.py, because each root script runs as one file.
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+def name_arg(value, what="name"):
+    """value when it is a name: letters, digits, '.', '_' and '-', no '/', and not '.' or '..' at the start."""
+    if not isinstance(value, str) or not NAME.fullmatch(value):
+        fail(f"the {what} {value!r} is not a name. A name has letters, digits, '.', '_' and '-', and no '/'.")
+    return value
+
+
+def below(base, relative):
+    """The path of relative below base. Refuse an absolute path, '..', and a symbolic link below base."""
+    if not relative or relative.startswith("/"):
+        fail(f"{relative!r} is not a relative path")
+    path = base
+    if os.path.islink(base):
+        fail(f"{base} is a symbolic link")
+    for part in relative.split("/"):
+        if part in ("", ".", ".."):
+            fail(f"{relative!r} has an empty, '.' or '..' part")
+        path = os.path.join(path, part)
+        if os.path.islink(path):
+            fail(f"{path} is a symbolic link")
+    real = os.path.realpath(base)
+    if os.path.commonpath([real, os.path.realpath(path)]) != real:
+        fail(f"{relative!r} leaves {base}")
+    return path
+
+
+def operator_user(named):
+    """The operator account: the user that runs sudo, else --operator, else the user of the site."""
+    by_sudo = os.environ.get("SUDO_USER", "")
+    if by_sudo and named and named != by_sudo:
+        fail(f"--operator {named} differs from the user {by_sudo} that runs sudo")
+    if os.geteuid() != 0:
+        return pwd.getpwuid(os.getuid())
+    name = by_sudo or named
+    if not name:
+        fail("name the operator user with --operator")
+    try:
+        return pwd.getpwnam(name_arg(name, "operator user"))
+    except KeyError:
+        fail(f"the user {name} does not exist")
+
+
+def install_folder(user, *names):
+    """~<user>/k3s-install/<names...>, checked with below()."""
+    return below(user.pw_dir, "/".join(["k3s-install"] + [name_arg(n) for n in names]))
+
+
+# The units of a single-node site in their start order. A stop runs in the reverse order of the units that k3s needs.
+START_UNITS = ('hoover4-address.service', 'hoover4-dns.service', 'k3s.service', 'hoover4-frontend.service')
+STOP_UNITS = ('hoover4-frontend.service', 'k3s.service')
+
+
+def service(action):
+    """Start or stop the units of the site. The pods reach the zone names through the frontend, so it starts with k3s."""
+    for unit in START_UNITS if action == 'start' else STOP_UNITS:
+        say(f'  $ systemctl {action} {unit}')
+        if not DRY:
+            subprocess.run(['systemctl', action, unit], check=True)
+    # The containers of the pods keep running after the k3s unit stops. The kill script of k3s stops them.
+    if action == 'stop' and not DRY and os.path.exists('/usr/local/bin/k3s-killall.sh'):
+        subprocess.run(['/usr/local/bin/k3s-killall.sh'], stdout=subprocess.DEVNULL, check=False)
+        # The kill script misses the gVisor shims and sandboxes, which keep volumes mounted in their namespaces.
+        for pattern in ('^/opt/gvisor/', '^runsc-'):
+            subprocess.run(['pkill', '-KILL', '-f', pattern], check=False)
+
+
 def main():
     global DRY
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--hosts', required=True, help='the hosts.json form of the site file')
+    parser.add_argument('--bundle', required=True, help='the bundle ~<operator>/k3s-install/NAME of the driver')
     parser.add_argument('--node', required=True)
     parser.add_argument('--only', nargs='+', choices=STEPS)
-    parser.add_argument('--operator', default=os.environ.get('SUDO_USER', ''), help='the operator user')
-    parser.add_argument('--private', required=True, help='the private folder k3s/private of the operator')
+    parser.add_argument('--operator', help='the operator user of a root run without sudo')
+    parser.add_argument('--service', choices=('start', 'stop'), help='start or stop the units of the site')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     if os.geteuid() != 0:
         fail('run the script as root')
-    site = json.load(open(args.hosts))
-    host = site['hosts'].get(args.node)
+    user = operator_user(args.operator)
+    site = json.load(open(below(install_folder(user, args.bundle), 'hosts.json')))
+    host = site['hosts'].get(name_arg(args.node, 'node'))
     if host is None or not host.get('local') or not host.get('single'):
         fail(f'{args.node} is not the local node of a single-node site.')
     DRY = args.dry_run
+    if args.service:
+        service(args.service)
+        return
+    if not str(host.get('private') or '').startswith('/'):
+        fail('the local node in hosts.json has no private folder. Write the bundle with the driver again.')
     for step in args.only or STEPS:
         say(f'== {step}')
-        ctx = {'operator': args.operator or site.get('user') or 'root', 'private': args.private, 'suffix': site['suffix']}
+        ctx = {'operator': user.pw_name, 'private': host['private'], 'suffix': site['suffix']}
         globals()[f'step_{step}'](host, ctx)
     say(f'== done, {len(CHANGED)} changes{" planned" if DRY else ""}')
 

@@ -67,7 +67,7 @@ SITE_KEYS = {
 NODE_KEYS = {
     'roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_address': (False, 'text'),
     'architecture': (False, ('choice', ARCHITECTURES)), 'vpn_address': (False, 'address'),
-    'wireguard_public_key': (False, 'text'), 'wireguard_port': (False, 'port'), 'vpn_interface': (False, 'interface'),
+    'wireguard_public_key': (False, 'wgkey'), 'wireguard_port': (False, 'port'), 'vpn_interface': (False, 'interface'),
     'lan_address': (False, 'address'),
     'onprem': (False, 'bool'), 'public_address': (False, 'address'), 'storage_tiers': (False, 'tiers'),
     'lvm_volume_group': (False, 'name_any'), 'lvm_physical_volumes': (False, 'devices'), 'reserved': (False, 'reserved'),
@@ -197,6 +197,12 @@ def _value(label, kind, raw, problems):
     if isinstance(kind, tuple) and kind[0] == 'choice':
         if raw not in kind[1]:
             problems.append(f'{label} = {raw} is not one of {", ".join(kind[1])}.')
+            return None
+        return raw
+    if kind == 'wgkey':
+        # A WireGuard key is base64 text. A space in it comes from a copy of a wrapped line, and wg refuses it.
+        if raw and not re.fullmatch(r'[A-Za-z0-9+/=_-]+', raw):
+            problems.append(f'{label} is not a WireGuard public key: it has a space or another character outside base64.')
             return None
         return raw
     if kind == 'interface':
@@ -672,8 +678,12 @@ def local_ca(site):
     return path.read_text() if public and public[0].local and path.exists() else ''
 
 
-def legacy_hosts(site):
-    """The site in the format of hosts.json, which the host scripts of hosts/ read."""
+def legacy_hosts(site, private=None):
+    """The site in the format of hosts.json, which the host scripts of hosts/ read.
+
+    private is the private folder of the operator. The local node of a single-node site gets it as `private`, because
+    root-install-local.py reads the frontend files there and accepts no path argument.
+    """
     hosts = {}
     for node in site.nodes.values():
         hosts[node.name] = {
@@ -686,7 +696,10 @@ def legacy_hosts(site):
             'node_ip': node_address(site, node), 'vg': node.lvm_volume_group,
             'physical_volumes': list(node.lvm_physical_volumes), 'gpu': node.has('gpu'),
         }
-    return {'server': site.control_plane, 'user': site.operator_user, 'suffix': site.suffix, 'hosts': hosts}
+        if private and node.local and site.single:
+            hosts[node.name]['private'] = str(private)
+    return {'server': site.control_plane, 'user': site.operator_user, 'suffix': site.suffix, 'hosts': hosts,
+            'backup': {'node': site.backup.get('node', ''), 'path': site.backup.get('path', '')} if site.backup else {}}
 
 
 # ----------------------------------------------------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 Fake ssh, sudo, bash and kubectl commands on PATH stand in for the hosts and the cluster. No test contacts a host.
 """
 import json
+import shlex
 import os
 import subprocess
 import sys
@@ -69,6 +70,14 @@ if name == 'kubectl':
     if args[:2] == ['get', 'deployments,statefulsets']:
         print(json.dumps({'items': [{'kind': k, 'metadata': {'name': n}, 'spec': {'replicas': r}}
                                     for (k, n), r in ((tuple(key.split('/')), v) for key, v in state.get(ns, {}).items())]}))
+        sys.exit(0)
+    if args[:2] == ['get', 'cronjobs']:
+        print(json.dumps({'items': [{'metadata': {'name': n}, 'spec': {'suspend': v}}
+                                    for n, v in state.get('cronjobs', {}).get(ns, {}).items()]}))
+        sys.exit(0)
+    if args[:2] == ['patch', 'cronjob']:
+        state.setdefault('cronjobs', {}).setdefault(ns, {})[args[2]] = json.loads(args[-1])['spec']['suspend']
+        json.dump(state, open(state_path, 'w'))
         sys.exit(0)
     if args[0] == 'scale':
         state.setdefault(ns, {})[f'{kinds[args[1]]}/{args[2]}'] = int(args[3].split('=')[1])
@@ -287,9 +296,33 @@ def test_a_node_bundle_holds_the_scripts_the_site_and_only_the_token_of_the_node
     record['steps'] = [e for e in record['steps'] if e['name'] in host_only]
     assert deploy.execute(ctx, record, host_only) == 0
     sudo = [c[-1] for c in env.commands() if c[0] == 'ssh' and c[-1].startswith('sudo -n ')]
-    assert any('/usr/local/libexec/hoover4/root-install-k3s.py' in c and '--staged /home/operator/k3s-install/' in c
-               for c in sudo)
+    assert any('/usr/local/libexec/hoover4/root-install-k3s.py' in c and f'--bundle {rev[:12]} ' in c for c in sudo)
+    # The root commands hold names only: no host path after the script.
+    for c in (c for c in sudo if shlex.split(c)[2].startswith('/usr/local/libexec/hoover4/')):
+        assert not [a for a in shlex.split(c)[3:] if a.startswith('/') or '..' in a], c
     assert any('--only software' in c for c in sudo) and not any('--only wireguard' in c for c in sudo)
+
+
+def test_verify_restarts_the_watch_controllers_after_a_conversion_to_etcd(env, monkeypatch):
+    monkeypatch.setenv('FAKE_SSH', 'rhel')
+    monkeypatch.setenv('FAKE_READY', '1')
+    ctx = env.make('remote.ini')
+    (env.private / 'kubeconfig').write_text('fake')
+    rev = deploy.resolve_revision(env.repo, 'HEAD')
+    node = ctx.site.nodes['server-a']
+    folder = deploy.write_remote_scripts(ctx, node, rev)
+    report = env.tmp / 'report.json'
+    report.write_text(good_report(folder, unit='k3s'))
+    monkeypatch.setenv('FAKE_REPORT', str(report))
+    restarted = []
+    monkeypatch.setattr(deploy, 'restart_watchers', lambda ctx: restarted.append(1) or ['kube-system'])
+    remote = deploy.Remote(ctx, node)
+    ctx.record = {'id': 'r1', 'revision': rev, 'etcd_before': 'true'}
+    assert 'restarted' not in remote.verify() and not restarted
+    ctx.record = {'id': 'r2', 'revision': rev}
+    assert 'restarted' not in remote.verify() and not restarted
+    ctx.record = {'id': 'r3', 'revision': rev, 'etcd_before': ''}
+    assert remote.verify()['restarted'] == ['kube-system'] and restarted == [1]
 
 
 def test_verify_fails_when_the_node_differs_from_the_bundle(env, monkeypatch):
@@ -435,6 +468,7 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
         'zone-a': {'Deployment/zone-a-gate': 1, 'Deployment/nextcloud': 1, 'StatefulSet/postgresql': 1},
         'hoover-zone-a': {'Deployment/website': 2, 'StatefulSet/hoover-workers': 2, 'Deployment/temporal': 1,
                           'StatefulSet/temporal-cassandra': 1, 'StatefulSet/clickhouse': 1},
+        'cronjobs': {'zone-a': {'opendesk-nextcloud-aio-cron': False, 'paused-by-operator': True}},
     }))
     (env.private / 'kubeconfig').write_text('fake')
     rev = deploy.resolve_revision(env.repo, 'HEAD')
@@ -446,9 +480,11 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
     assert scaled == ['zone-a-gate', 'nextcloud', 'website', 'hoover-workers', 'temporal',
                       'haproxy-ingress', 'postgresql', 'temporal-cassandra', 'clickhouse']
     assert ctx.records.stopped()['hoover-zone-a/deployment/website'] == 2
+    kube = json.loads((env.tmp / 'kube.json').read_text())
+    assert kube['cronjobs']['zone-a'] == {'opendesk-nextcloud-aio-cron': True, 'paused-by-operator': True}
     sudo = [c for c in env.commands() if c[0] == 'sudo']
-    assert ['sudo', '-n', '/usr/bin/systemctl', 'stop', 'k3s.service'] in sudo
-    assert sudo[-1][-1] == '/usr/local/bin/k3s-killall.sh'
+    assert sudo[-1][-6:] == ['--bundle', rev[:12], '--node', 'dev', '--service', 'stop']
+    assert sudo[-1][-7].endswith('root-install-local.py')
     log = env.log.read_text()
     env.log.write_text('')
     os.environ['FAKE_READY'] = '1'
@@ -463,11 +499,13 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
                                       'website', 'hoover-workers', 'nextcloud', 'zone-a-gate']
     assert ('website', '--replicas=2') in scaled
     assert ctx.records.stopped() == {}
+    kube = json.loads((env.tmp / 'kube.json').read_text())
+    assert kube['cronjobs']['zone-a'] == {'opendesk-nextcloud-aio-cron': False, 'paused-by-operator': True}
     assert ctx.records.applied() is None
     assert 'temporal' in log
 
 
-def test_the_local_bootstrap_names_only_the_root_scripts_units_and_kill_script(env, monkeypatch):
+def test_the_local_bootstrap_names_only_the_root_scripts(env, monkeypatch):
     monkeypatch.setenv('USER', 'gabriel')
     ctx = env.make()
     text = deploy.write_local_bootstrap(ctx, ctx.site.nodes['dev']).read_text()
@@ -475,8 +513,8 @@ def test_the_local_bootstrap_names_only_the_root_scripts_units_and_kill_script(e
     assert all(r.startswith('gabriel ALL=(root) NOPASSWD: ') for r in rules)
     commands = {r.split('NOPASSWD: ', 1)[1] for r in rules}
     assert '/usr/local/libexec/hoover4/root-install-local.py *' in commands
-    assert '/usr/bin/systemctl stop k3s.service' in commands
-    assert not [c for c in commands if c in ('ALL', '/bin/sh', '/usr/bin/bash')]
+    assert commands == {'/usr/local/libexec/hoover4/root-install-local.py *',
+                        '/usr/local/libexec/hoover4/root-install-k3s.py *'}
 
 
 def test_the_command_refuses_a_missing_or_unknown_target(env):

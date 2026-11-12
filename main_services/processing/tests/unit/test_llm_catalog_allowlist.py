@@ -150,10 +150,10 @@ def test_an_unknown_window_stays_zero_rather_than_being_guessed(fake):
 
 
 def test_a_configured_vision_model_is_marked_and_a_stored_flag_is_carried(fake, monkeypatch):
-    monkeypatch.setenv("LLM_VISION_MODELS", "ornith, other")
+    monkeypatch.setenv("LLM_VISION_MODELS", "vision-model, other")
     client = fake([("local/seen", 1, 0, 1)])
     store_models(
-        RefreshResult(provider="selfhosted", ok=True, models=["ornith", "local/seen", "local/x"]),
+        RefreshResult(provider="selfhosted", ok=True, models=["vision-model", "local/seen", "local/x"]),
         "http://provider/v1",
     )
     assert _column(client, "supports_vision") == [1, 1, 0]

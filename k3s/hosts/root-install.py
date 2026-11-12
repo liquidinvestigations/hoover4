@@ -13,12 +13,17 @@ first and skips the work that is already done. A second run continues after a fa
   settings   Write the kernel module, sysctl, NetworkManager and SELinux settings for k3s.
   storage    Shrink the ext4 file system of /storage to 300 GiB on an on-prem host. Add an LVM
              partition in the free space of the disk. Create the volume group and the k3s volumes.
+  backup     On the backup node of the site file, create the backup mount folder with the folders zones and platform.
+             The operator user owns them, with mode 0700. The step changes nothing on another node.
 
 Commands:
   root-install-<host>.py --dry-run          Show the changes. Change nothing.
   root-install-<host>.py                    Do all steps.
   root-install-<host>.py --only wireguard   Do the given steps only.
   root-install-<host>.py --check            Show the state of the host.
+  root-install.py --bundle NAME --node NODE Read hosts.json from ~<operator>/k3s-install/NAME instead of the SITE of
+                                            this copy. --operator USER names the operator of a root run without sudo.
+Arguments are names. The host paths come from the site file. The rules of root-install-k3s.py apply.
 
 Run the public host first, then the on-prem hosts. A new peer works when both of its hosts have it.
 Run the storage step inside tmux. If resize2fs stops before it ends, the file system can be damaged.
@@ -28,6 +33,7 @@ import argparse
 import difflib
 import math
 import os
+import pwd
 import re
 import shlex
 import shutil
@@ -365,6 +371,25 @@ def mounted(path):
     return read(["findmnt", "-rn", path])[0] == 0
 
 
+def step_backup():
+    """Create the backup folder of [backup] path, owned by the operator user, when this host is the backup node."""
+    backup = SITE.get("backup") or {}
+    if backup.get("node") != THIS or not backup.get("path"):
+        say("  this host is not the backup node")
+        return
+    path = backup["path"]
+    if not path.startswith("/") or ".." in path.split("/"):
+        fail(f"the backup path {path!r} of the site file is not an absolute path")
+    user = pwd.getpwnam(name_arg(SITE.get("user") or "", "operator user"))
+    for folder in (path, f"{path}/zones", f"{path}/platform"):
+        if os.path.islink(folder):
+            fail(f"{folder} is a symbolic link")
+        if not os.path.isdir(folder):
+            change(["install", "-d", "-m", "0700", "-o", user.pw_name, "-g", str(user.pw_gid), folder])
+        else:
+            say(f"  {folder} exists")
+
+
 def step_storage(assume_yes):
     if not HOSTS[THIS]["onprem"]:
         say("  this host has no storage step")
@@ -499,22 +524,77 @@ def check():
             say(f"--- {title}\n{out.rstrip()}")
 
 
+# Names and paths of the arguments. The same rules are in root-install.py, root-install-local.py and
+# ../migration/root_copy.py, because each root script runs as one file.
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+def name_arg(value, what="name"):
+    """value when it is a name: letters, digits, '.', '_' and '-', no '/', and not '.' or '..' at the start."""
+    if not isinstance(value, str) or not NAME.fullmatch(value):
+        fail(f"the {what} {value!r} is not a name. A name has letters, digits, '.', '_' and '-', and no '/'.")
+    return value
+
+
+def below(base, relative):
+    """The path of relative below base. Refuse an absolute path, '..', and a symbolic link below base."""
+    if not relative or relative.startswith("/"):
+        fail(f"{relative!r} is not a relative path")
+    path = base
+    if os.path.islink(base):
+        fail(f"{base} is a symbolic link")
+    for part in relative.split("/"):
+        if part in ("", ".", ".."):
+            fail(f"{relative!r} has an empty, '.' or '..' part")
+        path = os.path.join(path, part)
+        if os.path.islink(path):
+            fail(f"{path} is a symbolic link")
+    real = os.path.realpath(base)
+    if os.path.commonpath([real, os.path.realpath(path)]) != real:
+        fail(f"{relative!r} leaves {base}")
+    return path
+
+
+def operator_user(named):
+    """The operator account: the user that runs sudo, else --operator, else the user of the site."""
+    by_sudo = os.environ.get("SUDO_USER", "")
+    if by_sudo and named and named != by_sudo:
+        fail(f"--operator {named} differs from the user {by_sudo} that runs sudo")
+    if os.geteuid() != 0:
+        return pwd.getpwuid(os.getuid())
+    name = by_sudo or named
+    if not name:
+        fail("name the operator user with --operator")
+    try:
+        return pwd.getpwnam(name_arg(name, "operator user"))
+    except KeyError:
+        fail(f"the user {name} does not exist")
+
+
+def install_folder(user, *names):
+    """~<user>/k3s-install/<names...>, checked with below()."""
+    return below(user.pw_dir, "/".join(["k3s-install"] + [name_arg(n) for n in names]))
+
+
 def main():
     global DRY, LOG
-    steps = ["wireguard", "software", "settings", "storage"]
+    steps = ["wireguard", "software", "settings", "storage", "backup"]
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="show the changes and change nothing")
     parser.add_argument("--only", nargs="+", choices=steps, help="do these steps only")
     parser.add_argument("--yes", action="store_true", help="do not ask before the partition change")
     parser.add_argument("--check", action="store_true", help="show the state of the host")
-    parser.add_argument("--hosts", help="the hosts.json form of the site file, instead of the SITE of this copy")
-    parser.add_argument("--node", help="the node of this host in --hosts")
+    parser.add_argument("--bundle", help="read hosts.json from ~<operator>/k3s-install/NAME instead of the SITE of this copy")
+    parser.add_argument("--node", help="the node of this host in the hosts.json of the bundle")
+    parser.add_argument("--operator", help="the operator user of a root run without sudo")
     args = parser.parse_args()
     global THIS, SITE, HOSTS, SCRIPT
-    if args.hosts:
+    if args.bundle:
         import json
-        SITE = json.load(open(args.hosts))
-        THIS, HOSTS, SCRIPT = args.node, SITE["hosts"], f"root-install.py --node {args.node}"
+        folder = install_folder(operator_user(args.operator), args.bundle)
+        SITE = json.load(open(below(folder, "hosts.json")))
+        node = name_arg(args.node or "", "node")
+        THIS, HOSTS, SCRIPT = node, SITE["hosts"], f"root-install.py --node {node}"
     if THIS is None or THIS not in HOSTS:
         fail("this file has no host. Run write-host-copies.py, then run the copy of this host.")
     use_interface(HOSTS[THIS].get("wg_if") or "wg0")
@@ -542,7 +622,7 @@ def main():
     say("== done")
     for reason in REBOOT:
         say(f"Reboot needed: {reason}")
-    if not DRY:
+    if not DRY and set(chosen) & {"settings", "storage"}:
         say("Reboot the host, then run the script with --check. The reboot verifies the boot settings and fstab.")
 
 

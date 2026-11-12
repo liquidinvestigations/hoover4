@@ -198,3 +198,14 @@ def test_source_ini_refuses_missing_dataset_folder(tmp_path):
 
 def test_fixture_folder_is_tracked_with_both_sites():
     assert (FIXTURES / 'single-node.ini').exists() and (FIXTURES / 'remote.ini').exists()
+
+
+def test_a_wireguard_key_with_spaces_is_refused():
+    good = 'a' * 42 + 'E='
+    for key, accepted in ((good, True), (good[:20] + ' ' + good[21:], False), ('ab;c=', False)):
+        text = site_text('remote.ini').replace('wireguard_public_key = server-a-public-key', f'wireguard_public_key = {key}', 1)
+        if accepted:
+            assert config.parse(text).nodes['server-a'].wireguard_public_key == key
+        else:
+            with pytest.raises(config.SiteError, match='not a WireGuard public key'):
+                config.parse(text)

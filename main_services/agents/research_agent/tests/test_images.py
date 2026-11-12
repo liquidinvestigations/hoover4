@@ -10,7 +10,7 @@ import pytest
 
 from research_agent import compaction, images, request_size
 from research_agent.run_messages import RunMessage, to_langchain
-from test_thread_index import DGEMMA, EST, Thread, chars, ok
+from test_thread_index import WINDOW_256K, EST, Thread, chars, ok
 
 DOC = {"kind": "document", "collection": "c", "file_hash": "h" * 64, "label": "scan.png",
        "width": 3136, "height": 1568}
@@ -160,7 +160,7 @@ def _image_thread():
 
 def test_the_plan_names_each_replaced_image_and_keeps_room_for_it():
     t = _image_thread()
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    plan = compaction.plan_compaction(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       username="u", collections=["c"])
     assert plan.images == [PAGE, DOC]
     assert plan.image_room == images.ref_tokens(PAGE) + images.ref_tokens(DOC)
@@ -171,7 +171,7 @@ def test_the_plan_names_each_replaced_image_and_keeps_room_for_it():
 
 def test_the_summary_request_sends_the_images_after_their_labels(monkeypatch):
     t = _image_thread()
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST)
+    plan = compaction.plan_compaction(t.rows, t.rows, window=WINDOW_256K, estimator=EST)
     sent = []
     monkeypatch.setattr(images, "supports_vision", lambda model: True)
     monkeypatch.setattr(images, "load_all", lambda refs, **k: [
@@ -188,7 +188,7 @@ def test_the_summary_request_sends_the_images_after_their_labels(monkeypatch):
 
 def test_a_refusal_of_the_images_sends_the_labels_once(monkeypatch):
     t = _image_thread()
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST)
+    plan = compaction.plan_compaction(t.rows, t.rows, window=WINDOW_256K, estimator=EST)
     answers = [(400, ""), (200, "## Findings\nlabels")]
     sent = []
     monkeypatch.setattr(images, "supports_vision", lambda model: True)
@@ -204,7 +204,7 @@ def test_a_refusal_of_the_images_sends_the_labels_once(monkeypatch):
 
 def test_a_summary_model_without_images_reads_the_labels(monkeypatch):
     t = _image_thread()
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST)
+    plan = compaction.plan_compaction(t.rows, t.rows, window=WINDOW_256K, estimator=EST)
     sent = []
     monkeypatch.setattr(images, "supports_vision", lambda model: False)
     monkeypatch.setattr(compaction, "_summary_request",
@@ -215,7 +215,7 @@ def test_a_summary_model_without_images_reads_the_labels(monkeypatch):
 
 def test_images_that_do_not_fit_go_in_later_requests(monkeypatch):
     t = _image_thread()
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST)
+    plan = compaction.plan_compaction(t.rows, t.rows, window=WINDOW_256K, estimator=EST)
     plan.image_room = images.ref_tokens(PAGE)
     sent = []
     monkeypatch.setattr(images, "supports_vision", lambda model: True)

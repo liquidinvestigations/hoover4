@@ -7,12 +7,17 @@ name and the tool names. With --secret-from the collections and todo servers get
 secret: `k3s:<namespace>` reads the item mcp-shared-secret of the Secret hoover-runtime, and a path reads a file.
 The check calls list_collections of the collections server, which checks the token. It repeats each request without
 the token for the servers that need one, and records the refusal.
-It prints no secret.
+A server fails the check when its HTTP status is not 200, it lists no tool, its server name does not match the name of
+the argument, the tool call returns an error result or no content, or the call without the token is not refused. SERVER_NAMES
+holds the reported name of each known server. Another name matches when it is equal after the removal of the words
+mcp, hoover4 and server and of every character that is not a letter or a digit. A tool result with success false
+counts as an error. --user names the Hoover user of the calls, which must exist in the installation. It prints no secret.
 Usage: mcp-relay-check.py [--secret-from k3s:<namespace>|<file>] <name>=<port> ...
 """
 import argparse
 import base64
 import json
+import re
 import subprocess
 import sys
 import urllib.error
@@ -72,32 +77,78 @@ def session(port, headers):
         # The collections server checks the bearer token on a tool call.
         status, _, text = post(port, {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call',
                                       'params': {'name': 'list_collections', 'arguments': {}}}, headers)
-        call = message(text).get('result', {}) if status == 200 else {}
-        content = ' '.join(c.get('text', '') for c in call.get('content', []))
-        result['call'] = {'tool': 'list_collections', 'status': status, 'is_error': call.get('isError', False),
-                          'refused': 'bearer token' in content}
+        answer = message(text) if status == 200 else {}
+        call = answer.get('result', {})
+        content = ' '.join(c.get('text', '') for c in call.get('content', []) if isinstance(c, dict))
+        # The tools of the collections server answer a refusal as a result with success false, not as isError.
+        try:
+            body = json.loads(content)
+        except ValueError:
+            body = None
+        failed = isinstance(body, dict) and (body.get('success') is False or 'error' in body)
+        reason = str(body.get('error') or body.get('message') or '') if isinstance(body, dict) else ''
+        result['call'] = {'tool': 'list_collections', 'status': status,
+                          'is_error': bool(call.get('isError') or answer.get('error') or status != 200 or failed),
+                          'refused': 'bearer token' in content or reason in ('unauthenticated', 'unauthorized', 'forbidden'),
+                          'reason': reason, 'has_content': bool(content.strip())}
     return result
+
+
+# The server name that each MCP server reports in its initialize answer.
+SERVER_NAMES = {'mcp-collections': 'hoover4_collection_search', 'mcp-todo': 'hoover4_todo', 'mcp-whois': 'whois_lookup',
+                'mcp-metasearch': 'hoover4_metasearch', 'mcp-browser': 'hoover4_browser'}
+
+
+def same_server(name, reported):
+    if name in SERVER_NAMES:
+        return reported == SERVER_NAMES[name]
+    def key(text):
+        words = re.split(r'[^a-z0-9]+', (text or '').lower())
+        return ''.join(w for w in words if w not in ('mcp', 'hoover4', 'server'))
+    return bool(reported) and key(name) == key(reported)
+
+
+def problems(name, result, token):
+    """The reasons why a server fails the check, as a list of texts."""
+    found = []
+    if result['status'] != 200:
+        found.append(f'HTTP status {result["status"]}')
+    if not result.get('tools'):
+        found.append('no tool')
+    if result.get('server') is not None and not same_server(name, result.get('server')):
+        found.append(f'the server name is {result.get("server")}')
+    call = result.get('call')
+    if call and (call['is_error'] or call['refused'] or not call['has_content']):
+        found.append('list_collections returned an error result or no content')
+    refused = (result.get('without_token') or {}).get('call')
+    if name in SECRET_SERVERS and token and refused and not (refused['is_error'] or refused['refused']):
+        found.append('the call without the token was not refused')
+    return found
 
 
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--secret-from')
+    parser.add_argument('--user', default='relay-check', help='a Hoover user of the installation')
+    parser.add_argument('--collections', default='', help='the permitted collections of the calls, separated by commas')
     parser.add_argument('servers', nargs='+')
     args = parser.parse_args(argv)
     token = secret(args.secret_from)
     failed = False
     for item in args.servers:
         name, port = item.split('=')
-        headers = dict(CALLER)
+        caller = {**CALLER, 'x-hoover4-user': args.user, 'x-hoover4-collections': args.collections}
+        headers = dict(caller)
         if name in SECRET_SERVERS and token:
             headers['Authorization'] = f'Bearer {token}'
         if name == 'mcp-browser':
             headers = {'x-hoover4-chat-session': 'host-mcp-client', 'x-hoover4-user': 'host'}
         result = {'name': name, 'port': int(port), **session(int(port), headers)}
         if name in SECRET_SERVERS and token:
-            refused = session(int(port), dict(CALLER))
+            refused = session(int(port), dict(caller))
             result['without_token'] = {'status': refused['status'], 'tools': len(refused.get('tools') or []), 'call': refused.get('call')}
-        failed |= result['status'] != 200 or not result.get('tools')
+        result['problems'] = problems(name, result, token)
+        failed |= bool(result['problems'])
         print(json.dumps(result), flush=True)
     sys.exit(1 if failed else 0)
 

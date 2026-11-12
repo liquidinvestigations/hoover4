@@ -12,13 +12,19 @@ One host runs the k3s server with the embedded etcd datastore (cluster-init), al
 hosts join it as agents and run no datastore. Install the server first. Each node uses the address of its VPN interface
 (vpn_interface of the site file, default wg0), and flannel VXLAN runs over that interface.
 A server that still runs the earlier SQLite datastore converts to etcd when k3s restarts with cluster-init. The script
-does that conversion only with --sqlite-copy DIR: it stops k3s, copies the SQLite datastore, the token and the
-configuration into DIR with a SHA-256 list, reads the copy again, and then starts k3s with cluster-init. After each
+does that conversion only with --convert-sqlite: it stops k3s, copies the SQLite datastore, the token and the
+configuration into /var/lib/hoover4-recovery with a SHA-256 list, reads the copy again, and then starts k3s with cluster-init. After each
 start of the server the script verifies etcd: the etcd member folder exists and a snapshot save succeeds.
 The local node of a single-node site uses the fixed address on the dummy link hoover4 (root-install-local.py), runs
 k3s and its pods in hoover4.slice, and writes its admin kubeconfig to /etc/rancher/k3s/hoover4-admin.yaml, because
-/etc/rancher/k3s/k3s.yaml can belong to another k3s user of the workstation. The driver ../deploy-k3s passes the site
-with --hosts and --node and the destination of the kubeconfig with --kubeconfig-out.
+/etc/rancher/k3s/k3s.yaml can belong to another k3s user of the workstation.
+
+Arguments are names. No argument holds a host path. The host paths come from the site file, through hosts.json of the
+bundle. A bundle is the folder ~<operator>/k3s-install/<bundle> that the driver ../deploy-k3s writes for one revision:
+hosts.json, the staged files and the token files. Etcd snapshots and preserved datastores go into
+~<operator>/k3s-install/snapshots/<name>. The operator is the user that runs sudo. A root run without sudo, for
+example through the cluster route of the driver, names the operator with --operator. The script refuses a name with
+'/', a name that starts with '.', and a symbolic link in the path below the home folder of the operator.
 
 The script does these steps. A second run writes the same files and restarts k3s only when a file changed.
 A generated file that differs only in its comment lines is current. A comment change does not restart k3s.
@@ -30,19 +36,22 @@ A generated file that differs only in its comment lines is current. A comment ch
 
 Commands:
   root-install-k3s-<host>.py --dry-run   Show the changes. Change nothing.
-  root-install-k3s-<host>.py             Install.
-  --staged DIR                           Read the staged files from DIR. The default is the folder of the script.
-  --hosts FILE --node NAME               Read the site from FILE and install NAME, instead of THIS and SITE.
-  --kubeconfig-out FILE                  Copy the admin kubeconfig of the server to FILE for the operator user.
-  --sqlite-copy DIR                      Allow the conversion of a SQLite server, after a verified copy into DIR.
+  root-install-k3s-<host>.py             Install. The copy of a host holds its site and reads the staged files from
+                                         its own folder.
+  --bundle NAME --node NODE              Read hosts.json and the staged files from the bundle NAME, and install NODE.
+  --operator USER                        The operator user of a root run without sudo.
+  --kubeconfig                           Also copy the admin kubeconfig into the bundle, for the driver.
+  --convert-sqlite                       Allow the conversion of a SQLite server, after a verified copy into
+                                         /var/lib/hoover4-recovery.
   --report                               Print the installed state of the host as JSON. Change nothing.
-  --snapshot DIR --owner USER            On the server, save an etcd snapshot with the token and the configuration
-                                         into DIR for the platform backup. USER becomes the owner of the files.
-  --preserve DIR --owner USER            Stop k3s and copy the datastore (SQLite or etcd), the token and the
-                                         configuration into a new folder below DIR with SHA256SUMS, for the retirement
-                                         of a server. k3s stays stopped.
-  --restore-snapshot FILE --token-file F On a stopped server, restore an etcd snapshot (k3s --cluster-reset) with the
-                                         token of the snapshot, then start k3s. Use it on an isolated server only.
+  --snapshot NAME                        On the server, save an etcd snapshot with the token and the configuration
+                                         into snapshots/NAME for the platform backup. The operator owns the files.
+  --preserve NAME                        Stop k3s and copy the datastore (SQLite or etcd), the token and the
+                                         configuration into a new folder below snapshots/NAME with SHA256SUMS, for the
+                                         retirement of a server. k3s stays stopped.
+  --restore-snapshot NAME                On a stopped server, restore the etcd snapshot of snapshots/NAME (k3s
+                                         --cluster-reset) with its token, then start k3s. Use it on an isolated server.
+  --service start|stop                   Start or stop the k3s unit of this node. The stop also ends its containers.
 The script runs with Python 3.9, the version of RHEL 9.
 """
 import argparse
@@ -503,17 +512,21 @@ def wait_server():
     os.makedirs(kube, exist_ok=True)
     os.chown(kube, user.pw_uid, user.pw_gid)
     source = f"{K3S_DIR}/hoover4-admin.yaml" if single(HOSTS[THIS]) else f"{K3S_DIR}/k3s.yaml"
-    target = KUBECONFIG_OUT or f"{kube}/config"
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    shutil.copy(source, target)
-    os.chown(target, user.pw_uid, user.pw_gid)
-    os.chmod(target, 0o600)
-    say(f"  copied the admin kubeconfig to {target}")
+    targets = [f"{kube}/config"] + ([os.path.join(STAGED, "kubeconfig")] if KUBECONFIG_OUT else [])
+    for target in targets:
+        if os.path.islink(target):
+            fail(f"{target} is a symbolic link. Remove it, then run the script again.")
+        shutil.copy(source, target)
+        os.chown(target, user.pw_uid, user.pw_gid)
+        os.chmod(target, 0o600)
+        say(f"  copied the admin kubeconfig to {target}")
 
 
 DB_DIR = "/var/lib/rancher/k3s/server/db"
 SERVER_DIR = "/var/lib/rancher/k3s/server"
 LIBEXEC = "/usr/local/libexec/hoover4"
+# The root-only folder of the verified SQLite copy before a conversion to etcd.
+RECOVERY_DIR = "/var/lib/hoover4-recovery"
 
 
 def datastore():
@@ -640,8 +653,7 @@ def snapshot(folder, owner):
     if THIS != SERVER:
         fail("the snapshot runs on the server only")
     if datastore() != "etcd":
-        fail("the server does not use etcd, so it has no snapshot. Convert it with --sqlite-copy first.")
-    folder = os.path.abspath(folder)
+        fail("the server does not use etcd, so it has no snapshot. Convert it with --convert-sqlite first.")
     os.makedirs(folder, mode=0o700, exist_ok=True)
     os.chmod(folder, 0o700)
     if os.listdir(folder):
@@ -669,52 +681,125 @@ def snapshot(folder, owner):
     say(__import__("json").dumps({"snapshot": os.path.join(folder, files[0]), "files": len(info["sha256"]) + 1}))
 
 
-def restore_snapshot(path, token_file):
-    """Restore an etcd snapshot on this server with the token of the snapshot, then start k3s and wait for it."""
+def restore_snapshot(folder):
+    """Restore the etcd snapshot of a snapshot folder with its token on this server, then start k3s and wait for it."""
     if THIS != SERVER:
         fail("a snapshot restores on the server only")
+    info = os.path.join(folder, "host.json")
+    if not os.path.isfile(info):
+        fail(f"{info} does not exist. The folder holds no snapshot of --snapshot.")
+    import json
+    data = json.load(open(info))
+    path, token_file = below(folder, name_arg(data["snapshot"], "snapshot file")), os.path.join(folder, "token")
     for f in (path, token_file):
-        if not os.path.isfile(f):
+        if not os.path.isfile(f) or os.path.islink(f):
             fail(f"{f} does not exist")
     run(["systemctl", "stop", "k3s"])
     if not DRY and subprocess.run(["systemctl", "is-active", "-q", "k3s"]).returncode == 0:
         fail("k3s still runs. Stop it first.")
     # k3s ends a reset with a shutdown request and an error line, also after a successful restore. The start and the
     # etcd check below decide whether the restore worked.
-    run(["/usr/local/bin/k3s", "server", "--cluster-reset", "--cluster-reset-restore-path", os.path.abspath(path),
-         "--token-file", os.path.abspath(token_file)], check=False)
+    run(["/usr/local/bin/k3s", "server", "--cluster-reset", "--cluster-reset-restore-path", path,
+         "--token-file", token_file], check=False)
     run(["systemctl", "start", "k3s"])
     wait_server()
     verify_etcd()
 
 
+def service(action):
+    """Start or stop the k3s unit of this node. A stop also ends the containers of its pods with the kill script."""
+    unit = "k3s" if THIS == SERVER else "k3s-agent"
+    run(["systemctl", action, unit])
+    if action == "stop" and os.path.exists("/usr/local/bin/k3s-killall.sh"):
+        run(["/usr/local/bin/k3s-killall.sh"], check=False)
+        # The kill script misses the gVisor shims and sandboxes, which keep volumes mounted in their namespaces.
+        for pattern in ("^/opt/gvisor/", "^runsc-"):
+            run(["pkill", "-KILL", "-f", pattern], check=False)
+    if not DRY:
+        state = subprocess.run(["systemctl", "is-active", unit], stdout=subprocess.PIPE, text=True).stdout.strip()
+        say(f"  {unit} is {state}")
+        if (state == "active") != (action == "start"):
+            fail(f"{unit} is {state} after the {action}")
+
+
+# Names and paths of the arguments. The same rules are in root-install.py, root-install-local.py and
+# ../migration/root_copy.py, because each root script runs as one file.
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+
+
+def name_arg(value, what="name"):
+    """value when it is a name: letters, digits, '.', '_' and '-', no '/', and not '.' or '..' at the start."""
+    if not isinstance(value, str) or not NAME.fullmatch(value):
+        fail(f"the {what} {value!r} is not a name. A name has letters, digits, '.', '_' and '-', and no '/'.")
+    return value
+
+
+def below(base, relative):
+    """The path of relative below base. Refuse an absolute path, '..', and a symbolic link below base."""
+    if not relative or relative.startswith("/"):
+        fail(f"{relative!r} is not a relative path")
+    path = base
+    if os.path.islink(base):
+        fail(f"{base} is a symbolic link")
+    for part in relative.split("/"):
+        if part in ("", ".", ".."):
+            fail(f"{relative!r} has an empty, '.' or '..' part")
+        path = os.path.join(path, part)
+        if os.path.islink(path):
+            fail(f"{path} is a symbolic link")
+    real = os.path.realpath(base)
+    if os.path.commonpath([real, os.path.realpath(path)]) != real:
+        fail(f"{relative!r} leaves {base}")
+    return path
+
+
+def operator_user(named):
+    """The operator account: the user that runs sudo, else --operator, else the user of the site."""
+    by_sudo = os.environ.get("SUDO_USER", "")
+    if by_sudo and named and named != by_sudo:
+        fail(f"--operator {named} differs from the user {by_sudo} that runs sudo")
+    if os.geteuid() != 0:
+        return pwd.getpwuid(os.getuid())
+    name = by_sudo or named or USER
+    if not name:
+        fail("name the operator user with --operator")
+    try:
+        return pwd.getpwnam(name_arg(name, "operator user"))
+    except KeyError:
+        fail(f"the user {name} does not exist")
+
+
+def install_folder(user, *names):
+    """~<user>/k3s-install/<names...>, checked with below()."""
+    return below(user.pw_dir, "/".join(["k3s-install"] + [name_arg(n) for n in names]))
+
+
 def main():
-    global DRY, STAGED
+    global DRY, STAGED, KUBECONFIG_OUT
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="show the changes and change nothing")
-    parser.add_argument("--staged", help="the folder of the staged files. The default is the folder of the script.")
-    parser.add_argument("--hosts", help="the hosts.json form of the site file")
-    parser.add_argument("--node", help="the node of this host in --hosts")
-    parser.add_argument("--kubeconfig-out", help="the destination of the admin kubeconfig")
-    parser.add_argument("--sqlite-copy", help="convert a SQLite server to etcd after a verified copy into this folder")
+    parser.add_argument("--bundle", help="the bundle name: hosts.json and the staged files of ~<operator>/k3s-install/NAME")
+    parser.add_argument("--node", help="the node of this host in the hosts.json of the bundle")
+    parser.add_argument("--operator", help="the operator user of a root run without sudo")
+    parser.add_argument("--kubeconfig", action="store_true", help="also copy the admin kubeconfig into the bundle")
+    parser.add_argument("--convert-sqlite", action="store_true",
+                        help="convert a SQLite server to etcd after a verified copy into /var/lib/hoover4-recovery")
     parser.add_argument("--report", action="store_true", help="print the installed state as JSON and change nothing")
-    parser.add_argument("--snapshot", help="save an etcd snapshot with the token into this folder")
-    parser.add_argument("--owner", help="the owner of the snapshot files")
-    parser.add_argument("--restore-snapshot", help="restore this etcd snapshot on a stopped server")
-    parser.add_argument("--preserve", help="stop k3s and copy its datastore, token and configuration into this folder")
-    parser.add_argument("--token-file", help="the token file of the snapshot")
+    parser.add_argument("--snapshot", help="save an etcd snapshot with the token into snapshots/NAME")
+    parser.add_argument("--restore-snapshot", help="restore the etcd snapshot of snapshots/NAME on a stopped server")
+    parser.add_argument("--preserve", help="stop k3s and copy its datastore, token and configuration into snapshots/NAME")
+    parser.add_argument("--service", choices=("start", "stop"), help="start or stop the k3s unit of this node")
     args = parser.parse_args()
-    global KUBECONFIG_OUT
-    if args.hosts:
+    if args.bundle:
         import json
-        use_site(json.load(open(args.hosts)), args.node)
+        user = operator_user(args.operator)
+        STAGED = install_folder(user, args.bundle)
+        use_site(json.load(open(below(STAGED, "hosts.json"))), name_arg(args.node or "", "node"))
     else:
         use_site(SITE, THIS)
-    KUBECONFIG_OUT = args.kubeconfig_out
+    KUBECONFIG_OUT = args.kubeconfig
     if THIS is None or THIS not in HOSTS:
         fail("this file has no host. Run write-host-copies.py, then run the copy of this host.")
-    if args.staged:
-        STAGED = os.path.abspath(os.path.expanduser(args.staged))
     if args.report:
         import json
         print(json.dumps({"node": THIS, **report()}, sort_keys=True))
@@ -722,19 +807,30 @@ def main():
     if os.geteuid() != 0:
         fail("run the script as root")
     DRY = args.dry_run
+    if args.service:
+        service(args.service)
+        return
+    named = args.snapshot or args.preserve or args.restore_snapshot
+    if named:
+        user = operator_user(args.operator)
+        snapshots = install_folder(user, "snapshots")
+        for folder in (os.path.dirname(snapshots), snapshots):
+            if not os.path.isdir(folder):
+                os.makedirs(folder, mode=0o700)
+                os.chown(folder, user.pw_uid, user.pw_gid)
+        folder = install_folder(user, "snapshots", named)
     if args.snapshot:
-        snapshot(args.snapshot, args.owner or USER)
+        snapshot(folder, user.pw_name)
         return
     if args.preserve:
-        target = preserve_sqlite(args.preserve, include_etcd=True)
-        if args.owner:
-            user = pwd.getpwnam(args.owner)
-            for root, dirs, names in os.walk(target):
-                for entry in [root] + [os.path.join(root, n) for n in names]:
-                    os.chown(entry, user.pw_uid, user.pw_gid)
+        target = preserve_sqlite(folder, include_etcd=True)
+        for root, dirs, names in os.walk(folder):
+            for entry in [root] + [os.path.join(root, n) for n in names]:
+                os.chown(entry, user.pw_uid, user.pw_gid)
+        say(f"  the copy {target} belongs to {user.pw_name}")
         return
     if args.restore_snapshot:
-        restore_snapshot(args.restore_snapshot, args.token_file or "")
+        restore_snapshot(folder)
         return
     say(f"== root-install-k3s-{THIS}.py {time.strftime('%Y-%m-%d %H:%M:%S')}{' dry run' if DRY else ''}")
     say("== verify")
@@ -743,10 +839,10 @@ def main():
     install_runtimes()
     say("== k3s")
     if THIS == SERVER and datastore() == "sqlite":
-        if not args.sqlite_copy:
+        if not args.convert_sqlite:
             fail("the server runs the SQLite datastore. The new configuration converts it to etcd. Stop the deployment "
-                 "runners, then run the script again with --sqlite-copy <root-only folder outside /var/lib/rancher>.")
-        preserve_sqlite(args.sqlite_copy)
+                 "runners, then run the script again with --convert-sqlite.")
+        preserve_sqlite(RECOVERY_DIR)
     k3s_config()
     unit = install_k3s()
     if THIS == SERVER:

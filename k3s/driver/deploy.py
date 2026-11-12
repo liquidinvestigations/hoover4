@@ -5,8 +5,9 @@ The driver reads the site file (../config.py) and runs the host scripts of ../ho
 run on the control-plane host.
 
 Host adapters:
-  local-arch      the local node of a single-node site on an Arch-based distribution. The driver runs the root scripts
-                  with sudo -n.
+  local-arch      the local node of a single-node site on an Arch-based distribution. The driver writes the bundle
+                  ~/k3s-install/<revision>/ with hosts.json and hard links of the staged files, and runs the root
+                  scripts with sudo -n, the bundle name and the node name.
   remote          a node with dnf or apt, over SSH, or the local node of a site with more nodes, in a local shell.
                   probe   reads the OS family, the architecture and the root routes of the node (hostroute.py).
                   bundle  writes the node bundle into k3s/private/deploy/remote/<node>/<revision>/ and copies it into
@@ -16,8 +17,9 @@ Host adapters:
                   stage   downloads and verifies the k3s, gVisor and Kata files into the bundle on the node, as the
                           operator user.
                   root    runs the root scripts of the bundle through the first root route of the node: sudo -n, else
-                          the cluster for a Ready node. The cluster route also refreshes the copies of the scripts in
-                          /usr/local/libexec/hoover4. A node without a route waits: the operator runs bootstrap.sh of
+                          the cluster for a Ready node. The scripts get names only: the bundle (the revision), the
+                          node and the operator user. The host paths come from hosts.json of the bundle. The cluster
+                          route also refreshes the copies of the scripts in /usr/local/libexec/hoover4. A node without a route waits: the operator runs bootstrap.sh of
                           the bundle once as root, then resumes the record.
                   verify  reads the installed state of the node (root-install-k3s.py --report) and compares it with the
                           bundle: the script copies, the k3s version, the k3s configuration, the active unit, the
@@ -171,11 +173,9 @@ class Context:
     def kubectl(self, *args, check=True):
         return self.run(['kubectl', '--kubeconfig', self.kubeconfig, *args], capture=True, check=check)[1]
 
-    def hosts_file(self):
-        """The hosts.json form of the site, in a private file for the root scripts."""
-        path = self.private / 'deploy' / 'hosts.json'
-        records_module.write_json(path, config.legacy_hosts(self.site))
-        return path
+    def bundle_name(self):
+        """The bundle of the record: the first 12 characters of its revision, or 'current' without a record."""
+        return ((self.record or {}).get('revision') or 'current')[:12]
 
 
 def operator_settings_module():
@@ -296,9 +296,9 @@ class LocalArch:
         return out
 
     def root_script(self, step):
-        self.ctx.run([*root_command('root-install-local.py'), '--hosts', self.ctx.hosts_file(),
-                      '--node', self.node.name, '--private', self.ctx.private, '--operator', os.environ.get('USER', ''),
-                      '--only', step], sudo=True)
+        local_bundle(self.ctx, self.node)
+        self.ctx.run([*root_command('root-install-local.py'), '--bundle', self.ctx.bundle_name(),
+                      '--node', self.node.name, '--only', step], sudo=True)
 
     def execute(self, step):
         kind = step.rsplit(':', 1)[1]
@@ -316,22 +316,27 @@ class LocalArch:
             tokens(folder)
             return {'staging': str(folder)}
         if kind == 'k3s':
-            folder = staging(self.ctx, self.node.architecture)
-            self.ctx.run([*root_command('root-install-k3s.py'), '--hosts', self.ctx.hosts_file(),
-                          '--node', self.node.name, '--staged', folder, '--kubeconfig-out', self.ctx.kubeconfig], sudo=True)
+            bundle = local_bundle(self.ctx, self.node, staged=True)
+            self.ctx.run([*root_command('root-install-k3s.py'), '--bundle', self.ctx.bundle_name(),
+                          '--node', self.node.name, '--kubeconfig'], sudo=True)
+            # The root script copies the admin kubeconfig into the bundle. The driver keeps its own copy.
+            self.ctx.kubeconfig.parent.mkdir(parents=True, exist_ok=True)
+            private_write(self.ctx.kubeconfig, (bundle / 'kubeconfig').read_text())
+            (bundle / 'kubeconfig').unlink()
             return {}
         raise StepFailed(f'the local adapter has no step {kind}')
 
+    def service(self, action):
+        """Start or stop the units of the site with root-install-local.py --service, the only root command of the rule."""
+        local_bundle(self.ctx, self.node)
+        self.ctx.run([*root_command('root-install-local.py'), '--bundle', self.ctx.bundle_name(), '--node',
+                      self.node.name, '--service', action], sudo=True, capture=True)
+
     def stop(self):
-        for unit in ('hoover4-frontend.service', 'k3s.service'):
-            self.ctx.run(['/usr/bin/systemctl', 'stop', unit], sudo=True)
-        # The containers of the pods keep running after the k3s unit stops. The kill script of k3s stops them.
-        self.ctx.run(['/usr/local/bin/k3s-killall.sh'], sudo=True, capture=True)
+        self.service('stop')
 
     def start(self):
-        # The pods reach the zone names through the frontend, so it starts with k3s.
-        for unit in ('hoover4-address.service', 'hoover4-dns.service', 'k3s.service', 'hoover4-frontend.service'):
-            self.ctx.run(['/usr/bin/systemctl', 'start', unit], sudo=True)
+        self.service('start')
 
 
 class Remote:
@@ -386,16 +391,14 @@ class Remote:
 
     def root_commands(self):
         """The root commands of the node, as argv lists that read the bundle in the home folder of the operator user."""
-        user_home = (self.ctx.record.get('homes') or {}).get(self.node.name) or \
-            f'/home/{self.ctx.site.operator_user or "operator"}'
-        home = f'{user_home}/{self.bundle_path()}'
-        hosts = f'{home}/hosts.json'
-        out = [[f'{hostroute.LIBEXEC}/root-install.py', '--hosts', hosts, '--node', self.node.name, '--only', step]
-               for step in host_steps(self.node)]
-        k3s = [f'{hostroute.LIBEXEC}/root-install-k3s.py', '--hosts', hosts, '--node', self.node.name, '--staged', home]
+        names = ['--bundle', self.ctx.record['revision'][:12], '--node', self.node.name, '--operator',
+                 self.ctx.site.operator_user or 'operator']
+        out = [[f'{hostroute.LIBEXEC}/root-install.py', *names, '--only', step]
+               for step in host_steps(self.node, self.ctx.site)]
+        k3s = [f'{hostroute.LIBEXEC}/root-install-k3s.py', *names]
         if self.node.name == self.ctx.site.control_plane:
             # A server that still runs SQLite converts to etcd only after a verified copy outside its datastore.
-            k3s += ['--sqlite-copy', '/var/lib/hoover4-recovery']
+            k3s += ['--convert-sqlite']
         return out + [k3s]
 
     def execute(self, step):
@@ -422,6 +425,11 @@ class Remote:
 
     def root_step(self):
         route = self.route()
+        if self.node.name == self.ctx.site.control_plane and 'etcd_before' not in self.ctx.record:
+            # verify() compares the etcd role after the step with this value, to find a conversion from SQLite.
+            self.ctx.record['etcd_before'] = (node_label(self.ctx, self.node.name, 'node-role.kubernetes.io/etcd')
+                                              if node_ready(self.ctx, self.node.name) else 'absent')
+            self.ctx.records.save(self.ctx.record)
         folder = remote_folder(self.ctx, self.node, self.ctx.record['revision'])
         scripts = [(f'{hostroute.LIBEXEC}/{name}', (folder / name).read_bytes()) for name in REMOTE_SCRIPTS]
         commands = self.root_commands()
@@ -465,8 +473,9 @@ class Remote:
 
     def report(self, folder=None):
         """The installed state of the node from root-install-k3s.py --report of the bundle, as the operator user."""
-        code, out = self.ssh(f'cd ~/{self.bundle_path()} && python3 ./root-install-k3s.py --report --hosts hosts.json '
-                             f'--node {shlex.quote(self.node.name)}', timeout=120)
+        code, out = self.ssh(f'python3 ~/{self.bundle_path()}/root-install-k3s.py --report --bundle '
+                             f'{shlex.quote(self.bundle_path().rsplit("/", 1)[1])} --node {shlex.quote(self.node.name)}',
+                             timeout=120)
         if code:
             raise StepFailed(f'node {self.node.name}: the report failed: {out[-300:]}')
         return json.loads(out.strip().splitlines()[-1])
@@ -499,7 +508,11 @@ class Remote:
                 problems.append(f'the datastore is {found["datastore"]}, and the node has no etcd role')
         if problems:
             raise StepFailed(f'node {self.node.name}: ' + '; '.join(problems) + '.')
-        return {'report': found}
+        out = {'report': found}
+        if (self.node.name == self.ctx.site.control_plane and self.ctx.record.get('etcd_before') == ''
+                and node_label(self.ctx, self.node.name, 'node-role.kubernetes.io/etcd') == 'true'):
+            out['restarted'] = restart_watchers(self.ctx)
+        return out
 
     def unit(self):
         return 'k3s' if self.node.name == self.ctx.site.control_plane else 'k3s-agent'
@@ -508,21 +521,34 @@ class Remote:
         code, out = self.ssh(f'systemctl is-active {self.unit()}')
         return out.strip() == 'active'
 
+    def service(self, route, action):
+        """Start or stop k3s through a root route. The scoped route runs root-install-k3s.py --service of the bundle."""
+        if route == 'sudo':
+            command = (f'sudo -n systemctl stop {self.unit()} && sudo -n /usr/local/bin/k3s-killall.sh && '
+                       f'{{ sudo -n pkill -KILL -f "^/opt/gvisor/"; sudo -n pkill -KILL -f "^runsc-"; true; }}'
+                       if action == 'stop' else f'sudo -n systemctl start {self.unit()}')
+        else:
+            self.execute(f'host:{self.node.name}:bundle')
+            command = (f'sudo -n {hostroute.LIBEXEC}/root-install-k3s.py --bundle {self.bundle_path().rsplit("/", 1)[1]} '
+                       f'--node {shlex.quote(self.node.name)} --service {action}')
+        code, out = self.ssh(command, timeout=600)
+        if code:
+            raise StepFailed(f'node {self.node.name}: the {action} failed: {out[-300:]}')
+        return {'route': route}
+
     def stop(self):
-        """Stop k3s on the node. A node without a sudo route waits, and a resume finds the stopped unit."""
+        """Stop k3s on the node. A node without a root route waits, and a resume finds the stopped unit."""
         if not self.active():
             return {'observed': 'inactive'}
         route = self.route()
-        if route == 'sudo':
-            code, out = self.ssh(f'sudo -n systemctl stop {self.unit()} && sudo -n /usr/local/bin/k3s-killall.sh')
-            if code:
-                raise StepFailed(f'node {self.node.name}: the stop failed: {out[-300:]}')
-            return {'route': route}
+        if route in ('sudo', 'scoped'):
+            return self.service(route, 'stop')
         if route == 'cluster':
             root = hostroute.ClusterRoot(self.ctx.kubeconfig, self.shell)
             unit = f'hoover4-stop-{self.ctx.record["id"].replace("T", "-")}-{self.node.name}'
             # The kill script ends the pods of the node, so it runs in a unit of the host.
-            root.start(unit, (), ['/bin/sh', '-c', f'systemctl stop {self.unit()} && /usr/local/bin/k3s-killall.sh'])
+            root.start(unit, (), ['/bin/sh', '-c', f'systemctl stop {self.unit()} && /usr/local/bin/k3s-killall.sh && '
+                                  '{ pkill -KILL -f "^/opt/gvisor/"; pkill -KILL -f "^runsc-"; true; }'])
             deadline = time.monotonic() + 300
             while time.monotonic() < deadline and self.active():
                 time.sleep(3)
@@ -536,17 +562,66 @@ class Remote:
         """Start k3s on the node. A node without a sudo route waits, and a resume finds the active unit."""
         if self.active():
             return {'observed': 'active'}
-        if self.probe()['sudo']:
-            code, out = self.ssh(f'sudo -n systemctl start {self.unit()}')
-            if code:
-                raise StepFailed(f'node {self.node.name}: the start failed: {out[-300:]}')
-            return {'route': 'sudo'}
+        found = self.probe()
+        if found['sudo'] or found['scoped_sudo']:
+            return self.service('sudo' if found['sudo'] else 'scoped', 'start')
         raise StepWaiting(f'node {self.node.name}: run sudo systemctl start {self.unit()} on the node, then resume the record.')
+
+
+# The namespaces of the controllers that hold a watch of the API. After the conversion of the server from SQLite to
+# etcd, these controllers saw no object that was created later: CoreDNS resolved no new Service, the ingress
+# controller answered 404 for new hosts, and cert-manager, TopoLVM and the monitoring operators missed new objects. A
+# restart of their pods made them read the API again. The likely cause is that the watches resume from revisions of
+# the earlier datastore, which etcd does not have. No source confirms the cause.
+WATCH_NAMESPACES = ('kube-system', 'ingress', 'cert-manager', 'topolvm-system', 'monitoring', 'operator-portal')
+
+
+def restart_watchers(ctx):
+    """Restart the Deployments and DaemonSets of WATCH_NAMESPACES and wait for them. Return the restarted namespaces."""
+    restarted = []
+    for ns in WATCH_NAMESPACES:
+        if not ctx.kubectl('get', 'namespace', ns, '--ignore-not-found', '-o', 'name', check=False).strip():
+            continue
+        for kind in ('deployment', 'daemonset'):
+            if ctx.kubectl('-n', ns, 'get', kind, '-o', 'name', check=False).strip():
+                ctx.kubectl('-n', ns, 'rollout', 'restart', kind)
+        restarted.append(ns)
+    for ns in restarted:
+        for name in ctx.kubectl('-n', ns, 'get', 'deployment,daemonset', '-o', 'name', check=False).split():
+            ctx.kubectl('-n', ns, 'rollout', 'status', name, '--timeout=300s')
+    return restarted
 
 
 LIBEXEC = Path('/usr/local/libexec/hoover4')
 ROOT_SCRIPTS = ('root-install-local.py', 'root-install-k3s.py')
-LOCAL_UNITS = 'hoover4-address.service hoover4-dns.service hoover4-frontend.service k3s.service'
+
+
+def local_bundle(ctx, node, staged=False):
+    """Write ~/k3s-install/<bundle>/ of the local node: hosts.json with the private folder, and the staged files.
+
+    The staged files are hard links of the staging folder, or copies on another file system. The root scripts read the
+    bundle by its name, so no host path goes into a root command.
+    """
+    folder = Path.home() / 'k3s-install' / ctx.bundle_name()
+    folder.mkdir(parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
+    records_module.write_json(folder / 'hosts.json', config.legacy_hosts(ctx.site, private=ctx.private))
+    if staged:
+        source = staging(ctx, node.architecture)
+        tokens(source)
+        for path in sorted(source.iterdir()):
+            if not path.is_file():
+                continue
+            target = folder / path.name
+            if target.exists() and target.stat().st_ino == path.stat().st_ino:
+                continue
+            target.unlink(missing_ok=True)
+            try:
+                os.link(path, target)
+            except OSError:
+                import shutil
+                shutil.copy2(path, target)
+    return folder
 
 
 def root_command(script):
@@ -561,7 +636,7 @@ def root_command(script):
 LOCAL_BOOTSTRAP = """#!/bin/sh
 # The reviewed bootstrap of the local node {node}. Run it once as root: sudo sh {path}
 # It installs the root scripts of this checkout into {libexec}, and lets the operator user {user} run only these
-# scripts, the start and stop of the units of the site and the kill script of k3s with sudo and no password.
+# scripts with sudo and no password. The scripts accept names only, also for the start and the stop of the site.
 set -eu
 install -d -m 0755 {libexec}
 {installs}
@@ -578,10 +653,8 @@ def write_local_bootstrap(ctx, node):
     path.parent.mkdir(parents=True, exist_ok=True)
     user = os.environ.get('USER') or ctx.site.operator_user
     installs = '\n'.join(f'install -m 0755 -o root -g root {SOURCE / "hosts" / s} {LIBEXEC / s}' for s in ROOT_SCRIPTS)
+    # The rule names only the installed root scripts. The scripts accept names and refuse host paths.
     rules = [f'{user} ALL=(root) NOPASSWD: {LIBEXEC / s} *' for s in ROOT_SCRIPTS]
-    rules += [f'{user} ALL=(root) NOPASSWD: /usr/bin/systemctl {verb} {unit}' for verb in ('start', 'stop')
-              for unit in LOCAL_UNITS.split()]
-    rules.append(f'{user} ALL=(root) NOPASSWD: /usr/local/bin/k3s-killall.sh')
     path.write_text(LOCAL_BOOTSTRAP.format(node=node.name, path=path, libexec=LIBEXEC, user=user, installs=installs,
                                            sudoers='\n'.join(rules)))
     return path
@@ -690,11 +763,13 @@ either route needs this bootstrap once:
 """
 
 
-def host_steps(node):
+def host_steps(node, site=None):
     """The steps of root-install.py for a node. A GPU node keeps its VPN as it is, so it gets no wireguard step."""
     steps = ['software', 'settings'] if node.has('gpu') else ['software', 'settings', 'storage']
     if node.vpn_address and not node.has('gpu'):
         steps = ['wireguard'] + steps
+    if site and site.backup.get('node') == node.name:
+        steps.append('backup')
     return steps
 
 
@@ -1080,6 +1155,23 @@ def stop_tier(group):
                 ctx.records.save_stopped(stopped)
             if replicas:
                 ctx.kubectl('-n', namespace, 'scale', kind, name, '--replicas=0')
+        if group == 'applications':
+            # Scheduled writers stop with the applications: each CronJob of a zone namespace that runs on its schedule
+            # is suspended, and the record names it, so the start resumes only these CronJobs.
+            for namespace in zone_namespaces(ctx):
+                text = ctx.kubectl('-n', namespace, 'get', 'cronjobs', '-o', 'json', check=False)
+                try:
+                    items = json.loads(text)['items']
+                except (ValueError, KeyError):
+                    continue
+                for item in items:
+                    if item['spec'].get('suspend'):
+                        continue
+                    key = f'{namespace}/cronjob/{item["metadata"]["name"]}'
+                    stopped[key] = 1
+                    ctx.records.save_stopped(stopped)
+                    ctx.kubectl('-n', namespace, 'patch', 'cronjob', item['metadata']['name'], '--type', 'merge',
+                                '-p', '{"spec":{"suspend":true}}')
         # Each workload ends through its own shutdown. The workers drain their activities in their grace period.
         for namespace, kind, name, _ in found:
             wait_pods_gone(ctx, namespace, kind, name)
@@ -1103,10 +1195,17 @@ def start_tier(group):
         started = []
         for key, replicas in sorted(stopped.items()):
             namespace, kind, name = key.split('/')
-            if tier(namespace, name) == group:
+            if kind == 'cronjob':
+                if group == 'applications':
+                    ctx.kubectl('-n', namespace, 'patch', 'cronjob', name, '--type', 'merge',
+                                '-p', '{"spec":{"suspend":false}}')
+                    started.append((namespace, kind, name))
+            elif tier(namespace, name) == group:
                 ctx.kubectl('-n', namespace, 'scale', kind, name, f'--replicas={replicas}')
                 started.append((namespace, kind, name))
         for namespace, kind, name in started:
+            if kind == 'cronjob':
+                continue
             ctx.run(['kubectl', '--kubeconfig', ctx.kubeconfig, '-n', namespace, 'rollout', 'status', f'{kind}/{name}',
                      '--timeout=900s'], capture=True)
         for namespace, kind, name in started:

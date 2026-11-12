@@ -19,4 +19,4 @@ P
 )
 $py xwiki-admin-script.py "$zone" xwiki/install-extension.vm id=org.xwiki.contrib.llm:application-ai-llm-models-ui version=$version | grep -E '^(state|installed|ERROR)'
 $py xwiki-admin-script.py "$zone" xwiki/ai-setup.vm url="$endpoint" model="$model" token="file:$keyfile" context="$context" | grep -E '^(servers|models)'
-$py xwiki-admin-script.py "$zone" xwiki/chat-check.js
+$py xwiki-admin-script.py "$zone" xwiki/chat-check.js model="$model"

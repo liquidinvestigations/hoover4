@@ -13,8 +13,8 @@ from research_agent.run_messages import RunMessage, ToolCallRecord
 
 THREAD = "t1"
 EST = Estimator(ratio=0.25, fixed=0)
-#: dgemma: a window of 262,144 tokens at 0.80 gives a trigger of 209,715 and a target of 69,905.
-DGEMMA = 262_144
+#: A window of 262,144 tokens at 0.80 gives a trigger of 209,715 and a target of 69,905.
+WINDOW_256K = 262_144
 
 
 def chars(tokens: int) -> str:

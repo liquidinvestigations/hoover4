@@ -53,7 +53,7 @@ def nodes_of(board_id="b1", rejected=()):
     return f, folded, lb.label_nodes(f, folded)
 
 
-def row(node, slug="x", title="A Title", summary="s", attempts=0, model="dgemma", **kw):
+def row(node, slug="x", title="A Title", summary="s", attempts=0, model="chat-model", **kw):
     return LabelRow("b1", node.node_id, node.kind, slug, title, summary, node.source_hash, model,
                     attempts, **kw)
 
@@ -126,7 +126,7 @@ def test_a_duplicate_slug_gets_two_then_three_against_stored_and_batch_slugs():
     stored = {"x": LabelRow("b1", "x", "fact", "finding-raptor", "T", "s", "h")}
     entry = {"slug": "raptor", "title": "T", "summary": "s"}
     other = lb.Node("f9.9", "fact", "sourced fact\n\nother", "other")
-    rows = lb.node_rows("b1", [fact, other], stored, {"f1.1": entry, "f9.9": entry}, "dgemma")
+    rows = lb.node_rows("b1", [fact, other], stored, {"f1.1": entry, "f9.9": entry}, "chat-model")
     assert [r.slug for r in rows] == ["finding-raptor-2", "finding-raptor-3"]
 
 
@@ -140,9 +140,9 @@ def test_a_duplicate_slug_of_another_script_compares_in_canonical_form():
     _f, _folded, nodes = nodes_of()
     fact = nodes[1]
     entry = {"slug": "année-parution", "title": "Année de parution", "summary": "s"}
-    [row] = lb.node_rows("b1", [fact], {}, {"f1.1": entry}, "dgemma", "fr")
+    [row] = lb.node_rows("b1", [fact], {}, {"f1.1": entry}, "chat-model", "fr")
     assert row.slug == "constat-année-parution"
-    [row] = lb.node_rows("b1", [fact], {}, {"f1.1": {**entry, "slug": "出版年份"}}, "dgemma", "zh")
+    [row] = lb.node_rows("b1", [fact], {}, {"f1.1": {**entry, "slug": "出版年份"}}, "chat-model", "zh")
     assert row.slug == "发现-出版年份"
 
 
@@ -150,9 +150,9 @@ def test_a_changed_source_keeps_its_slug_and_gets_a_new_title():
     _f, _folded, nodes = nodes_of()
     fact = nodes[1]
     old = LabelRow("b1", "f1.1", "fact", "fact-old-slug", "Old Title", "old", "stale-hash",
-                   "dgemma", 0, created_at=T0)
+                   "chat-model", 0, created_at=T0)
     rows = lb.node_rows("b1", [fact], {"f1.1": old},
-                        {"f1.1": {"slug": "new-words", "title": "New Title", "summary": "new"}}, "dgemma")
+                        {"f1.1": {"slug": "new-words", "title": "New Title", "summary": "new"}}, "chat-model")
     assert (rows[0].slug, rows[0].title, rows[0].source_hash) == ("fact-old-slug", "New Title", fact.source_hash)
     assert rows[0].created_at == T0
 
@@ -163,10 +163,10 @@ def test_a_changed_source_keeps_its_slug_and_gets_a_new_title():
 def test_a_failed_attempt_counts_and_the_second_gives_the_fallback_label():
     _f, _folded, nodes = nodes_of()
     fact = nodes[1]
-    first = lb.node_rows("b1", [fact], {}, {}, "dgemma")[0]
+    first = lb.node_rows("b1", [fact], {}, {}, "chat-model")[0]
     assert (first.slug, first.attempts) == ("", 1)
     assert lb.pending_nodes([fact], {"f1.1": first}) == [fact]
-    second = lb.node_rows("b1", [fact], {"f1.1": first}, {}, "dgemma")[0]
+    second = lb.node_rows("b1", [fact], {"f1.1": first}, {}, "chat-model")[0]
     assert second.model == lb.FALLBACK_MODEL and second.attempts == 0
     assert second.slug == "finding-kaminski-refused-the"
     assert second.title == "Kaminski refused the valuations."
@@ -176,15 +176,15 @@ def test_a_failed_attempt_counts_and_the_second_gives_the_fallback_label():
 def test_a_failure_of_a_labelled_node_keeps_its_label_and_stays_pending():
     _f, _folded, nodes = nodes_of()
     fact = nodes[1]
-    old = LabelRow("b1", "f1.1", "fact", "fact-kept", "Kept Title", "kept", "stale", "dgemma", 0)
-    failed = lb.node_rows("b1", [fact], {"f1.1": old}, {}, "dgemma")[0]
+    old = LabelRow("b1", "f1.1", "fact", "fact-kept", "Kept Title", "kept", "stale", "chat-model", 0)
+    failed = lb.node_rows("b1", [fact], {"f1.1": old}, {}, "chat-model")[0]
     assert (failed.slug, failed.title, failed.attempts) == ("fact-kept", "Kept Title", 1)
     assert lb.pending_nodes([fact], {"f1.1": failed}) == [fact]
 
 
 def test_a_board_waits_after_a_failed_attempt():
     f, folded, nodes = nodes_of()
-    failed = LabelRow("b1", "f1.1", "fact", "", "", "", "", "dgemma", 1, updated_at=T0)
+    failed = LabelRow("b1", "f1.1", "fact", "", "", "", "", "chat-model", 1, updated_at=T0)
     assert not lb.label_due(f, folded, [failed], (T0 + timedelta(seconds=30)).timestamp())
     assert lb.label_due(f, folded, [failed], (T0 + timedelta(seconds=61)).timestamp())
 
@@ -210,7 +210,7 @@ def test_the_summary_is_due_when_missing_or_stale_and_not_before_the_nodes():
     now = (T0 + timedelta(hours=1)).timestamp()
     assert lb.label_due(f, folded, labels, now)
     source = lb.summary_source(f, folded, nodes, {r.node_id: r for r in labels})
-    current = LabelRow("b1", "", "board", "", "", "A summary", lb.text_hash(source), "dgemma", 0,
+    current = LabelRow("b1", "", "board", "", "", "A summary", lb.text_hash(source), "chat-model", 0,
                        updated_at=T0)
     assert not lb.label_due(f, folded, labels + [current], now)
     renamed = labels[:2] + [row(nodes[2], title="Another Title")]
@@ -219,12 +219,12 @@ def test_the_summary_is_due_when_missing_or_stale_and_not_before_the_nodes():
 
 def test_the_summary_falls_back_to_the_first_goal_after_two_failures():
     f, _folded, _nodes = nodes_of()
-    first = lb.summary_row("b1", f, None, "src", "", "dgemma")
+    first = lb.summary_row("b1", f, None, "src", "", "chat-model")
     assert first.attempts == 1 and first.summary == ""
-    second = lb.summary_row("b1", f, first, "src", "", "dgemma")
+    second = lb.summary_row("b1", f, first, "src", "", "chat-model")
     assert second.summary == "Who approved the Raptor hedges?" and second.model == lb.FALLBACK_MODEL
     assert second.source_hash == lb.text_hash("src")
-    ok = lb.summary_row("b1", f, None, "src", "Raptor hedges failed", "dgemma")
+    ok = lb.summary_row("b1", f, None, "src", "Raptor hedges failed", "chat-model")
     assert (ok.summary, ok.attempts, ok.node_kind, ok.slug) == ("Raptor hedges failed", 0, "board", "")
 
 

@@ -13,11 +13,13 @@
                    DEST/private.tar and writes DEST/archive-manifest.json with the size and SHA-256 of every file.
                    k3s keeps running. The k3s datastore and token need root: the command prints that step.
   verify DEST      Reads every file of the archive again against archive-manifest.json.
+  manifest DEST    Writes archive-manifest.json again, for files that a root step added after archive, for example
+                   the preserved k3s datastore. Run verify after it.
   removal DEST     Writes DEST/remove-local-k3s.sh from inventory.json: the commands that stop and remove the units,
                    the k3s files, the dummy link, the DNS routing, the CA anchor, the volumes of the site and the
                    sudo rule of the bootstrap. It names each protected resource in a comment and changes none of them.
                    A person reviews the script and runs it as root. The command itself removes nothing.
-Every file that holds a secret gets mode 0600. Usage: local-retirement.py inventory|archive|verify|removal DEST
+Every file that holds a secret gets mode 0600. Usage: local-retirement.py inventory|archive|verify|manifest|removal DEST
 """
 import hashlib
 import json
@@ -145,6 +147,18 @@ def digest(path):
     return h.hexdigest()
 
 
+def tar_complete(path):
+    """True when the tar file at path reads to its end-of-archive marker."""
+    import tarfile
+    try:
+        with tarfile.open(path) as tar:
+            for _ in tar:
+                pass
+        return True
+    except (tarfile.TarError, EOFError, OSError):
+        return False
+
+
 def write_manifest(dest):
     rows = []
     for root, _, files in os.walk(dest):
@@ -203,8 +217,9 @@ def archive(dest):
                                 '--', 'sh', '-c', 'until grep -q " /data " /proc/mounts; do sleep 1; done; '
                                 'tar -C /data -cf - .'], stdout=out)
         kubectl('-n', ns, 'delete', 'pod', 'retirement-read', '--wait=false')
-        if r.returncode:
-            raise SystemExit(f'the copy of {ns}/{name} failed. The site stays stopped. Run archive again.')
+        # kubectl exec can end with status 0 after a stream reset, so the tar file is read to its end.
+        if r.returncode or not tar_complete(target):
+            raise SystemExit(f'the copy of {ns}/{name} failed or is incomplete. The site stays stopped. Run archive again.')
         target.with_suffix('.done').write_text(json.dumps({'uid': c['metadata']['uid'], 'volume': c['spec'].get('volumeName')}))
     objects = {}
     for ns in sorted(namespaces):
@@ -220,9 +235,9 @@ def archive(dest):
     (dest / 'kept-in-place.json').write_text(json.dumps(kept, indent=1))
     rows = write_manifest(dest)
     print(json.dumps({'archive': str(dest), 'files': len(rows), 'bytes': sum(r['bytes'] for r in rows), 'kept': kept,
-                      'next': 'Run as root: /usr/local/libexec/hoover4/root-install-k3s.py --hosts <hosts.json> --node '
-                              f'{node.name} --preserve {dest}/k3s-server --owner {os.environ.get("USER", "")}, '
-                              'then run local-retirement.py verify again after write_manifest.'}))
+                      'next': 'Run with sudo: /usr/local/libexec/hoover4/root-install-k3s.py --bundle <bundle of the '
+                              f'last up> --node {node.name} --preserve k3s-server. Move ~/k3s-install/snapshots/'
+                              f'k3s-server into {dest}, then run local-retirement.py manifest and verify.'}))
 
 
 REMOVAL = """#!/bin/sh
@@ -236,12 +251,16 @@ systemctl stop hoover4-frontend.service hoover4-dns.service || true
 systemctl stop k3s.service || true
 # k3s-killall.sh stops the pods of the site, unmounts their folders and removes the CNI links and rules of k3s.
 [ -x /usr/local/bin/k3s-killall.sh ] && /usr/local/bin/k3s-killall.sh || true
+# The kill script misses the gVisor shims and sandboxes, which keep the k3s volumes in their mount namespaces.
+pkill -KILL -f '^/opt/gvisor/' || true
+pkill -KILL -f '^runsc-' || true
 systemctl disable hoover4-frontend.service hoover4-dns.service hoover4-address.service k3s.service || true
 # The runner of the local site is a user unit of {user}. Run as {user}: systemctl --user disable --now hoover4-operator-runner
 rm -rf /etc/systemd/system/k3s.service /etc/systemd/system/k3s.service.env /etc/systemd/system/k3s.service.d
-# /etc/rancher/k3s/k3s.yaml stays. The other files of the folder belong to this site.
+# /etc/rancher/k3s/k3s.yaml and hoover4-admin.yaml, which it names, stay for the other project. The other files of the
+# folder belong to this site.
 rm -f /etc/rancher/k3s/config.yaml /etc/rancher/k3s/token /etc/rancher/k3s/agent-token \\
-      /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/hoover4-admin.yaml
+      /etc/rancher/k3s/registries.yaml
 rm -rf /run/k3s /run/flannel
 {volume_lines}
 rm -rf /var/lib/rancher/k3s /var/lib/kubelet
@@ -284,8 +303,12 @@ def removal(dest):
 
 
 def main(argv):
-    if len(argv) != 2 or argv[0] not in ('inventory', 'archive', 'verify', 'removal'):
+    if len(argv) != 2 or argv[0] not in ('inventory', 'archive', 'verify', 'manifest', 'removal'):
         raise SystemExit(__doc__)
+    if argv[0] == 'manifest':
+        rows = write_manifest(Path(argv[1]))
+        print(json.dumps({'archive': argv[1], 'files': len(rows), 'bytes': sum(r['bytes'] for r in rows)}))
+        return
     {'inventory': inventory, 'archive': archive, 'verify': verify, 'removal': removal}[argv[0]](argv[1])
 
 

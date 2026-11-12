@@ -27,7 +27,7 @@ def test_one_to_three_distinct_questions_are_kept():
         assert followups.parse_prompts(text) == []
 
 
-#: The reply of the demo `ornith` that the old parser refused: a fenced JSON array.
+#: The reply of an earlier demo model that the old parser refused: a fenced JSON array.
 FENCED_REPLY = ('```json\n[\n  "How would the answer change if you searched only for Chapter 11 '
                 'documents in the Enron collection rather than the broader term \\"bankruptcy\\"?",\n'
                 '  "Can you explain the difference between the search-index word counts and actual '

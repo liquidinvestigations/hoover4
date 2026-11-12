@@ -17,7 +17,7 @@ from research_agent.compaction import (
     threshold_tokens,
 )
 from research_agent.run_messages import RunMessage, apply_compactions
-from test_thread_index import DGEMMA, EST, THREAD, TODAY_EMPTY, Thread, chars, ok
+from test_thread_index import WINDOW_256K, EST, THREAD, TODAY_EMPTY, Thread, chars, ok
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +44,7 @@ class Recorder:
 
 
 def _plan(t, **kw):
-    kw.setdefault("window", DGEMMA)
+    kw.setdefault("window", WINDOW_256K)
     kw.setdefault("estimator", EST)
     return compaction.plan_compaction(t.rows, t.rows, **kw)
 
@@ -96,20 +96,20 @@ def test_summary_input_keeps_page_call_and_stored_step_after_other_results():
 
 def test_the_shipped_fraction_is_eighty_percent():
     assert compaction_fraction() == DEFAULT_COMPACTION_FRACTION == 0.80
-    assert threshold_tokens(DGEMMA) == 209_715
+    assert threshold_tokens(WINDOW_256K) == 209_715
     assert compaction.target_tokens(209_715) == 69_905
 
 
 def test_the_fraction_is_configuration(monkeypatch):
     monkeypatch.setenv("AGENT_COMPACTION_FRACTION", "0.30")
-    assert threshold_tokens(DGEMMA) == 78_643
+    assert threshold_tokens(WINDOW_256K) == 78_643
 
 
 @pytest.mark.parametrize("bad", ["0", "-1", "1.5", "sixty percent"])
 def test_a_fraction_out_of_range_turns_compaction_off(monkeypatch, bad):
     monkeypatch.setenv("AGENT_COMPACTION_FRACTION", bad)
     assert compaction_fraction() == 0.0
-    assert threshold_tokens(DGEMMA) == 0
+    assert threshold_tokens(WINDOW_256K) == 0
 
 
 def test_an_unknown_window_never_produces_a_threshold():
@@ -156,7 +156,7 @@ def test_the_trigger_is_never_above_the_safe_input():
 def test_one_older_prefix_is_summarised_once_and_the_newest_groups_stay():
     t = _thread(40, 4_000)
     stub = Recorder()
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=stub)
     assert len(stub.calls) == 1 and stub.calls[0][1] == SUMMARY_TOKENS
     row = report.row
@@ -182,7 +182,7 @@ def test_one_older_prefix_is_summarised_once_and_the_newest_groups_stay():
 
 def test_the_stored_row_replays_the_list_that_the_compacting_call_sent():
     t = _thread(40, 4_000)
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=Recorder())
     _store(t, report)
     assert [(m.role, m.content) for m in apply_compactions(t.rows)] == [
@@ -198,7 +198,7 @@ def test_a_multi_call_batch_leaves_or_stays_whole():
                ok("doc_metadata", {"h": n}, chars(2_000)))
     t.step(ok("read_documents", {"n": "a"}, chars(10)), ok("read_documents", {"n": "b"},
                                                            chars(10)), billed=210_000)
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=Recorder())
     assert report.row["status"] == "ok"
     assert _pairs_complete(out)
@@ -220,7 +220,7 @@ def test_every_user_message_stays_in_its_place():
     for n in range(10):
         t.step(ok("doc_metadata", {"m": n}, chars(4_000)))
     t.step(ok("doc_metadata", {"n": "last"}, chars(10)), billed=210_000)
-    out, _report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    out, _report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=Recorder())
     humans = [m.content for m in out if m.role == "human"]
     assert humans[0] == "Find the lease approvals."
@@ -232,7 +232,7 @@ def test_the_summary_contract_asks_for_findings_contradictions_work_and_sources(
     t = _thread(40, 4_000, before=[ok("search_collections", {"queries": ["Raptor"]},
                                       TODAY_EMPTY)])
     stub = Recorder()
-    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=stub)
     prompt = stub.calls[0][0]
     for section in ("## Findings", "## Contradictions", "## Outstanding work",
@@ -267,7 +267,7 @@ def _quote_thread():
 def test_the_contract_asks_for_the_source_of_each_quote_in_brackets():
     stub = Recorder()
     t = _quote_thread()
-    compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST, summariser=stub)
+    compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST, summariser=stub)
     assert "[source: URL]" in stub.calls[0][0]
 
 
@@ -276,7 +276,7 @@ def test_a_quote_given_to_the_wrong_source_gets_the_source_of_the_text_that_hold
     text = (f'## Findings\n* "{CLAUSE}" [source: enron, a6a5a71a8b2e5512, /sent_mail/114.]\n'
             '* "The meeting moved to Friday." [source: enron, a6a5a71a8b2e5512, /_sent_mail/114.]\n'
             '* "A sentence that no result holds." [source: enron, a6a5a71a8b2e5512, /x]')
-    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=Recorder(text=text))
     record = report.row["summary"]
     assert f'"{CLAUSE}" [source: {PAGE_URL}]' in record
@@ -315,7 +315,7 @@ def test_a_contradiction_line_keeps_both_brackets_apart():
 
 def test_a_second_compaction_extends_the_previous_summary():
     t = _thread(40, 4_000)
-    _out, first = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, first = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=Recorder(text="## Findings\nFIRST FACT"))
     _store(t, first)
     for n in range(40):
@@ -323,7 +323,7 @@ def test_a_second_compaction_extends_the_previous_summary():
     t.step(ok("doc_metadata", {"m": "last"}, chars(10)), billed=210_000)
     rows, applied = steps.model_input_rows([], t.rows)
     stub = Recorder(text="## Findings\nSECOND FACT")
-    out, second = compaction.compact(applied, rows, window=DGEMMA, estimator=EST,
+    out, second = compaction.compact(applied, rows, window=WINDOW_256K, estimator=EST,
                                      summariser=stub)
     prompt = stub.calls[0][0]
     assert PREVIOUS_SUMMARY_LINE in prompt and "[previous summary]\n" in prompt
@@ -343,7 +343,7 @@ def test_skill_and_tool_texts_never_reach_the_summariser():
         ok("read_tool", {"name": "search_histogram"}, '{"tool": "search_histogram"}'),
     ])
     stub = Recorder()
-    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=stub)
     prompt = stub.calls[0][0]
     for text in ("SEARCH TEXT", "search_histogram", "read_skill(", "read_tool("):
@@ -357,7 +357,7 @@ def test_citation_labels_of_the_prefix_are_in_the_index():
         ok("cite_documents", {"citations": []},
            {"citations": [{"file_hash": "5e8bb0ff3822761c", "handle": "[D4]"}]}),
     ])
-    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=Recorder())
     assert "## Citation labels\n- [D4] 5e8bb0ff3822761c" in report.row["summary"]
 
@@ -427,7 +427,7 @@ def test_user_messages_past_the_target_keep_the_run_and_report_the_target_missed
     for n in range(10):
         t.step(ok("doc_metadata", {"n": n}, chars(4_000)))
     t.step(ok("doc_metadata", {"n": "last"}, chars(1_000)), billed=210_000)
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=Recorder())
     assert report.row["status"] == "ok" and report.target_reached is False
     assert report.row["sizes"]["user"] > report.target
@@ -437,7 +437,7 @@ def test_user_messages_past_the_target_keep_the_run_and_report_the_target_missed
 def test_a_failed_summary_changes_no_message_and_is_not_asked_again():
     t = _thread(40, 4_000)
     stub = Recorder(fail=True)
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=stub)
     row = report.row
     assert (row["status"], row["summary"], row["steps_summarised"]) == ("failed", "", 0)
@@ -448,7 +448,7 @@ def test_a_failed_summary_changes_no_message_and_is_not_asked_again():
         m.content for m in t.rows if m.role != "compaction"]
     # The same prefix: no second request over unchanged input.
     rows, applied = steps.model_input_rows([], t.rows)
-    plan = compaction.plan_compaction(applied, rows, window=DGEMMA, estimator=EST)
+    plan = compaction.plan_compaction(applied, rows, window=WINDOW_256K, estimator=EST)
     assert plan.unchanged_failure and plan.parts == 0
     again = Recorder()
     _out, second = compaction.finish_compaction(plan, again)
@@ -457,7 +457,7 @@ def test_a_failed_summary_changes_no_message_and_is_not_asked_again():
 
 def test_an_empty_summary_is_a_failure():
     t = _thread(40, 4_000)
-    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=Recorder(empty=True))
     assert report.row["status"] == "failed"
     assert report.row["error"] == "the summary request gave no text"

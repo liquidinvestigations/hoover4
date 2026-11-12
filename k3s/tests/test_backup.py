@@ -248,20 +248,54 @@ def test_the_destination_node_checks_writes_verifies_and_keeps_older_copies(loca
     (dest / schedule.MARKER).write_text('x')
     assert target.problem() == '' and target.free_bytes() > 0
     first = copy_folder(backups, tmp_path / 'one', {'a.sql': b'one'})
-    final, checked = target.publish(first, 'opendesk:zone-a', 'week-1')
-    assert final == f'{dest}/opendesk/zone-a/week-1' and checked['differences'] == []
-    assert (dest / 'opendesk/zone-a/week-1/a.sql').read_bytes() == b'one'
+    final, checked = target.publish(first, 'zone:zone-a', 'week-1')
+    assert final == f'{dest}/zones/zone-a/week-1' and checked['differences'] == []
+    assert (dest / 'zones/zone-a/week-1/a.sql').read_bytes() == b'one'
     # A copy that changes in the transfer is refused on the node, and the older copy stays.
     second = copy_folder(backups, tmp_path / 'two', {'a.sql': b'two'})
     (second / 'a.sql').write_bytes(b'changed after the manifest')
     with pytest.raises(SystemExit, match='differs from its manifest'):
-        target.publish(second, 'opendesk:zone-a', 'week-2')
-    assert not (dest / 'opendesk/zone-a/week-2.partial').exists()
-    assert (dest / 'opendesk/zone-a/week-1/a.sql').read_bytes() == b'one'
+        target.publish(second, 'zone:zone-a', 'week-2')
+    assert not (dest / 'zones/zone-a/week-2.partial').exists()
+    assert (dest / 'zones/zone-a/week-1/a.sql').read_bytes() == b'one'
+    assert target.copies() == {'zones/zone-a': ['week-1']}
+    assert target.check('zone:zone-a', 'week-1')['differences'] == []
     with pytest.raises(SystemExit, match='outside the backup destination'):
         target.remove('/etc')
     target.remove(final)
-    assert not (dest / 'opendesk/zone-a/week-1').exists()
+    assert not (dest / 'zones/zone-a/week-1').exists()
+
+
+def test_job_folders_put_zones_below_zones_and_refuse_paths():
+    backups = backups_module()
+    assert backups.job_folder('platform') == 'platform'
+    assert backups.job_folder('zone:platform') == 'zones/platform'
+    assert backups.job_folder('opendesk:zone-a') == 'zones/zone-a'
+    assert backups.job_folder('hoover:zone-a:enron') == 'zones/zone-a/collections/enron'
+    for key in ('zone:/etc', 'zone:..', 'zone:a/b', 'hoover:zone-a:../x', 'zone:.hidden', 'files:/tmp'):
+        with pytest.raises(SystemExit):
+            backups.job_folder(key)
+    for generation in ('/tmp/x', '..', 'a/../b', ''):
+        with pytest.raises(SystemExit):
+            backups.name_arg(generation, 'generation')
+
+
+def test_the_earlier_opendesk_job_key_reads_as_the_zone_job(local_destination, tmp_path, monkeypatch):
+    backups, s, _ = local_destination
+    path = tmp_path / 'state.json'
+    monkeypatch.setattr(backups, 'state_path', lambda site: path)
+    path.write_text(json.dumps({'jobs': {'opendesk:zone-a': {'copies': [{'generation': 'week-1'}]}}, 'blocked': [],
+                                'paused': ''}))
+    assert backups.load_state(s)['jobs'] == {'zone:zone-a': {'copies': [{'generation': 'week-1'}]}}
+
+
+def test_restore_commands_refuse_host_paths(local_destination):
+    backups, _, _ = local_destination
+    for argv in (['restore-zone', '/tmp/copy', 'zone-a'], ['restore-zone', 'zone-a', '../week-1'],
+                 ['restore-hoover', 'zone-a', 'enron', '/x'], ['verify', 'zone:zone-a', '/srv/copy'],
+                 ['restore-zone', 'zone-a', 'week-1', '--from', '../zone-b']):
+        with pytest.raises(SystemExit):
+            backups.main(argv)
 
 
 def test_the_recovery_set_names_etcd_and_reads_the_earlier_format(tmp_path):
@@ -272,13 +306,14 @@ def test_the_recovery_set_names_etcd_and_reads_the_earlier_format(tmp_path):
                                                         'datastore': 'etcd', 'snapshot': 'etcd/hoover4-platform-x',
                                                         'token': 'etcd/token', 'private': 'private.tar'}))
     assert backups.read_recovery(current)['datastore'] == 'etcd'
-    steps = backups.restore_platform_steps(current)
-    assert '--restore-snapshot' in steps[0] and '--token-file' in steps[0] and str(current / 'etcd/token') in steps[0]
+    steps = backups.platform_steps(current, 'week-1')
+    assert any('--restore-snapshot restore-week-1' in step and '--bundle backup' in step for step in steps)
+    assert not any('--token-file' in step for step in steps)
     earlier = tmp_path / 'earlier'
     earlier.mkdir()
     (earlier / 'k3s-state.db').write_bytes(b'sqlite')
     assert backups.read_recovery(earlier)['datastore'] == 'sqlite'
-    assert 'convert it to etcd' in backups.restore_platform_steps(earlier)[0]
+    assert 'convert it to etcd' in backups.platform_steps(earlier, 'week-0')[0]
     (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 3}))
     with pytest.raises(SystemExit, match='does not read'):
         backups.read_recovery(current)
@@ -317,3 +352,35 @@ def test_the_zone_closure_records_and_restores_replicas_and_cronjobs(local_desti
     patches = {a[4]: a[-1] for a in calls if 'patch' in a}
     assert json.loads(patches['paused']) == {'spec': {'suspend': True}}
     assert json.loads(patches['cleanup']) == {'spec': {'suspend': False}}
+
+
+def test_an_incomplete_tar_file_is_detected(tmp_path):
+    import io
+    import tarfile
+    backups = backups_module()
+    good = tmp_path / 'good.tar'
+    with tarfile.open(good, 'w') as archive:
+        data = b'x' * 100000
+        info = tarfile.TarInfo('./file')
+        info.size = len(data)
+        archive.addfile(info, io.BytesIO(data))
+    assert backups.tar_complete(good)
+    cut = tmp_path / 'cut.tar'
+    cut.write_bytes(good.read_bytes()[:50000])
+    assert not backups.tar_complete(cut)
+
+
+def test_a_restored_secret_keeps_the_items_that_the_copy_lacks(tmp_path, monkeypatch):
+    backups = backups_module()
+    (tmp_path / 'objects.json').write_text(json.dumps({'items': [
+        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'hoover-runtime'}, 'data': {'a': 'Y29weQ=='}}]}))
+    applied = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        if 'get' in args:
+            return json.dumps({'data': {'a': 'b2xk', 'gpu-token': 'dG9rZW4='}})
+        applied.append(json.loads(input))
+        return ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    backups.restore_secrets(tmp_path, 'hoover-zone-a')
+    assert applied[0]['data'] == {'a': 'Y29weQ==', 'gpu-token': 'dG9rZW4='}

@@ -84,3 +84,8 @@ Search known terms in each restored dataset.
 Verify collection access for the intended groups.
 Verify vector table availability when embeddings are enabled.
 Record any unavailable source or index separately from successful database restoration.
+
+## Back up a cluster site.
+
+A cluster site copies complete zones, collections and the platform recovery set into its backup folder.
+[The cluster operations manual](Cluster_Operations.md#back-up-the-site) describes the jobs and the restore.

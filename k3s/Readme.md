@@ -97,16 +97,24 @@ k3s/deploy-k3s status
 - The tools step installs pinned downloads from [driver/artifacts.json](driver/artifacts.json) into `private/bin/`.
   The platform scripts use Helm 4. The openDesk helmfile uses Helm 3 from `private/bin/opendesk/`.
 - The calls step runs after the zones, because the calls services read Secrets of the zones.
+- The root scripts accept names only: the bundle (the first 12 characters of the commit), the node, the operator user, a step and a snapshot name.
+  The host paths come from the site file through `hosts.json` of the bundle `~/k3s-install/<bundle>/`.
+  A script refuses an absolute path, `..`, and a symbolic link below the home folder of the operator. The sudo rule of a bootstrap names only the installed root scripts.
 - The local node of a single-node site uses the adapter `local-arch`. It runs the root scripts [hosts/root-install-local.py](hosts/root-install-local.py) and [hosts/root-install-k3s.py](hosts/root-install-k3s.py) with `sudo -n`.
-  The bootstrap script of the local node installs copies of these scripts into `/usr/local/libexec/hoover4` and a sudo rule for them and the units of the site. The driver uses a copy when it equals the source.
+  The driver writes the bundle `~/k3s-install/<bundle>/` with `hosts.json` and hard links of the staged files. The start and the stop of the site run `root-install-local.py --service`.
+  The bootstrap script of the local node installs copies of these scripts into `/usr/local/libexec/hoover4` and a sudo rule for them. The driver uses a copy when it equals the source.
 - A remote node uses the adapter `remote`, with the steps `probe`, `bundle`, `stage`, `root` and `verify`.
   `bundle` writes the node bundle into `private/deploy/remote/<node>/<commit>/` and copies it into `~/k3s-install/<commit>/` of the node: the root scripts of the commit, `hosts.json`, the node part of the site, the stage script, the token that the node needs, `bootstrap.sh` and `README.txt`.
   The tokens of the site are in `private/staging/tokens/`. `tools/adopt-cluster.py tokens` copies the tokens of a running cluster there.
   `root` runs the root scripts through `sudo -n`, or, for a node that is Ready in the cluster, through a privileged pod that starts a unit of the host ([driver/hostroute.py](driver/hostroute.py)).
   A node without a route waits until the operator runs `bootstrap.sh` of the bundle once as root.
+  The backup node of the site file also gets the step `backup`, which creates the backup folder with `zones/` and `platform/` for the operator user.
   `verify` compares the node with the bundle: the script copies, the k3s version, the k3s configuration, the active unit, the Ready node, and etcd on the server.
   A node that SSH cannot reach fails its step with the SSH error, and the record stays resumable.
-  A remote `down` or `up --start` without a sudo route waits for the operator, and a resume finds the stopped or started unit.
+  A remote `down` or `up --start` uses `root-install-k3s.py --service` on a node with the bootstrap rule. A node without a sudo route waits for the operator, and a resume finds the stopped or started unit.
+  `down` also suspends the CronJobs of the zone namespaces, and the start resumes the CronJobs that it suspended.
+  After the conversion of the server from SQLite to etcd, `verify` restarts the Deployments and DaemonSets of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
+  Without the restart, CoreDNS, the ingress controller, cert-manager, TopoLVM and the monitoring operators did not see objects that were created after the conversion.
 
 The local node of a single-node site gets the dummy link `hoover4` with the address `10.254.54.1`, a dnsmasq for the names below the suffix, and the units `hoover4-address`, `hoover4-dns` and `hoover4-frontend`.
 k3s and every pod run in `hoover4.slice`. The node value `reserved` sets the memory and CPU that stay with the rest of the host, for example a Compose stack.
@@ -134,7 +142,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 `tools/local-retirement.py` preserves the local site and writes the removal script. It removes nothing.
 
 1. `inventory <folder>` records the units, mounts, volumes, link, DNS routing, claims and the protected resources.
-2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`root-install-k3s.py --preserve`).
+2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`root-install-k3s.py --preserve <name>`). `manifest <folder>` writes the manifest again after that step.
 3. `verify <folder>` reads the archive again against its manifest.
 4. `removal <folder>` writes `remove-local-k3s.sh`. A person reviews it and runs it as root.
    The script removes the services, units, data, volumes, link and DNS setup of the site. The k3s binary, `kubectl`, `crictl`, `ctr`, the k3s scripts and `/etc/rancher/k3s/k3s.yaml` stay, because another project uses them.
@@ -258,39 +266,48 @@ Check a call from outside the site after a remote installation:
 ## Back up and restore.
 
 Backups are off until the site file has `[backup]`, the destination folder has its marker, and an operator turns a policy on in the portal.
-The `[backup]` node holds the destination. The capacity check, the marker check, the check of each copy and retention run on that node over its user shell.
+The `[backup]` node holds the backup folder (`path`). The capacity check, the marker check, the check of each copy and retention run on that node over its user shell.
+The commands take names: a zone, a collection, a job and a generation (the name of a copy). No command takes a host path.
+
+| Copy | Folder below the backup folder |
+|---|---|
+| A complete zone: openDesk and its Hoover installation | `zones/<zone>/<generation>/` |
+| A Hoover collection of a zone | `zones/<zone>/collections/<collection>/<generation>/` |
+| The platform recovery set | `platform/<generation>/` |
 
 ```sh
-python3 k3s/platform/backups/backups.py enable    # writes the marker .hoover4-backup-destination into the destination
+python3 k3s/platform/backups/backups.py enable    # writes the marker .hoover4-backup-destination and the folders
 python3 k3s/platform/backups/backups.py status
-python3 k3s/platform/backups/backups.py verify <copy folder>
-python3 k3s/platform/backups/backups.py restore-hoover <copy folder> <installation>
-python3 k3s/platform/backups/backups.py restore-volumes <copy folder> <namespace>
-python3 k3s/platform/backups/backups.py fetch <copy path on the node> <local folder>
-python3 k3s/platform/backups/backups.py restore-zone <local copy folder> <zone>
-python3 k3s/platform/backups/backups.py recovery <local platform copy folder>
-python3 k3s/platform/backups/backups.py restore-platform <local platform copy folder>
+python3 k3s/platform/backups/backups.py copies
+python3 k3s/platform/backups/backups.py verify zone:<zone> <generation>
+python3 k3s/platform/backups/backups.py restore-zone <zone> <generation> [--from <zone of the copy>]
+python3 k3s/platform/backups/backups.py restore-hoover <zone> <collection> <generation> [--from <zone of the copy>]
+python3 k3s/platform/backups/backups.py recovery <generation>
+python3 k3s/platform/backups/backups.py restore-platform <generation>
 ```
 
 - The operator runner starts at most one due job each minute. [schedule.py](platform/backups/schedule.py) holds the rules: eligibility, the weekly limit, the slots and the retention.
 - A Hoover collection gets a copy after its first completed ingestion and after each complete reprocessing, at most once in 7 days, and keeps one or two copies.
-- openDesk and the platform recovery set get one copy each week, and keep two or three copies.
+- Each zone and the platform recovery set get one copy each week, and keep two or three copies. The portal setting `backup.opendesk.*` controls the zone copy.
 - A missing marker pauses every job, so a missing remote mount does not fill the local disk.
 - A copy is made in `<operator state>/backups/staging/`, checked, sent to the node into `<generation>.partial`, checked there and renamed. A failed transfer or check keeps the older copies.
+- A restore reads a copy on the operator host in place, or fetches it into `<operator state>/backups/restore/` and checks it there.
 - The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
-- The openDesk copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
+  The snapshot runs `root-install-k3s.py --bundle backup --snapshot <name>` on the server, which writes `~/k3s-install/snapshots/<name>/` of the operator user.
+- The zone copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
   Their CronJobs are suspended, and the stores keep running. After the copy, the recorded replicas and suspensions return.
-  The next runner tick restores a closure that a stopped job left.
+  The next runner tick restores a closure that a stopped job left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
 - The receipt queries use the ClickHouse of the store layout. The zone layout uses the zone user in the zone namespace. The local layout uses the Compose credentials.
 - The collection export reads each small frozen Manticore file whole, and a `.meta` file must be JSON. The archive entry gets the size of the bytes that the export read.
 - Make sure that the destination is on another site. The system cannot check this.
 - Each copy has `copy-manifest.json` with the SHA-256 of every file. A collection copy also holds the `manifest.json` of the export, which the import reads.
 - A collection copy fails when the JSON metadata of a Manticore table in the export does not parse, because the import refuses it.
-- An openDesk copy keeps one tar file for each claim, with the owners and modes. A Block claim of a Kata store is read through its store container, so the store must run. A claim that a pod owns holds temporary files and is not copied.
+- A zone copy keeps the dumps of the zone databases and one tar file for each claim of the zone namespace, with the owners and modes, and the same parts of the Hoover namespace in `hoover/<installation>/`.
+  A Block claim of a Kata store is read through its store container, so the store must run. A claim that a pod owns holds temporary files and is not copied.
 - `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
-- A restore of an openDesk copy writes its claims into a new namespace with the same volume modes. A Block claim is written through a Kata pod, which makes its file system. The database dumps restore with `psql` and `mariadb` in that namespace.
-- `restore-zone` restores a complete openDesk copy into an installed zone of an isolated cluster. It closes the zone and stops its stores, except the databases.
-  It then applies the Secrets of the copy, replaces the content of each claim, imports the dumps, restarts the databases and opens the zone.
+- `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases.
+  It then applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and opens the zone.
+  A copy part `hoover/<installation>/` restores into the installation of that name, or into the one installation of the zone.
   A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps.
 
 ## Run the tests.

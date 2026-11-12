@@ -17,7 +17,9 @@ The steps of apply, in order:
      gate client Secrets.
   5. helmfile applies openDesk with postrender.py as the Helm post-renderer. A new zone has no 2fa-browser flow, and the
      openDesk Keycloak bootstrap Job needs it. zone-login-no-mfa.sh creates the flow as soon as the realm exists, while
-     helmfile runs. When the first pass still fails, helmfile runs once more.
+     helmfile runs. Nextcloud restarts once when its pod started before the management Job stored the complete
+     configuration. When the first pass still fails, helmfile runs once more, after the removal of the Nextcloud user
+     OpenProject that a failed OpenProject bootstrap left behind.
      Each release that Helm lists as failed is synced again, because helmfile apply skips a release without a diff.
      The installer replaces outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
@@ -201,40 +203,85 @@ def refresh_statefulsets(zone):
 
 
 def login_flow(zone, stop, errors):
-    """Run zone-login-no-mfa.sh as soon as the opendesk realm exists, while helmfile runs.
+    """Run zone-login-no-mfa.sh as soon as the opendesk realm exists, and nextcloud_config(), while helmfile runs.
 
     The openDesk Keycloak bootstrap Job needs the 2fa-browser flow, which a zone without two-factor login lacks. The Job
-    retries, so a flow that exists before its last retry lets the first helmfile pass succeed.
+    retries, so a flow that exists before its last retry lets the first helmfile pass succeed. The OpenProject bootstrap
+    Job calls Nextcloud, so Nextcloud gets its configuration before that Job runs out of retries.
     """
-    configured = False
+    configured = restarted = False
     try:
         while not stop.wait(20):
             refresh_statefulsets(zone)
             if not configured and subprocess.run(['bash', str(HERE / 'zone-login-no-mfa.sh'), zone], capture_output=True).returncode == 0:
                 step('login-flow', zone=zone, result='set during the first helmfile pass')
                 configured = True
+            if not restarted:
+                try:
+                    restarted = nextcloud_config(zone, wait=False)
+                except subprocess.CalledProcessError as error:
+                    # The check runs again in 20 s, and once more after helmfile.
+                    step('nextcloud-check', zone=zone, result=f'failed: {(error.stderr or "")[-200:]}')
     except Exception as error:
         errors.append(error)
 
 
-def nextcloud_config(zone):
-    """Restart Nextcloud when it runs without the configuration of the management Job.
+def nextcloud_domain(zone):
+    return f'files.{zone}.{settings.SUFFIX}'
 
-    A Nextcloud pod that starts before Redis is ready keeps the minimal configuration, and answers every request for
-    files.<zone>.<suffix> with a trusted domain error. The OpenProject bootstrap then fails, because it calls Nextcloud.
-    The configuration is in the database after the management Job, so a new pod loads it.
+
+def nextcloud_config(zone, wait=True):
+    """Restart Nextcloud when it runs without the configuration of the management Job. Return True after a restart.
+
+    The Nextcloud pod loads config.php from the table fs_config_store of its database when it starts. The management Job
+    writes the complete configuration there. A pod that starts before the Job keeps the minimal configuration of the
+    install, and answers every request for files.<zone>.<suffix> with a trusted domain error. The OpenProject bootstrap
+    then fails, because it calls Nextcloud, and its failed setup leaves the Nextcloud user OpenProject behind. occ cannot
+    change the configuration, because it is read-only. A new pod loads the complete configuration.
     """
+    domain = nextcloud_domain(zone)
     if not kubectl('-n', zone, 'get', 'deployment', 'opendesk-nextcloud-aio', '--ignore-not-found', '-o', 'name').strip():
-        return
+        return False
+    stored = subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec', 'postgresql-0', '-c',
+                             'postgresql', '--', 'psql', '-U', 'postgres', '-d', 'nextcloud', '-At', '-c',
+                             "SELECT value FROM fs_config_store WHERE name = 'config_php'"],
+                            capture_output=True, text=True).stdout
+    if domain not in stored:
+        return False
     domains = subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec',
                               'deployment/opendesk-nextcloud-aio', '--',
                               'php', '/var/www/html/occ', 'config:system:get', 'trusted_domains'],
-                             capture_output=True, text=True).stdout
-    if f'files.{zone}.{settings.SUFFIX}' in domains:
-        return
+                             capture_output=True, text=True)
+    if domains.returncode or domain in domains.stdout:
+        return False
     kubectl('-n', zone, 'rollout', 'restart', 'deployment/opendesk-nextcloud-aio')
-    kubectl('-n', zone, 'rollout', 'status', 'deployment/opendesk-nextcloud-aio', '--timeout=600s')
+    if wait:
+        kubectl('-n', zone, 'rollout', 'status', 'deployment/opendesk-nextcloud-aio', '--timeout=600s')
     step('nextcloud-restart', zone=zone, reason='the configuration of the management Job was missing')
+    return True
+
+
+def failed_releases(zone):
+    return run('helm', 'list', '-n', zone, '--failed', '-q', env=helmfile_env(zone), quiet=True).stdout.split()
+
+
+def openproject_reset(zone):
+    """Remove the Nextcloud user and group OpenProject that a failed OpenProject bootstrap left behind.
+
+    The caller runs it only while Helm lists the release opendesk-openproject-bootstrap as failed, so a working
+    integration of an existing zone stays.
+    The integration setup of the bootstrap creates the user and returns its client credentials. A second setup finds the
+    user and returns no credentials, so every retry fails. The order follows the troubleshooting guide of the Nextcloud
+    app integration_openproject: disable the app, delete the user and the group, enable the app.
+    """
+    occ = ['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec', 'deployment/opendesk-nextcloud-aio',
+           '--', 'php', '/var/www/html/occ']
+    if subprocess.run(occ + ['user:info', 'OpenProject'], capture_output=True).returncode:
+        return
+    for args in (['app:disable', 'integration_openproject'], ['user:delete', 'OpenProject'],
+                 ['group:delete', 'OpenProject'], ['app:enable', 'integration_openproject']):
+        subprocess.run(occ + args, capture_output=True)
+    step('openproject-reset', zone=zone, reason='a failed bootstrap left the Nextcloud user OpenProject')
 
 
 def opendesk(zone):
@@ -251,11 +298,15 @@ def opendesk(zone):
                 raise SystemExit('helmfile failed before Keycloak exists')
             step('helmfile', zone=zone, result='first pass failed, the login flow follows')
             run('bash', HERE / 'zone-login-no-mfa.sh', zone)
+            nextcloud_config(zone)
+            if 'opendesk-openproject-bootstrap' in failed_releases(zone):
+                openproject_reset(zone)
             helmfile(zone, 'apply')
         nextcloud_config(zone)
-        failed = run('helm', 'list', '-n', zone, '--failed', '-q', env=helmfile_env(zone), quiet=True).stdout.split()
-        for release in failed:
+        for release in failed_releases(zone):
             step('helmfile-sync', zone=zone, release=release)
+            if release == 'opendesk-openproject-bootstrap':
+                openproject_reset(zone)
             helmfile(zone, 'sync', '-l', f'name={release}')
     finally:
         stop.set()

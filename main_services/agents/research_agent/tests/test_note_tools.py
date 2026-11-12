@@ -6,7 +6,7 @@ from agent_common.tool_packs import allowed_tools
 from research_agent import compaction
 from research_agent.note_tools import DESCRIPTION, REFUSAL, WRITE_NOTE, make_note_tools
 from research_agent.tool_catalogue import build_snapshot
-from test_thread_index import DGEMMA, EST, Thread, chars, ok
+from test_thread_index import WINDOW_256K, EST, Thread, chars, ok
 
 
 async def test_a_note_is_saved_and_counted():
@@ -33,7 +33,7 @@ def test_a_note_in_the_prefix_reaches_the_summary_request():
         t.step(ok("doc_metadata", {"n": n}, chars(4_000)))
     t.step(ok("doc_metadata", {"n": "last"}, chars(10)), billed=210_000)
     prompts = []
-    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+    _out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                       summariser=lambda prompt, cap: prompts.append(prompt)
                                       or "## Findings\nx")
     assert report is not None and len(prompts) == 1
