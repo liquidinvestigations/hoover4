@@ -3111,6 +3111,75 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The page belongs to the operator portal of a k3s site, which the manuals do not show. The browser check keeps its screenshots in the private folder of the site."
+    },
+    {
+      "id": "F-admin-51",
+      "source": [
+        "k3s/platform/mcp-relay/relay.py",
+        "k3s/platform/mcp-relay/install-relay.py",
+        "k3s/tools/mcp-relay-check.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#reach-an-installation-from-the-workstation"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+    },
+    {
+      "id": "F-admin-52",
+      "source": [
+        "k3s/migration/migrate.py",
+        "k3s/migration/root_copy.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#move-a-compose-installation-into-the-cluster"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is a command-line tool. It has no interface."
+    },
+    {
+      "id": "F-admin-53",
+      "source": [
+        "k3s/platform/gpu/gpu_pool.py",
+        "k3s/hoover/gpu.py",
+        "k3s/hosts/root-install-k3s.py",
+        "k3s/cluster/runtimeclasses.yaml"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#run-the-gpu-services-on-gpu-nodes"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+    },
+    {
+      "id": "F-admin-54",
+      "source": [
+        "k3s/platform/calls/install-calls.py",
+        "k3s/platform/calls/public_endpoints.py",
+        "k3s/hosts/root-install-public-firewall.sh"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#place-the-call-services"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+    },
+    {
+      "id": "F-admin-55",
+      "source": [
+        "k3s/platform/backups/backups.py",
+        "k3s/platform/backups/schedule.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#back-up-and-restore"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability is operator deployment code. The portal controls of the policies belong to F-admin-50."
     }
   ],
   "routes": {

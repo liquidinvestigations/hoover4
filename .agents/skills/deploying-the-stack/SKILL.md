@@ -13,6 +13,7 @@ A user's instruction to start a plan authorizes the deployments and resets expli
 Do not request another confirmation for those actions. Preserve their requested targets, scope, and reset allowance.
 
 `hoover4.ini` owns configuration. The deployment generates environment files.
+A cluster installation deploys with `k3s/deploy-k3s` and the operator settings. Read [the k3s Readme](../../../k3s/Readme.md).
 Read [deploy flags](reference/deploy-flags.md) before selecting a build or reset operation.
 A normal bring-up does not prove that an image was rebuilt.
 

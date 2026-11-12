@@ -5,12 +5,15 @@ The zone pages list each zone with its resource use and operations. A create, up
 operation ConfigMap, which runner.py runs. A create names the home node of the zone.
 The settings page (settings.html) reads and saves the operator settings and starts Apply operations through
 portal_settings.py. runner.py runs the Apply operations on the control-plane host.
-The gateway sets X-Forwarded-User after the operator login, and network policy lets only the gateway connect.
+The gateway sets X-Forwarded-User after the operator login, and network policy lets only the gateway pods connect.
+A process of the host can reach the pod address without the network policy, so the portal accepts X-Forwarded-User only
+together with X-Operator-Proxy-Secret, which only the gateway sets. The secret is the key proxy-secret of the Secret
+operator-login (start-web-tools.sh).
 A POST needs the operator origin, so another site cannot send one with the operator session cookie.
 """
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
-import base64,functools,json,os,re,ssl,time,urllib.error,urllib.parse,urllib.request
+import base64,functools,hmac,json,os,re,ssl,time,urllib.error,urllib.parse,urllib.request
 ROOT=Path(__file__).resolve().parent/'portal'
 CGROUP=Path(os.environ.get('PORTAL_CGROUP','/sys/fs/cgroup/kubepods.slice'))
 ADDRESS=(os.environ.get('PORTAL_ADDRESS','127.0.0.1'),int(os.environ.get('PORTAL_PORT','18080')))
@@ -36,6 +39,12 @@ ORIGIN=os.environ.get('PORTAL_ORIGIN','https://operator.hoover.test')
 PROMETHEUS=os.environ.get('PORTAL_PROMETHEUS','http://monitor-kube-prometheus-st-prometheus.monitoring.svc.cluster.local:9090')
 SUFFIX=os.environ.get('PORTAL_SUFFIX','hoover.test')
 NS='operator-portal';LABEL='hoover.dev/operation'
+PROXY_SECRET=os.environ.get('PORTAL_PROXY_SECRET','')
+def operator(headers):
+ """Return the operator name that the gateway sends, or an empty text when the gateway secret is missing or wrong."""
+ given=headers.get('X-Operator-Proxy-Secret','')
+ if not PROXY_SECRET or not hmac.compare_digest(given.encode(),PROXY_SECRET.encode()):return ''
+ return headers.get('X-Forwarded-User','')
 ZONE_NAME=re.compile(r'zone-[a-z0-9]{1,12}')
 class Refused(Exception):
  """A request that the portal refuses. The message goes back to the operator."""
@@ -109,7 +118,7 @@ class Handler(SimpleHTTPRequestHandler):
   raw=json.dumps(data).encode();self.send_response(code)
   self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
  def do_POST(self):
-  actor=self.headers.get('X-Forwarded-User','')
+  actor=operator(self.headers)
   if self.headers.get('Origin')!=ORIGIN or not actor:return self.reply(403,{'error':'The request must come from the operator website.'})
   try:body=json.loads(self.rfile.read(min(int(self.headers.get('Content-Length') or 0),262144)) or b'{}')
   except ValueError:return self.reply(400,{'error':'The request body is not JSON.'})
@@ -137,7 +146,7 @@ class Handler(SimpleHTTPRequestHandler):
    '/zones.json':(zones,'The zone list is unavailable.'),
    '/settings.json':(lambda:portal_settings().overview(nodes()),'The operator settings are unavailable.')}
   if self.path not in routes:return super().do_GET()
-  if self.path in ('/zones.json','/settings.json') and not self.headers.get('X-Forwarded-User'):return self.reply(403,{'error':'The request must come through the operator login.'})
+  if self.path in ('/zones.json','/settings.json') and not operator(self.headers):return self.reply(403,{'error':'The request must come through the operator login.'})
   produce,failure=routes[self.path]
   try:raw=json.dumps(produce()).encode();self.send_response(200)
   except Exception:raw=json.dumps({'error':failure}).encode();self.send_response(503)

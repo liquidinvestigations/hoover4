@@ -581,13 +581,22 @@ def cluster_steps(ctx):
         'monitoring': step_script('bash', '@platform/monitoring/install-dashboards.sh'),
         'operator': step_operator,
         'hoover-data': step_script(sys.executable, '@platform/hoover-data/install-hoover-data.py'),
+        'gpu-pool': step_script(sys.executable, '@platform/gpu/gpu_pool.py', 'apply'),
         'gpu-proxy': step_script(sys.executable, '@hoover/gpu.py', 'install'),
     }
+    if not ctx.site.gpu_pool.get('nodes'):
+        # A pool at an address runs outside the site, for example on a Compose GPU host.
+        del steps['gpu-pool']
     if ctx.site.single:
         # The Hoover pods of a single-node site share one node, so their dataset folders are claims and need no NFS.
         del steps['hoover-data']
     for hoover in ctx.site.hoovers.values():
         steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone, hoover.home_node)
+    if ctx.site.single and ctx.site.hoovers:
+        # The development relay of a single-node site serves the loopback ports of one Hoover installation, the
+        # migrated one when the site has it. install-relay.py keeps the port mode that the operator chose.
+        relayed = next((h for h in ctx.site.hoovers.values() if h.source_ini), next(iter(ctx.site.hoovers.values())))
+        steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', relayed.name, 'apply')
     # The call services join the Jitsi of every zone, so they follow the zones.
     steps['calls'] = step_script(sys.executable, '@platform/calls/install-calls.py')
     return steps
@@ -846,6 +855,15 @@ def nfs_read_only(ctx):
     return out
 
 
+def public_endpoints(site):
+    """The DNS records and the firewall rules of the public and calls nodes (platform/calls/public_endpoints.py)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('public_endpoints', SOURCE / 'platform/calls/public_endpoints.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return {'media_node': config.calls_node(site).name, 'dns': module.dns(site), 'firewall': module.firewall(site)}
+
+
 def render(ctx, targets, revision, manifests=False):
     """The configuration of the selected targets, as a dict. It reads files and the cluster, and changes nothing."""
     out = {'site': ctx.site.name, 'site_file': str(ctx.site_path), 'revision': revision,
@@ -854,7 +872,8 @@ def render(ctx, targets, revision, manifests=False):
            'adapters': {t: adapter(ctx, ctx.site.nodes[t]).kind for t in targets},
            'up': list(plan(ctx, 'up', targets)), 'start': list(plan(ctx, 'up', targets, start=True)),
            'down': list(plan(ctx, 'down', targets)),
-           'applied': (ctx.records.applied() or {}).get('revision'), 'operator_settings': {}}
+           'applied': (ctx.records.applied() or {}).get('revision'), 'operator_settings': {},
+           'public_endpoints': public_endpoints(ctx.site)}
     if (ctx.state / 'desired.json').exists():
         sys.path.insert(0, str(SOURCE / 'platform/operator'))
         import settings as operator_settings

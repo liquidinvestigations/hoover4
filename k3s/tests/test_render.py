@@ -71,6 +71,13 @@ def test_single_node_keeps_the_compose_storage_identity_and_history_source(singl
     assert e['S3_SYSTEM_BUCKET'] == 'hoover4-system'
     assert e['S3_COLLECTION_BUCKET_PREFIX'] == 'hoover4-c-'
     assert e['HOOVER4_HISTORY_SOURCE'] == 'compose'
+    # One worker pod polls the shared queues, so the open work of the Compose install keeps its queues.
+    assert 'HOOVER4_HOST_QUEUE' not in e
+
+
+def test_several_worker_pods_poll_their_host_queues(tmp_path):
+    t = target('single-node.ini', 'main', tmp_path, overrides={'budget.worker_pods': '2'})
+    e = env(containers(get(items_of(t), 'StatefulSet', 'hoover-workers'))[0])
     assert e['HOOVER4_HOST_QUEUE'] == {'fieldRef': {'fieldPath': 'metadata.name'}}
 
 
@@ -156,10 +163,25 @@ def test_dataset_mounts_keep_their_container_paths(single):
     assert mounts == [{'name': 'testdata', 'path': '/testdata', 'writable': False},
                       {'name': 'uploads', 'path': '/uploads', 'writable': True}]
     volumes = {v['name']: v for v in get(single, 'StatefulSet', 'hoover-workers')['spec']['template']['spec']['volumes']}
-    assert volumes['data-testdata']['hostPath'] == {'path': '/srv/hoover4-testdata', 'type': 'Directory'}
+    assert volumes['data-testdata']['persistentVolumeClaim'] == {'claimName': 'host-dataset-testdata', 'readOnly': True}
     assert volumes['data-uploads']['persistentVolumeClaim'] == {'claimName': 'dataset-uploads'}
     get(single, 'PersistentVolumeClaim', 'dataset-uploads')
-    assert volumes['chat-control']['hostPath']['path'] == '/srv/hoover4-chat-control'
+    assert volumes['chat-control']['persistentVolumeClaim'] == {'claimName': 'host-chat-control', 'readOnly': True}
+
+
+def test_host_folders_are_volumes_of_the_admin_render(single):
+    """The pod policy refuses a hostPath volume in a zone namespace, so a host folder is a PersistentVolume."""
+    for item in single:
+        if item['kind'] in ('Deployment', 'StatefulSet', 'Job'):
+            assert not [v for v in item['spec']['template']['spec'].get('volumes', []) if 'hostPath' in v], item['metadata']['name']
+    for claim_name, path in (('host-dataset-testdata', '/srv/hoover4-testdata'), ('host-chat-control', '/srv/hoover4-chat-control')):
+        pv = get(single, 'PersistentVolume', f'hoover-zone-a-{claim_name}')
+        assert pv['spec']['hostPath'] == {'path': path, 'type': 'Directory'}
+        assert pv['spec']['accessModes'] == ['ReadOnlyMany']
+        assert pv['spec']['claimRef'] == {'namespace': 'hoover-zone-a', 'name': claim_name}
+        assert pv['spec']['persistentVolumeReclaimPolicy'] == 'Retain'
+        pvc = get(single, 'PersistentVolumeClaim', claim_name)
+        assert pvc['spec']['volumeName'] == pv['metadata']['name'] and pvc['spec']['storageClassName'] == ''
 
 
 def test_operations_worker_mounts_backups_and_stores(single):
@@ -429,3 +451,93 @@ def test_a_disabled_hoover_renders_zero_replicas_and_keeps_its_claims(tmp_path):
     # The pinned revision 0 has no override, so the installation runs.
     t0 = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'state', nfs=NFS, settings_revision=0)
     assert t0.enabled
+
+
+# The GPU pool of a site with GPU nodes -------------------------------------------------------------------------------
+
+def _gpu_pool():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('gpu_pool', REPO / 'k3s/platform/gpu/gpu_pool.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_gpu_pool_runs_every_gpu_service_on_its_node_with_the_selected_runtime():
+    import config
+    pool = _gpu_pool()
+    site = config.parse(site_text('remote.ini'))
+    for runtime, runtime_class in (('runsc', 'gvisor-gpu'), ('runc', 'nvidia')):
+        items = pool.objects(site, runtime, REVISION)
+        deployments = {i['metadata']['name']: i for i in items if i['kind'] == 'Deployment'}
+        assert set(deployments) == {'vllm-gpu-1', 'ai-server-gpu-1', 'easyocr-gpu-1', 'gateway-gpu-1'}
+        for name in ('vllm-gpu-1', 'ai-server-gpu-1', 'easyocr-gpu-1'):
+            spec = deployments[name]['spec']['template']['spec']
+            assert spec['runtimeClassName'] == runtime_class
+            assert spec['nodeSelector'] == {'kubernetes.io/hostname': 'gpu-1'}
+            assert {'key': 'hoover.dev/gpu', 'operator': 'Equal', 'value': 'true', 'effect': 'NoSchedule'} in spec['tolerations']
+            assert not [v for v in spec['volumes'] if 'hostPath' in v and not v['hostPath']['path'].startswith('/srv/hoover-data/gpu/')]
+    gateway = next(i for i in items if i['kind'] == 'ConfigMap' and i['metadata']['name'] == 'gateway-gpu-1')
+    text = gateway['data']['default.conf.template']
+    # Every port checks the pool key, and only the model server receives it.
+    assert text.count('if ($http_authorization != "Bearer ${POOL_KEY}") { return 403; }') == 3
+    assert text.count('proxy_set_header Authorization $http_authorization;') == 1
+    ports = deployments['gateway-gpu-1']['spec']['template']['spec']['containers'][0]['ports']
+    assert {(p['containerPort'], p.get('hostIP')) for p in ports} == {(21960, '10.0.0.5'), (21961, '10.0.0.5'), (21962, '10.0.0.5')}
+
+
+def test_the_central_gpu_proxy_sends_the_pool_key_on_every_port_of_a_site_pool(tmp_path):
+    import gpu
+    key = tmp_path / 'key'
+    key.write_text('pool-key')
+    for gateway, keyed in ((True, 3), (False, 1)):
+        items = gpu.proxy({'address': 'gateway.gpu-pool.svc.cluster.local' if gateway else '192.0.2.50',
+                           'api_key_file': str(key), 'gateway': gateway})
+        config_map = next(i for i in items if i['kind'] == 'ConfigMap')
+        assert config_map['data']['default.conf.template'].count('Bearer ${VLLM_KEY}') == keyed
+
+
+def test_gpu_nodes_reach_the_host_scripts_with_their_flag():
+    import config
+    hosts = config.legacy_hosts(config.parse(site_text('remote.ini')))['hosts']
+    assert hosts['gpu-1']['gpu'] is True and hosts['edge']['gpu'] is False
+
+
+# The calls placement and the public endpoints -------------------------------------------------------------------------
+
+def _public_endpoints():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('public_endpoints', REPO / 'k3s/platform/calls/public_endpoints.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_calls_node_takes_the_media_services_and_its_public_address():
+    import config
+    remote = config.parse(site_text('remote.ini'))
+    values = config.legacy_settings(remote)
+    assert values['calls_node'] == 'calls' and values['calls_public_address'] == '203.0.113.11'
+    assert values['calls_turn_listen'] == ['10.0.0.4', '203.0.113.11']
+    # Without a calls node the public node runs them. The local node has no public address, so the pods advertise.
+    single = config.legacy_settings(config.parse(site_text('single-node.ini')))
+    assert single['calls_node'] == 'dev' and single['calls_public_address'] == ''
+    without = config.parse(site_text('remote.ini').replace('[node.calls]\nroles = calls', '[node.calls]\nroles = worker\nstorage_tiers = hdd\nlvm_volume_group = tier-hdd'))
+    assert config.legacy_settings(without)['calls_node'] == 'edge'
+
+
+def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
+    import config
+    module = _public_endpoints()
+    remote = config.parse(site_text('remote.ini'))
+    records = {r['name']: r for r in module.dns(remote)}
+    assert records['turn.example.org']['address'] == '203.0.113.11'
+    assert records['hoover.zone-a.example.org']['address'] == '203.0.113.10'
+    assert records['sfu.zone-a.example.org']['address'] == '203.0.113.10'
+    assert not [r for r in records.values() if r['internal']]
+    rules = module.firewall(remote)
+    media = {(r['protocol'], r['port']) for r in rules['calls']}
+    assert {('udp', 10000), ('tcp', 7881), ('udp', 7882), ('udp', 3478), ('tcp', 3478)} <= media
+    assert ('tcp', 443) not in media and ('tcp', 443) in {(r['protocol'], r['port']) for r in rules['edge']}
+    script = (REPO / 'k3s/hosts/root-install-public-firewall.sh').read_text()
+    assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script

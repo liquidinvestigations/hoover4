@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
 from datetime import timedelta
 
@@ -135,38 +136,60 @@ class HostLost(Exception):
 
 
 class SharedSlots(CustomSlotSupplier):
-    """A fixed number of activity slots for several workers of one process."""
+    """A fixed number of activity slots for several workers of one process.
+
+    The SDK calls ``release_slot`` from a thread of its core, where no event loop runs, so a
+    release cannot notify an ``asyncio.Condition``. Each waiting reservation therefore keeps a
+    future of its own loop, and a release sets it through ``call_soon_threadsafe``. A woken
+    reservation checks the count again under the lock.
+    """
 
     def __init__(self, slots: int):
         self._free = slots
-        self._changed = asyncio.Condition()
+        self._lock = threading.Lock()
+        self._waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Future]] = []
 
     async def reserve_slot(self, ctx: SlotReserveContext) -> SlotPermit:
-        async with self._changed:
-            await self._changed.wait_for(lambda: self._free > 0)
-            self._free -= 1
-        return SlotPermit()
+        while True:
+            with self._lock:
+                if self._free > 0:
+                    self._free -= 1
+                    return SlotPermit()
+                loop = asyncio.get_running_loop()
+                waiter = loop.create_future()
+                self._waiters.append((loop, waiter))
+            try:
+                await waiter
+            except asyncio.CancelledError:
+                with self._lock:
+                    self._waiters = [w for w in self._waiters if w[1] is not waiter]
+                raise
 
     def try_reserve_slot(self, ctx: SlotReserveContext) -> SlotPermit | None:
-        if self._free <= 0:
-            return None
-        self._free -= 1
-        return SlotPermit()
+        with self._lock:
+            if self._free <= 0:
+                return None
+            self._free -= 1
+            return SlotPermit()
 
     def mark_slot_used(self, ctx: SlotMarkUsedContext) -> None:
         return None
 
     def release_slot(self, ctx: SlotReleaseContext) -> None:
-        self._free += 1
+        with self._lock:
+            self._free += 1
+            waiters, self._waiters = self._waiters, []
+        for loop, waiter in waiters:
+            try:
+                loop.call_soon_threadsafe(_wake, waiter)
+            except RuntimeError:
+                # The loop of this reservation has closed, so nothing waits on it.
+                pass
 
-        async def notify() -> None:
-            async with self._changed:
-                self._changed.notify()
 
-        try:
-            asyncio.get_running_loop().create_task(notify())
-        except RuntimeError:
-            pass
+def _wake(waiter: asyncio.Future) -> None:
+    if not waiter.done():
+        waiter.set_result(None)
 
 
 def host_lost(exc: BaseException) -> bool:

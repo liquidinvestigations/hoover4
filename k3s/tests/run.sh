@@ -4,8 +4,10 @@
 #   render   the site file, the source ini reader and the Hoover render (test_config.py, test_render.py)
 #   state    the operator settings registry, revisions and apply operations (test_state.py)
 #   driver   the deployment driver deploy-k3s with fake ssh, sudo and kubectl commands (test_driver.py)
-#   replay   the workflow replay suite of the pipeline, in the running hoover4-worker container
-# The suites migration and backup belong to later packages and do not exist yet.
+#   migration the offline copy, its hashes and owner mapping, interruption and the plan rules (test_migration.py)
+#   backup   the backup schedule, eligibility, retention and restore manifests with controlled time (test_backup.py)
+#   replay   the workflow replay suite of the pipeline, in the worker image with the processing folder mounted read-only.
+#            REPLAY_IMAGE names the image. The default is the image of the Compose worker of this workstation.
 # The render, state and driver suites mount the repository read-only and change nothing on the host or a cluster.
 set -euo pipefail
 
@@ -14,12 +16,13 @@ repo_root="$(cd -- "$tests_dir/../.." && pwd)"
 suites=("$@")
 [ ${#suites[@]} -eq 0 ] && suites=(render state driver)
 
-declare -A files=([render]="test_config.py test_render.py" [state]="test_state.py" [driver]="test_driver.py")
+declare -A files=([render]="test_config.py test_render.py" [state]="test_state.py" [driver]="test_driver.py"
+                 [migration]="test_migration.py" [backup]="test_backup.py")
 built=""
 status=0
 for suite in "${suites[@]}"; do
     case "$suite" in
-        render|state|driver)
+        render|state|driver|migration|backup)
             if [ -z "$built" ]; then
                 docker build --quiet --tag hoover4-k3s-tests "$tests_dir" >/dev/null
                 built=1
@@ -34,14 +37,14 @@ for suite in "${suites[@]}"; do
                 python -m pytest -q -p no:cacheprovider ${files[$suite]} || status=1
             ;;
         replay)
-            docker exec hoover4-worker sh -lc 'cd /app && uv run pytest tests/replay -q -p no:cacheprovider' || status=1
-            ;;
-        migration|backup)
-            echo "the $suite suite does not exist yet. Its package creates it." >&2
-            status=1
+            docker run --rm --network none \
+                --mount "type=bind,src=$repo_root/main_services/processing,dst=/app,readonly" \
+                --workdir /app --env PYTHONDONTWRITEBYTECODE=1 --entrypoint sh \
+                "${REPLAY_IMAGE:-localhost/hoover4_hoover4-worker:latest}" \
+                -c '/opt/pysetup/.venv/bin/python -m pytest tests/replay -q -p no:cacheprovider' || status=1
             ;;
         *)
-            echo "unknown suite $suite. The suites are render, state, driver and replay." >&2
+            echo "unknown suite $suite. The suites are render, state, driver, migration, backup and replay." >&2
             status=1
             ;;
     esac

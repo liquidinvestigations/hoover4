@@ -20,3 +20,21 @@ overhead:
     # A Kata VM used 212 to 328 MiB on the public host in an earlier measurement. The VM runs in the pod cgroup.
     memory: 384Mi
     cpu: 250m
+---
+# gVisor with nvproxy for the GPU services on the GPU nodes (../hosts/root-install-k3s.py registers runsc-nvproxy there).
+# The GPU nodes carry the taint hoover.dev/gpu=true:NoSchedule, so only a pod of this class or the nvidia class with
+# the toleration runs there. The class nvidia comes from k3s, when the host has the NVIDIA container toolkit. It runs
+# a GPU pod with runc: the fallback of decision D20.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor-gpu
+handler: runsc-nvproxy
+scheduling:
+  nodeSelector:
+    hoover.dev/gpu: "true"
+  tolerations:
+    - {key: hoover.dev/gpu, operator: Equal, value: "true", effect: NoSchedule}
+overhead:
+  podFixed:
+    memory: 64Mi

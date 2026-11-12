@@ -602,6 +602,7 @@ def legacy_settings(site):
         'frontend_bind': binds,
         'turn_listen': binds,
         'frontend_local': public.local,
+        **calls_settings(site),
         'hoover_data': {'roots': {n.name: n.data_root for n in site.with_role('data')}, 'extra': {}},
     }
     if site.vpn_cidr:
@@ -612,6 +613,23 @@ def legacy_settings(site):
         out['frontend_tls'] = f'/etc/letsencrypt/live/{site.suffix}'
         out['frontend_dns_credentials'] = public.tls_dns_credentials_file
     return out
+
+
+def calls_node(site):
+    """The node of the call media services: the first node with the role calls, else the first public node (D9)."""
+    calls = site.with_role('calls')
+    return calls[0] if calls else site.with_role('public')[0]
+
+
+def calls_settings(site):
+    """The placement and the public media address of the call services (../platform/calls/install-calls.py).
+
+    A media node with a public address advertises it, so a client sends its media straight to the JVB and LiveKit of
+    that node. A media node without one, such as the local node of a single-node site, advertises the pod addresses.
+    """
+    node = calls_node(site)
+    turn = [a for a in (node.vpn_address, node.public_address) if a] or [node_address(site, node)]
+    return {'calls_node': node.name, 'calls_public_address': node.public_address, 'calls_turn_listen': turn}
 
 
 def local_ca(site):
@@ -628,8 +646,6 @@ def legacy_hosts(site):
     """The site in the format of hosts.json, which the host scripts of hosts/ read."""
     hosts = {}
     for node in site.nodes.values():
-        if node.has('gpu'):
-            continue
         hosts[node.name] = {
             'wg_ip': node.vpn_address or None, 'key': node.wireguard_public_key, 'port': node.wireguard_port,
             'public': f'{node.public_address}:{node.wireguard_port}' if node.public_address else None,
@@ -637,7 +653,7 @@ def legacy_hosts(site):
             'tiers': list(node.storage_tiers), 'avx2': node.avx2,
             'local': node.local, 'single': site.single, 'architecture': node.architecture,
             'node_ip': node_address(site, node), 'vg': node.lvm_volume_group,
-            'physical_volumes': list(node.lvm_physical_volumes),
+            'physical_volumes': list(node.lvm_physical_volumes), 'gpu': node.has('gpu'),
         }
     return {'server': site.control_plane, 'user': site.operator_user, 'suffix': site.suffix, 'hosts': hosts}
 

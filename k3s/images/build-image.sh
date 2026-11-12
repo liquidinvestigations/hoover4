@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build an image with podman on the workstation and push it to the cluster registry.
 # Usage: build-image.sh <context directory> <name:tag> [Containerfile]
+# PLATFORM selects the target, default linux/amd64. A GPU image of an arm64 GPU node uses linux/arm64.
+# BUILD_ARGS holds build arguments as NAME=value words, for example the base image of the model server.
 # <name> is the path in the registry, for example hoover/blockmount. Pods name the image
 # registry.hoover.internal/<name:tag>. Each node maps that name to the registry endpoint in /etc/rancher/k3s/registries.yaml.
 # The endpoint is registry_endpoint in k3s/private/settings.json, for example <VPN address of the registry node>:5000.
@@ -20,7 +22,9 @@ if [ -z "${REBUILD:-}" ] && curl -fs -o /dev/null -I -H "Accept: $accept" "http:
   exit 0
 fi
 if [ -n "${REBUILD:-}" ] || ! podman image exists "$local_name"; then
-  podman build -q --platform linux/amd64 -t "$local_name" ${file:+-f "$file"} "$dir" >/dev/null
+  build_args=()
+  for arg in ${BUILD_ARGS:-}; do build_args+=(--build-arg "$arg"); done
+  podman build -q --platform "${PLATFORM:-linux/amd64}" "${build_args[@]}" -t "$local_name" ${file:+-f "$file"} "$dir" >/dev/null
 fi
 # The registry listens on the VPN address without TLS. A push needs the credentials that install-registry.sh writes.
 podman push -q --tls-verify=false --authfile "$here/../private/registry-auth.json" "$local_name" "docker://$endpoint/$image"

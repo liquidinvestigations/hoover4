@@ -42,6 +42,13 @@ IMAGES = {
     'web-tor': ('main_services/ops/docker/web-tor/Dockerfile', 'main_services/ops/docker/web-tor'),
     'research-agent': ('main_services/agents/research_agent/Dockerfile', 'main_services/agents'),
 }
+# The images of the GPU services (../platform/gpu/gpu_pool.py). They run on the GPU nodes, so build-hoover.py --gpu
+# builds them for the architecture of those nodes. The model server image takes its base image as a build argument.
+GPU_IMAGES = {
+    'ai-server': ('ai_services/hoover4_ai_server/Dockerfile', 'ai_services'),
+    'easyocr': ('ai_services/easyocr_server/Dockerfile', 'ai_services/easyocr_server'),
+    'vllm': ('ai_services/qwen_flash/Dockerfile', 'ai_services/qwen_flash'),
+}
 VARIABLE = re.compile(r'\$(?:\$|\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?])([^}]*))?\}|([A-Za-z_][A-Za-z0-9_]*))')
 
 
@@ -161,6 +168,25 @@ def load(ini, tree=TREE):
     for path in deploy.compose_files(cfg, 'main'):
         if path == str(deploy.DATASET_MOUNTS_OVERLAY):
             continue
+        for name, service in (yaml.load(Path(path).read_text(), Loader=Loader).get('services') or {}).items():
+            merge(services.setdefault(name, {}), service)
+    rendered = substitute(services, env)
+    for service in rendered.values():
+        service['environment'] = environment(service.get('environment'))
+    return deploy, cfg, env, rendered
+
+
+def load_ai(ini, tree=TREE):
+    """Return the deploy module, the Config, the .env values and the merged GPU services of an ini file.
+
+    The GPU side uses the Compose files that deploy.py starts on a GPU host (`./deploy --ai-services`).
+    ../platform/gpu/gpu_pool.py translates them for the GPU nodes of a site.
+    """
+    deploy = deploy_module(tree)
+    cfg = deploy.Config(Path(ini))
+    env = deploy.render_ai_env(cfg)
+    services = {}
+    for path in deploy.compose_files(cfg, 'ai'):
         for name, service in (yaml.load(Path(path).read_text(), Loader=Loader).get('services') or {}).items():
             merge(services.setdefault(name, {}), service)
     rendered = substitute(services, env)

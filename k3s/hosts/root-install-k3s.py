@@ -99,6 +99,25 @@ RUNTIMES_TOML = f"""\
   SystemdCgroup = true
 """
 
+# A GPU node also registers runsc with nvproxy, the GPU support of gVisor, as the handler runsc-nvproxy. The RuntimeClass
+# gvisor-gpu of ../cluster/runtimeclasses.yaml names it. The NVIDIA container toolkit of the host gives k3s the handler
+# nvidia, which runs a GPU pod with runc: the fallback of decision D20. stage-runsc-nvproxy.sh can stage a runsc that
+# is built with gVisor PR 16643 (decision D3) in <staged>/runsc-nvproxy/. The handler then uses that binary.
+RUNSC_NVPROXY_DIR = "/opt/gvisor-nvproxy"
+RUNSC_NVPROXY_CONFIG = "/etc/gvisor/runsc-nvproxy.toml"
+RUNSC_NVPROXY_TOML_FILE = f"""\
+# runsc with nvproxy for the GPU services. The binary is the staged build of gVisor PR 16643 when it exists.
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc-nvproxy]
+  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "{GVISOR_DIR}/containerd-shim-runsc-v1"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc-nvproxy.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "{RUNSC_NVPROXY_CONFIG}"
+"""
+# The node label and taint of a GPU node. Only the GPU pods tolerate the taint (../platform/gpu/gpu_pool.py).
+GPU_LABEL = "hoover.dev/gpu=true"
+GPU_TAINT = "hoover.dev/gpu=true:NoSchedule"
+
 RUNSC_TOML = f"""\
 binary_name = "{GVISOR_DIR}/runsc"
 # The kubelet uses the systemd cgroup driver. The runc option SystemdCgroup does not apply to the runsc options type.
@@ -214,7 +233,44 @@ def verify():
 
 
 def kata(host):
-    return arch(host) == "amd64"
+    return arch(host) == "amd64" and not host.get("gpu")
+
+
+def gpu(host):
+    return bool(host.get("gpu"))
+
+
+def runsc_nvproxy_toml():
+    """The runsc configuration of the GPU handler, with the staged patched binary when it exists."""
+    binary = f"{RUNSC_NVPROXY_DIR}/runsc" if os.path.exists(staged("runsc-nvproxy/runsc")) else f"{GVISOR_DIR}/runsc"
+    return (f'binary_name = "{binary}"\n'
+            "# nvproxy passes the NVIDIA device calls of the sandbox to the host driver.\n"
+            "[runsc_config]\n"
+            '  systemd-cgroup = "true"\n'
+            '  nvproxy = "true"\n'
+            '  nvproxy-docker = "true"\n')
+
+
+def install_gpu_runtime():
+    """Check the NVIDIA driver and the container toolkit, and register the runsc-nvproxy handler."""
+    code = subprocess.run(["nvidia-smi", "-L"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) \
+        if shutil.which("nvidia-smi") else None
+    if code is None or code.returncode:
+        fail("this GPU node has no working NVIDIA driver: nvidia-smi -L failed. Install the driver, then run the script again.")
+    say("  " + code.stdout.strip().splitlines()[0])
+    if not shutil.which("nvidia-container-runtime"):
+        fail("this GPU node has no nvidia-container-runtime. Install the NVIDIA container toolkit, which gives k3s the "
+             "runtime handler nvidia for the runc fallback, then run the script again.")
+    if os.path.exists(staged("runsc-nvproxy/runsc")):
+        wanted = open(staged("runsc-nvproxy/runsc.sha256")).read().split()[0]
+        if sha(staged("runsc-nvproxy/runsc")) != wanted:
+            fail("the staged runsc-nvproxy/runsc does not match runsc-nvproxy/runsc.sha256.")
+        current = f"{RUNSC_NVPROXY_DIR}/runsc"
+        if not os.path.exists(current) or sha(current) != wanted:
+            run(["install", "-d", RUNSC_NVPROXY_DIR])
+            run(["install", "-m", "755", staged("runsc-nvproxy/runsc"), current])
+        say(f"  {current} is the patched runsc build")
+    write_file(RUNSC_NVPROXY_CONFIG, runsc_nvproxy_toml())
 
 
 def install_runtimes():
@@ -232,6 +288,11 @@ def install_runtimes():
         link = f"/usr/local/bin/{name}"
         if os.path.realpath(link) != f"{GVISOR_DIR}/{name}":
             run(["ln", "-sfn", f"{GVISOR_DIR}/{name}", link])
+    if gpu(HOSTS[THIS]):
+        install_gpu_runtime()
+        write_file(RUNSC_CONFIG, RUNSC_TOML)
+        write_file(CONTAINERD_DROPIN, RUNTIMES_TOML.split("# Kata Containers")[0] + RUNSC_NVPROXY_TOML_FILE)
+        return
     if not kata(HOSTS[THIS]):
         write_file(RUNSC_CONFIG, RUNSC_TOML)
         write_file(CONTAINERD_DROPIN, RUNTIMES_TOML.split("# Kata Containers")[0])
@@ -268,9 +329,18 @@ def k3s_config():
         "  # One node can hold several zones. A zone has about 50 pods, and the node pod network is a /24.",
         "  - max-pods=250",
         "  # The pods must not use the memory of the system and k3s, because memory is not overcommitted.",
-        f"  - system-reserved={me['reserved']}",
         "  - eviction-hard=memory.available<500Mi,nodefs.available<5%,imagefs.available<5%",
     ]
+    if me.get("reserved"):
+        lines.insert(-1, f"  - system-reserved={me['reserved']}")
+    if gpu(me):
+        lines += [
+            "# A GPU node runs only the GPU pods, which tolerate this taint.",
+            "node-label:",
+            f"  - {GPU_LABEL}",
+            "node-taint:",
+            f"  - {GPU_TAINT}",
+        ]
     if single(me):
         lines += [
             "  # k3s and the pods share hoover4.slice, whose limits keep memory for the other services of the host.",

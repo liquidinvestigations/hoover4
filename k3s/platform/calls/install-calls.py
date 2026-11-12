@@ -11,7 +11,12 @@ The namespace calls holds three services:
   sfu.<zone>.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
 - JVB is the Jitsi video bridge. The script copies the JVB Deployment that the openDesk chart renders in the first
   zone with zero replicas, and points it at the Prosody of every zone.
-The three services run on the public host, the node ingress_node of the settings file.
+The three services run on the media node: the first node with the role calls, else the first public node (decision
+D9, config.calls_node()). When the media node has a public address, the services advertise it, so a client sends its
+media straight to the node: the JVB on UDP 10000, LiveKit on TCP 7881 and UDP 7882, coturn on 3478. The pods publish
+these ports as host ports of the media node, and ../calls/public_endpoints.py prints the firewall rules and the DNS
+records that the operator adds. A media node without a public address, such as the local node of a single-node site,
+advertises the pod addresses, which the host reaches.
 Each zone must be installed first, because the script reads its JVB template. The secrets come from
 k3s/private/zones/secrets.json, which zones.py writes. The script prints no secret.
 """
@@ -22,7 +27,7 @@ settings.use_kubeconfig()
 sys.path.insert(0,str(source/'zones'));from zones import ZONES,SUFFIX
 import cpu_policy
 data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
-NS='calls';NODE=settings.HOST['ingress_node']
+NS='calls';NODE=settings.HOST.get('calls_node',settings.HOST['ingress_node']);PUBLIC=settings.HOST.get('calls_public_address','')
 def kubectl(*args,data=None):return subprocess.run(['kubectl',*args],input=data,text=True,check=True,capture_output=True).stdout
 # The bridge cni0 has the first address of the pod range of the node. The TURN peers are the pods of every node.
 nodes=json.loads(kubectl('get','nodes','-o','json'))['items']
@@ -45,7 +50,7 @@ def coturn():
   'denied-peer-ip=0.0.0.0-255.255.255.255',f'allowed-peer-ip={PODS}',
   # Logs go to stdout only. Without a user database, coturn keeps no state on disk.
   'log-file=stdout','simple-log','pidfile=/var/lib/coturn/turnserver.pid']
- lines+=[f'listening-ip={address}' for address in settings.HOST.get('turn_listen',[])]
+ lines+=[f'listening-ip={address}' for address in settings.HOST.get('calls_turn_listen',settings.HOST.get('turn_listen',[]))]
  lines+=[f"static-auth-secret={data[zone]['turn_secret']}" for zone in ZONES]+[f"static-auth-secret={calls['livekit_turn_secret']}"]
  pod={'hostNetwork':True,'dnsPolicy':'ClusterFirstWithHostNet','automountServiceAccountToken':False,'enableServiceLinks':False,
   'containers':[{'name':'coturn','image':COTURN,'args':['-c','/etc/coturn/turnserver.conf'],
@@ -65,9 +70,11 @@ def livekit():
   # lk-jwt creates each room after it checks the Matrix membership, so LiveKit must not create rooms for any token.
   'room':{'auto_create':False},'turn':{'enabled':False},'keys':keys,'logging':{'level':'warn','pion_level':'error'}}
  pod={'automountServiceAccountToken':False,'enableServiceLinks':False,
-  'containers':[{'name':'livekit','image':LIVEKIT,'args':['--config','/etc/livekit/config.yaml','--node-ip','$(POD_IP)'],
+  'containers':[{'name':'livekit','image':LIVEKIT,'args':['--config','/etc/livekit/config.yaml','--node-ip',PUBLIC or '$(POD_IP)'],
    'env':[{'name':'POD_IP','valueFrom':{'fieldRef':{'fieldPath':'status.podIP'}}}],
-   'ports':[{'name':'http','containerPort':7880},{'name':'rtc-tcp','containerPort':7881},{'name':'rtc-udp','containerPort':7882,'protocol':'UDP'}],
+   # With a public address the media ports are host ports of the media node, so a client reaches them directly.
+   'ports':[{'name':'http','containerPort':7880},{'name':'rtc-tcp','containerPort':7881,**({'hostPort':7881} if PUBLIC else {})},
+    {'name':'rtc-udp','containerPort':7882,'protocol':'UDP',**({'hostPort':7882} if PUBLIC else {})}],
    'readinessProbe':{'httpGet':{'path':'/','port':7880},'periodSeconds':10},
    'resources':{'requests':{'cpu':'50m','memory':'64Mi'},'limits':{'cpu':'2','memory':'1Gi'}},'securityContext':SECURITY,
    'volumeMounts':[{'name':'config','mountPath':'/etc/livekit','readOnly':True}]}],
@@ -96,9 +103,14 @@ def jvb():
   'JVB_STUN_SERVERS':'','JVB_DISABLE_STUN':'true','VIDEOBRIDGE_MAX_MEMORY':'768m'})
  env=[{'name':k,'value':v} for k,v in sorted(values.items())]
  env+=[{'name':'JVB_AUTH_PASSWORD','valueFrom':{'secretKeyRef':{'name':'jvb','key':'password'}}},
-  {'name':'JVB_ADVERTISE_IPS','valueFrom':{'fieldRef':{'fieldPath':'status.podIP'}}},
+  {'name':'POD_IP','valueFrom':{'fieldRef':{'fieldPath':'status.podIP'}}},
+  # A public media node advertises its public address first, so a remote client sends its media there. The pod
+  # address stays for the clients that reach the pods.
+  {'name':'JVB_ADVERTISE_IPS','value':f'{PUBLIC},$(POD_IP)' if PUBLIC else '$(POD_IP)'},
   {'name':'JVB_PORT','value':'10000'}]
  container['env']=env;container.pop('envFrom',None)
+ container['ports']=[{'name':'media','containerPort':10000,'protocol':'UDP',**({'hostPort':10000} if PUBLIC else {})}]+\
+  [p for p in container.get('ports',[]) if p.get('containerPort')!=10000]
  # The custom volumes are not mounted in the template.
  spec['volumes']=[v for v in spec.get('volumes',[]) if 'configMap' not in v and 'secret' not in v]
  spec.pop('serviceAccountName',None);spec.pop('serviceAccount',None);spec['automountServiceAccountToken']=False

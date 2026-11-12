@@ -195,6 +195,16 @@ def test_seed_refuses_an_invalid_value_before_it_writes(state, tmp_path):
     assert state.revision() == 0
 
 
+def test_seed_leaves_out_an_empty_value_which_selects_the_default(state, tmp_path):
+    # An empty ini value selects the deploy.py default, as the local hoover4.ini of the workstation writes worker_mem_limit =.
+    path = tmp_path / 'empty.ini'
+    path.write_text((FIXTURES / 'source-tuned.ini').read_text().replace('worker_mem_limit = 12000M', 'worker_mem_limit ='))
+    source = config.read_source_ini(path, check_paths=False)
+    state.seed(SCOPE, source)
+    assert 'main_services.worker_mem_limit' not in state.overrides()[SCOPE]
+    assert state.effective(SCOPE)['main_services.worker_mem_limit'] == S.effective(SCOPE, {})['main_services.worker_mem_limit']
+
+
 # Applying -------------------------------------------------------------------------------------------------------------
 
 def recorder(log, fail_at=None):

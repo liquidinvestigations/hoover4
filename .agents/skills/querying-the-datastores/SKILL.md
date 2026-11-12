@@ -14,6 +14,9 @@ Use the helpers so credentials come from the service environment.
 .agents/skills/querying-the-datastores/scripts/garage.sh bucket list
 ```
 
+The helpers run the clients in the Compose containers.
+For a cluster installation, run the same clients in its pods with `kubectl exec`, for example in `clickhouse-0` and `manticore-0`.
+
 Verify actual database and table names before querying a collection.
 Use the stored bucket and object identity when reading a blob.
 Keep derived output outside the disk scanner's input prefix.

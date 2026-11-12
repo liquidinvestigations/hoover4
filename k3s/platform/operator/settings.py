@@ -318,6 +318,9 @@ BACKUP_SETTINGS = [
     Setting('backup.hoover.copies', 'zone', 'int', '2', ('backups',), 'schedule', 'backup', minimum=1, maximum=2),
     Setting('backup.platform.enabled', 'cluster', 'bool', 'false', ('backups',), 'schedule', 'backup'),
     Setting('backup.platform.copies', 'cluster', 'int', '3', ('backups',), 'schedule', 'backup', minimum=1, maximum=3),
+    # The runtime of the GPU services on the GPU nodes of the site (../gpu/gpu_pool.py). runsc is gVisor with nvproxy.
+    # runc is the fallback of decision D20, for a GPU node where the GPU services do not work in gVisor.
+    Setting('gpu.runtime', 'cluster', 'choice', 'runsc', ('gpu-pool',), 'restart', 'switch', choices=('runsc', 'runc')),
 ]
 
 
@@ -575,6 +578,9 @@ class State:
                 if setting is None or not setting.ini or setting.key in current:
                     continue
                 value = source.values[section][key]
+                if not value.strip() and not setting.empty:
+                    # An empty ini value selects the deploy.py default, which is also the default of the setting.
+                    continue
                 try:
                     value = setting.check(value)
                 except SettingsError as error:

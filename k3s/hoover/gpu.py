@@ -12,6 +12,9 @@ model server.
 - The Deployment gpu in each Hoover namespace adds the headers of its zone and forwards to gpu-proxy. Hoover names gpu
   as its GPU host (zone_ini.py), so the installation needs no change of the Hoover clients and never holds the key.
 The proxy derives each token from the zone name, so a new zone needs no change of the proxy.
+A pool of GPU nodes of the site (../platform/gpu/gpu_pool.py) has a gateway that checks the pool key on every port, so
+the proxy sends the key on every port to it. A pool at an address is a Compose GPU host, so the proxy sends the key to
+the model server port only.
 The proxy key is k3s/private/gpu-proxy-key, which the script creates once.
 Usage: gpu.py token <zone>             prints the token of a zone
        gpu.py install [<site.ini>]     applies the central proxy with the admin kubeconfig
@@ -39,8 +42,10 @@ def site_pool(site_path=None):
     pool = site.gpu_pool
     if not pool:
         raise SystemExit('the site file has no [gpu_pool] section.')
-    address = pool.get('address') or site.nodes[pool['nodes'][0]].vpn_address
-    return {'address': address, 'api_key_file': pool['api_key_file']}
+    if pool.get('nodes'):
+        # The GPU nodes of the site run the pool with its gateway (../platform/gpu/gpu_pool.py).
+        return {'address': 'gateway.gpu-pool.svc.cluster.local', 'api_key_file': pool['api_key_file'], 'gateway': True}
+    return {'address': pool['address'], 'api_key_file': pool['api_key_file'], 'gateway': False}
 # A model answer can take minutes, and an OCR request can carry a large image.
 PROXY = '''proxy_http_version 1.1;
       proxy_buffering off;
@@ -129,7 +134,7 @@ def proxy(box):
       proxy_pass http://{box["address"]}:{p};
       proxy_set_header X-Hoover-Zone "";
       proxy_set_header X-Hoover-Zone-Token "";
-      proxy_set_header Authorization {'"Bearer ${VLLM_KEY}"' if checks else '""'};
+      proxy_set_header Authorization {'"Bearer ${VLLM_KEY}"' if checks or box.get('gateway') else '""'};
       {PROXY}
     }}
   }}''' for p, checks in PORTS.items())
@@ -165,8 +170,12 @@ access_log /dev/stdout zone;{servers}
               'spec': {'podSelector': {}, 'policyTypes': ['Ingress', 'Egress'],
                        'ingress': [{'from': [{'namespaceSelector': {'matchLabels': {'hoover.dev/zone': 'true'}},
                                               'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'gpu'}}}]}],
-                       'egress': [{'to': [{'ipBlock': {'cidr': f'{box["address"]}/32'}}],
-                                   'ports': [{'port': p, 'protocol': 'TCP'} for p in PORTS]}]}}
+                       'egress': [{'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'gpu-pool'}}}
+                                          if box.get('gateway') else {'ipBlock': {'cidr': f'{box["address"]}/32'}}],
+                                   'ports': [{'port': p, 'protocol': 'TCP'} for p in PORTS]},
+                                  {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}},
+                                           'podSelector': {'matchLabels': {'k8s-app': 'kube-dns'}}}],
+                                   'ports': [{'port': 53, 'protocol': 'UDP'}, {'port': 53, 'protocol': 'TCP'}]}]}}
     return [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}, secret, *items, policy]
 
 

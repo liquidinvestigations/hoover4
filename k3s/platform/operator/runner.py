@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Run the zone operations that the operator website records. Usage: runner.py [--once]
+The runner also starts the next due backup job once a minute (../backups/backups.py). Backups stay off until the site file
+names a destination and an operator turns a backup policy on.
 
 The portal writes each operation as a ConfigMap with the label hoover.dev/operation in the namespace operator-portal.
 The runner runs on the operator host, which holds k3s/private: the zone state, the zone secrets, the openDesk
@@ -107,12 +109,22 @@ def settings_apply():
  done=state.run(apply.executors(site,log))
  print(json.dumps({'apply':done.id,'status':done.status,'error':done.error[:300]}),flush=True)
  return True
+def backup_tick():
+ """Start the next due backup job (../backups/backups.py). Backups stay off without [backup] and the backup settings."""
+ sys.path.insert(0,str(source/'platform/backups'));import backups
+ result=backups.tick()
+ if result.get('state') not in ('off','idle','paused'):print(json.dumps({'backups':result}),flush=True)
 def main():
  once='--once' in sys.argv
+ last_backup=0
  while True:
   try:
    if settings.SITE is not None and settings_apply():continue
   except Exception as error:print(json.dumps({'apply_error':str(error)[:300]}),flush=True)
+  if settings.SITE is not None and time.time()-last_backup>=60:
+   last_backup=time.time()
+   try:backup_tick()
+   except Exception as error:print(json.dumps({'backup_error':str(error)[:300]}),flush=True)
   try:
    items=operations()
    # A running operation is one that the runner was doing when it stopped, so it continues first.

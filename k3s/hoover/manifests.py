@@ -23,8 +23,10 @@ Temporal backends (the temporal_backend key):
 Placement and runtimes:
 - Every pod runs in gVisor, which the zone pod policy sets, except the workers and the operations worker in Kata,
   because they parse untrusted files.
-- hoover-workers has budget.worker_pods replicas. Each pod polls its own host queues (HOOVER4_HOST_QUEUE is the pod
-  name). In the local layout it is a StatefulSet on the home node: a pod keeps its name after a restart and keeps its
+- hoover-workers has budget.worker_pods replicas. With more than one pod, each pod polls its own host queues
+  (HOOVER4_HOST_QUEUE is the pod name). One pod polls the shared queues only, as the Compose worker does, so every
+  stage of a plan reaches the one folder of its files, and the open work of a migrated install keeps its queues.
+  In the local layout it is a StatefulSet on the home node: a pod keeps its name after a restart and keeps its
   plan files on its own claim worker-temp-files-hoover-workers-<n>. A migrated install fills the claim of pod 0 with
   the plan files of its Compose worker. In the zone layout it is a Deployment spread over the nodes, with the plan
   files in an emptyDir: a new pod has a new name, so the plans of a lost pod claim another host.
@@ -409,17 +411,22 @@ def dataset_mounts(target):
     """The dataset mounts: name, container path, writable flag and the pod volume.
 
     A migrated install keeps the container paths of its source ini, because the dataset rows store them. Its
-    read-only folders stay in place as host folders of the home node. Its writable folders are claims, which the
-    migration fills. A new install of a single-node site has the claims dataset-testdata and dataset-uploads below
+    read-only folders stay in place as host folders of the home node (host_folder()). Its writable folders are claims,
+    which the migration fills. A new install of a single-node site has the claims dataset-testdata and dataset-uploads below
     /data, because its pods share the one node and need no NFS server. Another install has the NFS folders of
     ../platform/hoover-data/hoover_data.py below /data.
     """
     if target.source:
         out = []
         for m in target.source.dataset_mounts:
-            volume = ({'persistentVolumeClaim': {'claimName': f"dataset-{m['name'].replace('_', '-')}"}} if m['writable'] else
-                      {'hostPath': {'path': m['host_path'], 'type': 'Directory'}})
-            out.append({'name': m['name'], 'path': m['container_path'], 'writable': m['writable'], 'volume': volume})
+            short = m['name'].replace('_', '-')
+            row = {'name': m['name'], 'path': m['container_path'], 'writable': m['writable']}
+            if m['writable']:
+                row['volume'] = {'persistentVolumeClaim': {'claimName': f'dataset-{short}'}}
+            else:
+                row['volume'] = host_volume(f'host-dataset-{short}')
+                row['host_path'] = m['host_path']
+            out.append(row)
         return out
     if target.site.single:
         return [{'name': n, 'path': f'/data/{n}', 'writable': w,
@@ -436,6 +443,30 @@ def dataset_mounts(target):
             for n, e, w in rows]
 
 
+def host_volume(claim_name):
+    return {'persistentVolumeClaim': {'claimName': claim_name, 'readOnly': True}}
+
+
+def host_folder(target, claim_name, path):
+    """A read-only host folder of the home node as a PersistentVolume and its claim in the Hoover namespace.
+
+    The pod policy hoover-pod-limits (../zones/manifests/zone-pods.yaml) refuses a hostPath volume in a pod of a zone
+    namespace. A PersistentVolume is a cluster object, so only the admin render of this file can name a host folder, and
+    the zone runner cannot. The claimRef binds the volume to its one claim, and every pod mounts the claim read-only.
+    """
+    volume = f'{target.ns}-{claim_name}'
+    pv = {'apiVersion': 'v1', 'kind': 'PersistentVolume', 'metadata': {'name': volume, 'labels': {PART: claim_name}},
+          'spec': {'capacity': {'storage': '1Gi'}, 'accessModes': ['ReadOnlyMany'], 'persistentVolumeReclaimPolicy': 'Retain',
+                   'storageClassName': '', 'hostPath': {'path': path, 'type': 'Directory'},
+                   'claimRef': {'namespace': target.ns, 'name': claim_name},
+                   'nodeAffinity': {'required': {'nodeSelectorTerms': [{'matchExpressions': [
+                       {'key': 'kubernetes.io/hostname', 'operator': 'In', 'values': [target.hoover.home_node]}]}]}}}}
+    pvc = {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': claim_name, 'namespace': target.ns},
+           'spec': {'accessModes': ['ReadOnlyMany'], 'storageClassName': '', 'volumeName': volume,
+                    'resources': {'requests': {'storage': '1Gi'}}}}
+    return [pv, pvc]
+
+
 def volumes(target, name, service_def, mounts):
     """The pod volumes, the container mounts and the claims of a service.
 
@@ -444,7 +475,7 @@ def volumes(target, name, service_def, mounts):
     - A bind of a configuration file or folder of the source tree is a ConfigMap (CONFIG_FILES, CONFIG_DIRS).
     - A volume folder is a claim (CLAIMS) or an emptyDir. The zone layout has no store folders, so the operations
       worker mounts no store there.
-    - /control is the chat_control_dir of the site file, as a read-only host folder, or absent.
+    - /control is the chat_control_dir of the site file, as the read-only host folder claim host-chat-control, or absent.
     - The worker, the operations worker and the website get the dataset mounts.
     Any other bind stops the render.
     """
@@ -478,8 +509,7 @@ def volumes(target, name, service_def, mounts):
             continue
         if target_path == '/control':
             if target.hoover.chat_control_dir:
-                add('chat-control', {'hostPath': {'path': target.hoover.chat_control_dir, 'type': 'Directory'}},
-                    {'mountPath': '/control', 'readOnly': True})
+                add('chat-control', host_volume('host-chat-control'), {'mountPath': '/control', 'readOnly': True})
             continue
         if source.startswith(root):
             folder = source[len(root):].split('/')[0]
@@ -705,7 +735,9 @@ def translated(target, services, mounts, deploy):
             migrate['workingDir'] = '/app'
             sandbox = target.values['workers.parser_sandbox']
             tuner = target.values['workers.slot_tuner']
-            pod_env = [value('HOOVER4_WORKERS', WORKERS), {'name': 'HOOVER4_HOST_QUEUE', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.name'}}}]
+            pod_env = [value('HOOVER4_WORKERS', WORKERS)]
+            if target.budget['worker_pods'] > 1:
+                pod_env.append({'name': 'HOOVER4_HOST_QUEUE', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.name'}}})
             if sandbox != 'off':
                 pod_env.append(value('HOOVER4_PARSER_SANDBOX', sandbox))
             if tuner != 'fixed':
@@ -989,10 +1021,14 @@ def objects(target):
     else:
         claims = [claim(target, c) for c in sorted(ZONE_CLAIMS) if c != 'worker-temp-files']
     for m in mounts:
-        if 'persistentVolumeClaim' in m['volume']:
+        if m.get('host_path'):
+            claims += host_folder(target, m['volume']['persistentVolumeClaim']['claimName'], m['host_path'])
+        elif 'persistentVolumeClaim' in m['volume']:
             name = m['volume']['persistentVolumeClaim']['claimName']
             claims.append({'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': name, 'namespace': target.ns},
                            'spec': claim_spec(target, 'upload-tmp', target.values['volume.upload-tmp'])})
+    if target.hoover.chat_control_dir:
+        claims += host_folder(target, 'host-chat-control', target.hoover.chat_control_dir)
     stores = [] if target.local else [external(target, n) for n in ('clickhouse', 'manticore', 'manticore-vectors', 'garage')]
     items, configs = translated(target, services, mounts, deploy)
     shards = cfg.get('main_services', 'temporal_history_shards')

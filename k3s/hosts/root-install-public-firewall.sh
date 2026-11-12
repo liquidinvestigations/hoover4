@@ -1,7 +1,8 @@
 #!/bin/bash
 # Admit only the allowed ports on the public interface of the public host. Run it as root on that host.
-# Allowed: SSH, HTTP and HTTPS (TCP and UDP 443) of the frontend, TURN (UDP and TCP 3478) of the call services, and
-# WireGuard (UDP 42069). Answers to connections of the host and ICMP also pass. The table drops every other packet that
+# Allowed: SSH, HTTP and HTTPS (TCP and UDP 443) of the frontend, TURN (UDP and TCP 3478) and the direct media ports of
+# the call services (UDP 10000 of the JVB, TCP 7881 and UDP 7882 of LiveKit), and WireGuard (UDP 42069). A separate
+# calls node runs the same script. ../platform/calls/public_endpoints.py firewall prints the ports of each node. Answers to connections of the host and ICMP also pass. The table drops every other packet that
 # enters on the public interface. The drop rules of root-install-public-guard.sh stay, and its table runs first.
 # The table loads at boot before the network. A second run writes nothing and restarts nothing.
 # A changed table starts a timer that removes the table again after 180 seconds. Test SSH from a new connection, then
@@ -33,6 +34,8 @@ table inet hoover_public_firewall {
     tcp dport { 22, 80, 443 } accept comment "SSH and the HTTPS frontend"
     udp dport 443 accept comment "HTTP/3 of the frontend"
     meta l4proto { tcp, udp } th dport 3478 accept comment "TURN of the call services"
+    udp dport { 7882, 10000 } accept comment "direct media of LiveKit and the JVB"
+    tcp dport 7881 accept comment "LiveKit media over TCP"
     udp dport 42069 accept comment "WireGuard"
     counter drop
   }

@@ -84,9 +84,9 @@ The operator settings `volume.<claim>` hold the claim sizes.
 
 | Compose mount | Cluster form |
 |---|---|
-| `[dataset_mount.<name>]` of a migrated install | Read-only folders stay host folders of the home node. Writable folders are claims `dataset-<name>`. The container paths stay the same. |
+| `[dataset_mount.<name>]` of a migrated install | Read-only folders stay host folders of the home node. Each is a PersistentVolume with the claim `host-dataset-<name>`, which the pods mount read-only, because the pod policy refuses a host path in a pod. Writable folders are claims `dataset-<name>`. The container paths stay the same. |
 | Dataset folders of a new install | NFS folders of the data node below `/data` |
-| `chat_control_dir` at `/control` | The `chat_control_dir` of the site file, as a read-only host folder of the home node |
+| `chat_control_dir` at `/control` | The `chat_control_dir` of the site file, as the PersistentVolume of the claim `host-chat-control`, mounted read-only |
 | Key files below `/run/secrets` | Items of the Secret `hoover-runtime` |
 | Source folders of a built service | Left out. The image of the same commit holds them. |
 | `/mirror/processing-tasks`, `/mirror/website-backend-src` | ConfigMap `mirror` with the three files that the services read |

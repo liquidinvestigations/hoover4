@@ -7,6 +7,10 @@ stay unchanged and stay out of the images. The image tag is the first 12 charact
 The website image is the release Dockerfile. The processing image starts the installed interpreter.
 Usage: build-hoover.py [--revision REV] [name ...]    Without names it builds every image of compose.IMAGES.
                                                       The default revision is HEAD.
+       build-hoover.py --gpu [--revision REV] [name ...]
+                                                      Builds the images of compose.GPU_IMAGES for the architecture
+                                                      of the GPU nodes of the site file. The model server image gets
+                                                      the base image of deploy.py (QWEN_FLASH_BASE_IMAGE).
 """
 import argparse
 import shutil
@@ -50,14 +54,31 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     # ../deploy-k3s resolves the revision once per deployment and passes it in HOOVER4_REVISION.
     parser.add_argument('--revision', default=__import__('os').environ.get('HOOVER4_REVISION') or 'HEAD')
+    parser.add_argument('--gpu', action='store_true', help='build the GPU images of compose.GPU_IMAGES')
     parser.add_argument('names', nargs='*')
     args = parser.parse_args()
     sha = commit(args.revision)
     tree = prepare(sha)
-    for name in args.names or list(IMAGES):
-        dockerfile, context = IMAGES[name]
+    images = compose.GPU_IMAGES if args.gpu else IMAGES
+    env = dict(__import__('os').environ)
+    if args.gpu:
+        site = settings.SITE
+        nodes = [n for n in site.nodes.values() if n.has('gpu')] if site else []
+        if not nodes:
+            raise SystemExit('the site file has no node with the role gpu.')
+        architectures = {n.architecture for n in nodes}
+        if len(architectures) > 1:
+            raise SystemExit(f'the GPU nodes have the architectures {sorted(architectures)}. Build each architecture on its own site.')
+        env['PLATFORM'] = f'linux/{architectures.pop()}'
+        deploy = compose.deploy_module(tree)
+        base = deploy.QWEN_FLASH_BASE_IMAGE
+    for name in args.names or list(images):
+        dockerfile, context = images[name]
+        step_env = dict(env)
+        if args.gpu and name == 'vllm' and base:
+            step_env['BUILD_ARGS'] = f'BASE_IMAGE={base}'
         subprocess.run(['bash', str(HERE / 'build-image.sh'), str(tree / context), f'hoover/hoover-{name}:{sha[:12]}',
-                        str(tree / dockerfile)], check=True)
+                        str(tree / dockerfile)], check=True, env=step_env)
     print(sha)
 
 

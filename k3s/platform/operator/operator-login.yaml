@@ -39,6 +39,11 @@ data:
         values:
           - claimSource:
               claim: preferred_username
+      # The portal accepts X-Forwarded-User only with this secret, so a host process that reaches the pod cannot act as an operator.
+      - name: X-Operator-Proxy-Secret
+        values:
+          - secretSource:
+              fromFile: /etc/operator-login/proxy-secret
     providers:
       - id: dex
         provider: oidc
@@ -97,7 +102,7 @@ spec:
         - name: secrets
           secret:
             secretName: operator-login
-            items: [{key: client-secret, path: client-secret}, {key: cookie-secret, path: cookie-secret}]
+            items: [{key: client-secret, path: client-secret}, {key: cookie-secret, path: cookie-secret}, {key: proxy-secret, path: proxy-secret}]
 ---
 apiVersion: v1
 kind: Service
@@ -238,6 +243,8 @@ spec:
             - {name: HOOVER4_SITE, value: /site/hoover4-site.ini}
             - {name: PYTHONPATH, value: /app}
             - {name: PYTHONDONTWRITEBYTECODE, value: '1'}
+            - name: PORTAL_PROXY_SECRET
+              valueFrom: {secretKeyRef: {name: operator-login, key: proxy-secret}}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /, port: http}}
           resources:

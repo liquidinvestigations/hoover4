@@ -54,6 +54,49 @@ def test_shared_slots_hand_out_the_configured_count():
     assert slots.try_reserve_slot(None) is not None
 
 
+def test_a_release_from_a_thread_without_a_loop_wakes_a_waiting_reservation():
+    """The SDK core releases a slot from its own thread. A waiting reservation must still get the slot."""
+    import asyncio
+    import threading
+
+    slots = host_queue.SharedSlots(1)
+
+    async def scenario():
+        first = await slots.reserve_slot(None)
+        waiting = asyncio.ensure_future(slots.reserve_slot(None))
+        await asyncio.sleep(0.05)
+        assert not waiting.done()
+        thread = threading.Thread(target=slots.release_slot, args=(None,))
+        thread.start()
+        thread.join()
+        second = await asyncio.wait_for(waiting, timeout=2)
+        return first, second
+
+    first, second = asyncio.run(scenario())
+    assert first is not None and second is not None
+    assert slots.try_reserve_slot(None) is None
+
+
+def test_a_cancelled_reservation_takes_no_slot():
+    import asyncio
+
+    slots = host_queue.SharedSlots(1)
+
+    async def scenario():
+        await slots.reserve_slot(None)
+        waiting = asyncio.ensure_future(slots.reserve_slot(None))
+        await asyncio.sleep(0.01)
+        waiting.cancel()
+        try:
+            await waiting
+        except asyncio.CancelledError:
+            pass
+        slots.release_slot(None)
+
+    asyncio.run(scenario())
+    assert slots.try_reserve_slot(None) is not None
+
+
 def test_an_async_activity_keeps_its_result_under_the_heartbeat_decorator():
     import asyncio
 

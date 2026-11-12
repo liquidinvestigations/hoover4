@@ -22,6 +22,8 @@ Consult the affected interface specification when selecting the walk.
 The internal-site harness uses its own browser driver because the product browser tool filters internal destinations.
 Do not weaken those filters to test the website.
 The browser container can require script and artifact copies because it has no repository mount.
+For a cluster installation, start the browser container with `k3s/tools/harness-browser.sh start` and set `BROWSER_CONTAINER`.
+Read [the k3s Readme](../../../k3s/Readme.md#reach-an-installation-from-the-workstation) for the target and the login.
 
 Set input through its prototype setter and dispatch a bubbling input event when driving the DOM directly.
 Use a real key event for controls that submit on key press.

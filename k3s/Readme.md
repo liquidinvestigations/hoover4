@@ -18,6 +18,10 @@ The images of the cluster come from commits of this repository.
 | [hosts/](hosts) | Prepares the hosts and installs k3s on them, as root. |
 | [cluster/](cluster) | Installs the cluster services that every zone uses: RuntimeClasses, cert-manager and TopoLVM. |
 | [images/](images) | Builds the images and pushes them to the cluster registry. |
+| [migration/](migration) | Moves a stopped Compose installation into a Hoover installation of the cluster ([migrate.py](migration/migrate.py)). |
+| [platform/mcp-relay/](platform/mcp-relay) | Serves the MCP servers, the interfaces and the stores of one installation on the loopback ports of the home node. |
+| [platform/gpu/](platform/gpu) | Runs the GPU services on the GPU nodes of a site, behind an authenticated gateway. |
+| [platform/backups/](platform/backups) | Runs the optional backups and restores a copy into an isolated target. |
 | [tools/](tools) | Holds checks and operator tools. |
 | [tests/](tests) | Holds the test suites and their fixtures. |
 
@@ -145,11 +149,104 @@ They also hold the openDesk applications and memory limits of each zone, and the
 - The backup policies are settings: `backup.opendesk.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.
   The site file `[backup]` names the destination. Without it the portal keeps the backup controls off.
 
+## Reach an installation from the workstation.
+
+`platform/mcp-relay/install-relay.py <installation> apply` runs the Deployment `mcp-relay` with runc in the host network of the home node.
+It listens on 127.0.0.1 only and forwards each port to a Service of the installation: the five MCP servers, the Temporal, ClickHouse and Manticore interfaces, the stores and the research agents.
+`kubectl port-forward` does not reach a pod in gVisor, so the relay replaces it.
+
+- `--ports compose` uses the ports of the Compose install of the installation, so `.mcp.json` and the harness files stay unchanged.
+- `--ports temporary` adds 1000 to each port, so a check can run while Compose still holds its ports.
+- The relay keeps the chosen mode in `<operator state>/mcp-relay.json`. The driver step `mcp-relay` applies it again.
+- `tools/mcp-relay-check.py <name>=<port> ...` sends the MCP requests of a development client to each port.
+
+The website of an installation is `https://hoover.<zone>.<suffix>/`. A user signs in through the Keycloak of the zone.
+The browser harness (`website/take-screenshots.sh`) runs Chromium in a container that must reach that name and trust the local CA.
+`tools/harness-browser.sh start` runs the container `hoover4-harness-browser` from the Compose image of the browser server, in the host network, with the local CA as a Chromium policy.
+Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://hoover.<zone>.<suffix>`, and give a zone login in `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD`.
+
+## Move a Compose installation into the cluster.
+
+Add a `[hoover.<name>]` section with `source_ini`, the `hoover4.ini` of the Compose install, and run the steps of [migration/migrate.py](migration/migrate.py) in order.
+Each step records its result in `<operator state>/migration/<name>-<run>/`, and a finished step does not run again.
+
+```sh
+python3 k3s/migration/migrate.py plan <name> --dry-run   # the folders, the claims, the owners, the images and the space
+for step in plan freeze record stop images copy secrets stores temporal workers resume; do
+  python3 k3s/migration/migrate.py "$step" <name> || break
+done
+python3 k3s/migration/migrate.py users <name>             # a zone user for each owner of chats and boards
+python3 k3s/platform/mcp-relay/install-relay.py <name> apply --ports compose
+```
+
+- `freeze` stops the website, its sign-in proxy and the MCP and agent servers, and then the workers with their grace period.
+- `record` keeps the Temporal namespaces, search attributes, counts and open workflows, the histories of the open workflows and the store contents.
+- `stop` stops Temporal and then the stores. The source data folders stay unchanged, and nothing deletes them.
+- `images` imports the store and Temporal images of the source into k3s, and checks their content ids.
+- `copy` copies each folder into its claim, maps the owners of the rootless Podman runtime, and verifies a SHA-256 of every file before any target service starts.
+- `stores` starts only the stores and Temporal, and compares the store contents with the record. A table with a TTL clause can hold fewer rows, because ClickHouse removes expired rows at start.
+- `temporal` compares the Temporal namespaces, search attributes, counts and open workflows with the record. The workers start only after it passes.
+- `resume` waits until every open workflow of the record has new events or has closed.
+
+To return to Compose before the target takes new work, delete the claims of the target installation and run `./deploy`.
+After the target takes new work, a return to Compose loses that work.
+
+## Run the GPU services on GPU nodes.
+
+A site with `[gpu_pool] nodes = <GPU nodes>` runs the GPU services on those nodes ([platform/gpu/gpu_pool.py](platform/gpu/gpu_pool.py), driver step `gpu-pool`).
+A site with `[gpu_pool] address` uses a GPU host outside the site, for example the Compose GPU host of this workstation.
+
+1. The node needs the NVIDIA driver and the NVIDIA container toolkit. `hosts/root-install-k3s.py` refuses a GPU node without them.
+2. `root-install-k3s.py` registers the runtime `runsc-nvproxy` (gVisor with GPU support), and labels and taints the node `hoover.dev/gpu=true`.
+3. `images/build-hoover.py --gpu` builds the images of the GPU services for the architecture of the GPU nodes.
+4. The operator setting `gpu.runtime` selects `runsc` (RuntimeClass `gvisor-gpu`) or `runc` (RuntimeClass `nvidia`).
+
+When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <staging folder>` on a host of the node architecture.
+Run `root-install-k3s.py` on the node again, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
+The gateway of each GPU node accepts a request only with the pool key of `[gpu_pool] api_key_file`, on every port, and listens on the VPN address of the node for the other installations of the shared pool.
+
+## Place the call services.
+
+The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
+A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
+`python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
+Run `hosts/root-install-public-firewall.sh` on the public node and on the calls node.
+
+Check a call from outside the site after a remote installation:
+
+1. Join a meeting at `https://meet.<zone>.<suffix>/` from a computer outside the VPN, and a second participant from another network.
+2. Run `tools/call-check.py <zone>` with `LAB_SUFFIX`, `LAB_KUBECONFIG`, `LAB_USER` and `LAB_PASSWORD_FILE` of the remote site.
+3. The check passes when the JVB counts the conference and the ICE candidate of the browser is the public address of the media node.
+
+## Back up and restore.
+
+Backups are off until the site file has `[backup]`, the destination folder has its marker, and an operator turns a policy on in the portal.
+
+```sh
+python3 k3s/platform/backups/backups.py enable    # writes the marker .hoover4-backup-destination into the destination
+python3 k3s/platform/backups/backups.py status
+python3 k3s/platform/backups/backups.py verify <copy folder>
+python3 k3s/platform/backups/backups.py restore-hoover <copy folder> <installation>
+python3 k3s/platform/backups/backups.py restore-volumes <copy folder> <namespace>
+```
+
+- The operator runner starts at most one due job each minute. [schedule.py](platform/backups/schedule.py) holds the rules: eligibility, the weekly limit, the slots and the retention.
+- A Hoover collection gets a copy after its first completed ingestion and after each complete reprocessing, at most once in 7 days, and keeps one or two copies.
+- openDesk and the platform recovery set get one copy each week, and keep two or three copies.
+- A missing marker pauses every job, so a missing remote mount does not fill the local disk.
+- Make sure that the destination is on another site. The system cannot check this.
+- Each copy has `copy-manifest.json` with the SHA-256 of every file. A collection copy also holds the `manifest.json` of the export, which the import reads.
+- A collection copy fails when the JSON metadata of a Manticore table in the export does not parse, because the import refuses it.
+- An openDesk copy keeps one tar file for each claim, with the owners and modes. A Block claim of a Kata store is read through its store container, so the store must run. A claim that a pod owns holds temporary files and is not copied.
+- `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
+- A restore of an openDesk copy writes its claims into a new namespace with the same volume modes. A Block claim is written through a Kata pod, which makes its file system. The database dumps restore with `psql` and `mariadb` in that namespace.
+
 ## Run the tests.
 
 ```sh
 k3s/tests/run.sh             # render, state and driver
-k3s/tests/run.sh replay      # the workflow replay suite in the hoover4-worker container
+k3s/tests/run.sh migration backup
+k3s/tests/run.sh replay      # the workflow replay suite in the worker image
 ```
 
 The render, state and driver suites run in a container with the repository mounted read-only.

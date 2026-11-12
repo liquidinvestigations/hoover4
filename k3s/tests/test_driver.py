@@ -129,7 +129,7 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
                          'host:dev:stage', 'host:dev:k3s', 'host:dev:dns']
     for before, after in (('host:dev:k3s', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
                           ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator'),
-                          ('zone:zone-a', 'calls')):
+                          ('zone:zone-a', 'calls'), ('zone:zone-a', 'mcp-relay')):
         assert steps.index(before) < steps.index(after)
     assert steps[-1] == 'calls'
 

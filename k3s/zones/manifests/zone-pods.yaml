@@ -9,7 +9,8 @@
 # The ValidatingAdmissionPolicy hoover-pod-limits refuses host access in the zone namespaces and in the namespaces calls
 # and extensions, where the zone runner can create workloads. It matches the namespace by its name, so a label change
 # does not remove it. It refuses a host path, the host PID and IPC namespaces, a privileged container, and a
-# capability in a pod without a RuntimeClass. Only coturn in calls may use the host network and NET_BIND_SERVICE. In a
+# capability in a pod without a RuntimeClass. Only coturn in calls may use the host network and NET_BIND_SERVICE. Only
+# coturn, the JVB and LiveKit in calls may publish a host port: the media ports of a public media node. In a
 # zone namespace a pod runs in gVisor or Kata, and only the StatefulSet pods of the recorded exceptions run with runc.
 # An NFS volume names a path of its own zone, /<zone>/ or /extra/<zone>/ (../../platform/hoover-data/).
 # zone.py writes the hash of this file into the annotation hoover.dev/source-hash. The zone runner cannot change these
@@ -83,6 +84,10 @@ spec:
       expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
     - name: coturn
       expression: request.namespace == 'calls' && variables.labels.exists(k, k == 'app.kubernetes.io/name') && variables.labels['app.kubernetes.io/name'] == 'coturn'
+    - name: media
+      expression: >
+        request.namespace == 'calls' && variables.labels.exists(k, k == 'app.kubernetes.io/name')
+          && variables.labels['app.kubernetes.io/name'] in ['coturn', 'jvb', 'livekit']
     - name: runc
       expression: variables.labels.exists(k, k == 'hoover.dev/runtime') && variables.labels['hoover.dev/runtime'] == 'runc'
     - name: containers
@@ -102,8 +107,8 @@ spec:
       message: A pod here cannot use the host PID or IPC namespace.
     - expression: "!(has(object.spec.hostNetwork) && object.spec.hostNetwork) || variables.coturn"
       message: Only coturn in calls can use the host network.
-    - expression: "variables.coturn || variables.containers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0))"
-      message: Only coturn in calls can use a host port.
+    - expression: "variables.media || variables.containers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0))"
+      message: Only coturn, the JVB and LiveKit in calls can use a host port.
     - expression: >
         variables.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged)
         && variables.ephemeral.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged)
