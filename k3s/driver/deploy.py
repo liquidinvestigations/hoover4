@@ -965,6 +965,11 @@ def record_settings(ctx, scopes):
 
 def step_zone(zone, home):
     def run(ctx):
+        # As the runner does for create-zone: the zone state gets the zone first, and the frontend then serves its
+        # names with a certificate. The install needs those names, for example the object storage of openDesk.
+        ctx.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import zone; zone.register(sys.argv[2], sys.argv[3])',
+                 SOURCE / 'zones', zone, home])
+        step_frontend(ctx)
         ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone, '--home', home])
         hoovers = [h for h in ctx.site.hoovers.values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:

@@ -638,8 +638,11 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision('hoover:main') == 1
     # The cluster scope needs every zone and the GPU pool, so a scoped run leaves it pending.
     assert state.applied_revision('cluster') == 0 and state.applied()['revision'] == 0
+    # The zone is registered and the frontend serves its names before zone.py applies it.
+    assert 'zone.register' in ran[0][0][2] and ran[0][0][4:] == ['zone-a', 'dev']
+    assert any('frontend' in arg for arg in ran[1][0])
     # zone.py and its nested renders get the pinned settings revision.
-    assert ran[0][0][1].endswith('zones/zone.py') and ran[0][1]['HOOVER4_SETTINGS_REVISION'] == '1'
+    assert ran[-1][0][1].endswith('zones/zone.py') and ran[-1][1]['HOOVER4_SETTINGS_REVISION'] == '1'
 
 
 def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatch):
