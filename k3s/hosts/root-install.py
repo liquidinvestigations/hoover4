@@ -202,6 +202,10 @@ def peer_blocks(text):
     for name, peer in HOSTS.items():
         if name == THIS or peer["key"] in present:
             continue
+        if not peer["key"] or not peer["wg_ip"]:
+            # A peer line without a key makes the file invalid, and wg-quick then fails at the next start.
+            say(f"  {name} has no wireguard_public_key or vpn_address in the site file. It gets no direct peer.")
+            continue
         blocks += ["", f"# Direct peer {name}, added by {SCRIPT}", "[Peer]", f"PublicKey = {peer['key']}"]
         endpoint = peer_endpoint(name)
         if endpoint:
@@ -227,20 +231,29 @@ def step_wireguard():
         for line in difflib.unified_diff(lines, new, lineterm="", n=0):
             if line[:1] in "+-" and not line.startswith(("+++", "---")) and not re.match(r"[+-]\s*PrivateKey", line, re.I):
                 say(f"    {line}")
-        write_file(WG_CONF, "\n".join(new) + "\n", mode=0o600, secret=True)
-        # syncconf changes the peers and the port of the running interface. It keeps the other peers up.
-        if not DRY:
-            code, stripped = read(["wg-quick", "strip", WG_IF])
-            if code != 0:
-                fail(f"wg-quick strip {WG_IF} failed: {stripped}")
-            with tempfile.NamedTemporaryFile("w", dir="/run", prefix=f"{WG_IF}-", delete=False) as f:
-                f.write(stripped)
-            try:
-                change(["wg", "syncconf", WG_IF, f.name])
-            finally:
-                os.unlink(f.name)
-        else:
+        if DRY:
+            write_file(WG_CONF, "\n".join(new) + "\n", mode=0o600, secret=True)
             say(f"  $ wg syncconf {WG_IF} <(wg-quick strip {WG_IF})")
+        else:
+            # The new file is checked before it replaces the interface file. A file that wg-quick or wg refuses
+            # would stop the interface at its next start, so a refusal changes nothing.
+            folder = tempfile.mkdtemp(dir="/run", prefix="hoover4-wg-")
+            try:
+                candidate = os.path.join(folder, f"{WG_IF}.conf")
+                with open(os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+                    f.write("\n".join(new) + "\n")
+                code, stripped = read(["wg-quick", "strip", candidate])
+                if code != 0:
+                    fail(f"wg-quick strip refused the new {WG_CONF}: {stripped.strip()[-300:]}. {WG_CONF} is unchanged.")
+                plain = os.path.join(folder, "stripped.conf")
+                with open(os.open(plain, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+                    f.write(stripped)
+                # syncconf changes the peers and the port of the running interface. It keeps the other peers up.
+                # It also parses the file, so a refusal here leaves the interface file unchanged too.
+                change(["wg", "syncconf", WG_IF, plain])
+                write_file(WG_CONF, "\n".join(new) + "\n", mode=0o600, secret=True)
+            finally:
+                shutil.rmtree(folder, ignore_errors=True)
     if not DRY:
         verify_peers()
 

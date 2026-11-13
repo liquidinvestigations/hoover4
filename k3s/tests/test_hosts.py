@@ -69,6 +69,57 @@ def test_a_gpu_node_keeps_its_own_vpn_interface(k3s):
     assert hosts.WG_CONF == '/etc/wireguard/prototype-vpn.conf'
 
 
+@pytest.fixture
+def wireguard(tmp_path, monkeypatch):
+    """root-install.py as server-a of REMOTE_GPU, where gpu-1 has no public key, with a fake wg and wg-quick."""
+    module = load('root-install.py')
+    hosts = config.legacy_hosts(config.parse(REMOTE_GPU))['hosts']
+    monkeypatch.setattr(module, 'HOSTS', hosts)
+    monkeypatch.setattr(module, 'THIS', 'server-a')
+    monkeypatch.setattr(module, 'DRY', False)
+    conf = tmp_path / 'wg0.conf'
+    conf.write_text('[Interface]\nPrivateKey = private\nListenPort = %d\n' % hosts['server-a']['port'])
+    monkeypatch.setattr(module, 'WG_CONF', str(conf))
+    monkeypatch.setattr(module.tempfile, 'mkdtemp', lambda **kw: str(tmp_path / 'check'), raising=True)
+    (tmp_path / 'check').mkdir()
+    module.events = []
+    module.strip_code = 0
+
+    def read(cmd):
+        if cmd[:3] == ['wg', 'show', 'wg0'] and cmd[3] == 'public-key':
+            return 0, hosts['server-a']['key'] + '\n'
+        if cmd[0] == 'wg-quick':
+            module.events.append(('strip', open(cmd[2]).read()))
+            return module.strip_code, 'stripped\n' if module.strip_code == 0 else 'Line unrecognized'
+        return 0, ''
+    monkeypatch.setattr(module, 'read', read)
+    monkeypatch.setattr(module, 'change', lambda cmd, **kw: module.events.append(('change', cmd)) or '')
+    monkeypatch.setattr(module, 'write_file', lambda path, text, **kw: module.events.append(('write', path, text)))
+    monkeypatch.setattr(module, 'verify_peers', lambda: None)
+    return module
+
+
+def test_a_peer_without_a_public_key_gets_no_peer_block(wireguard):
+    blocks = wireguard.peer_blocks(open(wireguard.WG_CONF).read())
+    text = '\n'.join(blocks)
+    assert 'worker-b-public-key' in text and 'edge-public-key' in text
+    assert 'gpu-1' not in text and all(line.strip() != 'PublicKey =' for line in blocks)
+
+
+def test_the_new_interface_file_is_checked_before_it_is_written(wireguard):
+    wireguard.step_wireguard()
+    kinds = [e[0] for e in wireguard.events]
+    assert kinds == ['strip', 'change', 'write']
+    assert 'worker-b-public-key' in wireguard.events[0][1] and wireguard.events[1][1][:2] == ['wg', 'syncconf']
+
+
+def test_a_refused_interface_file_changes_nothing(wireguard):
+    wireguard.strip_code = 1
+    with pytest.raises(SystemExit):
+        wireguard.step_wireguard()
+    assert [e[0] for e in wireguard.events] == ['strip']
+
+
 def test_the_vpn_interface_must_be_a_valid_name():
     with pytest.raises(config.SiteError, match='is not a network interface name'):
         config.parse(site_text('remote.ini').replace('architecture = arm64\n', 'architecture = arm64\nvpn_interface = a b\n'))

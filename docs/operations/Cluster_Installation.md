@@ -110,11 +110,16 @@ A new node without `sudo -n` has no route. The driver writes the bundle to the n
 
 A GPU node keeps its existing VPN interface. Name that interface in the site file.
 
-1. Add `[node.<name>]` with the role `gpu`, the architecture `arm64` or `amd64`, the VPN address and `vpn_interface`.
+1. Add `[node.<name>]` with the role `gpu`, the architecture `arm64` or `amd64`, the VPN address, `vpn_interface` and `wireguard_public_key`.
+   The public key is the key of the existing VPN interface of the node. The root scripts refuse a node whose interface has another key.
+   A node without a key gets no direct peer on the other nodes.
 2. Install the NVIDIA driver and the NVIDIA container toolkit on the node. The root script refuses a GPU node without them.
 3. Run `k3s/deploy-k3s up --target <name>`. The driver writes the bundle and waits when the node has no root route.
 4. Do the bootstrap steps of [the root access section](#give-the-driver-root-access-on-each-node) on the node, then resume the record.
 5. Stop the Compose GPU services of the node only after the GPU pool of the cluster answers authenticated requests.
+
+The wireguard step of each node adds a direct peer for the GPU node. Between that step and the wireguard step of the GPU node, the node cannot reach the VPN address of the GPU node.
+A GPU pool at that address does not answer that node in this period. Run the steps of all nodes in one `up` to keep the period short.
 
 ## Sign in for the first time
 
