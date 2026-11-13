@@ -17,8 +17,10 @@ metadata:
 handler: kata
 overhead:
   podFixed:
-    # A Kata VM used 212 to 328 MiB on the public host in an earlier measurement. The VM runs in the pod cgroup.
-    memory: 384Mi
+    # The VM runs in the pod cgroup. Its guest has 512 MiB (default_memory, ../hosts/root-install-k3s.py) plus the
+    # container limits, and Cloud Hypervisor used 212 to 328 MiB on the public host. With a smaller overhead a guest
+    # that fills its memory, for example with the page cache of a store, exceeds the cgroup, and the kernel kills the VM.
+    memory: 1Gi
     cpu: 250m
 ---
 # gVisor with nvproxy for the GPU services on the GPU nodes (../hosts/root-install-k3s.py registers runsc-nvproxy there).
