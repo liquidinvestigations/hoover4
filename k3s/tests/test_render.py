@@ -597,3 +597,7 @@ def test_the_proxy_reaches_the_sign_in_service_on_every_frontend_address(tmp_pat
     rule = get(items, 'NetworkPolicy', 'egress-oidc')['spec']['egress'][0]
     assert [b['ipBlock']['cidr'] for b in rule['to']] == ['10.0.0.1/32', '203.0.113.10/32']
     assert rule['ports'] == [{'port': 443}]
+    # The sign-in check of the deploy driver carries the same label as the proxy, so it tests the same policy.
+    policy = get(items, 'NetworkPolicy', 'egress-oidc')['spec']['podSelector']['matchLabels']
+    proxy = get(items, 'Deployment', 'oauth2-proxy')['spec']['template']['metadata']['labels']
+    assert policy == {'hoover.dev/oidc': 'client'} and proxy['hoover.dev/oidc'] == 'client'

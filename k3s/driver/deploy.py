@@ -1084,6 +1084,76 @@ def record_settings(ctx, scopes):
     return scopes
 
 
+# The check sends an invalid code with the client secret of the proxy. Keycloak answers invalid_grant only after it
+# accepted the client, so the answer proves the address, the certificate and the secret of the token exchange.
+SIGN_IN_CHECK = r"""
+import json, os, ssl, sys, urllib.error, urllib.parse, urllib.request
+issuer, redirect = sys.argv[1], sys.argv[2]
+tls = ssl.create_default_context()
+if os.path.exists('/ca/local-ca.crt'):
+    tls.load_verify_locations('/ca/local-ca.crt')
+try:
+    conf = json.load(urllib.request.urlopen(issuer + '/.well-known/openid-configuration', timeout=20, context=tls))
+    form = {'grant_type': 'authorization_code', 'code': 'hoover-deploy-check', 'redirect_uri': redirect,
+            'client_id': 'opendesk-hoover', 'client_secret': open('/secrets/client-secret').read().strip()}
+    urllib.request.urlopen(conf['token_endpoint'], urllib.parse.urlencode(form).encode(), timeout=20, context=tls)
+    sys.exit('the token endpoint accepted an invalid code')
+except urllib.error.HTTPError as e:
+    answer = e.read().decode(errors='replace')
+    if e.code == 400 and json.loads(answer or '{}').get('error') == 'invalid_grant':
+        print('the token endpoint accepted the client of the proxy')
+        sys.exit(0)
+    sys.exit(f'the token endpoint answered HTTP {e.code}: {answer[:300]}')
+except Exception as e:
+    sys.exit(f'the proxy cannot reach the sign-in service: {e}')
+"""
+
+
+def sign_in_check_pod(ctx, hoover):
+    """A pod with the OIDC egress label of oauth2-proxy, so the NetworkPolicy of the proxy applies to it."""
+    zone = f'{hoover.zone}.{ctx.site.suffix}'
+    return {'apiVersion': 'v1', 'kind': 'Pod',
+            'metadata': {'name': 'sign-in-check', 'namespace': hoover.namespace,
+                         'labels': {'app.kubernetes.io/name': 'sign-in-check', 'hoover.dev/oidc': 'client'}},
+            'spec': {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
+                     'containers': [{'name': 'check', 'image': hostroute.POD_IMAGE,
+                                     'command': ['python3', '-c', SIGN_IN_CHECK, f'https://id.{zone}/realms/opendesk',
+                                                 f'https://hoover.{zone}/oauth2/callback'],
+                                     'resources': {'limits': {'cpu': '200m', 'memory': '64Mi'}},
+                                     'volumeMounts': [{'name': 'secrets', 'mountPath': '/secrets', 'readOnly': True},
+                                                      {'name': 'local-ca', 'mountPath': '/ca', 'readOnly': True}]}],
+                     'volumes': [{'name': 'secrets', 'secret': {'secretName': 'oauth2-proxy', 'items': [
+                                     {'key': 'client-secret', 'path': 'client-secret'}]}},
+                                 # Only a single-node site has the local CA of its frontend.
+                                 {'name': 'local-ca', 'configMap': {'name': 'local-ca', 'optional': True}}]}}
+
+
+def check_sign_in(ctx, hoover, timeout=300):
+    """Fail the step when oauth2-proxy of the installation cannot exchange a sign-in code with Keycloak.
+
+    A pod that starts reaches the issuer for its discovery. A policy or DNS change after the start breaks only the
+    token exchange of the next sign-in, so the rollouts do not show it.
+    """
+    ns = hoover.namespace
+    ctx.kubectl('-n', ns, 'delete', 'pod', 'sign-in-check', '--ignore-not-found', '--wait=true')
+    ctx.run(['kubectl', '--kubeconfig', ctx.kubeconfig, 'apply', '-f', '-'], capture=True,
+            input=json.dumps(sign_in_check_pod(ctx, hoover)))
+    deadline = time.monotonic() + timeout
+    phase = ''
+    while time.monotonic() < deadline:
+        phase = ctx.kubectl('-n', ns, 'get', 'pod', 'sign-in-check', '-o', 'jsonpath={.status.phase}', check=False).strip()
+        if phase in ('Succeeded', 'Failed'):
+            break
+        time.sleep(3)
+    logs = ctx.kubectl('-n', ns, 'logs', 'sign-in-check', check=False).strip()
+    events = '' if phase in ('Succeeded', 'Failed') else ctx.kubectl(
+        '-n', ns, 'get', 'events', '--field-selector', 'involvedObject.name=sign-in-check', '-o',
+        'jsonpath={range .items[*]}{.reason}: {.message}{"\\n"}{end}', check=False).strip()
+    ctx.kubectl('-n', ns, 'delete', 'pod', 'sign-in-check', '--wait=false', check=False)
+    if phase != 'Succeeded':
+        raise StepFailed(f'the sign-in check of {ns} ended in phase {phase or "unknown"}: {(logs or events)[-500:]}')
+
+
 def step_zone(zone, home):
     def run(ctx):
         # As the runner does for create-zone: the zone state gets the zone first, and the frontend then serves its
@@ -1095,6 +1165,8 @@ def step_zone(zone, home):
         hoovers = [h for h in ctx.site.hoovers.values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)
+        for hoover in hoovers:
+            check_sign_in(ctx, hoover)
         scopes = record_settings(ctx, [f'zone:{zone}'] + [f'hoover:{h.name}' for h in hoovers])
         return {'settings_revision': ctx.settings_revision, 'scopes': scopes}
     return run

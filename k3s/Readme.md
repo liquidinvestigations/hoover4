@@ -92,6 +92,7 @@ k3s/deploy-k3s status
   A settings save takes no lock, so a save during a run waits as a later revision.
 - A waiting or failed step stops the steps that depend on it: the later steps of its node and every cluster step. The steps of the other nodes still run.
 - A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
+- A zone step then starts a check pod with the OIDC egress label of oauth2-proxy. The pod sends an invalid sign-in code with the client secret of the proxy to Keycloak. The step fails when Keycloak does not answer `invalid_grant`, for example when a NetworkPolicy or a DNS answer blocks the token exchange.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.
   The earlier applied record moves to `deploy/previous.json`, so a failed update can return to its revision with `up --revision`.
 - A new `up` record removes the exported trees of `<private>/build/` and the node bundles of `~/k3s-install/` of the other revisions.

@@ -80,6 +80,8 @@ def _operator_settings():
 operator_settings = _operator_settings()
 
 PART = 'hoover.dev/part'
+# The pods with this label reach the OIDC issuer: oauth2-proxy and the sign-in check of the deploy driver.
+OIDC_CLIENT = {'hoover.dev/oidc': 'client'}
 REGISTRY = 'registry.hoover.internal/hoover'
 TEMPORAL_PG = 'docker.io/temporalio/auto-setup:1.23.1@sha256:a73792b9289ac504ee6c49fb0dfb430626bc4f422f15cf885503de49e4ae283b'
 OAUTH2_PROXY = 'quay.io/oauth2-proxy/oauth2-proxy:v7.12.0@sha256:786bed0f000c0f8a7b31619244ebab02406a8856a4faf3f5fb1df61fbd6c30ed'
@@ -941,7 +943,7 @@ def proxy(target):
         vols.append({'name': 'local-ca', 'configMap': {'name': 'local-ca'}})
         extra.append(config_map(target, 'local-ca', {'local-ca.crt': target.local_ca}))
     return extra + [config_map(target, 'oauth2-proxy', {'alpha.yaml': json.dumps(alpha, indent=1)}),
-            workload(target, 'Deployment', 'oauth2-proxy', pod_spec(target, [c], vols)), service(target, 'oauth2-proxy', [4180])]
+            workload(target, 'Deployment', 'oauth2-proxy', pod_spec(target, [c], vols), labels=OIDC_CLIENT), service(target, 'oauth2-proxy', [4180])]
 
 
 def network(target):
@@ -951,8 +953,8 @@ def network(target):
     every pod except the internet services reaches the stores and PostgreSQL in the zone namespace, and the browser
     server reaches the HTTP ports of ClickHouse and Garage. In the local layout the stores are pods of the namespace,
     and the internet services reach no store pod except the browser server, which reaches ClickHouse and Garage.
-    oauth2-proxy reaches the public nodes on 443 for the OIDC issuer. The forwarder gpu reaches the GPU proxy. The
-    internet services reach public addresses otherwise.
+    oauth2-proxy and the sign-in check of the deploy driver reach the frontend addresses on 443 for the OIDC issuer.
+    The forwarder gpu reaches the GPU proxy. The internet services reach public addresses otherwise.
     """
     ns = target.ns
 
@@ -1005,7 +1007,7 @@ def network(target):
                                                          'ports': [{'port': 3900}]}]}),
         ]
     items += [
-        policy('egress-oidc', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}, 'policyTypes': ['Egress'],
+        policy('egress-oidc', {'podSelector': {'matchLabels': OIDC_CLIENT}, 'policyTypes': ['Egress'],
                                'egress': [{'to': [{'ipBlock': {'cidr': f'{a}/32'}} for a in frontend], 'ports': [{'port': 443}]}]}),
         policy('egress-gpu', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'gpu'}}, 'policyTypes': ['Egress'],
                               'egress': [{'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': gpu.NS}}}],

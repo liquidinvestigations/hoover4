@@ -669,12 +669,15 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     rev = deploy.resolve_revision(env.repo, 'HEAD')
     waited = []
     monkeypatch.setattr(deploy, 'wait_rollouts', lambda ctx, ns: waited.append(ns))
+    checked = []
+    monkeypatch.setattr(deploy, 'check_sign_in', lambda ctx, hoover: checked.append(hoover.namespace))
     ran = []
     monkeypatch.setattr(ctx, 'run', lambda argv, **kw: ran.append(([str(a) for a in argv], ctx.env())) or (0, ''))
     steps = {'zone:zone-a': deploy.step_zone('zone-a', 'dev')}
     record = ctx.records.new('up', ['dev'], rev, list(steps), complete=False, inputs=deploy.pinned_inputs(ctx))
     assert deploy.execute(ctx, record, steps) == 0
     assert waited == ['zone-a', 'hoover-zone-a']
+    assert checked == ['hoover-zone-a']
     assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision('hoover:main') == 1
     # The cluster scope needs every zone and the GPU pool, so a scoped run leaves it pending.
     assert state.applied_revision('cluster') == 0 and state.applied()['revision'] == 0
@@ -683,6 +686,85 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     assert any('frontend' in arg for arg in ran[1][0])
     # zone.py and its nested renders get the pinned settings revision.
     assert ran[-1][0][1].endswith('zones/zone.py') and ran[-1][1]['HOOVER4_SETTINGS_REVISION'] == '1'
+
+
+@pytest.mark.parametrize('phase, logs, passes', [
+    ('Succeeded', 'the token endpoint accepted the client of the proxy', True),
+    ('Failed', 'the proxy cannot reach the sign-in service: [Errno 111] Connection refused', False),
+    ('Pending', '', False),
+])
+def test_a_broken_token_exchange_fails_the_zone_step(env, monkeypatch, phase, logs, passes):
+    ctx = env.make('remote.ini')
+    hoover = next(h for h in ctx.site.hoovers.values() if h.zone == 'zone-a')
+    calls = []
+
+    def kubectl(*args, check=True):
+        calls.append(args)
+        if 'jsonpath={.status.phase}' in args:
+            return phase
+        return logs if 'logs' in args else 'FailedScheduling: no node' if 'events' in args else ''
+    monkeypatch.setattr(ctx, 'kubectl', kubectl)
+    applied = []
+    monkeypatch.setattr(ctx, 'run', lambda argv, **kw: applied.append(json.loads(kw['input'])) or (0, ''))
+    monkeypatch.setattr(deploy.time, 'sleep', lambda s: None)
+    if passes:
+        deploy.check_sign_in(ctx, hoover)
+    else:
+        with pytest.raises(deploy.StepFailed, match=f'sign-in check of {hoover.namespace} ended in phase {phase}'
+                           + (': the proxy cannot reach' if logs else ': FailedScheduling')):
+            deploy.check_sign_in(ctx, hoover, timeout=0.01 if phase == 'Pending' else 300)
+    pod = applied[0]
+    # The pod gets the label that the egress-oidc policy of the proxy selects, and the client secret of the proxy.
+    assert pod['metadata']['labels']['hoover.dev/oidc'] == 'client'
+    assert pod['metadata']['labels']['app.kubernetes.io/name'] != 'oauth2-proxy'
+    assert pod['spec']['volumes'][0]['secret']['secretName'] == 'oauth2-proxy'
+    issuer, redirect = pod['spec']['containers'][0]['command'][3:]
+    assert issuer == f'https://id.zone-a.{ctx.site.suffix}/realms/opendesk'
+    assert redirect == f'https://hoover.zone-a.{ctx.site.suffix}/oauth2/callback'
+    assert calls[-1][:4] == ('-n', hoover.namespace, 'delete', 'pod')
+
+
+def test_the_sign_in_check_accepts_only_invalid_grant(tmp_path):
+    # The script runs against a local token endpoint. Only "invalid_grant" proves that Keycloak accepted the client.
+    import http.server
+    import threading
+    answers = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            body = json.dumps({'token_endpoint': f'http://127.0.0.1:{self.server.server_port}/token'}).encode()
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            code, body = answers['now']
+            self.send_response(code)
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+    server = http.server.HTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    secrets = tmp_path / 'secrets'
+    secrets.mkdir()
+    (secrets / 'client-secret').write_text('s')
+    script = deploy.SIGN_IN_CHECK.replace('/secrets/', f'{secrets}/')
+    issuer = f'http://127.0.0.1:{server.server_port}/realms/opendesk'
+    try:
+        for code, body, ok in [(400, {'error': 'invalid_grant'}, True), (401, {'error': 'invalid_client'}, False),
+                               (400, {'error': 'invalid_request'}, False), (200, {'access_token': 'x'}, False)]:
+            answers['now'] = (code, body)
+            r = subprocess.run([sys.executable, '-c', script, issuer, 'https://hoover.example/oauth2/callback'],
+                               capture_output=True, text=True)
+            assert (r.returncode == 0) == ok, (code, body, r.stderr)
+        server.shutdown()
+        r = subprocess.run([sys.executable, '-c', script, issuer, 'x'], capture_output=True, text=True, timeout=60)
+        assert r.returncode and 'cannot reach the sign-in service' in r.stderr
+    finally:
+        server.server_close()
 
 
 def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatch):
