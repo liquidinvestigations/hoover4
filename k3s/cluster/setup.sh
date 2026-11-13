@@ -18,9 +18,21 @@ fi
 CERT_MANAGER_VERSION=v1.21.3
 TOPOLVM_CHART_VERSION=17.3.0
 
+# A node of the site file joins the cluster in its own root step, for example a GPU node that waits for its bootstrap.
+# A node that has not joined gets its labels at the first run after it joins.
+joined=" $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}') "
+label_node() {
+  local node=$1; shift
+  if [[ "$joined" == *" $node "* ]]; then
+    kubectl label node "$node" "$@" --overwrite
+  else
+    echo "node $node has not joined the cluster. It gets its labels at the first run after it joins."
+  fi
+}
+
 # A node with a storage tier is enrolled for stateful pods. The tier labels select the lvmd configuration.
 # A node without AVX2 has no cpu.hoover/avx2 label. Workloads that need AVX2 select this label.
-python3 - "$SITE" <<'PY' | while read -r node labels; do kubectl label node "$node" $labels --overwrite; done
+python3 - "$SITE" <<'PY' | while read -r node labels; do label_node "$node" $labels; done
 import json, sys
 site = json.load(open(sys.argv[1]))
 for name, host in site["hosts"].items():
@@ -33,7 +45,7 @@ for name, host in site["hosts"].items():
         print(name, " ".join(labels))
 PY
 # The lvmd label selects the lvmd configuration of the volume group of each node (topolvm_values.py).
-python3 topolvm_values.py "$SITE" labels | while read -r node label; do kubectl label node "$node" "$label" --overwrite; done
+python3 topolvm_values.py "$SITE" labels | while read -r node label; do label_node "$node" "$label"; done
 values=$(mktemp --suffix=.json)
 python3 topolvm_values.py "$SITE" > "$values"
 

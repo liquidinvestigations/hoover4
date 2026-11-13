@@ -739,3 +739,32 @@ def test_an_on_delete_statefulset_waits_for_its_ready_replicas(monkeypatch):
     deploy.wait_rollouts(ctx, 'zone-a')
     assert calls[0][5:7] == ['wait', 'statefulset/clickhouse-kata'] and '--for=jsonpath={.status.readyReplicas}=1' in calls[0]
     assert calls[1][5:8] == ['rollout', 'status', 'deployment/website']
+
+
+def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
+    # A GPU node of the site file joins in its own root step. Until then the cluster step labels the other nodes.
+    import json
+    import os
+    import subprocess
+    site = config.parse(site_text('remote.ini'))
+    hosts = config.legacy_hosts(site)
+    for name in hosts['hosts']:
+        hosts['hosts'][name]['tiers'] = ['ssd']
+    (tmp_path / 'hosts.json').write_text(json.dumps(hosts))
+    joined = [n for n in hosts['hosts'] if n != 'gpu-1']
+    calls = tmp_path / 'calls.log'
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    (bin_dir / 'kubectl').write_text(
+        '#!/bin/sh\necho "$*" >> %s\ncase "$*" in *"get nodes -o jsonpath"*) echo "%s";; *"label node gpu-1"*) exit 1;; esac\n'
+        % (calls, ' '.join(joined)))
+    (bin_dir / 'helm').write_text('#!/bin/sh\nexit 0\n')
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    env = dict(os.environ, PATH=f'{bin_dir}:{os.environ["PATH"]}', SITE=str(tmp_path / 'hosts.json'),
+               HELM=str(bin_dir / 'helm'), KUBECONFIG=str(tmp_path / 'kubeconfig'))
+    r = subprocess.run(['bash', str(K3S / 'cluster/setup.sh')], env=env, capture_output=True, text=True)
+    labelled = [line.split()[2] for line in calls.read_text().splitlines() if line.startswith('label node')]
+    assert r.returncode == 0, r.stdout[-500:] + r.stderr[-500:]
+    assert 'node gpu-1 has not joined the cluster' in r.stdout
+    assert 'gpu-1' not in labelled and set(joined) <= set(labelled)
