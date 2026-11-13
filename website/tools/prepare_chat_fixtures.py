@@ -517,14 +517,15 @@ def main() -> int:
         print(f"unknown fixture names: {', '.join(unknown)}", file=sys.stderr)
         return 2
 
-    from database.clickhouse import get_global_client
+    from database.clickhouse import collection_db_name, get_global_client
 
     now = FIXTURE_TIME
     with get_global_client() as client:
         # The rows name one document of the test data. A stack without it still renders
         # the cards, but a link from a card opens no document, so the run says so.
         present = client.query(
-            f"SELECT count() FROM Hoover4_Collection_{COLLECTION}.vfs_files FINAL "
+            # The database prefix depends on the installation, for example a k3s zone.
+            f"SELECT count() FROM {collection_db_name(COLLECTION)}.vfs_files FINAL "
             "WHERE hash = {h:String} AND is_deleted = 0", parameters={"h": DOC_HASH},
         ).result_rows[0][0] if client.query(
             "SELECT count() FROM collections FINAL WHERE collectionname = {c:String} "

@@ -8,7 +8,8 @@ pods see it below /data/testdata. The script writes the size and SHA-256 of each
 output file. It then creates the collection `demo` and adds each dataset of qa/datasets.json that the upstream verifier
 ingests, with --wait. An existing collection or dataset stays.
 --browser loads the fixtures of the browser scenarios (website/browser-tests/) instead: the collection testdata with
-every dataset of qa/datasets.json, under the dataset names of that file.
+every dataset of qa/datasets.json. A name of that file is the collection_dataset key of main_services/verify-stack.sh,
+for example testdata_testfiles, so the dataset name is the part after the collection prefix (testfiles).
 Usage: seed.py <zone> [output.json] [--browser]
 """
 import hashlib
@@ -71,14 +72,22 @@ def copy(tree, roots):
     return manifest(tree, roots.values())
 
 
+def browser_dataset_name(key, collection='testdata'):
+    """The dataset name whose collection_dataset key is `key`. The worker joins the collection and the dataset name."""
+    prefix = f'{collection}_'
+    if not key.startswith(prefix):
+        raise SystemExit(f'the dataset {key} of qa/datasets.json does not start with {prefix}')
+    return key[len(prefix):]
+
+
 def main():
     found = subprocess.run(['git', '-C', str(CORPUS), 'show', f'{REVISION}:qa/datasets.json'], capture_output=True, text=True)
     if found.returncode:
         raise SystemExit(f'the corpus checkout has no revision {REVISION}. Run main_services/fetch-testdata.sh.')
     entries = json.loads(found.stdout)['datasets']
     listed = {d['name']: d['root'] for d in entries}
-    collection, datasets = ('testdata', {d['name']: d['name'] for d in entries if d['collection'] == 'testdata'}) if BROWSER \
-        else ('demo', DATASETS)
+    collection, datasets = ('testdata', {d['name']: browser_dataset_name(d['name']) for d in entries if d['collection'] == 'testdata'}) \
+        if BROWSER else ('demo', DATASETS)
     roots = {name: listed[name] for name in datasets}
     with tempfile.TemporaryDirectory(prefix='hoover-testdata-') as tree:
         archive = subprocess.Popen(['git', '-C', str(CORPUS), 'archive', REVISION, 'qa', *roots.values()], stdout=subprocess.PIPE)
