@@ -63,6 +63,12 @@ The settings page is `https://operator.<suffix>/settings.html`.
 4. When the operation fails, read its error, correct the cause, and select **Retry**. A retry continues at the first unfinished step.
 5. Select **Abandon** to stop a failed operation. The scopes that it did not finish keep their earlier applied revision.
 
+<a href="img/settings-pending.png"><img src="img/settings-pending.png" alt="A saved change of a zone that waits for Apply, with the affected service and the Apply steps" width="100%"></a>
+
+After the operation, the page shows its steps and the next saved revision that waits for Apply.
+
+<a href="img/settings-applied.png"><img src="img/settings-applied.png" alt="A finished Apply operation and a newer saved change that waits for the next Apply" width="100%"></a>
+
 A value that you save during a running operation stays pending for the next Apply.
 The setting `gpu.runtime` applies the GPU pool and checks each GPU service with and without the pool key.
 
@@ -118,6 +124,10 @@ The settings `backup.opendesk.*` and `backup.hoover.*` of each zone and `backup.
 The commands take names only. A zone copy closes the zone during the copy and reopens it with the recorded replicas.
 A copy replaces an older copy only after its check on the backup node. A failed transfer keeps the older copies.
 Keep the backup folder on another site. The system cannot check this.
+
+The settings page shows the backup folder and the backup policies of the selected scope.
+
+<a href="img/settings.png"><img src="img/settings.png" alt="The backup destination and the platform backup settings on the settings page" width="100%"></a>
 
 ## Restore a zone
 

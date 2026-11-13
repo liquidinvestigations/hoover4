@@ -28,6 +28,8 @@ The operator login and the zone logins are separate. An operator login gives no 
 2. Sign in with the operator account.
 3. The start page shows the cluster resources, the links to Headlamp, Grafana, Prometheus and the settings, the zones, the operations and the recent warning events.
 
+<a href="img/operator-home.png"><img src="img/operator-home.png" alt="The start page of the operator portal with the cluster use and the links to the tools" width="100%"></a>
+
 Select **Sign out** at the end of the page to end the session.
 
 ## Create a zone
@@ -36,6 +38,8 @@ Select **Sign out** at the end of the page to end the session.
 2. Select the home node. All pods and volumes of the zone stay on this node.
 3. Select **Create the zone**.
 4. Follow the operation in **Operations**. The table shows the steps and the last output lines. A create takes about 30 minutes.
+
+<a href="img/operator-zones.png"><img src="img/operator-zones.png" alt="The zone list with its actions and the form to create a zone" width="100%"></a>
 
 A create, upgrade or delete restarts the shared call services and the HTTPS frontend. Calls that run at that time end.
 
@@ -53,6 +57,8 @@ A create, upgrade or delete restarts the shared call services and the HTTPS fron
 3. Change the values and select **Save**. The page lists the saved changes that wait for Apply, and the services that each change restarts.
 4. Select **Apply**. The page shows the steps of the operation.
 
+<a href="img/settings-zone-apps.png"><img src="img/settings-zone-apps.png" alt="The application switches of a zone on the settings page" width="100%"></a>
+
 A value that you save during a running operation waits for the next Apply.
 
 ## Recover from a failed operation
@@ -63,6 +69,8 @@ A zone operation or an Apply that fails keeps its finished steps.
 2. Correct the cause. The private infrastructure log and [the troubleshooting guide](Troubleshooting.md) help with known causes.
 3. Select **Run again** for a zone operation, or **Retry** for an Apply. The operation continues at its first unfinished step.
 4. Select **Abandon** to stop a failed Apply. Its unfinished scopes keep their earlier applied values.
+
+<a href="img/operator-operations.png"><img src="img/operator-operations.png" alt="The operations table with a failed zone upgrade and its Run again button" width="100%"></a>
 
 ## Upgrade a zone
 
@@ -76,6 +84,8 @@ A zone copy holds the openDesk databases and volumes of the zone and the volumes
 1. Turn on `backup.opendesk.enabled` and set `backup.opendesk.copies` in the settings of the zone, and Apply.
 2. The runner makes one copy each week. The zone closes during the copy and opens again with its earlier replicas.
 3. Restore a copy from the operator host with `backups.py restore-zone`. [The operations manual](Cluster_Operations.md#restore-a-zone) describes the steps.
+
+<a href="img/settings-zone-backup.png"><img src="img/settings-zone-backup.png" alt="The backup destination and the backup settings of a zone" width="100%"></a>
 
 ## Delete a zone
 

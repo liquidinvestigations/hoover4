@@ -246,7 +246,9 @@ def resolve_revision(repo, ref):
 
 
 def dirty_files(repo):
-    """The changed files of the checkout. The driver never resets them."""
+    """The changed files of the checkout. The driver never resets them. An exported tree has no checkout and no changes."""
+    if source_module.is_export(repo):
+        return []
     r = subprocess.run(['git', '-C', str(repo), 'status', '--porcelain'], capture_output=True, text=True)
     return [line[3:] for line in r.stdout.splitlines()] if r.returncode == 0 else [f'git status failed: {r.stderr.strip()}']
 

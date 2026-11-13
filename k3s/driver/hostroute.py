@@ -48,7 +48,8 @@ class Shell:
 
     def command(self, script):
         if self.node.local:
-            return ['sh', '-c', script]
+            # A remote shell starts in the home folder, and the bundle paths are relative to it. A local one does too.
+            return ['sh', '-c', 'cd && ' + script]
         return ['ssh', *SSH_OPTIONS, self.node.ssh_address, '--', script]
 
     def run(self, script, input=None, timeout=600):

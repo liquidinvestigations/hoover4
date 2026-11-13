@@ -185,6 +185,7 @@ They also hold the openDesk applications and memory limits of each zone, and the
   [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The operator runner (unit `hoover4-operator-runner` of the operator user) runs them.
   A failed operation waits for Retry or Abandon. A restarted runner continues a running operation.
   `tools/operator-settings-check.py` drives the page in a browser: an invalid value, a save, Apply, Retry, Abandon and Use default.
+  `tools/operator-portal-shots.py` captures a portal page for the manuals at 1400 by 900 pixels, with the host names and addresses replaced.
 - The zone settings `app.<name>` turn openDesk applications and Hoover off and on. An application that is off has zero replicas and keeps its claims.
   The zone memory limits and the cluster CPU policy reach the zone render through [zones/postrender.py](zones/postrender.py).
 - The backup policies are settings: `backup.opendesk.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.

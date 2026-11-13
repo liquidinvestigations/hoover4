@@ -578,6 +578,8 @@ def test_the_exported_tree_holds_the_commit_and_links_the_private_folder(env):
     assert source.fingerprint(tree) == first
     (tree / 'file.txt').write_text('changed\n')
     assert source.fingerprint(tree) != first
+    # The exported tree has no checkout, so the record names no local change.
+    assert deploy.dirty_files(tree) == [] and deploy.dirty_files(env.repo) == ['file.txt']
     with pytest.raises(source.SourceError):
         source.export(env.repo, env.private, 'HEAD')
 
@@ -698,6 +700,16 @@ def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatc
     with pytest.raises(deploy.StepFailed, match='not arm64'):
         deploy.image_references(ctx, ['hoover/hoover-vllm:000000000000'], architecture='arm64')
     assert deploy.gpu_architecture(ctx) == 'arm64'
+
+
+def test_a_local_shell_runs_in_the_home_folder_like_a_remote_one():
+    # The bundle paths are relative to the home folder. A driver run from another folder still finds the bundle.
+    import types
+    import hostroute
+    local = hostroute.Shell(types.SimpleNamespace(name='a', local=True, ssh_address=''))
+    remote = hostroute.Shell(types.SimpleNamespace(name='b', local=False, ssh_address='op@b'))
+    assert local.command('ls k3s-install') == ['sh', '-c', 'cd && ls k3s-install']
+    assert remote.command('ls k3s-install')[-1] == 'ls k3s-install'
 
 
 @pytest.mark.parametrize('state, starts', [('missing', True), ('failed', True), ('active', False), ('activating', False)])

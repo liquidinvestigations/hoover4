@@ -552,6 +552,62 @@
       "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
       "captured_at": "2026-10-17T19:47:09+00:00",
       "sha256": "cd1a2541bc0be6cba1ed47c16eb2d96b55f4eebd9f8c3f909f0189e98ec869b4"
+    },
+    {
+      "image": "docs/operations/img/operator-home.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:00:26+00:00",
+      "sha256": "7b8bc9ec4291a71075dda70844d150420cd7a41462b002d769d58b94ddb80f55"
+    },
+    {
+      "image": "docs/operations/img/operator-zones.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:00:37+00:00",
+      "sha256": "17d983951ec991f48f72548630136a5329285db85498cfaab1afe76417cafd1b"
+    },
+    {
+      "image": "docs/operations/img/operator-operations.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:03:45+00:00",
+      "sha256": "51d958e896f11a89edc555e82558dbdaac6f3a9747d20e247f2c9e050d4c0639"
+    },
+    {
+      "image": "docs/operations/img/settings.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:00:56+00:00",
+      "sha256": "34519f88973374cf53972a636468e865cf48c0c616a6895a736c0f5aa0c29da0"
+    },
+    {
+      "image": "docs/operations/img/settings-zone-apps.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:01:41+00:00",
+      "sha256": "c96fed11375451680c200dad52fcf26c54e935bbee7df9b76de0621d33cdb008"
+    },
+    {
+      "image": "docs/operations/img/settings-zone-backup.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:01:53+00:00",
+      "sha256": "ca661619b60d8c6942a1224a2093338c90c88463f62f2628f7a2d157f54e1eb7"
+    },
+    {
+      "image": "docs/operations/img/settings-pending.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:04:17+00:00",
+      "sha256": "eb6abad309ae6cbf6a34770552e3022176a89063943ba2777ae4ad0b8242d706"
+    },
+    {
+      "image": "docs/operations/img/settings-applied.png",
+      "scenario": "k3s/tools/operator-portal-shots.py",
+      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
+      "captured_at": "2026-11-12T23:05:16+00:00",
+      "sha256": "15fb0f0a426d49b855be6a63622113405bf81fe4261ac332f7398856fba8aad2"
     }
   ]
 }

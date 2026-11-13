@@ -122,6 +122,8 @@ A GPU node keeps its existing VPN interface. Name that interface in the site fil
 2. Sign in with the operator account. Its password is in `k3s/private/operator-login/`.
 3. Create the first zone. [The zone manual](Zone_Operator_Manual.md) describes the zone tasks.
 
+<a href="img/operator-home.png"><img src="img/operator-home.png" alt="The start page of the operator portal with the cluster use and the links to the tools" width="100%"></a>
+
 ## Verify the installation
 
 | Check | Command |
