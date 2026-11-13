@@ -962,7 +962,9 @@ def network(target):
     dns = {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}},
                    'podSelector': {'matchLabels': {'k8s-app': 'kube-dns'}}}],
            'ports': [{'port': 53, 'protocol': 'UDP'}, {'port': 53, 'protocol': 'TCP'}]}
-    frontend = [n.public_address or n.vpn_address for n in target.site.with_role('public') if n.public_address or n.vpn_address]
+    # The zone names resolve to the first frontend bind inside the cluster (platform/frontend/install-frontend.sh), which
+    # is the VPN address of the public node. The proxy reaches the sign-in service on every bind address.
+    frontend = site_config.legacy_settings(target.site)['frontend_bind']
     items = [
         policy('website-from-proxy', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'hoover-website'}}, 'policyTypes': ['Ingress'],
                                       'ingress': [{'from': [{'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}},

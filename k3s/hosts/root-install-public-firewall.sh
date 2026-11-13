@@ -4,6 +4,9 @@
 # the call services (UDP 10000 of the JVB, TCP 7881 and UDP 7882 of LiveKit), and WireGuard (UDP 42069). A separate
 # calls node runs the same script. ../platform/calls/public_endpoints.py firewall prints the ports of each node. Answers to connections of the host and ICMP also pass. The table drops every other packet that
 # enters on the public interface. The drop rules of root-install-public-guard.sh stay, and its table runs first.
+# On a node with the public address of the call services, the chain coturn_peers lets the coturn user reach that address
+# only on the LiveKit media ports, because coturn may relay to it (../platform/calls/turn_peers.py). Its hook runs
+# before the DNAT of the host ports. Run this script before the calls step of the driver.
 # The table loads at boot before the network. A second run writes nothing and restarts nothing.
 # A changed table starts a timer that removes the table again after 180 seconds. Test SSH from a new connection, then
 # run the script with --confirm, which stops the timer. Without --confirm the host returns to the earlier state.
@@ -12,6 +15,10 @@ set -euo pipefail
 MODE=${1:-}
 PUBLIC_IF=$(ip route show default | awk '{print $5; exit}')
 [ -n "$PUBLIC_IF" ] && [ "$PUBLIC_IF" != wg0 ] || { echo "ERROR: no public interface found" >&2; exit 1; }
+PUBLIC_IP=$(ip -4 -o addr show dev "$PUBLIC_IF" scope global | awk '{split($4, a, "/"); print a[1]; exit}')
+[ -n "$PUBLIC_IP" ] || { echo "ERROR: $PUBLIC_IF has no global IPv4 address" >&2; exit 1; }
+# The user id of coturn, COTURN_UID of ../platform/calls/turn_peers.py.
+COTURN_UID=64981
 NFT_FILE=/etc/hoover-public-firewall.nft
 UNIT_FILE=/etc/systemd/system/hoover-public-firewall.service
 TIMER=hoover-public-firewall-rollback
@@ -38,6 +45,14 @@ table inet hoover_public_firewall {
     tcp dport 7881 accept comment "LiveKit media over TCP"
     udp dport 42069 accept comment "WireGuard"
     counter drop
+  }
+  chain coturn_peers {
+    type filter hook output priority raw; policy accept;
+    meta skuid != $COTURN_UID accept
+    ip daddr != $PUBLIC_IP accept
+    udp dport 7882 accept comment "LiveKit media"
+    tcp dport 7881 accept comment "LiveKit media over TCP"
+    counter drop comment "coturn relays to no other port of the public address"
   }
 }
 EOF

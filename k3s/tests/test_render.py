@@ -588,3 +588,12 @@ def test_an_extra_dataset_folder_is_a_read_only_export_of_its_data_node(tmp_path
     assert mounts['archive']['volume'] == {'nfs': {'server': '10.43.0.12', 'path': '/extra/zone-a/archive', 'readOnly': True}}
     with pytest.raises(config.SiteError, match='not a node with the role data'):
         config.parse(text.replace('archive:worker-b:', 'archive:edge:'))
+
+
+def test_the_proxy_reaches_the_sign_in_service_on_every_frontend_address(tmp_path):
+    # The zone names resolve to the first frontend bind inside the cluster, the VPN address of the public node. A policy
+    # with only the public address made the token exchange of each sign-in fail with "connection refused".
+    items = items_of(target('remote.ini', 'zone-a', tmp_path))
+    rule = get(items, 'NetworkPolicy', 'egress-oidc')['spec']['egress'][0]
+    assert [b['ipBlock']['cidr'] for b in rule['to']] == ['10.0.0.1/32', '203.0.113.10/32']
+    assert rule['ports'] == [{'port': 443}]

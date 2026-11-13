@@ -263,7 +263,8 @@ The step `gpu-pool` waits for the GPU workloads and calls each port with the key
 The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
 A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
 coturn relays to the pods and, on a media node with a public address, to that address for a client that can only use TURN.
-A host rule of the media node limits that address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
+The chain `coturn_peers` of `hosts/root-install-public-firewall.sh` limits that address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
+Run that script on the calls node before the `calls` step. Without the chain, coturn relays to every port of the public address.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.
 `python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
 Run `hosts/root-install-public-firewall.sh` on the public node and on the calls node.

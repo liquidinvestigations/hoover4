@@ -771,24 +771,26 @@ def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
 
 
 def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
-    # A relay-only client needs coturn to reach LiveKit at the public address. Every other port of it stays closed.
+    # A relay-only client needs coturn to reach LiveKit at the public address. A host chain keeps every other port of
+    # it closed to the coturn user. The pod admission policy refuses a privileged pod, so the rule is not in the pod.
     sys.path.insert(0, str(K3S / 'platform/calls'))
     import turn_peers
     assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '') == [
         'denied-peer-ip=0.0.0.0-255.255.255.255', 'allowed-peer-ip=10.42.0.0-10.42.3.255']
     assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
-    script = turn_peers.guard_script('203.0.113.10')
-    chain = [line for line in script.split("'")[1].splitlines() if line.startswith('-A')]
-    assert chain == ['-A HOOVER4-COTURN -p udp --dport 7882 -j RETURN', '-A HOOVER4-COTURN -p tcp --dport 7881 -j RETURN',
-                     '-A HOOVER4-COTURN -j DROP']
-    jump = f'OUTPUT -d 203.0.113.10/32 -m owner --uid-owner {turn_peers.COTURN_UID} -j HOOVER4-COTURN'
-    assert f'iptables -t raw -C {jump} 2>/dev/null || iptables -t raw -I {jump}' in script
-    container = turn_peers.guard_container('image', '203.0.113.10')
-    assert container['command'][:6] == ['nsenter', '-t', '1', '-m', '-n', '--']
-    # The install script runs coturn with that user id and publishes the LiveKit ports from the same constants.
+    firewall = (K3S / 'hosts/root-install-public-firewall.sh').read_text()
+    assert f'COTURN_UID={turn_peers.COTURN_UID}' in firewall
+    chain = firewall[firewall.index('chain coturn_peers {'):].split('}')[0].splitlines()
+    rules = [line.split(' comment ')[0].strip() for line in chain[1:] if line.strip()]
+    assert rules == ['type filter hook output priority raw; policy accept;', 'meta skuid != $COTURN_UID accept',
+                     'ip daddr != $PUBLIC_IP accept', f'udp dport {turn_peers.LIVEKIT_UDP} accept',
+                     f'tcp dport {turn_peers.LIVEKIT_TCP} accept', 'counter drop']
     text = (K3S / 'platform/calls/install-calls.py').read_text()
     assert "'runAsUser':turn_peers.COTURN_UID" in text and 'turn_peers.peer_lines(PODS,PUBLIC)' in text
     assert "'hostPort':turn_peers.LIVEKIT_UDP" in text and "'udp_port':turn_peers.LIVEKIT_UDP" in text
+    assert 'hostPID' not in text and "'privileged'" not in text
+    # A refused coturn or LiveKit pod fails the step, because the old pod is gone before the new one starts.
+    assert "for name in ('coturn','livekit'):" in text and "'rollout','status'" in text
 
 
 def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):

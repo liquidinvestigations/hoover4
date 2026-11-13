@@ -7,7 +7,8 @@ The namespace calls holds three services:
   turn_listen in the settings file (k3s/settings.py) adds addresses: the frontend address, which the pods reach as
   turn.<suffix>, and the public address of the host. A remote client sends its media to coturn on 3478, and coturn
   relays it to the pods from the bridge address. It also relays to the public address of the media node, but a host rule
-  limits that address to the LiveKit media ports (turn_peers.py).
+  limits that address to the LiveKit media ports (turn_peers.py, ../../hosts/root-install-public-firewall.sh). Run that
+  script on the media node before this script, or coturn relays to every port of the public address.
 - LiveKit is the MatrixRTC SFU. Each zone signs tokens with its own key.
   sfu.<zone>.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
 - JVB is the Jitsi video bridge. The script copies the JVB Deployment that the openDesk chart renders in the first
@@ -28,7 +29,6 @@ settings.use_kubeconfig()
 sys.path.insert(0,str(source/'zones'));from zones import ZONES,SUFFIX
 import cpu_policy
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent));import turn_peers
-sys.path.insert(0,str(source/'driver'));from hostroute import POD_IMAGE
 data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
 NS='calls';NODE=settings.HOST.get('calls_node',settings.HOST['ingress_node']);PUBLIC=settings.HOST.get('calls_public_address','')
 def kubectl(*args,data=None):return subprocess.run(['kubectl',*args],input=data,text=True,check=True,capture_output=True).stdout
@@ -49,8 +49,8 @@ def coturn():
  lines=['listening-port=3478','listening-ip=127.0.0.1','listening-ip=::1',f'listening-ip={BRIDGE}',f'relay-ip={BRIDGE}',
   'min-port=49160','max-port=49199',f'realm=turn.{SUFFIX}','use-auth-secret','fingerprint','no-cli','no-tls','no-dtls',
   'no-multicast-peers','no-software-attribute',
-  # Peers are the pods and the public media address. The host rule of turn_peers.py limits that address to the
-  # LiveKit media ports, so a TURN user cannot reach the host or another network.
+  # Peers are the pods and the public media address. The host table of root-install-public-firewall.sh limits that
+  # address to the LiveKit media ports for the coturn user, so a TURN user cannot reach the host or another network.
   *turn_peers.peer_lines(PODS,PUBLIC),
   # Logs go to stdout only. Without a user database, coturn keeps no state on disk.
   'log-file=stdout','simple-log','pidfile=/var/lib/coturn/turnserver.pid']
@@ -64,9 +64,6 @@ def coturn():
     'capabilities':{'drop':['ALL'],'add':['NET_BIND_SERVICE']}},
    'volumeMounts':[{'name':'config','mountPath':'/etc/coturn','readOnly':True},{'name':'state','mountPath':'/var/lib/coturn'}]}],
   'volumes':[{'name':'config','secret':{'secretName':'coturn'}},{'name':'state','emptyDir':{'medium':'Memory','sizeLimit':'8Mi'}}]}
- if PUBLIC:
-  # The init container writes the host rule for the public address (turn_peers.py). nsenter needs the host process ids.
-  pod.update(hostPID=True,initContainers=[turn_peers.guard_container(POD_IMAGE,PUBLIC)])
  return [secret('coturn',{'turnserver.conf':'\n'.join(lines)+'\n'}),
   {'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'coturn','namespace':NS},
    'spec':{'replicas':1,'strategy':{'type':'Recreate'},'selector':{'matchLabels':{'app.kubernetes.io/name':'coturn'}},
@@ -147,6 +144,13 @@ def checksum(items):
 # The bridge copies its template from the first zone and serves only zones. Without a zone, the script removes it.
 apply(checksum(coturn()+livekit()+(jvb() if ZONES else [])))
 if not ZONES:kubectl('-n',NS,'delete','deployment','jvb','--ignore-not-found')
+# coturn and LiveKit stop the old pod before the new one starts, so a refused or failing pod leaves no call service.
+# The JVB starts its new pod first and keeps the old one, so this script does not wait for it.
+for name in ('coturn','livekit'):
+ r=subprocess.run(['kubectl','-n',NS,'rollout','status',f'deployment/{name}','--timeout=300s'],text=True,capture_output=True)
+ if r.returncode:
+  events=subprocess.run(['kubectl','-n',NS,'get','events','--field-selector','reason=FailedCreate','-o','jsonpath={.items[-1:].message}'],text=True,capture_output=True).stdout
+  sys.exit(f'the call service {name} did not start: {(r.stderr or r.stdout).strip()[-300:]} {events[-300:]}')
 deployments=['coturn','livekit']+(['jvb'] if ZONES else [])
 for name in deployments:kubectl('-n',NS,'rollout','status',f'deployment/{name}','--timeout=300s')
 print(json.dumps({'namespace':NS,'deployments':deployments,'zones':ZONES}))
