@@ -37,7 +37,7 @@ from agent_common import batching, retired
 from agent_common import embeddings as embeddings_client
 from agent_common import fusion, rerank as rerank_client
 from collection_search_server import vectors
-from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
+from collection_search_server.acl import AccessDenied, BearerToken, CallerAcl, parse_acl
 from collection_search_server.binding_store import ArtifactBindingStore
 from collection_search_server.citations import (
     CitationNotStored,
@@ -154,6 +154,8 @@ mcp = FastMCP(
     instructions=os.getenv("SERVER_INSTRUCTIONS", SERVER_INSTRUCTIONS),
 )
 
+# The token check runs first, so a call without the token reaches no tool and no alias.
+mcp.add_middleware(BearerToken())
 mcp.add_middleware(
     retired.RetiredNames(
         {

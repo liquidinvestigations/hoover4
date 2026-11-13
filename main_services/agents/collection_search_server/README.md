@@ -242,6 +242,10 @@ than `[D1]` starting over.
 
 ## Collection access
 
+Every tool call must carry `Authorization: Bearer <shared secret>`.
+The server checks the token before it runs any tool and refuses a call without it.
+The secret comes from `MCP_SHARED_SECRET`, or from the file that `MCP_SHARED_SECRET_FILE` names.
+Without a secret the server answers every call and logs a warning, so keep its port local.
 The server forwards caller identity and collection headers to the website agent API.
 The API checks access for every requested collection.
 The server checks collection access for tools that read the datastore directly.

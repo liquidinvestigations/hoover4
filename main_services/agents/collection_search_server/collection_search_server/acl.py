@@ -24,6 +24,11 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from typing import Any
+
+from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.middleware import Middleware
 
 log = logging.getLogger(__name__)
 
@@ -91,14 +96,12 @@ def _shared_secret() -> str | None:
     return secret or None
 
 
-def parse_acl(headers: dict[str, str]) -> CallerAcl:
-    """Build the caller's ACL from request headers, or raise :class:`AccessDenied`.
+def check_bearer(headers: dict[str, str]) -> None:
+    """Raise :class:`AccessDenied` unless the headers carry the shared secret.
 
-    Header lookup is case-insensitive: HTTP header casing is not guaranteed and
-    different clients normalise differently.
+    Without a configured secret the check passes and logs a warning.
     """
     lowered = {k.lower(): v for k, v in headers.items()}
-
     secret = _shared_secret()
     if secret is not None:
         presented = lowered.get("authorization", "")
@@ -114,6 +117,34 @@ def parse_acl(headers: dict[str, str]) -> CallerAcl:
             "MCP_SHARED_SECRET is not set: serving without caller authentication. "
             "Do not expose this port beyond localhost."
         )
+
+
+class BearerToken(Middleware):
+    """Check the bearer token before every tool call.
+
+    Some tools read the website agent API and never build a :class:`CallerAcl` here, so
+    the check cannot live in :func:`parse_acl` alone. A call without the token ends with
+    a tool error and reaches no tool.
+    """
+
+    async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+        try:
+            check_bearer(get_http_headers())
+        except AccessDenied as exc:
+            name = getattr(getattr(context, "message", None), "name", "")
+            log.warning("refused tool call %s: %s", name, exc)
+            raise ToolError(str(exc)) from exc
+        return await call_next(context)
+
+
+def parse_acl(headers: dict[str, str]) -> CallerAcl:
+    """Build the caller's ACL from request headers, or raise :class:`AccessDenied`.
+
+    Header lookup is case-insensitive: HTTP header casing is not guaranteed and
+    different clients normalise differently.
+    """
+    check_bearer(headers)
+    lowered = {k.lower(): v for k, v in headers.items()}
 
     raw = lowered.get(COLLECTIONS_HEADER)
     if raw is None:

@@ -68,6 +68,11 @@ A history that does not replay shows a change of a workflow that needs a Tempora
 The migration copies the stopped Compose stores into the claims of a Hoover installation of the site.
 The source keeps its data folders, and nothing deletes them.
 
+The migration needs full root on the source host and on the operator host.
+`migrate.py` and `root_copy.py` run their root commands with `sudo -n` and pass folder paths to them.
+The scoped root rules of the site cover only the site root scripts, so they do not cover the migration.
+Give the operator user unrestricted `sudo -n` on both hosts for the migration.
+
 1. Add a `[hoover.<name>]` section with `source_ini`, the `hoover4.ini` of the Compose installation.
    A migrated installation keeps the storage identity `Hoover4`, an empty table prefix, `hoover4-system` and `hoover4-c-`, and `history_source = compose`.
 2. Show the plan. The command changes nothing.
@@ -100,7 +105,6 @@ The source keeps its data folders, and nothing deletes them.
 | `workers`, `resume` | Start the workers, and wait until each open workflow of the record continues or closes. |
 
 `--engine docker|podman` names the container runtime of the source, and `--source-host` the SSH host of the source.
-The migration runs its root commands with `sudo -n` on the source host and on the operator host, so the operator user needs unrestricted `sudo -n` on both.
 
 ### Retry and return
 

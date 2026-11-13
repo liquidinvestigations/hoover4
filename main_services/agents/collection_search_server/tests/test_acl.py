@@ -4,9 +4,14 @@ These are the security-relevant parts of the server, so they are tested without 
 database: everything here is pure.
 """
 
-import pytest
+import asyncio
 
-from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
+import pytest
+from fastmcp import Client, FastMCP
+from fastmcp.exceptions import ToolError
+
+from collection_search_server import acl as acl_module
+from collection_search_server.acl import AccessDenied, BearerToken, CallerAcl, parse_acl
 from collection_search_server.backends import (
     escape_manticore_string,
     prepare_match_query,
@@ -67,6 +72,50 @@ class TestParseAcl:
         for bad in ["Alpha", "al-pha", "al pha", "a" * 49, "al';DROP"]:
             with pytest.raises(AccessDenied, match="invalid collectionname"):
                 parse_acl({"X-Hoover4-Collections": bad})
+
+
+class TestBearerTokenMiddleware:
+    """Every tool call needs the token, also a tool that never builds a CallerAcl."""
+
+    @pytest.fixture(autouse=True)
+    def _secret(self, monkeypatch):
+        monkeypatch.delenv("MCP_SHARED_SECRET_FILE", raising=False)
+        monkeypatch.setenv("MCP_SHARED_SECRET", "s3cret")
+
+    @staticmethod
+    def call(headers):
+        server = FastMCP("t")
+        server.add_middleware(BearerToken())
+        ran = []
+
+        @server.tool
+        def no_acl_tool() -> str:
+            ran.append(True)
+            return "served"
+
+        async def run():
+            async with Client(server) as client:
+                return await client.call_tool("no_acl_tool", {})
+
+        return asyncio.run(run()), ran
+
+    def test_a_call_without_the_token_is_refused_before_the_tool(self, monkeypatch):
+        for sent in ({}, {"authorization": "Bearer wrong"}):
+            monkeypatch.setattr(acl_module, "get_http_headers", lambda sent=sent: dict(sent))
+            with pytest.raises(ToolError, match="bearer token"):
+                self.call(sent)
+
+    def test_a_call_with_the_token_runs_the_tool(self, monkeypatch):
+        monkeypatch.setattr(acl_module, "get_http_headers", lambda: {"authorization": "Bearer s3cret"})
+        result, ran = self.call({})
+        assert ran == [True] and result.data == "served"
+
+    def test_the_server_checks_the_token_before_its_other_middleware(self):
+        from collection_search_server import server
+
+        assert isinstance(server.mcp.middleware[0], BearerToken)
+        names = {tool.name for tool in asyncio.run(server.mcp.get_tools()).values()}
+        assert {"list_collections", "search_collections", "read_more", "folder_list"} <= names
 
 
 class TestCheck:
