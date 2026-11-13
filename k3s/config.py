@@ -68,6 +68,7 @@ NODE_KEYS = {
     'roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_address': (False, 'text'),
     'architecture': (False, ('choice', ARCHITECTURES)), 'vpn_address': (False, 'address'),
     'wireguard_public_key': (False, 'wgkey'), 'wireguard_port': (False, 'port'), 'vpn_interface': (False, 'interface'),
+    'wireguard_peers': (False, 'names'), 'wireguard_via': (False, 'name'),
     'lan_address': (False, 'address'),
     'onprem': (False, 'bool'), 'public_address': (False, 'address'), 'storage_tiers': (False, 'tiers'),
     'lvm_volume_group': (False, 'name_any'), 'lvm_physical_volumes': (False, 'devices'), 'reserved': (False, 'reserved'),
@@ -115,6 +116,10 @@ class Node:
     wireguard_public_key: str = ''
     wireguard_port: int = 51820
     vpn_interface: str = 'wg0'
+    # The nodes that get a direct WireGuard peer for this node. Empty means every node (wireguard_pairs).
+    wireguard_peers: tuple = ()
+    # The node through which the nodes without a direct peer reach this node, or empty.
+    wireguard_via: str = ''
     lan_address: str = ''
     onprem: bool = False
     public_address: str = ''
@@ -457,6 +462,22 @@ def check(site, check_files=False):
                 problems.append(f'{label} {key} belongs to a node with the role {role}.')
         if node.has('gpu') and not node.gpu_api_key_file:
             problems.append(f'{label} has the role gpu and no gpu_api_key_file.')
+    for node in nodes.values():
+        label = f'[node.{node.name}]'
+        for name in node.wireguard_peers:
+            if name not in nodes or name == node.name:
+                problems.append(f'{label} wireguard_peers names {name}, which is not another node of the site.')
+        if node.wireguard_via:
+            via = node.wireguard_via
+            if via not in nodes or via == node.name:
+                problems.append(f'{label} wireguard_via = {via} is not another node of the site.')
+            elif not wireguard_direct(nodes[via], node):
+                problems.append(f'{label} wireguard_via = {via}, but the two nodes have no direct peer. Name it in wireguard_peers.')
+            else:
+                routed = [n for n in nodes.values() if n.name not in (node.name, via) and not wireguard_direct(n, node)]
+                for other in routed:
+                    if not wireguard_direct(other, nodes[via]):
+                        problems.append(f'{label} is reached through {via}, but [node.{other.name}] has no direct peer for {via}.')
     addresses = {}
     for node in nodes.values():
         for key in ('vpn_address', 'public_address'):
@@ -678,6 +699,37 @@ def local_ca(site):
     return path.read_text() if public and public[0].local and path.exists() else ''
 
 
+def wireguard_direct(a, b):
+    """True when nodes a and b have a direct WireGuard peer for each other.
+
+    A node without wireguard_peers pairs with every node that does not exclude it, so a site without the key keeps the
+    full mesh. A node on a LAN that the other nodes cannot reach names the nodes that it can reach, for example a
+    public node.
+    """
+    return (not a.wireguard_peers or b.name in a.wireguard_peers) and (not b.wireguard_peers or a.name in b.wireguard_peers)
+
+
+def wireguard_routes(site, node):
+    """{peer name: [extra AllowedIPs]} of node: the VPN addresses that it reaches through a peer.
+
+    A node X with wireguard_via = H and a node Y without a direct peer for X reach each other through H. Y adds the
+    address of X to its peer H, and X adds the address of Y to its peer H. H forwards between its peers.
+    """
+    routes = {}
+    for x in site.nodes.values():
+        via = x.wireguard_via
+        if not via or not x.vpn_address:
+            continue
+        for y in site.nodes.values():
+            if y.name in (x.name, via) or wireguard_direct(x, y) or not y.vpn_address:
+                continue
+            if node.name == y.name:
+                routes.setdefault(via, []).append(f'{x.vpn_address}/32')
+            elif node.name == x.name:
+                routes.setdefault(via, []).append(f'{y.vpn_address}/32')
+    return {k: sorted(set(v)) for k, v in routes.items()}
+
+
 def legacy_hosts(site, private=None):
     """The site in the format of hosts.json, which the host scripts of hosts/ read.
 
@@ -695,6 +747,8 @@ def legacy_hosts(site, private=None):
             'local': node.local, 'single': site.single, 'architecture': node.architecture,
             'node_ip': node_address(site, node), 'vg': node.lvm_volume_group,
             'physical_volumes': list(node.lvm_physical_volumes), 'gpu': node.has('gpu'),
+            'peers': [n for n in site.nodes if n != node.name and wireguard_direct(node, site.nodes[n])],
+            'routes': wireguard_routes(site, node),
         }
         if private and node.local and site.single:
             hosts[node.name]['private'] = str(private)

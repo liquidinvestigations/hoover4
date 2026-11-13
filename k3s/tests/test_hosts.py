@@ -120,6 +120,55 @@ def test_a_refused_interface_file_changes_nothing(wireguard):
     assert [e[0] for e in wireguard.events] == ['strip']
 
 
+# gpu-1 sits on another LAN. It peers only with the public node edge, and the other nodes reach it through edge.
+ROUTED_GPU = REMOTE_GPU.replace('gpu_api_key_file = /root/vllm-key\n',
+                                'gpu_api_key_file = /root/vllm-key\nwireguard_public_key = gpu-1-public-key\n'
+                                'wireguard_peers = edge\nwireguard_via = edge\n')
+
+
+def test_a_node_with_wireguard_peers_gets_direct_peers_only_with_them():
+    hosts = config.legacy_hosts(config.parse(ROUTED_GPU))['hosts']
+    assert hosts['gpu-1']['peers'] == ['edge']
+    assert 'gpu-1' in hosts['edge']['peers'] and 'gpu-1' not in hosts['server-a']['peers']
+    # The nodes without the key keep the full mesh among themselves.
+    assert set(hosts['server-a']['peers']) == {'worker-b', 'edge', 'calls'}
+    # Each side routes the other through edge, and edge only forwards.
+    assert hosts['server-a']['routes'] == {'edge': ['10.0.0.5/32']}
+    assert hosts['gpu-1']['routes'] == {'edge': ['10.0.0.2/32', '10.0.0.3/32', '10.0.0.4/32']}
+    assert hosts['edge']['routes'] == {}
+    site = config.parse(ROUTED_GPU)
+    assert config.parse(config.dump(site)) == site
+    assert config.legacy_hosts(config.parse(site_text('remote.ini')))['hosts']['server-a']['routes'] == {}
+
+
+def test_a_route_needs_direct_peers_with_the_forwarding_node():
+    with pytest.raises(config.SiteError, match='have no direct peer'):
+        config.parse(ROUTED_GPU.replace('wireguard_peers = edge\n', 'wireguard_peers = calls\n'))
+    with pytest.raises(config.SiteError, match='not another node of the site'):
+        config.parse(ROUTED_GPU.replace('wireguard_peers = edge\n', 'wireguard_peers = edge, nowhere\n'))
+    with pytest.raises(config.SiteError, match='has no direct peer for edge'):
+        config.parse(ROUTED_GPU.replace('[node.calls]\n', '[node.calls]\nwireguard_peers = server-a\n'))
+
+
+def test_the_wireguard_step_adds_routed_addresses_and_removes_none(wireguard, monkeypatch):
+    hosts = config.legacy_hosts(config.parse(ROUTED_GPU))['hosts']
+    monkeypatch.setattr(wireguard, 'HOSTS', hosts)
+    # server-a has a hub peer for the whole range and a peer for edge from an earlier run.
+    text = ('[Interface]\nPrivateKey = private\nListenPort = %d\n\n[Peer]\nPublicKey = hub-key\nAllowedIPs = 10.0.0.0/24\n\n'
+            '[Peer]\nPublicKey = edge-public-key\nAllowedIPs = 10.0.0.1/32\n' % hosts['server-a']['port'])
+    open(wireguard.WG_CONF, 'w').write(text)
+    wireguard.step_wireguard()
+    written = [e for e in wireguard.events if e[0] == 'write'][0][2]
+    assert 'AllowedIPs = 10.0.0.0/24\n' in written
+    assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.5/32\n' in written
+    assert 'gpu-1-public-key' not in written and 'PublicKey = worker-b-public-key' in written
+    # On gpu-1 the new peer for edge carries the addresses that edge forwards.
+    monkeypatch.setattr(wireguard, 'THIS', 'gpu-1')
+    blocks = '\n'.join(wireguard.peer_blocks('[Interface]\n'))
+    assert blocks.count('[Peer]') == 1
+    assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.2/32, 10.0.0.3/32, 10.0.0.4/32' in blocks
+
+
 def test_the_vpn_interface_must_be_a_valid_name():
     with pytest.raises(config.SiteError, match='is not a network interface name'):
         config.parse(site_text('remote.ini').replace('architecture = arm64\n', 'architecture = arm64\nvpn_interface = a b\n'))

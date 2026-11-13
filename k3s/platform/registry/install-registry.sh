@@ -25,9 +25,13 @@ printf 'push:%s\n' "$(printf '%s' "$password" | openssl passwd -apr1 -salt "$sal
 (umask 077; printf '{"auths": {"%s": {"auth": "%s"}}}\n' "$endpoint" "$(printf 'push:%s' "$password" | base64 -w0)" > "$private/registry-auth.json")
 # The hash of this file restarts the pod when the nginx configuration changes.
 hash=$(sha256sum registry.yaml | cut -c1-16)
-# A server-side apply sets only the fields of the manifest. An adopted claim keeps the storage class that an earlier
-# tool set, because a claim spec does not change after its creation.
-sed "s/NODE/$node/; s/HOST_IP/${endpoint%:*}/; s/CONFIG_HASH/$hash/" registry.yaml |
+# A claim spec does not change after its creation. A new claim gets the default storage class of the site. After that,
+# the field manager owns the class that the API set, so a later apply without the class would clear it, and the API
+# refuses that. The manifest therefore names the class of an existing claim, including an adopted one.
+class=$(kubectl -n registry get pvc registry-data -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+class_rule=''
+[ -z "$class" ] || class_rule="s|^  # The default storage class of the site.*|  storageClassName: $class|"
+sed -e "s/NODE/$node/; s/HOST_IP/${endpoint%:*}/; s/CONFIG_HASH/$hash/" -e "$class_rule" registry.yaml |
   kubectl apply --server-side --force-conflicts --field-manager=hoover4-registry -f -
 kubectl -n registry rollout status deployment/registry --timeout=300s
 python3 node-registries.py

@@ -14,7 +14,7 @@ metadata:
   name: registry-data
   namespace: registry
 spec:
-  # The default storage class of the site (../../cluster/topolvm_values.py).
+  # The default storage class of the site (../../cluster/topolvm_values.py). install-registry.sh names the class of an existing claim here.
   accessModes: [ReadWriteOnce]
   resources:
     requests:

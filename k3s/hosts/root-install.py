@@ -8,6 +8,8 @@ The script has four steps and runs them in this order. Each step reads the state
 first and skips the work that is already done. A second run continues after a failure.
 
   wireguard  Add direct WireGuard peers to the VPN interface of the host (vpn_interface of the site file, default wg0).
+             Only the nodes of wireguard_peers get a peer. The routed addresses of wireguard_via go to the AllowedIPs
+             of the peer that forwards them. The step adds addresses and removes none.
              The two on-prem hosts connect over the LAN. The other peers and routes of the interface stay unchanged.
   software   Install the missing packages. Stop and disable Docker on the on-prem hosts.
   settings   Write the kernel module, sysctl, NetworkManager and SELinux settings for k3s.
@@ -195,12 +197,46 @@ def set_listen_port(lines, port):
     return lines
 
 
+def direct_peers():
+    """The hosts that get a direct peer on this host. A hosts.json without "peers" pairs every host."""
+    me = HOSTS[THIS]
+    names = me.get("peers")
+    return [n for n in HOSTS if n != THIS and (names is None or n in names)]
+
+
+def allowed_ips(name):
+    """The AllowedIPs of the peer of host name: its VPN address and the addresses routed through it."""
+    return [f"{HOSTS[name]['wg_ip']}/32"] + list(HOSTS[THIS].get("routes", {}).get(name, []))
+
+
+def widen_allowed_ips(lines):
+    """Add the missing routed addresses to the AllowedIPs of the peers in the file. Remove no address."""
+    keys = {HOSTS[n]["key"]: n for n in direct_peers() if HOSTS[n]["key"]}
+    lines = list(lines)
+    peer = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            peer = None
+        found = re.match(r"PublicKey\s*=\s*(\S+)", stripped, re.I)
+        if found:
+            peer = keys.get(found.group(1))
+        allowed = re.match(r"(\s*AllowedIPs\s*=\s*)(.*)", line, re.I)
+        if allowed and peer:
+            present = [a.strip() for a in allowed.group(2).split(",") if a.strip()]
+            missing = [a for a in allowed_ips(peer) if a not in present]
+            if missing:
+                lines[i] = allowed.group(1) + ", ".join(present + missing)
+    return lines
+
+
 def peer_blocks(text):
-    """Return the lines of the [Peer] sections for the hosts that the interface file does not have."""
+    """Return the lines of the [Peer] sections for the direct peers that the interface file does not have."""
     present = set(re.findall(r"^\s*PublicKey\s*=\s*(\S+)", text, re.M | re.I))
     blocks = []
-    for name, peer in HOSTS.items():
-        if name == THIS or peer["key"] in present:
+    for name in direct_peers():
+        peer = HOSTS[name]
+        if peer["key"] in present:
             continue
         if not peer["key"] or not peer["wg_ip"]:
             # A peer line without a key makes the file invalid, and wg-quick then fails at the next start.
@@ -210,7 +246,7 @@ def peer_blocks(text):
         endpoint = peer_endpoint(name)
         if endpoint:
             blocks.append(f"Endpoint = {endpoint}")
-        blocks += [f"AllowedIPs = {peer['wg_ip']}/32", f"PersistentKeepalive = {KEEPALIVE}"]
+        blocks += [f"AllowedIPs = {', '.join(allowed_ips(name))}", f"PersistentKeepalive = {KEEPALIVE}"]
     return blocks
 
 
@@ -223,7 +259,7 @@ def step_wireguard():
         fail(f"the public key of {WG_IF} is not the key of {THIS}. Use the script of this host.")
     text = open(WG_CONF).read()
     lines = text.splitlines()
-    new = set_listen_port(lines, me["port"]) + peer_blocks(text)
+    new = widen_allowed_ips(set_listen_port(lines, me["port"])) + peer_blocks(text)
     if new == lines:
         say(f"  {WG_CONF} has the listen port and all peers")
     else:
@@ -259,7 +295,7 @@ def step_wireguard():
 
 
 def verify_peers():
-    others = [n for n in HOSTS if n != THIS]
+    others = [n for n in direct_peers() if HOSTS[n]["key"] and HOSTS[n]["wg_ip"]]
     pending = set(others)
     deadline = time.time() + 30
     while pending and time.time() < deadline:
@@ -278,6 +314,13 @@ def verify_peers():
         rtt = re.search(r"= [\d.]+/([\d.]+)/", out)
         state = f"ping {rtt.group(1)} ms" if code == 0 and rtt else "ping failed"
         say(f"  {name}: handshake over {endpoints.get(HOSTS[name]['key'], '?')}, {state}")
+    by_address = {f"{h['wg_ip']}/32": n for n, h in HOSTS.items() if h["wg_ip"]}
+    for via, addresses in sorted(HOSTS[THIS].get("routes", {}).items()):
+        for address in addresses:
+            code, out = read(["ping", "-c", "3", "-W", "2", address.split("/")[0]])
+            rtt = re.search(r"= [\d.]+/([\d.]+)/", out)
+            state = f"ping {rtt.group(1)} ms" if code == 0 and rtt else "ping failed"
+            say(f"  {by_address.get(address, address)}: through {via}, {state}")
 
 
 # ---------------------------------------------------------------- software

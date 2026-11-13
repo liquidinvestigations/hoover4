@@ -39,7 +39,7 @@ The default path is `k3s/private/hoover4-site.ini`. [tests/fixtures/](tests/fixt
 | Section | Keys |
 |---|---|
 | `[site]` | `name`, `suffix`, `control_plane`, and optional `operator_user`, `vpn_cidr`, `state_path` |
-| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_dns_credentials_file`, `gpu_api_key_file` |
+| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `wireguard_peers`, `wireguard_via`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_dns_credentials_file`, `gpu_api_key_file` |
 | `[gpu_pool]` | `nodes` or `address`, and `api_key_file` |
 | `[backup]` | `node` and `path` of the backup destination |
 | `[hoover.<name>]` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
@@ -49,7 +49,11 @@ The value `single` gives one host every role except `calls` and `gpu`.
 A site with one node needs no VPN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
-`vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here, and the installer adds no peer to a GPU node.
+`vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here.
+The wireguard step gives each node a direct peer for every other node with a `wireguard_public_key`.
+A node on a LAN that the other nodes cannot reach names the nodes that it can reach in `wireguard_peers`, for example a node with a public address.
+Its `wireguard_via` names the peer that forwards between it and the other nodes. Each side then adds the address of the other side to the AllowedIPs of that peer.
+The step adds addresses and peers and removes none, so an existing route, for example to a VPN hub, stays.
 
 Check a site file, or print the part that one node receives:
 
