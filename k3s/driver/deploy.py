@@ -380,6 +380,16 @@ class Remote:
     def bundle_path(self):
         return f'k3s-install/{self.ctx.record["revision"][:12]}'
 
+    def prune_bundles(self):
+        """Remove the bundles of ~/k3s-install that kept_revisions does not name. Each bundle holds about 1.4 GB."""
+        keep = ' '.join(sorted(r[:12] for r in kept_revisions(self.ctx)))
+        script = (f'cd ~/k3s-install 2>/dev/null || exit 0; for d in *; do case " {keep} " in *" $d "*) continue;; esac; '
+                  'if [ -d "$d" ] && echo "$d" | grep -qxE "[0-9a-f]{12}"; then rm -rf -- "$d" && echo "$d"; fi; done; true')
+        code, out = self.ssh(script, timeout=300)
+        if code:
+            raise StepFailed(f'node {self.node.name}: the removal of earlier bundles failed: {out[-300:]}')
+        return out.split()
+
     def route(self):
         """The root route of the node: sudo, scoped (the bootstrap rule), cluster, or none."""
         found = self.probe()
@@ -411,9 +421,11 @@ class Remote:
             self.ctx.record.setdefault('homes', {})[self.node.name] = found['home']
             return found
         if kind == 'bundle':
+            removed = self.prune_bundles()
             folder = write_remote_scripts(self.ctx, self.node, self.ctx.record['revision'])
             self.shell.send_tree(folder, self.bundle_path())
-            return {'bundle': str(folder), 'node_folder': f'~/{self.bundle_path()}', 'files': bundle_digests(folder)}
+            return {'bundle': str(folder), 'node_folder': f'~/{self.bundle_path()}', 'files': bundle_digests(folder),
+                    'removed_bundles': removed}
         if kind == 'stage':
             code, out = self.ssh(f'cd ~/{self.bundle_path()} && bash ./stage-k3s.sh {self.node.architecture} .', timeout=1800)
             if code:
@@ -596,6 +608,38 @@ def restart_watchers(ctx):
 
 LIBEXEC = Path('/usr/local/libexec/hoover4')
 ROOT_SCRIPTS = ('root-install-local.py', 'root-install-k3s.py')
+
+
+def kept_revisions(ctx):
+    """The revisions whose exported tree and node bundles stay: the revision of the record, the applied and the previous
+    revision, and the revision of each record that waits for a person, for example for the bootstrap of a node."""
+    keep = {ctx.record['revision']}
+    for record in (ctx.records.applied(), ctx.records.previous()):
+        if record:
+            keep.add(record['revision'])
+    for rid in ctx.records.list():
+        record = ctx.records.load(rid)
+        if record.get('status') == 'waiting':
+            keep.add(record['revision'])
+    return keep
+
+
+def prune_trees(ctx):
+    """Remove the exported trees of <private>/build that kept_revisions does not name. Each tree holds about 0.5 GB.
+
+    A new record supersedes the earlier records, so their trees go. A resume of an earlier record then needs a new run.
+    """
+    import re
+    import shutil
+    removed = []
+    folder = ctx.private / 'build'
+    keep = kept_revisions(ctx)
+    for tree in sorted(folder.glob('*')) if folder.exists() else []:
+        name = tree.name.removesuffix('.partial')
+        if tree.is_dir() and re.fullmatch(r'[0-9a-f]{40}', name) and name not in keep:
+            shutil.rmtree(tree)
+            removed.append(tree.name)
+    return removed
 
 
 def local_bundle(ctx, node, staged=False):

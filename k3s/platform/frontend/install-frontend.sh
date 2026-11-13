@@ -72,9 +72,26 @@ cp "$private/bin/caddy" "$work/caddy"
 cp frontend-sync.sh "$work/sync"
 # The files go to a temporary folder of the operator user. The root step installs only a changed file. It restarts
 # Caddy when its binary or its unit changed, and sync restarts it when the Caddyfile or the certificate changed.
-remote=$(ssh "$ssh_host" mktemp -d)
-scp -q "$work/site.env" "$work/zones" "$work/hoover-frontend.service" "$work/hook" "$work/caddy" "$work/sync" "$ssh_host:$remote/"
-ssh "$ssh_host" "sudo -n bash -s '$remote'" <<'ROOT'
+# retry <input file> <command...>: sshd drops new connections before authentication when it holds MaxStartups unauthenticated ones,
+# for example while the public host gets login attempts from the internet. ssh and scp then exit with 255 before the
+# remote command starts, so the call starts again after a pause (../../driver/hostroute.py SSH_REFUSED).
+# Each attempt opens the input file again, so a second attempt reads it from the start.
+retry() {
+  local input=$1 attempt rc err
+  shift
+  err=$(mktemp)
+  for attempt in 1 2 3 4 5; do
+    rc=0
+    "$@" <"$input" 2>"$err" || rc=$?
+    if [ "$rc" -ne 255 ] || ! grep -qE 'kex_exchange_identification|Connection closed by|Connection reset by' "$err" || [ "$attempt" -eq 5 ]; then
+      cat "$err" >&2; rm -f "$err"; return "$rc"
+    fi
+    sleep 6
+  done
+}
+remote=$(retry /dev/null ssh "$ssh_host" mktemp -d)
+retry /dev/null scp -q "$work/site.env" "$work/zones" "$work/hoover-frontend.service" "$work/hook" "$work/caddy" "$work/sync" "$ssh_host:$remote/"
+cat > "$work/root.sh" <<'ROOT'
 set -euo pipefail
 src=$1 changed=''
 put() { # put <file> <target> <mode>
@@ -95,6 +112,7 @@ case "$changed" in *caddy*|*hoover-frontend.service*) systemctl restart hoover-f
 systemctl is-active -q hoover-frontend.service
 echo "frontend files: changed:${changed:- nothing}"
 ROOT
+retry "$work/root.sh" ssh "$ssh_host" "sudo -n bash -s '$remote'"
 # Zone names resolve to the frontend inside the cluster. k3s CoreDNS imports the *.server keys of coredns-custom.
 before=$(kubectl -n kube-system get configmap coredns-custom -o jsonpath='{.data.zones\.server}' 2>/dev/null || true)
 dns="${suffix}:53 {

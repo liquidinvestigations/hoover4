@@ -198,6 +198,11 @@ def main(argv):
                                      applied_before=(ctx.records.applied() or {}).get('revision'),
                                      inputs=deploy.pinned_inputs(ctx, tree=HERE.parent))
             print(json.dumps({'record': record['id'], 'revision': revision, 'steps': list(steps)}), flush=True)
+            if args.command == 'up':
+                ctx.record = record
+                removed = deploy.prune_trees(ctx)
+                if removed:
+                    print(json.dumps({'removed_trees': removed}), flush=True)
         return deploy.execute(ctx, record, steps)
     except deploy.StepFailed as error:
         raise SystemExit(f'deploy-k3s: {error}')

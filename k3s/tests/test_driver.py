@@ -768,3 +768,72 @@ def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
     assert r.returncode == 0, r.stdout[-500:] + r.stderr[-500:]
     assert 'node gpu-1 has not joined the cluster' in r.stdout
     assert 'gpu-1' not in labelled and set(joined) <= set(labelled)
+
+
+def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
+    # A relay-only client needs coturn to reach LiveKit at the public address. Every other port of it stays closed.
+    sys.path.insert(0, str(K3S / 'platform/calls'))
+    import turn_peers
+    assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '') == [
+        'denied-peer-ip=0.0.0.0-255.255.255.255', 'allowed-peer-ip=10.42.0.0-10.42.3.255']
+    assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
+    script = turn_peers.guard_script('203.0.113.10')
+    chain = [line for line in script.split("'")[1].splitlines() if line.startswith('-A')]
+    assert chain == ['-A HOOVER4-COTURN -p udp --dport 7882 -j RETURN', '-A HOOVER4-COTURN -p tcp --dport 7881 -j RETURN',
+                     '-A HOOVER4-COTURN -j DROP']
+    jump = f'OUTPUT -d 203.0.113.10/32 -m owner --uid-owner {turn_peers.COTURN_UID} -j HOOVER4-COTURN'
+    assert f'iptables -t raw -C {jump} 2>/dev/null || iptables -t raw -I {jump}' in script
+    container = turn_peers.guard_container('image', '203.0.113.10')
+    assert container['command'][:6] == ['nsenter', '-t', '1', '-m', '-n', '--']
+    # The install script runs coturn with that user id and publishes the LiveKit ports from the same constants.
+    text = (K3S / 'platform/calls/install-calls.py').read_text()
+    assert "'runAsUser':turn_peers.COTURN_UID" in text and 'turn_peers.peer_lines(PODS,PUBLIC)' in text
+    assert "'hostPort':turn_peers.LIVEKIT_UDP" in text and "'udp_port':turn_peers.LIVEKIT_UDP" in text
+
+
+def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):
+    # A public node under login attempts from the internet drops new connections at MaxStartups.
+    import types
+    import hostroute
+    monkeypatch.setattr(hostroute, 'SSH_PAUSE', 0)
+    shell = hostroute.Shell(types.SimpleNamespace(name='edge', local=False, ssh_address='op@edge'))
+    answers = [(255, 'kex_exchange_identification: Connection closed by remote host'),
+               (255, 'Connection reset by 203.0.113.10 port 22'), (0, 'done')]
+    calls = []
+    monkeypatch.setattr(hostroute, 'run', lambda argv, **kw: calls.append(argv) or answers[len(calls) - 1])
+    assert shell.run('true') == (0, 'done') and len(calls) == 3
+    # A failure after the start, or another ssh error, is not run again.
+    calls.clear()
+    answers[:] = [(255, 'Permission denied (publickey).'), (0, 'done')]
+    assert shell.run('true')[0] == 255 and len(calls) == 1
+    calls.clear()
+    answers[:] = [(1, 'Connection closed by remote host'), (0, 'done')]
+    assert shell.run('true')[0] == 1 and len(calls) == 1
+
+
+def test_a_new_up_removes_the_trees_and_bundles_of_superseded_revisions(tmp_path, monkeypatch):
+    # Each revision leaves a 0.5 GB tree and a 1.4 GB bundle per node. A full home folder stopped an up of the demo.
+    import types
+    revs = {k: (c * 40) for k, c in (('new', 'a'), ('applied', 'b'), ('previous', 'c'), ('waiting', 'd'), ('old', 'e'))}
+    recs = {'r-wait': {'status': 'waiting', 'revision': revs['waiting']}, 'r-old': {'status': 'failed', 'revision': revs['old']}}
+    records = types.SimpleNamespace(applied=lambda: {'revision': revs['applied']}, previous=lambda: {'revision': revs['previous']},
+                                    list=lambda: sorted(recs), load=lambda rid: recs[rid])
+    private = tmp_path / 'private'
+    for name in [*revs.values(), revs['old'] + '.partial', 'notes']:
+        (private / 'build' / name).mkdir(parents=True)
+    ctx = types.SimpleNamespace(record={'revision': revs['new']}, records=records, private=private)
+    assert deploy.prune_trees(ctx) == [revs['old'], revs['old'] + '.partial']
+    assert sorted(p.name for p in (private / 'build').iterdir()) == sorted([revs['new'], revs['applied'], revs['previous'],
+                                                                             revs['waiting'], 'notes'])
+    # The bundles of a node: the same revisions stay, and other files of ~/k3s-install stay too.
+    home = tmp_path / 'home'
+    for name in [r[:12] for r in revs.values()] + ['notes']:
+        (home / 'k3s-install' / name).mkdir(parents=True)
+    (home / 'k3s-install' / 'k3s').write_text('binary')
+    adapter = object.__new__(deploy.Remote)
+    adapter.ctx, adapter.node = ctx, types.SimpleNamespace(name='edge')
+    adapter.ssh = lambda script, timeout=40: (lambda r: (r.returncode, r.stdout + r.stderr))(
+        subprocess.run(['sh', '-c', script], env={**os.environ, 'HOME': str(home)}, capture_output=True, text=True))
+    assert adapter.prune_bundles() == [revs['old'][:12]]
+    assert sorted(p.name for p in (home / 'k3s-install').iterdir()) == sorted(
+        [r[:12] for k, r in revs.items() if k != 'old'] + ['notes', 'k3s'])

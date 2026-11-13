@@ -23,6 +23,12 @@ SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHo
 POD_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
 LOG_DIR = '/var/log/hoover4'
 LIBEXEC = '/usr/local/libexec/hoover4'
+# sshd drops new connections before authentication when it holds MaxStartups unauthenticated ones, for example while
+# a public host gets login attempts from the internet. ssh then exits with 255 and one of these texts, and the remote
+# command did not start, so the call starts again after a pause.
+SSH_REFUSED = ('kex_exchange_identification', 'Connection closed by', 'Connection reset by')
+SSH_ATTEMPTS = 5
+SSH_PAUSE = 6
 
 
 class RouteError(RuntimeError):
@@ -53,18 +59,33 @@ class Shell:
         return ['ssh', *SSH_OPTIONS, self.node.ssh_address, '--', script]
 
     def run(self, script, input=None, timeout=600):
-        return run(self.command(script), input=input, timeout=timeout)
+        for attempt in range(SSH_ATTEMPTS):
+            code, out = run(self.command(script), input=input, timeout=timeout)
+            if not refused_before_start(self.node, code, out) or attempt == SSH_ATTEMPTS - 1:
+                return code, out
+            time.sleep(SSH_PAUSE)
 
     def send_tree(self, folder, destination, timeout=600):
         """Copy a local folder into a private folder of the node, through tar on standard input."""
-        pack = subprocess.Popen(['tar', '-C', str(folder), '-cf', '-', '.'], stdout=subprocess.PIPE)
         script = f'umask 077 && mkdir -p {shlex.quote(destination)} && tar -C {shlex.quote(destination)} -xf -'
-        r = subprocess.run(self.command(script), stdin=pack.stdout, capture_output=True, timeout=timeout)
-        # tar ends with an error when the node stopped reading, instead of waiting for a reader.
-        pack.stdout.close()
-        if pack.wait() or r.returncode:
+        for attempt in range(SSH_ATTEMPTS):
+            pack = subprocess.Popen(['tar', '-C', str(folder), '-cf', '-', '.'], stdout=subprocess.PIPE)
+            r = subprocess.run(self.command(script), stdin=pack.stdout, capture_output=True, timeout=timeout)
+            # tar ends with an error when the node stopped reading, instead of waiting for a reader.
+            pack.stdout.close()
+            packed = pack.wait()
+            out = (r.stderr or b'').decode(errors='replace')
+            if not refused_before_start(self.node, r.returncode, out) or attempt == SSH_ATTEMPTS - 1:
+                break
+            time.sleep(SSH_PAUSE)
+        if packed or r.returncode:
             raise RouteError(f'node {self.node.name}: the copy into {destination} failed: '
                              f'{(r.stderr or b"").decode(errors="replace").strip()[-300:]}')
+
+
+def refused_before_start(node, code, out):
+    """True when ssh to a remote node ended before the remote command started."""
+    return not node.local and code == 255 and any(text in out for text in SSH_REFUSED)
 
 
 def unit_state(shell, unit):

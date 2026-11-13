@@ -94,6 +94,9 @@ k3s/deploy-k3s status
 - A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.
   The earlier applied record moves to `deploy/previous.json`, so a failed update can return to its revision with `up --revision`.
+- A new `up` record removes the exported trees of `<private>/build/` and the node bundles of `~/k3s-install/` of the other revisions.
+  The revision of the record, the applied and the previous revision, and the revision of a record that waits for a person stay.
+  A resume removes nothing, but a record that a newer `up` superseded cannot resume once its bundles are gone. Start a new run for it.
 - `down` scales the zone gates and the login proxy of each Hoover installation to zero, then the applications and workers, then Temporal, then the stores, and then stops the HTTPS frontend and k3s.
   The stores tier holds the databases, Keycloak, the LDAP server and the ingress controller, because the applications and the gates need them at start.
   `deploy/stopped.json` keeps the replica counts. `up --start` starts k3s and the HTTPS frontend, then restores the stores, Temporal, the applications and the gates in this order.
@@ -259,6 +262,9 @@ The step `gpu-pool` waits for the GPU workloads and calls each port with the key
 
 The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
 A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
+coturn relays to the pods and, on a media node with a public address, to that address for a client that can only use TURN.
+A host rule of the media node limits that address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
+The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.
 `python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
 Run `hosts/root-install-public-firewall.sh` on the public node and on the calls node.
 

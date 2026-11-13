@@ -6,7 +6,8 @@ The namespace calls holds three services:
   node. Each zone has its own TURN secret, and LiveKit has one.
   turn_listen in the settings file (k3s/settings.py) adds addresses: the frontend address, which the pods reach as
   turn.<suffix>, and the public address of the host. A remote client sends its media to coturn on 3478, and coturn
-  relays it to the pods from the bridge address.
+  relays it to the pods from the bridge address. It also relays to the public address of the media node, but a host rule
+  limits that address to the LiveKit media ports (turn_peers.py).
 - LiveKit is the MatrixRTC SFU. Each zone signs tokens with its own key.
   sfu.<zone>.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
 - JVB is the Jitsi video bridge. The script copies the JVB Deployment that the openDesk chart renders in the first
@@ -26,6 +27,8 @@ sys.path.insert(0,str(source));import settings
 settings.use_kubeconfig()
 sys.path.insert(0,str(source/'zones'));from zones import ZONES,SUFFIX
 import cpu_policy
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent));import turn_peers
+sys.path.insert(0,str(source/'driver'));from hostroute import POD_IMAGE
 data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
 NS='calls';NODE=settings.HOST.get('calls_node',settings.HOST['ingress_node']);PUBLIC=settings.HOST.get('calls_public_address','')
 def kubectl(*args,data=None):return subprocess.run(['kubectl',*args],input=data,text=True,check=True,capture_output=True).stdout
@@ -46,8 +49,9 @@ def coturn():
  lines=['listening-port=3478','listening-ip=127.0.0.1','listening-ip=::1',f'listening-ip={BRIDGE}',f'relay-ip={BRIDGE}',
   'min-port=49160','max-port=49199',f'realm=turn.{SUFFIX}','use-auth-secret','fingerprint','no-cli','no-tls','no-dtls',
   'no-multicast-peers','no-software-attribute',
-  # Peers are pods only, so a TURN user cannot reach the host or another network.
-  'denied-peer-ip=0.0.0.0-255.255.255.255',f'allowed-peer-ip={PODS}',
+  # Peers are the pods and the public media address. The host rule of turn_peers.py limits that address to the
+  # LiveKit media ports, so a TURN user cannot reach the host or another network.
+  *turn_peers.peer_lines(PODS,PUBLIC),
   # Logs go to stdout only. Without a user database, coturn keeps no state on disk.
   'log-file=stdout','simple-log','pidfile=/var/lib/coturn/turnserver.pid']
  lines+=[f'listening-ip={address}' for address in settings.HOST.get('calls_turn_listen',settings.HOST.get('turn_listen',[]))]
@@ -56,16 +60,20 @@ def coturn():
   'containers':[{'name':'coturn','image':COTURN,'args':['-c','/etc/coturn/turnserver.conf'],
    # The turnserver binary carries the file capability NET_BIND_SERVICE. Without it in the bounding set, exec fails.
    'resources':{'requests':{'cpu':'10m','memory':'16Mi'},'limits':{'cpu':'1','memory':'128Mi'}},
-   'securityContext':{**SECURITY,'capabilities':{'drop':['ALL'],'add':['NET_BIND_SERVICE']}},
+   'securityContext':{**SECURITY,'runAsUser':turn_peers.COTURN_UID,'runAsGroup':turn_peers.COTURN_UID,
+    'capabilities':{'drop':['ALL'],'add':['NET_BIND_SERVICE']}},
    'volumeMounts':[{'name':'config','mountPath':'/etc/coturn','readOnly':True},{'name':'state','mountPath':'/var/lib/coturn'}]}],
   'volumes':[{'name':'config','secret':{'secretName':'coturn'}},{'name':'state','emptyDir':{'medium':'Memory','sizeLimit':'8Mi'}}]}
+ if PUBLIC:
+  # The init container writes the host rule for the public address (turn_peers.py). nsenter needs the host process ids.
+  pod.update(hostPID=True,initContainers=[turn_peers.guard_container(POD_IMAGE,PUBLIC)])
  return [secret('coturn',{'turnserver.conf':'\n'.join(lines)+'\n'}),
   {'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'coturn','namespace':NS},
    'spec':{'replicas':1,'strategy':{'type':'Recreate'},'selector':{'matchLabels':{'app.kubernetes.io/name':'coturn'}},
     'template':{'metadata':{'labels':{'app.kubernetes.io/name':'coturn'}},'spec':pod}}}]
 def livekit():
  keys={zone:data[zone]['livekit_secret'] for zone in ZONES}
- config={'port':7880,'rtc':{'tcp_port':7881,'udp_port':7882,'use_external_ip':False,
+ config={'port':7880,'rtc':{'tcp_port':turn_peers.LIVEKIT_TCP,'udp_port':turn_peers.LIVEKIT_UDP,'use_external_ip':False,
    'turn_servers':[{'host':f'turn.{SUFFIX}','port':3478,'protocol':'udp','secret':calls['livekit_turn_secret']}]},
   # lk-jwt creates each room after it checks the Matrix membership, so LiveKit must not create rooms for any token.
   'room':{'auto_create':False},'turn':{'enabled':False},'keys':keys,'logging':{'level':'warn','pion_level':'error'}}
@@ -73,8 +81,9 @@ def livekit():
   'containers':[{'name':'livekit','image':LIVEKIT,'args':['--config','/etc/livekit/config.yaml','--node-ip',PUBLIC or '$(POD_IP)'],
    'env':[{'name':'POD_IP','valueFrom':{'fieldRef':{'fieldPath':'status.podIP'}}}],
    # With a public address the media ports are host ports of the media node, so a client reaches them directly.
-   'ports':[{'name':'http','containerPort':7880},{'name':'rtc-tcp','containerPort':7881,**({'hostPort':7881} if PUBLIC else {})},
-    {'name':'rtc-udp','containerPort':7882,'protocol':'UDP',**({'hostPort':7882} if PUBLIC else {})}],
+   'ports':[{'name':'http','containerPort':7880},
+    {'name':'rtc-tcp','containerPort':turn_peers.LIVEKIT_TCP,**({'hostPort':turn_peers.LIVEKIT_TCP} if PUBLIC else {})},
+    {'name':'rtc-udp','containerPort':turn_peers.LIVEKIT_UDP,'protocol':'UDP',**({'hostPort':turn_peers.LIVEKIT_UDP} if PUBLIC else {})}],
    'readinessProbe':{'httpGet':{'path':'/','port':7880},'periodSeconds':10},
    'resources':{'requests':{'cpu':'50m','memory':'64Mi'},'limits':{'cpu':'2','memory':'1Gi'}},'securityContext':SECURITY,
    'volumeMounts':[{'name':'config','mountPath':'/etc/livekit','readOnly':True}]}],

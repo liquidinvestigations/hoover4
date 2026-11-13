@@ -7,7 +7,9 @@ server pod of the data node into <zone>/testdata of the data root (../platform/h
 pods see it below /data/testdata. The script writes the size and SHA-256 of each file of the selected datasets to the
 output file. It then creates the collection `demo` and adds each dataset of qa/datasets.json that the upstream verifier
 ingests, with --wait. An existing collection or dataset stays.
-Usage: seed.py <zone> [output.json]
+--browser loads the fixtures of the browser scenarios (website/browser-tests/) instead: the collection testdata with
+every dataset of qa/datasets.json, under the dataset names of that file.
+Usage: seed.py <zone> [output.json] [--browser]
 """
 import hashlib
 import json
@@ -26,7 +28,9 @@ REVISION = '75f446b724b4e3b514ddb9966067afcf2fbe0a5a'
 # The datasets that main_services/verify-stack.sh ingests, with the dataset name in the demo collection.
 DATASETS = {'testdata_testfiles': 'testfiles', 'testdata_emails': 'emails', 'testdata_zips': 'zips',
             'testdata_shapes': 'shapes', 'testdata_filenames': 'filenames'}
-ZONE = sys.argv[1]
+BROWSER = '--browser' in sys.argv
+ARGS = [a for a in sys.argv[1:] if a != '--browser']
+ZONE = ARGS[0]
 NS = 'hoover-' + ZONE
 MOUNT = '/data/testdata/hoover-testdata'
 
@@ -71,22 +75,25 @@ def main():
     found = subprocess.run(['git', '-C', str(CORPUS), 'show', f'{REVISION}:qa/datasets.json'], capture_output=True, text=True)
     if found.returncode:
         raise SystemExit(f'the corpus checkout has no revision {REVISION}. Run main_services/fetch-testdata.sh.')
-    listed = {d['name']: d['root'] for d in json.loads(found.stdout)['datasets']}
-    roots = {name: listed[name] for name in DATASETS}
+    entries = json.loads(found.stdout)['datasets']
+    listed = {d['name']: d['root'] for d in entries}
+    collection, datasets = ('testdata', {d['name']: d['name'] for d in entries if d['collection'] == 'testdata'}) if BROWSER \
+        else ('demo', DATASETS)
+    roots = {name: listed[name] for name in datasets}
     with tempfile.TemporaryDirectory(prefix='hoover-testdata-') as tree:
         archive = subprocess.Popen(['git', '-C', str(CORPUS), 'archive', REVISION, 'qa', *roots.values()], stdout=subprocess.PIPE)
         subprocess.run(['tar', '-x', '-C', tree], stdin=archive.stdout, check=True)
         if archive.wait():
             raise SystemExit(f'git archive of {REVISION} failed')
         files = copy(Path(tree), roots)
-    if len(sys.argv) > 2:
-        Path(sys.argv[2]).write_text(json.dumps({'revision': REVISION, 'datasets': roots, 'files': len(files),
+    if len(ARGS) > 1:
+        Path(ARGS[1]).write_text(json.dumps({'revision': REVISION, 'datasets': roots, 'files': len(files),
                                                  'bytes': sum(f['bytes'] for f in files), 'manifest': files}, indent=1))
     collections = worker('list-collections').stdout
-    if 'demo' not in collections.split():
-        worker('create-collection', 'demo')
-    for source, name in DATASETS.items():
-        r = worker('add-disk-dataset', 'demo', name, f'{MOUNT}/{roots[source]}', '--wait', check=False)
+    if collection not in collections.split():
+        worker('create-collection', collection)
+    for source, name in datasets.items():
+        r = worker('add-disk-dataset', collection, name, f'{MOUNT}/{roots[source]}', '--wait', check=False)
         print(json.dumps({'dataset': name, 'root': roots[source], 'exit': r.returncode, 'tail': (r.stdout + r.stderr).strip()[-300:]}), flush=True)
     print(json.dumps({'files': len(files), 'bytes': sum(f['bytes'] for f in files)}))
 
