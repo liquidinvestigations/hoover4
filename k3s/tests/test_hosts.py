@@ -120,38 +120,69 @@ def test_a_refused_interface_file_changes_nothing(wireguard):
     assert [e[0] for e in wireguard.events] == ['strip']
 
 
-# gpu-1 sits on another LAN. It peers only with the public node edge, and the other nodes reach it through edge.
-ROUTED_GPU = REMOTE_GPU.replace('gpu_api_key_file = /root/vllm-key\n',
+# calls sits on another LAN. It peers only with the public node edge, and the other nodes reach it through edge.
+ROUTED = site_text('remote.ini').replace('public_address = 203.0.113.11\n',
+                                         'public_address = 203.0.113.11\nwireguard_public_key = calls-public-key\n'
+                                         'wireguard_peers = edge\nwireguard_via = edge\n')
+# gpu-1 keeps its VPN interface and names edge as its direct peer. The person adds the reverse peer on gpu-1.
+PEERED_GPU = REMOTE_GPU.replace('gpu_api_key_file = /root/vllm-key\n',
                                 'gpu_api_key_file = /root/vllm-key\nwireguard_public_key = gpu-1-public-key\n'
-                                'wireguard_peers = edge\nwireguard_via = edge\n')
+                                'wireguard_peers = edge\n')
 
 
 def test_a_node_with_wireguard_peers_gets_direct_peers_only_with_them():
-    hosts = config.legacy_hosts(config.parse(ROUTED_GPU))['hosts']
-    assert hosts['gpu-1']['peers'] == ['edge']
-    assert 'gpu-1' in hosts['edge']['peers'] and 'gpu-1' not in hosts['server-a']['peers']
-    # The nodes without the key keep the full mesh among themselves.
-    assert set(hosts['server-a']['peers']) == {'worker-b', 'edge', 'calls'}
+    hosts = config.legacy_hosts(config.parse(ROUTED))['hosts']
+    assert hosts['calls']['peers'] == ['edge']
+    assert 'calls' in hosts['edge']['peers'] and 'calls' not in hosts['server-a']['peers']
+    # The nodes without the key keep the full mesh among themselves. gpu-1 keeps its own VPN and names no peers.
+    assert set(hosts['server-a']['peers']) == {'worker-b', 'edge'}
     # Each side routes the other through edge, and edge only forwards.
-    assert hosts['server-a']['routes'] == {'edge': ['10.0.0.5/32']}
-    assert hosts['gpu-1']['routes'] == {'edge': ['10.0.0.2/32', '10.0.0.3/32', '10.0.0.4/32']}
+    assert hosts['server-a']['routes'] == {'edge': ['10.0.0.4/32']}
+    assert hosts['calls']['routes'] == {'edge': ['10.0.0.2/32', '10.0.0.3/32']}
     assert hosts['edge']['routes'] == {}
-    site = config.parse(ROUTED_GPU)
+    site = config.parse(ROUTED)
     assert config.parse(config.dump(site)) == site
     assert config.legacy_hosts(config.parse(site_text('remote.ini')))['hosts']['server-a']['routes'] == {}
 
 
 def test_a_route_needs_direct_peers_with_the_forwarding_node():
     with pytest.raises(config.SiteError, match='have no direct peer'):
-        config.parse(ROUTED_GPU.replace('wireguard_peers = edge\n', 'wireguard_peers = calls\n'))
+        config.parse(ROUTED.replace('wireguard_peers = edge\n', 'wireguard_peers = server-a\n'))
     with pytest.raises(config.SiteError, match='not another node of the site'):
-        config.parse(ROUTED_GPU.replace('wireguard_peers = edge\n', 'wireguard_peers = edge, nowhere\n'))
+        config.parse(ROUTED.replace('wireguard_peers = edge\n', 'wireguard_peers = edge, nowhere\n'))
     with pytest.raises(config.SiteError, match='has no direct peer for edge'):
-        config.parse(ROUTED_GPU.replace('[node.calls]\n', '[node.calls]\nwireguard_peers = server-a\n'))
+        config.parse(ROUTED.replace('[node.worker-b]\n', '[node.worker-b]\nwireguard_peers = server-a\n'))
+
+
+def test_a_node_that_keeps_its_vpn_gets_no_route_and_a_hand_made_reverse_peer():
+    # The installer adds no interface on gpu-1, so it cannot add the routes there.
+    with pytest.raises(config.SiteError, match='configures no WireGuard interface on this node'):
+        config.parse(PEERED_GPU.replace('wireguard_peers = edge\n', 'wireguard_peers = edge\nwireguard_via = edge\n'))
+    site = config.parse(PEERED_GPU)
+    hosts = config.legacy_hosts(site)['hosts']
+    # Only edge adds a direct peer for gpu-1. The other nodes keep the route of the existing VPN.
+    assert 'gpu-1' in hosts['edge']['peers'] and 'gpu-1' not in hosts['server-a']['peers']
+    assert config.manual_peers(site) == [
+        '[node.gpu-1] keeps its VPN interface prototype-vpn. Add a peer for edge on that interface by hand: the public '
+        'key of edge, its endpoint, and AllowedIPs 10.0.0.1/32.']
+    # Without wireguard_peers no node adds a direct peer for gpu-1, because no reverse peer exists there.
+    plain = config.parse(REMOTE_GPU)
+    assert all('gpu-1' not in h['peers'] for h in config.legacy_hosts(plain)['hosts'].values())
+    assert config.manual_peers(plain) == []
+
+
+def test_the_direct_peer_for_a_node_behind_nat_has_no_endpoint(wireguard, monkeypatch):
+    hosts = config.legacy_hosts(config.parse(PEERED_GPU))['hosts']
+    monkeypatch.setattr(wireguard, 'HOSTS', hosts)
+    monkeypatch.setattr(wireguard, 'THIS', 'edge')
+    blocks = wireguard.peer_blocks('[Interface]\n')
+    block = blocks[blocks.index('PublicKey = gpu-1-public-key') - 1:]
+    block = block[:block.index('') if '' in block else len(block)]
+    assert 'AllowedIPs = 10.0.0.5/32' in block and not any(line.startswith('Endpoint') for line in block)
 
 
 def test_the_wireguard_step_adds_routed_addresses_and_removes_none(wireguard, monkeypatch):
-    hosts = config.legacy_hosts(config.parse(ROUTED_GPU))['hosts']
+    hosts = config.legacy_hosts(config.parse(ROUTED))['hosts']
     monkeypatch.setattr(wireguard, 'HOSTS', hosts)
     # server-a has a hub peer for the whole range and a peer for edge from an earlier run.
     text = ('[Interface]\nPrivateKey = private\nListenPort = %d\n\n[Peer]\nPublicKey = hub-key\nAllowedIPs = 10.0.0.0/24\n\n'
@@ -160,13 +191,13 @@ def test_the_wireguard_step_adds_routed_addresses_and_removes_none(wireguard, mo
     wireguard.step_wireguard()
     written = [e for e in wireguard.events if e[0] == 'write'][0][2]
     assert 'AllowedIPs = 10.0.0.0/24\n' in written
-    assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.5/32\n' in written
-    assert 'gpu-1-public-key' not in written and 'PublicKey = worker-b-public-key' in written
-    # On gpu-1 the new peer for edge carries the addresses that edge forwards.
-    monkeypatch.setattr(wireguard, 'THIS', 'gpu-1')
+    assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.4/32\n' in written
+    assert 'calls-public-key' not in written and 'PublicKey = worker-b-public-key' in written
+    # On calls the new peer for edge carries the addresses that edge forwards.
+    monkeypatch.setattr(wireguard, 'THIS', 'calls')
     blocks = '\n'.join(wireguard.peer_blocks('[Interface]\n'))
     assert blocks.count('[Peer]') == 1
-    assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.2/32, 10.0.0.3/32, 10.0.0.4/32' in blocks
+    assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.2/32, 10.0.0.3/32' in blocks
 
 
 def test_the_vpn_interface_must_be_a_valid_name():

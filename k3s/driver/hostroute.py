@@ -20,6 +20,7 @@ import subprocess
 import time
 
 SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=accept-new']
+# The digest is the amd64 image, so a pod with it runs only on an amd64 node. The driver uses the cluster root route only there.
 POD_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
 LOG_DIR = '/var/log/hoover4'
 LIBEXEC = '/usr/local/libexec/hoover4'

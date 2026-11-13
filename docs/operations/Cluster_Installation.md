@@ -112,17 +112,17 @@ A GPU node keeps its existing VPN interface. Name that interface in the site fil
 
 1. Add `[node.<name>]` with the role `gpu`, the architecture `arm64` or `amd64`, the VPN address, `vpn_interface` and `wireguard_public_key`.
    The public key is the key of the existing VPN interface of the node. The root scripts refuse a node whose interface has another key.
-   A node without a key gets no direct peer on the other nodes.
-   When only some nodes can reach the LAN of the node, set `wireguard_peers` to those nodes and `wireguard_via` to the node that forwards for the others.
+   The installer configures no peer on the GPU node. Without `wireguard_peers`, the other nodes reach it through the existing VPN.
+   To give the GPU node a direct peer, set `wireguard_peers` to the node that it can reach, for example the public node. Do not set `wireguard_via`.
+   Add the reverse peer on the GPU node by hand: the public key of that node, its endpoint, and its VPN address as AllowedIPs. `k3s/deploy-k3s check` lists it in `manual_peers`.
 2. Install the NVIDIA driver and the NVIDIA container toolkit on the node. The root script refuses a GPU node without them.
 3. Run `k3s/deploy-k3s up --target <name>`. The driver writes the bundle and waits when the node has no root route.
 4. Do the bootstrap steps of [the root access section](#give-the-driver-root-access-on-each-node) on the node, then resume the record.
 5. Stop the Compose GPU services of the node only after the GPU pool of the cluster answers authenticated requests.
 
-A new peer or a routed address of the GPU node takes the VPN address of the GPU node away from the earlier route of a node.
-Until the GPU node has its own peers, that node cannot reach the address, and a GPU pool at that address does not answer it.
-Run the wireguard step of the forwarding node and of the GPU node first, and check the address from the forwarding node.
-Then run the other nodes, and check the address from each of them.
+The direct peer takes the VPN address of the GPU node away from the earlier route of the peer node.
+Until the reverse peer exists on the GPU node, the peer node cannot reach that address. A GPU pool at that address then does not answer it.
+Add the reverse peer first. Then run the host steps of the peer node, and check the address from it and from the other nodes.
 
 ## Sign in for the first time
 

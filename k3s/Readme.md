@@ -50,10 +50,15 @@ A site with one node needs no VPN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
 `vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here.
+The installer configures only `wg0` on a node without the role `gpu`. A GPU node and a node with another `vpn_interface` keep their VPN as it is, and get no wireguard step.
 The wireguard step gives each node a direct peer for every other node with a `wireguard_public_key`.
 A node on a LAN that the other nodes cannot reach names the nodes that it can reach in `wireguard_peers`, for example a node with a public address.
 Its `wireguard_via` names the peer that forwards between it and the other nodes. Each side then adds the address of the other side to the AllowedIPs of that peer.
+A node that keeps its VPN gets a direct peer only on the nodes in its `wireguard_peers`, and it cannot have `wireguard_via`.
+The person adds the reverse peer on that node by hand. `deploy-k3s check` lists these peers in `manual_peers`.
+The direct peer for a node without a public address has no endpoint, so the node behind NAT starts the handshake.
 The step adds addresses and peers and removes none, so an existing route, for example to a VPN hub, stays.
+`avx2` is true by default only on an `amd64` node.
 
 Check a site file, or print the part that one node receives:
 

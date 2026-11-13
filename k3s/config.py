@@ -89,8 +89,9 @@ HOOVER_KEYS = {
 }
 # The defaults of the optional keys. A key without a default here is empty.
 DEFAULTS = {
+    # avx2 has no default here: without the key it is true only for an amd64 node (parse).
     'node': {'local': 'false', 'architecture': 'amd64', 'wireguard_port': '51820', 'vpn_interface': 'wg0', 'onprem': 'false',
-             'avx2': 'true', 'data_root': '/srv/hoover-data'},
+             'data_root': '/srv/hoover-data'},
     'hoover': {'history_source': 'compose'},
 }
 # The secret files that each role reads. The control plane reads the files of the GPU pool, because it creates the
@@ -371,6 +372,8 @@ def parse(text, check_files=False):
                 problems.append(f'[{section}] has an invalid node name. Use a-z, 0-9 and -, starting with a-z.')
                 continue
             values = _section(parser, section, NODE_KEYS, DEFAULTS['node'], problems)
+            # AVX2 is an x86 instruction set, so an arm64 node has no avx2 label unless the site file sets the key.
+            values.setdefault('avx2', values.get('architecture', 'amd64') == 'amd64')
             if 'roles' in values:
                 nodes[name] = Node(name=name, **values)
         elif section == 'gpu_pool':
@@ -467,7 +470,11 @@ def check(site, check_files=False):
         for name in node.wireguard_peers:
             if name not in nodes or name == node.name:
                 problems.append(f'{label} wireguard_peers names {name}, which is not another node of the site.')
-        if node.wireguard_via:
+        if node.wireguard_via and not manages_wireguard(node):
+            problems.append(f'{label} wireguard_via = {node.wireguard_via}, but the installer configures no WireGuard '
+                            f'interface on this node ({"role gpu" if node.has("gpu") else f"vpn_interface = {node.vpn_interface}"}), '
+                            'so it cannot add the routes there. Remove wireguard_via.')
+        elif node.wireguard_via:
             via = node.wireguard_via
             if via not in nodes or via == node.name:
                 problems.append(f'{label} wireguard_via = {via} is not another node of the site.')
@@ -699,6 +706,39 @@ def local_ca(site):
     return path.read_text() if public and public[0].local and path.exists() else ''
 
 
+def manages_wireguard(node):
+    """True when the installer configures the WireGuard interface of node (the wireguard step of root-install.py).
+
+    A GPU node, and a node that keeps the interface of an existing VPN (vpn_interface other than wg0), keep their VPN as
+    it is. The installer adds no wg0 there.
+    """
+    return bool(node.vpn_address) and not node.has('gpu') and node.vpn_interface == 'wg0'
+
+
+def manual_peers(site):
+    """The peers that the person adds by hand: on a node that the installer does not configure, one for each direct peer.
+
+    The direct peer node gets its side from the installer, without an endpoint, so the node behind NAT starts the handshake.
+    """
+    out = []
+    for node in site.nodes.values():
+        if not node.vpn_address or manages_wireguard(node):
+            continue
+        for other in site.nodes.values():
+            if other.name != node.name and manages_wireguard(other) and wireguard_direct(node, other) and node.wireguard_peers:
+                out.append(f'[node.{node.name}] keeps its VPN interface {node.vpn_interface}. Add a peer for {other.name} '
+                           f'on that interface by hand: the public key of {other.name}, its endpoint, and AllowedIPs '
+                           f'{other.vpn_address}/32.')
+    return out
+
+
+def wireguard_peer_wanted(node):
+    """True when the other nodes add a direct peer for node. A node that the installer does not configure gets one only
+    when it names its peers, because only then does the person add the reverse peer (manual_peers). Without the reverse
+    peer the direct peer takes the route to the node from the existing VPN."""
+    return manages_wireguard(node) or bool(node.wireguard_peers)
+
+
 def wireguard_direct(a, b):
     """True when nodes a and b have a direct WireGuard peer for each other.
 
@@ -721,7 +761,7 @@ def wireguard_routes(site, node):
         if not via or not x.vpn_address:
             continue
         for y in site.nodes.values():
-            if y.name in (x.name, via) or wireguard_direct(x, y) or not y.vpn_address:
+            if y.name in (x.name, via) or wireguard_direct(x, y) or not manages_wireguard(y):
                 continue
             if node.name == y.name:
                 routes.setdefault(via, []).append(f'{x.vpn_address}/32')
@@ -747,7 +787,8 @@ def legacy_hosts(site, private=None):
             'local': node.local, 'single': site.single, 'architecture': node.architecture,
             'node_ip': node_address(site, node), 'vg': node.lvm_volume_group,
             'physical_volumes': list(node.lvm_physical_volumes), 'gpu': node.has('gpu'),
-            'peers': [n for n in site.nodes if n != node.name and wireguard_direct(node, site.nodes[n])],
+            'peers': [n for n in site.nodes if n != node.name and wireguard_direct(node, site.nodes[n])
+                      and wireguard_peer_wanted(site.nodes[n])],
             'routes': wireguard_routes(site, node),
         }
         if private and node.local and site.single:

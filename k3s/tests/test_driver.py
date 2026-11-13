@@ -921,3 +921,24 @@ def test_a_new_up_removes_the_trees_and_bundles_of_superseded_revisions(tmp_path
     assert adapter.prune_bundles() == [revs['old'][:12]]
     assert sorted(p.name for p in (home / 'k3s-install').iterdir()) == sorted(
         [r[:12] for k, r in revs.items() if k != 'old'] + ['notes', 'k3s'])
+
+
+def test_a_node_that_keeps_its_vpn_gets_no_wireguard_step():
+    text = site_text('remote.ini')
+    site = config.parse(text)
+    assert deploy.host_steps(site.nodes['server-a'], site)[0] == 'wireguard'
+    assert 'wireguard' not in deploy.host_steps(site.nodes['gpu-1'], site)
+    foreign = config.parse(text.replace('[node.calls]\n', '[node.calls]\nvpn_interface = prototype-vpn\n'))
+    assert 'wireguard' not in deploy.host_steps(foreign.nodes['calls'], foreign)
+
+
+@pytest.mark.parametrize('architecture, route', [('amd64', 'cluster'), ('arm64', 'none')])
+def test_the_cluster_root_route_needs_an_amd64_node(env, monkeypatch, architecture, route):
+    # The root pod image is the amd64 build, so an arm64 node without sudo has no root route.
+    ctx = env.make('remote.ini')
+    (env.private / 'kubeconfig').write_text('fake')
+    node = ctx.site.nodes['gpu-1']
+    node = type(node)(**{**node.__dict__, 'architecture': architecture})
+    remote = deploy.Remote(ctx, node)
+    monkeypatch.setattr(remote, 'probe', lambda: {'sudo': False, 'scoped_sudo': False, 'ready': True})
+    assert remote.route() == route

@@ -209,3 +209,13 @@ def test_a_wireguard_key_with_spaces_is_refused():
         else:
             with pytest.raises(config.SiteError, match='not a WireGuard public key'):
                 config.parse(text)
+
+
+def test_avx2_defaults_to_true_only_on_amd64():
+    site = config.parse(site_text('remote.ini'))
+    assert site.nodes['server-a'].avx2 is True and site.nodes['worker-b'].avx2 is False
+    # gpu-1 is an arm64 node without the key.
+    assert site.nodes['gpu-1'].avx2 is False
+    assert config.legacy_hosts(site)['hosts']['gpu-1']['avx2'] is False
+    forced = config.parse(site_text('remote.ini').replace('architecture = arm64\n', 'architecture = arm64\navx2 = true\n'))
+    assert forced.nodes['gpu-1'].avx2 is True

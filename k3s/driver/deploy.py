@@ -397,7 +397,8 @@ class Remote:
             return 'sudo'
         if found['scoped_sudo']:
             return 'scoped'
-        if found['ready'] and self.ctx.kubeconfig.exists():
+        # The image of the root pod (hostroute.POD_IMAGE) is pinned to its amd64 build, so the route needs an amd64 node.
+        if found['ready'] and self.ctx.kubeconfig.exists() and self.node.architecture == 'amd64':
             return 'cluster'
         return 'none'
 
@@ -810,9 +811,10 @@ either route needs this bootstrap once:
 
 
 def host_steps(node, site=None):
-    """The steps of root-install.py for a node. A GPU node keeps its VPN as it is, so it gets no wireguard step."""
+    """The steps of root-install.py for a node. A GPU node, and a node that keeps the interface of an existing VPN, keep
+    their VPN as it is, so they get no wireguard step (config.manages_wireguard)."""
     steps = ['software', 'settings'] if node.has('gpu') else ['software', 'settings', 'storage']
-    if node.vpn_address and not node.has('gpu'):
+    if config.manages_wireguard(node):
         steps = ['wireguard'] + steps
     if site and site.backup.get('node') == node.name:
         steps.append('backup')
@@ -1588,5 +1590,7 @@ def check(ctx, targets):
             problems.append('the operator tools are missing: ' + ', '.join(missing) + '. deploy-k3s up installs them.')
         state['checkout_changes'] = dirty_files(ctx.repo)
         state['applied'] = (ctx.records.applied() or {}).get('revision')
+        # The installer configures no interface on these nodes. The person adds these peers by hand.
+        state['manual_peers'] = config.manual_peers(ctx.site)
         state['stopped'] = ctx.records.stopped()
     return problems, state
