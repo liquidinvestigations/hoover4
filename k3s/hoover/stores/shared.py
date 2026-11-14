@@ -8,18 +8,14 @@ away when the zone goes. The Manticore daemons stay in each zone namespace (hoov
 its Cassandra and OpenSearch and one Temporal namespace for each zone, is in temporal.py. apply creates it after the
 other stores, ready and grow include it, and remove deletes the Temporal namespace of the zone.
 
-The site file gives the plan (vars.stores, ../../config.py store_plan()): the nodes that can run a store pod, the
-replicas and the failover switch.
-- ClickHouse runs one pod. The Hoover tables use MergeTree engines without replication, so a second pod would hold
-  no data.
-- Garage runs one pod for each replica, each on another node, with the replication factor equal to the replicas.
-  Garage keeps the replication factor of its creation and refuses to start with another one, so apply refuses a
-  change. A pod finds the others by their names in the headless Service garage-peers (bootstrap_peers), so the
-  cluster forms again after the pods restart with new addresses. Every Garage node holds every partition, because the
-  replication factor equals the node count, so the layout capacity of a node does not change the placement.
-- failover false: the Service of each store selects only its first pod. When that pod or its node fails, the clients
-  stop until a person recovers it (k3s/Readme.md). failover true: the Service selects every ready pod. apply refuses a
-  change from true to false.
+The site file gives the plan (vars.stores, ../../config.py store_plan()): the nodes that can run a store pod and the
+Garage node count. Each store keeps one copy of its data, and the Service of each store selects every ready pod.
+- ClickHouse runs one pod.
+- Garage runs one pod on each of its nodes with the replication factor 1. The layout gives each node a part of the
+  partitions by its capacity. A lost node loses its part until it returns, and the backups are the recovery path
+  (k3s/Readme.md). A pod finds the others by their names in the headless Service garage-peers (bootstrap_peers), so
+  the cluster forms again after the pods restart with new addresses. A new node gets a role in the layout, and Garage
+  moves a part of the data to it. apply refuses fewer nodes than at the last apply.
 Each store pod runs in Kata on a TopoLVM block volume (hoover.py statefulset()). The claim of a store holds the size of
 one zone (hoover.SIZES) times the number of site zones, at least one. apply and grow make the claims larger when a
 zone is added. A claim never becomes smaller. A store pod sees a grown claim at its next start. The memory limits and requests are those of one zone store
@@ -28,8 +24,9 @@ which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
 ClickHouse (8123, 9000) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
 the admin port takes none.
-The ConfigMap shared-stores records the applied plan, the Garage node ids and the Temporal history shard count. The
-deploy check reads it (problems()).
+The ConfigMap shared-stores records the applied plan, the Garage node ids, the node counts of Cassandra and OpenSearch
+and the Temporal history shard count. The deploy check reads it (problems()). The stores of an earlier version kept
+several copies, and apply and the deploy check refuse them with the steps to create the stores again.
 The Secret hoover-stores of the namespace holds the ClickHouse admin password, the Garage RPC secret and the Garage
 admin token. The script never prints a credential.
 
@@ -38,7 +35,7 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py show              print the objects of ClickHouse and Garage (temporal.py show prints Temporal)
        shared.py grow              make the claims large enough for the zones of the zone state
        shared.py ready             exit 1 when a store or Temporal has no ready pod
-       shared.py check             print the problems and warnings of the plan against the cluster as JSON
+       shared.py check             print the problems of the plan against the cluster as JSON
        shared.py remove <zone>     delete the ClickHouse databases, users and profile, the Garage buckets and keys and the
                                    Temporal namespace of a zone.
                                    The operations pod of the zone empties the buckets. Without it, a non-empty bucket
@@ -113,23 +110,15 @@ def affinity(nodes, store, spread):
     return out
 
 
-def selector(store, failover):
-    """The pods of the client Service: every pod with failover, else the first pod only."""
-    out = {'app.kubernetes.io/name': store}
-    if not failover:
-        out['statefulset.kubernetes.io/pod-name'] = f'{store}-0'
-    return out
-
-
 def configmap(name, files):
     return {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': name, 'namespace': NS, 'labels': {common.LABEL: 'config'}},
             'data': files}
 
 
-def garage_toml(replicas, peers):
-    """The Garage configuration: the replication factor and the peer names of the recorded node ids."""
+def garage_toml(peers):
+    """The Garage configuration: one copy of each object, and the peer names of the recorded node ids."""
     names = [f'"{node_id}@{pod}.{PEERS}.{NS}.svc.cluster.local:3901"' for pod, node_id in sorted(peers.items())]
-    return (GARAGE_CONFIG.replace('REPLICATION_FACTOR', str(replicas))
+    return (GARAGE_CONFIG.replace('REPLICATION_FACTOR', '1')
             .replace('BOOTSTRAP_PEERS', '[' + ', '.join(names) + ']'))
 
 
@@ -144,7 +133,7 @@ def clickhouse(s, plan, zones):
         'resources': hoover.resources('clickhouse')}
     name, nodes = tier(s, plan['nodes'], 'clickhouse')
     return [configmap('clickhouse-config', files),
-            hoover.service('clickhouse', NS, [('http', 8123), ('native', 9000)], selector('clickhouse', plan['failover'])),
+            hoover.service('clickhouse', NS, [('http', 8123), ('native', 9000)], {'app.kubernetes.io/name': 'clickhouse'}),
             hoover.statefulset('clickhouse', 'clickhouse', NS, container, ['/entrypoint.sh'], '/var/lib/clickhouse',
                                name, size('clickhouse', zones), affinity=affinity(nodes, 'clickhouse', False),
                                extra_volumes=[{'name': 'config', 'configMap': {'name': 'clickhouse-config'}}])]
@@ -158,12 +147,12 @@ def garage(s, plan, zones, peers):
         'volumeMounts': [{'name': 'config', 'mountPath': '/etc/garage.toml', 'subPath': 'garage.toml', 'readOnly': True}],
         'readinessProbe': {'tcpSocket': {'port': 3900}, 'periodSeconds': 2, 'failureThreshold': 3},
         'resources': hoover.resources('garage')}
-    name, nodes = tier(s, plan['nodes'], 'garage', plan['replicas'])
-    return [configmap('garage-config', {'garage.toml': garage_toml(plan['replicas'], peers)}),
-            hoover.service('garage', NS, [('s3', 3900)], selector('garage', plan['failover'])),
+    name, nodes = tier(s, plan['nodes'], 'garage', plan['garage'])
+    return [configmap('garage-config', {'garage.toml': garage_toml(peers)}),
+            hoover.service('garage', NS, [('s3', 3900)], {'app.kubernetes.io/name': 'garage'}),
             hoover.service(PEERS, NS, [('rpc', 3901)], {'app.kubernetes.io/name': 'garage'}, headless=True),
             hoover.statefulset('garage', 'garage', NS, container, ['/garage', 'server'], '/var/lib/garage',
-                               name, size('garage', zones), replicas=plan['replicas'],
+                               name, size('garage', zones), replicas=plan['garage'],
                                service_name=PEERS, affinity=affinity(nodes, 'garage', True),
                                extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])]
 
@@ -204,13 +193,13 @@ def recorded():
 
 
 def problems(s=None):
-    """The problems and the warnings of the plan of the site file against the cluster."""
+    """The problems of the plan of the site file against the cluster."""
     s = s or site()
     try:
         before = recorded()
     except subprocess.CalledProcessError:
         before = None
-    return config.store_change_problems(before, config.store_plan(s)), config.store_warnings(s)
+    return config.store_change_problems(before, config.store_plan(s))
 
 
 def credentials():
@@ -255,7 +244,7 @@ def wait_current(store, timeout=900):
             stale = [p['metadata']['name'] for p in found if p['metadata']['labels'].get('controller-revision-hash') != revision]
             if not stale:
                 return
-            # One pod at a time, so Garage keeps the majority of its copies.
+            # One pod at a time, so only the part of one node is out of reach.
             common.kubectl('-n', NS, 'delete', 'pod', stale[0], '--wait=false')
             common.log('stores.jsonl', step='replace-stale-pod', namespace=NS, pod=stale[0])
             time.sleep(5)
@@ -317,8 +306,6 @@ def apply():
     refused = config.store_change_problems(before, plan)
     if refused:
         raise SystemExit('; '.join(refused))
-    for warning in config.store_warnings(s):
-        common.log('stores.jsonl', step='warning', message=warning)
     zones = len(site_zones())
     peers = (before or {}).get('garage_nodes', {})
     items = objects(s, plan, zones, peers)
@@ -331,12 +318,12 @@ def apply():
     if ids != peers:
         hoover.apply([o for o in garage(s, plan, zones, ids) if o['kind'] == 'ConfigMap'])
     temporal.apply(s, plan, zones)
-    record = {'failover': plan['failover'], 'replicas': plan['replicas'], 'nodes': list(plan['nodes']),
-              'garage_replication_factor': (before or {}).get('garage_replication_factor', plan['replicas']), 'garage_nodes': ids,
+    record = {'nodes': list(plan['nodes']), 'garage_replication_factor': 1, 'garage_nodes': ids,
+              'cassandra_nodes': plan['cassandra'], 'opensearch_nodes': plan['opensearch'], 'temporal_pods': plan['temporal'],
               'temporal_history_shards': (before or {}).get('temporal_history_shards', plan['history_shards'])}
     common.apply(configmap(STATE, {'plan': json.dumps(record, sort_keys=True)}))
-    common.log('stores.jsonl', step='shared-stores', namespace=NS, failover=plan['failover'], replicas=plan['replicas'],
-               nodes=list(plan['nodes']), zones=zones)
+    common.log('stores.jsonl', step='shared-stores', namespace=NS, nodes=list(plan['nodes']), garage=plan['garage'],
+               cassandra=plan['cassandra'], opensearch=plan['opensearch'], temporal=plan['temporal'], zones=zones)
 
 
 def grow():
@@ -411,8 +398,8 @@ def main(argv):
         for store in ('clickhouse', 'garage', 'temporal-cassandra', 'temporal-opensearch', 'temporal'):
             ready_pod(store)
     elif argv[0] == 'check':
-        found, warnings = problems()
-        print(json.dumps({'problems': found, 'warnings': warnings}))
+        found = problems()
+        print(json.dumps({'problems': found}))
         sys.exit(1 if found else 0)
     else:
         remove(argv[1])

@@ -1325,7 +1325,6 @@ def check(ctx, targets):
                      for h in ctx.hoovers().values() if h.stores == 'site' and h.temporal == 'zone']
     except (ValueError, config.SiteError, StepFailed) as error:
         problems.append(str(error))
-    state['store_warnings'] = config.store_warnings(ctx.site)
     try:
         Ansible(ctx).run('hoover4-hosts.yml', targets, tags=['facts'])
     except StepFailed as error:

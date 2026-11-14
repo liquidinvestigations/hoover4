@@ -16,22 +16,21 @@ expiry. A new signing key replaces every zone key: delete the Secret temporal-au
 The Temporal worker service uses the internal frontend on port 7236, which checks no key. Only the Temporal pods
 reach that port (network()), and the commands of this script use it inside a Temporal pod.
 
-Plan (vars.stores, ../../config.py store_plan()):
-- Cassandra runs one pod for each replica, each on another node. The keyspace temporal has the replication factor
-  replicas (SimpleStrategy).
-- OpenSearch runs one pod for each replica, each on another node, and every pod can be the cluster manager. The
-  visibility index has replicas - 1 replica shards, so each node holds one copy.
-- Temporal runs replicas pods of every service (frontend, internal frontend, history, matching, worker), preferably on
-  different nodes. Each pod announces its pod address to the others.
+Plan (vars.stores, ../../config.py store_plan()). Each store keeps one copy of each part of its data. A lost node
+loses its part until it returns, and the backups are the recovery path (k3s/Readme.md).
+- Cassandra runs one pod on each of its nodes (cassandra), and the nodes share the token ranges. The keyspace temporal
+  has the replication factor 1 (SimpleStrategy), and Temporal reads and writes with the consistency LOCAL_ONE.
+- OpenSearch runs one pod on each of its nodes (opensearch), and every pod can be the cluster manager. The visibility
+  index has one primary shard for each node of its creation and no replica shard.
+- Temporal runs temporal pods of every service (frontend, internal frontend, history, matching, worker), preferably
+  on different nodes. Each pod announces its pod address to the others. Temporal holds no data.
 - history_shards is the history shard count. Temporal keeps the count of its creation, and apply refuses a change.
-- failover false: Temporal reads and writes Cassandra with the consistency ALL, so every copy is current and a lost
-  copy stops Temporal until a person recovers it (k3s/Readme.md). The OpenSearch Service selects only its first pod.
-  failover true: Temporal uses LOCAL_QUORUM, so it continues while a majority of the copies runs, and the OpenSearch
-  Service selects every ready pod. The Temporal Service selects every ready Temporal pod in both cases.
-Sizes: Cassandra has the heap, the direct memory and the memory limit of the Compose defaults (deploy.py cassandra_*),
-and OpenSearch has the heap and limit of the Elasticsearch of the local layout (../manifests.py). Their requests are
-those of ../manifests.py REQUESTS. Temporal has the limit of ../../zones/memory-limits.json. The claims hold the
-first size of the Compose import (../../platform/operator/settings.py VOLUMES) times the zone count, at least one zone.
+The Services of Temporal and OpenSearch select every ready pod.
+Sizes: the Cassandra heap follows the live data (cassandra_values()). The Cassandra request is the heap plus the
+measured memory outside the heap, and its limit adds a margin for the page cache of the live data. OpenSearch has the
+heap of the Elasticsearch of the local layout (../manifests.py) and a request of its measured use. Temporal has the
+limit of ../../zones/memory-limits.json. The claims hold the first size of the Compose import
+(../../platform/operator/settings.py VOLUMES) times the zone count, at least one zone.
 Cassandra, OpenSearch and Temporal run in gVisor. Cassandra and OpenSearch use file system volumes of TopoLVM.
 The schema Job creates the keyspace, the tables, the index template and the index, and sets the replica shards. Each
 of its commands keeps present data, so the Job can run again.
@@ -40,7 +39,7 @@ Usage: temporal.py show               print the objects
        temporal.py register <zone>    create or update the namespace of a zone with the retention of its setting
        temporal.py remove <zone>      delete the namespace of a zone
 """
-import base64, hashlib, json, os, subprocess, sys, time
+import base64, hashlib, json, math, os, subprocess, sys, time
 import common, hoover
 import config  # noqa: E402  (common puts the k3s folder on the path)
 import zonestate  # noqa: E402
@@ -64,23 +63,34 @@ INDEX = 'temporal_visibility_v1'
 # membership port of each service.
 CLIENT_PORTS = (7233, 7243)
 INTERNAL = '127.0.0.1:7236'
-# The memory requests of ../manifests.py REQUESTS, and the OpenSearch heap and limit of the Elasticsearch of the local
-# layout: 1.5 times the largest measured heap use, and twice the heap plus 512 MiB.
-REQUESTS = {'temporal': '448Mi', 'temporal-cassandra': '3264Mi', 'temporal-opensearch': '1024Mi'}
+# The memory request of Temporal (../manifests.py REQUESTS). The OpenSearch heap and limit of the Elasticsearch of the
+# local layout: 1.5 times the largest measured heap use, and twice the heap plus 512 MiB. The OpenSearch request is
+# its measured use with that heap.
+REQUESTS = {'temporal': '448Mi', 'temporal-opensearch': '2176Mi'}
 OPENSEARCH_HEAP = '1536m'
 OPENSEARCH_LIMIT = '3584Mi'
+# Cassandra: the memory outside the heap in a running pod (direct buffers, metaspace, threads, the gVisor sandbox),
+# the direct memory cap, and the CPU limit, which sets the new generation (100 MiB for each CPU).
+CASSANDRA_OFF_HEAP_MIB = 1024
+CASSANDRA_DIRECT = '1G'
+CASSANDRA_CPUS = 2
 SIZES = {'temporal-cassandra': '20Gi', 'temporal-opensearch': '10Gi'}
 # The search attributes that the Hoover workflows set (main_services/processing/tasks/visibility.py).
 SEARCH_ATTRIBUTES = {'CollectionDataset': 'Keyword'}
 
 
-def cassandra_values():
-    """Heap, new generation, direct memory, memory limit and chunk cache of the Compose defaults."""
-    defaults = compose.deploy_module().DEFAULTS['main_services']
-    limit = defaults['cassandra_mem_limit']
-    return {'heap': defaults['cassandra_heap'], 'heap_new': defaults['cassandra_heap_new'] or '200M',
-            'direct': defaults['cassandra_direct_memory'], 'limit': limit[:-1] + 'Mi' if limit.endswith('M') else limit,
-            'chunk_cache_mb': defaults['cassandra_chunk_cache_mb']}
+def cassandra_values(data_gib):
+    """Heap, new generation, direct memory, memory request and limit and chunk cache of a Cassandra node.
+
+    The heap is 2 GiB plus 0.4 GiB for each GiB of live data, at least 2 GiB and at most 8 GiB, rounded up to 64 MiB.
+    The request is the heap plus CASSANDRA_OFF_HEAP_MIB. The limit adds 1 GiB and the live data, because the page
+    cache of the data files is memory of the gVisor sandbox. The chunk cache is the Compose default.
+    """
+    heap = math.ceil(min(8192, max(2048, 2048 + 0.4 * 1024 * data_gib)) / 64) * 64
+    request = heap + CASSANDRA_OFF_HEAP_MIB
+    chunk_cache = compose.deploy_module().DEFAULTS['main_services']['cassandra_chunk_cache_mb']
+    return {'heap': f'{heap}M', 'heap_new': f'{100 * CASSANDRA_CPUS}M', 'direct': CASSANDRA_DIRECT,
+            'request': f'{request}Mi', 'limit': f'{request + 1024 + 1024 * data_gib}Mi', 'chunk_cache_mb': chunk_cache}
 
 
 def size(store, zones):
@@ -91,8 +101,8 @@ def peers(store, replicas):
     return [f'{store}-{i}.{store}-peers.{NS}.svc.cluster.local' for i in range(replicas)]
 
 
-def consistency(failover):
-    return 'LOCAL_QUORUM' if failover else 'ALL'
+# One copy of each row, so one node answers each read and write.
+CONSISTENCY = 'LOCAL_ONE'
 
 
 def config_template(plan):
@@ -107,13 +117,13 @@ persistence:
     datastores:
         default:
             cassandra:
-                hosts: "{','.join(peers('temporal-cassandra', plan['replicas'])[:2])}"
+                hosts: "{','.join(peers('temporal-cassandra', plan['cassandra'])[:2])}"
                 keyspace: temporal
                 port: 9042
                 maxConns: 20
                 consistency:
                     default:
-                        consistency: {consistency(plan['failover'])}
+                        consistency: {CONSISTENCY}
                         serialConsistency: LOCAL_SERIAL
         es-visibility:
             elasticsearch:
@@ -166,12 +176,12 @@ dynamicConfigClient:
 
 
 def schema_script(plan):
-    """The schema Job: keyspace, tables, index template, index and replica shards. Each command keeps present data."""
-    replicas = plan['replicas']
+    """The schema Job: keyspace, tables, index template, index and replica shards. Each command keeps present data. A new
+    index gets one primary shard for each OpenSearch node."""
     return f'''set -eu
 seed=temporal-cassandra-0.temporal-cassandra-peers.{NS}.svc.cluster.local
 until temporal-cassandra-tool --ep "$seed" validate-health; do sleep 5; done
-temporal-cassandra-tool --ep "$seed" create -k temporal --rf {replicas}
+temporal-cassandra-tool --ep "$seed" create -k temporal --rf 1
 temporal-cassandra-tool --ep "$seed" -k temporal setup-schema -v 0.0
 temporal-cassandra-tool --ep "$seed" -k temporal update-schema -d /etc/temporal/schema/cassandra/temporal/versioned
 es=http://temporal-opensearch:9200
@@ -180,9 +190,10 @@ schema=/etc/temporal/schema/elasticsearch/visibility
 curl -sf -X PUT "$es/_cluster/settings" -H 'Content-Type: application/json' --data-binary @$schema/cluster_settings_v7.json
 curl -sf -X PUT "$es/_template/temporal_visibility_v1_template" -H 'Content-Type: application/json' \\
   --data-binary @$schema/index_template_v7.json
-curl -sf -o /dev/null -I "$es/{INDEX}" || curl -sf -X PUT "$es/{INDEX}"
+curl -sf -o /dev/null -I "$es/{INDEX}" || curl -sf -X PUT "$es/{INDEX}" -H 'Content-Type: application/json' \\
+  -d '{{"settings": {{"index": {{"number_of_shards": {plan['opensearch']}}}}}}}'
 curl -sf -X PUT "$es/{INDEX}/_settings" -H 'Content-Type: application/json' \\
-  -d '{{"index": {{"auto_expand_replicas": false, "number_of_replicas": {replicas - 1}}}}}'
+  -d '{{"index": {{"auto_expand_replicas": false, "number_of_replicas": 0}}}}'
 echo
 '''
 
@@ -234,14 +245,14 @@ def store_statefulset(store, container, tier, claim_size, replicas, nodes, secur
                      'template': {'metadata': {'labels': labels}, 'spec': spec}, 'volumeClaimTemplates': [claim]}}
 
 
-def resources(name, limit, cpu='2'):
-    return {'requests': {'cpu': '50m', 'memory': REQUESTS[name]}, 'limits': {'cpu': cpu, 'memory': limit}}
+def resources(request, limit, cpu='2'):
+    return {'requests': {'cpu': '50m', 'memory': request}, 'limits': {'cpu': cpu, 'memory': limit}}
 
 
 def cassandra(s, plan, zones):
     import shared
-    values = cassandra_values()
-    seeds = ','.join(peers('temporal-cassandra', plan['replicas'])[:2])
+    values = cassandra_values(plan['cassandra_data_gib'])
+    seeds = ','.join(peers('temporal-cassandra', plan['cassandra'])[:2])
     env = {'CASSANDRA_CLUSTER_NAME': 'hoover-temporal', 'CASSANDRA_SEEDS': seeds, 'CASSANDRA_DC': 'dc1', 'CASSANDRA_RACK': 'rack1',
            'CASSANDRA_ENDPOINT_SNITCH': 'GossipingPropertyFileSnitch', 'MAX_HEAP_SIZE': values['heap'],
            'HEAP_NEWSIZE': values['heap_new'], 'JVM_EXTRA_OPTS': f'-XX:MaxDirectMemorySize={values["direct"]}',
@@ -255,10 +266,10 @@ def cassandra(s, plan, zones):
                           'subPath': 'entrypoint.sh', 'readOnly': True}],
         # CQL opens after the node joined the ring, so the next pod starts after this one joined.
         'readinessProbe': {'tcpSocket': {'port': 9042}, 'periodSeconds': 5, 'failureThreshold': 3},
-        'resources': resources('temporal-cassandra', values['limit'])}
-    tier, nodes = shared.tier(s, plan['nodes'], 'temporal-cassandra', plan['replicas'])
+        'resources': resources(values['request'], values['limit'], str(CASSANDRA_CPUS))}
+    tier, nodes = shared.tier(s, plan['nodes'], 'temporal-cassandra', plan['cassandra'])
     entrypoint = (common.SOURCE.parent / 'main_services/ops/docker/cassandra-entrypoint.sh').read_text()
-    workload = store_statefulset('temporal-cassandra', container, tier, size('temporal-cassandra', zones), plan['replicas'], nodes)
+    workload = store_statefulset('temporal-cassandra', container, tier, size('temporal-cassandra', zones), plan['cassandra'], nodes)
     workload['spec']['template']['spec']['volumes'].append({'name': 'entrypoint', 'configMap': {'name': 'temporal-cassandra-entrypoint'}})
     return [configmap('temporal-cassandra-entrypoint', {'entrypoint.sh': entrypoint}),
             headless('temporal-cassandra', [('cql', 9042), ('gossip', 7000)]), workload]
@@ -266,14 +277,14 @@ def cassandra(s, plan, zones):
 
 def opensearch(s, plan, zones):
     import shared
-    names = [f'temporal-opensearch-{i}' for i in range(plan['replicas'])]
+    names = [f'temporal-opensearch-{i}' for i in range(plan['opensearch'])]
     env = {'cluster.name': 'hoover-temporal', 'network.host': '0.0.0.0', 'DISABLE_SECURITY_PLUGIN': 'true',
            'DISABLE_INSTALL_DEMO_CONFIG': 'true', 'OPENSEARCH_JAVA_OPTS': f'-Xms{OPENSEARCH_HEAP} -Xmx{OPENSEARCH_HEAP}',
            # gVisor gives no mmap count check and no system call filter, so OpenSearch uses neither.
            'node.store.allow_mmap': 'false', 'bootstrap.system_call_filter': 'false',
            'cluster.routing.allocation.disk.watermark.low': '512mb', 'cluster.routing.allocation.disk.watermark.high': '256mb',
            'cluster.routing.allocation.disk.watermark.flood_stage': '128mb'}
-    if plan['replicas'] == 1:
+    if plan['opensearch'] == 1:
         env['discovery.type'] = 'single-node'
     else:
         env['discovery.seed_hosts'] = 'temporal-opensearch-peers'
@@ -285,14 +296,14 @@ def opensearch(s, plan, zones):
         'ports': [{'name': 'http', 'containerPort': 9200}, {'name': 'transport', 'containerPort': 9300}],
         'volumeMounts': [{'name': 'data', 'mountPath': '/usr/share/opensearch/data'}],
         'readinessProbe': {'httpGet': {'path': '/_cluster/health?local=true', 'port': 9200}, 'periodSeconds': 5, 'failureThreshold': 3},
-        'resources': resources('temporal-opensearch', OPENSEARCH_LIMIT)}
-    tier, nodes = shared.tier(s, plan['nodes'], 'temporal-opensearch', plan['replicas'])
-    workload = store_statefulset('temporal-opensearch', container, tier, size('temporal-opensearch', zones), plan['replicas'], nodes,
+        'resources': resources(REQUESTS['temporal-opensearch'], OPENSEARCH_LIMIT)}
+    tier, nodes = shared.tier(s, plan['nodes'], 'temporal-opensearch', plan['opensearch'])
+    workload = store_statefulset('temporal-opensearch', container, tier, size('temporal-opensearch', zones), plan['opensearch'], nodes,
                                  security={'fsGroup': 1000})
     # The nodes find each other before they are ready, so the StatefulSet starts its pods together.
     workload['spec']['podManagementPolicy'] = 'Parallel'
     return [headless('temporal-opensearch', [('http', 9200), ('transport', 9300)]),
-            hoover.service('temporal-opensearch', NS, [('http', 9200)], shared.selector('temporal-opensearch', plan['failover'])),
+            hoover.service('temporal-opensearch', NS, [('http', 9200)], {'app.kubernetes.io/name': 'temporal-opensearch'}),
             workload]
 
 
@@ -321,7 +332,7 @@ def temporal(plan, public_jwks, tree=common.SOURCE.parent):
                          {'name': 'dynamic', 'mountPath': '/etc/temporal/config/dynamicconfig', 'readOnly': True}],
         'readinessProbe': {'exec': {'command': ['temporal', 'operator', 'cluster', 'health', '--address', INTERNAL]},
                            'periodSeconds': 5, 'timeoutSeconds': 5, 'failureThreshold': 3},
-        'resources': resources('temporal', hoover.LIMITS['temporal'])}
+        'resources': resources(REQUESTS['temporal'], hoover.LIMITS['temporal'])}
     # A sidecar that starts before Temporal: Temporal reads the public key once at its start and stops without it.
     keys = {'name': 'jwks', 'image': NGINX, 'restartPolicy': 'Always',
             'startupProbe': {'exec': {'command': ['wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:7299/jwks.json']},
@@ -339,7 +350,7 @@ def temporal(plan, public_jwks, tree=common.SOURCE.parent):
     labels = {'app.kubernetes.io/name': 'temporal', 'hoover.dev/store': 'temporal', **CLIENT}
     deployment = {'apiVersion': 'apps/v1', 'kind': 'Deployment',
                   'metadata': {'name': 'temporal', 'namespace': NS, 'labels': {common.LABEL: 'temporal'}},
-                  'spec': {'replicas': plan['replicas'], 'selector': {'matchLabels': {'app.kubernetes.io/name': 'temporal'}},
+                  'spec': {'replicas': plan['temporal'], 'selector': {'matchLabels': {'app.kubernetes.io/name': 'temporal'}},
                            'strategy': {'type': 'RollingUpdate', 'rollingUpdate': {'maxUnavailable': 1, 'maxSurge': 0}},
                            'template': {'metadata': {'labels': labels, 'annotations': {'hoover.dev/config': digest}}, 'spec': spec}}}
     return [configmap('temporal-config', files), configmap('temporal-dynamicconfig', {'docker.yaml': dynamic}),
@@ -482,8 +493,8 @@ def apply(s, plan, zones):
     wait_job(job['metadata']['name'])
     hoover.apply([o for o in items if o['kind'] == 'Deployment'])
     wait_deployment('temporal')
-    common.log('stores.jsonl', step='temporal', namespace=NS, replicas=plan['replicas'], history_shards=plan['history_shards'],
-               consistency=consistency(plan['failover']), zones=zones)
+    common.log('stores.jsonl', step='temporal', namespace=NS, cassandra=plan['cassandra'], opensearch=plan['opensearch'],
+               pods=plan['temporal'], history_shards=plan['history_shards'], consistency=CONSISTENCY, zones=zones)
 
 
 def register(zone, retention):

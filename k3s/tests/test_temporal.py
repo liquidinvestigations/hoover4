@@ -17,17 +17,17 @@ def objects(stores='{nodes: [server-a, worker-b]}', zones=2):
 
 def test_the_history_shard_count_keeps_its_value_of_creation():
     plan = config.store_plan(remote('{nodes: [server-a, worker-b], history_shards: 256}'))
-    assert config.store_change_problems({'temporal_history_shards': 256, 'garage_replication_factor': 2}, plan) == []
+    assert config.store_change_problems({'temporal_history_shards': 256, 'garage_replication_factor': 1}, plan) == []
     # A plan recorded before the key existed takes the value of the site file.
-    assert config.store_change_problems({'garage_replication_factor': 2}, plan) == []
-    problems = config.store_change_problems({'temporal_history_shards': 128, 'garage_replication_factor': 2}, plan)
+    assert config.store_change_problems({'garage_replication_factor': 1}, plan) == []
+    problems = config.store_change_problems({'temporal_history_shards': 128, 'garage_replication_factor': 1}, plan)
     assert problems == ['Temporal keeps the history shard count 128 of its creation. Set vars.stores history_shards to 128.']
     with pytest.raises(config.SiteError, match='history_shards = 0 must be a whole number of at least 1'):
         remote('{history_shards: 0}')
 
 
-def test_the_stores_of_temporal_keep_one_copy_on_each_node():
-    items = objects()
+def test_the_stores_of_temporal_shard_one_copy_over_their_nodes():
+    items = objects('{nodes: [server-a, worker-b], cassandra: {nodes: 2}, opensearch: {nodes: 2}, temporal: {pods: 2}}')
     for store in ('temporal-cassandra', 'temporal-opensearch'):
         workload = by(items, 'StatefulSet', store)
         spec = workload['spec']['template']['spec']
@@ -40,38 +40,49 @@ def test_the_stores_of_temporal_keep_one_copy_on_each_node():
         assert claim['storageClassName'] == 'hdd-ext4'
     assert by(items, 'StatefulSet', 'temporal-cassandra')['spec']['volumeClaimTemplates'][0]['spec']['resources'] == {
         'requests': {'storage': '40Gi'}}
-    cassandra = by(items, 'StatefulSet', 'temporal-cassandra')['spec']['template']['spec']['containers'][0]
-    env = {e['name']: e.get('value') for e in cassandra['env']}
-    # The Compose defaults of deploy.py: the heap of 1.5 times the measured use, and its memory limit.
-    assert env['MAX_HEAP_SIZE'] == '6G' and env['JVM_EXTRA_OPTS'] == '-XX:MaxDirectMemorySize=2G'
-    assert cassandra['resources'] == {'requests': {'cpu': '50m', 'memory': '3264Mi'}, 'limits': {'cpu': '2', 'memory': '13312Mi'}}
     search = by(items, 'StatefulSet', 'temporal-opensearch')['spec']['template']['spec']['containers'][0]
     env = {e['name']: e.get('value') for e in search['env']}
     assert env['OPENSEARCH_JAVA_OPTS'] == '-Xms1536m -Xmx1536m' and env['DISABLE_SECURITY_PLUGIN'] == 'true'
     assert env['cluster.initial_cluster_manager_nodes'] == 'temporal-opensearch-0,temporal-opensearch-1'
-    assert search['resources'] == {'requests': {'cpu': '50m', 'memory': '1024Mi'}, 'limits': {'cpu': '2', 'memory': '3584Mi'}}
-    # One copy runs as a single OpenSearch node.
-    single = by(objects('{nodes: [server-a], replicas: 1}'), 'StatefulSet', 'temporal-opensearch')
-    env = {e['name']: e.get('value') for e in single['spec']['template']['spec']['containers'][0]['env']}
+    assert search['resources'] == {'requests': {'cpu': '50m', 'memory': '2176Mi'}, 'limits': {'cpu': '2', 'memory': '3584Mi'}}
+    assert by(items, 'Service', 'temporal-opensearch')['spec']['selector'] == {'app.kubernetes.io/name': 'temporal-opensearch'}
+    assert by(items, 'Deployment', 'temporal')['spec']['replicas'] == 2
+    template = by(items, 'ConfigMap', 'temporal-config')['data']['config_template.yaml']
+    assert 'temporal-cassandra-0.temporal-cassandra-peers.hoover-stores.svc.cluster.local,temporal-cassandra-1.' in template
+    # The defaults: one pod of each store and of Temporal, and OpenSearch as a single node.
+    items = objects()
+    assert [by(items, k, n)['spec']['replicas'] for k, n in (('StatefulSet', 'temporal-cassandra'),
+                                                            ('StatefulSet', 'temporal-opensearch'), ('Deployment', 'temporal'))] == [1, 1, 1]
+    env = {e['name']: e.get('value') for e in by(items, 'StatefulSet', 'temporal-opensearch')['spec']['template']['spec']['containers'][0]['env']}
     assert env['discovery.type'] == 'single-node' and 'cluster.initial_cluster_manager_nodes' not in env
 
 
-def test_the_schema_job_follows_the_replicas_and_the_failover_switch_sets_the_consistency():
-    items = objects()
+def test_the_cassandra_heap_follows_the_live_data():
+    def container(stores):
+        workload = by(objects(stores), 'StatefulSet', 'temporal-cassandra')
+        c = workload['spec']['template']['spec']['containers'][0]
+        return {e['name']: e.get('value') for e in c['env']}, c['resources']
+    # 2 GiB of data by default: 2 GiB + 0.4 x 2 GiB = 2.8 GiB, rounded up to 64 MiB.
+    env, resources = container('{nodes: [server-a]}')
+    assert env['MAX_HEAP_SIZE'] == '2880M' and env['HEAP_NEWSIZE'] == '200M'
+    assert env['JVM_EXTRA_OPTS'] == '-XX:MaxDirectMemorySize=1G'
+    assert resources == {'requests': {'cpu': '50m', 'memory': '3904Mi'}, 'limits': {'cpu': '2', 'memory': '6976Mi'}}
+    # The heap stops at 8 GiB.
+    env, resources = container('{nodes: [server-a], cassandra: {data_gib: 40}}')
+    assert env['MAX_HEAP_SIZE'] == '8192M' and resources['requests']['memory'] == '9216Mi'
+    assert temporal.cassandra_values(1)['heap'] == '2496M'
+
+
+def test_the_schema_job_keeps_one_copy_and_temporal_reads_one_node():
+    items = objects('{nodes: [server-a, worker-b], opensearch: {nodes: 2}}')
     script = by(items, 'Job', next(i['metadata']['name'] for i in items if i['kind'] == 'Job'))['spec']['template']['spec'][
         'containers'][0]['command'][-1]
-    assert 'create -k temporal --rf 2' in script and '"number_of_replicas": 1' in script
+    assert 'create -k temporal --rf 1' in script and '"number_of_replicas": 0' in script
+    assert '"number_of_shards": 2' in script
     template = by(items, 'ConfigMap', 'temporal-config')['data']['config_template.yaml']
-    assert 'numHistoryShards: 128' in template and 'consistency: ALL' in template
+    assert 'numHistoryShards: 128' in template and 'consistency: LOCAL_ONE' in template
     assert 'authorizer: default' in template and 'claimMapper: default' in template
-    on = by(objects('{nodes: [server-a, worker-b], failover: true}'), 'ConfigMap', 'temporal-config')['data']['config_template.yaml']
-    assert 'consistency: LOCAL_QUORUM' in on
-    # Without failover the OpenSearch clients use the first pod. With failover they use every ready pod.
-    assert by(items, 'Service', 'temporal-opensearch')['spec']['selector'] == {
-        'app.kubernetes.io/name': 'temporal-opensearch', 'statefulset.kubernetes.io/pod-name': 'temporal-opensearch-0'}
-    deployment = by(items, 'Deployment', 'temporal')
-    assert deployment['spec']['replicas'] == 2
-    spec = deployment['spec']['template']['spec']
+    spec = by(items, 'Deployment', 'temporal')['spec']['template']['spec']
     assert [c['name'] for c in spec['containers']] == ['temporal']
     assert [(c['name'], c['restartPolicy']) for c in spec['initContainers']] == [('jwks', 'Always')]
 

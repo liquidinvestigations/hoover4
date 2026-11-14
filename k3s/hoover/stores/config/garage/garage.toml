@@ -1,5 +1,5 @@
-# The Garage of the site, one node in each pod (../../shared.py). shared.py replaces REPLICATION_FACTOR with the
-# replicas of the site file and BOOTSTRAP_PEERS with the peer names of the known node ids. The RPC secret and the admin
+# The Garage of the site, one node in each pod (../../shared.py). shared.py replaces REPLICATION_FACTOR with 1 (one
+# copy of each object) and BOOTSTRAP_PEERS with the peer names of the known node ids. The RPC secret and the admin
 # token come from the environment. A node advertises the address of its pod. After a restart with a new address, the
 # other nodes find it again through its peer name.
 # metadata_fsync and data_fsync are on, so an acknowledged write is on the volume. hoover4 keeps the defaults (off).

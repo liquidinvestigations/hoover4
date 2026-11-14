@@ -14,8 +14,9 @@ secret is a reference to a private file on the node that reads it.
       lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
       backup:            one node and one host folder that receive the backups
-      stores:            the nodes, the data copies, the failover switch of the shared Hoover stores and the history
-                         shard count of the site Temporal (STORES_KEYS)
+      stores:            the nodes of the shared Hoover stores, the node count of each store that shards its data, the
+                         Temporal pods, the Cassandra data size and the history shard count of the site Temporal
+                         (STORES_KEYS, STORE_PARTS)
     hosts:
       <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
@@ -116,15 +117,23 @@ NODE_KEYS = {
 # The GPU pool names nodes or an address. Its key is a generated Secret of the cluster, so the site file names no key.
 GPU_POOL_KEYS = {'nodes': (False, 'names'), 'address': (False, 'address')}
 BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
-# The shared Hoover stores of the site (../hoover/stores/shared.py): vars.stores.
+# The shared Hoover stores of the site (../hoover/stores/shared.py, ../hoover/stores/temporal.py): vars.stores. Each
+# store keeps one copy of each part of its data. ClickHouse runs one pod. Garage, Cassandra and OpenSearch can shard
+# their data over several nodes, one pod on each node. A lost node loses its part until it returns, and the backups are
+# the recovery path.
 #   nodes     the nodes that can run a store pod. Default: every node with the role worker and a storage tier.
-#   replicas  the data copies of each store on different nodes. Default: the node count, at most 3 (store_plan()).
-#   failover  true: a store moves its clients to another copy by itself. false (default): the clients use the first
-#             copy, and a person recovers a lost copy by hand. A change from true to false is refused (deploy check).
-#   history_shards  the history shard count of the Temporal of the site (../hoover/stores/temporal.py). Default:
-#             HISTORY_SHARDS. Temporal keeps the count of its creation, so a change is refused (deploy check).
-STORES_KEYS = {'nodes': (False, 'names'), 'replicas': (False, 'count'), 'failover': (False, 'bool'),
-               'history_shards': (False, 'count')}
+#   history_shards  the history shard count of the Temporal of the site. Default: HISTORY_SHARDS. Temporal keeps the
+#             count of its creation, so a change is refused (deploy check).
+#   garage.nodes      the Garage node count. Default: the store node count, at most 3.
+#   cassandra.nodes   the Cassandra node count. Default: 1.
+#   cassandra.data_gib  the live data of Cassandra in GiB, which sets its heap (../hoover/stores/temporal.py). Default: 2.
+#   opensearch.nodes  the OpenSearch node count. Default: 1.
+#   temporal.pods     the Temporal pod count. Temporal holds no data. Default: 1.
+# A store node count cannot become smaller than the count of the last apply, because the removed nodes hold a part of
+# the data (deploy check).
+STORES_KEYS = {'nodes': (False, 'names'), 'history_shards': (False, 'count')}
+STORE_PARTS = {'garage': {'nodes': (False, 'count')}, 'cassandra': {'nodes': (False, 'count'), 'data_gib': (False, 'count')},
+               'opensearch': {'nodes': (False, 'count')}, 'temporal': {'pods': (False, 'count')}}
 # The history shard count of a new site Temporal. The Compose default (deploy.py temporal_history_shards) is the same.
 HISTORY_SHARDS = 128
 # The values of a zone entry of the zone state that the Hoover installation of the zone reads (zone_hoover()):
@@ -652,7 +661,14 @@ def parse(text, check_files=False):
     backup = {}
     if variables.get('backup') is not None:
         backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
-    stores = _section('vars.stores', _mapping(variables.get('stores'), 'vars.stores', problems), STORES_KEYS, {}, problems)
+    raw_stores = _mapping(variables.get('stores'), 'vars.stores', problems)
+    stores = _section('vars.stores', {k: v for k, v in raw_stores.items() if k not in STORE_PARTS},
+                      dict(STORES_KEYS, **{k: (False, 'mapping') for k in STORE_PARTS}), {}, problems)
+    for part, keys in STORE_PARTS.items():
+        if part in raw_stores:
+            values = _section(f'vars.stores.{part}', _mapping(raw_stores[part], f'vars.stores.{part}', problems), keys, {}, problems)
+            if values:
+                stores[part] = values
     networks, lans = {}, {}
     for name, values in _mapping(variables.get('networks'), 'vars.networks', problems).items():
         name = str(name)
@@ -799,15 +815,22 @@ def check(site, check_files=False):
 
 
 def store_plan(site):
-    """The shared Hoover stores of a site with the defaults of STORES_KEYS: {'nodes', 'replicas', 'failover',
-    'history_shards'}.
+    """The shared Hoover stores of a site with the defaults of STORES_KEYS and STORE_PARTS: {'nodes', 'history_shards',
+    'garage', 'cassandra', 'cassandra_data_gib', 'opensearch', 'temporal'}. garage, cassandra and opensearch are node
+    counts, and temporal is the Temporal pod count.
 
-    The default nodes are the nodes with the role worker and a storage tier, in the order of the site file. The default
-    replicas are the node count, at most 3: 2 nodes give a second copy, and 3 nodes give a majority of copies.
+    The default nodes are the nodes with the role worker and a storage tier, in the order of the site file.
     """
-    nodes = tuple(site.stores.get('nodes') or (n.name for n in site.nodes.values() if n.has('worker') and n.storage))
-    return {'nodes': nodes, 'replicas': site.stores.get('replicas', min(len(nodes), 3)),
-            'failover': site.stores.get('failover', False), 'history_shards': site.stores.get('history_shards', HISTORY_SHARDS)}
+    s = site.stores
+    nodes = tuple(s.get('nodes') or (n.name for n in site.nodes.values() if n.has('worker') and n.storage))
+    return {'nodes': nodes, 'history_shards': s.get('history_shards', HISTORY_SHARDS),
+            'garage': s.get('garage', {}).get('nodes', max(1, min(len(nodes), 3))),
+            'cassandra': s.get('cassandra', {}).get('nodes', 1), 'cassandra_data_gib': s.get('cassandra', {}).get('data_gib', 2),
+            'opensearch': s.get('opensearch', {}).get('nodes', 1), 'temporal': s.get('temporal', {}).get('pods', 1)}
+
+
+# The stores that shard their data with one pod on each node, and their key in the recorded plan of the cluster.
+SHARDED_STORES = {'garage': 'garage_nodes', 'cassandra': 'cassandra_nodes', 'opensearch': 'opensearch_nodes'}
 
 
 def store_problems(site):
@@ -822,42 +845,37 @@ def store_problems(site):
             problems.append(f'vars.stores nodes names {name}, which has no storage tier or is a GPU node.')
     if not plan['nodes']:
         problems.append('vars.stores has no node. Give nodes, or give a node the role worker and a storage tier.')
-    elif plan['replicas'] > len(plan['nodes']):
-        problems.append(f'vars.stores replicas = {plan["replicas"]} is more than its {len(plan["nodes"])} nodes. '
-                        'Each copy needs its own node.')
+    else:
+        for store in SHARDED_STORES:
+            if plan[store] > len(plan['nodes']):
+                problems.append(f'vars.stores.{store} nodes = {plan[store]} is more than the {len(plan["nodes"])} store nodes. '
+                                'Each pod needs its own node.')
     return problems
 
 
 def store_change_problems(before, plan):
     """The problems of a store plan against the plan that the cluster recorded at the last apply (before), as messages.
 
-    Failover cannot be turned off again, Garage keeps the replication factor of its creation, and Temporal keeps the
-    history shard count of its creation.
+    Stores of an earlier version that keep several copies are refused, Temporal keeps the history shard count of its
+    creation, and a store node count cannot become smaller.
     """
     if not before:
         return []
+    copies = max(before.get('replicas', 1), before.get('garage_replication_factor', 1))
+    if copies > 1:
+        return [f'the shared stores of hoover-stores keep {copies} copies of their data, from an earlier version. '
+                'This version keeps one copy. Delete every zone, delete the namespace hoover-stores, run deploy-k3s up '
+                '--steps stores, and create the zones again. The data of the zones does not move.']
     out = []
-    if before.get('failover') and not plan['failover']:
-        out.append('the shared stores run with failover. vars.stores failover cannot change back to false.')
-    if before.get('garage_replication_factor') not in (None, plan['replicas']):
-        out.append(f'Garage keeps the replication factor {before["garage_replication_factor"]} of its creation. '
-                   f'Set vars.stores replicas to {before["garage_replication_factor"]}.')
     if before.get('temporal_history_shards') not in (None, plan['history_shards']):
         out.append(f'Temporal keeps the history shard count {before["temporal_history_shards"]} of its creation. '
                    f'Set vars.stores history_shards to {before["temporal_history_shards"]}.')
-    return out
-
-
-def store_warnings(site):
-    """The warnings of vars.stores, as messages. A warning does not stop a deployment."""
-    plan = store_plan(site)
-    out = []
-    if plan['replicas'] == 2 or (plan['failover'] and len(plan['nodes']) < 3):
-        out.append(f'the shared stores have {plan["replicas"]} copies on {len(plan["nodes"])} nodes. Automatic failover '
-                   'needs 3 nodes: with 2 nodes a store keeps a second copy, and a person recovers it by hand.')
-    if plan['replicas'] > 1:
-        out.append('ClickHouse runs one copy. The Hoover tables are not replicated tables, so a second ClickHouse '
-                   'copy would hold no data.')
+    for store, key in SHARDED_STORES.items():
+        found = before.get(key)
+        count = len(found) if isinstance(found, dict) else found
+        if count and plan[store] < count:
+            out.append(f'the shared {store} has {count} nodes, and each node holds a part of its data. '
+                       f'Set vars.stores.{store} nodes to {count} or more.')
     return out
 
 
@@ -935,6 +953,9 @@ def document(site):
                                 ('stores', site.stores, STORES_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
+    for part, keys in STORE_PARTS.items():
+        if site.stores.get(part):
+            variables.setdefault('stores', {})[part] = {k: _text(v) for k, v in site.stores[part].items() if k in keys}
     hosts = {}
     for node in site.nodes.values():
         values = {'node_roles': _text(node.roles)}

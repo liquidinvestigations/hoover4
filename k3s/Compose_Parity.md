@@ -38,12 +38,12 @@ See [the k3s Readme](Readme.md) for the zone state.
 | `clickhouse` | store | `docker-compose.yaml` | StatefulSet on the claim `clickhouse-data`, with `ops-backups` | ExternalName to the zone store | The users override and the rendered server override are a ConfigMap. |
 | `manticore` | store | `docker-compose.yaml` | StatefulSet on the claim `manticore-data` | ExternalName to the zone store | An init container seeds `auth.json` as deploy.py does. |
 | `manticore-vectors` | store | `docker-compose.yaml` | StatefulSet on the claim `manticore-vectors-data` | ExternalName to the zone store | Same as above. |
-| `garage` | store | `docker-compose.yaml` | StatefulSet on the claims `garage-meta` and `garage-data` | ExternalName to the zone store | `garage.toml` is a ConfigMap. |
+| `garage` | store | `docker-compose.yaml` | StatefulSet on the claims `garage-meta` and `garage-data` | ExternalName to the Garage of the site, which keeps one copy of each object | `garage.toml` is a ConfigMap. |
 | `zookeeper` | store | `docker-compose.yaml` | StatefulSet without a claim | Not rendered | The ClickHouse override names it. The zone ClickHouse has its own configuration. |
 | `garage-init` | store-init | `docker-compose.yaml` | Job for each source revision | setup.py creates the buckets and keys | The capacity follows the size of the claim `garage-data`. |
 | `temporal` | temporal | `docker-compose.yaml` | Deployment on Cassandra and Elasticsearch | Not rendered. The ExternalName Service `temporal` names the Temporal of the site, and the zone uses its own namespace and key. | The dynamic configuration is a ConfigMap. In the local layout a Job sets the retention of the namespace `default`. |
-| `temporal-cassandra` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-cassandra` | Not rendered. The site runs one Cassandra cluster for its Temporal. | Same image as Compose. |
-| `temporal-elasticsearch` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-elasticsearch` | Not rendered. The site runs one OpenSearch cluster for the Temporal visibility index. | Same image as Compose. |
+| `temporal-cassandra` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-cassandra` | Not rendered. The site runs one Cassandra cluster for its Temporal, with one copy of each row. | Same image as Compose. |
+| `temporal-elasticsearch` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-elasticsearch` | Not rendered. The site runs one OpenSearch cluster for the Temporal visibility index, without replica shards. | Same image as Compose. |
 | `temporal-ui` | ui | `docker-compose.yaml` | Deployment and Service, no ingress | Not rendered | The development relay of a later stage makes the interfaces reachable. |
 | `clickhouse-monitoring` | ui | `docker-compose.yaml` | Deployment on the claim `clickhouse-monitoring` | Not rendered | The zone layout has no operator user of its stores. |
 | `ch-ui` | ui | `docker-compose.yaml` | Deployment and Service, no ingress | Not rendered | Same as above. |

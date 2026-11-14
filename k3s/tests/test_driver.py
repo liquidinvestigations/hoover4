@@ -270,7 +270,7 @@ def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(
     assert not any('zone-a keeps' in p for p in problems)
     # zone-a of the fixture uses the Temporal of the site, so no problem names its Temporal.
     assert not any('Temporal on the PostgreSQL' in p for p in problems)
-    assert any('ClickHouse runs one copy' in w for w in state['store_warnings'])
+    assert 'store_warnings' not in state
 
 
 def test_check_names_a_site_zone_of_the_earlier_temporal(env):
@@ -282,14 +282,14 @@ def test_check_names_a_site_zone_of_the_earlier_temporal(env):
     assert any(p.startswith('the zone zone-a runs its own Temporal on the PostgreSQL of the zone') for p in problems)
 
 
-def test_check_refuses_turning_failover_off(env, monkeypatch):
+def test_check_refuses_shared_stores_with_copies(env, monkeypatch):
     ctx = env.make('remote.yml')
     ctx.kubeconfig.write_text('fake')
-    recorded = {'data': {'plan': json.dumps({'failover': True, 'garage_replication_factor': 3})}}
+    recorded = {'data': {'plan': json.dumps({'failover': False, 'replicas': 3, 'garage_replication_factor': 3})}}
     monkeypatch.setattr(deploy.Context, 'kubectl', lambda self, *a, check=True: json.dumps(recorded) if 'shared-stores' in a else '')
     monkeypatch.setattr(deploy, 'node_ready', lambda ctx, name: True)
     problems, _ = deploy.check(ctx, ['server-a'])
-    assert 'the shared stores run with failover. vars.stores failover cannot change back to false.' in problems
+    assert any(p.startswith('the shared stores of hoover-stores keep 3 copies of their data') for p in problems)
 
 
 def test_a_failed_play_names_the_node_and_keeps_a_resumable_record(env, monkeypatch):

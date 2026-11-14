@@ -290,21 +290,26 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 ## Share the Hoover stores of a site.
 
 One ClickHouse and one Garage serve every zone of a site, in the namespace `hoover-stores` ([hoover/stores/shared.py](hoover/stores/shared.py)). The step `stores` of `deploy-k3s up` creates them, and each zone with `stores = site` is a tenant.
-The site file sets their nodes, copies and failover in `vars.stores`, and the history shard count of the [Temporal of the site](#share-temporal-in-a-site):
+The site file sets their nodes and node counts in `vars.stores`, with the history shard count and the sizes of the [Temporal of the site](#share-temporal-in-a-site):
 
 ```yaml
 hoover4:
   vars:
     stores:
       nodes: [node-a, node-b, node-c]   # default: every node with the role worker and a storage tier
-      replicas: 3                       # default: the node count, at most 3
-      failover: false                   # default: false
       history_shards: 128               # default: 128. Temporal keeps the count of its creation.
+      garage: {nodes: 3}                # default: the node count of nodes, at most 3
+      cassandra: {nodes: 1, data_gib: 2}  # default: 1 node and 2 GiB of live data
+      opensearch: {nodes: 1}            # default: 1
+      temporal: {pods: 1}               # default: 1
 ```
 
-- ClickHouse runs one pod. The Hoover tables are MergeTree tables without replication, so a second ClickHouse pod would hold no data. `deploy-k3s check` warns about this when `replicas` is above 1.
-- Garage runs one pod for each copy, each on another node of `nodes`. Its replication factor is `replicas`, and Garage keeps it from its creation. `deploy-k3s check` and the stores step refuse another value.
-- Each copy needs a storage tier on its own node. The step takes the first preferred tier that enough nodes have.
+Each store keeps one copy of each part of its data. No store has replication or failover.
+
+- ClickHouse runs one pod.
+- Garage runs one pod on each of its `garage.nodes` nodes, with the replication factor 1. The layout gives each node a part of the objects. The client Service selects every ready Garage pod, and each pod forwards a request to the node that holds the object.
+- A store node count cannot become smaller than at the last apply, because each node holds a part of the data. `deploy-k3s check` and the stores step refuse it. A larger count adds nodes, and the store moves a part of the data to them.
+- Each pod of a store needs a storage tier on its own node. The step takes the first preferred tier that enough nodes have.
 - A claim holds 20 GiB for each zone with `stores = site`, at least one zone, for ClickHouse and for each Garage pod. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace.
 - Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
@@ -312,18 +317,20 @@ hoover4:
 - [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) `<zone> <other zone>` checks the isolation from the operations pod of the zone.
 - The zone copy of the backups does not hold the ClickHouse databases and Garage buckets of a zone with `stores = site`. The collection exports hold them.
 
-### Failover
+### Lost store nodes
 
-`failover: false` points the client Service of each store at its first pod. Garage keeps every copy, and a person recovers a lost pod:
+A store pod keeps its data on the volume of its node. When a node stops, the parts of the data on that node are out of reach until the node returns:
+
+- ClickHouse: every zone loses access to its ClickHouse data.
+- Garage: a read or write of an object in the part of that node fails.
+- Cassandra: Temporal fails for the workflows whose rows are in the token ranges of that node.
+- OpenSearch: the visibility queries fail when the node holds a primary shard of the visibility index. OpenSearch on several nodes stops when less than a majority of its nodes runs.
 
 1. Find the store pod that does not run: `kubectl -n hoover-stores get pods -o wide`.
 2. When its node returns, the pod starts again with its volume, and the clients reach it.
-3. When the node of `garage-0` stays lost, set `failover: true` in the site file and run `deploy-k3s up --steps stores`. The clients then use the other Garage pods, which hold every object at a replication factor equal to the pod count.
-4. When the node of `clickhouse-0` stays lost, the ClickHouse data of every zone is lost with its volume. Restore the collections of each zone from their collection exports.
-5. Temporal reads and writes every Cassandra copy (consistency `ALL`), so Temporal stops while one Cassandra pod is down. When the node returns, the pod starts again with its volume, and Temporal continues. When a node with a Cassandra pod stays lost, set `failover: true` and run `deploy-k3s up --steps stores`. Temporal then uses a majority of the copies (`LOCAL_QUORUM`), which needs 3 copies. Then remove the lost Cassandra node from the ring with `nodetool removenode <host id>` in another Cassandra pod (`nodetool status` names the host id).
-6. When the node of `temporal-opensearch-0` stays lost, set `failover: true` as in step 3. OpenSearch holds a replica of the visibility index on each other node.
+3. When the volume of a store is lost, its part of the data is lost. Restore the collections of each zone from their collection exports. The backups hold no copy of the Temporal history.
 
-`failover: true` points the client Service of each store at every ready pod. Garage then serves reads and writes while a majority of its copies is up, which needs 3 nodes. With 2 nodes it keeps a second copy, and writes stop while one node is down. Temporal uses a majority of the Cassandra copies, and the OpenSearch nodes elect another cluster manager while a majority of them is up. `failover` cannot change from true to false: the stores step and `deploy-k3s check` refuse it.
+The stores of an earlier version kept several copies (`vars.stores replicas` and `failover`). The stores step and `deploy-k3s check` refuse them. Delete every zone, delete the namespace `hoover-stores` (`kubectl delete namespace hoover-stores`, which deletes its claims), run `deploy-k3s up --steps stores`, and create the zones again. The data of the zones does not move.
 
 ## Share Temporal in a site.
 
@@ -332,9 +339,9 @@ One Temporal serves every zone of a site, in the namespace `hoover-stores` ([hoo
 - Each zone with `stores = site` has its own Temporal namespace, with the name of the zone. A zone create registers it with the retention of the setting `main_services.temporal_retention` of the zone and adds the search attribute `CollectionDataset`. A zone delete removes it.
 - The Hoover services of the zone that call Temporal (website, workers, operations, the to-do server) get `TEMPORAL_NAMESPACE` and the key of the zone in `TEMPORAL_API_KEY` from the Secret `hoover-runtime`. The key is a JWT with the permission `<zone>:write`. Temporal checks it on each request (the default authorizer and claim mapper). It permits the workflows, task queues and visibility of the zone namespace only, and no change of a namespace or of a search attribute. A request without a key or for another namespace gets `PERMISSION_DENIED`.
 - The signing key is in the Secret `temporal-auth` of `hoover-stores`. A sidecar of each Temporal pod publishes its public key on 127.0.0.1. A key has no expiry. To replace every key, delete the Secret `temporal-auth`, run `deploy-k3s up --steps stores`, then apply each zone again.
-- Cassandra and OpenSearch run one pod for each copy (`replicas`), each on another node of `nodes`, in gVisor on file system volumes. The keyspace `temporal` has the replication factor `replicas`, and the visibility index has `replicas - 1` replica shards. Temporal runs `replicas` pods with every Temporal service, preferably on different nodes.
+- Cassandra runs one pod on each of its `cassandra.nodes` nodes, and OpenSearch one pod on each of its `opensearch.nodes` nodes, in gVisor on file system volumes. The keyspace `temporal` has the replication factor 1, so the Cassandra nodes share the token ranges, and Temporal reads and writes with the consistency `LOCAL_ONE`. The visibility index has one primary shard for each OpenSearch node of its creation and no replica shard. Temporal runs `temporal.pods` pods with every Temporal service, preferably on different nodes. Temporal holds no data.
 - `history_shards` sets the history shard count of a new Temporal. Temporal keeps it from its creation, so `deploy-k3s check` and the stores step refuse a change.
-- Sizes: Cassandra has a 6 GiB heap and a 13312 MiB limit (the Compose defaults of `deploy.py`), OpenSearch a 1.5 GiB heap and a 3584 MiB limit. Their memory requests are 3264 MiB and 1024 MiB. Each Temporal pod requests 448 MiB. The claims hold 20 GiB (Cassandra) and 10 GiB (OpenSearch) for each zone with `stores = site`, at least one zone.
+- Sizes: the Cassandra heap is 2 GiB plus 0.4 GiB for each GiB of live data (`cassandra.data_gib`), at least 2 GiB and at most 8 GiB. The default of 2 GiB of data gives a 2880 MiB heap. The Cassandra memory request is the heap plus 1 GiB, which covers the measured use outside the heap. The limit adds 1 GiB and the live data for the page cache. OpenSearch has a 1.5 GiB heap, a request of 2176 MiB and a limit of 3584 MiB. Each Temporal pod requests 448 MiB. The claims hold 20 GiB (Cassandra) and 10 GiB (OpenSearch) for each zone with `stores = site`, at least one zone.
 - Network: only namespaces with the label `hoover.dev/hoover` reach the frontend on 7233 (gRPC) and 7243 (HTTP). The internal frontend on 7236, which checks no key, and the other Temporal ports take only the Temporal pods. Cassandra and OpenSearch take only the Temporal pods and the schema Job.
 - [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) also checks that a zone cannot describe, list, start, signal, cancel or terminate a workflow in the namespace of another zone.
 - A zone created before the Temporal of the site has `temporal = zone` and ran its Temporal on the PostgreSQL of the zone. Delete it and create it again. Its workflow history does not move.
