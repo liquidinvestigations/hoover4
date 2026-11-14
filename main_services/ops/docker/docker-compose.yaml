@@ -578,6 +578,9 @@ services:
       # itself. Without this line the worker reads no graceful shutdown period, falls
       # back to its own default, and the ini key silently stops deciding anything.
       - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
+      # The address-space cap of one qpdf process, from [main_services] qpdf_mem_limit.
+      # Empty keeps the code default of 4 GiB.
+      - "HOOVER4_QPDF_MEM_LIMIT_BYTES=${HOOVER4_QPDF_MEM_LIMIT_BYTES:-}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"
       # The self-hosted model server. LLM_MODEL is the model of agent turns and of every

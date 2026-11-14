@@ -467,7 +467,7 @@ def test_legacy_multipart_overlay_removes_its_whole_copy_after_parts_reach_stora
         def fput_object(self,bucket,key,path,**kwargs):events.append(("object",key))
         def remove_object(self,bucket,key):events.append(("remove",key))
     monkeypatch.setattr(s3,"get_s3_client",lambda:S3());monkeypatch.setattr(s3,"collection_bucket",lambda name:"bucket")
-    monkeypatch.setattr(parts,"split_pdf",lambda src,dest,first,last:Path(dest).write_bytes(source.read_bytes()))
+    monkeypatch.setattr(parts,"split_pdf",lambda src,dest,first,last,**kw:Path(dest).write_bytes(source.read_bytes()))
     monkeypatch.setattr(common,"insert_text_pages",lambda *args:events.append(("text",args[-1])))
     def write(client,table,row,**kw):
         events.append((table,row))

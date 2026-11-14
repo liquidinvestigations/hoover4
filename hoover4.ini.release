@@ -100,6 +100,8 @@ common_concurrency =
 common_max_cached_workflows = 100
 # This value limits the memory of the worker container.
 worker_mem_limit = 29000M
+# This value limits the address space of one qpdf process. 0 removes the limit.
+qpdf_mem_limit = 4G
 # Empty uses tika_parse_processes.
 tika_concurrency =
 tika_mem_limit = 6G

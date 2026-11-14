@@ -74,7 +74,7 @@ def test_qpdf_warning_exit_is_success_and_errors_do_not_retry(monkeypatch, caplo
         monkeypatch.setattr(
             parse_pdf,
             "_run_qpdf",
-            lambda args: subprocess.CompletedProcess(args, 3, b"not-a-number", b"warning"),
+            lambda args, *rest: subprocess.CompletedProcess(args, 3, b"not-a-number", b"warning"),
         )
         with pytest.raises(ApplicationError) as excinfo:
             parse_pdf._qpdf_show_npages("ignored", "invalid-count-hash")

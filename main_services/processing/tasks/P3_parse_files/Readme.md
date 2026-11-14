@@ -94,6 +94,19 @@ qpdf exit status 3 returns usable output with warnings. Page-count parsing accep
 logs the warning with the file hash. Metadata JSON parsing accepts it. A page-count error
 records after one attempt.
 
+Each qpdf call logs the file hash, the input size and the page count before it starts. Each
+qpdf process runs under `prlimit --as` with the cap of `HOOVER4_QPDF_MEM_LIMIT_BYTES`
+(`[main_services] qpdf_mem_limit`, default 4 GiB, 0 for no cap). A process that reaches
+the cap fails its file with the non-retryable error type `QpdfMemoryCap`, because the same
+input reaches the cap again.
+
+A page-range copy (part split, chunk split and OCR part assembly) removes unreferenced
+resources first under a cap of 512 MiB. The removal copies the shared resource dictionary
+once for each Form XObject that uses it. A LibreOffice preview of a presentation with many
+transparent shapes can have thousands of such forms. One preview of 35 pages used more than
+14 GiB. When the removal reaches its cap, the copy runs again without it. The part then
+keeps every shared resource of the source, so it is larger, but its pages are the same.
+
 ## Automatic OCR uses detected page coverage
 
 PDF preparation stores native text with its original page numbers.

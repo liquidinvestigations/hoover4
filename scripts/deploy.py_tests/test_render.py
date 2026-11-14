@@ -336,6 +336,7 @@ def test_settings_defaults():
     assert env["CONTAINER_LOG_MAX_SIZE"] == "100m"
     assert env["CONTAINER_LOG_MAX_FILES"] == "5"
     assert env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] == "100"
+    assert env["HOOVER4_QPDF_MEM_LIMIT_BYTES"] == str(4 * 1024 ** 3)
 
 
 #: The chat run is the one run kind, with one pack key.

@@ -33,10 +33,112 @@ from tasks.heartbeat import HeartbeatClock, heartbeat_pump, with_heartbeat
 _PDF_SUBPROCESS_TIMEOUT_S = 900
 
 
-def _run_qpdf(args: List[str]) -> subprocess.CompletedProcess:
+#: The error type of a qpdf call that reached its memory cap. The same input reaches the
+#: same cap again, so the error is not retried.
+QPDF_MEMORY_CAP = "QpdfMemoryCap"
+
+#: The default address-space cap of one qpdf process. ``HOOVER4_QPDF_MEM_LIMIT_BYTES``
+#: replaces it, and 0 removes the cap. RLIMIT_AS counts mapped files and the shared
+#: libraries too, so the cap is larger than the resident memory that it allows.
+DEFAULT_QPDF_MEM_LIMIT_BYTES = 4 * 1024 ** 3
+
+#: What qpdf writes when an allocation fails under RLIMIT_AS.
+_MEMORY_FAILURE_MARKERS = (b"bad_alloc", b"Cannot allocate memory", b"failed to map segment",
+                           b"out of memory")
+
+
+def qpdf_memory_limit() -> int:
+    """The address-space cap in bytes of one qpdf process, or 0 for no cap."""
+    raw = os.getenv("HOOVER4_QPDF_MEM_LIMIT_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_QPDF_MEM_LIMIT_BYTES
+    value = int(raw)
+    if value < 0:
+        raise ValueError("HOOVER4_QPDF_MEM_LIMIT_BYTES must be 0 or more")
+    return value
+
+
+def _qpdf_input(args: List[str]) -> str:
+    """The input file of a qpdf argument list. It is the first file after --pages, or else
+    the last argument."""
+    if "--pages" in args:
+        return args[args.index("--pages") + 1]
+    return args[-1] if args else ""
+
+
+def _reached_memory_cap(res: subprocess.CompletedProcess) -> bool:
+    """Whether qpdf stopped because an allocation failed. A kill by the kernel is not a
+    cap hit, because the memory of other processes can cause it."""
+    stderr = res.stderr or b""
+    return any(marker in stderr for marker in _MEMORY_FAILURE_MARKERS)
+
+
+def _run_qpdf(args: List[str], file_hash: str = "", page_count: Optional[int] = None,
+              limit: Optional[int] = None) -> subprocess.CompletedProcess:
+    """Run qpdf under the cap of `qpdf_memory_limit`, or under `limit` when it is set.
+
+    A log line names the file hash, the input size and the page count before the call.
+    An out-of-memory kill then names its input. A call that reaches the cap raises a
+    non-retryable ApplicationError of type `QPDF_MEMORY_CAP`.
+    """
+    source = _qpdf_input(args)
+    try:
+        size = os.path.getsize(source)
+    except OSError:
+        size = -1
+    if limit is None:
+        limit = qpdf_memory_limit()
+    log.info("[P3] qpdf for file hash %s, %d bytes, %s pages, cap %d bytes: %s",
+             file_hash or "-", size, page_count if page_count is not None else "unknown", limit,
+             " ".join(args))
     cmd = ["qpdf"] + args
-    return sandbox.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
-                          timeout=_PDF_SUBPROCESS_TIMEOUT_S)
+    if limit:
+        cmd = ["prlimit", f"--as={limit}", "--"] + cmd
+    res = sandbox.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
+                      timeout=_PDF_SUBPROCESS_TIMEOUT_S)
+    if limit and res.returncode != 0 and _reached_memory_cap(res):
+        raise ApplicationError(
+            f"qpdf reached its memory cap of {limit} bytes for file hash {file_hash or '-'} "
+            f"({size} bytes, {page_count if page_count is not None else 'unknown'} pages): "
+            f"qpdf {' '.join(args)}: {(res.stderr or b'')[:200]!r}",
+            type=QPDF_MEMORY_CAP,
+            non_retryable=True,
+        )
+    return res
+
+
+#: The address-space cap of the unreferenced-resource analysis in `qpdf_copy_pages`. A
+#: normal page copy uses less than 20 MiB. The analysis copies the shared resource
+#: dictionary once for each Form XObject that uses it, so its memory grows with the
+#: product of the two counts. A LibreOffice export of a presentation with many transparent
+#: shapes has this structure. One preview of 35 pages with 15,562 Form XObjects used more
+#: than 14 GiB.
+RESOURCE_ANALYSIS_LIMIT_BYTES = 512 * 1024 ** 2
+
+
+def qpdf_copy_pages(options: List[str], pages: List[str], dest: str, file_hash: str = "",
+                    page_count: Optional[int] = None,
+                    remove_resources: str = "auto") -> subprocess.CompletedProcess:
+    """Copy page ranges into a new PDF with qpdf.
+
+    The copy removes unreferenced resources (`remove_resources`) under the cap of
+    `RESOURCE_ANALYSIS_LIMIT_BYTES`. When the analysis reaches that cap, the copy runs
+    again without the analysis, under the cap of `qpdf_memory_limit`. Each part then keeps
+    the shared resources, so it is larger. Its pages are the same.
+    """
+    tail = ["--pages", *pages, "--", dest]
+    limit = qpdf_memory_limit()
+    budget = min(limit, RESOURCE_ANALYSIS_LIMIT_BYTES) if limit else RESOURCE_ANALYSIS_LIMIT_BYTES
+    try:
+        return _run_qpdf(["--empty", *options, f"--remove-unreferenced-resources={remove_resources}",
+                          *tail], file_hash, page_count, limit=budget)
+    except ApplicationError as exc:
+        if exc.type != QPDF_MEMORY_CAP:
+            raise
+        log.warning("[P3] qpdf resource analysis reached %d bytes for file hash %s, "
+                    "copying the pages without it", budget, file_hash or "-")
+    return _run_qpdf(["--empty", *options, "--remove-unreferenced-resources=no", *tail],
+                     file_hash, page_count)
 
 
 # qpdf --help=exit-status states that 0 has no errors or warnings, 2 has errors,
@@ -74,7 +176,7 @@ def _raise_qpdf_show_npages_error(res: subprocess.CompletedProcess) -> None:
 
 
 def _qpdf_show_npages(path: str, file_hash: str = "") -> int:
-    res = _run_qpdf(["--show-npages", path])
+    res = _run_qpdf(["--show-npages", path], file_hash)
     if not _qpdf_succeeded(res):
         _raise_qpdf_show_npages_error(res)
     out = (res.stdout or b"").decode("utf-8", errors="ignore").strip()
@@ -87,8 +189,8 @@ def _qpdf_show_npages(path: str, file_hash: str = "") -> int:
     return page_count
 
 
-def _qpdf_json(path: str) -> Dict[str, Any]:
-    res = _run_qpdf(["--json", path])
+def _qpdf_json(path: str, file_hash: str = "", page_count: Optional[int] = None) -> Dict[str, Any]:
+    res = _run_qpdf(["--json", path], file_hash, page_count)
     if not _qpdf_succeeded(res):
         # Some qpdf builds require explicit --json-output
         raise RuntimeError(f"qpdf --json failed: {res.stderr[:200]} {res.stdout[:200]}")
@@ -157,11 +259,12 @@ def _insert_pdf_text_pages(collectionname: str, collection_dataset: str, pdf_has
     )
 
 
-def _extract_images_with_qpdf(input_pdf: str, out_dir: str) -> List[str]:
+def _extract_images_with_qpdf(input_pdf: str, out_dir: str, file_hash: str = "",
+                              page_count: Optional[int] = None) -> List[str]:
     # Newer qpdf supports --extract-images=<prefix>. We'll attempt and collect files.
     # Files are typically written as <prefix>-<obj>-<gen>.<ext>
     prefix = os.path.join(out_dir, "img")
-    res = _run_qpdf([f"--extract-images={prefix}", input_pdf])
+    res = _run_qpdf([f"--extract-images={prefix}", input_pdf], file_hash, page_count)
     if res.returncode != 0:
         # If unsupported or failed, return empty list
         return []
@@ -216,14 +319,16 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
         try:
             page_count = _qpdf_show_npages(file_path, pdf_hash)
         except ApplicationError as exc:
-            if "can't find PDF header" in str(exc):
+            if "can't find PDF header" in str(exc) or exc.type == QPDF_MEMORY_CAP:
                 raise
-            password = _run_qpdf(["--requires-password", file_path])
+            password = _run_qpdf(["--requires-password", file_path], pdf_hash)
             defect = "passworded" if password.returncode == 0 else "damaged"
             page_count = 0
         meta = {}
         try:
-            meta = _qpdf_json(file_path) if not defect else {}
+            meta = _qpdf_json(file_path, pdf_hash, page_count) if not defect else {}
+        except ApplicationError:
+            raise
         except Exception:
             meta = {}
 
@@ -324,7 +429,7 @@ def pdf_small_extract_text_and_images(params: PdfSmallParams) -> Dict[str, Any]:
                                source_ranges(len(text_pages), os.path.getsize(file_path)))
 
         # Extract images via qpdf (best-effort)
-        image_paths = _extract_images_with_qpdf(file_path, out_dir)
+        image_paths = _extract_images_with_qpdf(file_path, out_dir, pdf_hash, page_count or None)
     if image_paths:
         # Insert image rows and pdfs_image relationships
         from hashlib import sha3_256
@@ -440,11 +545,10 @@ def pdf_large_split_to_chunks(params: PdfLargeParams) -> Dict[str, Any]:
         for i, (a, b) in enumerate(ranges):
             heartbeat.beat(f"qpdf split {i}/{len(ranges)} chunks")
             dest = os.path.join(out_dir, f"chunk_{i+1}_{a}-{b}.pdf")
-            res = _run_qpdf([
-                "--empty", "--no-warn", "--warning-exit-0", "--deterministic-id",
-                "--object-streams=generate", "--remove-unreferenced-resources=yes", "--no-original-object-ids",
-                "--pages", file_path, f"{a}-{b}", "--", dest,
-            ])
+            res = qpdf_copy_pages(
+                ["--no-warn", "--warning-exit-0", "--deterministic-id",
+                 "--object-streams=generate", "--no-original-object-ids"],
+                [file_path, f"{a}-{b}"], dest, pdf_hash, page_count, remove_resources="yes")
             if res.returncode != 0:
                 raise RuntimeError(f"qpdf split failed for pages {a}-{b}: {res.stderr[:200]} {res.stdout[:200]}")
             chunk_files.append(dest)

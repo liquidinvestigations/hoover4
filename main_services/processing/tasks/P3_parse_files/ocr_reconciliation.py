@@ -314,7 +314,7 @@ def assemble_part(client, params, file, plan, job, with_text, candidates, merged
     pages without OCR stay in the download. Returns the object key and size.
     """
     from database.s3 import collection_bucket, get_s3_client
-    from tasks.P3_parse_files.parse_pdf import _qpdf_show_npages, _qpdf_succeeded, _run_qpdf
+    from tasks.P3_parse_files.parse_pdf import _qpdf_show_npages, _qpdf_succeeded, qpdf_copy_pages
     from tasks.P3_parse_files.pdf_parts import source_file
     part = job["part"]
     bucket = collection_bucket(params.collectionname)
@@ -352,7 +352,8 @@ def assemble_part(client, params, file, plan, job, with_text, candidates, merged
             else:
                 arguments += [path, str(number)]
         destination = os.path.join(folder, f"part-{part['part_index']}.pdf")
-        result = _run_qpdf(["--empty", "--warning-exit-0", "--pages", *arguments, "--", destination])
+        result = qpdf_copy_pages(["--warning-exit-0"], arguments, destination, file.item_hash,
+                                 part["last_page"] - part["first_page"] + 1)
     if not _qpdf_succeeded(result):
         raise RuntimeError(f"Automatic OCR part assembly failed: {result.stderr[:200]!r}")
     if _qpdf_show_npages(destination, file.item_hash) != part["last_page"] - part["first_page"] + 1:

@@ -180,11 +180,12 @@ def page_needs(path: str, count: int, pages: list[str]) -> list[int]:
             or len("".join((pages[page - 1] if page <= len(pages) else "").split())) < OCR_PAGE_TEXT_FLOOR]
 
 
-def split_pdf(source: str, dest: str, first: int, last: int) -> None:
+def split_pdf(source: str, dest: str, first: int, last: int, *, file_hash: str = "",
+              page_count: int | None = None) -> None:
     """Copy one source page range with qpdf."""
-    from tasks.P3_parse_files.parse_pdf import _run_qpdf, _qpdf_succeeded
-    result = _run_qpdf(["--empty", "--warning-exit-0", "--pages", source,
-                        f"{first}-{last}", "--", dest])
+    from tasks.P3_parse_files.parse_pdf import qpdf_copy_pages, _qpdf_succeeded
+    result = qpdf_copy_pages(["--warning-exit-0"], [source, f"{first}-{last}"], dest,
+                             file_hash, page_count)
     if not _qpdf_succeeded(result):
         raise RuntimeError(f"PDF split failed for pages {first}-{last}: {result.stderr[:200]!r}")
 
@@ -242,7 +243,7 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
                     part_path, part_size = source_path, size
                     if len(ranges) > 1:
                         dest = os.path.join(folder, f"{index}.pdf")
-                        split_pdf(path, dest, first, last)
+                        split_pdf(path, dest, first, last, file_hash=h, page_count=count)
                         key = f"derived/pdf-parts/{cd}/{h}/{kind}/s{PDF_SEGMENTATION_VERSION}/{first}-{last}.pdf"
                         get_s3_client().fput_object(bucket, key, dest, content_type="application/pdf")
                         part_path, part_size = f"s3://{bucket}/{key}", os.path.getsize(dest)
@@ -455,7 +456,8 @@ def backfill_saved_pdf(client, params: StageBatchParams, file: BatchFile,
             key, size = result["blob_key"], result["size_bytes"]
             if len(source) > 1:
                 dest = os.path.join(folder, f"{part['part_index']}.pdf")
-                split_pdf(path, dest, first, last)
+                split_pdf(path, dest, first, last, file_hash=file.item_hash,
+                          page_count=source[-1]["last_page"])
                 key = (f"derived/ocr-pdf/{params.collection_dataset}/{file.item_hash}/"
                        f"{params.engine}+{languages}/s{PDF_SEGMENTATION_VERSION}/{first}-{last}.pdf")
                 get_s3_client().fput_object(bucket, key, dest, content_type="application/pdf")

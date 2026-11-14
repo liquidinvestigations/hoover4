@@ -222,6 +222,8 @@ DEFAULTS = {
         # cost is memory: every worker process carries its own interpreter and its own
         # Magika model, so the count and this number have to be chosen together.
         "worker_mem_limit": "29000M",
+        # The address-space cap of one qpdf process in the worker. 0 removes the cap.
+        "qpdf_mem_limit": "4G",
         "tika_concurrency": "",
         "tika_mem_limit": "6G",
         "tika_parse_processes": "4",
@@ -1883,6 +1885,7 @@ def render_main_env(cfg, reachable_host=None):
     # value there would reach podman as a memory limit of "".
     if cfg.get(m, "worker_mem_limit"):
         env["HOOVER4_WORKER_MEM_LIMIT"] = cfg.get(m, "worker_mem_limit")
+    env["HOOVER4_QPDF_MEM_LIMIT_BYTES"] = str(size_bytes(cfg, "qpdf_mem_limit"))
     if cfg.get(m, "common_workers"):
         env["HOOVER4_COMMON_WORKERS"] = cfg.get(m, "common_workers")
     if cfg.get(m, "indexing_workers"):

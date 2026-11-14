@@ -257,6 +257,10 @@ CPU count of the host. [deploy.py](../../deploy.py) prints a
 warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
 worker then leaves Tesseract slots idle.
 
+`qpdf_mem_limit` (default `4G`) is the address-space cap of one qpdf process in the worker.
+A file whose qpdf call reaches the cap gets an Error that is not retried. `0` removes the cap.
+Keep `worker_mem_limit` above the cap times the PDF slots that run at once.
+
 `ocr_pdf_files_per_batch` defaults to `4`.
 It limits separate part activity lists for each engine and file group.
 Each list sends its requests sequentially.
@@ -747,7 +751,7 @@ literally. This index maps each key to the group above that explains it.
 - `temporal_history_persistence_qps`, `temporal_frontend_persistence_qps`, `temporal_matching_persistence_qps`
 - `container_log_max_size`, `container_log_max_files`
 - `regex_scanner_mem_limit`, `clickhouse_ui_mem_limit`, `clickhouse_monitoring_mem_limit`, `temporal_ui_mem_limit`
-- `ocr_pdf_files_per_batch`, `pdf_preview_concurrency`
+- `ocr_pdf_files_per_batch`, `pdf_preview_concurrency`, `qpdf_mem_limit`
 - `tika_mem_limit`, `tika_parse_processes`, `tika_parse_heap`
 - `browser_reader_tabs`, `browser_search_tabs`, `browser_queue_limit`, `browser_read_timeout_seconds`, `browser_fetch_token_file`
 - `web_search_concurrency`, `web_search_queue_limit`, `web_search_queue_wait_seconds`, `web_search_fetch_budget_seconds`

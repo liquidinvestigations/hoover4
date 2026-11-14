@@ -290,7 +290,8 @@ def bounded_source_parts(client, params, file, stored, revision):
         for index, first in enumerate(range(1, stored[-1]["last_page"] + 1, PAGE_BATCH), 1):
             last = min(stored[-1]["last_page"], first + PAGE_BATCH - 1)
             path = os.path.join(folder, f"{index}.pdf")
-            split_pdf(source, path, first, last)
+            split_pdf(source, path, first, last, file_hash=file.item_hash,
+                      page_count=stored[-1]["last_page"])
             key = f"derived/automatic-ocr-source/{params.collection_dataset}/{file.item_hash}/{revision}/{first}-{last}.pdf"
             get_s3_client().fput_object(bucket, key, path, content_type="application/pdf")
             result.append(dict(part_index=index, first_page=first, last_page=last,
