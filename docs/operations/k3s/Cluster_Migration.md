@@ -1,5 +1,7 @@
 # Move an earlier installation into a cluster site
 
+The k3s installation is experimental.
+
 This manual moves three kinds of earlier installation into a site of `k3s/deploy-k3s`.
 Each kind has its own procedure. Do not use the procedure of one kind for another kind.
 
@@ -9,7 +11,7 @@ Each kind has its own procedure. Do not use the procedure of one kind for anothe
 | A Compose installation of `./deploy` | [Move a Compose installation](#move-a-compose-installation) |
 | The local single-node site of a workstation | [Retire a local single-node site](#retire-a-local-single-node-site) |
 
-[The cluster deployment reference](../../k3s/Readme.md) describes each command in detail.
+[The cluster deployment reference](../../../k3s/Readme.md) describes each command in detail.
 
 ## Adopt an earlier cluster
 

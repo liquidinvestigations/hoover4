@@ -1,5 +1,7 @@
 # Operate the zones of a cluster site
 
+The k3s installation is experimental.
+
 A zone is one tenant of the site. It has its own openDesk, its own Hoover installation and its own sign-in service.
 Two roles work with a zone.
 
@@ -66,7 +68,7 @@ A value that you save during a running operation waits for the next Apply.
 A zone operation or an Apply that fails keeps its finished steps.
 
 1. Read the error and the last output lines of the operation.
-2. Correct the cause. The private infrastructure log and [the troubleshooting guide](Troubleshooting.md) help with known causes.
+2. Correct the cause. The private infrastructure log and [the troubleshooting guide](../Troubleshooting.md) help with known causes.
 3. Select **Run again** for a zone operation, or **Retry** for an Apply. The operation continues at its first unfinished step.
 4. Select **Abandon** to stop a failed Apply. Its unfinished scopes keep their earlier applied values.
 

@@ -1,7 +1,9 @@
 # Install a cluster site
 
+The k3s installation is experimental.
+
 This manual installs Hoover and openDesk on a k3s cluster with `k3s/deploy-k3s`.
-[The cluster deployment reference](../../k3s/Readme.md) describes each command and file in detail.
+[The cluster deployment reference](../../../k3s/Readme.md) describes each command and file in detail.
 Keep host names, addresses and credentials in the private site folder and in the private infrastructure inventory.
 
 ## Contents
@@ -28,7 +30,7 @@ The operator host runs the driver and the operator runner. It is usually the con
 ## Write the site file
 
 The site file is `k3s/private/hoover4-site.ini`. It is the only file that holds host paths.
-[The single-node and remote examples](../../k3s/tests/fixtures) show the format.
+[The single-node and remote examples](../../../k3s/tests/fixtures) show the format.
 
 | Section | Content |
 |---|---|

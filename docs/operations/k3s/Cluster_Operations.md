@@ -1,8 +1,10 @@
 # Operate a cluster site
 
+The k3s installation is experimental.
+
 This manual describes the daily tasks of a platform operator on a site of `k3s/deploy-k3s`.
 [The installation manual](Cluster_Installation.md) installs a site, and [the zone manual](Zone_Operator_Manual.md) describes the tasks of each zone.
-[The cluster deployment reference](../../k3s/Readme.md) describes each command in detail.
+[The cluster deployment reference](../../../k3s/Readme.md) describes each command in detail.
 
 ## Contents
 
