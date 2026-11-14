@@ -16,6 +16,11 @@ for repo in prometheus-community=https://prometheus-community.github.io/helm-cha
   "$helm" repo add --force-update "${repo%%=*}" "${repo#*=}" >/dev/null
 done
 "$helm" repo update >/dev/null
+# Grafana uses the strategy Recreate (monitoring-values.yaml). A server-side apply cannot change an existing Deployment
+# from RollingUpdate to Recreate, because the API server keeps the defaulted rollingUpdate field. This patch replaces it.
+if [ "$(kubectl -n monitoring get deployment monitor-grafana -o jsonpath='{.spec.strategy.type}' --ignore-not-found)" = RollingUpdate ]; then
+  kubectl -n monitoring patch deployment monitor-grafana --type json -p '[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]'
+fi
 # cpu_policy.py patches the CPU values, and Helm 4 applies on the server, so each upgrade takes those fields back.
 "$helm" upgrade --install --force-conflicts monitor prometheus-community/kube-prometheus-stack --version 92.10.1 --namespace monitoring --create-namespace -f <(values monitoring-values.yaml) --timeout 8m
 "$helm" upgrade --install --force-conflicts loki grafana-community/loki --version 18.17.0 --namespace monitoring -f <(values loki-values.yaml) --timeout 5m

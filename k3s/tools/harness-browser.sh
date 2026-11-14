@@ -12,7 +12,8 @@
 # Then: BROWSER_CONTAINER=hoover4-harness-browser website/take-screenshots.sh --target https://<zone>-hoover.<suffix> ...
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-private=$here/../private
+# HOOVER4_SITE names the site file. The local CA is in the state folder of that site.
+private=$(python3 "$here/../settings.py" private)
 name=hoover4-harness-browser
 image=${HARNESS_BROWSER_IMAGE:-localhost/hoover4-mcp-browser:local}
 ca=$private/frontend/local-ca.crt

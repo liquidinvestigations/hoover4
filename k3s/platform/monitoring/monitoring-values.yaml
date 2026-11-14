@@ -50,6 +50,9 @@ grafana:
   persistence:
     enabled: true
     size: 2Gi
+  # Grafana keeps SQLite on the claim. cpu_policy.py patches the Deployment right after the install, and a rolling update
+  # then starts a second pod on the same empty database. Two concurrent first starts left a schema without users.uid.
+  deploymentStrategy: {type: Recreate}
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {cpu: '1', memory: 512Mi}

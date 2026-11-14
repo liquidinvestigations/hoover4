@@ -293,7 +293,7 @@ The cluster holds the authoritative zone state, zone secrets and operator state.
 | Files of the state folder | Objects |
 |---|---|
 | `zone-state.json`, `operator/` (settings, revisions, Apply operations and their logs, backup and relay state), `operations/` (the logs of the zone operations), `facts/`, `frontend/local-ca.crt` | ConfigMaps with the label `hoover.dev/state=file` |
-| `zones/` (the zone secrets, the openDesk values and the master passwords) | Secrets with the label `hoover.dev/state=secret` |
+| `zones/` (the zone secrets, the openDesk values and the master passwords), `fixture-user-passwords.json` and `passwords.md` (the zone user logins) | Secrets with the label `hoover.dev/state=secret` |
 
 - The annotation `hoover.dev/state-path` of each object names its file. A log keeps its last 256 KiB in the cluster.
 - `operator/deploy/` (the records of `deploy-k3s`), the tokens, the kubeconfig and the downloaded tools stay only in the state folder, because the workstation needs them before a cluster exists.
@@ -344,6 +344,7 @@ It listens on 127.0.0.1 only and forwards each port to a Service of the installa
 The website of an installation is `https://<zone>-hoover.<domain>/`. A user signs in through the Keycloak of the zone.
 The browser harness (`website/take-screenshots.sh`) runs Chromium in a container that must reach that name and trust the local CA.
 `tools/harness-browser.sh start` runs the container `hoover4-harness-browser` from the Compose image of the browser server, in the host network, with the local CA as a Chromium policy.
+It reads the local CA from the state folder of the site that `HOOVER4_SITE` names.
 Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://<zone>-hoover.<domain>`, and give a zone login in `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD`.
 
 ## Move a Compose installation into the cluster.

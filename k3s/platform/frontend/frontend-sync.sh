@@ -78,15 +78,19 @@ cat <<CADDY
 }
 # The WAF checks the routes that pass without the gate. The rule set refuses a request with an attack pattern (403).
 # Large chat media uploads are checked only in their first part. The sign-in arguments state, rd and redirect_uri hold
-# a return address, for example a wiki path with /bin/, so the command injection rules do not read them.
+# a return address, for example a wiki path with /bin/, so the command injection and file access rules do not read
+# them. On a domain that ends with .local, the file access rules match .local/bin/ of a wiki address.
+# The Matrix client API sends messages and account data with PUT and DELETE, so the rule set allows these methods too.
 (waf) {
 	coraza_waf {
 		load_owasp_crs
 		directives \`
 			Include @coraza.conf-recommended
 			Include @crs-setup.conf.example
+			SecAction "id:900200,phase:1,pass,t:none,nolog,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
 			Include @owasp_crs/*.conf
 			SecRuleUpdateTargetByTag attack-rce "!ARGS:state|!ARGS:rd|!ARGS:redirect_uri"
+			SecRuleUpdateTargetByTag attack-lfi "!ARGS:state|!ARGS:rd|!ARGS:redirect_uri"
 			SecRuleEngine On
 			SecRequestBodyLimitAction ProcessPartial
 			SecResponseBodyAccess Off
@@ -106,7 +110,8 @@ cat <<CADDY
 	# The gate answers its own sign-in routes with the cookies of the browser.
 	@gate expression \`$(app auth)\`
 	# The routes of the chat and call clients with their own tokens, and of preflights, pass without the gate.
-	@open expression \`method('OPTIONS') || path('/.well-known/*', '/robots.txt') || $(app 'mas|sfu') || ($(app id) && path('/realms/opendesk/*', '/resources/*', '/fingerprintjs*', '/opendesk-static-files/*')) || ($(app matrix) && path('/_matrix/client/*', '/_matrix/media/*')) || ($(app mrtc) && path('/sfu/get*', '/get_token*', '/delegate_delayed_leave*'))\`
+	# The Keycloak sign-in page of a zone loads its style sheets and images from the portal host before any gate cookie exists.
+	@open expression \`method('OPTIONS') || path('/.well-known/*', '/robots.txt') || $(app 'mas|sfu') || ($(app id) && path('/realms/opendesk/*', '/resources/*', '/fingerprintjs*', '/opendesk-static-files/*')) || ($(app portal) && path('/univention/theme.css', '/univention/portal/css/*', '/opendesk-static-files/*', '/favicon.ico')) || ($(app matrix) && path('/_matrix/client/*', '/_matrix/media/*')) || ($(app mrtc) && path('/sfu/get*', '/get_token*', '/delegate_delayed_leave*'))\`
 	@page header Accept *text/html*
 	@other not header Accept *text/html*
 	# Caddy runs the handlers of one route in the written order. The first handler that answers ends the request.

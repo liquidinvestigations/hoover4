@@ -170,17 +170,17 @@ async def check_user(user, password):
         start = time.monotonic()
         tab = await browser.get(f'https://{host("portal")}/univention/oidc/?location=/univention/portal/')
         await sign_in(tab, user, password)
-        for name, url, host, markers, buttons in APPS:
+        for name, url, app_host, markers, buttons in APPS:
             began = time.monotonic()
             seen = {}
             try:
                 if name != 'portal':
                     tab = await browser.get(url)
-                ok, seen = await wait_page(tab, host, markers, 40 if buttons else 120)
+                ok, seen = await wait_page(tab, app_host, markers, 40 if buttons else 120)
                 clicked = None
                 if not ok and buttons:
                     clicked = await click_any(tab, buttons)
-                    ok, seen = await wait_page(tab, host, markers, 120)
+                    ok, seen = await wait_page(tab, app_host, markers, 120)
                 await tab.save_screenshot(str(OUT / f'{user}-{name}.png'))
                 row = {'user': user, 'app': name, 'ok': ok, 'seconds': round(time.monotonic() - began, 1), 'url': seen.get('url', '').split('?')[0],
                        'title': seen.get('title', '')[:80], 'clicked': clicked}

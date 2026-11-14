@@ -133,6 +133,22 @@ def test_a_large_log_keeps_its_last_lines_in_the_cluster(tmp_path):
     assert clusterstate.pull(tmp_path, store=store) == {}
 
 
+def test_the_zone_user_passwords_are_secrets_that_reach_the_next_runner(tmp_path):
+    # The runner writes the passwords of the zone users at a create. A restart of its pod must not lose them.
+    store = Store()
+    runner, portal, workstation = tmp_path / 'runner', tmp_path / 'portal', tmp_path / 'workstation'
+    write(runner, 'fixture-user-passwords.json', '{"user": "pw"}')
+    write(runner, 'passwords.md', '| user | pw |')
+    changes = clusterstate.push(runner, store=store)
+    assert changes == {'fixture-user-passwords.json': 'written', 'passwords.md': 'written'}
+    assert set(store.list('secret')) == {'fixture-user-passwords.json', 'passwords.md'} and not store.list('configmap')
+    clusterstate.pull(portal, ('configmap',), store=store)
+    assert not (portal / 'fixture-user-passwords.json').exists()
+    clusterstate.pull(workstation, store=store)
+    assert (workstation / 'fixture-user-passwords.json').read_text() == '{"user": "pw"}'
+    assert (workstation / 'fixture-user-passwords.json').stat().st_mode & 0o077 == 0
+
+
 def test_the_objects_name_their_path_and_keep_secrets_out_of_configmaps():
     kube = clusterstate.Kubectl('/nonexistent')
     secret = kube.body('secret', 'zones/zone-a/master-password', b'pw')
