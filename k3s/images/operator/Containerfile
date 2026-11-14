@@ -1,0 +1,38 @@
+# The operator image of ../../deploy-k3s. It runs the deployment driver, Ansible and the cluster tools on the operator
+# workstation. deploy-k3s builds it when a file of this folder or ../../ansible/requirements.yml changes, and runs one
+# container with --rm for each command. The image holds no site file, no key and no state.
+FROM docker.io/library/python:3.13-slim-trixie@sha256:48d884813cf44e927cf64c5529dd630dd3b18338c6dc727991eef9b71e934a20
+
+ARG TARGETARCH=amd64
+# kubectl of the k3s version of the cluster, and Helm 4 of ../../driver/artifacts.json. The digests are the published
+# release digests.
+ARG KUBECTL_VERSION=v1.36.5
+ARG KUBECTL_SHA256_amd64=33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e
+ARG KUBECTL_SHA256_arm64=88fc1aca8fd0c1b44fe379f67c39bd6858bdfc50241dc55775f84d0f5b31da3a
+ARG HELM_VERSION=v4.3.1
+ARG HELM_SHA256_amd64=0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b
+ARG HELM_SHA256_arm64=8cf8f66ecbc252ac8f7f06cca68aba88508ddfde3a6a34feb1678ad1694b4f88
+
+# ssh and git for Ansible and the record of the checkout. curl, tar, zstd, openssl and jq for the platform scripts.
+# podman builds and pushes the images through the podman service of the workstation (CONTAINER_HOST). systemd gives
+# systemctl and loginctl for the user units of the operator runner.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl tar zstd gzip openssl jq \
+       rsync bash procps iproute2 podman systemd \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eu; \
+    kubectl_sha=$(eval echo "\$KUBECTL_SHA256_${TARGETARCH}"); helm_sha=$(eval echo "\$HELM_SHA256_${TARGETARCH}"); \
+    curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl"; \
+    echo "${kubectl_sha}  /usr/local/bin/kubectl" | sha256sum -c -; chmod 0755 /usr/local/bin/kubectl; \
+    curl -fsSL -o /tmp/helm.tar.gz "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz"; \
+    echo "${helm_sha}  /tmp/helm.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/helm.tar.gz -C /usr/local/bin --strip-components=1 "linux-${TARGETARCH}/helm"; rm /tmp/helm.tar.gz
+
+COPY requirements.txt /opt/operator/requirements.txt
+RUN pip install --no-cache-dir -r /opt/operator/requirements.txt
+
+# The collections go to a system path, because the container runs as the UID of the operator with a temporary home.
+COPY requirements.yml /opt/operator/requirements.yml
+RUN ansible-galaxy collection install -r /opt/operator/requirements.yml -p /usr/share/ansible/collections \
+    && chmod -R a+rX /usr/share/ansible/collections

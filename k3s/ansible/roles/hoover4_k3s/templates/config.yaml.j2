@@ -1,0 +1,43 @@
+{% if hoover4_server | bool %}
+# The server keeps its datastore in embedded etcd, also on a site with one node. etcd gives the snapshots of
+# the platform backup. One server is not highly available.
+cluster-init: true
+advertise-address: {{ hoover4_node_address }}
+tls-san:
+  - {{ hoover4_node_address }}
+flannel-backend: {{ 'host-gw' if hoover4_single_local | bool else 'vxlan' }}
+token-file: /etc/rancher/k3s/token
+agent-token-file: /etc/rancher/k3s/agent-token
+write-kubeconfig-mode: "0600"
+# The public host runs the frontend. TopoLVM replaces the local-path volumes.
+disable:
+  - traefik
+  - servicelb
+  - local-storage
+{% else %}
+server: https://{{ hoover4_server_address }}:6443
+token-file: /etc/rancher/k3s/agent-token
+{% endif %}
+node-name: {{ inventory_hostname }}
+node-ip: {{ hoover4_node_address }}
+flannel-iface: {{ hoover4_flannel_iface }}
+kubelet-arg:
+  # One node can hold several zones. A zone has about 50 pods, and the node pod network is a /24.
+  - max-pods=250
+  # The pods must not use the memory of the system and k3s, because memory is not overcommitted.
+{% if hoover4_reserved %}
+  - system-reserved={{ hoover4_reserved }}
+{% endif %}
+  - eviction-hard=memory.available<500Mi,nodefs.available<5%,imagefs.available<5%
+{% if hoover4_gpu | bool %}
+# A GPU node runs only the GPU pods, which tolerate this taint.
+node-label:
+  - hoover.dev/gpu=true
+node-taint:
+  - hoover.dev/gpu=true:NoSchedule
+{% endif %}
+{% if hoover4_single_local | bool %}
+  # k3s and the pods share hoover4.slice, whose limits keep memory for the other services of the host.
+  - cgroup-root=/hoover4
+write-kubeconfig: /etc/rancher/k3s/hoover4-admin.yaml
+{% endif %}

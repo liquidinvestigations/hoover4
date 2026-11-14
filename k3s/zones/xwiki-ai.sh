@@ -8,8 +8,9 @@ cd "$(dirname "$0")"
 zone=$1
 version=0.11
 # The browser Python environment has nodriver.
-py=${BROWSER_PYTHON:-../private/browser-venv/bin/python}
-read -r endpoint model keyfile < <(python3 -c "import json;a=json.load(open('../private/ai.json'));print(a['endpoint'].rstrip('/')+'/',a['model'],a['api_key_file'])")
+private=$(python3 ../settings.py private)
+py=${BROWSER_PYTHON:-$private/browser-venv/bin/python}
+read -r endpoint model keyfile < <(python3 -c "import json;a=json.load(open('$private/ai.json'));print(a['endpoint'].rstrip('/')+'/',a['model'],a['api_key_file'])")
 context=$(python3 - "$endpoint" "$model" "$keyfile" <<'P'
 import json,sys,urllib.request
 endpoint,model,keyfile=sys.argv[1:]

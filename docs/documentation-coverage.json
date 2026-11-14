@@ -3089,7 +3089,9 @@
       "id": "F-admin-49",
       "source": [
         "k3s/deploy-k3s",
-        "k3s/driver/deploy.py"
+        "k3s/driver/deploy.py",
+        "k3s/ansible/playbooks/hoover4-hosts.yml",
+        "k3s/ansible/playbooks/hoover4-k3s.yml"
       ],
       "docs": [
         "docs/technical-specification/Features.md",
@@ -3144,7 +3146,7 @@
       "source": [
         "k3s/platform/gpu/gpu_pool.py",
         "k3s/hoover/gpu.py",
-        "k3s/hosts/root-install-k3s.py",
+        "k3s/ansible/roles/hoover4_k3s/tasks/main.yml",
         "k3s/cluster/runtimeclasses.yaml"
       ],
       "docs": [
@@ -3159,7 +3161,7 @@
       "source": [
         "k3s/platform/calls/install-calls.py",
         "k3s/platform/calls/public_endpoints.py",
-        "k3s/hosts/root-install-public-firewall.sh"
+        "k3s/ansible/roles/hoover4_public_firewall/files/public-firewall.sh"
       ],
       "docs": [
         "docs/technical-specification/Features.md",

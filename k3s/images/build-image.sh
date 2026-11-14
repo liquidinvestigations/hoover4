@@ -27,5 +27,5 @@ if [ -n "${REBUILD:-}" ] || ! podman image exists "$local_name"; then
   podman build -q --platform "${PLATFORM:-linux/amd64}" "${build_args[@]}" -t "$local_name" ${file:+-f "$file"} "$dir" >/dev/null
 fi
 # The registry listens on the VPN address without TLS. A push needs the credentials that install-registry.sh writes.
-podman push -q --tls-verify=false --authfile "$here/../private/registry-auth.json" "$local_name" "docker://$endpoint/$image"
+podman push -q --tls-verify=false --authfile "$(python3 "$here/../settings.py" private)/registry-auth.json" "$local_name" "docker://$endpoint/$image"
 echo "pushed $local_name"

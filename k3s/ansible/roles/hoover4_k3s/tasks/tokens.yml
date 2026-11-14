@@ -1,0 +1,108 @@
+---
+# The server token and the agent token of the site are in the folder hoover4_tokens_dir of the state folder, readable
+# by the operator only. A new site gets random tokens once. On a server that already runs, the play copies its tokens
+# into an empty folder. A host keeps its token: a token of the state folder with another secret stops the play before
+# any change, because a changed token breaks the bootstrap data of the server and the join of the agents. The secret of
+# a full token K10<CA hash>::<user>:<secret> is its last part.
+- name: Read the tokens of the running server
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: [/var/lib/rancher/k3s/server/token, /var/lib/rancher/k3s/server/agent-token]
+  register: hoover4_server_tokens
+  failed_when: false
+  no_log: true
+  when: hoover4_server | bool
+
+- name: Read the tokens of the state folder
+  ansible.builtin.stat:
+    path: "{{ hoover4_tokens_dir }}/{{ item }}"
+  loop: [server-token, agent-token]
+  delegate_to: localhost
+  become: false
+  register: hoover4_local_tokens
+  run_once: true
+
+- name: Create the folder of the tokens
+  ansible.builtin.file:
+    path: "{{ hoover4_tokens_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Copy the tokens of the running server into the state folder
+  vars:
+    server_token: "{{ hoover4_server_tokens.results[0].content | default('') | b64decode | trim }}"
+    agent_token: "{{ hoover4_server_tokens.results[1].content | default('') | b64decode | trim }}"
+    # A server without an agent token lets its agents join with the secret of the server token.
+    secret: "{{ server_token.split('::', 1)[1].split(':', 1)[-1] if '::' in server_token else server_token }}"
+  ansible.builtin.copy:
+    content: "{{ (server_token if item == 'server-token' else (agent_token or secret)) ~ '\n' }}"
+    dest: "{{ hoover4_tokens_dir }}/{{ item }}"
+    mode: "0600"
+  loop: [server-token, agent-token]
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when:
+    - hoover4_server | bool
+    - hoover4_server_tokens.results[0].content is defined
+    - not (hoover4_local_tokens.results | map(attribute='stat.exists') | select | list)
+
+- name: Write random tokens for a new site
+  ansible.builtin.shell: |
+    set -eu
+    umask 077
+    for name in server-token agent-token; do
+      [ -s "{{ hoover4_tokens_dir }}/$name" ] || python3 -c 'import secrets; print(secrets.token_hex(32))' > "{{ hoover4_tokens_dir }}/$name"
+    done
+  args:
+    creates: "{{ hoover4_tokens_dir }}/agent-token"
+  delegate_to: localhost
+  become: false
+  when: hoover4_server | bool
+
+- name: Read the tokens of the site
+  ansible.builtin.set_fact:
+    hoover4_server_token: "{{ lookup('ansible.builtin.file', hoover4_tokens_dir ~ '/server-token') | trim }}"
+    hoover4_agent_token: "{{ lookup('ansible.builtin.file', hoover4_tokens_dir ~ '/agent-token') | trim }}"
+  no_log: true
+
+- name: Read the agent token of the agent
+  ansible.builtin.shell: |
+    cat /etc/rancher/k3s/agent-token 2>/dev/null || true
+    echo ==
+    sed -n "s/^K3S_TOKEN=['\"]\{0,1\}\([^'\"]*\).*/\1/p" /etc/systemd/system/k3s-agent.service.env 2>/dev/null || true
+  register: hoover4_agent_existing
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: not hoover4_server | bool
+
+- name: Refuse a token that differs from the token of the host
+  vars:
+    found: >-
+      {{ ([hoover4_server_tokens.results[0].content | default('') | b64decode | trim,
+           hoover4_server_tokens.results[1].content | default('') | b64decode | trim]
+          if hoover4_server | bool else (hoover4_agent_existing.stdout.split('==') | map('trim') | list)) }}
+    wanted: "{{ [hoover4_server_token, hoover4_agent_token] if hoover4_server | bool else [hoover4_agent_token, hoover4_agent_token] }}"
+  ansible.builtin.assert:
+    that: >-
+      item.0 == '' or
+      (item.0.split('::', 1)[1].split(':', 1)[-1] if '::' in item.0 else item.0) ==
+      (item.1.split('::', 1)[1].split(':', 1)[-1] if '::' in item.1 else item.1)
+    fail_msg: >-
+      A token of the state folder differs from the token that {{ inventory_hostname }} uses. The host keeps its token.
+      Put the tokens of the running cluster into {{ hoover4_tokens_dir }}, or empty that folder so the play copies them
+      from the server, then run the play again.
+    quiet: true
+  loop: "{{ found | zip(wanted) | list }}"
+  no_log: true
+
+- name: Write the token files
+  ansible.builtin.include_tasks: token-file.yml
+  loop: "{{ ([{'path': '/etc/rancher/k3s/token', 'value': hoover4_server_token}] if hoover4_server | bool else []) + [{'path': '/etc/rancher/k3s/agent-token', 'value': hoover4_agent_token}] }}"
+  loop_control:
+    loop_var: token
+    label: "{{ token.path }}"

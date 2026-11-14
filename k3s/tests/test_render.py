@@ -500,10 +500,13 @@ def test_gpu_pool_runs_every_gpu_service_on_its_node_with_the_selected_runtime()
     assert {(p['containerPort'], p.get('hostIP')) for p in ports} == {(21960, '10.0.0.5'), (21961, '10.0.0.5'), (21962, '10.0.0.5')}
 
 
-def test_the_central_gpu_proxy_sends_the_pool_key_on_every_port_of_a_site_pool(tmp_path):
+def test_the_central_gpu_proxy_sends_the_pool_key_on_every_port_of_a_site_pool(tmp_path, monkeypatch):
     import gpu
     key = tmp_path / 'key'
     key.write_text('pool-key')
+    # The proxy key is in the state folder of the site file, which the test site does not have.
+    (tmp_path / 'gpu-proxy-key').write_text('proxy-key')
+    monkeypatch.setattr(gpu, 'KEY', tmp_path / 'gpu-proxy-key')
     for gateway, keyed in ((True, 3), (False, 1)):
         items = gpu.proxy({'address': 'gateway.gpu-pool.svc.cluster.local' if gateway else '192.0.2.50',
                            'api_key_file': str(key), 'gateway': gateway})
@@ -511,10 +514,10 @@ def test_the_central_gpu_proxy_sends_the_pool_key_on_every_port_of_a_site_pool(t
         assert config_map['data']['default.conf.template'].count('Bearer ${VLLM_KEY}') == keyed
 
 
-def test_gpu_nodes_reach_the_host_scripts_with_their_flag():
+def test_gpu_nodes_reach_the_host_steps_with_their_flag(tmp_path):
     import config
-    hosts = config.legacy_hosts(config.parse(site_text('remote.ini')))['hosts']
-    assert hosts['gpu-1']['gpu'] is True and hosts['edge']['gpu'] is False
+    hosts = config.ansible_inventory(config.parse(site_text('remote.ini')), tmp_path)['all']['children']['hoover4']['hosts']
+    assert hosts['gpu-1']['hoover4_gpu'] is True and hosts['edge']['hoover4_gpu'] is False
 
 
 # The calls placement and the public endpoints -------------------------------------------------------------------------
@@ -553,7 +556,7 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
     media = {(r['protocol'], r['port']) for r in rules['calls']}
     assert {('udp', 10000), ('tcp', 7881), ('udp', 7882), ('udp', 3478), ('tcp', 3478)} <= media
     assert ('tcp', 443) not in media and ('tcp', 443) in {(r['protocol'], r['port']) for r in rules['edge']}
-    script = (REPO / 'k3s/hosts/root-install-public-firewall.sh').read_text()
+    script = (REPO / 'k3s/ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
     assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script
 
 

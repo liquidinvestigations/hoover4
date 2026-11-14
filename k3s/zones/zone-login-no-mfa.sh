@@ -6,7 +6,7 @@ set -euo pipefail
 if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi
 cd "$(dirname "$0")"
 zone=$1
-export KUBECONFIG=${KUBECONFIG:-$(realpath ../private/kubeconfig)}
+export KUBECONFIG=${KUBECONFIG:-$(python3 ../settings.py private)/kubeconfig}
 password=$(kubectl -n "$zone" get secret keycloak-admin-password -o jsonpath='{.data.adminPassword}' | base64 -d)
 kubectl -n "$zone" exec -i ums-keycloak-0 -c main -- env KC_PASSWORD="$password" bash -s <<'EOF'
 set -euo pipefail

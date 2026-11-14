@@ -307,7 +307,7 @@ def test_the_recovery_set_names_etcd_and_reads_the_earlier_format(tmp_path):
                                                         'token': 'etcd/token', 'private': 'private.tar'}))
     assert backups.read_recovery(current)['datastore'] == 'etcd'
     steps = backups.platform_steps(current, 'week-1')
-    assert any('--restore-snapshot restore-week-1' in step and '--bundle backup' in step for step in steps)
+    assert any('sudo python3 - restore restore-week-1 < ' in step and 'k3s-datastore.py' in step for step in steps)
     assert not any('--token-file' in step for step in steps)
     earlier = tmp_path / 'earlier'
     earlier.mkdir()

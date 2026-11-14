@@ -1,0 +1,11 @@
+---
+# The frontend and the trust store of the local node of a single-node site (the cluster step frontend of
+# ../../deploy-k3s). The driver selects the tag frontend or trust.
+- name: The frontend of the local node
+  hosts: hoover4
+  gather_facts: true
+  gather_subset: ['!all', '!min', 'user']
+  become: false
+  roles:
+    - role: hoover4_local
+      become: true

@@ -228,16 +228,16 @@ def archive(dest):
     (dest / 'objects.json').write_text(json.dumps(objects))
     os.chmod(dest / 'objects.json', 0o600)
     (dest / 'persistent-volumes.json').write_text(kubectl('get', 'pv', '-o', 'json'))
-    excluded = ['build', 'bin', 'browser-venv', 'checks', 'downloads', 'staging/amd64', 'staging/arm64']
+    excluded = ['build', 'bin', 'browser-venv', 'checks', 'downloads', 'staging/amd64', 'staging/arm64', 'facts', 'ansible']
     subprocess.run(['tar', '-C', str(k3s_settings.PRIVATE), '-cf', str(dest / 'private.tar'),
                     *[f'--exclude=./{e}' for e in excluded], '.'], check=True)
     os.chmod(dest / 'private.tar', 0o600)
     (dest / 'kept-in-place.json').write_text(json.dumps(kept, indent=1))
     rows = write_manifest(dest)
     print(json.dumps({'archive': str(dest), 'files': len(rows), 'bytes': sum(r['bytes'] for r in rows), 'kept': kept,
-                      'next': 'Run with sudo: /usr/local/libexec/hoover4/root-install-k3s.py --bundle <bundle of the '
-                              f'last up> --node {node.name} --preserve k3s-server. Move ~/k3s-install/snapshots/'
-                              f'k3s-server into {dest}, then run local-retirement.py manifest and verify.'}))
+                      'next': 'Run: sudo python3 - preserve k3s-server < k3s/ansible/roles/hoover4_k3s/files/'
+                              f'k3s-datastore.py. Move ~/hoover4-snapshots/k3s-server into {dest}, then run '
+                              'local-retirement.py manifest and verify.'}))
 
 
 REMOVAL = """#!/bin/sh

@@ -27,6 +27,7 @@ install. It accepts the settings that deploy.py removed, reports them, and check
 Usage: config.py check <site.ini>             checks the file and prints its summary as JSON
        config.py project <site.ini> <node>    prints the part of the site that one node receives
        config.py source <hoover4.ini>         checks the Compose ini of an earlier install
+       config.py inventory <site.ini> <state> prints the Ansible inventory of the host steps as JSON
 """
 import configparser
 import importlib.util
@@ -42,6 +43,18 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 PRIVATE = HERE / 'private'
 DEFAULT_SITE = PRIVATE / 'hoover4-site.ini'
+
+
+def state_folder(site_path):
+    """The state folder of a site file: the folder beside the file with the name of the file without its extension.
+
+    A site file directly in k3s/private of this checkout keeps k3s/private as its state folder, which is the folder of
+    the earlier installations.
+    """
+    path = Path(site_path).resolve()
+    if path.parent == PRIVATE.resolve():
+        return PRIVATE
+    return path.with_suffix('')
 STORAGE_IDENTITY = REPO / 'main_services/processing/tasks/storage_identity.json'
 
 # The fixed address of the local node of a single-node site. The host script puts it on the dummy link hoover4, so
@@ -175,6 +188,8 @@ class Site:
     state_path: str = ''
     gpu_pool: dict = field(default_factory=dict)
     backup: dict = field(default_factory=dict)
+    # The site file that read() parsed, or empty for parse().
+    path: str = ''
 
     @property
     def single(self):
@@ -184,8 +199,10 @@ class Site:
         return [n for n in self.nodes.values() if n.has(role)]
 
     def operator_state(self):
-        """The folder of the operator state on the control-plane host."""
-        return Path(self.state_path) if self.state_path else PRIVATE / 'operator'
+        """The folder of the operator state: [site] state_path, else operator/ of the state folder of the site file."""
+        if self.state_path:
+            return Path(self.state_path)
+        return (state_folder(self.path) if self.path else PRIVATE) / 'operator'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -407,7 +424,9 @@ def read(path=DEFAULT_SITE, check_files=False):
         text = path.read_text()
     except OSError as error:
         raise SiteError(f'the site file {path} is unreadable: {error}') from None
-    return parse(text, check_files=check_files)
+    site = parse(text, check_files=check_files)
+    site.path = str(path.resolve())
+    return site
 
 
 def _message(problems):
@@ -702,12 +721,12 @@ def local_ca(site):
     ../platform/frontend/install-local-frontend.sh writes it. The pods that call the zone names over HTTPS trust it.
     """
     public = site.with_role('public')
-    path = PRIVATE / 'frontend' / 'local-ca.crt'
+    path = (state_folder(site.path) if site.path else PRIVATE) / 'frontend' / 'local-ca.crt'
     return path.read_text() if public and public[0].local and path.exists() else ''
 
 
 def manages_wireguard(node):
-    """True when the installer configures the WireGuard interface of node (the wireguard step of root-install.py).
+    """True when the installer configures the WireGuard interface of node (the role hoover4_wireguard of ansible/).
 
     A GPU node, and a node that keeps the interface of an existing VPN (vpn_interface other than wg0), keep their VPN as
     it is. The installer adds no wg0 there.
@@ -770,12 +789,9 @@ def wireguard_routes(site, node):
     return {k: sorted(set(v)) for k, v in routes.items()}
 
 
-def legacy_hosts(site, private=None):
-    """The site in the format of hosts.json, which the host scripts of hosts/ read.
-
-    private is the private folder of the operator. The local node of a single-node site gets it as `private`, because
-    root-install-local.py reads the frontend files there and accepts no path argument.
-    """
+def legacy_hosts(site):
+    """The site in the format of hosts.json, which cluster/setup.sh reads through settings.py hosts. ansible_inventory()
+    takes the WireGuard peers and routes from it."""
     hosts = {}
     for node in site.nodes.values():
         hosts[node.name] = {
@@ -791,10 +807,90 @@ def legacy_hosts(site, private=None):
                       and wireguard_peer_wanted(site.nodes[n])],
             'routes': wireguard_routes(site, node),
         }
-        if private and node.local and site.single:
-            hosts[node.name]['private'] = str(private)
     return {'server': site.control_plane, 'user': site.operator_user, 'suffix': site.suffix, 'hosts': hosts,
             'backup': {'node': site.backup.get('node', ''), 'path': site.backup.get('path', '')} if site.backup else {}}
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# The Ansible inventory of the host steps
+# ----------------------------------------------------------------------------------------------------------------------
+
+def _memory_gib(text):
+    """GiB of a Kubernetes quantity such as 69Gi or 4096Mi."""
+    for suffix, factor in (('Gi', 1), ('Mi', 1 / 1024), ('G', 1), ('M', 1 / 1024)):
+        if text.endswith(suffix):
+            return float(text[:-len(suffix)]) * factor
+    return float(text) / 2 ** 30
+
+
+def ansible_inventory(site, private):
+    """The Ansible inventory of the site, as a dict in the YAML inventory format. private is the state folder.
+
+    The roles of ../ansible/roles/hoover4_* read the hoover4_* variables. A node connects with its ssh_address, as
+    user@host or host, else with its name and the SSH configuration of the operator. The local node of a site without
+    ssh_address connects to localhost.
+    """
+    private = Path(private)
+    legacy = legacy_hosts(site)
+    registry = site.with_role('registry')
+    hosts = {}
+    for node in site.nodes.values():
+        values = {}
+        if node.ssh_address:
+            user, _, host = node.ssh_address.rpartition('@')
+            values['ansible_host'] = host
+            if user:
+                values['ansible_user'] = user
+        elif node.local:
+            values['ansible_host'] = 'localhost'
+        reserved = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
+        single_local = site.single and node.local
+        values.update({
+            'hoover4_node_address': node_address(site, node),
+            'hoover4_flannel_iface': 'hoover4' if single_local else node.vpn_interface,
+            'hoover4_server': node.name == site.control_plane,
+            'hoover4_server_address': node_address(site, site.nodes[site.control_plane]),
+            'hoover4_architecture': node.architecture,
+            'hoover4_gpu': node.has('gpu'),
+            'hoover4_single_local': single_local,
+            'hoover4_reserved': node.reserved,
+            'hoover4_reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),
+            'hoover4_reserved_cpus': float(reserved.get('cpu', '2')),
+            # An on-prem node and the local node keep the k3s data on their own volumes.
+            'hoover4_require_k3s_volumes': node.onprem or single_local,
+            'hoover4_volume_group': node.lvm_volume_group if single_local else '',
+            'hoover4_stop_docker': node.onprem,
+            'hoover4_backup_path': site.backup.get('path', '') if site.backup.get('node') == node.name else '',
+            'hoover4_registry_endpoint': f'{node_address(site, registry[0])}:{REGISTRY_PORT}' if registry else '',
+            'hoover4_convert_sqlite': node.name == site.control_plane,
+        })
+        if manages_wireguard(node):
+            me = legacy['hosts'][node.name]
+            peers = []
+            for name in me['peers']:
+                peer = legacy['hosts'][name]
+                if not peer['key'] or not peer['wg_ip']:
+                    continue
+                endpoint = peer['public'] or (f"{peer['lan_ip']}:{peer['port']}" if me['onprem'] and peer['onprem'] else '')
+                peers.append({'name': name, 'key': peer['key'], 'endpoint': endpoint,
+                              'allowed_ips': [f"{peer['wg_ip']}/32"] + list(me['routes'].get(name, []))})
+            values['hoover4_wireguard'] = {'interface': node.vpn_interface, 'port': node.wireguard_port,
+                                           'public_key': node.wireguard_public_key, 'peers': peers}
+        hosts[node.name] = values
+    names = list(site.nodes)
+    return {'all': {
+        # The delegated tasks write into the state folder from the operator container, whose home folder is read-only.
+        'hosts': {'localhost': {'ansible_connection': 'local', 'ansible_python_interpreter': '{{ ansible_playbook_python }}',
+                                'ansible_remote_tmp': '/tmp/ansible/remote'}},
+        'vars': {'hoover4_state_dir': str(private), 'hoover4_tokens_dir': str(private / 'staging' / 'tokens'),
+                 'hoover4_kubeconfig': str(private / 'kubeconfig'), 'hoover4_facts_dir': str(private / 'facts'),
+                 'hoover4_suffix': site.suffix},
+        'children': {
+            'hoover4': {'hosts': hosts},
+            'hoover4_server': {'hosts': {site.control_plane: {}}},
+            'hoover4_agents': {'hosts': {n: {} for n in names if n != site.control_plane}},
+            'hoover4_wireguard': {'hosts': {n: {} for n in names if manages_wireguard(site.nodes[n])}},
+        }}}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -918,6 +1014,8 @@ def main(argv):
                           'hoovers': sorted(site.hoovers)}, indent=1))
     elif len(argv) == 3 and argv[0] == 'project':
         print(json.dumps(project(read(argv[1]), argv[2]), indent=1, default=list))
+    elif len(argv) == 3 and argv[0] == 'inventory':
+        print(json.dumps(ansible_inventory(read(argv[1]), argv[2]), indent=1))
     elif len(argv) == 2 and argv[0] == 'source':
         print(json.dumps(asdict(read_source_ini(argv[1])), indent=1))
     else:

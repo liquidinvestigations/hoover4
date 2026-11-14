@@ -1,0 +1,35 @@
+---
+# RHEL 9 disables SELinux fully only with the kernel argument selinux=0. The change applies after a reboot.
+- name: Disable SELinux in its configuration
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: SELINUX=disabled
+  register: hoover4_selinux_config
+
+- name: Read the kernel arguments
+  ansible.builtin.command: grubby --info ALL
+  register: hoover4_grubby
+  changed_when: false
+  check_mode: false
+
+- name: Add selinux=0 to the kernel arguments
+  ansible.builtin.command: grubby --update-kernel ALL --args selinux=0
+  when: hoover4_grubby.stdout | regex_findall('(?m)^args="(.*)"$') | reject('search', '(^| )selinux=0( |$)') | list | length > 0
+  changed_when: true
+
+- name: Read the SELinux mode
+  ansible.builtin.command: getenforce
+  register: hoover4_getenforce
+  changed_when: false
+  check_mode: false
+
+- name: Stop the enforcement of SELinux
+  ansible.builtin.command: setenforce 0
+  when: hoover4_getenforce.stdout == 'Enforcing'
+  changed_when: true
+
+- name: Report the reboot that SELinux needs
+  ansible.builtin.debug:
+    msg: "SELinux is {{ hoover4_getenforce.stdout }} on {{ inventory_hostname }}. It is disabled after the next reboot."
+  when: hoover4_getenforce.stdout != 'Disabled'

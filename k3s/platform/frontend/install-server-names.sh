@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source_dir=$(realpath ../..)
-private=$source_dir/private
+private=$(python3 "$source_dir/settings.py" private)
 current=$(sed '/^# BEGIN hoover-zones$/,/^# END hoover-zones$/d' /etc/hosts)
 if [ "${1:-}" = --remove ]; then
   wanted=$current

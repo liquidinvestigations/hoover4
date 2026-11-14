@@ -114,7 +114,7 @@ def test_per_node_secret_isolation():
 def test_legacy_hosts_projection_for_the_host_scripts():
     hosts = config.legacy_hosts(parse('remote.ini'))
     assert hosts['server'] == 'server-a'
-    # A GPU node gets the host scripts too, with its flag, so root-install-k3s.py installs its GPU runtime.
+    # A GPU node gets its flag, which cluster/setup.sh reads through settings.py hosts.
     assert hosts['hosts']['gpu-1']['gpu'] is True
     assert hosts['hosts']['edge']['public'] == '203.0.113.10:51820'
     assert hosts['hosts']['worker-b']['avx2'] is False

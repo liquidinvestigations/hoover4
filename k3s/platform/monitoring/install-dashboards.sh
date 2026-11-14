@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source_dir=$(realpath ../..)
-private=$source_dir/private
+private=$(python3 "$source_dir/settings.py" private)
 export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 helm=${HELM:-$private/bin/helm}
 suffix=$(python3 "$source_dir/settings.py" suffix)

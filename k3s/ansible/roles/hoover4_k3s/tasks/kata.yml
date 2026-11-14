@@ -1,0 +1,57 @@
+---
+- name: Read the installed Kata Containers release
+  ansible.builtin.slurp:
+    src: /opt/kata/VERSION
+  register: hoover4_kata_installed
+  failed_when: false
+
+- name: Install Kata Containers
+  when: (hoover4_kata_installed.content | default('') | b64decode | trim) != hoover4_kata_version
+  block:
+    - name: Download Kata Containers
+      ansible.builtin.get_url:
+        url: "https://github.com/kata-containers/kata-containers/releases/download/{{ hoover4_kata_version }}/kata-go-static-{{ hoover4_kata_version }}-amd64.tar.zst"
+        dest: /var/tmp/hoover4-kata.tar.zst
+        checksum: "sha256:{{ hoover4_kata_sha256 }}"
+        mode: "0600"
+
+    - name: Unpack Kata Containers into /opt/kata
+      ansible.builtin.shell: |
+        set -eu
+        rm -rf /opt/kata
+        tar --zstd -xf /var/tmp/hoover4-kata.tar.zst -C / ./opt/kata
+        rm -f /var/tmp/hoover4-kata.tar.zst
+      changed_when: true
+
+- name: Read the default Kata configuration of the release
+  ansible.builtin.slurp:
+    src: /opt/kata/share/defaults/kata-containers/configuration-clh.toml
+  register: hoover4_kata_default
+
+# The VM runs in the pod cgroup, so the RuntimeClass overhead and the pod limits hold it. The guest starts with 512 MiB
+# and adds the memory limits of the containers.
+- name: Refuse a Kata release without the changed lines
+  ansible.builtin.assert:
+    that:
+      - "'sandbox_cgroup_only = false' in (hoover4_kata_default.content | b64decode)"
+      - "'default_memory = 2048' in (hoover4_kata_default.content | b64decode)"
+    fail_msg: The default Kata configuration has no line sandbox_cgroup_only = false or default_memory = 2048. Verify the Kata release.
+    quiet: true
+
+- name: Write the Kata configuration
+  ansible.builtin.copy:
+    content: "{{ hoover4_kata_default.content | b64decode | replace('sandbox_cgroup_only = false', 'sandbox_cgroup_only = true') | replace('default_memory = 2048', 'default_memory = 512') }}"
+    dest: /etc/kata-containers/configuration-clh.toml
+    mode: "0644"
+  register: hoover4_kata_config
+
+- name: Check the Kata runtime on this host
+  ansible.builtin.command: /opt/kata/bin/kata-runtime --config /etc/kata-containers/configuration-clh.toml check --no-network-checks
+  register: hoover4_kata_check
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Report the Kata runtime check
+  ansible.builtin.debug:
+    msg: "kata-runtime check: {{ ((hoover4_kata_check.stdout ~ '\n' ~ hoover4_kata_check.stderr) | trim).splitlines() | last | default('(no output)') }}"

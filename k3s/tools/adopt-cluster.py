@@ -7,8 +7,9 @@ identities of that cluster, so the driver keeps them.
               and datastore labels, the zone and Hoover namespaces, their claims with UID, volume and size, the Secret
               names (no values), the images of each workload and the storage identity of each Hoover installation.
               It compares them with the site file and lists each difference. It changes nothing.
-  tokens      Copies the server token and the agent token of the control plane into k3s/private/staging/tokens/,
-              through the root route of the control plane (../driver/hostroute.py). The files are private, and no
+  tokens      Copies the server token and the agent token of the control plane into staging/tokens/ of the state
+              folder, with sudo -n on the control plane (../driver/nodeshell.py). The k3s play of deploy-k3s up also
+              copies them into an empty folder. The files are private, and no
               token value reaches a log, a command argument or the output. A server without an agent token gets the
               secret of the server token as agent token, which is the token that its agents already use.
   runners     Lists the operator runner units of the earlier tool on the control plane, as the user shell sees them.
@@ -30,7 +31,7 @@ K3S = HERE.parent
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'driver'))
 import config  # noqa: E402
-import hostroute  # noqa: E402
+import nodeshell  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 
 # The environment variables of the storage identity, from main_services/processing/tasks/storage_identity.json.
@@ -38,7 +39,7 @@ IDENTITY_VARIABLES = tuple(v['variable'] for v in json.loads(config.STORAGE_IDEN
 
 
 def kubectl_json(*args):
-    code, out = hostroute.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, *args, '-o', 'json'], timeout=120)
+    code, out = nodeshell.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, *args, '-o', 'json'], timeout=120)
     if code:
         raise SystemExit(f'kubectl {" ".join(args)} failed: {out[-300:]}')
     return json.loads(out)
@@ -96,7 +97,7 @@ def inventory(site):
 
 def tokens(site):
     node = site.nodes[site.control_plane]
-    shell = hostroute.Shell(node)
+    shell = nodeshell.Shell(node)
     code, home = shell.run('echo "$HOME"', timeout=30)
     user = site.operator_user or os.environ.get('USER', '')
     folder = f'{home.strip()}/.hoover4-adopt'
@@ -104,15 +105,10 @@ def tokens(site):
             f'install -m 0600 -o {shlex.quote(user)} /var/lib/rancher/k3s/server/token {folder}/server-token && '
             f'if [ -s /var/lib/rancher/k3s/server/agent-token ]; then install -m 0600 -o {shlex.quote(user)} '
             f'/var/lib/rancher/k3s/server/agent-token {folder}/agent-token; fi')
-    if shell.run('sudo -n true', timeout=30)[0] == 0:
-        code, out = shell.run(f'sudo -n sh -c {shlex.quote(copy)}', timeout=120)
-        if code:
-            raise SystemExit(f'the token copy on {node.name} failed: {out[-200:]}')
-    else:
-        root = hostroute.ClusterRoot(k3s_settings.KUBECONFIG, shell)
-        unit = f'hoover4-adopt-tokens-{int(time.time())}'
-        root.start(unit, (), ['/bin/sh', '-c', copy])
-        root.wait(unit)
+    code, out = shell.run(f'sudo -n sh -c {shlex.quote(copy)}', timeout=120)
+    if code:
+        raise SystemExit(f'the token copy on {node.name} failed: {out[-200:]}. The operator user needs sudo without a '
+                         'password on the control plane.')
     target = k3s_settings.PRIVATE / 'staging' / 'tokens'
     target.mkdir(parents=True, exist_ok=True)
     os.chmod(target, 0o700)
@@ -141,7 +137,7 @@ def tokens(site):
 
 
 def runners(site):
-    shell = hostroute.Shell(site.nodes[site.control_plane])
+    shell = nodeshell.Shell(site.nodes[site.control_plane])
     code, out = shell.run("systemctl --user list-units --all --no-legend --plain | grep -Ei 'operator|runner|hoover' ; "
                           "systemctl list-units --all --no-legend --plain | grep -Ei 'operator|runner' ; true", timeout=60)
     print(json.dumps({'node': site.control_plane, 'units': [line.split()[0] for line in out.splitlines() if line.strip()]}))

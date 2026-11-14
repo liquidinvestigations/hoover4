@@ -2,39 +2,50 @@
 """Install, update, start, stop and check a k3s site of Hoover and openDesk. Standard library only.
 
 Usage:
-  deploy-k3s render    --target NODE... [--revision REF] [--manifests]   print the configuration. Changes nothing.
+  deploy-k3s render    --target NODE... [--manifests]                    print the configuration. Changes nothing.
   deploy-k3s check     --target NODE...                                  check the hosts and the site. Changes nothing.
-  deploy-k3s bootstrap --target NODE...                                  write the reviewed bootstrap script of each node
-  deploy-k3s up        --target NODE... [--revision REF] [--steps STEP...] [--start]
+  deploy-k3s up        --target NODE... [--steps STEP...] [--start]
   deploy-k3s up        --resume RECORD
   deploy-k3s down      --target NODE... [--steps STEP...]
   deploy-k3s down      --resume RECORD
   deploy-k3s status    [RECORD]                                          print the records
 
 --target names nodes of the site file, or `all`. Every command except status needs it.
---site names the site file. The default is $HOOVER4_SITE, else k3s/private/hoover4-site.ini.
---revision names the commit of the images and of the scripts. The driver resolves it once, at the start of an up or a
-down, writes the tree of the commit with git archive into k3s/private/build/<commit>/ and runs the deploy-k3s of that
-tree, so every step runs the scripts of the commit and not the working files of the checkout. The record keeps the
-commit and the fingerprint of the tree. A resumed record keeps them. The default is HEAD. A tree of a commit before
-this export cannot run a down, so down also uses HEAD.
+--site names the site file. The default is $HOOVER4_SITE, else k3s/private/hoover4-site.ini. The state folder of the
+site is beside the site file and has the name of the file without its extension. A site file directly in k3s/private
+keeps k3s/private as its state folder.
+--ask-become-pass asks once for the sudo password of the nodes. Without it, the nodes need sudo without a password.
+Every step runs the scripts of this checkout. The record keeps the commit of HEAD and `git status --porcelain` of the
+checkout. A resume needs the same commit.
 up installs or updates the hosts, k3s, the registry, the images, the platform services and the zones, in this order.
 up --start starts what down stopped: k3s, then the stores, Temporal, the applications and the ingress.
 down stops the ingress, the applications and workers, Temporal, the stores, and then k3s. It cancels no workflow.
 --steps runs only the named steps of the plan. render prints the plan.
 A failed or stopped run keeps its record. `up --resume RECORD` continues at the first unfinished step.
 
+The command runs in the operator image (images/operator/). This file builds the image with podman, else docker, when
+its inputs changed, and runs one container with --rm. The container mounts this checkout read-only, the folder of
+the site file read-write, ~/.ssh read-only and the SSH agent socket, and runs with the UID of the user and the network
+of the host. Ansible writes new host keys into known_hosts of the state folder.
+
 A copy of this file outside a checkout first clones the repository:
   deploy-k3s --checkout DIR [--repository URL] <command> ...
 It then runs the deploy-k3s of that checkout with the other arguments.
 """
+import hashlib
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPOSITORY = 'https://github.com/liquidinvestigations/hoover4'
+# The inputs of the operator image. A change of one of them builds a new image.
+IMAGE_INPUTS = ('images/operator/Containerfile', 'images/operator/requirements.txt', 'ansible/requirements.yml')
+IMAGE = 'localhost/hoover4-operator'
+IN_IMAGE = 'HOOVER4_OPERATOR_IMAGE'
 
 
 def bootstrap_checkout(argv):
@@ -56,8 +67,106 @@ def bootstrap_checkout(argv):
     os.execv(sys.executable, [sys.executable, str(checkout / 'k3s' / 'deploy-k3s'), *rest])
 
 
+def site_argument(argv):
+    """The absolute path of the site file of the command line, $HOOVER4_SITE or the default."""
+    value = os.environ.get('HOOVER4_SITE') or str(HERE / 'private' / 'hoover4-site.ini')
+    for i, arg in enumerate(argv):
+        if arg == '--site' and i + 1 < len(argv):
+            value = argv[i + 1]
+        elif arg.startswith('--site='):
+            value = arg.split('=', 1)[1]
+    return Path(value).expanduser().resolve()
+
+
+def image_digest():
+    digest = hashlib.sha256()
+    for name in IMAGE_INPUTS:
+        digest.update(name.encode() + b'\0' + (HERE / name).read_bytes() + b'\0')
+    return digest.hexdigest()[:16]
+
+
+def engine():
+    for name in ('podman', 'docker'):
+        if shutil.which(name):
+            return name
+    raise SystemExit('deploy-k3s needs podman or docker on this host.')
+
+
+def ensure_image(tool):
+    """Build the operator image when no image has the digest of its inputs. Return the image name."""
+    name = f'{IMAGE}:{image_digest()}'
+    if subprocess.run([tool, 'image', 'inspect', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        return name
+    print(f'deploy-k3s: build the operator image {name}', file=sys.stderr, flush=True)
+    with tempfile.TemporaryDirectory(prefix='hoover4-operator-') as context:
+        for item in IMAGE_INPUTS:
+            shutil.copy(HERE / item, Path(context) / Path(item).name)
+        code = subprocess.run([tool, 'build', '-t', name, '-f', str(Path(context) / 'Containerfile'), context]).returncode
+    if code:
+        raise SystemExit(f'deploy-k3s: the build of the operator image failed with exit code {code}.')
+    return name
+
+
+def run_in_image(argv):
+    """Run this command in the operator image and return its exit code."""
+    tool = engine()
+    image = ensure_image(tool)
+    repo = HERE.parent
+    site = site_argument(argv)
+    if not site.parent.is_dir():
+        raise SystemExit(f'deploy-k3s: the folder of the site file {site} does not exist.')
+    home = Path.home()
+    uid, gid = os.getuid(), os.getgid()
+    user = os.environ.get('USER') or 'operator'
+    work = Path(tempfile.mkdtemp(prefix='hoover4-operator-run-'))
+    try:
+        # ssh needs a passwd entry for the UID, and the home folder of that entry holds ~/.ssh.
+        (work / 'passwd').write_text(f'root:x:0:0:root:/root:/bin/sh\n{user}:x:{uid}:{gid}::{home}:/bin/bash\n')
+        (work / 'group').write_text(f'root:x:0:\n{user}:x:{gid}:\n')
+        mounts = [f'{repo}:{repo}:ro', f'{site.parent}:{site.parent}:rw', f'{work}/passwd:/etc/passwd:ro',
+                  f'{work}/group:/etc/group:ro']
+        if (home / '.ssh').is_dir():
+            mounts.append(f'{home / ".ssh"}:{home / ".ssh"}:ro')
+        env = {IN_IMAGE: '1', 'HOOVER4_SITE': str(site), 'HOME': str(home), 'USER': user,
+               # The home folder is read-only in the container, so the tools write their caches into /tmp.
+               'ANSIBLE_HOME': '/tmp/ansible', 'ANSIBLE_LOCAL_TEMP': '/tmp/ansible/tmp', 'XDG_CACHE_HOME': '/tmp/cache',
+               'XDG_CONFIG_HOME': '/tmp/config', 'XDG_DATA_HOME': '/tmp/data', 'KUBECACHEDIR': '/tmp/kube-cache',
+               'PYTHONDONTWRITEBYTECODE': '1'}
+        agent = os.environ.get('SSH_AUTH_SOCK')
+        if agent and Path(agent).exists():
+            mounts.append(f'{agent}:{agent}')
+            env['SSH_AUTH_SOCK'] = agent
+        runtime = os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{uid}'
+        if Path(runtime).is_dir():
+            # The user units of the operator runner and the podman service of the image builds.
+            mounts.append(f'{runtime}:{runtime}')
+            env['XDG_RUNTIME_DIR'] = runtime
+            if Path(runtime, 'bus').exists():
+                env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={runtime}/bus'
+            if Path(runtime, 'podman', 'podman.sock').exists():
+                env['CONTAINER_HOST'] = f'unix://{runtime}/podman/podman.sock'
+        args = [tool, 'run', '--rm', '--network', 'host', '--workdir', str(repo)]
+        args += ['--userns=keep-id'] if tool == 'podman' else ['--user', f'{uid}:{gid}']
+        if sys.stdin.isatty():
+            args += ['-it']
+        else:
+            args += ['-i']
+        for mount in mounts:
+            args += ['-v', mount]
+        for key, value in env.items():
+            args += ['-e', f'{key}={value}']
+        rest = [a for i, a in enumerate(argv) if a != '--site' and not a.startswith('--site=')
+                and not (i > 0 and argv[i - 1] == '--site')]
+        args += [image, 'python3', str(HERE / 'deploy-k3s'), *rest, '--site', str(site)]
+        return subprocess.run(args).returncode
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main(argv):
     argv = bootstrap_checkout(argv)
+    if os.environ.get(IN_IMAGE) != '1':
+        return run_in_image(argv)
     import argparse
     import json
     sys.path.insert(0, str(HERE))
@@ -65,19 +174,18 @@ def main(argv):
     import config
     import deploy
     import records
-    import source
 
     parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('render', 'check', 'bootstrap', 'up', 'down', 'status'))
+    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'status'))
     parser.add_argument('record', nargs='?')
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE') or str(config.DEFAULT_SITE))
     parser.add_argument('--target', nargs='+', default=[])
-    parser.add_argument('--revision', default='HEAD')
     parser.add_argument('--steps', nargs='+', default=[])
     parser.add_argument('--resume')
     parser.add_argument('--start', action='store_true')
     parser.add_argument('--manifests', action='store_true')
+    parser.add_argument('--ask-become-pass', action='store_true')
     args = parser.parse_args(argv)
 
     try:
@@ -85,6 +193,8 @@ def main(argv):
     except (config.SiteError, OSError) as error:
         raise SystemExit(f'deploy-k3s: the site file {args.site} has problems: {error}')
     ctx = deploy.Context(args.site, site)
+    if args.ask_become_pass:
+        ctx.ask_become_pass()
 
     if args.command == 'status':
         ids = [args.record] if args.record else ctx.records.list()
@@ -113,96 +223,43 @@ def main(argv):
         if unknown:
             raise SystemExit(f'deploy-k3s: {", ".join(unknown)} is not a node of the site. The nodes are: {", ".join(site.nodes)}.')
 
-    def revision_of(ref):
-        # An exported tree has no git folder. Its commit is the commit of the export, and only HEAD names it.
-        exported = source.is_export(HERE.parent)
-        if exported:
-            if ref not in ('HEAD', exported, exported[:len(ref)]):
-                raise deploy.StepFailed(f'this exported tree holds {exported[:12]}. Run the command of a checkout for {ref}.')
-            return exported
-        return deploy.resolve_revision(ctx.repo, ref)
-
+    print(json.dumps({'site': site.name, 'site_file': str(ctx.site_path), 'state': str(ctx.private)}), flush=True)
     try:
+        revision = deploy.resolve_revision(ctx.repo, 'HEAD')
         if args.command == 'render':
-            revision = revision_of(args.revision)
             print(json.dumps(deploy.render(ctx, targets, revision, args.manifests), indent=1, default=list))
             return 0
         if args.command == 'check':
             problems, state = deploy.check(ctx, targets)
             print(json.dumps({'problems': problems, 'state': state}, indent=1, default=list))
             return 1 if problems else 0
-        if args.command == 'bootstrap':
-            for name in targets:
-                node = site.nodes[name]
-                if node.local:
-                    print(deploy.write_local_bootstrap(ctx, node))
-                else:
-                    revision = revision_of(args.revision)
-                    print(deploy.write_remote_scripts(ctx, node, revision) / 'bootstrap.sh')
-            return 0
     except deploy.StepFailed as error:
         raise SystemExit(f'deploy-k3s: {error}')
 
-    tree = source.is_export(HERE.parent)
-    if not tree:
-        # The checkout writes the tree of the commit and hands the command to the deploy-k3s of that tree.
-        if args.resume:
-            revision = record['revision']
-        else:
-            wanted = args.revision
-            try:
-                revision = deploy.resolve_revision(ctx.repo, wanted)
-            except deploy.StepFailed as error:
-                raise SystemExit(f'deploy-k3s: {error}')
-        try:
-            folder = source.export(ctx.repo, ctx.private, revision)
-        except source.SourceError as error:
-            raise SystemExit(f'deploy-k3s: {error}')
-        rest = list(argv)
-        if '--revision' in rest:
-            i = rest.index('--revision')
-            del rest[i:i + 2]
-        if not args.resume:
-            rest += ['--revision', revision]
-        if '--site' not in rest:
-            rest += ['--site', str(Path(args.site).resolve())]
-        env = dict(os.environ, HOOVER4_CHECKOUT_CHANGES=json.dumps(deploy.dirty_files(ctx.repo)),
-                   HOOVER4_CHECKOUT=str(ctx.repo))
-        print(json.dumps({'tree': str(folder), 'revision': revision}), flush=True)
-        os.execve(sys.executable, [sys.executable, str(folder / 'k3s' / 'deploy-k3s'), *rest], env)
-    if not args.resume and args.revision not in (tree, 'HEAD'):
-        raise SystemExit(f'deploy-k3s: this tree holds {tree}, not {args.revision}.')
-    if args.resume and record['revision'] != tree:
-        raise SystemExit(f'deploy-k3s: the record {record["id"]} belongs to {record["revision"]}, and this tree holds {tree}.')
+    if args.resume and record['revision'] != revision:
+        raise SystemExit(f'deploy-k3s: the record {record["id"]} belongs to {record["revision"][:12]}, and the checkout '
+                         f'{ctx.repo} is at {revision[:12]}. Check out the commit of the record, or start a new run.')
     try:
-        ctx.records.lock(args.command, f'{args.command}-{args.resume or tree[:12]}')
+        ctx.records.lock(args.command, f'{args.command}-{args.resume or revision[:12]}')
     except records.Busy as error:
         raise SystemExit(f'deploy-k3s: {error}')
     try:
+        ctx.revision = revision
         if args.resume:
-            ctx.revision = record['revision']
             steps = deploy.plan(ctx, record['command'], targets, start=record.get('start', False))
             names = [s['name'] for s in record['steps']]
             missing = [n for n in names if n not in steps]
             if missing:
                 raise SystemExit(f'deploy-k3s: the plan of this checkout has no step {", ".join(missing)}. '
-                                 f'Use the checkout of the record, or start a new {record["command"]}.')
+                                 f'Start a new {record["command"]}.')
         else:
-            revision = tree
-            ctx.revision = revision
             steps = deploy.select(deploy.plan(ctx, args.command, targets, start=args.start), args.steps)
             complete = not args.steps and not args.start and set(targets) == set(site.nodes)
             record = ctx.records.new(args.command, targets, revision, list(steps), start=args.start, complete=complete,
-                                     checkout=os.environ.get('HOOVER4_CHECKOUT', ''),
-                                     checkout_changes=json.loads(os.environ.get('HOOVER4_CHECKOUT_CHANGES') or '[]'),
+                                     checkout=str(ctx.repo), checkout_changes=deploy.dirty_files(ctx.repo),
                                      applied_before=(ctx.records.applied() or {}).get('revision'),
-                                     inputs=deploy.pinned_inputs(ctx, tree=HERE.parent))
+                                     inputs=deploy.pinned_inputs(ctx))
             print(json.dumps({'record': record['id'], 'revision': revision, 'steps': list(steps)}), flush=True)
-            if args.command == 'up':
-                ctx.record = record
-                removed = deploy.prune_trees(ctx)
-                if removed:
-                    print(json.dumps({'removed_trees': removed}), flush=True)
         return deploy.execute(ctx, record, steps)
     except deploy.StepFailed as error:
         raise SystemExit(f'deploy-k3s: {error}')

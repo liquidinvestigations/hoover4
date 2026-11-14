@@ -1,0 +1,10 @@
+---
+# The collections of the hoover4 roles and of the upstream roles, pinned. The operator image installs them
+# (../images/operator/Containerfile).
+collections:
+  - name: ansible.posix
+    version: 2.2.2
+  - name: community.general
+    version: 14.0.1
+  - name: ansible.utils
+    version: 6.1.1

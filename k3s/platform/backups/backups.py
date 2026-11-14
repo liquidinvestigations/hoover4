@@ -24,8 +24,9 @@ Jobs:
   holds temporary files and is not copied. The earlier job key opendesk:<zone> reads as zone:<zone>.
 - hoover:<zone>:<collection>: the collection export of the operations worker (main.py export-collection), streamed out
   of the claim ops-backups. The export directory in the claim is removed after the copy, so no second archive stays.
-- platform: an etcd snapshot of the control-plane server with its token and k3s configuration (root-install-k3s.py
-  --snapshot through the root route of that node, ../../driver/hostroute.py), the operator state and the private files
+- platform: an etcd snapshot of the control-plane server with its token and k3s configuration (the snapshot command of
+  ../../ansible/roles/hoover4_k3s/files/k3s-datastore.py with sudo -n on that node, ../../driver/nodeshell.py), the
+  operator state and the private files
   of the site (credentials included), and recovery.json. recovery.json has format_version 2, the datastore etcd, the
   execution host, the control plane, the destination node, the k3s version, the applied source and settings
   revisions, the pinned tool versions and the application copies that a complete recovery needs. An etcd snapshot holds
@@ -82,7 +83,7 @@ sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(K3S / 'driver'))
 import config as site_config  # noqa: E402
-import hostroute  # noqa: E402
+import nodeshell  # noqa: E402
 import oplock  # noqa: E402
 import podspec  # noqa: E402
 import settings as k3s_settings  # noqa: E402
@@ -271,7 +272,7 @@ class Destination:
     def __init__(self, s):
         self.node = s.nodes[s.backup['node']]
         self.path = s.backup['path']
-        self.shell = hostroute.Shell(self.node)
+        self.shell = nodeshell.Shell(self.node)
 
     def run(self, script, timeout=600, input=None):
         return self.shell.run(script, timeout=timeout, input=input)
@@ -328,7 +329,7 @@ class Destination:
             raise SystemExit(f'the old partial copy {partial} on {self.node.name} cannot be removed: {out[-200:]}')
         try:
             self.shell.send_tree(local, partial, timeout=24 * 3600)
-        except hostroute.RouteError as error:
+        except nodeshell.RouteError as error:
             raise SystemExit(f'the transfer to {self.node.name} failed: {error}')
         code, out = self.run(f'python3 -c {shlex.quote(REMOTE_VERIFY)} {shlex.quote(partial)}', timeout=24 * 3600)
         try:
@@ -693,44 +694,25 @@ def copy_namespace(ns, partial):
 
 
 RECOVERY_FORMAT = 'hoover4-platform-recovery'
-# The private folders that hold no recovery input: builds, downloads, tool binaries and the staged k3s files of each
-# architecture. staging/tokens holds the site tokens and is part of the copy.
+# The private folders that hold no recovery input: builds, downloads, tool binaries, the staged k3s files of each
+# architecture of earlier installers, the node facts and the generated Ansible inventory. staging/tokens holds the site
+# tokens and is part of the copy.
 PRIVATE_EXCLUDED = ['build', 'bin', 'browser-venv', 'checks', 'downloads', 'operator/backups', 'operator/deploy/logs',
-                    'staging/amd64', 'staging/arm64', 'deploy/remote']
+                    'staging/amd64', 'staging/arm64', 'deploy/remote', 'facts', 'ansible']
 
 
 def snapshot_root(s, name):
-    """Run root-install-k3s.py --snapshot <name> on the control plane through its root route.
+    """Run the snapshot command of the k3s datastore script on the control plane with sudo -n.
 
-    The script writes ~<operator>/k3s-install/snapshots/<name>/ there. Its site is the bundle `backup`, which this
-    function writes over the user shell. The root command gets names only.
+    The script writes ~<operator>/hoover4-snapshots/<name>/ there. Its argument is a name. The operator user needs sudo
+    without a password on the control plane.
     """
     node = s.nodes[s.control_plane]
-    shell = hostroute.Shell(node)
-    user = s.operator_user or os.environ.get('USER', '')
-    hosts = json.dumps(site_config.legacy_hosts(s))
-    code, out = shell.run('umask 077 && mkdir -p ~/k3s-install/backup && cat > ~/k3s-install/backup/hosts.json', input=hosts)
+    code, out = nodeshell.Shell(node).datastore('snapshot', name_arg(name, 'snapshot'))
     if code:
-        raise SystemExit(f'the site of the snapshot cannot be written on {node.name}: {out[-300:]}')
-    script = K3S / 'hosts' / 'root-install-k3s.py'
-    argv = [f'{hostroute.LIBEXEC}/root-install-k3s.py', '--bundle', 'backup', '--node', node.name, '--operator', user,
-            '--snapshot', name_arg(name, 'snapshot')]
-    code, out = shell.run('sudo -n true', timeout=30)
-    if code == 0 or shell.run(f'sudo -n -l {hostroute.LIBEXEC}/root-install-k3s.py', timeout=30)[0] == 0:
-        code, out = shell.run('sudo -n ' + ' '.join(shlex.quote(a) for a in argv), timeout=3600)
-        if code:
-            raise SystemExit(f'the etcd snapshot on {node.name} failed: {out[-300:]}')
-        return 'sudo'
-    # The cluster route installs the script of this tree and runs it as a unit of the host.
-    root = hostroute.ClusterRoot(k3s_settings.KUBECONFIG, shell)
-    unit = f'hoover4-snapshot-{int(time.time())}'
-    files = [(f'{hostroute.LIBEXEC}/root-install-k3s.py', script.read_bytes())]
-    root.start(unit, files, argv)
-    try:
-        root.wait(unit, timeout=3600)
-    except hostroute.RouteError as error:
-        raise SystemExit(f'the etcd snapshot on {node.name} failed: {error}')
-    return 'cluster'
+        raise SystemExit(f'the etcd snapshot on {node.name} failed: {out[-300:]}. The operator user needs sudo without '
+                         'a password on the control plane.')
+    return 'sudo'
 
 
 def application_copies(data):
@@ -749,9 +731,9 @@ def run_platform(s, partial):
     """An etcd snapshot of the control plane with its token, the private files and recovery.json."""
     partial.mkdir(parents=True, exist_ok=True)
     node = s.nodes[s.control_plane]
-    shell = hostroute.Shell(node)
+    shell = nodeshell.Shell(node)
     name = f'platform-{int(time.time())}'
-    remote = f'k3s-install/snapshots/{name}'
+    remote = f'hoover4-snapshots/{name}'
     route = snapshot_root(s, name)
     try:
         etcd = partial / 'etcd'
@@ -818,14 +800,13 @@ def platform_steps(folder, generation):
     if data['datastore'] != 'etcd':
         return [f'This copy holds the SQLite datastore {data["snapshot"]}. Stop k3s on the server, copy it to '
                 '/var/lib/rancher/k3s/server/db/state.db with the token of the earlier server, start k3s, then run '
-                'root-install-k3s.py with --convert-sqlite to convert it to etcd.']
+                'deploy-k3s up --steps hosts:k3s to convert it to etcd.']
     name = f'restore-{name_arg(generation, "generation")}'
-    return [f'Copy the folder etcd/ of the copy into ~/k3s-install/snapshots/{name}/ of the operator user on the server. '
+    return [f'Copy the folder etcd/ of the copy into ~/hoover4-snapshots/{name}/ of the operator user on the server. '
             f'This host holds it in {folder / "etcd"}.',
-            f'Write hosts.json of the isolated site into ~/k3s-install/backup/ on the server.',
-            f'sudo /usr/local/libexec/hoover4/root-install-k3s.py --bundle backup --node <server> '
-            f'--restore-snapshot {name}',
-            f'Unpack {data["private"]} of the copy into the private folder of the checkout.',
+            f'On the server, as the operator user: sudo python3 - restore {name} < '
+            'k3s/ansible/roles/hoover4_k3s/files/k3s-datastore.py',
+            f'Unpack {data["private"]} of the copy into the state folder of the site file.',
             'Restore the application copies that recovery.json names: backups.py restore-zone for each zone copy '
             'and backups.py restore-hoover for each collection copy, then sign in to each zone.']
 

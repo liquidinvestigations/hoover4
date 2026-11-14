@@ -7,7 +7,7 @@
 # Usage: build-caddy.sh
 set -euo pipefail
 cd "$(dirname "$0")"
-private=$(realpath ../../private)
+private=$(python3 ../../settings.py private)
 caddy_version=v2.11.7
 coraza_version=v2.6.2
 target=$private/bin/caddy

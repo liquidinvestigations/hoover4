@@ -1,0 +1,25 @@
+---
+# A server that still runs the earlier SQLite datastore converts to etcd when k3s restarts with cluster-init. The
+# conversion runs only with hoover4_convert_sqlite, after a verified copy into /var/lib/hoover4-recovery.
+- name: Read the datastore of the server
+  ansible.builtin.script:
+    cmd: k3s-datastore.py datastore
+    executable: python3
+  register: hoover4_datastore
+  changed_when: false
+  check_mode: false
+
+- name: Refuse a SQLite server without the conversion switch
+  ansible.builtin.assert:
+    that: hoover4_datastore.stdout | trim != 'sqlite' or hoover4_convert_sqlite | bool
+    fail_msg: >-
+      The server runs the SQLite datastore. The new configuration converts it to etcd. Stop the deployment runners,
+      then run the play again with hoover4_convert_sqlite=true.
+    quiet: true
+
+- name: Copy the SQLite datastore before the conversion
+  ansible.builtin.script:
+    cmd: k3s-datastore.py preserve-sqlite
+    executable: python3
+  when: hoover4_datastore.stdout | trim == 'sqlite'
+  changed_when: true

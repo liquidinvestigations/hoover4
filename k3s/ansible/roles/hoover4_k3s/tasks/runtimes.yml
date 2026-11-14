@@ -1,0 +1,70 @@
+---
+# gVisor in /opt/gvisor for the web applications, and the Kata Go runtime with Cloud Hypervisor in /opt/kata for the
+# stores and parse workers. A GPU node runs no Kata and registers runsc with nvproxy as the handler runsc-nvproxy. The
+# RuntimeClasses of ../../../../cluster/runtimeclasses.yaml name the handlers.
+- name: Read the installed gVisor release
+  ansible.builtin.slurp:
+    src: /opt/gvisor/VERSION
+  register: hoover4_gvisor_installed
+  failed_when: false
+
+- name: Install gVisor
+  when: (hoover4_gvisor_installed.content | default('') | b64decode | trim) != hoover4_gvisor_sha512[hoover4_architecture]
+  block:
+    - name: Download gVisor
+      ansible.builtin.get_url:
+        url: "https://storage.googleapis.com/gvisor/releases/release/{{ hoover4_gvisor_release }}/{{ {'amd64': 'x86_64', 'arm64': 'aarch64'}[hoover4_architecture] }}/gvisor.tar.zstd"
+        dest: /var/tmp/hoover4-gvisor.tar.zstd
+        checksum: "sha512:{{ hoover4_gvisor_sha512[hoover4_architecture] }}"
+        mode: "0600"
+
+    - name: Unpack gVisor into /opt/gvisor
+      ansible.builtin.shell: |
+        set -eu
+        rm -rf /opt/gvisor
+        install -d /opt/gvisor
+        tar --zstd -xf /var/tmp/hoover4-gvisor.tar.zstd -C /opt/gvisor
+        echo {{ hoover4_gvisor_sha512[hoover4_architecture] }} > /opt/gvisor/VERSION
+        rm -f /var/tmp/hoover4-gvisor.tar.zstd
+      changed_when: true
+      register: hoover4_gvisor_unpacked
+
+- name: Link the gVisor commands
+  ansible.builtin.file:
+    src: /opt/gvisor/{{ item }}
+    dest: /usr/local/bin/{{ item }}
+    state: link
+    force: true
+  loop: [runsc, containerd-shim-runsc-v1]
+
+- name: Write the runsc configuration
+  ansible.builtin.copy:
+    dest: /etc/gvisor/runsc.toml
+    mode: "0644"
+    content: |
+      binary_name = "/opt/gvisor/runsc"
+      # The kubelet uses the systemd cgroup driver. The runc option SystemdCgroup does not apply to the runsc options type.
+      [runsc_config]
+        systemd-cgroup = "true"
+  register: hoover4_runsc_toml
+
+- name: Install the Kata Containers runtime
+  ansible.builtin.include_tasks: kata.yml
+  when: hoover4_kata | bool
+
+- name: Install the GPU runtime
+  ansible.builtin.include_tasks: gpu.yml
+  when: hoover4_gpu | bool
+
+- name: Register the runtime handlers in containerd
+  ansible.builtin.template:
+    src: runtimes.toml.j2
+    dest: /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d/runtimes.toml
+    mode: "0644"
+  register: hoover4_runtimes_toml
+
+- name: Collect the changed runtime files
+  ansible.builtin.set_fact:
+    hoover4_runtimes_changed: >-
+      {{ hoover4_runsc_toml.changed or hoover4_runtimes_toml.changed
+         or (hoover4_kata_config.changed | default(false)) or (hoover4_nvproxy_toml.changed | default(false)) }}

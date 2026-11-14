@@ -1,0 +1,39 @@
+---
+# Start or stop k3s on the target nodes (../../deploy-k3s down and up --start). hoover4_action is start or stop. A stop
+# also ends the containers of the pods: the kill script of k3s misses the gVisor shims and sandboxes, which keep
+# volumes mounted in their namespaces. The local node of a single-node site also starts its address, DNS and frontend.
+- name: Start or stop k3s
+  hosts: hoover4
+  gather_facts: false
+  become: true
+  vars:
+    unit: "{{ 'k3s' if hoover4_server | bool else 'k3s-agent' }}"
+    local_start: [hoover4-address.service, hoover4-dns.service, k3s.service, hoover4-frontend.service]
+    local_stop: [hoover4-frontend.service, k3s.service]
+  tasks:
+    - name: Refuse an unknown action
+      ansible.builtin.assert:
+        that: hoover4_action in ['start', 'stop']
+        quiet: true
+
+    - name: Start the units
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ local_start if hoover4_single_local | bool else [unit ~ '.service'] }}"
+      when: hoover4_action == 'start'
+
+    - name: Stop the units
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+      loop: "{{ local_stop if hoover4_single_local | bool else [unit ~ '.service'] }}"
+      when: hoover4_action == 'stop'
+
+    - name: End the containers of the pods
+      ansible.builtin.shell: |
+        [ -x /usr/local/bin/k3s-killall.sh ] && /usr/local/bin/k3s-killall.sh >/dev/null
+        pkill -KILL -f '^/opt/gvisor/' || true
+        pkill -KILL -f '^runsc-' || true
+      when: hoover4_action == 'stop'
+      changed_when: true

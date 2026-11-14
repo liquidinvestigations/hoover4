@@ -45,16 +45,16 @@ No step converts the Temporal backend.
    python3 k3s/tools/adopt-cluster.py settings
    ```
 
-6. Run `k3s/deploy-k3s up --target all --revision <commit>`.
+6. Check out the commit, then run `k3s/deploy-k3s up --target all`.
 
 ### Convert the server datastore to etcd
 
-A server of the earlier tool can use SQLite. The `root` step of the server converts it to etcd without a reinstall.
+A server of the earlier tool can use SQLite. The k3s play of the server (step `hosts:k3s`) converts it to etcd without a reinstall.
 
-1. The root script stops k3s and copies the SQLite datastore, the token and the configuration into `/var/lib/hoover4-recovery/` with `SHA256SUMS`.
-2. It reads the copy again. A copy that does not verify stops the script, and k3s stays stopped.
-3. It starts k3s with `cluster-init`. The `verify` step saves an etcd snapshot and checks the `etcd` role of the node.
-4. After the conversion, `verify` restarts the controllers of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
+1. The play stops k3s and copies the SQLite datastore, the token and the configuration into `/var/lib/hoover4-recovery/` with `SHA256SUMS`.
+2. It reads the copy again. A copy that does not verify stops the play, and k3s stays stopped.
+3. It starts k3s with `cluster-init` and saves an etcd snapshot. The step `hosts:verify` checks the `etcd` role of the node.
+4. After the conversion, `hosts:verify` restarts the controllers of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
    Without this restart, CoreDNS, the ingress controller, cert-manager and TopoLVM did not see objects that were created after the conversion.
 
 The SQLite copy is the only rollback before new writes. After new writes, the copy does not hold them.
@@ -130,7 +130,7 @@ After the target takes new work, a return to Compose loses that work.
    python3 k3s/tools/local-retirement.py archive <archive folder>
    ```
 
-3. Run the printed root step `root-install-k3s.py --preserve <name>`, move the copy into the archive folder, then write and read the manifest again:
+3. Run the printed root step `sudo python3 - preserve <name> < k3s/ansible/roles/hoover4_k3s/files/k3s-datastore.py`, move the copy into the archive folder, then write and read the manifest again:
 
    ```sh
    python3 k3s/tools/local-retirement.py manifest <archive folder>

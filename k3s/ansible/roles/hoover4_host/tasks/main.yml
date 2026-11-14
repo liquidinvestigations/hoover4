@@ -1,0 +1,116 @@
+---
+# Prepare a node for k3s: the packages, Docker, the kernel modules, sysctl, NetworkManager, SELinux, the backup folder
+# and the removal of the files of the earlier installer. Every task reads the state first, so a second run changes
+# nothing. The role changes no disk, no partition and no file system.
+- name: Set the paths of the settings files
+  ansible.builtin.set_fact:
+    # The local node of a single-node site keeps the file names of its earlier installer, so no second file appears.
+    hoover4_modules_file: "/etc/modules-load.d/{{ '90-hoover4-k3s' if hoover4_single_local | bool else '90-k3s-node' }}.conf"
+    hoover4_sysctl_file: "/etc/sysctl.d/{{ '90-hoover4-k3s' if hoover4_single_local | bool else '90-k3s-node' }}.conf"
+    hoover4_nm_file: "/etc/NetworkManager/conf.d/{{ '90-hoover4-k3s' if hoover4_single_local | bool else '90-k3s-node' }}.conf"
+    hoover4_all_modules: "{{ hoover4_modules + (['dm_thin_pool'] if hoover4_single_local | bool else []) }}"
+
+# The NVIDIA container toolkit gives k3s the runtime handler nvidia of a GPU node. Its package comes from the NVIDIA
+# repository, which the node gets only when the toolkit is missing.
+- name: Add the repository of the NVIDIA container toolkit
+  ansible.builtin.include_tasks: nvidia.yml
+  when: hoover4_gpu | bool and not hoover4_facts.nvidia_container_runtime
+
+- name: Install the packages of the node
+  ansible.builtin.package:
+    name: >-
+      {{ hoover4_packages[ansible_facts['os_family']]
+         + (hoover4_wireguard_packages[ansible_facts['os_family']] if hoover4_wireguard | default({}) | length > 0 else [])
+         + (['nvidia-container-toolkit'] if hoover4_gpu | bool and not hoover4_facts.nvidia_container_runtime else []) }}
+    state: present
+
+- name: Read the state of the Docker units
+  ansible.builtin.command: systemctl is-enabled {{ item }}  # noqa: command-instead-of-module
+  loop: "{{ hoover4_docker_units }}"
+  register: hoover4_docker_enabled
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: hoover4_stop_docker | bool
+
+# k3s brings its own containerd.
+- name: Stop and disable Docker
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ hoover4_docker_enabled.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('') }}"
+  when: hoover4_stop_docker | bool and item.stdout | default('') not in ['', 'not-found', 'masked']
+
+- name: Write the kernel modules file
+  ansible.builtin.copy:
+    content: "{{ hoover4_all_modules | map('regex_replace', '$', '\n') | join('') }}"
+    dest: "{{ hoover4_modules_file }}"
+    mode: "0644"
+
+- name: Load the kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ hoover4_all_modules }}"
+
+- name: Write the sysctl settings
+  ansible.builtin.copy:
+    content: "{% for key, value in hoover4_sysctl.items() %}{{ key }} = {{ value }}\n{% endfor %}"
+    dest: "{{ hoover4_sysctl_file }}"
+    mode: "0644"
+  notify: Load the sysctl settings
+
+- name: Read the state of NetworkManager
+  ansible.builtin.command: systemctl is-active NetworkManager  # noqa: command-instead-of-module
+  register: hoover4_networkmanager
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Keep NetworkManager away from the k3s interfaces
+  ansible.builtin.copy:
+    content: "[keyfile]\nunmanaged-devices={{ 'interface-name:hoover4;' if hoover4_single_local | bool else '' }}interface-name:cni0;interface-name:flannel*;interface-name:veth*\n"
+    dest: "{{ hoover4_nm_file }}"
+    mode: "0644"
+  when: hoover4_networkmanager.stdout == 'active'
+  notify: Reload NetworkManager
+
+- name: Disable SELinux
+  ansible.builtin.include_tasks: selinux.yml
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Prepare the local node of a single-node site
+  ansible.builtin.include_tasks: local.yml
+  when: hoover4_single_local | bool
+
+- name: Create the backup folders of the backup node
+  ansible.builtin.include_tasks: backup.yml
+  when: hoover4_backup_path | length > 0
+
+# The earlier installer copied its root scripts into /usr/local/libexec/hoover4, wrote the sudo rule 90-hoover4 and
+# kept a bundle of about 1.4 GB for each revision in ~/k3s-install of the operator user. Nothing reads them now.
+- name: Remove the root scripts and the sudo rule of the earlier installer
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: [/usr/local/libexec/hoover4, /etc/sudoers.d/90-hoover4]
+
+- name: Find the bundles of the earlier installer
+  ansible.builtin.find:
+    paths: "~/k3s-install"
+    file_type: directory
+    patterns: '^[0-9a-f]{12}$|^current$'
+    use_regex: true
+  become: false
+  register: hoover4_old_bundles
+
+- name: Remove the bundles of the earlier installer
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ hoover4_old_bundles.files }}"
+  loop_control:
+    label: "{{ item.path }}"

@@ -1,0 +1,49 @@
+---
+- name: Refuse a missing volume group
+  ansible.builtin.command: vgs {{ hoover4_volume_group }}
+  changed_when: false
+  check_mode: false
+
+- name: Read the volume {{ volume.name }}
+  ansible.builtin.command: lvs --noheadings {{ hoover4_volume_group }}/{{ volume.name }}
+  register: hoover4_lv
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Create the file system of the volume {{ volume.name }}
+  ansible.builtin.shell: |
+    set -eu
+    lvcreate --yes -n {{ volume.name }} -L {{ volume.size }} {{ hoover4_volume_group }}
+    mkfs.ext4 -q -L hoover4-{{ volume.name }} /dev/{{ hoover4_volume_group }}/{{ volume.name }}
+  when: hoover4_lv.rc != 0
+  changed_when: true
+
+- name: Read the mount of {{ volume.path }}
+  ansible.builtin.command: findmnt -rn {{ volume.path }}
+  register: hoover4_mounted
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+# The earlier content moves into the volume, so the mount hides no file.
+- name: Copy the earlier content into the volume {{ volume.name }}
+  ansible.builtin.shell: |
+    set -eu
+    if [ -d {{ volume.path }} ] && [ -n "$(ls -A {{ volume.path }})" ]; then
+      mkdir -p /run/hoover4-{{ volume.name }}
+      mount /dev/{{ hoover4_volume_group }}/{{ volume.name }} /run/hoover4-{{ volume.name }}
+      cp -a {{ volume.path }}/. /run/hoover4-{{ volume.name }}/
+      umount /run/hoover4-{{ volume.name }}
+    fi
+  when: hoover4_mounted.rc != 0
+  changed_when: true
+
+- name: Mount the volume at {{ volume.path }}
+  ansible.posix.mount:
+    src: /dev/{{ hoover4_volume_group }}/{{ volume.name }}
+    path: "{{ volume.path }}"
+    fstype: ext4
+    opts: defaults,noatime
+    passno: "2"
+    state: mounted

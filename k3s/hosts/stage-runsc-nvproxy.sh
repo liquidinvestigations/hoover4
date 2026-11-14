@@ -2,15 +2,15 @@
 # Build runsc with gVisor PR 16643 (nvproxy support for the GB10 GPU of the DGX Spark) and stage it for a GPU node.
 # Decision D3: use this build when the released runsc fails on the GPU node. Decision D20: if the build fails too after a
 # bounded diagnosis, select gpu.runtime = runc in the operator portal and record the failure.
-# Usage: stage-runsc-nvproxy.sh <amd64|arm64> <staging folder>
+# Usage: stage-runsc-nvproxy.sh <amd64|arm64> <state folder of the site>
 # The script needs git and Docker or Podman with the docker command. gVisor builds runsc with Bazel in a container
 # (make runsc). The build runs on a host of the target architecture, for example the GPU node itself.
-# It writes <staging folder>/runsc-nvproxy/runsc and runsc.sha256. root-install-k3s.py installs the binary into
-# /opt/gvisor-nvproxy on the GPU node when the staging folder holds it, and the handler runsc-nvproxy uses it.
+# It writes runsc-nvproxy/runsc and runsc.sha256 into that folder. The k3s play (role hoover4_k3s) installs the binary into
+# /opt/gvisor-nvproxy on the GPU node when the state folder holds it, and the handler runsc-nvproxy uses it.
 # GVISOR_BASE names the gVisor commit that the pull request applies to. GVISOR_PR names the pull request.
 set -euo pipefail
 arch=${1:?the architecture, amd64 or arm64}
-staging=${2:?the staging folder}
+staging=${2:?the state folder of the site}
 GVISOR_BASE=${GVISOR_BASE:-release-20261026.0}
 GVISOR_PR=${GVISOR_PR:-16643}
 [ "$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')" = "$arch" ] || {

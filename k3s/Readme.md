@@ -15,7 +15,9 @@ The images of the cluster come from commits of this repository.
 | [platform/operator/settings.py](platform/operator/settings.py) | Holds the operator settings registry, the saved and applied revisions, and the apply operations. |
 | [platform/](platform) | Installs the registry, the ingress, the HTTPS frontend, the calls services, monitoring, the operator portal and runner, and the Hoover data servers. |
 | [zones/](zones) | Installs and changes the openDesk zones. |
-| [hosts/](hosts) | Prepares the hosts and installs k3s on them, as root. |
+| [ansible/](ansible) | Prepares the hosts and installs k3s on them: a vendored fork of `k3s-ansible` with the hoover4 roles and playbooks ([UPSTREAM.md](ansible/UPSTREAM.md)). |
+| [images/operator/](images/operator) | The operator image, in which `deploy-k3s` runs the driver, Ansible, `kubectl` and `helm`. |
+| [hosts/](hosts) | Holds manual host tools: the SSH key login, the NVMe volume group and the runsc build with GPU support. |
 | [cluster/](cluster) | Installs the cluster services that every zone uses: RuntimeClasses, cert-manager and TopoLVM. |
 | [images/](images) | Builds the images and pushes them to the cluster registry. |
 | [migration/](migration) | Moves a stopped Compose installation into a Hoover installation of the cluster ([migrate.py](migration/migrate.py)). |
@@ -25,8 +27,10 @@ The images of the cluster come from commits of this repository.
 | [tools/](tools) | Holds checks and operator tools. |
 | [tests/](tests) | Holds the test suites and their fixtures. |
 
-The folder `private/` holds the site file, the secrets, the kubeconfigs, the operator state and the generated files.
-Git ignores it. The scripts of `platform/`, `zones/`, `hosts/` and `cluster/` read the site file through [settings.py](settings.py).
+The state folder of a site holds the secrets, the kubeconfigs, the operator state and the generated files.
+It is beside the site file and has the name of the file without its extension (`config.state_folder()`).
+A site file directly in `private/` keeps `private/` as its state folder. Git ignores `private/`.
+The scripts of `platform/`, `zones/` and `cluster/` read the site file and the state folder through [settings.py](settings.py).
 `config.legacy_settings()` gives the values of the earlier `private/settings.json`, and `config.legacy_hosts()` gives the `hosts.json` form.
 An installation without a site file still reads `private/settings.json`.
 
@@ -50,14 +54,14 @@ A site with one node needs no VPN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
 `vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here.
-The installer configures only `wg0` on a node without the role `gpu`. A GPU node and a node with another `vpn_interface` keep their VPN as it is, and get no wireguard step.
-The wireguard step gives each node a direct peer for every other node with a `wireguard_public_key`.
+The installer configures only `wg0` on a node without the role `gpu`. A GPU node and a node with another `vpn_interface` keep their VPN as it is, and get no WireGuard play.
+The interface `wg0` must exist and be up. The WireGuard play (role `hoover4_wireguard`) gives each node a direct peer for every other node with a `wireguard_public_key`.
 A node on a LAN that the other nodes cannot reach names the nodes that it can reach in `wireguard_peers`, for example a node with a public address.
 Its `wireguard_via` names the peer that forwards between it and the other nodes. Each side then adds the address of the other side to the AllowedIPs of that peer.
 A node that keeps its VPN gets a direct peer only on the nodes in its `wireguard_peers`, and it cannot have `wireguard_via`.
 The person adds the reverse peer on that node by hand. `deploy-k3s check` lists these peers in `manual_peers`.
 The direct peer for a node without a public address has no endpoint, so the node behind NAT starts the handshake.
-The step adds addresses and peers and removes none, so an existing route, for example to a VPN hub, stays.
+The play adds addresses and peers and removes none, so an existing route, for example to a VPN hub, stays.
 `avx2` is true by default only on an `amd64` node.
 
 Check a site file, or print the part that one node receives:
@@ -66,7 +70,10 @@ Check a site file, or print the part that one node receives:
 python3 k3s/config.py check k3s/private/hoover4-site.ini
 python3 k3s/config.py project k3s/private/hoover4-site.ini <node>
 python3 k3s/config.py source /path/to/hoover4.ini
+python3 k3s/config.py inventory k3s/private/hoover4-site.ini <state folder>
 ```
+
+`inventory` prints the Ansible inventory of the host steps. The driver writes it into `ansible/inventory.yml` of the state folder before each play.
 
 The storage identity of a Hoover installation is independent of its zone name.
 A migrated Compose install keeps `Hoover4`, an empty table prefix, `hoover4-system` and `hoover4-c-`.
@@ -74,65 +81,65 @@ Set `history_source = k3s-branch` only for an installation that ran the earlier 
 
 ## Deploy a site.
 
-`deploy-k3s` is the one command of a site. It needs Python 3 and SSH only.
+`deploy-k3s` is the one command of a site. The workstation needs Python 3 and `podman` or `docker`.
 
 ```sh
-k3s/deploy-k3s render --target all          # prints the configuration and the steps. Changes nothing.
-k3s/deploy-k3s check --target all           # checks the hosts, the files and the tools. Changes nothing.
-k3s/deploy-k3s bootstrap --target <node>    # writes the reviewed bootstrap script of a node
-k3s/deploy-k3s up --target all [--revision <commit>]
-k3s/deploy-k3s down --target all
-k3s/deploy-k3s up --target all --start
-k3s/deploy-k3s status
+k3s/deploy-k3s render --site <file> --target all   # prints the configuration, the inventory and the steps. Changes nothing.
+k3s/deploy-k3s check --site <file> --target all    # reads the facts of the nodes and checks the files and the tools
+k3s/deploy-k3s up --site <file> --target all [--ask-become-pass]
+k3s/deploy-k3s down --site <file> --target all
+k3s/deploy-k3s up --site <file> --target all --start
+k3s/deploy-k3s status --site <file>
 ```
 
-- `up` installs the hosts, k3s, the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU proxy, each zone and the calls services, in this order.
+- `deploy-k3s` computes a digest of the inputs of [images/operator/](images/operator) and of [ansible/requirements.yml](ansible/requirements.yml), and builds the image `localhost/hoover4-operator:<digest>` when it is missing.
+  It then runs one container with `--rm` for the command. The container mounts the checkout read-only at its own path, the folder of the site file read-write, `~/.ssh` read-only, the SSH agent socket and the runtime folder of the user.
+  It runs with the UID of the user and the network of the host. Inside it, `HOOVER4_OPERATOR_IMAGE=1` makes `deploy-k3s` run the driver ([driver/deploy.py](driver/deploy.py)).
+- `up` runs the host steps, then the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
-- The driver resolves `--revision` once and writes the tree of that commit with `git archive` into `private/build/<commit>/`.
-  It then runs the `deploy-k3s` of that tree, so every script and render of the run comes from the commit. Local changes of the checkout stay unchanged, and the record lists them.
+- The host steps are one Ansible run each on all target nodes, with the inventory of the site file:
+  `hosts:prepare` runs [ansible/playbooks/hoover4-hosts.yml](ansible/playbooks/hoover4-hosts.yml): the facts of each node into `facts/<node>.json` of the state folder (architecture, AVX2, GPUs, volume groups), the packages of the node in one task, the kernel modules, sysctl, NetworkManager, SELinux, the local node of a single-node site, the backup folder, the public firewall when `hoover4_public_firewall` is true, and the WireGuard peers.
+  `hosts:k3s` runs [ansible/playbooks/hoover4-k3s.yml](ansible/playbooks/hoover4-k3s.yml): gVisor, Kata Containers and the GPU runtime, the tokens, the k3s configuration and the registry mirror, then k3s on the server and on the agents.
+  Each node downloads k3s, its install script, gVisor and Kata Containers itself and verifies the pinned digests of [ansible/roles/hoover4_k3s/defaults/main.yml](ansible/roles/hoover4_k3s/defaults/main.yml).
+  A node restarts k3s only when an input file, the binary or a token file changed, or when the unit is not active.
+  The server play writes the admin kubeconfig into `kubeconfig` of the state folder, with the node address of the server.
+  `hosts:verify` reads every target through that kubeconfig: Ready, the k3s version, the flannel interface, and `cluster-init` and the `etcd` role of the server. A missing kubeconfig fails the step with its path.
+- The nodes connect as the user of the workstation, with `ssh_address` of the node or with its name and `~/.ssh/config`. New host keys go to `known_hosts` of the state folder.
+  `become` uses `sudo` without a password. `--ask-become-pass` asks once for the password of each command.
+  The installer adds no SSH key, no sudo rule and no root script to a node. The host play removes `/usr/local/libexec/hoover4`, `/etc/sudoers.d/90-hoover4` and the revision folders of `~/k3s-install` of an earlier installer.
+- The tokens of the site are in `staging/tokens/` of the state folder. The server play copies the tokens of a running server into an empty folder, and writes random tokens for a new site.
+  A token that differs from the token of a host stops the play before any change, so a host keeps its token.
+- Every step runs the scripts of the checkout. The record keeps the commit of HEAD, the path of the checkout and its `git status --porcelain` lines.
+  The image step builds the images of that commit from a temporary `git archive` tree, so uncommitted changes stay out of the images.
 - Each run has a record in `<operator state>/deploy/records/`. A failed or stopped run keeps its finished steps.
-  The record pins the commit, the fingerprint of its tree, the SHA-256 of the site file, the saved settings revision and the UID of `kube-system`.
-  `deploy-k3s up --resume <record>` continues at the first unfinished step with these inputs, and refuses a changed site file, a changed tree or another cluster.
+  The record pins the commit, the SHA-256 of the site file, the saved settings revision and the UID of `kube-system`.
+  `deploy-k3s up --resume <record>` continues at the first unfinished step with these inputs, and refuses a changed site file, another commit or another cluster.
 - The driver holds the site operation lock (`oplock.py`) while it runs. The settings Apply, the zone operations, the migration steps and the openDesk and platform backups take the same lock.
   A settings save takes no lock, so a save during a run waits as a later revision.
-- A waiting or failed step stops the steps that depend on it: the later steps of its node and every cluster step. The steps of the other nodes still run.
+- A failed step ends the run. A failed play names the nodes of its failed tasks, and the log of the record holds the output of each task.
 - A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
 - A zone step then starts a check pod with the OIDC egress label of oauth2-proxy. The pod sends an invalid sign-in code with the client secret of the proxy to Keycloak. The step fails when Keycloak does not answer `invalid_grant`, for example when a NetworkPolicy or a DNS answer blocks the token exchange.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.
-  The earlier applied record moves to `deploy/previous.json`, so a failed update can return to its revision with `up --revision`.
-- A new `up` record removes the exported trees of `<private>/build/` and the node bundles of `~/k3s-install/` of the other revisions.
-  The revision of the record, the applied and the previous revision, and the revision of a record that waits for a person stay.
-  A resume removes nothing, but a record that a newer `up` superseded cannot resume once its bundles are gone. Start a new run for it.
+  The earlier applied record moves to `deploy/previous.json`. Check out its commit and run `up` to return to it.
 - `down` scales the zone gates and the login proxy of each Hoover installation to zero, then the applications and workers, then Temporal, then the stores, and then stops the HTTPS frontend and k3s.
   The stores tier holds the databases, Keycloak, the LDAP server and the ingress controller, because the applications and the gates need them at start.
   `deploy/stopped.json` keeps the replica counts. `up --start` starts k3s and the HTTPS frontend, then restores the stores, Temporal, the applications and the gates in this order.
   The workers end through their grace period, and no workflow is cancelled.
-- The tools step installs pinned downloads from [driver/artifacts.json](driver/artifacts.json) into `private/bin/`.
-  The platform scripts use Helm 4. The openDesk helmfile uses Helm 3 from `private/bin/opendesk/`.
-- The calls step runs after the zones, because the calls services read Secrets of the zones.
-- The root scripts accept names only: the bundle (the first 12 characters of the commit), the node, the operator user, a step and a snapshot name.
-  The host paths come from the site file through `hosts.json` of the bundle `~/k3s-install/<bundle>/`.
-  A script refuses an absolute path, `..`, and a symbolic link below the home folder of the operator. The sudo rule of a bootstrap names only the installed root scripts.
-- The local node of a single-node site uses the adapter `local-arch`. It runs the root scripts [hosts/root-install-local.py](hosts/root-install-local.py) and [hosts/root-install-k3s.py](hosts/root-install-k3s.py) with `sudo -n`.
-  The driver writes the bundle `~/k3s-install/<bundle>/` with `hosts.json` and hard links of the staged files. The start and the stop of the site run `root-install-local.py --service`.
-  The bootstrap script of the local node installs copies of these scripts into `/usr/local/libexec/hoover4` and a sudo rule for them. The driver uses a copy when it equals the source.
-- A remote node uses the adapter `remote`, with the steps `probe`, `bundle`, `stage`, `root` and `verify`.
-  `bundle` writes the node bundle into `private/deploy/remote/<node>/<commit>/` and copies it into `~/k3s-install/<commit>/` of the node: the root scripts of the commit, `hosts.json`, the node part of the site, the stage script, the token that the node needs, `bootstrap.sh` and `README.txt`.
-  The tokens of the site are in `private/staging/tokens/`. `tools/adopt-cluster.py tokens` copies the tokens of a running cluster there.
-  `root` runs the root scripts through `sudo -n`, or, for a node that is Ready in the cluster, through a privileged pod that starts a unit of the host ([driver/hostroute.py](driver/hostroute.py)).
-  A node without a route waits until the operator runs `bootstrap.sh` of the bundle once as root.
-  The backup node of the site file also gets the step `backup`, which creates the backup folder with `zones/` and `platform/` for the operator user.
-  `verify` compares the node with the bundle: the script copies, the k3s version, the k3s configuration, the active unit, the Ready node, and etcd on the server.
-  A node that SSH cannot reach fails its step with the SSH error, and the record stays resumable.
-  A remote `down` or `up --start` uses `root-install-k3s.py --service` on a node with the bootstrap rule. A node without a sudo route waits for the operator, and a resume finds the stopped or started unit.
+  The k3s stop and start of each node run [ansible/playbooks/hoover4-service.yml](ansible/playbooks/hoover4-service.yml). The stop also ends the containers of the pods.
   `down` also suspends the CronJobs of the zone namespaces, and the start resumes the CronJobs that it suspended.
-  After the conversion of the server from SQLite to etcd, `verify` restarts the Deployments and DaemonSets of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
+- The tools step installs pinned downloads from [driver/artifacts.json](driver/artifacts.json) into `bin/` of the state folder.
+  The platform scripts use Helm 4. The openDesk helmfile uses Helm 3 from `bin/opendesk/`.
+- The calls step runs after the zones, because the calls services read Secrets of the zones.
+- After the conversion of the server from SQLite to etcd, `hosts:verify` restarts the Deployments and DaemonSets of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
   Without the restart, CoreDNS, the ingress controller, cert-manager, TopoLVM and the monitoring operators did not see objects that were created after the conversion.
+- The etcd snapshot of the platform backup, the restore of a snapshot and the copy of a retired server run [ansible/roles/hoover4_k3s/files/k3s-datastore.py](ansible/roles/hoover4_k3s/files/k3s-datastore.py) with `sudo -n` over SSH ([driver/nodeshell.py](driver/nodeshell.py)).
+  The script writes `~/hoover4-snapshots/<name>/` of the user that runs sudo, and takes names only.
 
 The local node of a single-node site gets the dummy link `hoover4` with the address `10.254.54.1`, a dnsmasq for the names below the suffix, and the units `hoover4-address`, `hoover4-dns` and `hoover4-frontend`.
 k3s and every pod run in `hoover4.slice`. The node value `reserved` sets the memory and CPU that stay with the rest of the host, for example a Compose stack.
-The k3s data and the kubelet folder are volumes of the volume group of the node. TopoLVM uses the free space of the group.
-The admin kubeconfig is `private/kubeconfig`. k3s writes it as `/etc/rancher/k3s/hoover4-admin.yaml`, because `/etc/rancher/k3s/k3s.yaml` can belong to another k3s user of the host.
+The k3s data and the kubelet folder are volumes of the volume group of the node, which the person creates. TopoLVM uses the free space of the group.
+The node connects to `localhost` over SSH when it has no `ssh_address`, so the workstation needs an SSH server for its own user.
+The admin kubeconfig is `kubeconfig` of the state folder. k3s writes it as `/etc/rancher/k3s/hoover4-admin.yaml`, because `/etc/rancher/k3s/k3s.yaml` can belong to another k3s user of the host.
 A new Hoover installation of a single-node site keeps its dataset folders `testdata` and `uploads` on claims, so it needs no NFS server.
 The frontend step adds the local CA to the trust store of the host and to the NSS stores of the operator user, so a browser of the host trusts the site.
 `tools/write-password-table.py` writes the logins of the site into `private/passwords.md`.
@@ -155,7 +162,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 `tools/local-retirement.py` preserves the local site and writes the removal script. It removes nothing.
 
 1. `inventory <folder>` records the units, mounts, volumes, link, DNS routing, claims and the protected resources.
-2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`root-install-k3s.py --preserve <name>`). `manifest <folder>` writes the manifest again after that step.
+2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`k3s-datastore.py preserve <name>`). `manifest <folder>` writes the manifest again after that step.
 3. `verify <folder>` reads the archive again against its manifest.
 4. `removal <folder>` writes `remove-local-k3s.sh`. A person reviews it and runs it as root.
    The script removes the services, units, data, volumes, link and DNS setup of the site. The k3s binary, `kubectl`, `crictl`, `ctr`, the k3s scripts and `/etc/rancher/k3s/k3s.yaml` stay, because another project uses them.
@@ -254,13 +261,13 @@ After the target takes new work, a return to Compose loses that work.
 A site with `[gpu_pool] nodes = <GPU nodes>` runs the GPU services on those nodes ([platform/gpu/gpu_pool.py](platform/gpu/gpu_pool.py), driver step `gpu-pool`).
 A site with `[gpu_pool] address` uses a GPU host outside the site, for example the Compose GPU host of this workstation.
 
-1. The node needs the NVIDIA driver and the NVIDIA container toolkit. `hosts/root-install-k3s.py` refuses a GPU node without them.
-2. `root-install-k3s.py` registers the runtime `runsc-nvproxy` (gVisor with GPU support), and labels and taints the node `hoover.dev/gpu=true`.
+1. The node needs the NVIDIA driver. The k3s play refuses a GPU node where `nvidia-smi -L` fails. The host play installs the NVIDIA container toolkit from the NVIDIA repository when the node does not have it.
+2. The k3s play registers the runtime `runsc-nvproxy` (gVisor with GPU support), and labels and taints the node `hoover.dev/gpu=true`.
 3. The driver step `gpu-images` builds the images of the GPU services for the architecture of the GPU nodes and checks that architecture in the registry. A GPU node of another architecture than this host builds them (`--builder`).
 4. The operator setting `gpu.runtime` selects `runsc` (RuntimeClass `gvisor-gpu`) or `runc` (RuntimeClass `nvidia`).
 
-When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <staging folder>` on a host of the node architecture.
-Run `root-install-k3s.py` on the node again, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
+When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <state folder>` on a host of the node architecture.
+Copy `runsc-nvproxy/` into the state folder of the workstation, then run `deploy-k3s up --target <node> --steps hosts:k3s`, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
 The gateway of each GPU node accepts a request only with the pool key of `[gpu_pool] api_key_file`, on every port, and listens on the VPN address of the node for the other installations of the shared pool.
 The step `gpu-pool` waits for the GPU workloads and calls each port with the key, which must answer, and without it, which must answer 403.
 
@@ -269,11 +276,13 @@ The step `gpu-pool` waits for the GPU workloads and calls each port with the key
 The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
 A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
 coturn relays to the pods and, on a media node with a public address, to that address for a client that can only use TURN.
-The chain `coturn_peers` of `hosts/root-install-public-firewall.sh` limits that address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
+The chain `coturn_peers` of [public-firewall.sh](ansible/roles/hoover4_public_firewall/files/public-firewall.sh) limits that address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
 Run that script on the calls node before the `calls` step. Without the chain, coturn relays to every port of the public address.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.
 `python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
-Run `hosts/root-install-public-firewall.sh` on the public node and on the calls node.
+Run `public-guard.sh` and `public-firewall.sh` of the role `hoover4_public_firewall` as root on the public node and on the calls node.
+`public-firewall.sh` starts a rollback timer of 180 seconds. Test SSH from a new connection, then run `public-firewall.sh --confirm`.
+The role runs the same scripts and confirms after a new SSH connection works. The host play runs it only when the inventory variable `hoover4_public_firewall` is true, and the site file has no key that sets it.
 
 Check a call from outside the site after a remote installation:
 
@@ -311,7 +320,7 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 - A copy is made in `<operator state>/backups/staging/`, checked, sent to the node into `<generation>.partial`, checked there and renamed. A failed transfer or check keeps the older copies.
 - A restore reads a copy on the operator host in place, or fetches it into `<operator state>/backups/restore/` and checks it there.
 - The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
-  The snapshot runs `root-install-k3s.py --bundle backup --snapshot <name>` on the server, which writes `~/k3s-install/snapshots/<name>/` of the operator user.
+  The snapshot runs `k3s-datastore.py snapshot <name>` with `sudo -n` on the server, which writes `~/hoover4-snapshots/<name>/` of the operator user. The operator user needs sudo without a password on the control plane.
 - The zone copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
   Their CronJobs are suspended, and the stores keep running. After the copy, the recorded replicas and suspensions return.
   The next runner tick restores a closure that a stopped job left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.

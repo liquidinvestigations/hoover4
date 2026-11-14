@@ -1,6 +1,6 @@
-"""The driver suite: the plans, records, revisions, interruptions, host adapters, render and check of deploy-k3s.
+"""The driver suite: the plans, records, revisions, interruptions, host steps, render and check of deploy-k3s.
 
-Fake ssh, sudo, bash and kubectl commands on PATH stand in for the hosts and the cluster. No test contacts a host.
+Fake ssh, sudo, bash, kubectl and ansible-playbook commands on PATH stand in for the hosts and the cluster. No test contacts a host.
 """
 import json
 import shlex
@@ -46,6 +46,13 @@ if name == 'ssh':
     sys.stdin.read()
     sys.exit(0)
 if name == 'sudo':
+    sys.exit(0)
+if name == 'ansible-playbook':
+    if os.environ.get('FAKE_ANSIBLE') == 'fail':
+        print('fatal: [edge]: UNREACHABLE! => {}')
+        print('edge                       : ok=0    changed=0    unreachable=1    failed=0')
+        sys.exit(4)
+    print('PLAY RECAP')
     sys.exit(0)
 if name == 'kubectl':
     state_path = os.environ.get('FAKE_KUBE')
@@ -96,7 +103,7 @@ def env(tmp_path, monkeypatch):
     """A site, a private folder, a git repository and fake commands."""
     bin_dir = tmp_path / 'bin'
     bin_dir.mkdir()
-    for name in ('ssh', 'sudo', 'kubectl', 'bash', 'podman'):
+    for name in ('ssh', 'sudo', 'kubectl', 'bash', 'podman', 'ansible-playbook'):
         path = bin_dir / name
         path.write_text(FAKE)
         path.chmod(0o755)
@@ -151,9 +158,8 @@ def fake_steps(names, calls, fail=(), interrupt=()):
 def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
     ctx = env.make()
     steps = list(deploy.plan(ctx, 'up', ['dev']))
-    assert steps[:7] == ['host:dev:prerequisites', 'host:dev:software', 'host:dev:settings', 'host:dev:storage',
-                         'host:dev:stage', 'host:dev:k3s', 'host:dev:dns']
-    for before, after in (('host:dev:k3s', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
+    assert steps[:3] == ['hosts:prepare', 'hosts:k3s', 'hosts:verify']
+    for before, after in (('hosts:verify', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
                           ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator'),
                           ('zone:zone-a', 'calls'), ('zone:zone-a', 'mcp-relay')):
         assert steps.index(before) < steps.index(after)
@@ -163,14 +169,15 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
 def test_remote_plan_puts_the_control_plane_first_and_gpu_nodes_last(env):
     ctx = env.make('remote.ini')
     steps = list(deploy.plan(ctx, 'up', ['gpu-1', 'edge', 'server-a']))
-    hosts = [s.split(':')[1] for s in steps if s.startswith('host:')]
-    assert hosts == ['server-a'] * 5 + ['edge'] * 5 + ['gpu-1'] * 5
-    assert [s.split(':')[2] for s in steps if s.startswith('host:server-a')] == ['probe', 'bundle', 'stage', 'root', 'verify']
+    # One Ansible run for each host step covers every target node.
+    assert [s for s in steps if s.startswith('hosts:')] == ['hosts:prepare', 'hosts:k3s', 'hosts:verify']
     assert 'cluster' in steps
+    assert list(deploy.plan(ctx, 'down', ['gpu-1', 'edge', 'server-a']))[-3:] == [
+        'stop:k3s:gpu-1', 'stop:k3s:edge', 'stop:k3s:server-a']
     # The GPU images are built after the other images and before the GPU pool.
     assert steps.index('images') < steps.index('gpu-images') < steps.index('gpu-pool')
     # Without the control plane the driver runs no cluster step.
-    assert all(s.startswith('host:') for s in deploy.plan(ctx, 'up', ['edge']))
+    assert all(s.startswith('hosts:') for s in deploy.plan(ctx, 'up', ['edge']))
 
 
 def test_a_site_without_gpu_nodes_has_no_gpu_steps(env):
@@ -225,218 +232,64 @@ def test_a_partial_up_is_not_an_applied_deployment(env):
     assert ctx.records.applied() is None
 
 
-def test_an_unreachable_remote_node_fails_with_its_name_and_a_resumable_record(env, monkeypatch):
-    ctx = env.make('remote.ini')
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    steps = deploy.plan(ctx, 'up', ['worker-b'])
-    record = ctx.records.new('up', ['worker-b'], rev, list(steps))
-    assert deploy.execute(ctx, record, steps) == 2
-    record = ctx.records.load(record['id'])
-    assert record['status'] == 'failed'
-    assert record['steps'][0]['state'] == 'failed'
-    assert 'node worker-b: SSH to 192.0.2.11 failed with exit code 255' in record['error']
-    assert 'Connection timed out' in record['error']
-    # A node without sudo and outside the cluster waits at its root step. The verify step stays blocked.
-    monkeypatch.setenv('FAKE_SSH', 'rhel-nosudo')
-    assert deploy.execute(ctx, record, steps) == 3
-    record = ctx.records.load(record['id'])
-    assert [s['state'] for s in record['steps']] == ['done', 'done', 'done', 'waiting', 'pending']
-    assert record['steps'][4]['blocked_by'] == 'host:worker-b:root'
-    assert 'bootstrap.sh' in record['error']
-    assert record['status'] == 'waiting' and ctx.records.applied() is None
-
-
-def good_report(folder, unit='k3s-agent', iface='wg0', **extra):
-    return json.dumps({'k3s_version': f'k3s version {deploy.K3S_VERSION} (abc)', 'units': {unit: 'active'},
-                       'flannel_iface': iface, 'cluster_init': unit == 'k3s', 'datastore': 'unreadable',
-                       'scripts': {n: deploy.file_digest(folder / n) for n in deploy.REMOTE_SCRIPTS}, **extra})
-
-
-def test_a_node_bundle_holds_the_scripts_the_site_and_only_the_token_of_the_node(env, monkeypatch):
-    monkeypatch.setenv('FAKE_SSH', 'ubuntu-arm-nosudo')
-    ctx = env.make('remote.ini')
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    steps = deploy.plan(ctx, 'up', ['gpu-1'])
-    record = ctx.records.new('up', ['gpu-1'], rev, list(steps))
-    assert deploy.execute(ctx, record, steps) == 3
-    folder = env.private / 'deploy/remote/gpu-1' / rev[:12]
-    names = sorted(p.name for p in folder.iterdir())
-    assert names == ['README.txt', 'agent-token', 'bootstrap.sh', 'hosts.json', 'project.json', 'root-install-k3s.py',
-                     'root-install.py', 'stage-k3s.sh']
-    assert (folder / 'agent-token').stat().st_mode & 0o777 == 0o600
-    assert (folder / 'agent-token').read_text() == (env.private / 'staging/tokens/agent-token').read_text()
-    # Every architecture gets the same tokens of the site.
-    assert (env.private / 'staging/arm64/agent-token').read_text() == (env.private / 'staging/tokens/agent-token').read_text()
-    bootstrap = (folder / 'bootstrap.sh').read_text()
-    assert f'{deploy.file_digest(folder / "root-install-k3s.py")}  root-install-k3s.py' in bootstrap
-    sudoers = [line for line in bootstrap.splitlines() if 'NOPASSWD' in line]
-    assert sudoers == ['operator ALL=(root) NOPASSWD: /usr/local/libexec/hoover4/root-install.py *',
-                       'operator ALL=(root) NOPASSWD: /usr/local/libexec/hoover4/root-install-k3s.py *']
-    assert (folder / 'root-install-k3s.py').read_bytes() == (K3S / 'hosts/root-install-k3s.py').read_bytes()
-    project = json.loads((folder / 'project.json').read_text())
-    assert project['secret_files'] == {'node.gpu-1.gpu_api_key_file': '/root/vllm-key'}
-    assert 'hoovers' not in project
-    assert json.loads((folder / 'hosts.json').read_text())['hosts']['gpu-1']['wg_if'] == 'wg0'
-    # The bundle went to the node over the user shell, and no token appears in a command line.
-    commands = [c for c in env.commands() if c[0] == 'ssh']
-    assert any('tar -C k3s-install/' + rev[:12] in c[-1] for c in commands)
-    token = (folder / 'agent-token').read_text().strip()
-    assert not [c for c in env.commands() if token in ' '.join(c)]
-    record = ctx.records.load(record['id'])
-    assert [s['state'] for s in record['steps']][:5] == ['done', 'done', 'done', 'waiting', 'pending']
-    # After the bootstrap the node has sudo. The root step runs the scripts of the bundle, and verify compares the node.
-    monkeypatch.setenv('FAKE_SSH', 'ubuntu-arm')
-    monkeypatch.setenv('FAKE_READY', '1')
-    (env.private / 'kubeconfig').write_text('fake')
-    report = env.tmp / 'report.json'
-    report.write_text(good_report(folder))
-    monkeypatch.setenv('FAKE_REPORT', str(report))
-    host_only = {k: v for k, v in steps.items() if k.startswith('host:')}
-    record = ctx.records.load(record['id'])
-    record['steps'] = [e for e in record['steps'] if e['name'] in host_only]
-    assert deploy.execute(ctx, record, host_only) == 0
-    sudo = [c[-1] for c in env.commands() if c[0] == 'ssh' and c[-1].startswith('sudo -n ')]
-    assert any('/usr/local/libexec/hoover4/root-install-k3s.py' in c and f'--bundle {rev[:12]} ' in c for c in sudo)
-    # The root commands hold names only: no host path after the script.
-    for c in (c for c in sudo if shlex.split(c)[2].startswith('/usr/local/libexec/hoover4/')):
-        assert not [a for a in shlex.split(c)[3:] if a.startswith('/') or '..' in a], c
-    assert any('--only software' in c for c in sudo) and not any('--only wireguard' in c for c in sudo)
-
-
-def test_verify_restarts_the_watch_controllers_after_a_conversion_to_etcd(env, monkeypatch):
-    monkeypatch.setenv('FAKE_SSH', 'rhel')
-    monkeypatch.setenv('FAKE_READY', '1')
-    ctx = env.make('remote.ini')
-    (env.private / 'kubeconfig').write_text('fake')
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    node = ctx.site.nodes['server-a']
-    folder = deploy.write_remote_scripts(ctx, node, rev)
-    report = env.tmp / 'report.json'
-    report.write_text(good_report(folder, unit='k3s'))
-    monkeypatch.setenv('FAKE_REPORT', str(report))
-    restarted = []
-    monkeypatch.setattr(deploy, 'restart_watchers', lambda ctx: restarted.append(1) or ['kube-system'])
-    remote = deploy.Remote(ctx, node)
-    ctx.record = {'id': 'r1', 'revision': rev, 'etcd_before': 'true'}
-    assert 'restarted' not in remote.verify() and not restarted
-    ctx.record = {'id': 'r2', 'revision': rev}
-    assert 'restarted' not in remote.verify() and not restarted
-    ctx.record = {'id': 'r3', 'revision': rev, 'etcd_before': ''}
-    assert remote.verify()['restarted'] == ['kube-system'] and restarted == [1]
-
-
-def test_verify_fails_when_the_node_differs_from_the_bundle(env, monkeypatch):
-    monkeypatch.setenv('FAKE_SSH', 'rhel')
-    monkeypatch.setenv('FAKE_READY', '1')
-    ctx = env.make('remote.ini')
-    (env.private / 'kubeconfig').write_text('fake')
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    ctx.record = {'id': 'r1', 'revision': rev}
-    node = ctx.site.nodes['server-a']
-    folder = deploy.write_remote_scripts(ctx, node, rev)
-    assert sorted(p.name for p in folder.iterdir() if p.name.endswith('-token')) == ['agent-token', 'server-token']
-    report = env.tmp / 'report.json'
-    monkeypatch.setenv('FAKE_REPORT', str(report))
-    remote = deploy.Remote(ctx, node)
-    report.write_text(good_report(folder, unit='k3s'))
-    assert remote.verify()['report']['cluster_init'] is True
-    # An old script copy, a SQLite server and a missing etcd role each fail the step.
-    report.write_text(good_report(folder, unit='k3s', scripts={'root-install.py': 'old'}, cluster_init=False,
-                                  datastore='sqlite'))
-    with pytest.raises(deploy.StepFailed) as error:
-        remote.verify()
-    assert 'root-install.py differs from the bundle' in str(error.value)
-    assert 'no cluster-init' in str(error.value) and 'the datastore is sqlite' in str(error.value)
-    report.write_text(good_report(folder, unit='k3s'))
-    monkeypatch.setenv('FAKE_ETCD', '')
-    with pytest.raises(deploy.StepFailed, match='no etcd role'):
-        remote.verify()
-    monkeypatch.setenv('FAKE_ETCD', 'true')
-    # Without sudo the root-only configuration is unreadable. The node arguments of the running k3s count instead.
-    report.write_text(good_report(folder, unit='k3s', iface='', cluster_init=False, config_sha256=''))
-    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['server', '--cluster-init', 'true', '--flannel-iface', 'wg0'])
-    assert remote.verify()
-    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['server', '--flannel-iface', 'eth0'])
-    with pytest.raises(deploy.StepFailed) as error:
-        remote.verify()
-    assert "flannel-iface is 'eth0'" in str(error.value) and 'no cluster-init' in str(error.value)
-
-
-def test_a_remote_stop_and_start_complete_after_the_operator_acts(env, monkeypatch):
-    monkeypatch.setenv('FAKE_SSH', 'rhel-nosudo')
-    ctx = env.make('remote.ini')
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    steps = {'stop:k3s:worker-b': deploy._stop_node(deploy.adapter(ctx, ctx.site.nodes['worker-b']))}
-    record = ctx.records.new('down', ['worker-b'], rev, list(steps))
-    assert deploy.execute(ctx, record, steps) == 3
-    # The operator stopped k3s on the node. The resume observes the stopped unit and finishes the step.
-    monkeypatch.setenv('FAKE_ACTIVE', 'inactive')
-    assert deploy.execute(ctx, ctx.records.load(record['id']), steps) == 0
-    assert ctx.records.load(record['id'])['steps'][0]['observed'] == 'inactive'
-    start = {'start:k3s:worker-b': deploy._start_node(deploy.adapter(ctx, ctx.site.nodes['worker-b']))}
-    record = ctx.records.new('up', ['worker-b'], rev, list(start), start=True)
-    assert deploy.execute(ctx, record, start) == 3
-    monkeypatch.setenv('FAKE_ACTIVE', 'active')
-    assert deploy.execute(ctx, ctx.records.load(record['id']), start) == 0
-
-
-def test_a_waiting_host_step_blocks_its_node_and_the_cluster_steps_but_not_other_nodes(env):
-    ctx = env.make()
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    names = ['host:a:root', 'host:b:root', 'host:a:verify', 'host:b:verify', 'cluster', 'zone:zone-a']
-    calls = []
-    steps = fake_steps(names, calls)
-
-    def wait(ctx):
-        calls.append(('host:a:root',))
-        raise deploy.StepWaiting('node a: run the bootstrap')
-    steps['host:a:root'] = wait
-    record = ctx.records.new('up', ['dev'], rev, names, complete=True)
-    assert deploy.execute(ctx, record, steps) == 3
-    assert [c[0] for c in calls] == ['host:a:root', 'host:b:root', 'host:b:verify']
-    record = ctx.records.load(record['id'])
-    assert {s['name']: s['state'] for s in record['steps']} == {
-        'host:a:root': 'waiting', 'host:b:root': 'done', 'host:a:verify': 'pending', 'host:b:verify': 'done',
-        'cluster': 'pending', 'zone:zone-a': 'pending'}
-    assert 'Blocked steps: host:a:verify, cluster, zone:zone-a.' in record['error']
-    assert ctx.records.applied() is None
-    # The resume runs the waiting step and then the blocked steps.
-    calls.clear()
-    assert deploy.execute(ctx, record, fake_steps(names, calls)) == 0
-    assert [c[0] for c in calls] == ['host:a:root', 'host:a:verify', 'cluster', 'zone:zone-a']
-
-
 def test_the_independent_steps_act_on_different_nodes():
-    assert deploy.independent('host:a:root', 'host:b:verify')
-    assert not deploy.independent('host:a:verify', 'host:a:root')
-    assert not deploy.independent('cluster', 'host:a:root')
+    assert not deploy.independent('hosts:k3s', 'hosts:prepare')
+    assert not deploy.independent('cluster', 'hosts:verify')
     assert deploy.independent('stop:k3s:a', 'stop:k3s:b')
     assert not deploy.independent('stop:k3s:a', 'stop:stores')
 
 
-def test_the_local_adapter_stages_the_architecture_of_the_node(env):
-    ctx = env.make()
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    steps = deploy.select(deploy.plan(ctx, 'up', ['dev']), ['stage'])
-    record = ctx.records.new('up', ['dev'], rev, list(steps))
-    assert deploy.execute(ctx, record, steps) == 0
-    bash = [c for c in env.commands() if c[0] == 'bash']
-    assert bash[0][1].endswith('hosts/stage-k3s.sh') and bash[0][2] == 'amd64'
-    assert (env.private / 'staging/amd64/server-token').stat().st_mode & 0o777 == 0o600
-
-
-def test_render_and_check_change_no_file_and_run_no_root_command(env, monkeypatch):
-    monkeypatch.setenv('FAKE_SSH', 'rhel')
+def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(env, monkeypatch):
     ctx = env.make('remote.ini')
     before = sorted(p for p in env.tmp.rglob('*') if 'commands.log' not in str(p))
     out = deploy.render(ctx, ['server-a', 'worker-b'], deploy.resolve_revision(env.repo, 'HEAD'))
-    assert out['up'][0] == 'host:server-a:probe' and out['down'][-1] == 'stop:k3s:server-a'
+    assert out['up'][0] == 'hosts:prepare' and out['down'][-1] == 'stop:k3s:server-a'
+    assert out['inventory']['all']['children']['hoover4_server']['hosts'] == {'server-a': {}}
+    (env.private / 'facts').mkdir()
+    (env.private / 'facts' / 'worker-b.json').write_text('{"os_family": "RedHat"}')
     problems, state = deploy.check(ctx, ['server-a', 'worker-b'])
     after = sorted(p for p in env.tmp.rglob('*') if 'commands.log' not in str(p))
-    assert before == after
-    assert not [c for c in env.commands() if c[0] == 'sudo']
-    assert state['worker-b']['family'] == 'rhel'
+    assert {p.relative_to(env.private).parts[0] for p in set(after) - set(before)} == {'ansible', 'facts'}
+    playbooks = [c for c in env.commands() if c[0] == 'ansible-playbook']
+    assert len(playbooks) == 1 and playbooks[0][-2:] == ['--tags', 'facts']
+    assert not [c for c in env.commands() if c[0] in ('sudo', 'ssh')]
+    assert state['worker-b']['os_family'] == 'RedHat' and state['server-a'] == {'reachable': False, 'ready': False}
     assert any('the operator tools are missing' in p for p in problems)
+    assert any(f'the admin kubeconfig {ctx.kubeconfig} is missing' in p for p in problems)
+
+
+def test_a_failed_play_names_the_node_and_keeps_a_resumable_record(env, monkeypatch):
+    monkeypatch.setenv('FAKE_ANSIBLE', 'fail')
+    ctx = env.make('remote.ini')
+    rev = deploy.resolve_revision(env.repo, 'HEAD')
+    steps = deploy.select(deploy.plan(ctx, 'up', ['edge']), ['hosts'])
+    record = ctx.records.new('up', ['edge'], rev, list(steps))
+    assert deploy.execute(ctx, record, steps) == 2
+    record = ctx.records.load(record['id'])
+    assert record['status'] == 'failed' and record['error'].startswith('hosts:prepare: the play hoover4-hosts.yml failed on edge')
+    assert [s['state'] for s in record['steps']] == ['failed', 'pending', 'pending']
+
+
+def test_verify_names_a_missing_kubeconfig_and_the_differences_of_each_node(env, monkeypatch):
+    ctx = env.make('remote.ini')
+    ctx.record = {'targets': ['server-a', 'edge']}
+    with pytest.raises(deploy.StepFailed, match=f'the admin kubeconfig {ctx.kubeconfig} is missing'):
+        deploy.step_verify(ctx)
+    ctx.kubeconfig.write_text('fake')
+    ready = {'server-a': True, 'edge': False}
+    monkeypatch.setattr(deploy, 'node_ready', lambda ctx, name: ready[name])
+    monkeypatch.setattr(deploy, 'node_label', lambda ctx, name, label: 'true')
+    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['--flannel-iface', 'wg0', '--cluster-init', 'true'])
+    monkeypatch.setattr(deploy.Context, 'kubectl', lambda self, *a, check=True: deploy.K3S_VERSION)
+    with pytest.raises(deploy.StepFailed, match='node edge: the node is not Ready'):
+        deploy.step_verify(ctx, attempts=2, pause=0)
+    ready['edge'] = True
+    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['--flannel-iface', 'eth0'])
+    with pytest.raises(deploy.StepFailed) as error:
+        deploy.step_verify(ctx, attempts=1, pause=0)
+    assert "node server-a: flannel-iface is 'eth0', not 'wg0', k3s runs without cluster-init" in str(error.value)
+    monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['--flannel-iface', 'wg0', '--cluster-init', 'true'])
+    assert deploy.step_verify(ctx, attempts=1, pause=0) == {'nodes': ['server-a', 'edge']}
 
 
 def test_a_dirty_checkout_stays_unchanged_and_the_record_names_its_files(env):
@@ -446,7 +299,7 @@ def test_a_dirty_checkout_stays_unchanged_and_the_record_names_its_files(env):
     record = ctx.records.new('up', ['dev'], rev, ['a'], checkout_changes=deploy.dirty_files(env.repo))
     assert deploy.execute(ctx, record, fake_steps(['a'], [])) == 0
     assert (env.repo / 'file.txt').read_text() == 'local change\n'
-    assert ctx.records.load(record['id'])['checkout_changes'] == ['file.txt']
+    assert ctx.records.load(record['id'])['checkout_changes'] == [' M file.txt']
     assert not [c for c in env.commands() if c[0] == 'git']
 
 
@@ -482,9 +335,9 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
     assert ctx.records.stopped()['hoover-zone-a/deployment/website'] == 2
     kube = json.loads((env.tmp / 'kube.json').read_text())
     assert kube['cronjobs']['zone-a'] == {'opendesk-nextcloud-aio-cron': True, 'paused-by-operator': True}
-    sudo = [c for c in env.commands() if c[0] == 'sudo']
-    assert sudo[-1][-6:] == ['--bundle', rev[:12], '--node', 'dev', '--service', 'stop']
-    assert sudo[-1][-7].endswith('root-install-local.py')
+    play = [c for c in env.commands() if c[0] == 'ansible-playbook'][-1]
+    assert play[play.index('--limit') + 1] == 'dev' and play[-1] == '{"hoover4_action": "stop"}'
+    assert play[play.index('--limit') + 2].endswith('playbooks/hoover4-service.yml')
     log = env.log.read_text()
     env.log.write_text('')
     os.environ['FAKE_READY'] = '1'
@@ -505,32 +358,15 @@ def test_down_stops_the_tiers_in_order_and_start_restores_them(env):
     assert 'temporal' in log
 
 
-def test_the_local_bootstrap_names_only_the_root_scripts(env, monkeypatch):
-    monkeypatch.setenv('USER', 'gabriel')
-    ctx = env.make()
-    text = deploy.write_local_bootstrap(ctx, ctx.site.nodes['dev']).read_text()
-    rules = [line for line in text.splitlines() if 'NOPASSWD' in line]
-    assert all(r.startswith('gabriel ALL=(root) NOPASSWD: ') for r in rules)
-    commands = {r.split('NOPASSWD: ', 1)[1] for r in rules}
-    assert '/usr/local/libexec/hoover4/root-install-local.py *' in commands
-    assert commands == {'/usr/local/libexec/hoover4/root-install-local.py *',
-                        '/usr/local/libexec/hoover4/root-install-k3s.py *'}
-
-
 def test_the_command_refuses_a_missing_or_unknown_target(env):
     ctx = env.make()
     cmd = [sys.executable, str(K3S / 'deploy-k3s'), 'up', '--site', str(ctx.site_path)]
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    # The variable runs the command as it runs inside the operator image.
+    image = dict(os.environ, HOOVER4_OPERATOR_IMAGE='1')
+    out = subprocess.run(cmd, capture_output=True, text=True, env=image)
     assert out.returncode != 0 and 'needs --target with nodes of the site: dev, or all' in out.stderr
-    out = subprocess.run(cmd + ['--target', 'nope'], capture_output=True, text=True)
+    out = subprocess.run(cmd + ['--target', 'nope'], capture_output=True, text=True, env=image)
     assert 'nope is not a node of the site' in out.stderr
-
-
-def test_the_os_family_of_the_adapters():
-    assert deploy.os_family('NAME="CachyOS Linux"\nID=cachyos\nID_LIKE=arch\n') == 'arch'
-    assert deploy.os_family('ID="rhel"\nID_LIKE="fedora"\n') == 'rhel'
-    assert deploy.os_family('ID=ubuntu\nID_LIKE=debian\n') == 'debian'
-    assert deploy.os_family('ID=alpine\n') == 'unknown'
 
 
 def test_the_topolvm_values_follow_the_volume_groups_of_the_site():
@@ -556,42 +392,18 @@ def test_the_legacy_settings_of_a_single_node_site_use_the_local_address():
     assert remote['frontend_bind'] == ['10.0.0.1', '203.0.113.10']
 
 
-# Pinned inputs, the exported tree, the site lock and the applied settings ----------------------------------------------
+# Pinned inputs, the site lock and the applied settings ----------------------------------------------------------------
 
-import source  # noqa: E402
 import oplock  # noqa: E402
 from conftest import operator_settings  # noqa: E402
 
 
-def test_the_exported_tree_holds_the_commit_and_links_the_private_folder(env):
-    rev = deploy.resolve_revision(env.repo, 'HEAD')
-    (env.repo / 'file.txt').write_text('a local change\n')
-    tree = source.export(env.repo, env.private, rev)
-    assert source.is_export(tree) == rev
-    assert (tree / 'file.txt').read_text() == 'one\n'
-    assert (tree / 'k3s/private').resolve() == env.private.resolve()
-    first = source.fingerprint(tree)
-    assert source.export(env.repo, env.private, rev) == tree and source.fingerprint(tree) == first
-    # A step that imports a module writes bytecode into the tree. That is not a change of the source.
-    (tree / 'k3s/__pycache__').mkdir(parents=True, exist_ok=True)
-    (tree / 'k3s/__pycache__/config.cpython-39.pyc').write_bytes(b'bytecode')
-    assert source.fingerprint(tree) == first
-    (tree / 'file.txt').write_text('changed\n')
-    assert source.fingerprint(tree) != first
-    # The exported tree has no checkout, so the record names no local change.
-    assert deploy.dirty_files(tree) == [] and deploy.dirty_files(env.repo) == ['file.txt']
-    with pytest.raises(source.SourceError):
-        source.export(env.repo, env.private, 'HEAD')
-
-
-def test_a_resume_refuses_a_changed_site_tree_or_cluster(env, monkeypatch):
+def test_a_resume_refuses_a_changed_site_file_or_cluster(env, monkeypatch):
     ctx = env.make()
     rev = deploy.resolve_revision(env.repo, 'HEAD')
-    (env.repo / 'k3s').mkdir()
-    tree = source.export(env.repo, env.private, rev)
     calls = []
-    record = ctx.records.new('up', ['dev'], rev, ['a', 'b'], inputs=deploy.pinned_inputs(ctx, tree))
-    assert record['inputs']['settings_revision'] == 0 and record['inputs']['tree_fingerprint']
+    record = ctx.records.new('up', ['dev'], rev, ['a', 'b'], inputs=deploy.pinned_inputs(ctx))
+    assert record['inputs']['settings_revision'] == 0 and 'tree' not in record['inputs']
     assert deploy.execute(ctx, record, fake_steps(['a', 'b'], calls, interrupt=['b'])) == 130
     ctx.site_path.write_text(ctx.site_path.read_text() + '\n# edited\n')
     assert deploy.execute(ctx, ctx.records.load(record['id']), fake_steps(['a', 'b'], calls)) == 2
@@ -602,15 +414,11 @@ def test_a_resume_refuses_a_changed_site_tree_or_cluster(env, monkeypatch):
     ctx = env.make()
     (env.private / 'kubeconfig').write_text('fake')
     monkeypatch.setenv('FAKE_CLUSTER', 'uid-1')
-    record = ctx.records.new('up', ['dev'], rev, ['a'], inputs=deploy.pinned_inputs(ctx, tree))
+    record = ctx.records.new('up', ['dev'], rev, ['a'], inputs=deploy.pinned_inputs(ctx))
     assert record['inputs']['cluster_identity'] == 'uid-1'
     monkeypatch.setenv('FAKE_CLUSTER', 'uid-2')
     assert deploy.execute(ctx, record, fake_steps(['a'], [])) == 2
     assert 'another cluster' in ctx.records.load(record['id'])['error']
-    monkeypatch.setenv('FAKE_CLUSTER', 'uid-1')
-    (tree / 'file.txt').write_text('changed\n')
-    assert deploy.execute(ctx, ctx.records.load(record['id']), fake_steps(['a'], [])) == 2
-    assert 'exported tree' in ctx.records.load(record['id'])['error']
 
 
 def test_one_site_lock_for_the_driver_apply_migration_and_backups(env, tmp_path):
@@ -787,25 +595,11 @@ def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatc
 def test_a_local_shell_runs_in_the_home_folder_like_a_remote_one():
     # The bundle paths are relative to the home folder. A driver run from another folder still finds the bundle.
     import types
-    import hostroute
-    local = hostroute.Shell(types.SimpleNamespace(name='a', local=True, ssh_address=''))
-    remote = hostroute.Shell(types.SimpleNamespace(name='b', local=False, ssh_address='op@b'))
+    import nodeshell
+    local = nodeshell.Shell(types.SimpleNamespace(name='a', local=True, ssh_address=''))
+    remote = nodeshell.Shell(types.SimpleNamespace(name='b', local=False, ssh_address='op@b'))
     assert local.command('ls k3s-install') == ['sh', '-c', 'cd && ls k3s-install']
     assert remote.command('ls k3s-install')[-1] == 'ls k3s-install'
-
-
-@pytest.mark.parametrize('state, starts', [('missing', True), ('failed', True), ('active', False), ('activating', False)])
-def test_the_cluster_root_route_runs_a_failed_unit_again(monkeypatch, state, starts):
-    # A resume after a failed root step gets the same unit name. Only a running or successful unit starts nothing.
-    import types
-    import hostroute
-    node = types.SimpleNamespace(name='server-a', local=False, ssh_address='op@server-a')
-    root = hostroute.ClusterRoot('kubeconfig', hostroute.Shell(node))
-    monkeypatch.setattr(hostroute, 'unit_state', lambda shell, unit: (state, '', ''))
-    calls = []
-    monkeypatch.setattr(root, 'kubectl', lambda *a, input=None: calls.append(a) or (0, 'Succeeded'))
-    root.start('hoover4-x-server-a', command=['true'])
-    assert any(a[0] == 'apply' for a in calls) == starts
 
 
 def test_an_on_delete_statefulset_waits_for_its_ready_replicas(monkeypatch):
@@ -860,7 +654,7 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
     assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '') == [
         'denied-peer-ip=0.0.0.0-255.255.255.255', 'allowed-peer-ip=10.42.0.0-10.42.3.255']
     assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
-    firewall = (K3S / 'hosts/root-install-public-firewall.sh').read_text()
+    firewall = (K3S / 'ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
     assert f'COTURN_UID={turn_peers.COTURN_UID}' in firewall
     chain = firewall[firewall.index('chain coturn_peers {'):].split('}')[0].splitlines()
     rules = [line.split(' comment ')[0].strip() for line in chain[1:] if line.strip()]
@@ -878,13 +672,13 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
 def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):
     # A public node under login attempts from the internet drops new connections at MaxStartups.
     import types
-    import hostroute
-    monkeypatch.setattr(hostroute, 'SSH_PAUSE', 0)
-    shell = hostroute.Shell(types.SimpleNamespace(name='edge', local=False, ssh_address='op@edge'))
+    import nodeshell
+    monkeypatch.setattr(nodeshell, 'SSH_PAUSE', 0)
+    shell = nodeshell.Shell(types.SimpleNamespace(name='edge', local=False, ssh_address='op@edge'))
     answers = [(255, 'kex_exchange_identification: Connection closed by remote host'),
                (255, 'Connection reset by 203.0.113.10 port 22'), (0, 'done')]
     calls = []
-    monkeypatch.setattr(hostroute, 'run', lambda argv, **kw: calls.append(argv) or answers[len(calls) - 1])
+    monkeypatch.setattr(nodeshell, 'run', lambda argv, **kw: calls.append(argv) or answers[len(calls) - 1])
     assert shell.run('true') == (0, 'done') and len(calls) == 3
     # A failure after the start, or another ssh error, is not run again.
     calls.clear()
@@ -895,50 +689,12 @@ def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):
     assert shell.run('true')[0] == 1 and len(calls) == 1
 
 
-def test_a_new_up_removes_the_trees_and_bundles_of_superseded_revisions(tmp_path, monkeypatch):
-    # Each revision leaves a 0.5 GB tree and a 1.4 GB bundle per node. A full home folder stopped an up of the demo.
-    import types
-    revs = {k: (c * 40) for k, c in (('new', 'a'), ('applied', 'b'), ('previous', 'c'), ('waiting', 'd'), ('old', 'e'))}
-    recs = {'r-wait': {'status': 'waiting', 'revision': revs['waiting']}, 'r-old': {'status': 'failed', 'revision': revs['old']}}
-    records = types.SimpleNamespace(applied=lambda: {'revision': revs['applied']}, previous=lambda: {'revision': revs['previous']},
-                                    list=lambda: sorted(recs), load=lambda rid: recs[rid])
-    private = tmp_path / 'private'
-    for name in [*revs.values(), revs['old'] + '.partial', 'notes']:
-        (private / 'build' / name).mkdir(parents=True)
-    ctx = types.SimpleNamespace(record={'revision': revs['new']}, records=records, private=private)
-    assert deploy.prune_trees(ctx) == [revs['old'], revs['old'] + '.partial']
-    assert sorted(p.name for p in (private / 'build').iterdir()) == sorted([revs['new'], revs['applied'], revs['previous'],
-                                                                             revs['waiting'], 'notes'])
-    # The bundles of a node: the same revisions stay, and other files of ~/k3s-install stay too.
-    home = tmp_path / 'home'
-    for name in [r[:12] for r in revs.values()] + ['notes']:
-        (home / 'k3s-install' / name).mkdir(parents=True)
-    (home / 'k3s-install' / 'k3s').write_text('binary')
-    adapter = object.__new__(deploy.Remote)
-    adapter.ctx, adapter.node = ctx, types.SimpleNamespace(name='edge')
-    adapter.ssh = lambda script, timeout=40: (lambda r: (r.returncode, r.stdout + r.stderr))(
-        subprocess.run(['sh', '-c', script], env={**os.environ, 'HOME': str(home)}, capture_output=True, text=True))
-    assert adapter.prune_bundles() == [revs['old'][:12]]
-    assert sorted(p.name for p in (home / 'k3s-install').iterdir()) == sorted(
-        [r[:12] for k, r in revs.items() if k != 'old'] + ['notes', 'k3s'])
-
-
-def test_a_node_that_keeps_its_vpn_gets_no_wireguard_step():
+def test_a_node_that_keeps_its_vpn_gets_no_wireguard_play(tmp_path):
     text = site_text('remote.ini')
-    site = config.parse(text)
-    assert deploy.host_steps(site.nodes['server-a'], site)[0] == 'wireguard'
-    assert 'wireguard' not in deploy.host_steps(site.nodes['gpu-1'], site)
-    foreign = config.parse(text.replace('[node.calls]\n', '[node.calls]\nvpn_interface = prototype-vpn\n'))
-    assert 'wireguard' not in deploy.host_steps(foreign.nodes['calls'], foreign)
+    groups = config.ansible_inventory(config.parse(text), tmp_path)['all']['children']
+    assert 'server-a' in groups['hoover4_wireguard']['hosts'] and 'gpu-1' not in groups['hoover4_wireguard']['hosts']
+    assert 'hoover4_wireguard' not in groups['hoover4']['hosts']['gpu-1']
+    foreign = config.parse(text.replace('[node.calls]\n', '[node.calls]\nvpn_interface = wg-site\n'))
+    assert 'calls' not in config.ansible_inventory(foreign, tmp_path)['all']['children']['hoover4_wireguard']['hosts']
 
 
-@pytest.mark.parametrize('architecture, route', [('amd64', 'cluster'), ('arm64', 'none')])
-def test_the_cluster_root_route_needs_an_amd64_node(env, monkeypatch, architecture, route):
-    # The root pod image is the amd64 build, so an arm64 node without sudo has no root route.
-    ctx = env.make('remote.ini')
-    (env.private / 'kubeconfig').write_text('fake')
-    node = ctx.site.nodes['gpu-1']
-    node = type(node)(**{**node.__dict__, 'architecture': architecture})
-    remote = deploy.Remote(ctx, node)
-    monkeypatch.setattr(remote, 'probe', lambda: {'sudo': False, 'scoped_sudo': False, 'ready': True})
-    assert remote.route() == route

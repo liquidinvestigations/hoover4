@@ -73,7 +73,7 @@ import settings as k3s_settings  # noqa: E402
 import manifests  # noqa: E402
 import oplock  # noqa: E402
 sys.path.insert(0, str(K3S / 'driver'))
-import hostroute  # noqa: E402
+import nodeshell  # noqa: E402
 
 STEPS = ('plan', 'freeze', 'record', 'stop', 'images', 'copy', 'secrets', 'stores', 'temporal', 'workers', 'resume')
 # The Compose services that take new work. freeze stops them first.
@@ -127,7 +127,7 @@ class Source:
         argv = [str(a) for a in argv]
         if not cls.host:
             return argv
-        return ['ssh', *hostroute.SSH_OPTIONS, cls.host, '--', ' '.join(shlex.quote(a) for a in argv)]
+        return ['ssh', *nodeshell.SSH_OPTIONS, cls.host, '--', ' '.join(shlex.quote(a) for a in argv)]
 
 
 def src(argv, input=None, check=True, timeout=None):
@@ -461,23 +461,20 @@ def home_is_local(r):
     return r.site.nodes[r.hoover.home_node].local
 
 
-def home_root(r):
-    """The root route of the home node through the cluster (../driver/hostroute.py)."""
-    return hostroute.ClusterRoot(k3s_settings.KUBECONFIG, hostroute.Shell(r.site.nodes[r.hoover.home_node]))
+def home_root(r, script, timeout=3600):
+    """Run a root shell script on the home node with sudo -n. The operator user needs sudo without a password there."""
+    shell = nodeshell.Shell(r.site.nodes[r.hoover.home_node])
+    code, out = shell.run('sudo -n sh -c ' + shlex.quote(script), timeout=timeout)
+    if code:
+        raise StepFailed(f'the root command on {r.hoover.home_node} failed: {out[-300:]}')
+    return out
 
 
 def cluster_image_id(reference, r=None):
     if r is None or home_is_local(r):
         out = sudo('k3s', 'crictl', 'inspecti', '-o', 'json', reference, check=False)
     else:
-        shell = hostroute.Shell(r.site.nodes[r.hoover.home_node])
-        name = hashlib.sha256(reference.encode()).hexdigest()[:10]
-        unit = f'hoover4-inspect-{name}-{int(time.time())}'
-        path = f'/tmp/hoover4-inspect-{name}.json'
-        home_root(r).start(unit, (), ['/bin/sh', '-c', f'k3s crictl inspecti -o json {shlex.quote(reference)} > {path} '
-                                                       f'2>/dev/null; chmod 0644 {path}; true'])
-        home_root(r).wait(unit)
-        out = shell.run(f'cat {path}; rm -f {path}')[1]
+        out = home_root(r, f'k3s crictl inspecti -o json {shlex.quote(reference)} 2>/dev/null; true', timeout=300)
     try:
         return json.loads(out)['status']['id'].removeprefix('sha256:')
     except (ValueError, KeyError):
@@ -494,17 +491,15 @@ def import_image(r, image_id, full, folder):
         sudo('k3s', 'ctr', '-n', 'k8s.io', 'images', 'import', '--no-unpack=false', '--index-name', full, str(archive))
         archive.unlink()
         return
-    shell = hostroute.Shell(r.site.nodes[r.hoover.home_node])
+    shell = nodeshell.Shell(r.site.nodes[r.hoover.home_node])
     path = f'/tmp/hoover4-image-{image_id[:12]}.tar'
     save = subprocess.Popen(Source.argv(engine('save', image_id)), stdout=subprocess.PIPE)
     receive = subprocess.run(shell.command(f'umask 077 && cat > {path}'), stdin=save.stdout, capture_output=True)
     save.stdout.close()
     if save.wait() or receive.returncode:
         raise StepFailed(f'the transfer of {full} to {r.hoover.home_node} failed.')
-    unit = f'hoover4-import-{image_id[:12]}-{int(time.time())}'
-    home_root(r).start(unit, (), ['/bin/sh', '-c', f'k3s ctr -n k8s.io images import --no-unpack=false --index-name '
-                                                   f'{shlex.quote(full)} {path}; status=$?; rm -f {path}; exit $status'])
-    home_root(r).wait(unit, timeout=3600)
+    home_root(r, f'k3s ctr -n k8s.io images import --no-unpack=false --index-name {shlex.quote(full)} {path}; '
+                 f'status=$?; rm -f {path}; exit $status')
 
 
 def full_reference(reference):

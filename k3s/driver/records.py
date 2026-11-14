@@ -1,8 +1,9 @@
-"""The deployment records of ../deploy-k3s on the control-plane host.
+"""The deployment records of ../deploy-k3s in the operator state of the site.
 
 The folder is <operator state>/deploy (config.Site.operator_state()):
-  records/<id>.json   one record for each up or down: the command, the targets, the revision that the driver resolved
-                      once, the pinned inputs (deploy.pinned_inputs()), the steps with their state, the image
+  records/<id>.json   one record for each up or down: the command, the targets, the commit of HEAD of the checkout,
+                      the path of the checkout and its `git status --porcelain` lines, the pinned inputs
+                      (deploy.pinned_inputs()), the steps with their state, the image
                       references with their digests and architectures, and the last error
   applied.json        a copy of the newest record of an up that finished
   previous.json       the copy that applied.json held before, so a failed update can return to it
@@ -10,8 +11,8 @@ The folder is <operator state>/deploy (config.Site.operator_state()):
 The driver holds the site operation lock of ../oplock.py while it runs, so no Apply, zone operation, migration step
 or backup consistency step changes the site at the same time.
 Each write goes to a temporary file, is synced and renamed, so a stopped driver leaves complete files.
-A step has the state pending, running, done, failed or waiting. A waiting step needs an operator action on a host,
-for example a remote installation script. A pending step with blocked_by waits for that step.
+A step has the state pending, running, done, failed or waiting. A waiting step needs an operator action.
+A pending step with blocked_by waits for that step.
 A record with a step that is not done is not a finished deployment.
 """
 import json

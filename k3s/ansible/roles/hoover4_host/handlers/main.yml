@@ -1,0 +1,9 @@
+---
+- name: Load the sysctl settings
+  ansible.builtin.command: sysctl -q -p {{ hoover4_sysctl_file }}
+  changed_when: true
+
+- name: Reload NetworkManager
+  ansible.builtin.systemd_service:
+    name: NetworkManager
+    state: reloaded

@@ -1,0 +1,17 @@
+---
+# k3s on the target nodes (../../deploy-k3s up, step hosts:k3s): the server first, then the agents in parallel with
+# the agent token of the server. The server play writes the admin kubeconfig into the state folder.
+- name: Install the k3s server
+  hosts: hoover4_server
+  gather_facts: false
+  become: true
+  serial: 1
+  roles:
+    - role: hoover4_k3s
+
+- name: Install the k3s agents
+  hosts: hoover4_agents
+  gather_facts: false
+  become: true
+  roles:
+    - role: hoover4_k3s

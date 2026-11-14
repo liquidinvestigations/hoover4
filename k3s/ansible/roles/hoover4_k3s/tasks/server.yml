@@ -1,0 +1,32 @@
+---
+- name: Wait until the server node is Ready
+  ansible.builtin.command: /usr/local/bin/k3s kubectl --kubeconfig {{ hoover4_kubeconfig_source }} get node {{ inventory_hostname }} --no-headers
+  register: hoover4_server_node
+  until: "' Ready ' in (' ' ~ hoover4_server_node.stdout ~ ' ')"
+  retries: 60
+  delay: 5
+  changed_when: false
+  check_mode: false
+
+- name: Verify etcd
+  ansible.builtin.script:
+    cmd: k3s-datastore.py verify-etcd
+    executable: python3
+  changed_when: false
+  check_mode: false
+
+- name: Read the admin kubeconfig
+  ansible.builtin.slurp:
+    src: "{{ hoover4_kubeconfig_source }}"
+  register: hoover4_admin_kubeconfig
+  no_log: true
+
+# The driver reads the cluster with this file. The server address of the file is the node address of the server.
+- name: Write the admin kubeconfig into the state folder
+  ansible.builtin.copy:
+    content: "{{ hoover4_admin_kubeconfig.content | b64decode | regex_replace('server: https://127\\.0\\.0\\.1:6443', 'server: https://' ~ hoover4_node_address ~ ':6443') }}"
+    dest: "{{ hoover4_kubeconfig }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  no_log: true

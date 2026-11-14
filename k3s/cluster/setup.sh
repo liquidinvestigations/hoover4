@@ -8,7 +8,7 @@ set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
 if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi
 cd "$(dirname "$0")"
-PRIVATE=$(realpath ../private)
+PRIVATE=$(python3 ../settings.py private)
 export KUBECONFIG=${KUBECONFIG:-$PRIVATE/kubeconfig}
 # SITE names a hosts.json file. Without it, settings.py writes the hosts.json form of the site file.
 if [ -z "${SITE:-}" ]; then SITE=$(mktemp); python3 ../settings.py hosts > "$SITE"; fi

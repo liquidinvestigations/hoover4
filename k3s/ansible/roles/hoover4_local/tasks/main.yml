@@ -1,0 +1,55 @@
+---
+# The HTTPS frontend and the trust store of the local node of a single-node site. The cluster step frontend of the
+# driver runs this role after ../../../../platform/frontend/install-local-frontend.sh writes the Caddyfile (tag
+# frontend) and after the frontend writes its local CA (tag trust). Caddy runs as the operator user with the files
+# of the state folder.
+- name: Refuse a missing Caddyfile
+  ansible.builtin.stat:
+    path: "{{ hoover4_state_dir }}/frontend/Caddyfile"
+  register: hoover4_caddyfile
+  failed_when: not hoover4_caddyfile.stat.exists
+  tags: [frontend]
+
+- name: Write the unit of the local frontend
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/hoover4-frontend.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=HTTPS frontend of the local k3s site
+      Requires=hoover4-address.service
+      After=hoover4-address.service k3s.service
+      [Service]
+      User={{ ansible_user_id }}
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      Environment=HOME={{ ansible_user_dir }}
+      ExecStart={{ hoover4_state_dir }}/bin/caddy run --config {{ hoover4_state_dir }}/frontend/Caddyfile --adapter caddyfile
+      ExecReload={{ hoover4_state_dir }}/bin/caddy reload --config {{ hoover4_state_dir }}/frontend/Caddyfile --adapter caddyfile
+      Restart=on-failure
+      [Install]
+      WantedBy=multi-user.target
+  register: hoover4_frontend_unit
+  tags: [frontend]
+
+- name: Start the local frontend
+  ansible.builtin.systemd_service:
+    name: hoover4-frontend.service
+    enabled: true
+    state: "{{ 'restarted' if hoover4_frontend_unit.changed else 'started' }}"
+    daemon_reload: "{{ hoover4_frontend_unit.changed }}"
+  tags: [frontend]
+
+- name: Add the local CA of the frontend to the system trust store
+  ansible.builtin.copy:
+    src: "{{ hoover4_state_dir }}/frontend/local-ca.crt"
+    dest: /etc/ca-certificates/trust-source/anchors/hoover4-local-ca.crt
+    remote_src: true
+    mode: "0644"
+  register: hoover4_trust
+  tags: [trust]
+
+- name: Update the system trust store  # noqa: no-handler
+  ansible.builtin.command: update-ca-trust
+  when: hoover4_trust.changed
+  changed_when: true
+  tags: [trust]

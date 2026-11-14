@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build the Hoover images of compose.IMAGES from one commit of this repository and push them to the cluster registry.
 
-The script exports the commit with `git archive` into k3s/private/build/<commit>, so local changes of the checkout
-stay unchanged and stay out of the images. The image tag is the first 12 characters of the commit.
+The script exports the commit with `git archive` into a temporary folder build-<commit>.tmp of the state folder, so
+local changes of the checkout stay out of the images, and removes the folder after the builds. The image tag is the
+first 12 characters of the commit.
 ../hoover/manifests.py names the images with the same tag (image_tag()).
 The website image is the release Dockerfile. The processing image starts the installed interpreter.
 Usage: build-hoover.py [--revision REV] [name ...]    Without names it builds every image of compose.IMAGES.
@@ -15,8 +16,6 @@ Usage: build-hoover.py [--revision REV] [name ...]    Without names it builds ev
                                                       tree of the commit goes to ~/hoover4-build/<commit> of the node,
                                                       the node builds with its Docker or Podman, and the image comes
                                                       back with save and load. This host then pushes it.
-A run inside an exported tree (deploy-k3s runs the tree of its commit) needs no git: the stamp of the tree names the
-commit.
 """
 import argparse
 import os
@@ -35,13 +34,6 @@ IMAGES = compose.IMAGES
 
 
 def commit(revision):
-    stamp = Path(settings.HOOVER4) / '.hoover-build-commit'
-    if stamp.exists():
-        # An exported tree builds its own commit only.
-        tree = stamp.read_text().strip()
-        if revision not in (tree, 'HEAD'):
-            raise SystemExit(f'this tree holds {tree}, not {revision}')
-        return tree
     out = subprocess.run(['git', '-C', str(settings.HOOVER4), 'rev-parse', '--verify', f'{revision}^{{commit}}'],
                          capture_output=True, text=True)
     if out.returncode:
@@ -50,11 +42,9 @@ def commit(revision):
 
 
 def prepare(sha):
-    """Write the source tree of one commit once. A tree with the expected stamp stays."""
-    tree = settings.PRIVATE / 'build' / sha
+    """Write the source tree of one commit into a temporary folder of the state folder. main() removes it."""
+    tree = settings.PRIVATE / f'build-{sha}.tmp'
     stamp = tree / '.hoover-build-commit'
-    if stamp.exists() and stamp.read_text().strip() == sha:
-        return tree
     shutil.rmtree(tree, ignore_errors=True)
     tree.mkdir(parents=True)
     archive = subprocess.Popen(['git', '-C', str(settings.HOOVER4), 'archive', sha], stdout=subprocess.PIPE)
@@ -75,6 +65,14 @@ def main():
     args = parser.parse_args()
     sha = commit(args.revision)
     tree = prepare(sha)
+    try:
+        build(args, sha, tree)
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
+    print(sha)
+
+
+def build(args, sha, tree):
     images = compose.GPU_IMAGES if args.gpu else IMAGES
     env = dict(__import__('os').environ)
     if args.gpu:
@@ -97,7 +95,6 @@ def main():
             remote_build(settings.SITE.nodes[args.builder], tree, sha, name, context, dockerfile, step_env)
         subprocess.run(['bash', str(HERE / 'build-image.sh'), str(tree / context), f'hoover/hoover-{name}:{sha[:12]}',
                         str(tree / dockerfile)], check=True, env=step_env)
-    print(sha)
 
 
 def remote_build(node, tree, sha, name, context, dockerfile, env):

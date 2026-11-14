@@ -1,0 +1,26 @@
+---
+- name: Add the NVIDIA repository key
+  ansible.builtin.get_url:
+    url: https://nvidia.github.io/libnvidia-container/gpgkey
+    dest: /usr/share/keyrings/nvidia-container-toolkit.asc
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Add the NVIDIA repository
+  ansible.builtin.copy:
+    content: "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit.asc] https://nvidia.github.io/libnvidia-container/stable/deb/$(ARCH) /\n"
+    dest: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Read the NVIDIA repository
+  ansible.builtin.apt:
+    update_cache: true
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Add the NVIDIA repository of dnf
+  ansible.builtin.get_url:
+    url: https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo
+    dest: /etc/yum.repos.d/nvidia-container-toolkit.repo
+    mode: "0644"
+  when: ansible_facts['os_family'] == 'RedHat'

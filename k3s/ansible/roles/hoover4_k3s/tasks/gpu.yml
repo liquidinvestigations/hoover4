@@ -1,0 +1,58 @@
+---
+# A GPU node registers runsc with nvproxy, the GPU support of gVisor, as the handler runsc-nvproxy. The NVIDIA container
+# toolkit gives k3s the handler nvidia, which runs a GPU pod with runc. ../../../../hosts/stage-runsc-nvproxy.sh can
+# write a runsc build of gVisor PR 16643 into runsc-nvproxy/ of the state folder. The handler then uses that binary.
+- name: Check the NVIDIA driver
+  ansible.builtin.command: nvidia-smi -L
+  register: hoover4_nvidia_smi
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Refuse a GPU node without a working NVIDIA driver
+  ansible.builtin.assert:
+    that: hoover4_nvidia_smi.rc == 0
+    fail_msg: "{{ inventory_hostname }} has no working NVIDIA driver: nvidia-smi -L failed. Install the driver, then run the play again."
+    quiet: true
+
+- name: Read the patched runsc of the state folder
+  ansible.builtin.stat:
+    path: "{{ hoover4_state_dir }}/runsc-nvproxy/runsc"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: hoover4_patched_runsc
+
+- name: Install the patched runsc
+  when: hoover4_patched_runsc.stat.exists
+  block:
+    - name: Refuse a patched runsc that differs from its digest
+      ansible.builtin.assert:
+        that: hoover4_patched_runsc.stat.checksum == lookup('ansible.builtin.file', hoover4_state_dir ~ '/runsc-nvproxy/runsc.sha256').split()[0]
+        fail_msg: runsc-nvproxy/runsc of the state folder does not match runsc-nvproxy/runsc.sha256.
+        quiet: true
+
+    - name: Create the folder of the patched runsc
+      ansible.builtin.file:
+        path: /opt/gvisor-nvproxy
+        state: directory
+        mode: "0755"
+
+    - name: Copy the patched runsc
+      ansible.builtin.copy:
+        src: "{{ hoover4_state_dir }}/runsc-nvproxy/runsc"
+        dest: /opt/gvisor-nvproxy/runsc
+        mode: "0755"
+
+- name: Write the runsc configuration of the GPU handler
+  ansible.builtin.copy:
+    dest: /etc/gvisor/runsc-nvproxy.toml
+    mode: "0644"
+    content: |
+      binary_name = "{{ '/opt/gvisor-nvproxy/runsc' if hoover4_patched_runsc.stat.exists else '/opt/gvisor/runsc' }}"
+      # nvproxy passes the NVIDIA device calls of the sandbox to the host driver.
+      [runsc_config]
+        systemd-cgroup = "true"
+        nvproxy = "true"
+        nvproxy-docker = "true"
+  register: hoover4_nvproxy_toml

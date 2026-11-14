@@ -1,0 +1,45 @@
+---
+# Read the host facts of the node: the Ansible facts of the OS and the hoover4 facts of files/hoover4-facts.py. The
+# role changes nothing on the host. With hoover4_facts_dir, it writes the facts of each node into that folder of the
+# operator, which the driver keeps in the state folder of the site.
+- name: Read the facts of the OS
+  ansible.builtin.setup:
+    gather_subset: ['!all', 'min', 'hardware']
+
+- name: Refuse an OS family without a package manager of the roles
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['Debian', 'RedHat'] or (ansible_facts['os_family'] == 'Archlinux' and hoover4_single_local | bool)
+    fail_msg: >-
+      Node {{ inventory_hostname }} runs {{ ansible_facts['distribution'] }} ({{ ansible_facts['os_family'] }}). A node of a site
+      needs a Debian or RedHat family host. Only the local node of a single-node site can be an Arch-based host.
+    quiet: true
+
+- name: Read the hoover4 facts
+  ansible.builtin.script:
+    cmd: hoover4-facts.py
+    executable: python3
+  become: true
+  register: hoover4_facts_script
+  changed_when: false
+  check_mode: false
+
+- name: Set the hoover4 facts
+  ansible.builtin.set_fact:
+    hoover4_facts: "{{ hoover4_facts_script.stdout | from_json }}"
+
+- name: Refuse an architecture that differs from the site file
+  ansible.builtin.assert:
+    that:
+      - "hoover4_facts.architecture == {'amd64': 'x86_64', 'arm64': 'aarch64'}[hoover4_architecture]"
+    fail_msg: "Node {{ inventory_hostname }}: the site file names {{ hoover4_architecture }}, and the host is {{ hoover4_facts.architecture }}."
+    quiet: true
+
+- name: Write the facts of the node into the state folder
+  ansible.builtin.copy:
+    content: "{{ {'os_family': ansible_facts['os_family'], 'distribution': ansible_facts['distribution'], 'distribution_version': ansible_facts['distribution_version'], 'memory_mb': ansible_facts['memtotal_mb'], 'cpus': ansible_facts['processor_vcpus']} | combine(hoover4_facts) | to_nice_json }}\n"
+    dest: "{{ hoover4_facts_dir }}/{{ inventory_hostname }}.json"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when: hoover4_facts_dir | default('') | length > 0

@@ -1,0 +1,4 @@
+---
+# The host firewall of the public and calls nodes. The earlier installer did not run it, and the operator ran the
+# scripts by hand, so the switch is off by default.
+hoover4_public_firewall: false

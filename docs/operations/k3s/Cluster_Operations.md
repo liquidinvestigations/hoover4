@@ -20,29 +20,30 @@ This manual describes the daily tasks of a platform operator on a site of `k3s/d
 
 ## Upgrade the site
 
-An upgrade installs the source and the images of one commit.
+An upgrade installs the scripts and the images of the commit of the checkout.
 
-1. Show the steps of the commit. The command changes nothing.
-
-   ```sh
-   k3s/deploy-k3s render --target all --revision <commit>
-   ```
-
-2. Run the upgrade:
+1. Check out the commit in the checkout that runs `k3s/deploy-k3s`.
+2. Show the steps. The command changes nothing.
 
    ```sh
-   k3s/deploy-k3s up --target all --revision <commit>
+   k3s/deploy-k3s render --target all
    ```
 
-3. When a step fails, read its error and correct the cause. Continue the same record:
+3. Run the upgrade:
+
+   ```sh
+   k3s/deploy-k3s up --target all
+   ```
+
+4. When a step fails, read its error and correct the cause. Continue the same record:
 
    ```sh
    k3s/deploy-k3s up --resume <record>
    ```
 
-4. Check the result with `k3s/deploy-k3s status`. The applied revision is the commit of the last complete run.
+5. Check the result with `k3s/deploy-k3s status`. The applied revision is the commit of the last complete run.
 
-The record of a run pins the commit, the fingerprint of its exported tree, the site file, the saved settings revision and the cluster.
+The record of a run pins the commit, the uncommitted changes of the checkout, the site file, the saved settings revision and the cluster.
 A resume refuses a change of these inputs. A second `up` of the same commit changes no object.
 A waiting or failed step stops every step that depends on it.
 
@@ -51,7 +52,7 @@ One site operation runs at a time. The driver, the settings Apply, the zone oper
 ## Return to an earlier release
 
 `deploy/previous.json` in the operator state names the release before the applied one.
-Run `k3s/deploy-k3s up --target all --revision <earlier commit>` to return to it.
+Check out that commit, then run `k3s/deploy-k3s up --target all` to return to it.
 An earlier image does not reverse stored data. A database migration of the later release stays applied, so check that the earlier release reads it.
 
 ## Save and apply settings
@@ -167,7 +168,8 @@ An etcd snapshot holds no volume data, so a complete recovery also restores the 
    python3 k3s/platform/backups/backups.py restore-platform <generation>
    ```
 
-2. Do the printed steps on the stopped server of an isolated cluster. The root step is `root-install-k3s.py --bundle backup --node <server> --restore-snapshot <name>`.
+2. Do the printed steps on the stopped server of an isolated cluster.
+   The root step runs the datastore script of the k3s role with sudo: `sudo python3 - restore <name> < k3s/ansible/roles/hoover4_k3s/files/k3s-datastore.py`.
 3. Restore each zone copy with `restore-zone`, then sign in to each zone.
 
 ## Reach an installation from a workstation

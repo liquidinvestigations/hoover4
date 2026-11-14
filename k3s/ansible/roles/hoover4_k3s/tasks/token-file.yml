@@ -1,0 +1,25 @@
+---
+# A token file with the same secret stays, also when its format differs.
+- name: Read {{ token.path }}
+  ansible.builtin.slurp:
+    src: "{{ token.path }}"
+  register: hoover4_token_file
+  failed_when: false
+  no_log: true
+
+- name: Write {{ token.path }}
+  vars:
+    old: "{{ hoover4_token_file.content | default('') | b64decode | trim }}"
+    old_secret: "{{ old.split('::', 1)[1].split(':', 1)[-1] if '::' in old else old }}"
+    new_secret: "{{ token.value.split('::', 1)[1].split(':', 1)[-1] if '::' in token.value else token.value }}"
+  ansible.builtin.copy:
+    content: "{{ token.value }}\n"
+    dest: "{{ token.path }}"
+    mode: "0600"
+  when: old_secret != new_secret
+  register: hoover4_token_written
+  no_log: true
+
+- name: Record a changed token file
+  ansible.builtin.set_fact:
+    hoover4_tokens_changed: "{{ (hoover4_tokens_changed | default(false)) or hoover4_token_written.changed }}"

@@ -1,0 +1,28 @@
+---
+# The backup node receives the copies of the platform backup (../../../platform/backups/backups.py) in the folders
+# zones and platform below the backup path of the site file. The SSH user of the node owns them.
+- name: Read the backup folders
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: ["{{ hoover4_backup_path }}", "{{ hoover4_backup_path }}/zones", "{{ hoover4_backup_path }}/platform"]
+  register: hoover4_backup_stat
+
+- name: Refuse a symbolic link in the backup path
+  ansible.builtin.assert:
+    that: not (item.stat.islnk | default(false))
+    fail_msg: "{{ item.item }} is a symbolic link."
+    quiet: true
+  loop: "{{ hoover4_backup_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Create the backup folders
+  ansible.builtin.file:
+    path: "{{ item.item }}"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    mode: "0700"
+  loop: "{{ hoover4_backup_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not item.stat.exists

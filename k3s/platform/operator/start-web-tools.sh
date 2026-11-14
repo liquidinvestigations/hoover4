@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Start the operator portal behind one login. Run ../monitoring/install-dashboards.sh first.
-# KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig.
+# KUBECONFIG names the admin kubeconfig. The default is kubeconfig of the state folder of the site file.
 set -euo pipefail
 cd "$(dirname "$0")"
 source_dir=$(realpath ../..)
-private=$source_dir/private
+private=$(python3 "$source_dir/settings.py" private)
 export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 for service in monitor-grafana headlamp monitor-kube-prometheus-st-prometheus; do
   kubectl -n monitoring get service "$service" >/dev/null
@@ -33,9 +33,9 @@ fi
 # The portal runs on the control-plane node with the operator state of that host (portal_settings.py).
 read -r control_plane state site_file < <(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s
 print(s.SITE.control_plane, s.SITE.operator_state(), s.SITE_FILE.resolve()) if s.SITE else print("- - -")' "$source_dir")
-[ "$control_plane" != - ] || { echo "the operator portal needs the site file $source_dir/private/hoover4-site.ini" >&2; exit 1; }
+[ "$control_plane" != - ] || { echo "the operator portal needs a site file. Set HOOVER4_SITE." >&2; exit 1; }
 mkdir -p "$state"
-# The pods of a single-node site run below hoover4.slice (../../hosts/root-install-local.py).
+# The pods of a single-node site run below hoover4.slice (../../ansible/roles/hoover4_host/tasks/local.yml).
 pod_cgroup=/sys/fs/cgroup/kubepods.slice
 [ -d /sys/fs/cgroup/hoover4.slice ] && pod_cgroup=/sys/fs/cgroup/hoover4.slice
 # The node, user and path values go into the YAML first, so the numbers stay numbers in the JSON of cpu_policy.py.

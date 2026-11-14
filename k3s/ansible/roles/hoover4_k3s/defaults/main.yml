@@ -1,0 +1,20 @@
+---
+# The pinned inputs of k3s, gVisor and Kata Containers. Each node downloads them itself and verifies the digest. The
+# k3s digests are the published release digests. ../../../driver/deploy.py reads hoover4_k3s_version.
+hoover4_k3s_version: v1.36.5+k3s1
+hoover4_k3s_sha256:
+  amd64: d73847bcd3c5fccef0115b372e2f9a91f3032dc84bbf71518a4617565294d313
+  arm64: 135e34cb9e8a1cfae3cb55577789e93501efe7edc080a8b2630458a85b07721e
+hoover4_k3s_install_sh_sha256: 46177d4c99440b4c0311b67233823a8e8a2fc09693f6c89af1a7161e152fbfad
+hoover4_gvisor_release: "20261026.0"
+hoover4_gvisor_sha512:
+  amd64: e6aa030fb8379fe92b53e9b8b696419e0dce8a3bbcc7d4c1cf76b2ea3d6569eabd7360e694deda6ccbdcd77095b3e82ca0f90a3d8fd13a3e5d6b11cd29fe4649
+  arm64: 88d6194a71a73e3934556028e2168c7bd1051aea28fe190cfd97226ff08e2697550927bc98a56270c90f3452401e3b1081b4d75d9a1283228e86e62f60ebdf0d
+hoover4_kata_version: "4.3.1"
+hoover4_kata_sha256: 66b35b06f6b41b56f8606ddf3ed3e5660b0971d1e309d903457c4056a0b9eff0
+# The server of a site that still runs the SQLite datastore converts to etcd only when this is true. The driver sets it
+# for the control plane.
+hoover4_convert_sqlite: false
+hoover4_registry_endpoint: ""
+hoover4_reserved: ""
+hoover4_require_k3s_volumes: false

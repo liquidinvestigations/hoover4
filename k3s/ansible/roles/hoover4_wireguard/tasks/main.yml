@@ -1,0 +1,37 @@
+---
+# The WireGuard interface of a node whose VPN the installer configures (hoover4_wireguard). The interface must exist
+# and be up. The role adds the direct peers of the site file and the routed addresses, and removes nothing.
+# Run the hub first: a new peer works when both of its nodes have it.
+- name: Add the direct peers to the WireGuard interface
+  hoover4_wireguard_peers:
+    interface: "{{ hoover4_wireguard.interface }}"
+    listen_port: "{{ hoover4_wireguard.port }}"
+    public_key: "{{ hoover4_wireguard.public_key }}"
+    peers: "{{ hoover4_wireguard.peers }}"
+  register: hoover4_wireguard_change
+
+- name: Wait for a handshake with each direct peer
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pending="{{ hoover4_wireguard.peers | map(attribute='key') | join(' ') }}"
+    for _ in $(seq 15); do
+      left=''
+      for key in $pending; do
+        stamp=$(wg show {{ hoover4_wireguard.interface }} latest-handshakes | awk -v k="$key" '$1 == k {print $2}')
+        [ "${stamp:-0}" != 0 ] || left="$left $key"
+      done
+      [ -z "$left" ] && exit 0
+      sleep 2
+    done
+    echo "no handshake with:$left"
+  args:
+    executable: /bin/bash
+  register: hoover4_handshakes
+  changed_when: false
+  check_mode: false
+  when: hoover4_wireguard.peers | length > 0
+
+- name: Report the peers without a handshake
+  ansible.builtin.debug:
+    msg: "{{ hoover4_handshakes.stdout }}. Run the play on the peer nodes, then run it again on {{ inventory_hostname }}."
+  when: hoover4_handshakes.stdout | default('') | length > 0

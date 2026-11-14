@@ -4,14 +4,14 @@
 # and podman belong to that user. Lingering keeps it running without a login session.
 # The script applies the runner rights (runner-rights.yaml) and the zone pod policy (../../zones/manifests/zone-pods.yaml)
 # with the admin kubeconfig, because the runner cannot change the policy. It writes the runner kubeconfig
-# k3s/private/operator-runner/kubeconfig with the token of the ServiceAccount zone-runner.
-# It makes the SSH key k3s/private/operator-runner/ssh-key once. On the public host the key may run only
+# operator-runner/kubeconfig of the state folder with the token of the ServiceAccount zone-runner.
+# It makes the SSH key operator-runner/ssh-key of the state folder once. On the public host the key may run only
 # /opt/hoover-frontend/sync as root (../frontend/frontend-sync.sh). Run ../frontend/install-frontend.sh and
 # ../calls/install-calls.py first, because the rights name the namespace calls and the sync script.
 # A second run changes nothing and restarts the runner.
 set -euo pipefail
 source_dir=$(cd "$(dirname "$0")/../.." && pwd)
-private=$source_dir/private
+private=$(python3 "$source_dir/settings.py" private)
 export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 folder=$private/operator-runner
 mkdir -p "$folder"
@@ -46,6 +46,8 @@ if [ "$(python3 "$source_dir/settings.py" get frontend_local false)" != true ]; 
   line="restrict,command=\"sudo -n /opt/hoover-frontend/sync\" $(cat "$folder/ssh-key.pub")"
   ssh "$ssh_host" "grep -qxF '$line' ~/.ssh/authorized_keys || echo '$line' >> ~/.ssh/authorized_keys"
 fi
+# The runner runs the scripts of this checkout and reads the site file of this deployment.
+site_file=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s;print(s.SITE_FILE.resolve())' "$source_dir")
 # The unit name belongs to this checkout, so a runner of another installation on the same host keeps its own unit.
 unit=hoover4-operator-runner
 mkdir -p ~/.config/systemd/user
@@ -55,14 +57,14 @@ Description=Hoover4 operator runner of ${source_dir}
 [Service]
 WorkingDirectory=${source_dir}
 Environment=KUBECONFIG=${folder}/kubeconfig
-Environment=HOOVER4_SITE=${source_dir}/private/hoover4-site.ini
+Environment=HOOVER4_SITE=${site_file}
 ExecStart=/usr/bin/python3 ${source_dir}/platform/operator/runner.py
 Restart=always
 RestartSec=10
 [Install]
 WantedBy=default.target
 UNIT
-# An operator host without sudo gets lingering once through the cluster root route of the driver.
+# Lingering keeps the user unit running without a login session.
 if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
   sudo -n loginctl enable-linger "$(id -un)" ||
     { echo "lingering is off for $(id -un). Run as root once: loginctl enable-linger $(id -un)" >&2; exit 1; }

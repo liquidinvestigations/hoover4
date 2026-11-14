@@ -7,7 +7,7 @@ set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
 if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi
 cd "$(dirname "$0")"
-private=$(realpath ../../private)
+private=$(python3 ../../settings.py private)
 export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 helm=${HELM:-$private/bin/helm}
 address=$(python3 ../../settings.py get ingress_address '')

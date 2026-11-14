@@ -1,0 +1,6 @@
+# The Python packages of the operator image, pinned. ansible-lint and pytest run the checks of ../../ansible and
+# ../../tests in the image.
+ansible-core==2.20.11
+ansible-lint==26.11.0
+pytest==8.4.2
+zstandard==0.24.0

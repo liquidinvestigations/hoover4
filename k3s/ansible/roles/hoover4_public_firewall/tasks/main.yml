@@ -1,0 +1,32 @@
+---
+# The host firewall of a public or calls node: files/public-guard.sh drops the k3s node ports on the public interface,
+# and files/public-firewall.sh admits only the allowed ports there, with the chain coturn_peers of the calls node.
+# A changed firewall table starts a rollback timer of 180 seconds on the node. The role opens a new SSH connection,
+# and confirms the table only when that connection works. Without the confirmation the node returns to the earlier
+# table.
+- name: Drop the k3s node ports on the public interface
+  ansible.builtin.script:
+    cmd: public-guard.sh
+  register: hoover4_guard
+  changed_when: "'is enabled and active, and the table is loaded' not in hoover4_guard.stdout"
+
+- name: Load the public firewall with a rollback timer
+  ansible.builtin.script:
+    cmd: public-firewall.sh
+  register: hoover4_firewall
+  changed_when: "'the table is loaded' not in hoover4_firewall.stdout"
+
+# The three tasks run in this order in the same play, so they are tasks and not handlers.
+- name: Open a new SSH connection after the firewall change  # noqa: no-handler
+  ansible.builtin.meta: reset_connection
+  when: hoover4_firewall.changed
+
+- name: Verify SSH through the new firewall  # noqa: no-handler
+  ansible.builtin.ping:
+  when: hoover4_firewall.changed
+
+- name: Confirm the firewall and stop the rollback timer  # noqa: no-handler
+  ansible.builtin.script:
+    cmd: public-firewall.sh --confirm
+  when: hoover4_firewall.changed
+  changed_when: true

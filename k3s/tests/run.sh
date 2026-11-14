@@ -3,7 +3,7 @@
 # Without a suite it runs render, state and driver.
 #   render   the site file, the source ini reader and the Hoover render (test_config.py, test_render.py)
 #   state    the operator settings registry, revisions, apply operations and portal routes (test_state.py, test_portal.py)
-#   driver   the deployment driver with fake ssh, sudo and kubectl, and the host scripts (test_driver.py, test_hosts.py)
+#   driver   the deployment driver with fake ssh, sudo, kubectl and ansible-playbook, and the host roles (test_driver.py, test_hosts.py)
 #   migration the offline copy, its hashes and owner mapping, interruption and the plan rules (test_migration.py)
 #   backup   the backup schedule, eligibility, retention and restore manifests with controlled time (test_backup.py)
 #   replay   the workflow replay suite of the pipeline, in the worker image with the processing folder mounted read-only.

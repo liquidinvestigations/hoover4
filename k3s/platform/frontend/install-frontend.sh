@@ -21,7 +21,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 source_dir=$(realpath ../..)
-private=$source_dir/private
+private=$(python3 "$source_dir/settings.py" private)
 export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 get() { python3 "$source_dir/settings.py" get "$1" ''; }
 ssh_host=$(get frontend_ssh)

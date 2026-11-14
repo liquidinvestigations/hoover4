@@ -1,0 +1,70 @@
+---
+- name: Download the k3s binary
+  ansible.builtin.get_url:
+    url: "https://github.com/k3s-io/k3s/releases/download/{{ hoover4_k3s_version | urlencode }}/{{ 'k3s' if hoover4_architecture == 'amd64' else 'k3s-arm64' }}"
+    dest: /usr/local/bin/k3s
+    checksum: "sha256:{{ hoover4_k3s_sha256[hoover4_architecture] }}"
+    mode: "0755"
+  register: hoover4_k3s_binary
+
+- name: Read the k3s unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/{{ hoover4_unit }}.service
+  register: hoover4_unit_file
+
+- name: Read the state of the k3s unit
+  ansible.builtin.command: systemctl is-active {{ hoover4_unit }}  # noqa: command-instead-of-module
+  register: hoover4_unit_active
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Decide the install
+  ansible.builtin.set_fact:
+    hoover4_k3s_install: >-
+      {{ hoover4_k3s_binary.changed or hoover4_k3s_config.changed or (hoover4_k3s_registries.changed | default(false))
+         or hoover4_runtimes_changed | bool or hoover4_tokens_changed | default(false) | bool
+         or not hoover4_unit_file.stat.exists or hoover4_unit_active.stdout != 'active' }}
+
+- name: Install and restart k3s
+  when: hoover4_k3s_install | bool
+  block:
+    - name: Download the k3s install script
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/k3s-io/k3s/{{ hoover4_k3s_version | urlencode }}/install.sh"
+        dest: /var/tmp/hoover4-install-k3s.sh
+        checksum: "sha256:{{ hoover4_k3s_install_sh_sha256 }}"
+        mode: "0600"
+
+    - name: Run the k3s install script
+      ansible.builtin.command: sh /var/tmp/hoover4-install-k3s.sh
+      environment:
+        INSTALL_K3S_SKIP_DOWNLOAD: "true"
+        INSTALL_K3S_SKIP_SELINUX_RPM: "true"
+        INSTALL_K3S_VERSION: "{{ hoover4_k3s_version }}"
+        INSTALL_K3S_EXEC: "{{ 'server' if hoover4_server | bool else 'agent' }}"
+      changed_when: true
+
+    # The install script starts k3s only when its unit file changed. A changed configuration, or a k3s that the SQLite
+    # copy stopped, needs this restart, else the unit stays stopped.
+    - name: Restart k3s
+      ansible.builtin.systemd_service:
+        name: "{{ hoover4_unit }}"
+        state: restarted
+        enabled: true
+        daemon_reload: true
+
+    - name: Remove the k3s install script
+      ansible.builtin.file:
+        path: /var/tmp/hoover4-install-k3s.sh
+        state: absent
+
+- name: Wait for the agent unit
+  ansible.builtin.command: systemctl is-active {{ hoover4_unit }}  # noqa: command-instead-of-module
+  register: hoover4_agent_active
+  until: hoover4_agent_active.stdout == 'active'
+  retries: 6
+  delay: 5
+  changed_when: false
+  check_mode: false
+  when: not hoover4_server | bool
