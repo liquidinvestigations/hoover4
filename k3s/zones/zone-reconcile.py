@@ -2,7 +2,8 @@
 """Check one zone after a Helm upgrade or a replica restore.
 
 The chart controllers run their stores in Kata. Their Services select the same pod labels.
-The Hoover stores also run in Kata, with one StatefulSet for each store.
+The Manticore daemons of the zone also run in Kata, with one StatefulSet for each daemon. ClickHouse and Garage are the
+shared stores of the site (../hoover/stores/shared.py) and have no StatefulSet in the zone.
 A disabled zone must have no running workload in any of its namespaces: every controller has zero replicas, every
 CronJob is suspended, no Job is active, and no Service has a ready pod address.
 Usage: zone-reconcile.py <zone>
@@ -20,7 +21,7 @@ STORES = {
     'postgresql': ('statefulset', 'postgresql', ['postgresql']),
     'seaweedfs': ('deployment', 'seaweedfs-all-in-one', ['seaweedfs-all-in-one']),
     **{name: ('statefulset', name + '-kata', [name])
-       for name in ('clickhouse', 'manticore', 'manticore-vectors', 'garage')},
+       for name in ('manticore', 'manticore-vectors')},
 }
 
 

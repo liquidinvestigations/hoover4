@@ -61,6 +61,8 @@ START_ORDER = ['start:stores', 'start:temporal', 'start:applications', 'start:in
 STORE_WORDS = ('clickhouse', 'manticore', 'garage', 'cassandra', 'elasticsearch', 'zookeeper', 'postgres', 'redis',
                'memcached', 'seaweedfs', 'minio', 'mariadb', 'nats', 'ldap', 'keycloak')
 TEMPORAL_WORDS = ('temporal',)
+# The namespace of the shared Hoover stores of the site (../hoover/stores/shared.py).
+SHARED_STORES = 'hoover-stores'
 
 
 class StepFailed(RuntimeError):
@@ -950,6 +952,9 @@ def cluster_steps(ctx):
     if ctx.site.single:
         # The Hoover pods of a single-node site share one node, so their dataset folders are claims and need no NFS.
         del steps['hoover-data']
+    # The shared ClickHouse and Garage of the site (../hoover/stores/shared.py). Each zone of the store layout site
+    # adds its tenant to them.
+    steps['stores'] = step_script(sys.executable, '@hoover/stores/shared.py', 'apply')
     zones = ctx.hoovers()
     for hoover in zones.values():
         steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone)
@@ -999,9 +1004,9 @@ def zone_namespaces(ctx):
 
 
 def workloads(ctx):
-    """{tier: [(namespace, kind, name, replicas)]} of the zone namespaces and the ingress."""
+    """{tier: [(namespace, kind, name, replicas)]} of the zone namespaces, the shared stores and the ingress."""
     out = {'ingress': [], 'applications': [], 'temporal': [], 'stores': []}
-    for namespace in ['ingress'] + zone_namespaces(ctx):
+    for namespace in ['ingress', SHARED_STORES] + zone_namespaces(ctx):
         text = ctx.kubectl('-n', namespace, 'get', 'deployments,statefulsets', '-o', 'json', check=False)
         try:
             items = json.loads(text)['items']
@@ -1311,8 +1316,12 @@ def check(ctx, targets):
     try:
         zone_state = ctx.private / 'zone-state.json'
         problems += config.zones_problems(ctx.site, json.loads(zone_state.read_text()) if zone_state.exists() else {'zones': {}})
-    except (ValueError, config.SiteError) as error:
+        problems += [f'the zone {h.zone} keeps its ClickHouse and Garage in its zone namespace, from an earlier version. '
+                     'The installer refuses to apply it. Delete the zone and create it again: its data does not move.'
+                     for h in ctx.hoovers().values() if h.stores == 'zone']
+    except (ValueError, config.SiteError, StepFailed) as error:
         problems.append(str(error))
+    state['store_warnings'] = config.store_warnings(ctx.site)
     try:
         Ansible(ctx).run('hoover4-hosts.yml', targets, tags=['facts'])
     except StepFailed as error:
@@ -1333,4 +1342,11 @@ def check(ctx, targets):
         state['peers'] = config.peer_table(ctx.site)
         state['switches'] = {n.name: config.switches(n) for n in ctx.site.nodes.values()}
         state['stopped'] = ctx.records.stopped()
+        if ctx.kubeconfig.exists():
+            found = ctx.kubectl('-n', SHARED_STORES, 'get', 'configmap', 'shared-stores', '--ignore-not-found', '-o', 'json', check=False).strip()
+            try:
+                before = json.loads(json.loads(found)['data']['plan']) if found else None
+            except (ValueError, KeyError):
+                before = None
+            problems += config.store_change_problems(before, config.store_plan(ctx.site))
     return problems, state

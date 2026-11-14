@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Create the credentials Secret of the Hoover stores of a zone, and add its missing keys. The values are random and
-the script never prints them.
+"""Create the credentials Secret hoover-stores of a zone, and add its missing keys. The values are random and the
+script never prints them.
 
-Keys: clickhouse-admin, clickhouse-zone, manticore-admin, manticore-zone, garage-rpc-secret (32 bytes hex),
-garage-admin-token, and clickhouse-<service> and manticore-<service> for each service of service_users.py.
-manticore-seed is the auth.json of a new Manticore daemon. It holds the user hoover_admin with the password
-manticore-admin, so a new daemon has no published default user.
+Keys: clickhouse-zone, manticore-admin, manticore-zone, and clickhouse-<service> and manticore-<service> for each
+service of service_users.py. manticore-seed is the auth.json of a new Manticore daemon of the zone. It holds the user
+hoover_admin with the password manticore-admin, so a new daemon has no published default user.
 The zone user of ClickHouse and Manticore has the name of the zone prefix, for example zone_a. The operator tools
 ch.py and mt.py use it. No Hoover service uses it.
+The admin of the shared ClickHouse and the Garage secrets are in the Secret hoover-stores of the namespace
+hoover-stores (shared.py).
 A present key keeps its value.
 Usage: creds.py <zone>
 """
@@ -16,7 +17,7 @@ import common, service_users
 
 NAME = 'hoover-stores'
 NS = sys.argv[1]
-KEYS = ['clickhouse-admin', 'clickhouse-zone', 'manticore-admin', 'manticore-zone', 'garage-admin-token']
+KEYS = ['clickhouse-zone', 'manticore-admin', 'manticore-zone']
 KEYS += [f'clickhouse-{s}' for s in service_users.using('clickhouse')]
 KEYS += [f'manticore-{s}' for s in service_users.using('manticore')]
 ADMIN_ACTIONS = ('read', 'write', 'schema', 'replication', 'admin', 'backup')
@@ -33,7 +34,7 @@ def manticore_seed(password):
 
 found = common.kubectl('-n', NS, 'get', 'secret', NAME, '--ignore-not-found', '-o', 'json').strip()
 current = {k: base64.b64decode(v).decode() for k, v in json.loads(found).get('data', {}).items()} if found else {}
-data = {**{k: secrets.token_hex(24) for k in KEYS}, 'garage-rpc-secret': secrets.token_hex(32), **current}
+data = {**{k: secrets.token_hex(24) for k in KEYS}, **current}
 data.setdefault('manticore-seed', manticore_seed(data['manticore-admin']))
 if data != current:
     common.apply({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': NAME, 'namespace': NS, 'labels': {common.LABEL: 'credentials'}},

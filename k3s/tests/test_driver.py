@@ -166,6 +166,7 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
     assert steps[:3] == ['hosts:prepare', 'hosts:k3s', 'hosts:verify']
     for before, after in (('hosts:verify', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
                           ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator'),
+                          ('operator', 'stores'), ('stores', 'zone:zone-a'),
                           ('zone:zone-a', 'calls'), ('zone:zone-a', 'mcp-relay')):
         assert steps.index(before) < steps.index(after)
     assert steps[-1] == 'calls'
@@ -264,6 +265,20 @@ def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(
     assert state['worker-b']['os_family'] == 'RedHat' and state['server-a'] == {'reachable': False, 'ready': False}
     assert any('the operator tools are missing' in p for p in problems)
     assert any(f'the admin kubeconfig {ctx.kubeconfig} is missing' in p for p in problems)
+    # zone-b of the fixture is a zone of the earlier store layout, and the site has three store nodes.
+    assert any(p.startswith('the zone zone-b keeps its ClickHouse and Garage in its zone namespace') for p in problems)
+    assert not any('zone-a keeps' in p for p in problems)
+    assert any('ClickHouse runs one copy' in w for w in state['store_warnings'])
+
+
+def test_check_refuses_turning_failover_off(env, monkeypatch):
+    ctx = env.make('remote.yml')
+    ctx.kubeconfig.write_text('fake')
+    recorded = {'data': {'plan': json.dumps({'failover': True, 'garage_replication_factor': 3})}}
+    monkeypatch.setattr(deploy.Context, 'kubectl', lambda self, *a, check=True: json.dumps(recorded) if 'shared-stores' in a else '')
+    monkeypatch.setattr(deploy, 'node_ready', lambda ctx, name: True)
+    problems, _ = deploy.check(ctx, ['server-a'])
+    assert 'the shared stores run with failover. vars.stores failover cannot change back to false.' in problems
 
 
 def test_a_failed_play_names_the_node_and_keeps_a_resumable_record(env, monkeypatch):

@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Prepare the zone stores and the runtime Secrets for the Hoover of one zone. Each step is idempotent.
+"""Prepare the store tenants and the runtime Secrets for the Hoover of one zone. Each step is idempotent.
 
-The stores of the zone run in the zone namespace: PostgreSQL from the openDesk chart, the Hoover stores from
-stores/hoover.py.
+PostgreSQL (openDesk chart) and the two Manticore daemons (stores/hoover.py) run in the zone namespace. ClickHouse and
+Garage are the shared stores of the site in the namespace hoover-stores (stores/shared.py), where each zone is a tenant.
+The zone credentials are in the Secrets hoover-stores and garage-tenants of the zone namespace, so they go with the zone.
 
 - PostgreSQL: role <prefix>_temporal owns the databases <prefix>_temporal and <prefix>_temporal_visibility.
-- Garage: buckets <zone>-system and <zone>-c-demo, with read and write access for the zone key. The zone key can
-  create buckets, because Hoover creates the bucket <zone>-c-<collection> of each new collection. The services that
-  use the collection buckets share it (stores/service_users.py). Each other Garage service gets its own key with read
-  and write access to <zone>-system only. The keys are in the Secret garage-tenants. The Garage serves only its zone.
+- ClickHouse: the settings profile <prefix>, which limits the memory of one user to half of the ClickHouse limit, the
+  zone user <prefix> and a user for each service (stores/service_users.py), with the passwords of hoover-stores and
+  the profile <prefix>. The grants name only the databases <prefix> and <prefix>_*, so a zone user reaches no database
+  of another zone. A zone id has no _, so the prefix of one zone never starts the prefix of another.
+- Garage: the zone key <zone>, the buckets <zone>-system and <zone>-c-demo with read and write access for the zone key.
+  The zone key can create buckets, because Hoover creates the bucket <zone>-c-<collection> of each new collection.
+  The services that use the collection buckets share it (stores/service_users.py). Each other Garage service gets its
+  own key with read and write access to <zone>-system only. A key reaches only the buckets that it created or that
+  this step allows. A bucket that Hoover creates through S3 has a local alias of the zone key, so its name is private
+  to the zone. The keys are in the Secret garage-tenants.
 - Manticore: the zone user and the user of each service on both daemons, with the password of hoover-stores. The
   daemon starts with hoover_admin from its seed (stores/creds.py). A published bootstrap user manticore is removed.
 - Temporal: when its database holds another shard count than zone_ini.SHARDS, the step stops Temporal, creates both
@@ -18,7 +25,7 @@ stores/hoover.py.
   follows gpu.token, and the shared secrets of the MCP servers and of the browser fetch are random.
 The script reads credentials from cluster Secrets and never prints a credential.
 An installation with the local store layout (manifests.py) needs only the Secrets: setup.py <zone> local-secrets.
-Usage: setup.py <zone> [postgres] [garage] [manticore] [secrets]    Without steps it runs all of them.
+Usage: setup.py <zone> [postgres] [garage] [clickhouse] [manticore] [secrets]    Without steps it runs all of them.
        setup.py <zone> local-secrets
 """
 import base64
@@ -35,6 +42,7 @@ import zone_ini  # noqa: E402
 import gpu  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'stores'))
 import service_users  # noqa: E402
+import shared  # noqa: E402
 K = ['kubectl', '--kubeconfig', settings.KUBECONFIG]
 ZONES = settings.PRIVATE / 'zones/secrets.json'
 ZONE = sys.argv[1]
@@ -115,28 +123,56 @@ def temporal_shards(runtime):
     print(json.dumps({'step': 'temporal-shards', 'shards': count, 'change': f'reset to {zone_ini.SHARDS}'}))
 
 
+def garage_keys(listed):
+    """{key name: key id} of the Garage key list."""
+    return {row[2]: row[0] for row in shared.table(listed) if len(row) > 2}
+
+
+def created_key(out):
+    return {'access_key': re.search(r'Key ID:\s+(\S+)', out).group(1), 'secret_key': re.search(r'Secret key:\s+(\S+)', out).group(1)}
+
+
 def garage():
-    def run(*args):
-        return kubectl('-n', STORES, 'exec', 'garage-kata-0', '-c', 'garage', '--', '/garage', *args).stdout
-    listed = run('bucket', 'list')
-    for bucket in (f'{ZONE}-system', f'{ZONE}-c-demo'):
-        if bucket not in listed:
-            run('bucket', 'create', bucket)
-        run('bucket', 'allow', '--read', '--write', bucket, '--key', ZONE)
-    run('key', 'allow', '--create-bucket', ZONE)
-    # The key secret is in the output of key create only, so the Secret gets it at once.
+    run = shared.garage_cli
     tenants = json.loads(secret(STORES, 'garage-tenants').get('tenants.json', '{}'))
-    keys = run('key', 'list')
-    own = sorted({service_users.garage_key(ZONE, s) for s in service_users.using('garage')} - {ZONE})
-    for name in own:
+    keys = garage_keys(run('key', 'list'))
+    # The key secret is in the output of key create only, so the Secret gets it at once.
+    wanted = sorted({service_users.garage_key(ZONE, s) for s in service_users.using('garage')} | {ZONE})
+    for name in wanted:
         if name not in tenants or name not in keys:
-            out = run('key', 'create', name)
-            tenants[name] = {'access_key': re.search(r'Key ID:\s+(\S+)', out).group(1), 'secret_key': re.search(r'Secret key:\s+(\S+)', out).group(1)}
+            tenants[name] = created_key(run('key', 'create', name))
             kubectl('apply', '-f', '-', input=json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {
                 'name': 'garage-tenants', 'namespace': STORES, 'labels': {'hoover.dev/kata-stores': 'credentials'}},
                 'type': 'Opaque', 'stringData': {'tenants.json': json.dumps(tenants)}}))
+    buckets = {row[2] for row in shared.table(run('bucket', 'list')) if len(row) > 2}
+    for bucket in (f'{ZONE}-system', f'{ZONE}-c-demo'):
+        if bucket not in buckets:
+            run('bucket', 'create', bucket)
+        run('bucket', 'allow', '--read', '--write', bucket, '--key', tenants[ZONE]['access_key'])
+    run('key', 'allow', '--create-bucket', tenants[ZONE]['access_key'])
+    own = [n for n in wanted if n != ZONE]
+    for name in own:
         run('bucket', 'allow', '--read', '--write', f'{ZONE}-system', '--key', tenants[name]['access_key'])
     print(json.dumps({'step': 'garage', 'buckets': [f'{ZONE}-system', f'{ZONE}-c-demo'], 'service_keys': own}))
+
+
+def clickhouse():
+    # The statements go through stdin, so no password is on a command line. CREATE USER does nothing for a present
+    # user, and ALTER USER then gives it the password of hoover-stores. GRANT adds only missing rights.
+    stores = secret(STORES, 'hoover-stores')
+    limit = shared.hoover.LIMITS['clickhouse']
+    users = {PREFIX: (stores['clickhouse-zone'], service_users.zone_grants(ZONE))}
+    for service in service_users.using('clickhouse'):
+        users[service_users.user(ZONE, service)] = (stores[f'clickhouse-{service}'], service_users.clickhouse_grants(ZONE, service))
+    sql = [f"CREATE SETTINGS PROFILE IF NOT EXISTS `{PREFIX}`;",
+           f"ALTER SETTINGS PROFILE `{PREFIX}` SETTINGS INHERIT 'default', "
+           f"max_memory_usage_for_user = {int(shared.hoover.gibibytes(limit) * 2 ** 30 / 2)};"]
+    for name, (password, grants) in users.items():
+        sql += [f"CREATE USER IF NOT EXISTS `{name}` IDENTIFIED WITH sha256_password BY '{password}' SETTINGS PROFILE `{PREFIX}`;",
+                f"ALTER USER `{name}` IDENTIFIED WITH sha256_password BY '{password}' SETTINGS PROFILE `{PREFIX}`;"]
+        sql += [f'{g} TO `{name}`;' for g in grants]
+    shared.clickhouse_sql('\n'.join(sql) + '\n')
+    print(json.dumps({'step': 'clickhouse', 'profile': PREFIX, 'users': sorted(users)}))
 
 
 def manticore():
@@ -214,12 +250,14 @@ def main():
             apply({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {'hoover.dev/zone': 'true'}}})
         local_secrets()
         return
-    steps = sys.argv[2:] or ['garage', 'secrets', 'postgres', 'manticore']
+    steps = sys.argv[2:] or ['garage', 'clickhouse', 'secrets', 'postgres', 'manticore']
     if kubectl('get', 'namespace', NS, check=False).returncode:
-        apply({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {'hoover.dev/zone': 'true'}}})
+        apply({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {'hoover.dev/zone': 'true', shared.HOOVER_LABEL: 'true'}}})
     # The garage step creates the service keys, which the secrets step copies.
     if 'garage' in steps:
         garage()
+    if 'clickhouse' in steps:
+        clickhouse()
     runtime = runtime_secrets() if 'secrets' in steps or 'postgres' in steps else None
     if 'postgres' in steps:
         postgres(runtime)

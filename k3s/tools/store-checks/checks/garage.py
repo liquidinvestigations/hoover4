@@ -2,14 +2,13 @@
 # The zone key writes, reads and deletes one object, and loads 200 objects of 256 KiB. A request without a key is refused.
 import filecmp, json, os, subprocess, time
 ZONE = os.environ['ZONE']
-ENDPOINT = f"http://garage.{ZONE}.svc.cluster.local:3900"
-keys = json.load(open('/secret/tenants.json'))
+ENDPOINT = 'http://garage.hoover-stores.svc.cluster.local:3900'
 BUCKET = f's3://{ZONE}-system'
 subprocess.run(['aws', 'configure', 'set', 'default.s3.addressing_style', 'path'], check=True)
 
 
 def aws(*args, signed=True):
-    k = keys[ZONE]
+    k = {'access_key': os.environ['S3_ACCESS_KEY'], 'secret_key': os.environ['S3_SECRET_KEY']}
     env = {**os.environ, 'AWS_ACCESS_KEY_ID': k['access_key'], 'AWS_SECRET_ACCESS_KEY': k['secret_key'], 'AWS_DEFAULT_REGION': 'us-east-1'}
     t = time.time()
     r = subprocess.run(['aws', '--endpoint-url', ENDPOINT, 's3', *args] + ([] if signed else ['--no-sign-request']), env=env,

@@ -6,6 +6,9 @@
 #   read the nodes and the zone pod policy, update the XWiki extension repository, run the shared call services, read
 #   the record of the coturn peer check,
 #   read the Services of the Hoover NFS servers, update the operation ConfigMaps of the portal and read the GPU key.
+# - In hoover-stores, the namespace of the shared ClickHouse and Garage (../../hoover/stores/shared.py), it runs the
+#   store clients in the store pods to add and remove the tenant of a zone, and grows the store claims. deploy-k3s up
+#   creates and changes the stores with the admin kubeconfig.
 # - In operator-portal it reads and writes the ConfigMaps and Secrets of the cluster copy of the state
 #   (../../clusterstate.py) and the Lease site-operation of the site lock (../../oplock.py). The Secret rights cover
 #   every Secret of operator-portal, because a Role cannot name the Secrets that the runner creates.
@@ -138,6 +141,34 @@ kind: RoleBinding
 metadata:
   name: zone-runner
   namespace: extensions
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+# The tenant of each zone in the shared stores of the site.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zone-runner
+  namespace: hoover-stores
+rules:
+  - apiGroups: ['']
+    resources: [pods, configmaps]
+    verbs: [get, list]
+  - apiGroups: ['']
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: ['']
+    resources: [persistentvolumeclaims]
+    verbs: [get, patch]
+  - apiGroups: [apps]
+    resources: [statefulsets]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zone-runner
+  namespace: hoover-stores
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
 subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
 ---

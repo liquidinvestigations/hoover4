@@ -14,11 +14,12 @@ export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 folder=$private/operator-runner
 mkdir -p "$folder"
 chmod 700 "$folder"
-# The rights name these namespaces. The calls and the zones fill them later, and a single-node site keeps hoover-data empty.
+# The rights name these namespaces. The calls, the zones and the stores step of deploy-k3s up fill them later, and a
+# single-node site keeps hoover-data empty.
 # The script creates only a missing namespace. An apply over an existing one would replace the last applied
 # configuration of its own manifest, and the next kubectl diff of the runner would then send an update of the
 # namespace, which the policy zone-runner-scope refuses.
-for namespace in operator-portal calls hoover-data extensions; do
+for namespace in operator-portal calls hoover-data extensions hoover-stores; do
   kubectl get namespace "$namespace" >/dev/null 2>&1 || kubectl create namespace "$namespace"
 done
 kubectl apply -f "$source_dir/platform/operator/runner-rights.yaml"

@@ -14,8 +14,11 @@ Store layouts (the value stores of the zone state):
   ClickHouse, both Manticore daemons, Garage with its init job, and ZooKeeper, which the ClickHouse configuration
   names. The operations worker mounts the store claims as in Compose, so store backup and restore work. The Compose
   import (../import_compose/) fills these claims with the copied store folders.
-- zone: ClickHouse, both Manticore daemons and Garage run in Kata on block volumes in the zone namespace
-  (stores/hoover.py), and ExternalName Services keep the Compose names. setup.py creates the Garage buckets.
+- site: ClickHouse and Garage are the shared stores of the site in the namespace hoover-stores (stores/shared.py), and
+  both Manticore daemons run in Kata on block volumes in the zone namespace (stores/hoover.py). ExternalName Services
+  keep the Compose names. setup.py creates the tenant of the zone: its ClickHouse users and its Garage keys and buckets.
+- zone: every store in the zone namespace, from an earlier version. The render refuses it: the zone needs a delete and
+  a new create.
 Temporal backends (the value temporal_backend of the zone state):
 - cassandra: Temporal, Cassandra and Elasticsearch as in Compose, with the dynamic configuration of deploy.py, the
   history shard count of the operator settings, a retention job for the default namespace, and claims for both stores.
@@ -98,8 +101,8 @@ OAUTH2_PROXY = 'quay.io/oauth2-proxy/oauth2-proxy:v7.12.0@sha256:786bed0f000c0f8
 # Every Compose service and its cluster form. image names the key of compose.IMAGES for a service that the image
 # build makes, or None for an upstream image. role decides the form:
 #   app         a Deployment and a Service in every layout
-#   store       a StatefulSet in the local layout. The zone layout runs the store of stores/hoover.py instead.
-#   store-init  a Job in the local layout. setup.py does its work in the zone layout.
+#   store       a StatefulSet in the local layout. The site layout uses the stores of stores/shared.py and stores/hoover.py.
+#   store-init  a Job in the local layout. setup.py does its work in the site layout.
 #   temporal    the Compose Temporal with the cassandra backend, or the PostgreSQL Temporal of temporal_pg().
 #   temporal-store  a StatefulSet with the cassandra backend. The postgresql backend has no such store.
 #   ui          an operator interface, a Deployment and a Service without ingress
@@ -218,8 +221,11 @@ LOCAL_CREDENTIALS = {'CLICKHOUSE_USER': 'clickhouse-user', 'CLICKHOUSE_PASSWORD'
                      'S3_ACCESS_KEY': 's3-access-key', 'S3_SECRET_KEY': 's3-secret-key',
                      'GARAGE_RPC_SECRET': 'garage-rpc-secret', 'GARAGE_ADMIN_TOKEN': 'garage-admin-token',
                      'VITE_CLICKHOUSE_USER': 'clickhouse-user', 'VITE_CLICKHOUSE_PASS': 'clickhouse-password'}
-# The stores of the zone namespace that the zone layout uses.
-ZONE_STORES = ('clickhouse', 'manticore', 'manticore-vectors', 'garage', 'postgresql')
+# The stores of the zone namespace that the site layout uses.
+ZONE_STORES = ('manticore', 'manticore-vectors', 'postgresql')
+# The shared stores of the site (stores/shared.py) and the client ports that a Hoover namespace reaches.
+SHARED_NS = 'hoover-stores'
+SHARED_PORTS = {'clickhouse': (8123, 9000), 'garage': (3900,)}
 LOCAL_STORES = ('clickhouse', 'manticore', 'manticore-vectors', 'garage', 'zookeeper', 'temporal-cassandra',
                 'temporal-elasticsearch')
 PRIVATE_RANGES = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '169.254.0.0/16', '127.0.0.0/8']
@@ -427,8 +433,9 @@ def service(target, name, port_list, selector=None):
 
 
 def external(target, name):
+    namespace = SHARED_NS if name in SHARED_PORTS else target.zone
     return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': name, 'namespace': target.ns},
-            'spec': {'type': 'ExternalName', 'externalName': f'{name}.{target.zone}.svc.cluster.local'}}
+            'spec': {'type': 'ExternalName', 'externalName': f'{name}.{namespace}.svc.cluster.local'}}
 
 
 def config_map(target, name, data):
@@ -973,9 +980,11 @@ def proxy(target):
 def network(target):
     """The ingress and egress policies of the Hoover namespace.
 
-    Egress is closed by default. Every pod reaches the cluster DNS and the pods of its namespace. In the zone layout
-    every pod except the internet services reaches the stores and PostgreSQL in the zone namespace, and the browser
-    server reaches the HTTP ports of ClickHouse and Garage. In the local layout the stores are pods of the namespace,
+    Egress is closed by default. Every pod reaches the cluster DNS and the pods of its namespace. In the site layout
+    every pod except the internet services reaches Manticore and PostgreSQL in the zone namespace and the client ports
+    of the shared ClickHouse and Garage, and the browser server reaches the HTTP ports of ClickHouse and Garage. The
+    shared stores admit a Hoover namespace by its label hoover.dev/hoover (stores/shared.py network()). In the local
+    layout the stores are pods of the namespace,
     and the internet services reach no store pod except the browser server, which reaches ClickHouse and Garage.
     oauth2-proxy and the sign-in check of the deploy driver reach the frontend addresses on 443 for the OIDC issuer.
     The forwarder gpu, when the site has a GPU pool, reaches the GPU proxy. The internet services reach public addresses
@@ -986,6 +995,10 @@ def network(target):
     def policy(name, spec):
         return {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': name, 'namespace': ns}, 'spec': spec}
     zone_ns = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': target.zone}}}
+    shared_ns = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': SHARED_NS}}}
+
+    def shared(store, ports):
+        return {'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': store}}}], 'ports': [{'port': p} for p in ports]}
     dns = {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}},
                    'podSelector': {'matchLabels': {'k8s-app': 'kube-dns'}}}],
            'ports': [{'port': 53, 'protocol': 'UDP'}, {'port': 53, 'protocol': 'TCP'}]}
@@ -1023,13 +1036,11 @@ def network(target):
             policy('egress-stores', {'podSelector': {'matchExpressions': [{'key': 'hoover.dev/egress', 'operator': 'DoesNotExist'}]},
                                      'policyTypes': ['Egress'],
                                      'egress': [{'to': [{**zone_ns, 'podSelector': {'matchExpressions': [
-                                         {'key': 'hoover.dev/store', 'operator': 'In', 'values': list(ZONE_STORES)}]}}]}]}),
+                                         {'key': 'hoover.dev/store', 'operator': 'In', 'values': list(ZONE_STORES)}]}}]},
+                                                *[shared(s, ports) for s, ports in SHARED_PORTS.items()]]}),
             policy('egress-browser-stores', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'hoover4-mcp-browser'}},
                                              'policyTypes': ['Egress'],
-                                             'egress': [{'to': [{**zone_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}],
-                                                         'ports': [{'port': 8123}]},
-                                                        {'to': [{**zone_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
-                                                         'ports': [{'port': 3900}]}]}),
+                                             'egress': [shared('clickhouse', (8123,)), shared('garage', (3900,))]}),
         ]
     items += [
         policy('egress-oidc', {'podSelector': {'matchLabels': OIDC_CLIENT}, 'policyTypes': ['Egress'],
@@ -1071,8 +1082,13 @@ def objects(target):
             if type(error).__name__ == 'DeployError':
                 raise RenderError(f'the settings of {target.hoover.name} give an ini that deploy.py refuses: {error}') from None
             raise
-    # The label hoover.dev/zone selects the namespace for the zone pod policy (../zones/manifests/zone-pods.yaml).
-    namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': target.ns, 'labels': {'hoover.dev/zone': 'true'}}}
+    if target.hoover.stores == 'zone':
+        raise RenderError(f'{target.zone} keeps its ClickHouse and Garage in its zone namespace, from an earlier version. '
+                          'Delete the zone and create it again.')
+    # The label hoover.dev/zone selects the namespace for the zone pod policy (../zones/manifests/zone-pods.yaml). The
+    # shared stores admit the namespaces with the label hoover.dev/hoover (stores/shared.py).
+    namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': target.ns, 'labels': {
+        'hoover.dev/zone': 'true', 'hoover.dev/hoover': 'true'}}}
     claims = []
     if target.local:
         claims = [claim(target, c) for c in operator_settings.VOLUMES if c != 'worker-temp-files'

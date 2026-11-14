@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
-"""Build and apply the Hoover stores of a zone in Kata: ClickHouse, the two Manticore daemons and Garage.
+"""Build and apply the Manticore daemons of a zone in Kata, and the pod parts that the shared stores reuse.
 
-Each store gets a ConfigMap from config/<store>/ where it has one, a Service, and a one-replica StatefulSet in the zone
-namespace. Its data is a raw TopoLVM block volume of the store tier of the site (../../zones/zonestate.py). The
-scheduler places the store pod by its requests, and the pod then stays on the node of its volume.
+The two Manticore daemons of a zone (text and vectors) run in the zone namespace. ClickHouse and Garage are the shared
+stores of the site (shared.py). Manticore stays in the zone, because a Manticore user with the right schema on its own
+tables can read the tables of another user through a distributed table.
+Each daemon gets a Service and a one-replica StatefulSet in the zone namespace. Its data is a raw TopoLVM block volume
+of the store tier of the site (../../zones/zonestate.py). The scheduler places the store pod by its requests, and the
+pod then stays on the node of its volume.
 The block mount wrapper of podspec.py makes the file system and mounts it inside the guest.
-Credentials come from the hoover-stores Secret (creds.py). The ClickHouse users file has a user for each Hoover service
-(service_users.py), and each password comes from that Secret. The memory limits come from ../../zones/memory-limits.json.
+Credentials come from the hoover-stores Secret of the zone (creds.py). The memory limits come from
+../../zones/memory-limits.json.
 The StatefulSets use the OnDelete update strategy. zone.py replaces outdated pods after applying their templates.
 A direct run of this tool keeps existing pods until an operator deletes them.
 The memory requests (REQUESTS) are the measured working sets, so the scheduler balances the nodes by real use.
 The claim template of an existing StatefulSet cannot change. An apply keeps the template of the cluster and grows the
-claim of the pod to the size of SIZES when that is larger. The block mount wrapper grows the file system online.
-Usage: hoover.py apply|show <clickhouse|manticore|manticore-vectors|garage> <zone>
+claim of each pod to the wanted size when that is larger. A grown volume reaches the Kata guest at the next pod
+start, and the block mount wrapper then grows the file system.
+Usage: hoover.py apply|show <manticore|manticore-vectors> <zone>
 """
 import json, subprocess, sys
-import common, podspec, service_users
+import common, podspec
 import zonestate  # noqa: E402  (common puts ../../zones on the path)
 
 SECRET = 'hoover-stores'
 CONFIG = common.LAB / 'config'
 LIMITS = json.loads((common.SOURCE / 'zones' / 'memory-limits.json').read_text())['hoover']
-# The Manticore text claim holds at least the 14.1 GiB of Manticore text data of the 64 GB reference site.
+# The claim of each store, for one zone. The Manticore text claim holds at least the 14.1 GiB of Manticore text data of
+# the 64 GB reference site. The shared stores multiply their size by the zone count (shared.py size()).
 SIZES = {'clickhouse': '20Gi', 'manticore': '16Gi', 'manticore-vectors': '10Gi', 'garage': '20Gi'}
 # The memory request of each store: the current request plus 0.33 times the distance to the largest working set (anon
 # memory) of the 64 GB reference site, rounded up to 64 MiB.
@@ -50,48 +55,32 @@ def prefix(zone):
     return zone.replace('-', '_')
 
 
-def configmap(store, zone, name=None):
-    # The ClickHouse users file names the zone user, which is the zone prefix, and the users of the services.
-    files = {p.name: p.read_text().replace('ZONE_PREFIX', prefix(zone)).replace('<!-- SERVICE_USERS -->', service_users.clickhouse_users_xml(zone))
-             for p in sorted((CONFIG / store).iterdir()) if p.is_file()}
-    return {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': f'{name or store}-config', 'namespace': zone, 'labels': {common.LABEL: 'config'}},
-            'data': files}
+def service(store, namespace, ports, selector=None, headless=False):
+    spec = {'selector': selector or {'app.kubernetes.io/name': store},
+            'ports': [{'name': n, 'port': p, 'targetPort': p} for n, p in ports]}
+    if headless:
+        # The peer names of a StatefulSet resolve before its pods are ready.
+        spec.update(clusterIP='None', publishNotReadyAddresses=True)
+    return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': store, 'namespace': namespace, 'labels': {common.LABEL: 'service'}},
+            'spec': spec}
 
 
-def service(store, zone, ports):
-    return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': store, 'namespace': zone, 'labels': {common.LABEL: 'service'}},
-            'spec': {'selector': {'app.kubernetes.io/name': store},
-                     'ports': [{'name': n, 'port': p, 'targetPort': p} for n, p in ports]}}
-
-
-def statefulset(store, zone, container, entrypoint, directory, user=None, extra_volumes=()):
+def statefulset(name, store, namespace, container, entrypoint, directory, tier, size, replicas=1, service_name=None,
+                user=None, extra_volumes=(), affinity=None):
+    """A Kata StatefulSet of a store with one block volume claim data of size in the tier tier for each pod."""
     spec = {'runtimeClassName': 'kata', 'terminationGracePeriodSeconds': 60, 'enableServiceLinks': False,
             'containers': [container], 'volumes': list(extra_volumes)}
+    if affinity:
+        spec['affinity'] = affinity
     spec = podspec.blockmount(spec, container['name'], entrypoint, [('data', None, directory)], user)
-    tier = zonestate.tier(zone, store, zonestate.site_tiers(common.settings.KUBECONFIG))
     labels = {'app.kubernetes.io/name': store, common.LABEL: 'store', 'hoover.dev/store': store}
     claim = {'metadata': {'name': 'data'}, 'spec': {'accessModes': ['ReadWriteOnce'], 'volumeMode': 'Block',
-             'storageClassName': f'{tier}-block', 'resources': {'requests': {'storage': SIZES[store]}}}}
+             'storageClassName': f'{tier}-block', 'resources': {'requests': {'storage': size}}}}
     return {'apiVersion': 'apps/v1', 'kind': 'StatefulSet',
-            'metadata': {'name': f'{store}-kata', 'namespace': zone, 'labels': {common.LABEL: 'store', 'hoover.dev/store': store}},
-            'spec': {'replicas': 1 if common.namespace_enabled(zone) else 0, 'serviceName': store,
+            'metadata': {'name': name, 'namespace': namespace, 'labels': {common.LABEL: 'store', 'hoover.dev/store': store}},
+            'spec': {'replicas': replicas, 'serviceName': service_name or store,
                      'selector': {'matchLabels': {'hoover.dev/store': store}}, 'updateStrategy': {'type': 'OnDelete'},
                      'template': {'metadata': {'labels': labels}, 'spec': spec}, 'volumeClaimTemplates': [claim]}}
-
-
-def clickhouse(zone):
-    container = {
-        'name': 'clickhouse', 'image': IMAGES['clickhouse'],
-        'env': [secret_env('CH_ADMIN_PASSWORD', 'clickhouse-admin'), secret_env('CH_ZONE_PASSWORD', 'clickhouse-zone')] +
-               [secret_env(service_users.env_name(s), f'clickhouse-{s}') for s in service_users.using('clickhouse')],
-        'ports': [{'name': 'http', 'containerPort': 8123}, {'name': 'native', 'containerPort': 9000}],
-        'volumeMounts': [{'name': 'config', 'mountPath': '/etc/clickhouse-server/config.d/hoover.xml', 'subPath': 'server.xml', 'readOnly': True},
-                         {'name': 'config', 'mountPath': '/etc/clickhouse-server/users.d/hoover.xml', 'subPath': 'users.xml', 'readOnly': True}],
-        'readinessProbe': {'httpGet': {'path': '/ping', 'port': 8123}, 'periodSeconds': 2, 'failureThreshold': 3},
-        'resources': resources('clickhouse')}
-    return [configmap('clickhouse', zone), service('clickhouse', zone, [('http', 8123), ('native', 9000)]),
-            statefulset('clickhouse', zone, container, ['/entrypoint.sh'], '/var/lib/clickhouse',
-                        extra_volumes=[{'name': 'config', 'configMap': {'name': 'clickhouse-config'}}])]
 
 
 def manticore(zone, name='manticore'):
@@ -111,45 +100,60 @@ def manticore(zone, name='manticore'):
              '{ cp /seed/auth.json /var/lib/manticore/auth.json && chmod 600 /var/lib/manticore/auth.json; }; '
              'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach')
     seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
+    tier = zonestate.tier(zone, name, zonestate.site_tiers(common.settings.KUBECONFIG))
     return [service(name, zone, [('sql', 9306), ('http', 9308)]),
-            statefulset(name, zone, container, ['sh', '-c', start], '/var/lib/manticore', user='999:999', extra_volumes=[seed])]
+            statefulset(f'{name}-kata', name, zone, container, ['sh', '-c', start], '/var/lib/manticore', tier, SIZES[name],
+                        replicas=1 if common.namespace_enabled(zone) else 0, user='999:999', extra_volumes=[seed])]
 
 
-def garage(zone):
-    container = {
-        'name': 'garage', 'image': IMAGES['garage'],
-        'env': [secret_env('GARAGE_RPC_SECRET', 'garage-rpc-secret'), secret_env('GARAGE_ADMIN_TOKEN', 'garage-admin-token')],
-        'ports': [{'name': 's3', 'containerPort': 3900}, {'name': 'rpc', 'containerPort': 3901}, {'name': 'admin', 'containerPort': 3903}],
-        'volumeMounts': [{'name': 'config', 'mountPath': '/etc/garage.toml', 'subPath': 'garage.toml', 'readOnly': True}],
-        'readinessProbe': {'tcpSocket': {'port': 3900}, 'periodSeconds': 2, 'failureThreshold': 3},
-        'resources': resources('garage')}
-    return [configmap('garage', zone), service('garage', zone, [('s3', 3900), ('admin', 3903)]),
-            statefulset('garage', zone, container, ['/garage', 'server'], '/var/lib/garage',
-                        extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])]
+BUILDERS = {'manticore': manticore, 'manticore-vectors': lambda z: manticore(z, 'manticore-vectors')}
 
 
-BUILDERS = {'clickhouse': clickhouse, 'manticore': manticore, 'manticore-vectors': lambda z: manticore(z, 'manticore-vectors'), 'garage': garage}
-
-
-def grow_claim(store, zone, current):
-    """Keep the claim template of an existing StatefulSet, and grow the claim of its pod to the size of SIZES."""
+def grow_claims(namespace, current, size):
+    """Keep the claim template of an existing StatefulSet, and grow the claim of each of its pods to size."""
     found_template = current['spec']['volumeClaimTemplates'][0]
     template = {'metadata': {'name': found_template['metadata']['name']}, 'spec': found_template['spec']}
-    claim = f"{template['metadata']['name']}-{store}-kata-0"
-    found = common.kubectl('-n', zone, 'get', 'pvc', claim, '--ignore-not-found', '-o', 'json').strip()
-    if not found:
-        return template
-    size = json.loads(found)['spec']['resources']['requests']['storage']
-    if gibibytes(SIZES[store]) > gibibytes(size):
-        common.kubectl('-n', zone, 'patch', 'pvc', claim, '--type', 'merge', '-p',
-                       json.dumps({'spec': {'resources': {'requests': {'storage': SIZES[store]}}}}))
-        common.log('stores.jsonl', step='claim-grown', claim=claim, zone=zone, size=SIZES[store])
+    for index in range(current['spec'].get('replicas') or 1):
+        claim = f"{template['metadata']['name']}-{current['metadata']['name']}-{index}"
+        found = common.kubectl('-n', namespace, 'get', 'pvc', claim, '--ignore-not-found', '-o', 'json').strip()
+        if not found:
+            continue
+        if gibibytes(size) > gibibytes(json.loads(found)['spec']['resources']['requests']['storage']):
+            common.kubectl('-n', namespace, 'patch', 'pvc', claim, '--type', 'merge', '-p',
+                           json.dumps({'spec': {'resources': {'requests': {'storage': size}}}}))
+            common.log('stores.jsonl', step='claim-grown', claim=claim, namespace=namespace, size=size)
     return template
 
 
 def gibibytes(text):
     units = {'Ki': 2 ** -20, 'Mi': 2 ** -10, 'Gi': 1, 'Ti': 2 ** 10}
     return float(text[:-2]) * units[text[-2:]] if text[-2:] in units else float(text) / 2 ** 30
+
+
+def apply(objects, keep_replicas=True):
+    """Apply each object that differs from the cluster. A StatefulSet keeps its claim template and grows its claims.
+
+    An apply does not start a store that an operator stopped: an existing StatefulSet with zero replicas keeps them.
+    keep_replicas: an existing StatefulSet also keeps any other replica count.
+    """
+    for o in objects:
+        if o['kind'] == 'StatefulSet':
+            namespace = o['metadata']['namespace']
+            current = common.kubectl('-n', namespace, 'get', 'statefulset', o['metadata']['name'], '--ignore-not-found', '-o', 'json').strip()
+            found = json.loads(current)['spec'].get('replicas', 1) if current else None
+            if current and o['spec']['replicas'] and (keep_replicas or found == 0):
+                o['spec']['replicas'] = found
+            if current:
+                size = o['spec']['volumeClaimTemplates'][0]['spec']['resources']['requests']['storage']
+                o['spec']['volumeClaimTemplates'] = [grow_claims(namespace, json.loads(current), size)]
+        # kubectl apply reports some unchanged StatefulSets as configured, so only a difference in kubectl diff applies.
+        diff = subprocess.run(common.K + ['diff', '-f', '-'], input=json.dumps(o), capture_output=True, text=True)
+        if diff.returncode == 0:
+            continue
+        if diff.returncode != 1:
+            raise SystemExit(f'kubectl diff failed: {diff.stderr.strip()[-500:]}')
+        result = common.kubectl('apply', '-f', '-', input=json.dumps(o)).strip()
+        common.log('stores.jsonl', step='applied', object=result)
 
 
 def main():
@@ -160,22 +164,7 @@ def main():
     if command == 'show':
         print(json.dumps(objects, indent=1))
         return
-    for o in objects:
-        if o['kind'] == 'StatefulSet':
-            # An existing store keeps its replica count, so an apply does not start a store that an operator stopped.
-            current = common.kubectl('-n', zone, 'get', 'statefulset', o['metadata']['name'], '--ignore-not-found', '-o', 'json').strip()
-            if current and o['spec']['replicas']:
-                o['spec']['replicas'] = json.loads(current)['spec'].get('replicas', 1)
-            if current:
-                o['spec']['volumeClaimTemplates'] = [grow_claim(store, zone, json.loads(current))]
-        # kubectl apply reports some unchanged StatefulSets as configured, so only a difference in kubectl diff applies.
-        diff = subprocess.run(common.K + ['diff', '-f', '-'], input=json.dumps(o), capture_output=True, text=True)
-        if diff.returncode == 0:
-            continue
-        if diff.returncode != 1:
-            raise SystemExit(f'kubectl diff failed: {diff.stderr.strip()[-500:]}')
-        result = common.kubectl('apply', '-f', '-', input=json.dumps(o)).strip()
-        common.log('stores.jsonl', step='applied', object=result, zone=zone)
+    apply(objects)
 
 
 if __name__ == '__main__':

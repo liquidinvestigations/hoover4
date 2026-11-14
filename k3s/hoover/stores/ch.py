@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
-"""Run SQL from stdin in the ClickHouse of a zone as admin or as the zone user. The password stays in the pod environment.
-Usage: ch.py <admin|zone> [database] [extra clickhouse-client arguments]
+"""Run SQL from stdin in the shared ClickHouse of the site as admin or as the zone user of a zone.
+
+The admin password stays in the pod environment. The zone password comes from the Secret hoover-stores of the zone
+namespace and goes to the client through stdin, so no password is on a command line.
+Usage: KATA_NS=<zone> ch.py <admin|zone> [database] [extra clickhouse-client arguments]
 """
-import os, subprocess, sys
-import common
+import base64, os, subprocess, sys
+import common, shared
 
-# KATA_NS names the zone namespace of the store.
+# KATA_NS names the zone.
 NS = os.environ['KATA_NS']
-
-USERS = {'admin': ('hoover_admin', 'CH_ADMIN_PASSWORD'), 'zone': (NS.replace('-', '_'), 'CH_ZONE_PASSWORD')}
 
 
 def run(who, sql, database=None, extra=(), check=True):
-    user, var = USERS[who]
-    args = f'--user {user} "--password=${var}" --multiquery' + (f' --database {database}' if database else '') + ''.join(f' {a}' for a in extra)
-    r = subprocess.run(common.K + ['-n', NS, 'exec', '-i', 'clickhouse-kata-0', '-c', 'clickhouse', '--', 'sh', '-c',
-                                   f'clickhouse-client {args}'], input=sql, capture_output=True, text=True, timeout=3600)
+    args = '--multiquery' + (f' --database {database}' if database else '') + ''.join(f' {a}' for a in extra)
+    if who == 'admin':
+        command, text = f'exec clickhouse-client --user hoover_admin --password "$CH_ADMIN_PASSWORD" {args}', sql
+    else:
+        found = common.kubectl('-n', NS, 'get', 'secret', 'hoover-stores', '-o', 'jsonpath={.data.clickhouse-zone}')
+        password = base64.b64decode(found).decode()
+        command = f'read -r P; exec clickhouse-client --user {NS.replace("-", "_")} --password "$P" {args}'
+        text = password + '\n' + sql
+    r = subprocess.run(common.K + ['-n', shared.NS, 'exec', '-i', shared.ready_pod('clickhouse'), '-c', 'clickhouse', '--',
+                                   'sh', '-c', command], input=text, capture_output=True, text=True, timeout=3600)
     if check and r.returncode:
         raise RuntimeError(r.stderr.strip()[-600:])
     return r

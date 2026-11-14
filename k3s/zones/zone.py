@@ -2,7 +2,7 @@
 """Create, upgrade or delete one zone: openDesk, its stores and its Hoover. This is the one installer command of a zone.
 
 Usage:
-  zone.py apply <zone> [--stores zone|local] [--temporal-backend postgresql|cassandra]
+  zone.py apply <zone> [--stores site|local] [--temporal-backend postgresql|cassandra]
                 [--dataset name:node:/path ...]
                                           create the zone, or bring it to the source state. The options set the
                                           values of a new zone (zonestate.py), and each option must match for an
@@ -32,7 +32,13 @@ The steps of apply, in order:
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      gate.py adds the sign-in service of the zone gate.
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
-     stores = local in the zone state gets its Secrets from setup.py local-secrets and its objects from manifests.py.
+     stores = site (every new zone) gets a tenant in the shared ClickHouse and Garage of the site, which deploy-k3s up
+     creates (step stores, ../hoover/stores/shared.py), and its own Manticore daemons. A zone with stores = local in
+     the zone state gets its Secrets from setup.py local-secrets and its objects from manifests.py. A zone with
+     stores = zone, from an earlier version, is refused: delete it and create it again.
+Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
+and profile, and its Garage buckets and keys. The operations pod of the zone empties the buckets. A disabled zone has
+no such pod, so its non-empty buckets and its Garage keys stay, and the log names them.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -103,9 +109,9 @@ def apply_manifest(text, namespace=None):
 def register(zone, home=None, values=None):
     """Add a new zone to the zone state, or check that an existing zone has the given values.
 
-    values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A value that is not given
-    keeps its default. home is the home node argument of an earlier version. It has no effect, and a new entry does not
-    record it.
+    values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A new zone gets the store
+    layout site unless values names local. home is the home node argument of an earlier version. It has no effect, and
+    a new entry does not record it.
     """
     import config
     values = {k: v for k, v in (values or {}).items() if v not in (None, '', [], ())}
@@ -117,8 +123,10 @@ def register(zone, home=None, values=None):
         state = {'schemaVersion': zonestate.SCHEMA, 'zones': {}}
     entry = state['zones'].get(zone)
     if entry is None:
+        if values.get('stores') == 'zone':
+            raise SystemExit('a new zone cannot use the store layout zone of an earlier version. Use site or local.')
         # bootstrapped turns true after the first complete openDesk install (opendesk()).
-        entry = {'enabled': True, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, **values}
+        entry = {'enabled': True, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, 'stores': 'site', **values}
         problems = config.zone_problems(zone, entry, settings.SITE)
         if problems:
             raise SystemExit('; '.join(problems))
@@ -381,15 +389,21 @@ def hoover(zone):
         run(sys.executable, SOURCE / 'hoover' / 'setup.py', zone, 'local-secrets')
         run(sys.executable, SOURCE / 'hoover' / 'manifests.py', installation.name, 'apply')
         return
-    env = dict(os.environ, KATA_NS=zone)
+    if installation.stores == 'zone':
+        raise SystemExit(f'{zone} keeps its ClickHouse and Garage in its zone namespace, from an earlier version. Its data '
+                         'does not move to the shared stores of the site. Delete the zone and create it again.')
+    # ClickHouse and Garage are the shared stores of the site (../hoover/stores/shared.py). Their claims grow with the
+    # zone count. The Manticore daemons run in the zone namespace.
+    run(sys.executable, STORES / 'shared.py', 'ready')
+    run(sys.executable, STORES / 'shared.py', 'grow')
     run(sys.executable, STORES / 'creds.py', zone)
-    for store in ('clickhouse', 'manticore', 'manticore-vectors', 'garage'):
+    for store in ('manticore', 'manticore-vectors'):
         run(sys.executable, STORES / 'hoover.py', 'apply', store, zone)
     deadline = time.monotonic() + 600
     while True:
         refresh_statefulsets(zone)
         ready = True
-        for store in ('clickhouse', 'manticore', 'manticore-vectors', 'garage'):
+        for store in ('manticore', 'manticore-vectors'):
             controller = json.loads(kubectl('-n', zone, 'get', 'statefulset', f'{store}-kata', '-o', 'json'))
             status = controller.get('status', {})
             pods = json.loads(kubectl('-n', zone, 'get', 'pods', '-l', f'hoover.dev/store={store}', '-o', 'json'))['items']
@@ -400,9 +414,8 @@ def hoover(zone):
         if ready:
             break
         if time.monotonic() >= deadline:
-            raise SystemExit('the Hoover stores did not become ready with their current templates')
+            raise SystemExit('the Manticore daemons of the zone did not become ready with their current templates')
         time.sleep(3)
-    run(sys.executable, STORES / 'garage-setup.py', env=env)
     run(sys.executable, SOURCE / 'hoover' / 'setup.py', zone)
     run(sys.executable, SOURCE / 'hoover' / 'manifests.py', zone, 'apply')
 
@@ -446,6 +459,11 @@ def delete(zone):
     state = zonestate.load()
     if zone not in state['zones']:
         raise SystemExit(f'the zone state has no zone {zone}')
+    if state['zones'][zone].get('stores') == 'site':
+        # The tenant of the zone in the shared stores goes first, while the operations pod of the zone can still
+        # empty the zone buckets.
+        run(sys.executable, STORES / 'shared.py', 'remove', zone)
+        step('shared-stores', zone=zone, change='tenant removed')
     for namespace in state['zones'][zone]['namespaces']:
         # TopoLVM removes the logical volume of each claim when the namespace goes.
         kubectl('delete', 'namespace', namespace, '--ignore-not-found', '--wait=true', '--timeout=900s')

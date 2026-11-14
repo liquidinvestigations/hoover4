@@ -66,13 +66,15 @@ def test_a_zone_derives_its_storage_names_and_has_the_defaults():
 def test_the_zone_state_values_are_checked_against_the_site(tmp_path):
     from conftest import write_site
     site = config.read(write_site(tmp_path, 'remote.yml'))
-    assert sorted(config.hoovers(site)) == ['zone-a', 'zone-c']
+    assert sorted(config.hoovers(site)) == ['zone-a', 'zone-b', 'zone-c']
     assert config.hoovers(site)['zone-c'].stores == 'local'
+    # An entry without stores is a zone of an earlier version, with every store in its zone namespace.
+    assert config.hoovers(site)['zone-a'].stores == 'site' and config.hoovers(site)['zone-b'].stores == 'zone'
     assert config.zones_problems(site) == []
     bad = {'zones': {'zone-a': {'enabled': True, 'home': 'calls', 'stores': 'nfs'},
                      'zone-b': {'enabled': True, 'home': 'nowhere', 'temporal_backend': 'mysql'}}}
     message = '\n'.join(config.zones_problems(site, bad))
-    assert 'the zone zone-a has stores = nfs, which is not one of zone, local.' in message
+    assert 'the zone zone-a has stores = nfs, which is not one of zone, local, site.' in message
     # A zone has no home node. An old value home has no effect on the checks or the placement.
     assert 'home' not in message
     assert 'the zone zone-b has temporal_backend = mysql' in message

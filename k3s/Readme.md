@@ -150,7 +150,7 @@ The site file names no zone. The zone state `zone-state.json` holds the zones, a
 The cluster holds the authoritative zone state (see [the cluster copy of the state](#keep-the-state-in-the-cluster)). `zone.py` takes the site operation lock, reads the cluster copy into the state folder and writes its changes back.
 
 ```sh
-python3 k3s/zones/zone.py apply zone-x [--stores zone|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
+python3 k3s/zones/zone.py apply zone-x [--stores site|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
 python3 k3s/zones/zone.py delete zone-x
 ```
 
@@ -162,7 +162,8 @@ python3 k3s/zones/zone.py delete zone-x
   scheduler binds it on a node with that tier and free capacity, and its pod then stays on that node (TopoLVM).
 - `--home` of an earlier version is accepted and has no effect. A zone entry with a `home` value keeps that node only as
   the NFS data node of the zone, when the node has the role `data`.
-- `stores` and `temporal_backend` have the defaults `zone` and `postgresql`. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
+- A new zone gets `stores = site` unless `--stores local` is given. `temporal_backend` has the default `postgresql`. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
+- A zone with `stores = site` adds its tenant to the [shared stores](#share-the-hoover-stores-of-a-site) at create, and `zone.py delete` removes the tenant before it deletes the namespaces.
 - The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
 - `deploy-k3s up` applies each zone of the zone state again, after the platform steps.
 
@@ -238,6 +239,7 @@ k3s/deploy-k3s status --site <file>
 - The tools step installs pinned downloads from [driver/artifacts.json](driver/artifacts.json) into `bin/` of the state folder.
   The platform scripts use Helm 4. The openDesk helmfile uses Helm 3 from `bin/opendesk/`.
 - The calls step runs after the zones, because the calls services read Secrets of the zones.
+- The stores step creates and updates the shared stores of the site ([hoover/stores/shared.py](hoover/stores/shared.py)) before the zone steps. `down` and `up --start` stop and start them with the stores tier.
 - After the conversion of the server from SQLite to etcd, `hosts:verify` restarts the Deployments and DaemonSets of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
   Without the restart, CoreDNS, the ingress controller, cert-manager, TopoLVM and the monitoring operators did not see objects that were created after the conversion.
 - The etcd snapshot of the platform backup, the restore of a snapshot and the copy of a retired server run [ansible/roles/hoover4_k3s/files/k3s-datastore.py](ansible/roles/hoover4_k3s/files/k3s-datastore.py) with `sudo -n` over SSH ([driver/nodeshell.py](driver/nodeshell.py)).
@@ -280,9 +282,45 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 | Zone state value | Value | Result |
 |---|---|---|
 | `stores` | `local` | The Compose stores run in the Hoover namespace on claims of one node. The operations worker mounts them, so store backup and restore work. The pods with a claim share the node of the first bound claim through a required pod affinity. |
-| `stores` | `zone` | ClickHouse, Manticore and Garage run in Kata on block volumes in the zone namespace, with a user for each service. Existing remote zones use this layout. |
+| `stores` | `site` | ClickHouse and Garage are the shared stores of the site. The two Manticore daemons run in Kata on block volumes in the zone namespace. Every new zone uses this layout. |
+| `stores` | `zone` | ClickHouse, Manticore and Garage run in the zone namespace. A zone entry without `stores` is a zone of this earlier layout. The installer and `deploy-k3s check` refuse it. Delete the zone and create it again: its data does not move. |
 | `temporal_backend` | `cassandra` | Temporal, Cassandra and Elasticsearch run as in Compose, with the dynamic configuration of deploy.py. |
 | `temporal_backend` | `postgresql` | Temporal uses the PostgreSQL of the zone. Existing remote zones use this backend. No conversion between the backends exists. |
+
+## Share the Hoover stores of a site.
+
+One ClickHouse and one Garage serve every zone of a site, in the namespace `hoover-stores` ([hoover/stores/shared.py](hoover/stores/shared.py)). The step `stores` of `deploy-k3s up` creates them, and each zone with `stores = site` is a tenant.
+The site file sets their nodes, copies and failover in `vars.stores`:
+
+```yaml
+hoover4:
+  vars:
+    stores:
+      nodes: [node-a, node-b, node-c]   # default: every node with the role worker and a storage tier
+      replicas: 3                       # default: the node count, at most 3
+      failover: false                   # default: false
+```
+
+- ClickHouse runs one pod. The Hoover tables are MergeTree tables without replication, so a second ClickHouse pod would hold no data. `deploy-k3s check` warns about this when `replicas` is above 1.
+- Garage runs one pod for each copy, each on another node of `nodes`. Its replication factor is `replicas`, and Garage keeps it from its creation. `deploy-k3s check` and the stores step refuse another value.
+- Each copy needs a storage tier on its own node. The step takes the first preferred tier that enough nodes have.
+- A claim holds 20 GiB for each zone with `stores = site`, at least one zone, for ClickHouse and for each Garage pod. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
+- Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace.
+- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
+- Manticore stays in each zone. A Manticore 29.9 user with the right `schema` on its own tables can read the table of another user through a distributed table, so a shared Manticore cannot isolate the zones.
+- [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) `<zone> <other zone>` checks the isolation from the operations pod of the zone.
+- The zone copy of the backups does not hold the ClickHouse databases and Garage buckets of a zone with `stores = site`. The collection exports hold them.
+
+### Failover
+
+`failover: false` points the client Service of each store at its first pod. Garage keeps every copy, and a person recovers a lost pod:
+
+1. Find the store pod that does not run: `kubectl -n hoover-stores get pods -o wide`.
+2. When its node returns, the pod starts again with its volume, and the clients reach it.
+3. When the node of `garage-0` stays lost, set `failover: true` in the site file and run `deploy-k3s up --steps stores`. The clients then use the other Garage pods, which hold every object at a replication factor equal to the pod count.
+4. When the node of `clickhouse-0` stays lost, the ClickHouse data of every zone is lost with its volume. Restore the collections of each zone from their collection exports.
+
+`failover: true` points the client Service of each store at every ready pod. Garage then serves reads and writes while a majority of its copies is up, which needs 3 nodes. With 2 nodes it keeps a second copy, and writes stop while one node is down. `failover` cannot change from true to false: the stores step and `deploy-k3s check` refuse it.
 
 ## Render a Hoover installation.
 
@@ -482,7 +520,7 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 - The zone copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
   Their CronJobs are suspended, and the stores keep running. After the copy, the recorded replicas and suspensions return.
   The next runner tick restores a closure that a stopped job left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
-- The receipt queries use the ClickHouse of the store layout. The zone layout uses the zone user in the zone namespace. The local layout uses the Compose credentials.
+- The receipt queries use the ClickHouse of the store layout. The site layout uses the admin of the shared ClickHouse. The local layout uses the Compose credentials.
 - The collection export reads each small frozen Manticore file whole, and a `.meta` file must be JSON. The archive entry gets the size of the bytes that the export read.
 - Make sure that the destination is on another site. The system cannot check this.
 - Each copy has `copy-manifest.json` with the SHA-256 of every file. A collection copy also holds the `manifest.json` of the export, which the import reads.

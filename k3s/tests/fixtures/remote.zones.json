@@ -1,7 +1,8 @@
 {
  "schemaVersion": 1,
  "zones": {
-  "zone-a": {"enabled": true, "namespaces": ["zone-a", "hoover-zone-a"]},
+  "zone-a": {"enabled": true, "namespaces": ["zone-a", "hoover-zone-a"], "stores": "site"},
+  "zone-b": {"enabled": true, "namespaces": ["zone-b", "hoover-zone-b"]},
   "zone-c": {"enabled": true, "home": "server-a", "namespaces": ["zone-c", "hoover-zone-c"], "stores": "local",
              "temporal_backend": "cassandra"}
  }

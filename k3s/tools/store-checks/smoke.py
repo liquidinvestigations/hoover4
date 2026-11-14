@@ -4,7 +4,9 @@
 Each check is a Python file in checks/. The pod mounts the secret that the check needs, so no credential leaves the cluster.
 Usage: smoke.py <store> <label> <zone namespace>
 A check runs in the zone namespace and gets ZONE in its environment. The stores run in Kata, and the check pod runs in
-the runtime that the zone pod policy gives it.
+the runtime that the zone pod policy gives it. The Garage check runs in the Hoover namespace of the zone, because the
+shared Garage of the site admits only the Hoover namespaces. It gets the zone key of the website from hoover-runtime
+as S3_ACCESS_KEY and S3_SECRET_KEY.
 The command exits with 1 when the pod fails, times out, or reports a failed operation.
 """
 import json, sys, time
@@ -16,7 +18,7 @@ import common  # noqa: E402
 IMAGE = 'registry-1.docker.io/alpine/k8s@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4'
 CHECKS = {'seaweedfs': {'namespace': None, 'secret': 'seaweedfs-config'},
           'seaweedfs-load': {'namespace': None, 'secret': 'seaweedfs-config'},
-          'garage': {'namespace': None, 'secret': 'garage-tenants'},
+          'garage': {'namespace': None, 'secret': None, 'hoover': True},
           'memcached': {'namespace': None, 'secret': None},
           'nats': {'namespace': None, 'secret': 'ums-provisioning-nats-admin', 'pod_ip_of': 'ums-provisioning-nats-0'},
           'redis': {'namespace': None, 'secret': 'redis-password'}}
@@ -47,13 +49,16 @@ def passed(store, result):
 def main():
     store, label = sys.argv[1], sys.argv[2]
     check = dict(CHECKS[store])
-    check['namespace'] = sys.argv[3]
+    zone = sys.argv[3]
+    check['namespace'] = f'hoover-{zone}' if check.get('hoover') else zone
+    keys = [{'name': f'S3_{part.upper()}_KEY', 'valueFrom': {'secretKeyRef': {'name': 'hoover-runtime', 'key': f's3-{part}-key-website'}}}
+            for part in ('access', 'secret')] if check.get('hoover') else []
     name = f'store-check-{store}'
     script = (HERE / 'checks' / f'{store}.py').read_text()
     pod = {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': name, 'namespace': check['namespace'], 'labels': {common.LABEL: 'smoke'}},
            'spec': {'restartPolicy': 'Never', 'terminationGracePeriodSeconds': 1,
                     'containers': [{'name': 'check', 'image': IMAGE, 'command': ['python3', '-c', script],
-                                    'env': [{'name': 'ZONE', 'value': check['namespace']}] + (
+                                    'env': [{'name': 'ZONE', 'value': zone}] + keys + (
                                         [{'name': 'POD_IP', 'value': common.kubectl_json('-n', check['namespace'], 'get', 'pod', check['pod_ip_of'])['status']['podIP']}]
                                         if check.get('pod_ip_of') else []),
                                     'volumeMounts': [{'name': 'secret', 'mountPath': '/secret', 'readOnly': True}] if check['secret'] else [],

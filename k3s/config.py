@@ -9,11 +9,12 @@ secret value. Tunings, application switches and schedules are operator settings 
 secret is a reference to a private file on the node that reads it.
 
   hoover4:
-    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool and backup
+    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool, backup and stores
       networks:          one entry per WireGuard network: interface, cidr, hubs, port and managed (NETWORK_KEYS)
       lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
       backup:            one node and one host folder that receive the backups
+      stores:            the nodes, the data copies and the failover switch of the shared Hoover stores (STORES_KEYS)
     hosts:
       <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
@@ -88,7 +89,7 @@ STORAGE_RESERVE = 0.05
 # secret (the absolute path of a private file), alias (an SSH host alias).
 SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name')}
 # The mappings of hoover4.vars beside the site values.
-SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup')
+SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores')
 # A WireGuard network: vars.networks.<name>. hubs names the nodes that every other node of the network peers with.
 # Without hubs, every node peers with every other node. managed: the installer writes and starts the interface on each
 # node of the network and adds its peers. Without it, the installer reads the interface and changes nothing on it.
@@ -114,10 +115,21 @@ NODE_KEYS = {
 # The GPU pool names nodes or an address. Its key is a generated Secret of the cluster, so the site file names no key.
 GPU_POOL_KEYS = {'nodes': (False, 'names'), 'address': (False, 'address')}
 BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
+# The shared Hoover stores of the site (../hoover/stores/shared.py): vars.stores.
+#   nodes     the nodes that can run a store pod. Default: every node with the role worker and a storage tier.
+#   replicas  the data copies of each store on different nodes. Default: the node count, at most 3 (store_plan()).
+#   failover  true: a store moves its clients to another copy by itself. false (default): the clients use the first
+#             copy, and a person recovers a lost copy by hand. A change from true to false is refused (deploy check).
+STORES_KEYS = {'nodes': (False, 'names'), 'replicas': (False, 'count'), 'failover': (False, 'bool')}
 # The values of a zone entry of the zone state that the Hoover installation of the zone reads (zone_hoover()):
 # stores, the store layout, and temporal_backend, the store of Temporal, each with its default first. extra_datasets
 # lists read-only dataset folders of data nodes as name:node:/path.
-ZONE_VALUES = {'stores': ('zone', 'local'), 'temporal_backend': ('postgresql', 'cassandra')}
+# The store layouts: site (ClickHouse and Garage are the shared stores of the site, Manticore runs in the zone
+# namespace), local (the Compose stores in the Hoover namespace, from the Compose import), and zone (every store in the
+# zone namespace, from an earlier version). An entry without the value is a zone of that earlier version. A new zone
+# gets site (../zones/zone.py register()). The installer refuses to apply a zone with the layout zone: delete the zone
+# and create it again.
+ZONE_VALUES = {'stores': ('zone', 'local', 'site'), 'temporal_backend': ('postgresql', 'cassandra')}
 # The defaults of the optional keys. A key without a default here is empty. public_firewall has no default here: it is
 # true on a public or calls node with a public address (parse).
 DEFAULTS = {
@@ -255,6 +267,8 @@ class Site:
     lans: dict = field(default_factory=dict)
     gpu_pool: dict = field(default_factory=dict)
     backup: dict = field(default_factory=dict)
+    # vars.stores as given in the site file. store_plan() adds the defaults.
+    stores: dict = field(default_factory=dict)
     # The site file that read() parsed, or empty for parse().
     path: str = ''
 
@@ -431,6 +445,11 @@ def _value(label, kind, raw, problems):
             return False
         problems.append(f'{label} = {raw} must be true or false.')
         return None
+    if kind == 'count':
+        if not raw.isdigit() or int(raw) < 1:
+            problems.append(f'{label} = {raw} must be a whole number of at least 1.')
+            return None
+        return int(raw)
     if kind == 'port':
         if not raw.isdigit() or not 0 < int(raw) < 65536:
             problems.append(f'{label} = {raw} is not a port number.')
@@ -623,6 +642,7 @@ def parse(text, check_files=False):
     backup = {}
     if variables.get('backup') is not None:
         backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
+    stores = _section('vars.stores', _mapping(variables.get('stores'), 'vars.stores', problems), STORES_KEYS, {}, problems)
     networks, lans = {}, {}
     for name, values in _mapping(variables.get('networks'), 'vars.networks', problems).items():
         name = str(name)
@@ -661,7 +681,7 @@ def parse(text, check_files=False):
             nodes[name] = Node(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
-    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, **site_values)
+    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, **site_values)
     problems = check(site, check_files=check_files)
     if problems:
         raise SiteError(_message(problems))
@@ -762,9 +782,68 @@ def check(site, check_files=False):
             problems.append(f'vars.backup node = {site.backup.get("node")} is not a node of the site.')
         elif node.has('gpu'):
             problems.append('vars.backup node is a GPU node. Choose a node that holds application data.')
+    problems += store_problems(site)
     if check_files:
         problems += missing_files(site)
     return problems
+
+
+def store_plan(site):
+    """The shared Hoover stores of a site with the defaults of STORES_KEYS: {'nodes', 'replicas', 'failover'}.
+
+    The default nodes are the nodes with the role worker and a storage tier, in the order of the site file. The default
+    replicas are the node count, at most 3: 2 nodes give a second copy, and 3 nodes give a majority of copies.
+    """
+    nodes = tuple(site.stores.get('nodes') or (n.name for n in site.nodes.values() if n.has('worker') and n.storage))
+    return {'nodes': nodes, 'replicas': site.stores.get('replicas', min(len(nodes), 3)),
+            'failover': site.stores.get('failover', False)}
+
+
+def store_problems(site):
+    """The problems of vars.stores, as messages."""
+    plan = store_plan(site)
+    problems = []
+    for name in plan['nodes']:
+        node = site.nodes.get(name)
+        if node is None:
+            problems.append(f'vars.stores nodes names {name}, which is not a node of the site.')
+        elif node.has('gpu') or not node.storage:
+            problems.append(f'vars.stores nodes names {name}, which has no storage tier or is a GPU node.')
+    if not plan['nodes']:
+        problems.append('vars.stores has no node. Give nodes, or give a node the role worker and a storage tier.')
+    elif plan['replicas'] > len(plan['nodes']):
+        problems.append(f'vars.stores replicas = {plan["replicas"]} is more than its {len(plan["nodes"])} nodes. '
+                        'Each copy needs its own node.')
+    return problems
+
+
+def store_change_problems(before, plan):
+    """The problems of a store plan against the plan that the cluster recorded at the last apply (before), as messages.
+
+    Failover cannot be turned off again, and Garage keeps the replication factor of its creation.
+    """
+    if not before:
+        return []
+    out = []
+    if before.get('failover') and not plan['failover']:
+        out.append('the shared stores run with failover. vars.stores failover cannot change back to false.')
+    if before.get('garage_replication_factor') not in (None, plan['replicas']):
+        out.append(f'Garage keeps the replication factor {before["garage_replication_factor"]} of its creation. '
+                   f'Set vars.stores replicas to {before["garage_replication_factor"]}.')
+    return out
+
+
+def store_warnings(site):
+    """The warnings of vars.stores, as messages. A warning does not stop a deployment."""
+    plan = store_plan(site)
+    out = []
+    if plan['replicas'] == 2 or (plan['failover'] and len(plan['nodes']) < 3):
+        out.append(f'the shared stores have {plan["replicas"]} copies on {len(plan["nodes"])} nodes. Automatic failover '
+                   'needs 3 nodes: with 2 nodes a store keeps a second copy, and a person recovers it by hand.')
+    if plan['replicas'] > 1:
+        out.append('ClickHouse runs one copy. The Hoover tables are not replicated tables, so a second ClickHouse '
+                   'copy would hold no data.')
+    return out
 
 
 def tls_mode(node):
@@ -837,7 +916,8 @@ def document(site):
                                           **({'hubs': list(n.hubs)} if n.hubs else {})} for n in site.networks.values()}
     if site.lans:
         variables['lans'] = {name: ({'cidr': cidr} if cidr else {}) for name, cidr in site.lans.items()}
-    for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS)):
+    for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS),
+                                ('stores', site.stores, STORES_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
     hosts = {}

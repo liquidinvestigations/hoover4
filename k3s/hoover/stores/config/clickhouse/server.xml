@@ -1,4 +1,4 @@
-<!-- Server settings for a small ClickHouse of one zone. Sources: the ClickHouse low-memory guidance and the hoover4 override.
+<!-- Server settings of the shared ClickHouse of the site. Sources: the ClickHouse low-memory guidance and the hoover4 override.
      Caches are small, background pools are small, and system logs other than query_log, part_log and
      asynchronous_insert_log are removed. The memory cap follows the container limit inside the guest. -->
 <clickhouse>

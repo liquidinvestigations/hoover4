@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the test suites of the cluster deployment code in containers. Usage: k3s/tests/run.sh [suite ...]
 # Without a suite it runs render, state and driver.
-#   render   the site file and the Hoover render (test_config.py, test_render.py)
+#   render   the site file, the Hoover render and the shared stores (test_config.py, test_render.py, test_shared_stores.py)
 #   state    the operator settings registry, revisions, apply operations, portal routes, the cluster copy of the state
 #            and the site lock Lease (test_state.py, test_portal.py, test_clusterstate.py)
 #   driver   the deployment driver with fake ssh, sudo, kubectl and ansible-playbook, and the host roles (test_driver.py, test_hosts.py)
@@ -18,7 +18,7 @@ repo_root="$(cd -- "$tests_dir/../.." && pwd)"
 suites=("$@")
 [ ${#suites[@]} -eq 0 ] && suites=(render state driver)
 
-declare -A files=([render]="test_config.py test_render.py" [state]="test_state.py test_portal.py test_clusterstate.py" [driver]="test_driver.py test_hosts.py"
+declare -A files=([render]="test_config.py test_render.py test_shared_stores.py" [state]="test_state.py test_portal.py test_clusterstate.py" [driver]="test_driver.py test_hosts.py"
                  [import]="test_import_compose.py" [backup]="test_backup.py")
 built=""
 status=0

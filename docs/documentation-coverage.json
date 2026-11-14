@@ -3236,6 +3236,21 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability changes host names and the HTTPS frontend. The pages of the zone applications keep their layout."
+    },
+    {
+      "id": "F-admin-59",
+      "source": [
+        "k3s/hoover/stores/shared.py",
+        "k3s/hoover/setup.py",
+        "k3s/config.py",
+        "k3s/tools/tenant-isolation-check.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#share-the-hoover-stores-of-a-site"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability changes the store pods and the site file. No page of the portal or of a zone application changes."
     }
   ],
   "routes": {

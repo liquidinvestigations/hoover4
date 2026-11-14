@@ -22,6 +22,8 @@ Jobs:
   system of a Kata store, which only the guest of the store pod mounts, so the copy reads it through the store
   container with the busybox of ../../hoover/stores/podspec.py. A claim that a pod owns (a generic ephemeral volume)
   holds temporary files and is not copied. The earlier job key opendesk:<zone> reads as zone:<zone>.
+  A zone of the store layout site keeps its ClickHouse databases and Garage buckets in the shared stores of the site
+  (../../hoover/stores/shared.py). The zone copy does not hold them. The collection exports of the next job hold them.
 - hoover:<zone>:<collection>: the collection export of the operations worker (main.py export-collection), streamed out
   of the claim ops-backups. The export directory in the claim is removed after the copy, so no second archive stays.
 - platform: an etcd snapshot of the control-plane server with its token and k3s configuration (the snapshot command of
@@ -190,13 +192,13 @@ def clickhouse_command(hoover):
     """(namespace, pod, container, shell command) of the ClickHouse client of an installation.
 
     The local store layout runs ClickHouse in the Hoover namespace with the Compose credentials of its environment. The
-    zone layout runs it in the zone namespace, and the client uses the zone user, whose password the store container
-    holds in CH_ZONE_PASSWORD. No password appears in a command argument of this host.
+    site layout uses the shared ClickHouse of the namespace hoover-stores (../../hoover/stores/shared.py), and the
+    client uses its admin, whose password the store container holds in CH_ADMIN_PASSWORD. The queries name the
+    databases of the zone. No password appears in a command argument of this host.
     """
-    if hoover.stores == 'zone':
-        user = hoover.zone.replace('-', '_')
-        return (hoover.zone, 'clickhouse-0', 'clickhouse',
-                f'exec clickhouse-client --user {user} --password "$CH_ZONE_PASSWORD" --format JSONEachRow')
+    if hoover.stores != 'local':
+        return ('hoover-stores', 'clickhouse-0', 'clickhouse',
+                'exec clickhouse-client --user hoover_admin --password "$CH_ADMIN_PASSWORD" --format JSONEachRow')
     return (hoover.namespace, 'clickhouse-0', None,
             'exec clickhouse-client --user "${CLICKHOUSE_USER:-hoover4}" --password "${CLICKHOUSE_PASSWORD:-hoover4}" '
             '--format JSONEachRow')

@@ -211,14 +211,14 @@ def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password(tm
     backups = backups_module()
     zones = config.hoovers(config.read(write_site(tmp_path, 'remote.yml')))
     ns, pod, container, command = backups.clickhouse_command(zones['zone-a'])
-    assert (ns, pod, container) == ('zone-a', 'clickhouse-0', 'clickhouse')
-    assert '--user zone_a --password "$CH_ZONE_PASSWORD"' in command
+    assert (ns, pod, container) == ('hoover-stores', 'clickhouse-0', 'clickhouse')
+    assert '--user hoover_admin --password "$CH_ADMIN_PASSWORD"' in command
     ns, pod, container, command = backups.clickhouse_command(zones['zone-c'])
     assert (ns, pod, container) == ('hoover-zone-c', 'clickhouse-0', None) and '${CLICKHOUSE_PASSWORD:-hoover4}' in command
     calls = []
     backups.kubectl = lambda *args, **kw: calls.append(args) or ''
     backups.clickhouse(zones['zone-a'], 'SELECT 1')
-    assert calls[0][:8] == ('-n', 'zone-a', 'exec', '-i', 'clickhouse-0', '-c', 'clickhouse', '--')
+    assert calls[0][:8] == ('-n', 'hoover-stores', 'exec', '-i', 'clickhouse-0', '-c', 'clickhouse', '--')
     assert not any('hoover4' == a for a in calls[0])
 
 

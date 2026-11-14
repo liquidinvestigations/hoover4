@@ -317,13 +317,15 @@ def test_second_render_is_equal(tmp_path):
 
 # The remote topology ------------------------------------------------------------------------------------------------
 
-def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
+def test_site_zone_uses_postgresql_shared_stores_and_its_own_manticore(tmp_path):
     items = items_of(target('remote.yml', 'zone-a', tmp_path))
     temporal = containers(get(items, 'Deployment', 'temporal'))[0]
     assert env(temporal)['DB'] == 'postgres12'
     names = {(i['kind'], i['metadata']['name']) for i in items}
     assert ('StatefulSet', 'temporal-cassandra') not in names and ('StatefulSet', 'clickhouse') not in names
-    assert get(items, 'Service', 'clickhouse')['spec'] == {'type': 'ExternalName', 'externalName': 'clickhouse.zone-a.svc.cluster.local'}
+    for name, namespace in (('clickhouse', 'hoover-stores'), ('garage', 'hoover-stores'), ('manticore', 'zone-a'),
+                            ('manticore-vectors', 'zone-a')):
+        assert get(items, 'Service', name)['spec'] == {'type': 'ExternalName', 'externalName': f'{name}.{namespace}.svc.cluster.local'}
     workers = get(items, 'Deployment', 'hoover-workers')
     e = env(containers(workers)[0])
     assert e['CLICKHOUSE_USER'] == 'zone_a_worker'
@@ -333,9 +335,30 @@ def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
     assert clamav['nodeSelector'] == {'kubernetes.io/hostname': 'edge'}
 
 
+def test_a_zone_of_the_earlier_store_layout_is_refused(tmp_path):
+    # zone-b has no stores value: its ClickHouse and Garage are in its zone namespace, and its data does not move.
+    with pytest.raises(manifests.RenderError, match='zone-b keeps its ClickHouse and Garage in its zone namespace'):
+        items_of(target('remote.yml', 'zone-b', tmp_path))
+
+
+def test_a_site_zone_reaches_only_the_client_ports_of_the_shared_stores(tmp_path):
+    items = items_of(target('remote.yml', 'zone-a', tmp_path))
+    shared_ns = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'hoover-stores'}}}
+    rules = get(items, 'NetworkPolicy', 'egress-stores')['spec']['egress']
+    assert rules[0]['to'][0]['namespaceSelector'] == {'matchLabels': {'kubernetes.io/metadata.name': 'zone-a'}}
+    assert rules[0]['to'][0]['podSelector']['matchExpressions'][0]['values'] == ['manticore', 'manticore-vectors', 'postgresql']
+    assert rules[1:] == [{'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}],
+                          'ports': [{'port': 8123}, {'port': 9000}]},
+                         {'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
+                          'ports': [{'port': 3900}]}]
+    browser = get(items, 'NetworkPolicy', 'egress-browser-stores')['spec']['egress']
+    assert [r['ports'] for r in browser] == [[{'port': 8123}], [{'port': 3900}]]
+    assert all(r['to'][0]['namespaceSelector'] == shared_ns['namespaceSelector'] for r in browser)
+
+
 def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
     items = items_of(target('remote.yml', 'zone-a', tmp_path))
-    assert get(items, 'Namespace', 'hoover-zone-a')['metadata']['labels'] == {'hoover.dev/zone': 'true'}
+    assert get(items, 'Namespace', 'hoover-zone-a')['metadata']['labels'] == {'hoover.dev/zone': 'true', 'hoover.dev/hoover': 'true'}
     for item in workloads(items):
         spec = item['spec']['template']['spec']
         # Only the internet services name the public node. The zone layout has no shared claims and no affinity.

@@ -2,8 +2,8 @@
 
 Each service that uses a store has its own ClickHouse user and Manticore user with its own random password. A user
 name is the zone prefix and the service, for example zone_a_mcp_browser. creds.py writes the passwords into the
-Secret hoover-stores of the zone namespace. hoover.py gives them to the stores, and ../setup.py copies them into the
-Secret hoover-runtime of the Hoover namespace.
+Secret hoover-stores of the zone namespace. ../setup.py creates the users in the shared ClickHouse and in the Manticore
+daemons of the zone, and copies the passwords into the Secret hoover-runtime of the Hoover namespace.
 Garage has no grant on a bucket that is created later, and the processing code creates a bucket for each new
 collection. The services that use the collection buckets therefore share the zone key, which can create buckets.
 Each other Garage user has its own key with access to the system bucket only.
@@ -50,28 +50,20 @@ def using(store):
     return [s for s, stores in SERVICES.items() if store in stores]
 
 
+def zone_grants(zone):
+    """The ClickHouse grants of the zone user: the database <prefix> and every database <prefix>_*. A quoted name
+    would make the * of the wildcard grant a literal character, so the names stay unquoted."""
+    p = prefix(zone)
+    rights = 'SELECT, INSERT, ALTER, CREATE DATABASE, CREATE TABLE, CREATE VIEW, DROP TABLE, DROP VIEW, TRUNCATE, OPTIMIZE, SHOW'
+    return [f'GRANT {rights} ON {p}.*', f'GRANT {rights.replace("DROP TABLE", "DROP DATABASE, DROP TABLE")} ON {p}_*.*']
+
+
 def clickhouse_grants(zone, service):
     p = prefix(zone)
     if SERVICES[service]['clickhouse'] == 'zone':
-        rights = 'SELECT, INSERT, ALTER, CREATE DATABASE, CREATE TABLE, CREATE VIEW, DROP TABLE, DROP VIEW, TRUNCATE, OPTIMIZE, SHOW'
-        return [f'GRANT {rights} ON {p}.*', f'GRANT {rights} ON {p}_global.*',
-                f'GRANT {rights.replace("DROP TABLE", "DROP DATABASE, DROP TABLE")} ON {p}_*.*']
+        return zone_grants(zone)
     # The browser stores page captures and citations, reads the chat rows of its own session and writes telemetry.
     db = f'{p}_Processing'
     return [f'GRANT SELECT, INSERT ON {db}.chat_artifacts', f'GRANT SELECT ON {db}.chat_messages',
             f'GRANT SELECT ON {db}.agent_run_messages', f'GRANT INSERT ON {db}.ai_service_telemetry']
 
-
-def clickhouse_users_xml(zone):
-    """The users block of the services for the ClickHouse users file."""
-    blocks = []
-    for service in using('clickhouse'):
-        grants = ''.join(f'<query>{g}</query>' for g in clickhouse_grants(zone, service))
-        blocks.append(f'        <{user(zone, service)}>\n'
-                      f'            <password from_env="{env_name(service)}"/>\n'
-                      f'            <networks><ip>::/0</ip></networks>\n'
-                      f'            <profile>default</profile>\n'
-                      f'            <quota>default</quota>\n'
-                      f'            <grants>{grants}</grants>\n'
-                      f'        </{user(zone, service)}>')
-    return '\n'.join(blocks)
