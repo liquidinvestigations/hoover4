@@ -164,7 +164,7 @@ def test_the_operator_pod_mounts_no_host_folder_except_the_cgroup_and_keeps_zone
     assert runner_mounts['/var/run/zone-runner'] == 'runner-token'
 
 
-def test_the_runner_frontend_step_checks_a_new_zone_and_warns_for_a_delete(tmp_path, monkeypatch):
+def test_the_runner_frontend_step_checks_a_new_zone_and_skips_a_delete(tmp_path, monkeypatch):
     import sys
     from conftest import write_site
     site = write_site(tmp_path, 'remote.yml')
@@ -180,11 +180,12 @@ def test_the_runner_frontend_step_checks_a_new_zone_and_warns_for_a_delete(tmp_p
     monkeypatch.setattr(runner, 'LOGS', tmp_path / 'operations')
     calls = []
     monkeypatch.setattr(runner.subprocess, 'Popen', lambda *a, **k: calls.append(a))
+    # A delete has no frontend step. An operation of an earlier version that lists it passes it without a warning.
+    assert runner.STEPS['delete-zone'] == ['delete', 'calls']
     delete = runner.Operation({'metadata': {'name': 'op-1'}, 'data': {'kind': 'delete-zone', 'zone': 'zone-a'}})
-    assert delete.step_frontend() == runner.FRONTEND_WARNING
-    assert 'deploy-k3s up --steps frontend' in (tmp_path / 'operations/op-1.log').read_text()
+    assert delete.step_frontend() is None
     create = runner.Operation({'metadata': {'name': 'op-2'}, 'data': {'kind': 'create-zone', 'zone': 'zone-a'}})
-    monkeypatch.setattr(runner, 'frontend_problem', lambda zone: 'portal.zone-a.example: no certificate')
+    monkeypatch.setattr(runner, 'frontend_problem', lambda zone: 'zone-a-portal.example: no certificate')
     with pytest.raises(RuntimeError, match='--steps frontend on the operator workstation, then select Run again'):
         create.step_frontend()
     monkeypatch.setattr(runner, 'frontend_problem', lambda zone: '')

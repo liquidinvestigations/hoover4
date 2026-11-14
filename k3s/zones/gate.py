@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Build the sign-in service of the zone gate: one oauth2-proxy in the zone namespace at auth.<zone>.<suffix>.
+"""Build the sign-in service of the zone gate: one oauth2-proxy in the zone namespace at <zone>-auth.<suffix>.
 
-The HTTPS frontend (../platform/frontend/install-frontend.sh) asks this proxy at /oauth2/auth before it sends a request
+The HTTPS frontend (../platform/frontend/frontend-sync.sh) asks this proxy at /oauth2/auth before it sends a request
 to a gated route of the zone. The proxy uses the Keycloak client opendesk-gate of the zone (zones.py, gate_oidc).
-Its cookie has the domain .<zone>.<suffix>, so one sign-in opens every application host of the zone.
+Every zone host is <zone>-<app>.<suffix>, so a cookie of one zone host cannot reach the other hosts of the zone. The
+cookie therefore has the domain .<suffix>, and one sign-in opens every application host of the zone. The cookie name
+holds the zone id, cookie_name(). The gate of another zone reads only its own cookie name, and its cookie secret
+differs, so the cookie of zone A does not open a host of zone B.
 The Secret gate-oidc holds the client secret and the cookie secret. zones.py writes it, and zone.py applies it.
 The sessions are in a Redis container of the same pod, and the cookie holds only the session ticket. With a cookie
 session each parallel request of a page refreshes the tokens itself, so the refresh of one page sends hundreds of token
@@ -18,22 +21,32 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config  # noqa: E402
 import settings  # noqa: E402
+import zones  # noqa: E402
 
 IMAGE = 'quay.io/oauth2-proxy/oauth2-proxy:v7.12.0@sha256:786bed0f000c0f8a7b31619244ebab02406a8856a4faf3f5fb1df61fbd6c30ed'
 REDIS = 'docker.io/library/redis:8.2.3-alpine@sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba'
 LABELS = {'app.kubernetes.io/name': 'gate'}
 
 
+def cookie_name(zone):
+    """The name of the gate cookie of a zone. The frontend sends the cookies of every zone to each host of the site."""
+    return f'_hoover_gate_{zone}'
+
+
 def objects(zone):
-    domain = f'{zone}.{settings.SUFFIX}'
-    args = ['--provider=oidc', f'--oidc-issuer-url=https://id.{domain}/realms/opendesk', '--client-id=opendesk-gate',
-            '--client-secret-file=/secrets/client-secret', f'--redirect-url=https://auth.{domain}/oauth2/callback',
+    auth = settings.zone_host(zone, 'auth')
+    # After the sign-in the gate sends the browser back only to a host of its zone.
+    hosts = [settings.zone_host(zone, app) for app in zones.HOSTS] + [settings.zone_domain(zone)]
+    args = ['--provider=oidc', f"--oidc-issuer-url=https://{settings.zone_host(zone, 'id')}/realms/opendesk",
+            '--client-id=opendesk-gate', '--client-secret-file=/secrets/client-secret',
+            f'--redirect-url=https://{auth}/oauth2/callback',
             '--http-address=0.0.0.0:4180', '--email-domain=*', '--reverse-proxy=true',
             # The client has only the profile scope (zones.py, gate_oidc). Its tokens carry no mail address, because
             # the zones send no mail and Keycloak marks no address as verified. The user name names the session.
             '--scope=openid profile', '--oidc-email-claim=preferred_username',
             '--skip-provider-button=true', '--upstream=static://202', '--silence-ping-logging=true',
-            f'--cookie-domain=.{domain}', f'--whitelist-domain=.{domain}', '--cookie-name=_hoover_gate',
+            f'--cookie-domain=.{settings.SUFFIX}', *[f'--whitelist-domain={h}' for h in hosts],
+            f'--cookie-name={cookie_name(zone)}',
             '--cookie-secure=true', '--cookie-samesite=lax',
             # oauth2-proxy has no OIDC back-channel logout. It refreshes its tokens one minute after the last refresh.
             # Keycloak refuses the refresh after a logout, and the proxy then drops its session.
@@ -73,7 +86,7 @@ def objects(zone):
         {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
          'spec': {'selector': LABELS, 'ports': [{'name': 'http', 'port': 4180, 'targetPort': 'http'}]}},
         {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
-         'spec': {'ingressClassName': 'haproxy', 'rules': [{'host': f'auth.{domain}', 'http': {'paths': [{
+         'spec': {'ingressClassName': 'haproxy', 'rules': [{'host': auth, 'http': {'paths': [{
              'path': '/', 'pathType': 'Prefix', 'backend': {'service': {'name': 'gate', 'port': {'number': 4180}}}}]}}]}}]}
 
 

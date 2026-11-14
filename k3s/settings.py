@@ -7,7 +7,7 @@ its extension (config.state_folder()), for example k3s/private/demo/ for k3s/pri
 k3s/private. Every private path of the scripts of platform/, zones/, hoover/ and tools/ is in PRIVATE. Their comments
 write it as <state folder>/<path>.
 config.legacy_settings() gives these values:
-  suffix          the domain of the site, below which each zone has its names, for example <app>.<zone>.<suffix>
+  suffix          the domain of the site. Each zone host is <zone>-<app>.<suffix> (zone_host()).
   frontend_bind   the addresses where the HTTPS frontend listens, for example a node address and a public address
   admin_ranges    the cidr of each network and LAN of the site file. Only these ranges reach the admin routes.
   frontend_local  true when the HTTPS frontend runs on this host with a local CA
@@ -59,6 +59,16 @@ FRONTEND_BIND = HOST.get('frontend_bind', [])
 KUBECONFIG = os.pathsep.join(os.path.abspath(p) for p in os.environ.get('KUBECONFIG', '').split(os.pathsep) if p) \
     or str(PRIVATE / 'kubeconfig')
 HOOVER4 = pathlib.Path(os.environ.get('HOOVER4') or SOURCE.parent)
+
+
+def zone_host(zone, app):
+    """The host name of an application of a zone, for example zone-a-portal.<suffix> (config.zone_host())."""
+    return config.zone_host(zone, app, SUFFIX)
+
+
+def zone_domain(zone):
+    """The mail domain and the Matrix server name of a zone, <zone>.<suffix> (config.zone_domain())."""
+    return config.zone_domain(zone, SUFFIX)
 
 
 def use_kubeconfig():

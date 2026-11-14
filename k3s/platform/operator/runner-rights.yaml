@@ -3,7 +3,8 @@
 # - In a zone namespace it has every right through the RoleBinding zone-runner, which zone.py creates with each zone
 #   namespace. It binds the ClusterRole zone-admin.
 # - Outside the zone namespaces it can create, change and delete zone namespaces and RoleBindings, bind zone-admin,
-#   read the nodes and the zone pod policy, update the XWiki extension repository, run the shared call services,
+#   read the nodes and the zone pod policy, update the XWiki extension repository, run the shared call services, read
+#   the record of the coturn peer check,
 #   read the Services of the Hoover NFS servers, update the operation ConfigMaps of the portal and read the GPU key.
 # - In operator-portal it reads and writes the ConfigMaps and Secrets of the cluster copy of the state
 #   (../../clusterstate.py) and the Lease site-operation of the site lock (../../oplock.py). The Secret rights cover
@@ -107,6 +108,12 @@ rules:
   - apiGroups: ['', apps, networking.k8s.io]
     resources: [secrets, services, deployments, ingresses]
     verbs: [get, list, watch, create, patch, update, delete]
+  # The record of the coturn peer check, which the admin kubeconfig writes (install-calls.py --probe). The runner only
+  # reads it, because it cannot run the probe pod.
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [coturn-peer-check]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

@@ -9,7 +9,7 @@
 # - with sleep as its process, so it serves no MCP port. The harness starts its own Chromium.
 # The stopped Compose container hoover4-mcp-browser stays unchanged.
 # Usage: harness-browser.sh start|stop|status
-# Then: BROWSER_CONTAINER=hoover4-harness-browser website/take-screenshots.sh --target https://hoover.<zone>.<suffix> ...
+# Then: BROWSER_CONTAINER=hoover4-harness-browser website/take-screenshots.sh --target https://<zone>-hoover.<suffix> ...
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 private=$here/../private

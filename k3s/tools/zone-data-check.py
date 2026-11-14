@@ -26,23 +26,23 @@ spec.loader.exec_module(z)
 
 MARK = 'p88-persist'
 SCRIPTS = {
-    'files': (f'https://files.{z.D}/apps/files/', {
+    'files': (f'https://{z.host("files")}/apps/files/', {
         'write': f"""(async () => {{ const p = '/remote.php/dav/files/' + encodeURIComponent(OC.getCurrentUser().uid) + '/{MARK}.txt';
           return String((await fetch(p, {{method: 'PUT', headers: {{requesttoken: OC.requestToken}}, body: 'persisted by plan 88'}})).status); }})()""",
         'read': f"""(async () => {{ const p = '/remote.php/dav/files/' + encodeURIComponent(OC.getCurrentUser().uid) + '/{MARK}.txt';
           const r = await fetch(p, {{headers: {{requesttoken: OC.requestToken}}}}); return r.status + ' ' + (await r.text()); }})()"""}),
-    'notes': (f'https://notes.{z.D}/', {
+    'notes': (f'https://{z.host("notes")}/', {
         'write': f"""(async () => {{ const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
           const r = await fetch('/api/v1.0/documents/', {{method: 'POST', credentials: 'include', headers: {{'Content-Type': 'application/json', 'X-CSRFToken': csrf}},
           body: JSON.stringify({{title: '{MARK}'}})}}); return String(r.status); }})()""",
         'read': f"""(async () => {{ const r = await fetch('/api/v1.0/documents/?title={MARK}', {{credentials: 'include'}});
           const d = await r.json(); return r.status + ' ' + (d.results || []).filter(x => x.title === '{MARK}').length; }})()"""}),
-    'projects': (f'https://projects.{z.D}/', {
+    'projects': (f'https://{z.host("projects")}/', {
         'write': f"""(async () => {{ const t = document.querySelector('meta[name=csrf-token]').content;
           const r = await fetch('/api/v3/projects', {{method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': t}},
           body: JSON.stringify({{name: '{MARK}', identifier: '{MARK}'}})}}); return String(r.status); }})()""",
         'read': f"""(async () => {{ const r = await fetch('/api/v3/projects/{MARK}'); return r.status + ' ' + ((await r.json()).identifier || ''); }})()"""}),
-    'wiki': (f'https://wiki.{z.D}/bin/view/Main/', {
+    'wiki': (f'https://{z.host("wiki")}/bin/view/Main/', {
         'write': """(async () => { const t = document.documentElement.dataset.xwikiFormToken || '';
           const body = '<page xmlns="http://www.xwiki.org"><title>P88 persist</title><content>persisted by plan 88</content></page>';
           const r = await fetch('/rest/wikis/xwiki/spaces/Main/pages/P88Persist', {method: 'PUT', headers: {'Content-Type': 'application/xml', 'XWiki-Form-Token': t}, body});
@@ -57,7 +57,7 @@ async def main(mode):
     browser = await z.start_browser(z.OUT / 'browser-data.log', ['--window-size=1400,900'], timeout=120)
     ok = True
     try:
-        tab = await browser.get(f'https://portal.{z.D}/univention/oidc/?location=/univention/portal/')
+        tab = await browser.get(f'https://{z.host("portal")}/univention/oidc/?location=/univention/portal/')
         await z.sign_in(tab, 'Administrator', password)
         await asyncio.sleep(5)
         for app, (url, scripts) in SCRIPTS.items():
@@ -93,7 +93,7 @@ def chat(mode):
                           'issue-compatibility-token', 'administrator'], capture_output=True, text=True)
     out = out.stdout + out.stderr
     token = (re.findall(r'mct_[A-Za-z0-9_]+', out) or [''])[0]
-    base = f'https://matrix.{z.D}/_matrix/client/v3'
+    base = f'https://{z.host("matrix")}/_matrix/client/v3'
 
     def call(path, body=None):
         request = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,

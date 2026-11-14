@@ -14,7 +14,7 @@ def secret(zone,name,key):
 def sign_in(zone,user,password):
  """Return the landing address after the portal OIDC login, or the Keycloak error text."""
  browser=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),urllib.request.HTTPSHandler(context=CA))
- with browser.open(f'https://portal.{zone}.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/',timeout=60) as r:page=r.read().decode()
+ with browser.open(f'https://{zone}-portal.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/',timeout=60) as r:page=r.read().decode()
  action=html.unescape(re.search(r'<form[^>]*id="kc-form-login"[^>]*action="([^"]+)"',page,re.S).group(1))
  data=urllib.parse.urlencode({'username':user,'password':password,'credentialId':''}).encode()
  try:
@@ -22,7 +22,7 @@ def sign_in(zone,user,password):
  except urllib.error.HTTPError as e:return False,f'HTTP {e.code} {e.geturl()}'
  error=re.search(r'id="input-error"[^>]*>\s*([^<]+)',page)
  if error:return False,error.group(1).strip()
- return landing.startswith(f'https://portal.{zone}.{settings.SUFFIX}/univention/'),landing.split('?')[0]
+ return landing.startswith(f'https://{zone}-portal.{settings.SUFFIX}/univention/'),landing.split('?')[0]
 results={}
 for zone in sys.argv[1:] or ['zone-a','zone-b']:
  candidates={'master-password file':(settings.PRIVATE/f'zones/{zone}/master-password').read_text().strip(),

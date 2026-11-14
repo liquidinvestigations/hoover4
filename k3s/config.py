@@ -27,6 +27,7 @@ The driver connects to a node with `ssh <node name>` and the SSH configuration o
 another alias of that configuration for the node. The local node of a single-node site connects to localhost.
 The node roles are control-plane, worker, public, registry, data, calls and gpu. The value `single` gives one host
 every role except calls and gpu. A site with one node needs no network, no LAN address and no public address.
+Each zone host is <zone>-<app>.<domain> (zone_host()).
 The site file names no zone. The zone state of the state folder (zone-state.json, ../zones/zonestate.py) holds each
 zone, and hoovers() gives the Hoover installation of each zone. The storage names of an installation come from its
 zone id (Hoover). The GPU services share one generated key, which the cluster keeps in a Secret (../hoover/gpu.py).
@@ -282,6 +283,20 @@ class Site:
 # ----------------------------------------------------------------------------------------------------------------------
 # Zones
 # ----------------------------------------------------------------------------------------------------------------------
+
+def zone_host(zone, app, domain):
+    """The host name of an application of a zone: <zone>-<app>.<domain>, for example zone-a-portal.example.org.
+
+    A zone id has one - (ZONE), so the first two parts of the first label always name the zone. The certificate of
+    *.<domain> covers every zone host, so a zone add or delete changes no certificate and no DNS record.
+    """
+    return f'{zone}-{app}.{domain}'
+
+
+def zone_domain(zone, domain):
+    """The mail domain and the Matrix server name of a zone: <zone>.<domain>. *.<domain> covers it too."""
+    return f'{zone}.{domain}'
+
 
 def zone_problems(zone, entry, site=None):
     """The problems of the Hoover values of one zone entry of the zone state, as messages. With a site, the check

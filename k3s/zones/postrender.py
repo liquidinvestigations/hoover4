@@ -217,7 +217,7 @@ def synapse(doc, extra, zone):
     upload, and Synapse 1.161 refuses that request, so the bot stops.
     """
     spec = pod_spec(doc)
-    bot = f'@meetings-bot:{zone.name}.{settings.SUFFIX}'
+    bot = f'@meetings-bot:{settings.zone_domain(zone.name)}'
     modules = f'modules:\n  - module: hoover_e2ee.EncryptNewRooms\n    config:\n      exempt_users: ["{bot}"]\n'
     source = (HERE / 'synapse/hoover_e2ee.py').read_text()
     if not any(o['metadata']['name'] == 'hoover-synapse-modules' for o in extra):

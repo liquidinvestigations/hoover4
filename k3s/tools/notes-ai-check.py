@@ -9,7 +9,7 @@ import html,http.cookiejar,json,pathlib,re,sys,time,urllib.error,urllib.parse,ur
 lab=pathlib.Path(__file__).resolve().parent
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
 OUT=settings.PRIVATE/'checks';OUT.mkdir(parents=True,exist_ok=True)
-zone=sys.argv[1] if len(sys.argv)>1 else 'zone-b';base=f'https://notes.{zone}.{settings.SUFFIX}'
+zone=sys.argv[1] if len(sys.argv)>1 else 'zone-b';base=f'https://{zone}-notes.{settings.SUFFIX}'
 jar=http.cookiejar.CookieJar();browser=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 def call(method,path,body=None,raw=False):
  csrf=next((c.value for c in jar if c.name=='csrftoken'),'')

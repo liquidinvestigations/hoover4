@@ -14,12 +14,12 @@ It also runs the settings Apply operations of the operator state (apply.py), one
 The operations and their steps:
   create-zone   register (zone state with the home node), frontend, install (zone.py apply), calls
   upgrade-zone  frontend, install, calls
-  delete-zone   delete (zone.py delete), frontend, calls
-The step frontend changes nothing, because the HTTPS frontend runs outside the cluster. For a create or an upgrade it
-checks that the frontend answers for the zone names with a valid certificate, because the install needs them. When it
-does not, the operation fails at this step, and the message names deploy-k3s up --steps frontend on the operator
-workstation. Run again then continues at this step. For a delete the step records a warning: the frontend stops serving
-the names of the zone after that command.
+  delete-zone   delete (zone.py delete), calls
+The HTTPS frontend runs outside the cluster and serves every zone host <zone>-<app>.<suffix> with the certificate of
+*.<suffix>, so no zone operation changes it. The step frontend checks that the frontend answers for the portal host of
+the zone with a valid certificate, because the install needs the zone hosts. When it does not, the operation fails at
+this step, and the message names deploy-k3s up --steps frontend on the operator workstation. Run again then continues at
+this step.
 The runner runs one operation at a time, oldest first, while it holds the site operation lock (../../oplock.py). It
 records each finished step in the ConfigMap, so after a restart or a retry it continues at the first unfinished step.
 Each step can run again without a different result.
@@ -37,11 +37,9 @@ sys.path.insert(0,str(source/'zones'));import zones,zonestate
 import clusterstate
 NS='operator-portal';LABEL='hoover.dev/operation'
 LOGS=settings.PRIVATE/'operations'
-FRONTEND_WARNING=('The HTTPS frontend runs outside the cluster. It stops serving the names of the deleted zone after the '
- 'next deploy-k3s up --steps frontend on the operator workstation.')
 STEPS={'create-zone':['register','frontend','install','calls'],
  'upgrade-zone':['frontend','install','calls'],
- 'delete-zone':['delete','frontend','calls']}
+ 'delete-zone':['delete','calls']}
 def kubectl(*args,data=None,check=True):return subprocess.run(['kubectl',*args],input=data,text=True,capture_output=True,check=check).stdout
 def operations():
  items=json.loads(kubectl('-n',NS,'get','configmap','-l',LABEL,'-o','json'))['items']
@@ -101,21 +99,20 @@ class Operation:
   self.run(sys.executable,'-c','import sys;sys.path.insert(0,"zones");import zone;zone.register(sys.argv[1],sys.argv[2])',self.zone,self.home)
  def step_frontend(self):
   # The frontend runs on the public node outside the cluster, and the runner has no access there. The install needs
-  # the zone names, so a create or upgrade checks that the frontend serves them. A delete only records a warning.
-  if self.kind=='delete-zone':
-   with open(self.log,'a') as out:out.write(FRONTEND_WARNING+'\n')
-   return FRONTEND_WARNING
+  # the zone hosts, so a create or upgrade checks that the frontend serves them. A delete operation of an earlier
+  # version can still list this step, and it has nothing to check.
+  if self.kind=='delete-zone':return
   problem=frontend_problem(self.zone)
-  if problem:raise RuntimeError(f'The HTTPS frontend does not serve the names of {self.zone}: {problem}. Run deploy-k3s up '
+  if problem:raise RuntimeError(f'The HTTPS frontend does not serve the hosts of {self.zone}: {problem}. Run deploy-k3s up '
    '--target <public node> --steps frontend on the operator workstation, then select Run again.')
  def step_install(self):self.run(sys.executable,'zones/zone.py','apply',self.zone)
  def step_calls(self):self.run(sys.executable,'platform/calls/install-calls.py')
  def step_delete(self):
   if self.zone in zones.zone_names():self.run(sys.executable,'zones/zone.py','delete',self.zone)
 def frontend_problem(zone):
- """An empty text when the HTTPS frontend answers a TLS connection for portal.<zone>.<suffix> with a valid certificate."""
+ """An empty text when the HTTPS frontend answers a TLS connection for <zone>-portal.<suffix> with a valid certificate."""
  import socket,ssl
- host=f'portal.{zone}.{settings.SUFFIX}'
+ host=settings.zone_host(zone,'portal')
  context=ssl.create_default_context()
  ca=settings.PRIVATE/'frontend/local-ca.crt'
  if ca.exists():context.load_verify_locations(str(ca))

@@ -85,16 +85,18 @@ The HTTPS frontend runs on the first public node. Set `tls_mode` in its entry of
 
 | `tls_mode` | Use it when | Keys |
 |---|---|---|
-| `cloudflare` | The domain is at Cloudflare. certbot gets a public wildcard certificate with the DNS challenge. This is the default of a node that is not local. | `tls_dns_credentials_file`: the certbot Cloudflare credentials file on the public node. |
+| `cloudflare` | The domain is at Cloudflare. certbot gets a public certificate for `*.<domain>` and `<domain>` with the DNS challenge. This is the default of a node that is not local. | `tls_dns_credentials_file`: the certbot Cloudflare credentials file on the public node. |
 | `internal` | The site is on a LAN or has no public domain. Caddy issues the certificates from its own CA. This is the only mode of the local node of a single-node site. | No key. |
 | `files` | You have a certificate from another authority. | `tls_certificate_file` and `tls_key_file`: the full certificate chain and the key, as files on the public node. |
 
 With `internal`, the frontend step copies the root certificate of the CA into `frontend/local-ca.crt` of the state folder, and prints that path.
 Import that file as a trusted certificate authority in each browser that opens the site. The pods of the zones trust it without a change.
 
-With `files`, the certificate must have the names `*.<domain>` and `*.<zone>.<domain>` of each zone.
-A zone without its name stops the frontend step and the zone creation, and the message names the missing names.
+With `files`, the certificate must have the name `*.<domain>`. A certificate without it stops the frontend step with a message.
 Replace the files on the public node, then run the frontend step again.
+
+Each zone host is `<zone>-<app>.<domain>`, for example `zone-a-portal.<domain>`. The name `*.<domain>` covers every zone, so a new zone needs no new certificate.
+Point the DNS records `*.<domain>` and `<domain>` to the public node, and `turn.<domain>` to the media node. `deploy-k3s render` prints them. A new zone needs no new DNS record.
 
 ## Give the operator SSH and sudo access to each node
 

@@ -224,6 +224,29 @@ def test_gpu_forwarder_keeps_the_three_gpu_interfaces(single):
     assert website['OCR_EASYOCR_URL'] == 'http://gpu:21962/ocr'
 
 
+def test_a_site_without_a_gpu_pool_renders_no_gpu_forwarder(tmp_path):
+    # The forwarder names the GPU proxy, which a site without vars.gpu_pool does not install, so its pod cannot start.
+    text = site_text('single-node.yml').replace('    gpu_pool:\n      address: 192.0.2.50\n', '')
+    assert 'gpu_pool' not in text
+    path = write_site(tmp_path, 'single-node.yml', text)
+    t = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'no-state', nfs=NFS)
+    items = items_of(t)
+    assert not [i for i in items if i['metadata']['name'] in ('gpu', 'egress-gpu')]
+    assert 'gpu-proxy' not in json.dumps(items)
+    ini = manifests.zone_ini_text(t)
+    assert '\nenabled = false\n' in ini[ini.index('[ai_services]'):].split('\n[')[0] + '\n'
+
+
+def test_zone_hosts_have_one_label_below_the_domain(single):
+    ingress = get(single, 'Ingress', 'hoover')
+    assert ingress['spec']['rules'][0]['host'] == 'zone-a-hoover.hoover.test'
+    proxy = containers(get(single, 'Deployment', 'oauth2-proxy'))[0]
+    assert '--redirect-url=https://zone-a-hoover.hoover.test/oauth2/callback' in proxy['args']
+    assert '--whitelist-domain=zone-a-hoover.hoover.test' in proxy['args']
+    alpha = yaml.safe_load(get(single, 'ConfigMap', 'oauth2-proxy')['data']['alpha.yaml'])
+    assert alpha['providers'][0]['oidcConfig']['issuerURL'] == 'https://zone-a-id.hoover.test/realms/opendesk'
+
+
 def test_internet_tools_follow_the_setting(tmp_path):
     items = items_of(target('single-node.yml', 'zone-a', tmp_path, overrides={'main_services.internet_tools_enabled': 'true'}))
     for name in ('hoover4-mcp-whois', 'hoover4-mcp-metasearch', 'hoover4-mcp-browser', 'hoover4-web-tor'):
@@ -588,8 +611,9 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node(tmp_path):
     remote = config.read(write_site(tmp_path, 'remote.yml'))
     records = {r['name']: r for r in module.dns(remote)}
     assert records['turn.example.org']['address'] == '203.0.113.11'
-    assert records['hoover.zone-a.example.org']['address'] == '203.0.113.10'
-    assert records['sfu.zone-a.example.org']['address'] == '203.0.113.10'
+    # One wildcard covers every zone host, so the records name no zone.
+    assert records['*.example.org']['address'] == records['example.org']['address'] == '203.0.113.10'
+    assert set(records) == {'*.example.org', 'example.org', 'turn.example.org'}
     assert not [r for r in records.values() if r['internal']]
     rules = module.firewall(remote)
     media = {(r['protocol'], r['port']) for r in rules['calls']}

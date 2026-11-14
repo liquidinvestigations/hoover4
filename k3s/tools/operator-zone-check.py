@@ -44,7 +44,6 @@ def leftovers():
  if volumes and zone in volumes:left['volumes']=True
  if (settings.PRIVATE/'zones'/zone).exists():left['files']=True
  if zone in json.loads((settings.PRIVATE/'zones/secrets.json').read_text()):left['secrets']=True
- if zone in (settings.PRIVATE/'frontend/Caddyfile').read_text():left['frontend_sites']=True
  livekit=subprocess.run(['kubectl','-n','calls','get','secret','livekit','-o','jsonpath={.data.config\\.yaml}'],capture_output=True,text=True).stdout
  if zone in base64.b64decode(livekit).decode():left['livekit_key']=True
  return left
@@ -91,7 +90,7 @@ async def main():
   text=await tab.evaluate("document.getElementById('onboarding').textContent")
   password=re.search(r'password (\S+)\.$',text).group(1)
   result['onboarding']=text.replace(password,'<password>')
-  portal=await browser.get(f'https://portal.{zone}.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/',new_tab=True);await asyncio.sleep(5)
+  portal=await browser.get(f'https://{zone}-portal.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/',new_tab=True);await asyncio.sleep(5)
   await (await portal.select('input[name="username"]',timeout=60)).send_keys('Administrator')
   await (await portal.select('input[name="password"]',timeout=10)).send_keys(password)
   await (await portal.select('#kc-login',timeout=10)).click();await asyncio.sleep(10)

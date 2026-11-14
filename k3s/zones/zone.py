@@ -184,7 +184,7 @@ def helmfile_env(zone):
     return dict(os.environ, PWD=str(OPENDESK), PATH=f"{TOOLS}:{os.environ['PATH']}", HELM_PLUGINS=str(TOOLS / 'plugins'),
                 HELM_CONFIG_HOME=str(TOOLS / 'config'), HELM_CACHE_HOME=str(TOOLS / 'cache'), HELM_DATA_HOME=str(TOOLS / 'data'),
                 KUBECONFIG=str(settings.KUBECONFIG), MASTER_PASSWORD=(PRIVATE / 'zones' / zone / 'master-password').read_text().strip(),
-                DOMAIN=f'{zone}.{settings.SUFFIX}')
+                DOMAIN=settings.SUFFIX, MAIL_DOMAIN=settings.zone_domain(zone), MATRIX_DOMAIN=settings.zone_domain(zone))
 
 
 def helmfile(zone, command, *extra, check=True):
@@ -261,7 +261,7 @@ def login_flow(zone, stop, errors):
 
 
 def nextcloud_domain(zone):
-    return f'files.{zone}.{settings.SUFFIX}'
+    return settings.zone_host(zone, 'files')
 
 
 def nextcloud_config(zone, wait=True):
@@ -269,7 +269,7 @@ def nextcloud_config(zone, wait=True):
 
     The Nextcloud pod loads config.php from the table fs_config_store of its database when it starts. The management Job
     writes the complete configuration there. A pod that starts before the Job keeps the minimal configuration of the
-    install, and answers every request for files.<zone>.<suffix> with a trusted domain error. The OpenProject bootstrap
+    install, and answers every request for <zone>-files.<suffix> with a trusted domain error. The OpenProject bootstrap
     then fails, because it calls Nextcloud, and its failed setup leaves the Nextcloud user OpenProject behind. occ cannot
     change the configuration, because it is read-only. A new pod loads the complete configuration.
     """
@@ -435,7 +435,7 @@ def apply(zone, home, values=None):
     run('bash', HERE / 'zone-login-no-mfa.sh', zone, quiet=True)
     run(sys.executable, HERE / 'zone-users.py', zone)
     run(sys.executable, HERE / 'zone-patches.py', zone)
-    apply_manifest((HERE / 'manifests/zone-keycloak-admin.yaml').read_text().replace('ZONE', zone).replace('SUFFIX', settings.SUFFIX), zone)
+    apply_manifest((HERE / 'manifests/zone-keycloak-admin.yaml').read_text().replace('KEYCLOAK_HOST', settings.zone_host(zone, 'id')), zone)
     import gate
     apply_manifest(json.dumps(gate.objects(zone)), zone)
     step('zone-state-of-apps', zone=zone)

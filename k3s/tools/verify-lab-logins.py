@@ -43,9 +43,9 @@ def keycloak_login(o,url,user,password):
  return request(o,html.unescape(form.group(1)),urllib.parse.urlencode({'username':user,'password':password,'credentialId':''}).encode())
 def gated(zone):
  """Return a browser that has the gate cookie of the zone for Administrator."""
- o=browser();status,landing,page=keycloak_login(o,f'https://auth.{zone}.{settings.SUFFIX}/oauth2/start?rd=/',
+ o=browser();status,landing,page=keycloak_login(o,f'https://{zone}-auth.{settings.SUFFIX}/oauth2/start?rd=/',
   'Administrator',secret(zone,'ums-nubus-credentials','administrator_password'))
- if not any(c.name=='_hoover_gate' for c in o.jar):
+ if not any(c.name==f'_hoover_gate_{zone}' for c in o.jar):
   raise RuntimeError(f'no gate cookie after the sign-in: {status} {landing.split("?")[0]}')
  return o
 def basic(user,password):return {'Authorization':'Basic '+base64.b64encode(f'{user}:{password}'.encode()).decode()}
@@ -84,18 +84,18 @@ def application(zone,user,password,url,host):
   return ok,f'{status} {landing.split("?")[0]}'+(f' Keycloak: {html.unescape(error.group(1).strip())}' if error else '')
  return run
 def keycloak_admin(zone):
- d=f'{zone}.{settings.SUFFIX}';console=f'https://id.{d}/admin/master/console/'
- url=f'https://id.{d}/realms/master/protocol/openid-connect/auth?'+urllib.parse.urlencode({'client_id':'security-admin-console','redirect_uri':console,
+ console=f'https://{zone}-id.{settings.SUFFIX}/admin/master/console/'
+ url=f'https://{zone}-id.{settings.SUFFIX}/realms/master/protocol/openid-connect/auth?'+urllib.parse.urlencode({'client_id':'security-admin-console','redirect_uri':console,
   'response_type':'code','scope':'openid','state':'check','nonce':'check','code_challenge':'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM','code_challenge_method':'S256'})
  if not FRONTEND_VPN:return False,'frontend_bind has no address in the admin ranges'
- VPN_HOSTS.add(f'id.{d}')
+ VPN_HOSTS.add(f'{zone}-id.{settings.SUFFIX}')
  status,landing,_=keycloak_login(gated(zone),url,'kcadmin',secret(zone,'keycloak-admin-password','adminPassword'))
  return status==200 and landing.startswith(console) and 'code=' in landing,f'{status} {landing.split("?")[0]}'
 def nextcloud_admin(zone):
- status,_,page=request(gated(zone),f'https://files.{zone}.{settings.SUFFIX}/ocs/v2.php/cloud/user?format=json',headers={**basic('nextcloud',secret(zone,'nextcloud-admin-password','password')),'OCS-APIRequest':'true'})
+ status,_,page=request(gated(zone),f'https://{zone}-files.{settings.SUFFIX}/ocs/v2.php/cloud/user?format=json',headers={**basic('nextcloud',secret(zone,'nextcloud-admin-password','password')),'OCS-APIRequest':'true'})
  return status==200 and '"id":"nextcloud"' in page.replace(' ',''),f'{status} password accepted by the Nextcloud API'
 def openproject_admin(zone):
- o=gated(zone);d=f'https://projects.{zone}.{settings.SUFFIX}'
+ o=gated(zone);d=f'https://{zone}-projects.{settings.SUFFIX}'
  status,landing,page=request(o,d+'/login/internal')
  token=re.search(r'name="authenticity_token" value="([^"]+)"',page)
  if not token:return False,f'{status} no internal login form'
@@ -117,16 +117,15 @@ if platform:
 FIXTURE=json.loads((root.parent/'zones/zone-users.json').read_text())['users']
 PASSWORDS=json.loads((settings.PRIVATE/'fixture-user-passwords.json').read_text())
 for zone in args or list(zonestate.load()['zones']):
- d=f'{zone}.{settings.SUFFIX}'
  users=[('Administrator',secret(zone,'ums-nubus-credentials','administrator_password'))]
  test_user=settings.PRIVATE/f'zones/{zone}/test-user-password'
  if test_user.exists():users.append(('test.user',test_user.read_text().strip()))
  users+=[(e['username'],PASSWORDS[e['username']]) for e in FIXTURE]
  for user,password in users:
-  for app,url,host in [('portal',f'https://portal.{d}/univention/oidc/?location=/univention/portal/',f'portal.{d}'),
-   ('files',f'https://files.{d}/login',f'files.{d}'),('projects',f'https://projects.{d}/login',f'projects.{d}'),
-   ('wiki',f'https://wiki.{d}/bin/view/Main/',f'wiki.{d}'),('notes',f'https://notes.{d}/api/v1.0/authenticate/',f'notes.{d}'),
-   ('chat',f'https://mas.{d}/login',f'mas.{d}')]:
+  for app,url,host in [('portal',f'https://{zone}-portal.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/',f'{zone}-portal.{settings.SUFFIX}'),
+   ('files',f'https://{zone}-files.{settings.SUFFIX}/login',f'{zone}-files.{settings.SUFFIX}'),('projects',f'https://{zone}-projects.{settings.SUFFIX}/login',f'{zone}-projects.{settings.SUFFIX}'),
+   ('wiki',f'https://{zone}-wiki.{settings.SUFFIX}/bin/view/Main/',f'{zone}-wiki.{settings.SUFFIX}'),('notes',f'https://{zone}-notes.{settings.SUFFIX}/api/v1.0/authenticate/',f'{zone}-notes.{settings.SUFFIX}'),
+   ('chat',f'https://{zone}-mas.{settings.SUFFIX}/login',f'{zone}-mas.{settings.SUFFIX}')]:
    check(f'{zone} {user} {app}',application(zone,user,password,url,host))
  check(f'{zone} Keycloak admin console',lambda:keycloak_admin(zone))
  check(f'{zone} Nextcloud internal admin',lambda:nextcloud_admin(zone))

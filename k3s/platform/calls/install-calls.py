@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the call media services that every zone shares. Usage: install-calls.py
+"""Install the call media services that every zone shares. Usage: install-calls.py [--probe]
 
 The namespace calls holds three services:
 - coturn gives TURN and STUN on 3478 in the host network. It listens on loopback and on the pod bridge address of its
@@ -8,10 +8,14 @@ The namespace calls holds three services:
   turn.<suffix>, and the public address of the host. A remote client sends its media to coturn on 3478, and coturn
   relays it to the pods from the bridge address. It also relays to the public address of the media node, but a host rule
   limits that address to the LiveKit media ports (turn_peers.py, the role hoover4_public_firewall of ../../ansible/).
-  The script checks that rule on the media node with a probe pod before it adds the public address, and stops without
-  it. coturn relays UDP only, to the pods of the media node and to that address.
+  coturn relays UDP only, to the pods of the media node and to that address.
+  --probe checks that rule on the media node with a probe pod in its host network in kube-system, records the result in
+  the ConfigMap coturn-peer-check of calls, and installs nothing. It needs the admin kubeconfig: the step operator and the step calls
+  of ../../deploy-k3s up run it. The zone runner of the operator portal has no right on pods in calls. Without --probe the
+  script adds the public address only when the record names the media node and its public address, and stops
+  otherwise.
 - LiveKit is the MatrixRTC SFU. Each zone signs tokens with its own key.
-  sfu.<zone>.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
+  <zone>-sfu.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
 - JVB is the Jitsi video bridge. The script copies the JVB Deployment that the openDesk chart renders in the first
   zone with zero replicas, and points it at the Prosody of every zone.
 The three services run on the media node: the first node with the role calls, else the first public node (decision
@@ -30,7 +34,6 @@ settings.use_kubeconfig()
 sys.path.insert(0,str(source/'zones'));from zones import ZONES,SUFFIX
 import cpu_policy
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent));import turn_peers
-data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
 NS='calls';NODE=settings.HOST.get('calls_node',settings.HOST['ingress_node']);PUBLIC=settings.HOST.get('calls_public_address','')
 def kubectl(*args,data=None):return subprocess.run(['kubectl',*args],input=data,text=True,check=True,capture_output=True).stdout
 # The bridge cni0 has the first address of the pod range of the node. The TURN peers are the pods of the media node.
@@ -46,22 +49,38 @@ def secret(name,values):
   'data':{k:base64.b64encode(v.encode()).decode() for k,v in values.items()}}
 SECURITY={'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']},'readOnlyRootFilesystem':True,'runAsNonRoot':True,
  'runAsUser':65534,'runAsGroup':65534,'seccompProfile':{'type':'RuntimeDefault'}}
-def public_peer():
- # A public peer needs the host rule coturn_peers on the media node. A probe pod in the host network of the node shows it.
- if not PUBLIC:return ''
- name='coturn-peer-check'
- kubectl('-n',NS,'delete','pod',name,'--ignore-not-found','--wait=true')
- kubectl('apply','-f','-',data=json.dumps(turn_peers.probe_pod(NS,NODE,PUBLIC,PROBE_IMAGE,SECURITY)))
+RECORD='coturn-peer-check'
+def probe():
+ """Run the probe of the host rule coturn_peers on the media node, and record its result in the ConfigMap RECORD."""
+ kubectl('delete','configmap','-n',NS,RECORD,'--ignore-not-found')
+ if not PUBLIC:
+  print(json.dumps({'coturn_peer_check':'the media node has no public address'}));return
+ # The pod admission policy hoover-pod-limits (../../zones/manifests/zone-pods.yaml) gives the host network in calls only
+ # to coturn, so the probe pod runs in kube-system, which only the admin kubeconfig reaches.
+ name,ns='coturn-peer-check','kube-system'
+ kubectl('-n',ns,'delete','pod',name,'--ignore-not-found','--wait=true')
+ kubectl('apply','-f','-',data=json.dumps(turn_peers.probe_pod(ns,NODE,PUBLIC,PROBE_IMAGE,SECURITY)))
  phase=''
  for _ in range(100):
-  phase=kubectl('-n',NS,'get','pod',name,'-o','jsonpath={.status.phase}').strip()
+  phase=kubectl('-n',ns,'get','pod',name,'-o','jsonpath={.status.phase}').strip()
   if phase in ('Succeeded','Failed'):break
   time.sleep(3)
- logs={c:subprocess.run(['kubectl','-n',NS,'logs',name,'-c',c],text=True,capture_output=True).stdout for c in ('coturn','control')}
- kubectl('-n',NS,'delete','pod',name,'--wait=false')
+ logs={c:subprocess.run(['kubectl','-n',ns,'logs',name,'-c',c],text=True,capture_output=True).stdout for c in ('coturn','control')}
+ kubectl('-n',ns,'delete','pod',name,'--wait=false')
  if phase!='Succeeded':sys.exit(f'the probe of the host rule coturn_peers on {NODE} ended in phase {phase or "unknown"}: {logs}')
  problem=turn_peers.chain_problem(NODE,PUBLIC,logs['coturn'],logs['control'])
  if problem:sys.exit(problem)
+ apply([{'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':RECORD,'namespace':NS},
+  'data':{'node':NODE,'address':PUBLIC,'verified':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}}])
+ print(json.dumps({'coturn_peer_check':'verified','node':NODE,'address':PUBLIC}))
+def public_peer():
+ """The public address of the media node, when the record of probe() shows the host rule coturn_peers for it."""
+ if not PUBLIC:return ''
+ found=subprocess.run(['kubectl','-n',NS,'get','configmap',RECORD,'-o','json'],text=True,capture_output=True)
+ record=json.loads(found.stdout)['data'] if found.returncode==0 else {}
+ if record.get('node')!=NODE or record.get('address')!=PUBLIC:
+  sys.exit(f'calls has no verified record of the host rule coturn_peers for {PUBLIC} on {NODE}. Run deploy-k3s up '
+   '--target <control plane> --steps operator on the operator workstation, then run this step again.')
  return PUBLIC
 def coturn(public):
  lines=['listening-port=3478','listening-ip=127.0.0.1','listening-ip=::1',f'listening-ip={BRIDGE}',f'relay-ip={BRIDGE}',
@@ -110,7 +129,7 @@ def livekit():
   {'apiVersion':'v1','kind':'Service','metadata':{'name':'livekit','namespace':NS},
    'spec':{'selector':{'app.kubernetes.io/name':'livekit'},'ports':[{'name':'http','port':7880,'targetPort':'http'}]}}]
  for zone in ZONES:
-  host=f'sfu.{zone}.{SUFFIX}'
+  host=settings.zone_host(zone,'sfu')
   items.append({'apiVersion':'networking.k8s.io/v1','kind':'Ingress','metadata':{'name':f'livekit-{zone}','namespace':NS},
    'spec':{'ingressClassName':'haproxy','rules':[{'host':host,'http':{'paths':[{'path':'/','pathType':'Prefix',
     'backend':{'service':{'name':'livekit','port':{'number':7880}}}}]}}]}})
@@ -145,7 +164,11 @@ def jvb():
   {'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'jvb','namespace':NS},
    'spec':{'replicas':1,'strategy':{'type':'RollingUpdate','rollingUpdate':{'maxSurge':1,'maxUnavailable':0}},'selector':{'matchLabels':labels},
     'template':{'metadata':{'labels':labels},'spec':spec}}}]
-apply([{'apiVersion':'v1','kind':'Namespace','metadata':{'name':NS}}])
+if subprocess.run(['kubectl','get','namespace',NS],capture_output=True).returncode:
+ apply([{'apiVersion':'v1','kind':'Namespace','metadata':{'name':NS}}])
+if '--probe' in sys.argv[1:]:
+ probe();sys.exit(0)
+data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
 def checksum(items):
  # Each Deployment carries a hash of its Secret, so a changed config restarts it and an unchanged one does not.
  # A restart of coturn, LiveKit or the JVB ends the calls that run on it.
@@ -159,16 +182,18 @@ def checksum(items):
    digest=hashlib.sha256(json.dumps(data.get(item['metadata']['name'],{}),sort_keys=True).encode()).hexdigest()[:16]
    item['spec']['template']['metadata'].setdefault('annotations',{})['hoover.dev/config']=digest
  return items
-# The bridge copies its template from the first zone and serves only zones. Without a zone, the script removes it.
-apply(checksum(coturn(public_peer())+livekit()+(jvb() if ZONES else [])))
-if not ZONES:kubectl('-n',NS,'delete','deployment','jvb','--ignore-not-found')
+# The bridge copies its template from the first zone and serves only zones. LiveKit refuses to start without a key, and
+# only a zone has one. Without a zone, the script removes both.
+apply(checksum(coturn(public_peer())+(livekit()+jvb() if ZONES else [])))
+if not ZONES:
+ for name in ('jvb','livekit'):kubectl('-n',NS,'delete','deployment',name,'--ignore-not-found')
 # coturn and LiveKit stop the old pod before the new one starts, so a refused or failing pod leaves no call service.
 # The JVB starts its new pod first and keeps the old one, so this script does not wait for it.
-for name in ('coturn','livekit'):
+for name in ('coturn','livekit') if ZONES else ('coturn',):
  r=subprocess.run(['kubectl','-n',NS,'rollout','status',f'deployment/{name}','--timeout=300s'],text=True,capture_output=True)
  if r.returncode:
   events=subprocess.run(['kubectl','-n',NS,'get','events','--field-selector','reason=FailedCreate','-o','jsonpath={.items[-1:].message}'],text=True,capture_output=True).stdout
   sys.exit(f'the call service {name} did not start: {(r.stderr or r.stdout).strip()[-300:]} {events[-300:]}')
-deployments=['coturn','livekit']+(['jvb'] if ZONES else [])
+deployments=['coturn']+(['livekit','jvb'] if ZONES else [])
 for name in deployments:kubectl('-n',NS,'rollout','status',f'deployment/{name}','--timeout=300s')
 print(json.dumps({'namespace':NS,'deployments':deployments,'zones':ZONES}))

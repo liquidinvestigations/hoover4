@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Install or update the HTTPS frontend on the public host. Run it on the workstation.
 # The frontend is Caddy as the systemd unit hoover-frontend. It ends TLS and sends plain HTTP to the fixed Service
-# address of the cluster ingress. Each zone has a gate (frontend-sync.sh).
+# address of the cluster ingress. Each zone has a gate (frontend-sync.sh). The frontend names no zone, so a zone add or
+# delete needs no run of this script.
 # The script installs Caddy, its unit, frontend-sync.sh as /opt/hoover-frontend/sync and the site settings
-# /opt/hoover-frontend/site.env. It then runs sync with the zones of zone-state.json.
+# /opt/hoover-frontend/site.env. It then runs sync.
 # The TLS mode is tls_mode of the public node in the site file (../../config.py TLS_MODES):
-#   cloudflare  the certbot live folder /etc/letsencrypt/live/<suffix> with the public wildcard certificate, and the
-#               certbot Cloudflare credentials file tls_dns_credentials_file. The script also installs the certbot hook.
+#   cloudflare  the certbot live folder /etc/letsencrypt/live/<suffix> with the public certificate of *.<suffix>, and
+#               the certbot Cloudflare credentials file tls_dns_credentials_file. The script also installs the certbot hook.
 #   files       the certificate and key files tls_certificate_file and tls_key_file on the public host.
 #   internal    Caddy issues the certificates from its local CA. The script copies the root certificate of that CA into
 #               frontend/local-ca.crt of the state folder. The pods trust it (config.local_ca()), and the person installs
@@ -19,8 +20,7 @@
 # The cluster sources that pass without the gate are the pod range of each node and the node address of each node of
 # hosts.json, because a pod request to another node leaves with the address of its node.
 # Pods reach the frontend at the first bind address: a CoreDNS block answers every name below the suffix with it.
-# ./build-caddy.sh builds the Caddy binary with the WAF module. A second run with the same zones changes no file and
-# restarts nothing.
+# ./build-caddy.sh builds the Caddy binary with the WAF module. A second run changes no file and restarts nothing.
 # Usage: install-frontend.sh
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -56,16 +56,15 @@ if [ ${#problems[@]} -gt 0 ]; then
   exit 1
 fi
 first_bind=${binds%% *}
-# zones.py writes the zone names and the domain suffix.
-python3 "$source_dir/zones/zones.py" >/dev/null
-source "$private/zones/frontend.env"
+suffix=$(get suffix)
+# The operator portal has its own login (../operator/).
+extra_hosts=("operator.${suffix}")
 cluster=$(kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{" "}{end}')
 cluster+=$(python3 -c 'import json,sys;print(" ".join(h["node_ip"] for h in json.load(open(sys.argv[1]))["hosts"].values()))' <(python3 "$source_dir/settings.py" hosts))
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 for name in binds ingress cluster vpn tls_mode tls_dir tls_certificate tls_key dns_credentials suffix; do printf '%s=%q\n' "$name" "${!name}"; done > "$work/site.env"
 printf 'extra_hosts=(%s)\n' "${extra_hosts[*]}" >> "$work/site.env"
-printf '%s\n' "${zones[@]}" > "$work/zones"
 # The certificate files of cloudflare and files reach the unit as credentials. internal keeps its CA in the state folder
 # of the unit.
 credentials=''
@@ -94,7 +93,7 @@ WantedBy=multi-user.target
 UNIT
 cp "$private/bin/caddy" "$work/caddy"
 cp frontend-sync.sh "$work/sync"
-files=(site.env zones hoover-frontend.service caddy sync)
+files=(site.env hoover-frontend.service caddy sync)
 if [ "$tls_mode" = cloudflare ]; then
   # certbot runs this deploy hook after each renewal. A restart loads the new credential files.
   cat > "$work/hook" <<'HOOK'
@@ -146,7 +145,7 @@ if [ -n "$changed" ]; then
   systemctl daemon-reload
   systemctl enable -q hoover-frontend.service
 fi
-/opt/hoover-frontend/sync < "$src/zones"
+/opt/hoover-frontend/sync
 rm -rf "$src"
 case "$changed" in *caddy*|*hoover-frontend.service*) systemctl restart hoover-frontend.service ;; esac
 systemctl is-active -q hoover-frontend.service

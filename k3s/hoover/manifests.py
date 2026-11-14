@@ -35,7 +35,8 @@ Placement and runtimes:
   hoover-singletons, which also runs the database migrations first.
 - The services that reach the internet (INTERNET) run on a public node, so their traffic leaves from its address.
 - Every pod with a claim of the local layout runs on the home node, because the claims are local volumes there.
-The GPU services and the LLM are behind the forwarder gpu (gpu.py). The network policies are in network().
+The GPU services and the LLM are behind the forwarder gpu (gpu.py). A site without vars.gpu_pool has no GPU services, so
+its installations get no forwarder and use the CPU path. The network policies are in network().
 The ingress sends every request to oauth2-proxy. It removes client identity headers, adds the verified claims and the
 proxy secret, and forwards to the website. The website accepts identity headers only with that secret.
 Every store credential, the proxy secret and every shared secret comes from a Secret. The render holds no secret value.
@@ -230,7 +231,7 @@ class Target:
 
     @property
     def host(self):
-        return f'hoover.{self.zone}.{self.site.domain}'
+        return site_config.zone_host(self.zone, 'hoover', self.site.domain)
 
     @property
     def local(self):
@@ -902,7 +903,7 @@ def temporal_pg(target, shards):
 
 def proxy(target):
     """oauth2-proxy with the alpha configuration, which can add a header from a file."""
-    issuer = f'https://id.{target.zone}.{target.site.domain}/realms/opendesk'
+    issuer = f"https://{site_config.zone_host(target.zone, 'id', target.site.domain)}/realms/opendesk"
     # A header claim can name only a session field. userIDClaim puts opendesk_username into the session field `email`,
     # so X-Forwarded-User reads that field. The session keeps no mail address, so the email header has no source: the
     # claim name below gives no value, and the entry only removes a value that the client sent.
@@ -921,7 +922,7 @@ def proxy(target):
     }
     args = ['--alpha-config=/config/alpha.yaml', '--email-domain=*', f'--redirect-url=https://{target.host}/oauth2/callback',
             '--cookie-secure=true', '--cookie-name=_hoover_proxy', '--reverse-proxy=true', '--skip-provider-button=true',
-            f'--whitelist-domain=.{target.zone}.{target.site.domain}', '--silence-ping-logging=true',
+            f'--whitelist-domain={target.host}', '--silence-ping-logging=true',
             # oauth2-proxy 7.12 has no OIDC back-channel logout. The proxy refreshes its tokens with Keycloak one minute
             # after the last refresh. Keycloak refuses the refresh after the user logged out, and the proxy then drops
             # its session.
@@ -952,7 +953,8 @@ def network(target):
     server reaches the HTTP ports of ClickHouse and Garage. In the local layout the stores are pods of the namespace,
     and the internet services reach no store pod except the browser server, which reaches ClickHouse and Garage.
     oauth2-proxy and the sign-in check of the deploy driver reach the frontend addresses on 443 for the OIDC issuer.
-    The forwarder gpu reaches the GPU proxy. The internet services reach public addresses otherwise.
+    The forwarder gpu, when the site has a GPU pool, reaches the GPU proxy. The internet services reach public addresses
+    otherwise.
     """
     ns = target.ns
 
@@ -1007,9 +1009,6 @@ def network(target):
     items += [
         policy('egress-oidc', {'podSelector': {'matchLabels': OIDC_CLIENT}, 'policyTypes': ['Egress'],
                                'egress': [{'to': [{'ipBlock': {'cidr': f'{a}/32'}} for a in frontend], 'ports': [{'port': 443}]}]}),
-        policy('egress-gpu', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'gpu'}}, 'policyTypes': ['Egress'],
-                              'egress': [{'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': gpu.NS}}}],
-                                          'ports': [{'port': p} for p in gpu.PORTS]}]}),
         policy('egress-internet', {'podSelector': {'matchLabels': {'hoover.dev/egress': 'internet'}}, 'policyTypes': ['Egress'],
                                    'egress': [{'to': [{'ipBlock': {'cidr': '0.0.0.0/0', 'except': PRIVATE_RANGES}}]}]}),
         {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress', 'metadata': {'name': 'hoover', 'namespace': ns},
@@ -1017,6 +1016,10 @@ def network(target):
                   'rules': [{'host': target.host, 'http': {'paths': [{'path': '/', 'pathType': 'Prefix',
                                                                       'backend': {'service': {'name': 'oauth2-proxy', 'port': {'number': 4180}}}}]}}]}},
     ]
+    if target.site.gpu_pool:
+        items.append(policy('egress-gpu', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'gpu'}}, 'policyTypes': ['Egress'],
+                                           'egress': [{'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': gpu.NS}}}],
+                                                       'ports': [{'port': p} for p in gpu.PORTS]}]}))
     return items
 
 
@@ -1072,7 +1075,8 @@ def objects(target):
     else:
         extra += temporal_pg(target, shards)
     return [namespace, *stores, *claims, *config_maps(target, deploy, cfg, configs | {'tika-config', 'mirror'}),
-            *extra, *proxy(target), *gpu.forwarder(target.zone, target.ns), *items, *network(target)]
+            *extra, *proxy(target), *(gpu.forwarder(target.zone, target.ns) if target.site.gpu_pool else []), *items,
+            *network(target)]
 
 
 def render(target):

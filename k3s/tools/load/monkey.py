@@ -41,18 +41,19 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
 import settings  # noqa: E402
 ZONE, SUFFIX = os.environ.get('LOAD_ZONE', 'zone-a'), settings.SUFFIX
-DOMAIN = f'{ZONE}.{SUFFIX}'
+# Every host of the zone is <zone>-<app>.<suffix>.
+PREFIX = f'{ZONE}-'
 APPS = {
-    'portal': f'https://portal.{DOMAIN}/',
-    'files': f'https://files.{DOMAIN}/',
-    'office': f'https://files.{DOMAIN}/',
-    'notes': f'https://notes.{DOMAIN}/',
-    'projects': f'https://projects.{DOMAIN}/',
-    'chat': f'https://chat.{DOMAIN}/',
-    'pad': f'https://pad.{DOMAIN}/',
-    'wiki': f'https://wiki.{DOMAIN}/',
-    'meet': f'https://meet.{DOMAIN}/loadtest-room',
-    'hoover': f'https://hoover.{DOMAIN}/',
+    'portal': f'https://{ZONE}-portal.{SUFFIX}/',
+    'files': f'https://{ZONE}-files.{SUFFIX}/',
+    'office': f'https://{ZONE}-files.{SUFFIX}/',
+    'notes': f'https://{ZONE}-notes.{SUFFIX}/',
+    'projects': f'https://{ZONE}-projects.{SUFFIX}/',
+    'chat': f'https://{ZONE}-chat.{SUFFIX}/',
+    'pad': f'https://{ZONE}-pad.{SUFFIX}/',
+    'wiki': f'https://{ZONE}-wiki.{SUFFIX}/',
+    'meet': f'https://{ZONE}-meet.{SUFFIX}/loadtest-room',
+    'hoover': f'https://{ZONE}-hoover.{SUFFIX}/',
 }
 DENY = re.compile(r'log ?out|sign ?out|abmeld|delete|lösch|remove|entfern|disable|deaktiv|reset|zurücksetz|revoke|leave|verlass|'
                   r'archiv|uninstall|destroy|purge|empty|leeren|\bban\b|kick|block|passw|recovery|wiederherstell|\block\b|sperr|'
@@ -205,7 +206,8 @@ class Tab:
         if request.resource_type == 'document' and request.is_navigation_request():
             url = request.url
             host = url.split('/')[2] if '://' in url else ''
-            allowed = host == DOMAIN or host.endswith('.' + DOMAIN) or host == 's3.' + SUFFIX
+            allowed = (host.startswith(PREFIX) and host.endswith('.' + SUFFIX)) or host == f'{ZONE}.{SUFFIX}' \
+                or host == 's3.' + SUFFIX
             if not allowed or BLOCKED_PATH.search(url.split('?')[0]):
                 self.count('blocked_navigations')
                 return await route.abort()
@@ -264,7 +266,7 @@ class Tab:
                     name = self.page.locator('#premeeting-name-input')
                     if await name.count() and await name.is_visible() and not await name.input_value():
                         await name.fill(self.user)
-                if await self.page.locator('input[name=username]').count() and 'id.' + DOMAIN in page_url:
+                if await self.page.locator('input[name=username]').count() and f'//{ZONE}-id.{SUFFIX}/' in page_url:
                     await self.page.fill('input[name=username]', self.user)
                     await self.page.fill('input[name=password]', self.password)
                     await self.page.click('#kc-login')
@@ -315,7 +317,7 @@ class Tab:
         if fileid is None:
             self.count('office_upload_failed')
         if fileid:
-            await self.page.goto(f'https://files.{DOMAIN}/index.php/apps/files/files/{fileid}?dir=/&openfile=true',
+            await self.page.goto(f'https://{ZONE}-files.{SUFFIX}/index.php/apps/files/files/{fileid}?dir=/&openfile=true',
                                  wait_until='domcontentloaded', timeout=90_000)
             await asyncio.sleep(12)
             self.start_url = self.page.url
@@ -433,7 +435,7 @@ class Tab:
             # A person pauses between actions. The pause also lets a page react to the last action.
             await asyncio.sleep(random.uniform(0.4, 2.0))
             host = self.page.url.split('/')[2] if '://' in self.page.url else ''
-            if not host.endswith(DOMAIN):
+            if not (host.startswith(PREFIX) and host.endswith('.' + SUFFIX)):
                 self.count('left_zone')
                 try:
                     await self.page.goto(APPS[app], wait_until='domcontentloaded', timeout=30_000)
@@ -507,7 +509,7 @@ async def main():
             print(app, 'ready after', phase['ready_seconds'], flush=True)
             if app == 'office':
                 # Collabora answers on its own address, and a document open is its first request.
-                phase['office_ready_seconds'] = await asyncio.to_thread(ready, f'https://office.{DOMAIN}/hosting/discovery')
+                phase['office_ready_seconds'] = await asyncio.to_thread(ready, f'https://{ZONE}-office.{SUFFIX}/hosting/discovery')
             signed = await asyncio.gather(*(bounded(t.sign_in(app), 420) for t in tabs))
             phase['sign_in_seconds'] = dict(zip([t.label for t in tabs], signed))
             print(app, 'signed in', phase['sign_in_seconds'], flush=True)

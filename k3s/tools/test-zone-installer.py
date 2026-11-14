@@ -97,22 +97,54 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(caps['add'], ['SYS_ADMIN', 'SYS_RESOURCE'])
         self.assertNotIn('drop', caps)
 
-    def test_gate_cookie_covers_only_its_zone(self):
+    def test_gate_cookie_names_its_zone(self):
+        # The cookie domain is the site suffix, so the gate of another zone must read another cookie name.
         args = gate.objects('zone-test')['items'][0]['spec']['template']['spec']['containers'][0]['args']
-        domain = f'.zone-test.{gate.settings.SUFFIX}'
-        self.assertIn(f'--cookie-domain={domain}', args)
-        self.assertIn(f'--whitelist-domain={domain}', args)
+        suffix = gate.settings.SUFFIX
+        self.assertIn(f'--cookie-domain=.{suffix}', args)
+        self.assertIn('--cookie-name=_hoover_gate_zone-test', args)
         self.assertIn('--cookie-secure=true', args)
+        self.assertIn(f'--redirect-url=https://zone-test-auth.{suffix}/oauth2/callback', args)
+        allowed = [a.split('=', 1)[1] for a in args if a.startswith('--whitelist-domain=')]
+        self.assertIn(f'zone-test-hoover.{suffix}', allowed)
+        self.assertTrue(all(h.startswith('zone-test-') or h == f'zone-test.{suffix}' for h in allowed), allowed)
 
-    def test_frontend_sync_accepts_only_zone_names(self):
-        # The zone runner can send this script any text, so a name outside the zone pattern stops it before any change.
+    def test_zone_values_put_the_zone_id_in_front_of_each_host(self):
+        import re
+        import zones
+        data = {'calls': {'jvb_password': 'j'}, 'zone-test': {'turn_secret': 't', 'livekit_secret': 'l'}}
+        with patch.object(zones, 'reduced_resources', return_value={}), patch.object(zones, 'ai_values', return_value={}):
+            values = zones.zone_values('zone-test', data, 'ssd-ext4')
+        suffix = zones.SUFFIX
+        self.assertEqual(values['global']['domain'], suffix)
+        self.assertEqual(values['global']['hosts']['nubus'], 'zone-test-portal')
+        self.assertTrue(all(h.startswith('zone-test-') for h in values['global']['hosts'].values()))
+        self.assertEqual(set(values['global']['hosts']), set(zones.OPENDESK_HOSTS))
+        # The Matrix IDs and the mail addresses keep the zone domain.
+        self.assertEqual(values['global']['mailDomain'], f'zone-test.{suffix}')
+        self.assertEqual(values['global']['matrixDomain'], f'zone-test.{suffix}')
+        # The home chart would serve the site domain in every zone.
+        self.assertEqual(values['apps']['home'], {'enabled': False})
+        oidc = values['functional']['authentication']['oidc']['clients']
+        self.assertEqual(oidc['opendesk-gate']['redirectUris'], [f'https://zone-test-auth.{suffix}/oauth2/callback'])
+        self.assertEqual(oidc['opendesk-hoover']['redirectUris'], [f'https://zone-test-hoover.{suffix}/oauth2/callback'])
+        self.assertIn(str(zones.out / 'zone-test' / 'intercom.yaml'), values['customization']['release']['intercomService'])
+        origin = re.compile(zones.origin_regex('zone-test'))
+        self.assertTrue(origin.search(f'https://zone-test-portal.{suffix}'))
+        self.assertTrue(origin.search(f'zone-test-files.{suffix}'))
+        for other in (f'https://zone-other-portal.{suffix}', f'https://zone-test-portal.{suffix}.example.net',
+                      f'https://xzone-test-portal.{suffix}', f'https://zone-test.{suffix}'):
+            self.assertFalse(origin.search(other), other)
+
+    def test_frontend_sync_refuses_an_invalid_suffix(self):
+        # The suffix goes into the regular expressions of the Caddyfile, so a value outside the domain pattern stops it.
         with tempfile.TemporaryDirectory() as folder:
-            script = (SOURCE / 'platform/frontend/frontend-sync.sh').read_text().replace('here=/opt/hoover-frontend', f'here={folder}')
-            Path(folder, 'site.env').write_text('suffix=hoover.test\n')
-            for text in ('zone-a\n../etc\n', 'zone-a b\n', 'zone-toolongname123\n'):
-                result = subprocess.run(['bash', '-c', script], input=text, capture_output=True, text=True)
-                self.assertEqual(result.returncode, 1, text)
-                self.assertIn('refused zone name', result.stderr)
+            script = (SOURCE / 'platform/frontend/frontend-sync.sh').read_text().replace('here=${HOOVER_FRONTEND_DIR:-/opt/hoover-frontend}', f'here={folder}')
+            for value in ('a b', 'x$(id)', '.example.org'):
+                Path(folder, 'site.env').write_text(f'suffix={value!r}\ntls_mode=internal\n')
+                result = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1, value)
+                self.assertIn('invalid suffix', result.stderr)
             self.assertFalse(Path(folder, 'Caddyfile').exists())
 
     def test_snapshot_does_not_mutate_input(self):
@@ -220,7 +252,8 @@ class CheckTests(unittest.TestCase):
         # helmfile runs in the openDesk folder, so a relative path from the repository root must not reach it.
         with tempfile.TemporaryDirectory() as folder:
             out = subprocess.run([sys.executable, '-c', 'import settings; print(settings.KUBECONFIG)'], cwd=folder,
-                                 env={'PYTHONPATH': str(SOURCE), 'KUBECONFIG': 'a/config:/b/config'},
+                                 env={'PYTHONPATH': str(SOURCE), 'KUBECONFIG': 'a/config:/b/config',
+                                      'HOOVER4_SITE': str(Path(folder) / 'site.yml')},
                                  capture_output=True, text=True, check=True).stdout.strip()
             self.assertEqual(out, f'{Path(folder).resolve()}/a/config:/b/config')
 

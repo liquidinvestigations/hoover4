@@ -4,7 +4,7 @@
 # frontend/ of the state folder: site.env, the Caddyfile of frontend-sync.sh, and the data folder of the local CA.
 # Caddy listens on the node address of the site file. It ends TLS with certificates of its local CA and sends plain HTTP
 # to the Service address of the cluster ingress. The gates and the WAF are those of the remote frontend.
-# The zones are the zones of the Hoover installations of the site file. The site file also gives the operator name.
+# The frontend names no zone (frontend-sync.sh). The site file gives the suffix and the operator name.
 # A CoreDNS block answers every name below the suffix with the node address, so pods reach the frontend too.
 # Usage: install-local-frontend.sh          write site.env and the Caddyfile, and reload a running Caddy
 #        install-local-frontend.sh --ca     copy the root certificate of the local CA to frontend/local-ca.crt of the
@@ -41,7 +41,6 @@ suffix=$(get suffix)
 binds=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings;print(" ".join(settings.FRONTEND_BIND))' "$source_dir")
 first_bind=${binds%% *}
 ingress=$(get ingress_address)
-zones=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings;print("\n".join(sorted({h.zone for h in settings.config.hoovers(settings.SITE).values()})))' "$source_dir")
 # The pods of the node and the node itself pass without the gate, as on a remote site.
 cluster="$(kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{" "}{end}' 2>/dev/null || true)${first_bind}/32"
 vpn=${first_bind}/32
@@ -53,7 +52,7 @@ for name in binds ingress cluster vpn tls_dir dns_credentials suffix tls_mode; d
 printf 'extra_hosts=(%s)\n' "${extra_hosts[*]}" >> "$work/site.env"
 cmp -s "$work/site.env" "$folder/site.env" || install -m 0644 "$work/site.env" "$folder/site.env"
 ln -sfn "$private/bin/caddy" "$folder/caddy"
-printf '%s\n' "$zones" | HOOVER_FRONTEND_DIR=$folder bash frontend-sync.sh
+HOOVER_FRONTEND_DIR=$folder bash frontend-sync.sh
 # Zone names resolve to the frontend inside the cluster. k3s CoreDNS imports the *.server keys of coredns-custom.
 before=$(kubectl -n kube-system get configmap coredns-custom -o jsonpath='{.data.zones\.server}' 2>/dev/null || true)
 dns="${suffix}:53 {

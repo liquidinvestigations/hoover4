@@ -3219,6 +3219,22 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The zone pages of the operator portal keep their layout. The operations table adds the warning text to the state column."
+    },
+    {
+      "id": "F-admin-58",
+      "source": [
+        "k3s/config.py",
+        "k3s/zones/zones.py",
+        "k3s/zones/gate.py",
+        "k3s/platform/frontend/frontend-sync.sh"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#name-the-zone-hosts",
+        "docs/operations/k3s/Cluster_Installation.md#choose-the-certificates-of-the-https-frontend"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability changes host names and the HTTPS frontend. The pages of the zone applications keep their layout."
     }
   ],
   "routes": {

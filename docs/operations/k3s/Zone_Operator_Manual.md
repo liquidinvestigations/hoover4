@@ -8,7 +8,7 @@ Two roles work with a zone.
 | Role | Signs in to | Tasks |
 |---|---|---|
 | Platform operator | The operator portal `https://operator.<domain>/` | Create, upgrade, back up, restore and delete zones. Change the settings of the site and the zones. |
-| Zone administrator | The portal of the zone `https://portal.<zone>.<domain>/` | Manage the users and groups of the zone. |
+| Zone administrator | The portal of the zone `https://<zone>-portal.<domain>/` | Manage the users and groups of the zone. |
 
 The operator login and the zone logins are separate. An operator login gives no access to the data of a zone.
 
@@ -45,12 +45,11 @@ Select **Sign out** at the end of the page to end the session.
 
 A create, upgrade or delete restarts the shared call services. Calls that run at that time end.
 
-The HTTPS frontend runs outside the cluster, so the portal cannot add the names of a new zone to it. A new zone stops at the step `frontend` with an error.
+Each host of a zone is `<zone>-<app>.<domain>`, and the HTTPS frontend serves all of them.
+A create stops at the step `frontend` with an error when the frontend does not answer for the zone portal. For example, the frontend is not installed.
 
 1. Run `k3s/deploy-k3s up --site <file> --target <public node> --steps frontend` on the operator workstation.
 2. Select **Run again**. The operation continues with the install.
-
-After a delete, the operation shows a warning. The same command removes the names of the zone.
 
 The zone state in the cluster holds the zone. The site file names no zone. The storage names of the Hoover installation come from the zone name.
 The operator workstation can create a zone with `python3 k3s/zones/zone.py apply <zone> --home <node>`. [The cluster deployment reference](../../../k3s/Readme.md#create-and-delete-zones) gives the options.
@@ -82,6 +81,9 @@ A zone operation or an Apply that fails keeps its finished steps.
 3. Select **Run again** for a zone operation, or **Retry** for an Apply. The operation continues at its first unfinished step.
 4. Select **Abandon** to stop a failed Apply. Its unfinished scopes keep their earlier applied values.
 
+The step `calls` stops when the cluster has no checked record of the host rule of the media node. The error names the record `coturn_peers`.
+Run `k3s/deploy-k3s up --site <file> --target <control plane> --steps operator` on the operator workstation, then select **Run again**.
+
 <a href="img/operator-operations.png"><img src="img/operator-operations.png" alt="The operations table with a failed zone upgrade and its Run again button" width="100%"></a>
 
 ## Upgrade a zone
@@ -111,7 +113,7 @@ A delete removes the zone namespaces with all their volumes. No copy remains in 
 
 The zone administrator does these tasks in the portal of the zone.
 
-1. Sign in to `https://portal.<zone>.<domain>/` with the administrator account.
+1. Sign in to `https://<zone>-portal.<domain>/` with the administrator account.
 2. Open the user administration of the portal.
 3. Add a user with a user name, a name and an email address, or change an existing user.
 4. Add the user to groups. The group of the zone administrators gives the administrator rights in the applications.

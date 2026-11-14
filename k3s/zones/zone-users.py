@@ -44,7 +44,7 @@ def run(zone):
   if user('test.user') is None:
    value=password()
    call('POST','users/user/',{'position':f'cn=users,{BASE}','properties':{'username':'test.user','firstname':'Test','lastname':'User',
-    'password':value,'mailPrimaryAddress':f'test.user@{zone}.{settings.SUFFIX}',**ENABLED}})
+    'password':value,'mailPrimaryAddress':f'test.user@{settings.zone_domain(zone)}',**ENABLED}})
    path.write_text(value+'\n');path.chmod(0o600);result['test.user']='created'
   else:
    # A user from an earlier run gets the application flags that were added since then.
@@ -64,7 +64,7 @@ def run(zone):
    if found is None:
     # The stored password is the login of the user in every zone, so a refused password stops the script.
     call('POST','users/user/',{'position':f'cn=users,{BASE}','properties':{'username':uid,'firstname':entry['firstname'],
-     'lastname':entry['lastname'],'password':PASSWORDS[uid],'mailPrimaryAddress':f'{uid}@{zone}.{settings.SUFFIX}',**ENABLED}})
+     'lastname':entry['lastname'],'password':PASSWORDS[uid],'mailPrimaryAddress':f'{uid}@{settings.zone_domain(zone)}',**ENABLED}})
     result[uid]='created'
    else:
     if any(found['properties'].get(k)!=v for k,v in ENABLED.items()):

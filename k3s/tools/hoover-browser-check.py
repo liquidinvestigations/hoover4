@@ -32,7 +32,7 @@ MODE = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] in ('logout', 'viewer', 
 WORD = sys.argv[2] if len(sys.argv) > 2 and MODE == 'search' else ''
 SUFFIX = __import__('os').environ.get('LAB_SUFFIX', settings.SUFFIX)
 RESOLVE = __import__('os').environ.get('LAB_RESOLVE')
-HOST = f'hoover.{ZONE}.{SUFFIX}'
+HOST = f'{ZONE}-hoover.{SUFFIX}'
 PRIVATE = settings.PRIVATE / 'checks/hoover'
 USER = __import__('os').environ.get('HOOVER_USER', 'test.user')
 
@@ -45,7 +45,7 @@ def password():
     for line in Path(__import__('os').environ['LAB_INVENTORY']).read_text().splitlines():
         cells = [c.strip().strip('`') for c in line.split('|')]
         # The inventory holds the tables of several hosts, so the address must name the zone of this suffix.
-        if len(cells) > 4 and cells[1] == f'{ZONE} portal and applications' and f'.{ZONE}.{SUFFIX}/' in cells[2] and cells[3] == USER:
+        if len(cells) > 4 and cells[1] == f'{ZONE} portal and applications' and f'//{ZONE}-portal.{SUFFIX}/' in cells[2] and cells[3] == USER:
             return cells[4]
     raise SystemExit(f'the inventory has no {USER} row for {ZONE}')
 
@@ -95,7 +95,7 @@ async def main():
                 result['steps'].append({'step': 'document', 'path': sys.argv[3], **json.loads(probe), 'url': '', 'text': ''})
         if MODE == 'logout':
             # The portal logout ends the Keycloak session. The Keycloak end-session page does the same.
-            logout = await browser.get(f'https://id.{ZONE}.{SUFFIX}/realms/opendesk/protocol/openid-connect/logout', new_tab=True)
+            logout = await browser.get(f'https://{ZONE}-id.{SUFFIX}/realms/opendesk/protocol/openid-connect/logout', new_tab=True)
             await asyncio.sleep(3)
             await (await logout.select('#kc-logout', timeout=20)).click()
             await asyncio.sleep(3)

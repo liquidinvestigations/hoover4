@@ -31,10 +31,22 @@ XWIKI_EXTENSIONS_TAG='llm-0.11'
 SUFFIX=settings.SUFFIX
 # Pods name the images of the cluster registry with this host name. Each node maps it to the registry endpoint.
 REGISTRY='registry.hoover.internal'
-# These host names follow the openDesk global.hosts defaults for the applications that the zones keep.
-# auth is the sign-in host of the zone gate (gate.py).
+# The openDesk global.hosts defaults. Each zone gets them with its zone id in front (zone_hosts()), so each host of a
+# zone is <zone>-<app>.<suffix> (settings.zone_host()).
+OPENDESK_HOSTS={'collabora':'office','cryptpad':'pad','elementAdmin':'element-admin','elementSupervision':'element-supervision',
+ 'elementWeb':'chat','intercomService':'ics','jitsi':'meet','keycloak':'id','matrixAuthenticationService':'mas',
+ 'matrixNeoBoardWidget':'matrix-neoboard-widget','matrixNeoChoiceWidget':'matrix-neochoice-widget',
+ 'matrixNeoDateFixBot':'matrix-neodatefix-bot','matrixNeoDateFixWidget':'matrix-neodatefix-widget','matrixRTC':'mrtc',
+ 'minioApi':'objectstore','minioConsole':'objectstore-ui','seaweedfs':'objectstorage','seaweedfsAdmin':'objectstorage-ui',
+ 'nextcloud':'files','notes':'notes','nubus':'portal','openproject':'projects','openxchange':'webmail','openxchangeDav':'dav',
+ 'static':'static','synapse':'matrix','whiteboard':'whiteboard','xwiki':'wiki'}
+# The applications of a zone that a browser opens: the openDesk hosts of the applications that the zones keep, auth (the
+# sign-in host of the zone gate, gate.py), sfu (LiveKit, ../platform/calls/install-calls.py) and hoover.
 HOSTS=['auth','portal','id','ics','files','office','pad','chat','matrix','mas','element-admin','matrix-neoboard-widget','matrix-neochoice-widget',
- 'matrix-neodatefix-bot','matrix-neodatefix-widget','projects','wiki','notes','static','meet','mrtc','sfu']
+ 'matrix-neodatefix-bot','matrix-neodatefix-widget','projects','wiki','notes','static','meet','mrtc','objectstorage','sfu','hoover']
+def zone_hosts(zone):
+ """The openDesk global.hosts of a zone: each default host name with the zone id in front, for example zone-a-portal."""
+ return {key:f'{zone}-{name}' for key,name in OPENDESK_HOSTS.items()}
 def ident(zone):return zone.replace('-','_')
 def udm_password(length=40):
  """Return a password that the Nubus password check (cracklib) accepts.
@@ -83,10 +95,13 @@ def reduced_resources():
  return result
 def zone_values(zone,data,storage_class):
  z=data[zone]
- apps={name:{'enabled':False} for name in ['oxAppSuite','dovecot','postfix','clamavSimple','mariadb','neoboard','elementAdmin']}
+ # The home chart serves global.domain, which is the domain of the site and of every zone, so no zone installs it.
+ apps={name:{'enabled':False} for name in ['oxAppSuite','dovecot','postfix','clamavSimple','mariadb','neoboard','elementAdmin','home']}
  apps['notes']={'enabled':True}
  return {
-  'global':{'domain':f'{zone}.{SUFFIX}'},
+  # openDesk names each host <global.hosts.x>.<global.domain>. The mail domain and the Matrix server name stay
+  # <zone>.<suffix>, so the Matrix IDs and the mail addresses of each zone differ.
+  'global':{'domain':SUFFIX,'hosts':zone_hosts(zone),'mailDomain':settings.zone_domain(zone),'matrixDomain':settings.zone_domain(zone)},
   'apps':apps,
   'antivirus':{'icap':{'host':None},'milter':{'host':None}},
   'certificate':{'create':False},
@@ -109,7 +124,7 @@ def zone_values(zone,data,storage_class):
   'customization':{'release':{'opendeskElement':[str(out/'synapse-url-preview.yaml'),str(out/zone/'calls-matrix.yaml')],'jitsi':[str(out/'calls-jitsi.yaml')],
     'ums':[str(out/'two-factor-off.yaml'),str(out/'nats-sync.yaml'),str(out/'nats-probes.yaml')],
     'redis':[str(out/'redis-probes.yaml')],'xwiki':[str(out/'xwiki-group-sync.yaml'),str(out/'xwiki-title.yaml')],
-    'openproject':[str(out/'openproject-title.yaml')]}},
+    'openproject':[str(out/'openproject-title.yaml')],'intercomService':[str(out/zone/'intercom.yaml')]}},
   # The Nextcloud image adds the Assistant and integration_openai apps. zone.py builds and pushes it.
   'images':{'nextcloud':{'registry':REGISTRY,'repository':'hoover/nextcloud-ai','tag':NEXTCLOUD_IMAGE_TAG}},
   # Calls use the shared coturn, LiveKit and JVB in the namespace calls (../platform/calls/install-calls.py).
@@ -122,7 +137,7 @@ def zone_values(zone,data,storage_class):
  }
 def hoover_oidc(zone):
  """Return the Hoover Keycloak client and the scope that carries the proxy claims."""
- host=f'https://hoover.{zone}.{SUFFIX}'
+ host=f"https://{settings.zone_host(zone,'hoover')}"
  scope={'name':'opendesk-hoover-scope','description':'Claims for the Hoover proxy.','protocol':'openid-connect','protocolMappers':[
   {'name':'opendesk_username','protocol':'openid-connect','protocolMapper':'oidc-usermodel-attribute-mapper','consentRequired':False,
    'config':{'userinfo.token.claim':'true','user.attribute':'uid','id.token.claim':'true','access.token.claim':'true','claim.name':'opendesk_username','jsonType.label':'String'}},
@@ -144,18 +159,18 @@ def hoover_oidc(zone):
   # oauth2-proxy has no back-channel logout. A logout through Keycloak loads the proxy sign-out in the browser, which
   # removes the proxy cookie at once. The short access token ends a session that a logout in another browser ended.
   'frontchannelLogout':True,
-  'attributes':{'post.logout.redirect.uris':f'{host}/*##https://portal.{zone}.{SUFFIX}/*',
+  'attributes':{'post.logout.redirect.uris':f"{host}/*##https://{settings.zone_host(zone,'portal')}/*",
    'frontchannel.logout.url':f'{host}/oauth2/sign_out','frontchannel.logout.session.required':'false','access.token.lifespan':'60'},
   'defaultClientScopes':['opendesk-hoover-scope']}
  return {'clientScopes':{'opendesk-hoover-scope':scope},'clients':{'opendesk-hoover':client}}
 def gate_oidc(zone):
- """Return the Keycloak client of the zone gate. Its oauth2-proxy answers at auth.<zone>.<suffix> (gate.py)."""
- host=f'https://auth.{zone}.{SUFFIX}'
+ """Return the Keycloak client of the zone gate. Its oauth2-proxy answers at <zone>-auth.<suffix> (gate.py)."""
+ host=f"https://{settings.zone_host(zone,'auth')}"
  client={'name':'opendesk-gate','clientId':'opendesk-gate','protocol':'openid-connect','clientAuthenticatorType':'client-secret',
   'secret':{'existingSecret':{'name':'gate-oidc','key':'client-secret'}},
   'redirectUris':[f'{host}/oauth2/callback'],'standardFlowEnabled':True,'implicitFlowEnabled':False,'directAccessGrantsEnabled':False,
   'publicClient':False,'consentRequired':False,'frontchannelLogout':True,
-  'attributes':{'post.logout.redirect.uris':f'https://portal.{zone}.{SUFFIX}/*','frontchannel.logout.url':f'{host}/oauth2/sign_out',
+  'attributes':{'post.logout.redirect.uris':f"https://{settings.zone_host(zone,'portal')}/*",'frontchannel.logout.url':f'{host}/oauth2/sign_out',
    'frontchannel.logout.session.required':'false','access.token.lifespan':'60'},
   # Without the email scope the tokens carry no unverified mail address, which oauth2-proxy refuses.
   'defaultClientScopes':['profile'],'optionalClientScopes':[]}
@@ -164,7 +179,7 @@ def oidc_clients(zone):
  hoover,gate=hoover_oidc(zone),gate_oidc(zone)
  return {'clientScopes':hoover['clientScopes'],'clients':{**hoover['clients'],**gate['clients']}}
 def hoover_portal(zone):
- host=f'https://hoover.{zone}.{SUFFIX}'
+ host=f"https://{settings.zone_host(zone,'hoover')}"
  icon='PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTEiIGhlaWdodD0iMTExIiB2aWV3Qm94PSIwIDAgMTExIDExMSI+PHJlY3Qgd2lkdGg9IjExMSIgaGVpZ2h0PSIxMTEiIHJ4PSIyMCIgZmlsbD0iI0ZGRiIvPjxjaXJjbGUgY3g9IjQ4IiBjeT0iNDgiIHI9IjIyIiBmaWxsPSJub25lIiBzdHJva2U9IiMzNDEyOTEiIHN0cm9rZS13aWR0aD0iOCIvPjxwYXRoIGQ9Ik02NCA2NEw4NCA4NCIgc3Ryb2tlPSIjNTcxRUZBIiBzdHJva2Utd2lkdGg9IjEwIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4='
  return ('---\naction: "create_or_modify"\nmodule: "portals/entry"\n'
   'position: "cn=entry,cn=portals,cn=univention,dc=swp-ldap,dc=internal"\nproperties:\n  name: "hoover"\n'
@@ -176,6 +191,10 @@ def hoover_portal(zone):
   f'  icon: "{icon}"\n...\n---\naction: "ensure_list_contains"\nmodule: "portals/category"\n'
   'position: "cn=od.applications,cn=category,cn=portals,cn=univention,dc=swp-ldap,dc=internal"\nproperties:\n'
   '  entries:\n    - "cn=hoover,cn=entry,cn=portals,cn=univention,dc=swp-ldap,dc=internal"\n...\n')
+def origin_regex(zone):
+ """The origins of the pages of a zone: https://<zone>-<app>.<suffix>, also as a bare host name."""
+ # Only the dots need an escape: a zone id and a domain hold letters, digits, - and dots.
+ return '(^|//)'+zone+'-[a-z0-9-]+'+('.'+SUFFIX).replace('.','\\.')+'$'
 def ai_values():
  path=settings.PRIVATE/'ai.json'
  if not path.exists():return {'endpoint':'','apiKey':{'value':''},'model':''}
@@ -226,15 +245,21 @@ def main():
    {'apiVersion':'v1','kind':'Secret','metadata':{'name':'gate-oidc','namespace':zone},'type':'Opaque',
     'data':{'client-secret':b64(data[zone]['gate_oidc_secret']),'cookie-secret':b64(data[zone]['gate_cookie_secret'])}}]}
   (folder/'hoover-oidc-secret.json').write_text(json.dumps(oidc));(folder/'hoover-oidc-secret.json').chmod(0o600)
+  # The intercom service answers the cross-origin requests of the pages of its own zone only. The openDesk value is
+  # global.domain, which matches the pages of every zone of the site. Its chart builds the Keycloak and portal URLs
+  # from the fixed host names id and portal, so the zone gives them in full.
+  (folder/'intercom.yaml').write_text(yaml.safe_dump({'ics':{'originRegex':origin_regex(zone),
+   'keycloak':{'url':f"https://{settings.zone_host(zone,'id')}"},'portal':{'url':f"https://{settings.zone_host(zone,'portal')}"}}}))
   # lk-jwt of each zone signs tokens with the zone key for the shared LiveKit. Without its own SFU, the chart does not
   # set LIVEKIT_URL. lk-jwt polls the SFU for gone participants, because the shared SFU sends no webhooks.
   (folder/'calls-matrix.yaml').write_text(yaml.safe_dump({'matrixRTC':{'sfu':{'enabled':False},'livekitAuth':{'key':zone},
-   'extraEnv':[{'name':'LIVEKIT_URL','value':f'wss://sfu.{zone}.{SUFFIX}'},{'name':'LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS','value':'10'},
+   'extraEnv':[{'name':'LIVEKIT_URL','value':f"wss://{settings.zone_host(zone,'sfu')}"},{'name':'LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS','value':'10'},
     # lk-jwt logs each health probe at info, so the level is warn to keep the log writes low.
     {'name':'LIVEKIT_LOG_LEVEL','value':'warn'}],
    # lk-jwt finds the homeserver through the server well-known over HTTPS, so it needs the frontend CA like the other parts.
    'extraVolumes':[{'name':'trusted-cert-secret-volume','secret':{'secretName':'hoover-ca-bundle','items':[{'key':'ca.crt','path':'ca-certificates.crt'}]}}],
    'extraVolumeMounts':[{'name':'trusted-cert-secret-volume','mountPath':'/etc/ssl/certs/ca-certificates.crt','subPath':'ca-certificates.crt'}]}},sort_keys=False))
+ # install-server-names.sh writes these names into /etc/hosts of the workstation.
  (out/'frontend.env').write_text(f"zones=({' '.join(ZONES)})\nsuffix={SUFFIX}\nhosts=({' '.join(HOSTS)})\nextra_hosts=(operator.{SUFFIX})\nbind_extra=({' '.join(settings.FRONTEND_BIND)})\n")
  print(json.dumps({'zones':ZONES,'output':str(out)}))
 if __name__=='__main__':main()

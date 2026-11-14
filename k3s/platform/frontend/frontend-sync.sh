@@ -1,26 +1,30 @@
 #!/bin/bash
-# Write the Caddyfile of the HTTPS frontend for the zones on standard input, one zone name in each line, and restart
-# Caddy when the file or the certificate changed. It runs as root on the public host as /opt/hoover-frontend/sync.
-# install-frontend.sh installs it with the site settings /opt/hoover-frontend/site.env and runs it with the zones of
-# zone-state.json. The zone runner of the operator portal runs it through an SSH key that can run only this script,
-# so a zone name is the only input from the runner. The script refuses any other name.
-# Each zone has a gate. A request passes to the ingress only in one of these cases:
+# Write the Caddyfile of the HTTPS frontend and restart Caddy when the file or the certificate changed. It runs as root
+# on the public host as /opt/hoover-frontend/sync. install-frontend.sh installs it with the site settings
+# /opt/hoover-frontend/site.env and runs it. The file names no zone, so a zone add or delete changes nothing here.
+# Every zone host is <zone>-<app>.<suffix> (../../config.py zone_host()), and the zone domain <zone>.<suffix> serves the
+# Matrix well-known files. The one site *.<suffix> serves them all. Its matcher takes the zone id from the host name,
+# and the frontend asks the gate of that zone. Another name below the suffix gets 404, except the extra hosts of site.env.
+# A request passes to the ingress only in one of these cases:
 #   - it comes from a pod or a node of the cluster (cluster in site.env),
 #   - it is on a route that passes without the gate (open below). The Coraza WAF with the OWASP Core Rule Set then
 #     checks it and refuses an attack pattern with 403,
-#   - the gate oauth2-proxy of the zone (../../zones/gate.py) accepts its cookie at auth.<zone>.<suffix>/oauth2/auth.
+#   - the gate oauth2-proxy of the zone (../../zones/gate.py) accepts its cookie at <zone>-auth.<suffix>/oauth2/auth.
 # A page load without a gate cookie goes to the Keycloak sign-in of the zone. Any other request gets 401.
+# The gate cookies have the domain .<suffix>, so a browser sends the gate cookies of every zone to each host. The gate
+# of a zone reads only its own cookie. The applications get their requests without the gate cookies.
 # The Keycloak admin routes and the admin routes of Synapse and lk-jwt answer 403 outside the admin ranges of the site
 # file (vpn in site.env).
-# site.env names the TLS mode (tls_mode, ../../config.py TLS_MODES):
-#   cloudflare  certbot holds a public certificate in tls_dir. When it lacks the name *.<zone>.<suffix> of a zone,
-#               certbot adds it with the DNS challenge. The list replaces the names of a deleted zone at that time.
-#   files       the person supplies tls_certificate and tls_key. A certificate without the name of a zone stops the
-#               script with the missing names. A changed certificate file restarts Caddy.
+# site.env names the TLS mode (tls_mode, ../../config.py TLS_MODES). The certificate holds *.<suffix>:
+#   cloudflare  certbot holds a public certificate for *.<suffix> and <suffix> in tls_dir. When the certificate lacks
+#               one of them, or holds a name *.<zone>.<suffix> of the earlier zone names, certbot issues it again with
+#               the DNS challenge.
+#   files       the person supplies tls_certificate and tls_key. A certificate without *.<suffix> stops the script. A
+#               changed certificate file restarts Caddy.
 #   internal    Caddy issues the certificates from its local CA. Its root certificate is pki/authorities/local/root.crt
 #               of the Caddy storage, which install-frontend.sh copies into the state folder.
 # An earlier site.env without tls_mode is cloudflare. systemd gives the certificate files of cloudflare and files to the
-# unit as credentials, so Caddy runs with no root. A second run with the same zones changes nothing.
+# unit as credentials, so Caddy runs with no root. A second run changes nothing.
 # On the local node of a single-node site, install-local-frontend.sh runs this script as the operator user with
 # HOOVER_FRONTEND_DIR=frontend of the state folder and tls_mode=internal in site.env. Caddy then keeps its storage in
 # that folder and its admin API on 127.0.0.1:2029 for a reload.
@@ -33,6 +37,7 @@ case "$tls_mode" in
   cloudflare|files) tls_line="tls /run/credentials/hoover-frontend.service/fullchain.pem /run/credentials/hoover-frontend.service/privkey.pem" ;;
   *) echo "site.env has the unknown tls_mode $tls_mode" >&2; exit 1 ;;
 esac
+[[ $suffix =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo "site.env has the invalid suffix $suffix" >&2; exit 1; }
 if [ -n "${HOOVER_FRONTEND_DIR:-}" ]; then
   globals="admin 127.0.0.1:2029
 	local_certs
@@ -43,12 +48,11 @@ else
   [ "$tls_mode" = internal ] && globals="$globals
 	local_certs"
 fi
-zones=()
-while read -r zone; do
-  [ -n "$zone" ] || continue
-  [[ $zone =~ ^zone-[a-z0-9]{1,12}$ ]] || { echo "refused zone name" >&2; exit 1; }
-  zones+=("$zone")
-done
+# The host patterns of the zones. Each dot of the suffix is [.] in the regular expressions.
+dots=${suffix//./[.]}
+zone="zone-[a-z0-9]{1,12}"
+# app <labels>: a CEL condition that is true on the hosts of these applications of any zone, for example app 'id'.
+app() { printf "{http.request.host}.matches('^%s-(%s)[.]%s\$')" "$zone" "$1" "$dots"; }
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 {
@@ -63,6 +67,13 @@ cat <<CADDY
 (upstream) {
 	reverse_proxy ${ingress}:80 {
 		flush_interval -1
+	}
+}
+# The requests to the applications of a zone carry no gate cookie of any zone.
+(app) {
+	reverse_proxy ${ingress}:80 {
+		flush_interval -1
+		header_up Cookie "_hoover_gate_[^=;]*=[^;]*(; *)?" ""
 	}
 }
 # The WAF checks the routes that pass without the gate. The rule set refuses a request with an attack pattern (403).
@@ -83,52 +94,61 @@ cat <<CADDY
 		\`
 	}
 }
-# The gate of one zone. The argument is the zone domain <zone>.<suffix>.
-(gate) {
+# Every zone host and zone domain. The matcher zone gives the zone id of the host as {re.zone.1}.
+*.${suffix} {
 	${tls_line}
+	@zone vars_regexp zone {http.request.host} ^(${zone})(-[a-z0-9-]+)?[.]${dots}\$
 	@cluster remote_ip ${cluster}
 	@admin {
 		not remote_ip ${vpn}
-		expression \`(host('id.{args[0]}') && path('/admin', '/admin/*', '/realms/master', '/realms/master/*')) || (host('matrix.{args[0]}') && path('/_synapse/admin/*')) || (host('mrtc.{args[0]}') && path('/sfu_webhook*'))\`
+		expression \`($(app id) && path('/admin', '/admin/*', '/realms/master', '/realms/master/*')) || ($(app matrix) && path('/_synapse/admin/*')) || ($(app mrtc) && path('/sfu_webhook*'))\`
 	}
-	# The routes of the sign-in, of the chat and call clients with their own tokens, and of preflights pass without the gate.
-	@open expression \`method('OPTIONS') || path('/.well-known/*', '/robots.txt') || host('auth.{args[0]}', 'mas.{args[0]}', 'sfu.{args[0]}') || (host('id.{args[0]}') && path('/realms/opendesk/*', '/resources/*', '/fingerprintjs*', '/opendesk-static-files/*')) || (host('matrix.{args[0]}') && path('/_matrix/client/*', '/_matrix/media/*')) || (host('mrtc.{args[0]}') && path('/sfu/get*', '/get_token*', '/delegate_delayed_leave*'))\`
+	# The gate answers its own sign-in routes with the cookies of the browser.
+	@gate expression \`$(app auth)\`
+	# The routes of the chat and call clients with their own tokens, and of preflights, pass without the gate.
+	@open expression \`method('OPTIONS') || path('/.well-known/*', '/robots.txt') || $(app 'mas|sfu') || ($(app id) && path('/realms/opendesk/*', '/resources/*', '/fingerprintjs*', '/opendesk-static-files/*')) || ($(app matrix) && path('/_matrix/client/*', '/_matrix/media/*')) || ($(app mrtc) && path('/sfu/get*', '/get_token*', '/delegate_delayed_leave*'))\`
 	@page header Accept *text/html*
 	@other not header Accept *text/html*
 	# Caddy runs the handlers of one route in the written order. The first handler that answers ends the request.
-	route {
-		route @cluster {
-			import upstream
-		}
-		respond @admin 403
-		route @open {
-			import waf
-			import upstream
-		}
-		forward_auth @page ${ingress}:80 {
-			uri /oauth2/auth
-			header_up Host auth.{args[0]}
-			# The sign-in starts at the gate. The gate sends the browser back to this address afterwards.
-			@signin status 401
-			handle_response @signin {
-				reverse_proxy ${ingress}:80 {
-					rewrite /oauth2/start
-					header_up Host auth.{args[0]}
-					header_up X-Auth-Request-Redirect {scheme}://{host}{uri}
+	handle @zone {
+		route {
+			route @cluster {
+				import upstream
+			}
+			respond @admin 403
+			route @gate {
+				import waf
+				import upstream
+			}
+			route @open {
+				import waf
+				import app
+			}
+			forward_auth @page ${ingress}:80 {
+				uri /oauth2/auth
+				header_up Host {re.zone.1}-auth.${suffix}
+				# The sign-in starts at the gate. The gate sends the browser back to this address afterwards.
+				@signin status 401
+				handle_response @signin {
+					reverse_proxy ${ingress}:80 {
+						rewrite /oauth2/start
+						header_up Host {re.zone.1}-auth.${suffix}
+						header_up X-Auth-Request-Redirect {scheme}://{host}{uri}
+					}
 				}
 			}
+			forward_auth @other ${ingress}:80 {
+				uri /oauth2/auth
+				header_up Host {re.zone.1}-auth.${suffix}
+			}
+			import app
 		}
-		forward_auth @other ${ingress}:80 {
-			uri /oauth2/auth
-			header_up Host auth.{args[0]}
-		}
-		import upstream
+	}
+	handle {
+		respond 404
 	}
 }
 CADDY
-for zone in "${zones[@]}"; do
-  printf '%s, *.%s {\n\timport gate %s\n}\n' "${zone}.${suffix}" "${zone}.${suffix}" "${zone}.${suffix}"
-done
 # The operator portal has its own login (../operator/).
 for host in "${extra_hosts[@]}"; do
   printf '%s {\n\t%s\n\timport upstream\n}\n' "$host" "$tls_line"
@@ -140,23 +160,22 @@ if [ -n "${HOOVER_FRONTEND_DIR:-}" ]; then
     install -m 0644 "$work/Caddyfile" "$here/Caddyfile"
     # A running frontend loads the file through its admin API. A stopped frontend reads it at its start.
     "$here/caddy" reload --config "$here/Caddyfile" --adapter caddyfile --address 127.0.0.1:2029 2>/dev/null || true
-    echo "frontend: zones ${zones[*]:-none}, changed: Caddyfile"
+    echo "frontend: changed: Caddyfile"
   else
-    echo "frontend: zones ${zones[*]:-none}, changed: nothing"
+    echo "frontend: changed: nothing"
   fi
   exit 0
 fi
-names=("*.${suffix}")
-for zone in "${zones[@]}"; do names+=("*.${zone}.${suffix}"); done
 changed=''
 # certificate_names <file>: the DNS names of the certificate, one in each line.
 certificate_names() { openssl x509 -in "$1" -noout -ext subjectAltName | tr -d ' ' | tr ',' '\n' | sed -n 's/^DNS://p'; }
 if [ "$tls_mode" = cloudflare ]; then
+  names=("*.${suffix}" "${suffix}")
   have=$(certificate_names "$tls_dir/fullchain.pem")
-  # The certificate gets a new zone name, and it loses the name of a deleted zone.
   missing=$(printf '%s\n' "${names[@]}" | grep -vxF -f <(printf '%s\n' "$have") || true)
-  deleted=$(printf '%s\n' "$have" | grep -xE "\*\.zone-[a-z0-9]{1,12}\.${suffix//./\\.}" | grep -vxF -f <(printf '%s\n' "${names[@]}") || true)
-  if [ -n "$missing$deleted" ]; then
+  # The zone names of the earlier form *.<zone>.<suffix> leave the certificate.
+  earlier=$(printf '%s\n' "$have" | grep -xE "\*\.zone-[a-z0-9]{1,12}\.${suffix//./\\.}" || true)
+  if [ -n "$missing$earlier" ]; then
     domains=()
     for name in "${names[@]}"; do domains+=(-d "$name"); done
     certbot certonly --non-interactive --quiet --cert-name "$(basename "$tls_dir")" --expand --key-type ecdsa --dns-cloudflare \
@@ -164,10 +183,8 @@ if [ "$tls_mode" = cloudflare ]; then
     changed="$changed certificate"
   fi
 elif [ "$tls_mode" = files ]; then
-  have=$(certificate_names "$tls_certificate")
-  missing=$(printf '%s\n' "${names[@]}" | grep -vxF -f <(printf '%s\n' "$have") || true)
-  if [ -n "$missing" ]; then
-    echo "the certificate $tls_certificate lacks the names: $(tr '\n' ' ' <<<"$missing"). Replace it with a certificate that has them." >&2
+  if ! certificate_names "$tls_certificate" | grep -qxF "*.${suffix}"; then
+    echo "the certificate $tls_certificate lacks the name *.${suffix}. Replace it with a certificate that has it." >&2
     exit 1
   fi
   digest=$(cat "$tls_certificate" "$tls_key" | sha256sum | cut -d' ' -f1)
@@ -182,4 +199,4 @@ if ! cmp -s "$work/Caddyfile" "$here/Caddyfile"; then
 fi
 # The admin API is off, so a restart loads the new file. systemd reads the certificate files at the start.
 if [ -n "$changed" ] && systemctl is-enabled -q hoover-frontend.service; then systemctl restart hoover-frontend.service; fi
-echo "frontend: zones ${zones[*]:-none}, changed:${changed:- nothing}"
+echo "frontend: changed:${changed:- nothing}"

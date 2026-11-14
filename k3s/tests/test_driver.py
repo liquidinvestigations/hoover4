@@ -513,9 +513,9 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision('hoover:zone-a') == 1
     # The cluster scope needs every zone and the GPU pool, so a scoped run leaves it pending.
     assert state.applied_revision('cluster') == 0 and state.applied()['revision'] == 0
-    # The zone is registered and the frontend serves its names before zone.py applies it.
+    # The zone is registered before zone.py applies it. The frontend serves every zone host, so no frontend step runs.
     assert 'zone.register' in ran[0][0][2] and ran[0][0][4:] == ['zone-a', 'dev']
-    assert any('frontend' in arg for arg in ran[1][0])
+    assert not any('frontend' in arg for command, _ in ran for arg in command)
     # zone.py and its nested renders get the pinned settings revision.
     assert ran[-1][0][1].endswith('zones/zone.py') and ran[-1][1]['HOOVER4_SETTINGS_REVISION'] == '1'
 
@@ -551,8 +551,8 @@ def test_a_broken_token_exchange_fails_the_zone_step(env, monkeypatch, phase, lo
     assert pod['metadata']['labels']['app.kubernetes.io/name'] != 'oauth2-proxy'
     assert pod['spec']['volumes'][0]['secret']['secretName'] == 'oauth2-proxy'
     issuer, redirect = pod['spec']['containers'][0]['command'][3:]
-    assert issuer == f'https://id.zone-a.{ctx.site.domain}/realms/opendesk'
-    assert redirect == f'https://hoover.zone-a.{ctx.site.domain}/oauth2/callback'
+    assert issuer == f'https://zone-a-id.{ctx.site.domain}/realms/opendesk'
+    assert redirect == f'https://zone-a-hoover.{ctx.site.domain}/oauth2/callback'
     assert calls[-1][:4] == ('-n', hoover.namespace, 'delete', 'pod')
 
 
@@ -712,7 +712,64 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
     assert "'hostPort':turn_peers.LIVEKIT_UDP" in text and "'udp_port':turn_peers.LIVEKIT_UDP" in text
     assert 'hostPID' not in text and "'privileged'" not in text
     # A refused coturn or LiveKit pod fails the step, because the old pod is gone before the new one starts.
-    assert "for name in ('coturn','livekit'):" in text and "'rollout','status'" in text
+    assert "for name in ('coturn','livekit') if ZONES else ('coturn',):" in text and "'rollout','status'" in text
+
+
+FAKE_CALLS_KUBECTL = r"""#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ['CALLS_LOG'], 'a') as log:
+    log.write(' '.join(args) + '\n')
+if args[:2] == ['get', 'nodes']:
+    print(json.dumps({'items': [{'metadata': {'name': 'calls'}, 'spec': {'podCIDR': '10.42.4.0/24'}}]}))
+elif 'configmap' in args and 'coturn-peer-check' in args and args[-2:] == ['-o', 'json']:
+    record = os.environ.get('CALLS_RECORD')
+    if not record:
+        sys.exit('Error from server (NotFound)')
+    print(json.dumps({'data': json.loads(record)}))
+elif args[:1] == ['apply']:
+    sys.exit('apply is not expected')
+"""
+
+
+@pytest.mark.parametrize('record', [None, {'node': 'calls', 'address': '203.0.113.99'}, {'node': 'edge', 'address': '203.0.113.11'}])
+def test_the_calls_step_without_a_matching_probe_record_adds_no_public_peer(tmp_path, record):
+    # The zone runner cannot run the probe pod, so it reads the record of the operator step and stops without it.
+    site = write_site(tmp_path, 'remote.yml')
+    state = site.with_suffix('')
+    (state / 'zones').mkdir(parents=True)
+    (state / 'zones/secrets.json').write_text(json.dumps({'calls': {'jvb_password': 'x', 'livekit_turn_secret': 'y'}}))
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    (bin_dir / 'kubectl').write_text(FAKE_CALLS_KUBECTL)
+    (bin_dir / 'kubectl').chmod(0o755)
+    env = dict(os.environ, HOOVER4_SITE=str(site), KUBECONFIG=str(tmp_path / 'kubeconfig'), CALLS_LOG=str(tmp_path / 'log'),
+               PATH=f"{bin_dir}:{os.environ['PATH']}", CALLS_RECORD=json.dumps(record) if record else '')
+    result = subprocess.run([sys.executable, str(K3S / 'platform/calls/install-calls.py')], env=env, capture_output=True, text=True)
+    assert result.returncode == 1
+    assert 'no verified record of the host rule coturn_peers for 203.0.113.11 on calls' in result.stderr
+    assert '--steps operator' in result.stderr
+    # The step stops before it changes anything and runs no probe pod.
+    log = (tmp_path / 'log').read_text()
+    assert 'apply' not in log and 'pod' not in log
+
+
+def test_the_operator_and_calls_steps_record_the_probe_with_the_admin_kubeconfig(env, monkeypatch):
+    ctx = env.make('remote.yml')
+    ran = []
+    monkeypatch.setattr(ctx, 'run', lambda argv, **kw: ran.append([str(a) for a in argv]) or (0, ''))
+    deploy.step_calls(ctx)
+    assert ran[0][-2:] == [str(K3S / 'platform/calls/install-calls.py'), '--probe']
+    assert ran[1][-1] == str(K3S / 'platform/calls/install-calls.py')
+    monkeypatch.setattr(deploy, 'step_operator_image', lambda ctx: 'registry.hoover.internal/hoover/operator:x')
+    ran.clear()
+    deploy.step_operator(ctx)
+    probe = [r for r in ran if r[-1] == '--probe']
+    assert probe and ran.index(probe[0]) < next(i for i, r in enumerate(ran) if r[-1].endswith('install-runner.sh'))
+    rights = (K3S / 'platform/operator/runner-rights.yaml').read_text()
+    calls_role = rights[rights.index('namespace: calls\nrules:'):].split('---')[0]
+    # The runner reads the record and has no right on pods in calls.
+    assert 'resourceNames: [coturn-peer-check]\n    verbs: [get]' in calls_role and 'pods' not in calls_role
 
 
 def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):

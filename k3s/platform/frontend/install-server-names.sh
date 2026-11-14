@@ -16,8 +16,9 @@ else
   address=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings;print(settings.FRONTEND_BIND[0])' "$source_dir")
   names=("${extra_hosts[@]}")
   for zone in "${zones[@]}"; do
-    names+=("${zone}.${suffix}" "hoover.${zone}.${suffix}")
-    for host in "${hosts[@]}"; do names+=("${host}.${zone}.${suffix}"); done
+    # /etc/hosts has no wildcard, so the file names each zone host <zone>-<app>.<suffix> and the zone domain.
+    names+=("${zone}.${suffix}")
+    for host in "${hosts[@]}"; do names+=("${zone}-${host}.${suffix}"); done
   done
   wanted=$(printf '%s\n# BEGIN hoover-zones\n' "$current"; for name in "${names[@]}"; do printf '%s %s\n' "$address" "$name"; done; echo '# END hoover-zones')
 fi

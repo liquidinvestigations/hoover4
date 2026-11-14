@@ -5,8 +5,8 @@ The zone pages list each zone with its resource use and operations. POST /gpu/ke
 which a GPU host outside the cluster needs. A create, upgrade or delete request becomes an
 operation ConfigMap, which runner.py runs. A create names the home node of the zone.
 The settings page (settings.html) reads and saves the operator settings and starts Apply operations through
-portal_settings.py. The runner container of the operator pod (runner.py) runs the operations. An operation can end
-with a warning, for example that the HTTPS frontend serves the names of a new zone only after the next deployment.
+portal_settings.py. The runner container of the operator pod (runner.py) runs the operations. A step can end with a
+warning, which the zone page shows.
 The gateway sets X-Forwarded-User after the operator login, and network policy lets only the gateway pods connect.
 A process of the host can reach the pod address without the network policy, so the portal accepts X-Forwarded-User only
 together with X-Operator-Proxy-Secret. The secret is the key proxy-secret of the Secret operator-login
@@ -82,7 +82,7 @@ def zones():
   name=space['metadata']['name']
   # The Hoover namespace hoover-<zone> belongs to its zone.
   if not ZONE_NAME.fullmatch(name):continue
-  result.append({'name':name,'phase':space['status'].get('phase'),'portal':f'https://portal.{name}.{SUFFIX}/',
+  result.append({'name':name,'phase':space['status'].get('phase'),'portal':f'https://{name}-portal.{SUFFIX}/',
    **{k:v.get(name) for k,v in usage.items()}})
  nodes=[n['metadata']['name'] for n in api('GET','/api/v1/nodes?labelSelector=storage.hoover%2Fenrolled%3Dtrue')['items']]
  return {'zones':result,'nodes':nodes,'operations':operations(),'usage_available':bool(usage)}
@@ -107,7 +107,7 @@ def retry(name):
 def onboarding(zone):
  if not ZONE_NAME.fullmatch(zone):raise Refused('Unknown zone.')
  secret=api('GET',f'/api/v1/namespaces/{zone}/secrets/ums-nubus-credentials')
- return {'zone':zone,'portal':f'https://portal.{zone}.{SUFFIX}/','username':'Administrator',
+ return {'zone':zone,'portal':f'https://{zone}-portal.{SUFFIX}/','username':'Administrator',
   'password':base64.b64decode(secret['data']['administrator_password']).decode()}
 def gpu_key():
  """The GPU key of the installation, the Secret gpu-api-key (../../hoover/gpu.py). A GPU host outside the cluster needs it."""

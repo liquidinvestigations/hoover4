@@ -10,7 +10,7 @@ lab=pathlib.Path(__file__).resolve().parent
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
 OUT=settings.PRIVATE/'checks';OUT.mkdir(parents=True,exist_ok=True)
 settings.use_kubeconfig()
-zone=sys.argv[1] if len(sys.argv)>1 else 'zone-a';base=f'https://matrix.{zone}.{settings.SUFFIX}/_matrix/client/v3'
+zone=sys.argv[1] if len(sys.argv)>1 else 'zone-a';base=f'https://{zone}-matrix.{settings.SUFFIX}/_matrix/client/v3'
 def kubectl(*args):
  # mas-cli writes its result to the log on standard error, so the function returns both streams.
  r=subprocess.run(['kubectl','-n',zone,*args],check=True,capture_output=True,text=True);return r.stdout+r.stderr

@@ -841,14 +841,15 @@ except Exception as e:
 
 def sign_in_check_pod(ctx, hoover):
     """A pod with the OIDC egress label of oauth2-proxy, so the NetworkPolicy of the proxy applies to it."""
-    zone = f'{hoover.zone}.{ctx.site.domain}'
+    issuer = config.zone_host(hoover.zone, 'id', ctx.site.domain)
+    host = config.zone_host(hoover.zone, 'hoover', ctx.site.domain)
     return {'apiVersion': 'v1', 'kind': 'Pod',
             'metadata': {'name': 'sign-in-check', 'namespace': hoover.namespace,
                          'labels': {'app.kubernetes.io/name': 'sign-in-check', 'hoover.dev/oidc': 'client'}},
             'spec': {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
                      'containers': [{'name': 'check', 'image': POD_IMAGE,
-                                     'command': ['python3', '-c', SIGN_IN_CHECK, f'https://id.{zone}/realms/opendesk',
-                                                 f'https://hoover.{zone}/oauth2/callback'],
+                                     'command': ['python3', '-c', SIGN_IN_CHECK, f'https://{issuer}/realms/opendesk',
+                                                 f'https://{host}/oauth2/callback'],
                                      'resources': {'limits': {'cpu': '200m', 'memory': '64Mi'}},
                                      'volumeMounts': [{'name': 'secrets', 'mountPath': '/secrets', 'readOnly': True},
                                                       {'name': 'local-ca', 'mountPath': '/ca', 'readOnly': True}]}],
@@ -886,11 +887,10 @@ def check_sign_in(ctx, hoover, timeout=300):
 
 def step_zone(zone, home):
     def run(ctx):
-        # As the runner does for create-zone: the zone state gets the zone first, and the frontend then serves its
-        # names with a certificate. The install needs those names, for example the object storage of openDesk.
+        # As the runner does for create-zone: the zone state gets the zone first. The frontend serves every zone host
+        # with the certificate of *.<domain>, so a zone needs no frontend change.
         ctx.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import zone; zone.register(sys.argv[2], sys.argv[3])',
                  SOURCE / 'zones', zone, home])
-        step_frontend(ctx)
         ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone, '--home', home])
         hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
@@ -916,6 +916,9 @@ def step_operator(ctx):
     only when the registry does not have it, for example after a change of the checkout.
     """
     image = step_operator_image(ctx)
+    # The step calls of a portal zone operation needs the record of the coturn peer check, and the runner has no right
+    # to run the probe pod.
+    ctx.run([sys.executable, SOURCE / 'platform/calls/install-calls.py', '--probe'])
     ctx.run(['bash', SOURCE / 'platform/operator/install-runner.sh'])
     ctx.run(['bash', SOURCE / 'platform/operator/start-web-tools.sh'],
             env={'OPERATOR_IMAGE': image, 'OPERATOR_REVISION': ctx.revision})
@@ -956,8 +959,15 @@ def cluster_steps(ctx):
         relayed = next(iter(zones.values()))
         steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', relayed.name, 'apply')
     # The call services join the Jitsi of every zone, so they follow the zones.
-    steps['calls'] = step_script(sys.executable, '@platform/calls/install-calls.py')
+    steps['calls'] = step_calls
     return steps
+
+
+def step_calls(ctx):
+    """Record the coturn peer check of the media node, then install the call services that every zone shares."""
+    ctx.run([sys.executable, SOURCE / 'platform/calls/install-calls.py', '--probe'])
+    ctx.run([sys.executable, SOURCE / 'platform/calls/install-calls.py'])
+    return {}
 
 
 # ----------------------------------------------------------------------------------------------------------------------

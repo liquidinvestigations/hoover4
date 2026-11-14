@@ -83,9 +83,9 @@ A GPU node has no other role. A key that ends with `_file` names a private file 
 
 | `tls_mode` | Keys | Certificates |
 |---|---|---|
-| `cloudflare` | `tls_dns_credentials_file` | certbot gets a public wildcard certificate with the Cloudflare DNS challenge. It adds the name of each new zone. |
+| `cloudflare` | `tls_dns_credentials_file` | certbot gets a public certificate for `*.<domain>` and `<domain>` with the Cloudflare DNS challenge. |
 | `internal` | No key. | Caddy issues the certificates from its local CA. The frontend step copies the root certificate into `frontend/local-ca.crt` of the state folder. The pods trust it. Install that file in each browser that opens the site. |
-| `files` | `tls_certificate_file`, `tls_key_file` | Put a certificate and its key on the node. The certificate must have the names `*.<domain>` and `*.<zone>.<domain>` of each zone. |
+| `files` | `tls_certificate_file`, `tls_key_file` | Put a certificate and its key on the node. The certificate must have the name `*.<domain>`. |
 
 The default is `internal` on the local node, which has no other mode, and `cloudflare` on another node.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
@@ -158,6 +158,19 @@ python3 k3s/zones/zone.py delete zone-x
 - `stores` and `temporal_backend` have the defaults `zone` and `postgresql`. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
 - The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
 - `deploy-k3s up` applies each zone of the zone state again, after the platform steps.
+
+### Name the zone hosts.
+
+Each zone host has one label below the domain, `<zone>-<app>.<domain>` ([config.py](config.py) `zone_host()`). An example is `zone-x-portal.example.org`.
+The certificate of `*.<domain>` and the DNS record of `*.<domain>` cover every zone, so a zone create or delete changes no certificate, no DNS record and no frontend file.
+
+- The openDesk values of a zone set `global.domain` to the domain and each `global.hosts` entry to `<zone>-<default host>` ([zones/zones.py](zones/zones.py)). The home chart of openDesk serves `global.domain` itself, so no zone installs it.
+- The mail domain and the Matrix server name of a zone stay `<zone>.<domain>`. The zone domain serves the Matrix well-known files.
+- The intercom service of a zone answers the cross-origin requests of the hosts of its own zone only.
+- The gate of a zone signs in at `<zone>-auth.<domain>` ([zones/gate.py](zones/gate.py)). Its cookie has the domain `.<domain>` and the name `_hoover_gate_<zone>`.
+  One sign-in opens every host of the zone. The gate of another zone does not accept the cookie.
+- The HTTPS frontend serves the one site `*.<domain>` ([platform/frontend/frontend-sync.sh](platform/frontend/frontend-sync.sh)). It takes the zone id from the host name and asks the gate of that zone. It removes the gate cookies from the requests to the applications. Another name below the domain gets 404.
+- `python3 k3s/platform/calls/public_endpoints.py dns` prints the records `*.<domain>`, `<domain>` and `turn.<domain>`.
 
 ## Deploy a site.
 
@@ -290,8 +303,8 @@ The cluster holds the authoritative zone state, zone secrets and operator state.
 
 The operator pod (Deployment `portal` of `operator-portal`) runs the portal and the zone runner from the operator image of the registry ([platform/operator/pod.py](platform/operator/pod.py)).
 It mounts no checkout and no host state folder. Each container reads the cluster copy into a folder of the pod at its start. The runner keeps the zone secrets in its own memory folder, so the portal container cannot read them.
-The runner uses the token of the ServiceAccount `zone-runner` and needs no SSH access. A zone create or delete in the portal does not change the HTTPS frontend, because it runs outside the cluster.
-`deploy-k3s up --target <public node> --steps frontend` on the workstation adds or removes the names of the zone. A create or upgrade stops at the step `frontend` until the frontend answers for the zone names, and a delete records a warning.
+The runner uses the token of the ServiceAccount `zone-runner` and needs no SSH access. The HTTPS frontend serves every zone host, so a zone operation does not change it.
+A create or upgrade checks that the frontend answers for `<zone>-portal.<domain>` with a valid certificate, and stops at the step `frontend` until it does. `deploy-k3s up --target <public node> --steps frontend` on the workstation installs the frontend.
 The runner checks that the registry has the images of the revision. `deploy-k3s up --steps images` builds them.
 
 ## Save and apply operator settings.
@@ -328,10 +341,10 @@ It listens on 127.0.0.1 only and forwards each port to a Service of the installa
 - The relay keeps the chosen mode in `<operator state>/mcp-relay.json`. The driver step `mcp-relay` applies it again.
 - `tools/mcp-relay-check.py <name>=<port> ...` sends the MCP requests of a development client to each port.
 
-The website of an installation is `https://hoover.<zone>.<domain>/`. A user signs in through the Keycloak of the zone.
+The website of an installation is `https://<zone>-hoover.<domain>/`. A user signs in through the Keycloak of the zone.
 The browser harness (`website/take-screenshots.sh`) runs Chromium in a container that must reach that name and trust the local CA.
 `tools/harness-browser.sh start` runs the container `hoover4-harness-browser` from the Compose image of the browser server, in the host network, with the local CA as a Chromium policy.
-Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://hoover.<zone>.<domain>`, and give a zone login in `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD`.
+Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://<zone>-hoover.<domain>`, and give a zone login in `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD`.
 
 ## Move a Compose installation into the cluster.
 
@@ -367,6 +380,7 @@ After the target takes new work, a return to Compose loses that work.
 
 A site with `gpu_pool` `nodes: <GPU nodes>` runs the GPU services on those nodes ([platform/gpu/gpu_pool.py](platform/gpu/gpu_pool.py), driver step `gpu-pool`).
 A site with `gpu_pool` `address` uses a GPU host outside the site, for example the Compose GPU host of this workstation.
+A site without `gpu_pool` has no GPU services and no GPU proxy. Its Hoover installations get no forwarder `gpu`, and their GPU endpoints are empty.
 
 1. The node needs the NVIDIA driver. The k3s play refuses a GPU node where `nvidia-smi -L` fails. The host play installs the NVIDIA container toolkit from the NVIDIA repository when the node does not have it.
 2. The k3s play registers the runtime `runsc-nvproxy` (gVisor with GPU support), and labels and taints the node `hoover.dev/gpu=true`.
@@ -390,22 +404,27 @@ The installation has one GPU key. The operator step generates it once and keeps 
 ## Place the call services.
 
 The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
+A site without a zone runs only coturn, because LiveKit needs the key of a zone, and the JVB copies its template from a zone.
 A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
 coturn relays UDP only, so a TURN user reaches no store of a zone, which all serve TCP.
 It relays to the pods of the media node and, on a media node with a public address, to that address for a client that can only use TURN.
 The pods of the other nodes and the bridge address of the media node are no peers ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
 The chain `coturn_peers` of [coturn-peers.sh](ansible/roles/hoover4_public_firewall/files/coturn-peers.sh), in its own table, limits the public address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node.
-The `calls` step checks that chain with a probe pod on the media node before it adds the public address. Without the chain, the step stops and names the node.
+The steps `operator` and `calls` of `deploy-k3s up` check that chain with a probe pod in the host network of the media node (`install-calls.py --probe`).
+They record the result in the ConfigMap `coturn-peer-check` of `calls`.
+The pod admission policy of `calls` refuses a host network pod other than coturn, so the probe pod runs in `kube-system` with the admin kubeconfig.
+The step `calls`, also in a portal zone operation, adds the public address only when that record names the media node and its address.
+Without the record, the step stops and names `deploy-k3s up --steps operator`.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.
 `python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
 The switch `public_firewall` of the site file installs the role `hoover4_public_firewall` on the public node and on the calls node (see "Turn the host changes on or off").
 The role installs the chain `coturn_peers` on the media node also when the public address is on the interface of the node address, for example on a LAN site.
 `public-firewall.sh` starts a rollback timer of 180 seconds. The role confirms the table after a new SSH connection works.
-On a site with `public_firewall: false` on the media node, the `calls` step stops at its probe until the chain exists.
+On a site with `public_firewall: false` on the media node, the probe fails, and the `calls` step stops until the chain exists.
 
 Check a call from outside the site after a remote installation:
 
-1. Join a meeting at `https://meet.<zone>.<domain>/` from a computer outside the VPN, and a second participant from another network.
+1. Join a meeting at `https://<zone>-meet.<domain>/` from a computer outside the VPN, and a second participant from another network.
 2. Run `tools/call-check.py <zone>` with `LAB_SUFFIX`, `LAB_KUBECONFIG`, `LAB_USER` and `LAB_PASSWORD_FILE` of the remote site.
 3. The check passes when the JVB counts the conference and the ICE candidate of the browser is the public address of the media node.
 

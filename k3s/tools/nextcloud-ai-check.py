@@ -10,7 +10,7 @@ import html,http.cookiejar,json,pathlib,re,sys,time,urllib.error,urllib.parse,ur
 lab=pathlib.Path(__file__).resolve().parent
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
 OUT=settings.PRIVATE/'checks';OUT.mkdir(parents=True,exist_ok=True)
-zone=sys.argv[1] if len(sys.argv)>1 else 'zone-a';base=f'https://files.{zone}.{settings.SUFFIX}'
+zone=sys.argv[1] if len(sys.argv)>1 else 'zone-a';base=f'https://{zone}-files.{settings.SUFFIX}'
 jar=http.cookiejar.CookieJar();browser=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 def ocs(method,path,body=None):
  request=urllib.request.Request(base+'/ocs/v2.php'+path,method=method,data=json.dumps(body).encode() if body is not None else None,

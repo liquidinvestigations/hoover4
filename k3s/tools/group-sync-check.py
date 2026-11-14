@@ -40,7 +40,7 @@ def admin(app,uid):
  except (ValueError,KeyError):return None
 def request(app):
  # A browser request makes the application read the user again.
- try:urllib.request.urlopen(urllib.request.Request('https://'+URLS[app].replace('/',f'.{zone}.{settings.SUFFIX}/',1),headers={'User-Agent':'Mozilla/5.0 group-sync-check'}),timeout=60).read()
+ try:urllib.request.urlopen(urllib.request.Request('https://'+settings.zone_host(zone,URLS[app].split('/',1)[0])+'/'+URLS[app].split('/',1)[1],headers={'User-Agent':'Mozilla/5.0 group-sync-check'}),timeout=60).read()
  except Exception:pass
 def set_flags(value):
  call=udm.client(zone)

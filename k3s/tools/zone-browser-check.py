@@ -30,25 +30,31 @@ sys.path.insert(0, str(settings.HOOVER4 / 'website/tools'))
 from browser_lifecycle import start_browser, stop_browser  # noqa: E402
 
 ZONE = sys.argv[1]
-D = f'{ZONE}.{settings.SUFFIX}'
+
+
+def host(app):
+    """The host of an application of the zone, for example zone-a-portal.<suffix>."""
+    return settings.zone_host(ZONE, app)
+
+
 OUT = settings.PRIVATE / 'checks' / 'zone-browser'
 PAGE = ('JSON.stringify({url: location.href, title: document.title, text: document.body ? document.body.innerText.slice(0, 3000) : "",'
         ' passwords: document.querySelectorAll("input[type=password]").length})')
 # name, address, expected host, text markers of a signed-in page (one of them must show), single sign-on buttons to click
 APPS = [
-    ('portal', f'https://portal.{D}/univention/portal/', f'portal.{D}', ['Logged in as', 'Angemeldet als'], []),
-    ('files', f'https://files.{D}/apps/files/', f'files.{D}', ['All files', 'Alle Dateien'], []),
-    ('notes', f'https://notes.{D}/', f'notes.{D}', ['My notes', 'Meine Notizen'], []),
-    ('projects', f'https://projects.{D}/', f'projects.{D}', ['Sie sind nun angemeldet', 'You are now logged in', 'My page', 'Meine Seite',
+    ('portal', f'https://{host("portal")}/univention/portal/', host('portal'), ['Logged in as', 'Angemeldet als'], []),
+    ('files', f'https://{host("files")}/apps/files/', host('files'), ['All files', 'Alle Dateien'], []),
+    ('notes', f'https://{host("notes")}/', host('notes'), ['My notes', 'Meine Notizen'], []),
+    ('projects', f'https://{host("projects")}/', host('projects'), ['Sie sind nun angemeldet', 'You are now logged in', 'My page', 'Meine Seite',
                                                            'My projects', 'Meine Projekte'], []),
     # After the first sign-in of a user, Element asks a new browser to verify the device. It shows that page only to a
     # signed-in user.
-    ('chat', f'https://chat.{D}/', f'chat.{D}', ['Unreads', 'Ungelesen', 'Start chat', 'Unterhaltung beginnen', 'Verify this device'],
+    ('chat', f'https://{host("chat")}/', host('chat'), ['Unreads', 'Ungelesen', 'Start chat', 'Unterhaltung beginnen', 'Verify this device'],
      ['Continue', 'Sign in', 'Anmelden', 'Weiter']),
-    ('pad', f'https://pad.{D}/', f'pad.{D}', ['CryptPad'], []),
-    ('wiki', f'https://wiki.{D}/bin/view/Main/', f'wiki.{D}', ['Benutzerprofil', 'User profile', 'User Profile'], []),
-    ('meet', f'https://meet.{D}/hoover-check-room', f'meet.{D}', ['Join meeting', 'Konferenz beitreten', 'Beitreten'], ['Login', 'Anmelden', 'Sign in']),
-    ('hoover', f'https://hoover.{D}/', f'hoover.{D}', ['Text Search'], []),
+    ('pad', f'https://{host("pad")}/', host('pad'), ['CryptPad'], []),
+    ('wiki', f'https://{host("wiki")}/bin/view/Main/', host('wiki'), ['Benutzerprofil', 'User profile', 'User Profile'], []),
+    ('meet', f'https://{host("meet")}/hoover-check-room', host('meet'), ['Join meeting', 'Konferenz beitreten', 'Beitreten'], ['Login', 'Anmelden', 'Sign in']),
+    ('hoover', f'https://{host("hoover")}/', host('hoover'), ['Text Search'], []),
 ]
 AVAILABILITY = {'pad'}
 # Runs in the Files page: write an empty document and return its file id.
@@ -133,14 +139,14 @@ async def check_office(browser, user):
     """Open an empty document of the user in Collabora through Files, and wait until Collabora loads it."""
     began = time.monotonic()
     try:
-        tab = await browser.get(f'https://files.{D}/apps/files/')
-        ok, _ = await wait_page(tab, f'files.{D}', ['All files', 'Alle Dateien'])
+        tab = await browser.get(f'https://{host("files")}/apps/files/')
+        ok, _ = await wait_page(tab, host('files'), ['All files', 'Alle Dateien'])
         if not ok:
             raise RuntimeError('the Files page did not open')
         document = json.loads(await evaluate(tab, CREATE_DOCUMENT))
         if document['put'] not in (201, 204) or not document['fileid']:
             raise RuntimeError(f'the document was not written: {document}')
-        tab = await browser.get(f'https://files.{D}/apps/files/files/{document["fileid"]}?dir=/&openfile=true')
+        tab = await browser.get(f'https://{host("files")}/apps/files/files/{document["fileid"]}?dir=/&openfile=true')
         await evaluate(tab, LISTEN)
         deadline, messages = time.monotonic() + 120, []
         while time.monotonic() < deadline:
@@ -162,7 +168,7 @@ async def check_user(user, password):
                                                                '--use-fake-device-for-media-stream'], timeout=120)
     try:
         start = time.monotonic()
-        tab = await browser.get(f'https://portal.{D}/univention/oidc/?location=/univention/portal/')
+        tab = await browser.get(f'https://{host("portal")}/univention/oidc/?location=/univention/portal/')
         await sign_in(tab, user, password)
         for name, url, host, markers, buttons in APPS:
             began = time.monotonic()

@@ -28,13 +28,12 @@ grafana=secret('monitoring','monitor-grafana') or {}
 rows.append(('Grafana local admin','https://operator.'+settings.SUFFIX+'/grafana/',grafana.get('admin-user','(missing)'),grafana.get('admin-password','(missing)'),'The operator portal login is enough.'))
 for zone in ZONES:
  if secret(zone,'ums-nubus-credentials') is None:continue
- d=f'{zone}.{settings.SUFFIX}'
- rows+=[(f'{zone} portal and applications',f'https://portal.{d}/','Administrator',value(zone,'ums-nubus-credentials','administrator_password'),'Domain admin, and admin in Files, Projects, Wiki and Chat. zone-users.py sets the application flags.')]
+ rows+=[(f'{zone} portal and applications',f'https://{zone}-portal.{settings.SUFFIX}/','Administrator',value(zone,'ums-nubus-credentials','administrator_password'),'Domain admin, and admin in Files, Projects, Wiki and Chat. zone-users.py sets the application flags.')]
  test_user=settings.PRIVATE/f'zones/{zone}/test-user-password'
- if test_user.exists():rows.append((f'{zone} portal and applications',f'https://portal.{d}/','test.user',test_user.read_text().strip(),'Normal user in every in-scope application.'))
- rows+=[(f'{zone} Keycloak admin console',f'https://id.{d}/admin/master/console/','kcadmin',value(zone,'keycloak-admin-password','adminPassword'),'The console signs in to `master`. The zone users are in `opendesk`.'),
-  (f'{zone} Nextcloud internal admin',f'https://files.{d}/login?direct=1','nextcloud',value(zone,'nextcloud-admin-password','password'),'The direct login skips Keycloak.'),
-  (f'{zone} OpenProject internal admin',f'https://projects.{d}/login/internal','admin',value(zone,'openproject-admin-password','password'),'The internal login skips Keycloak.'),
+ if test_user.exists():rows.append((f'{zone} portal and applications',f'https://{zone}-portal.{settings.SUFFIX}/','test.user',test_user.read_text().strip(),'Normal user in every in-scope application.'))
+ rows+=[(f'{zone} Keycloak admin console',f'https://{zone}-id.{settings.SUFFIX}/admin/master/console/','kcadmin',value(zone,'keycloak-admin-password','adminPassword'),'The console signs in to `master`. The zone users are in `opendesk`.'),
+  (f'{zone} Nextcloud internal admin',f'https://{zone}-files.{settings.SUFFIX}/login?direct=1','nextcloud',value(zone,'nextcloud-admin-password','password'),'The direct login skips Keycloak.'),
+  (f'{zone} OpenProject internal admin',f'https://{zone}-projects.{settings.SUFFIX}/login/internal','admin',value(zone,'openproject-admin-password','password'),'The internal login skips Keycloak.'),
   (f'{zone} Collabora admin console',f'http://collabora.{zone}.svc:9980/browser/dist/admin/admin.html',value(zone,'collabora-admin-password','username'),value(zone,'collabora-admin-password','password'),'In the cluster only. openDesk blocks this page at the ingress.'),
   (f'{zone} LDAP admin',f'ldap://ums-ldap-server-primary.{zone}.svc:389','cn=admin,dc=swp-ldap,dc=internal',value(zone,'ums-ldap-server-admin','password'),'In the cluster only.'),
   (f'{zone} openDesk master password','-','-',(settings.PRIVATE/f'zones/{zone}/master-password').read_text().strip(),'It generates the zone secrets. It is not a login.')]
@@ -66,7 +65,7 @@ if '--insert' in sys.argv:
 if '--print' in sys.argv:
  # Print the logins of this host as one marked block. The local copy of the script inserts it with --insert.
  label=sys.argv[sys.argv.index('--print')+1]
- rows+=[(f'{zone} portal and applications',f'https://portal.{zone}.{settings.SUFFIX}/',e['username'],passwords.get(e['username'],'(not created yet)'),'Zone user from zone-users.json.')
+ rows+=[(f'{zone} portal and applications',f'https://{zone}-portal.{settings.SUFFIX}/',e['username'],passwords.get(e['username'],'(not created yet)'),'Zone user from zone-users.json.')
   for zone in ZONES if secret(zone,'ums-nubus-credentials') is not None for e in fixture]
  # The person-facing logins come first: the zone portal Administrator, the operator portal, then the zone users.
  def priority(row):

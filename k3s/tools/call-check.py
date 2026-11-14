@@ -29,7 +29,7 @@ OUT=settings.PRIVATE/'checks';OUT.mkdir(parents=True,exist_ok=True)
 os.environ['KUBECONFIG']=os.environ.get('LAB_KUBECONFIG',settings.KUBECONFIG)
 sys.path.insert(0,str(settings.HOOVER4/'website/tools'))
 from browser_lifecycle import start_browser,stop_browser
-zone=sys.argv[1];parts=sys.argv[2:] or ['jitsi','matrixrtc','turn','matrixrtc-relay'];d=f"{zone}.{os.environ.get('LAB_SUFFIX',settings.SUFFIX)}"
+zone=sys.argv[1];parts=sys.argv[2:] or ['jitsi','matrixrtc','turn','matrixrtc-relay'];S=os.environ.get('LAB_SUFFIX',settings.SUFFIX)
 USER=os.environ.get('LAB_USER','test.user')
 PASSWORD_FILE=pathlib.Path(os.environ.get('LAB_PASSWORD_FILE',settings.PRIVATE/f'zones/{zone}/test-user-password'))
 HOLD=int(os.environ.get('JITSI_HOLD','0'));P2P='true' if os.environ.get('JITSI_P2P')=='1' else 'false'
@@ -67,14 +67,14 @@ async def ev(tab,script,**kw):
 SECOND_USER=os.environ.get('JITSI_SECOND_USER');SECOND_FILE=pathlib.Path(os.environ.get('JITSI_SECOND_PASSWORD_FILE','/nonexistent'))
 async def sign_in(browser,user=USER,password_file=PASSWORD_FILE):
  password=password_file.read_text().strip()
- tab=await browser.get(f'https://portal.{d}/univention/oidc/?location=/univention/portal/');await asyncio.sleep(4)
+ tab=await browser.get(f'https://{zone}-portal.{S}/univention/oidc/?location=/univention/portal/');await asyncio.sleep(4)
  await (await tab.select('input[name="username"]',timeout=20)).send_keys(user)
  await (await tab.select('input[name="password"]',timeout=10)).send_keys(password)
  await (await tab.select('#kc-login',timeout=10)).click();await asyncio.sleep(6)
  return tab
 async def jitsi(browser,tab):
  room=f'hoovercheck{int(time.time())}'
- await tab.get(f'https://meet.{d}/{room}#config.prejoinConfig.enabled=false&config.startWithVideoMuted=true&config.p2p.enabled={P2P}')
+ await tab.get(f'https://{zone}-meet.{S}/{room}#config.prejoinConfig.enabled=false&config.startWithVideoMuted=true&config.p2p.enabled={P2P}')
  joined=None;start=time.monotonic();clicks=0;last_click=0.0;trail=[]
  for _ in range(60):
   await asyncio.sleep(2)
@@ -98,10 +98,10 @@ async def jitsi(browser,tab):
  if SECOND_USER:
   other=await start_browser(OUT/'browser-second.log',['--window-size=1400,900','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'],timeout=45)
   second=await sign_in(other,SECOND_USER,SECOND_FILE)
-  await second.get(f'https://meet.{d}/{room}#config.prejoinConfig.enabled=false&config.startWithVideoMuted=true&config.p2p.enabled={P2P}')
+  await second.get(f'https://{zone}-meet.{S}/{room}#config.prejoinConfig.enabled=false&config.startWithVideoMuted=true&config.p2p.enabled={P2P}')
   result['second_user']=SECOND_USER
  else:
-  second=await browser.get(f'https://meet.{d}/{room}#config.prejoinConfig.enabled=false&config.startWithVideoMuted=true&config.p2p.enabled={P2P}',new_tab=True)
+  second=await browser.get(f'https://{zone}-meet.{S}/{room}#config.prejoinConfig.enabled=false&config.startWithVideoMuted=true&config.p2p.enabled={P2P}',new_tab=True)
  for _ in range(30):
   await asyncio.sleep(2)
   if await ev(second,'typeof APP!=="undefined" && APP.conference && APP.conference.isJoined && APP.conference.isJoined()'):break
@@ -145,13 +145,13 @@ async def jitsi_hold(tabs):
 async def matrixrtc(browser,tab,policy='relay'):
  out=kubectl('-n',zone,'exec','deploy/element-matrix-authentication-service','-c','matrix-authentication-service','--',
   'mas-cli','manage','issue-compatibility-token',USER,'HOOVERCALLCHECK')
- token=re.search(r'(mct_\S+)',out).group(1);base=f'https://matrix.{d}/_matrix/client/v3'
+ token=re.search(r'(mct_\S+)',out).group(1);base=f'https://{zone}-matrix.{S}/_matrix/client/v3'
  user=http('GET',base+'/account/whoami',token=token)['user_id']
  room=http('POST',base+'/createRoom',{'name':'Call check','preset':'private_chat'},token)['room_id']
  result={}
  try:
   openid=http('POST',base+f'/user/{urllib.parse.quote(user)}/openid/request_token',{},token)
-  grant=http('POST',f'https://mrtc.{d}/sfu/get',{'room':room,'openid_token':openid,'device_id':'HOOVERCALLCHECK'})
+  grant=http('POST',f'https://{zone}-mrtc.{S}/sfu/get',{'room':room,'openid_token':openid,'device_id':'HOOVERCALLCHECK'})
   result['sfu_url']=grant.get('url')
   # The LiveKit client creates its peer connection before the join response, which carries the TURN entry.
   # A relay-only connection then gathers nothing, so the relay test passes the TURN entry itself. The credential uses
@@ -161,7 +161,7 @@ async def matrixrtc(browser,tab,policy='relay'):
    name=f"{int(time.time())+600}:call-check";secret=secrets['calls']['livekit_turn_secret']
    rtc['iceServers']=[{'urls':[f'turn:turn.{settings.SUFFIX}:3478?transport=udp'],'username':name,
     'credential':base64.b64encode(hmac.new(secret.encode(),name.encode(),hashlib.sha1).digest()).decode()}]
-  await tab.get(f'https://sfu.{d}/')
+  await tab.get(f'https://{zone}-sfu.{S}/')
   await ev(tab,'''new Promise((ok, fail) => { const s = document.createElement('script');
    s.src = 'https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js'; s.onload = ok; s.onerror = fail; document.head.appendChild(s); })''',await_promise=True)
   # Relay-only ICE makes the media path go through coturn.
@@ -212,7 +212,7 @@ async def turn(tab):
  # Chrome gathers relay candidates from coturn with a credential for the LiveKit TURN secret.
  name=f"{int(time.time())+600}:call-check";secret=secrets['calls']['livekit_turn_secret']
  credential=base64.b64encode(hmac.new(secret.encode(),name.encode(),hashlib.sha1).digest()).decode()
- await tab.get(f'https://sfu.{d}/')
+ await tab.get(f'https://{zone}-sfu.{S}/')
  found=json.loads(await ev(tab,'''(async () => { try { const pc = new RTCPeerConnection({iceTransportPolicy: 'relay',
    iceServers: [{urls: %s, username: %s, credential: %s}]});
   const found = []; pc.onicecandidate = e => { if (e.candidate) found.push(e.candidate.candidate.split(' ').slice(4,8).join(' ')); };

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Print the public DNS records and the firewall rules of a site, from its site file. It changes nothing.
 
-DNS: every name below the suffix that a browser or a call client uses, and the address that it must have.
-- The HTTPS names of each zone (portal, id, hoover, the openDesk applications, sfu) and the operator portal point to
-  the public address of the first public node, where the HTTPS frontend runs.
+DNS: the names below the suffix that a browser or a call client uses, and the address that each must have.
+- *.<suffix> and <suffix> point to the public address of the first public node, where the HTTPS frontend runs. The
+  wildcard covers every zone host <zone>-<app>.<suffix>, each zone domain <zone>.<suffix> and the operator portal, so
+  a zone add or delete needs no DNS change.
 - turn.<suffix> points to the public address of the media node (the calls node, else the public node), because a call
-  client sends its TURN traffic there.
+  client sends its TURN traffic there. The record of this name takes precedence over the wildcard.
 A node without a public address gets its node address, and the record is marked internal: a client outside the
 networks of the site cannot use it.
 Firewall: the ports that each public or calls node admits on its public interface. The media ports of the media node
@@ -25,16 +26,6 @@ sys.path.insert(0, str(K3S))
 import config as site_config  # noqa: E402
 
 
-def zone_names():
-    """The host names of each zone below <zone>.<suffix>: HOSTS of ../../zones/zones.py and hoover."""
-    import ast
-    tree = ast.parse((K3S / 'zones/zones.py').read_text())
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(getattr(t, 'id', '') == 'HOSTS' for t in node.targets):
-            return list(ast.literal_eval(node.value)) + ['hoover']
-    raise SystemExit('zones/zones.py has no HOSTS list.')
-
-
 FRONTEND_PORTS = [('tcp', 22, 'SSH'), ('tcp', 80, 'HTTP of the frontend'), ('tcp', 443, 'HTTPS of the frontend'),
                   ('udp', 443, 'HTTP/3 of the frontend')]
 MEDIA_PORTS = [('udp', 3478, 'TURN'), ('tcp', 3478, 'TURN over TCP'), ('udp', 10000, 'JVB media'),
@@ -48,10 +39,8 @@ def address(site, node):
 def dns(site):
     frontend = site.with_role('public')[0]
     media = site_config.calls_node(site)
-    rows = [{'name': f'operator.{site.domain}', 'address': address(site, frontend), 'internal': not frontend.public_address}]
-    for zone in sorted({h.zone for h in site_config.hoovers(site).values()}):
-        rows += [{'name': name, 'address': address(site, frontend), 'internal': not frontend.public_address}
-                 for name in [f'{zone}.{site.domain}'] + [f'{n}.{zone}.{site.domain}' for n in zone_names()]]
+    rows = [{'name': name, 'address': address(site, frontend), 'internal': not frontend.public_address}
+            for name in (f'*.{site.domain}', site.domain)]
     rows.append({'name': f'turn.{site.domain}', 'address': address(site, media), 'internal': not media.public_address})
     return rows
 

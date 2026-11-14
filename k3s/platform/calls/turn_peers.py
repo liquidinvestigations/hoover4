@@ -14,7 +14,8 @@ the coturn user, COTURN_UID, to the public address of the node, except to the Li
 chain runs before the DNAT of the LiveKit host ports, so it sees the public address.
 The calls step adds the public peer only after a probe pod on the media node shows the rule: in the host network, a
 connection of the coturn user to the public address on PROBE_PORT is dropped, and the same connection of another user
-reaches the port. Without the rule the step stops with a message.
+reaches the port. The admin kubeconfig runs the probe and records its result (install-calls.py --probe). Without a
+record for the media node and its public address the step stops with a message.
 The pod admission policy of the calls namespace refuses a privileged container and the host process namespace, so the
 rule is a host rule and not a part of the coturn pod.
 """

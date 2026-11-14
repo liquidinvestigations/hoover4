@@ -14,7 +14,7 @@ sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import setti
 settings.use_kubeconfig()
 sys.path.insert(0,str(settings.HOOVER4/'website/tools'))
 from browser_lifecycle import start_browser,stop_browser
-zone,source=sys.argv[1:3];d=f'{zone}.{settings.SUFFIX}'
+zone,source=sys.argv[1:3]
 script=pathlib.Path(source).read_text()
 for pair in sys.argv[3:]:
  name,value=pair.split('=',1)
@@ -44,7 +44,7 @@ async def main():
  password=secret('ums-nubus-credentials','administrator_password')
  browser=await start_browser(settings.PRIVATE/'browser.log',['--window-size=1400,900'],timeout=45)
  try:
-  tab=await browser.get(f'https://portal.{d}/univention/oidc/?location=/univention/portal/');await asyncio.sleep(4)
+  tab=await browser.get(f'https://{zone}-portal.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/');await asyncio.sleep(4)
   await (await tab.select('input[name="username"]',timeout=20)).send_keys('Administrator')
   await (await tab.select('input[name="password"]',timeout=10)).send_keys(password)
   await (await tab.select('#kc-login',timeout=10)).click();await asyncio.sleep(6)
@@ -52,7 +52,7 @@ async def main():
   # The script opens the wiki again until the page shows the signed-in user.
   user=''
   for _ in range(6):
-   await tab.get(f'https://wiki.{d}/bin/view/Main/')
+   await tab.get(f'https://{zone}-wiki.{settings.SUFFIX}/bin/view/Main/')
    for _ in range(15):
     await asyncio.sleep(2)
     user=await tab.evaluate("document.documentElement.getAttribute('data-xwiki-user-reference')||''")
