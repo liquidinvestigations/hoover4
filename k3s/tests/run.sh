@@ -32,7 +32,7 @@ for suite in "${suites[@]}"; do
                 --mount "type=bind,src=$repo_root,dst=/repo,readonly" \
                 --workdir /repo/k3s/tests \
                 --env PYTHONDONTWRITEBYTECODE=1 \
-                --env HOOVER4_SITE=/nonexistent/hoover4-site.ini \
+                --env HOOVER4_SITE=/nonexistent/site.yml \
                 hoover4-k3s-tests \
                 python -m pytest -q -p no:cacheprovider ${files[$suite]} || status=1
             ;;

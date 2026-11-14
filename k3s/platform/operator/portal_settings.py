@@ -30,7 +30,7 @@ class Refused(Exception):
 
 
 def site():
-    return config.read(os.environ.get('HOOVER4_SITE') or config.DEFAULT_SITE)
+    return config.read(os.environ.get('HOOVER4_SITE'))
 
 
 def state(s):

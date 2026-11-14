@@ -28,8 +28,8 @@ The steps of apply, in order:
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). An installation with
      stores = local in the site file gets its Secrets from setup.py local-secrets and its objects from manifests.py.
   8. write-password-table.py writes the logins into the inventory.
-KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig.
-openDesk needs Helm 3 and helmfile in k3s/private/bin/opendesk and the release in k3s/private/downloads.
+KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
+openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
 """
 import hashlib
 import json

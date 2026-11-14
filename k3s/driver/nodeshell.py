@@ -1,7 +1,7 @@
 """The user shell of a node for the tools that read or copy files on a node. Standard library only.
 
-A local node runs the commands in a local shell. A remote node runs them over SSH as the operator user, with the
-ssh_address of the site file. A root command runs with sudo -n, so it needs sudo without a password for that user.
+A local node runs the commands in a local shell. A remote node runs them over SSH with the SSH configuration of the
+current user, as `ssh <node name>` or `ssh <ssh_host>` (../config.py ssh_host()). A root command runs with sudo -n, so it needs sudo without a password for that user.
 The host steps of a deployment use Ansible instead (../ansible).
 """
 import shlex
@@ -45,7 +45,7 @@ class Shell:
         if self.node.local:
             # A remote shell starts in the home folder, and the paths are relative to it. A local one does too.
             return ['sh', '-c', 'cd && ' + script]
-        return ['ssh', *SSH_OPTIONS, self.node.ssh_address or self.node.name, '--', script]
+        return ['ssh', *SSH_OPTIONS, self.node.ssh_host or self.node.name, '--', script]
 
     def run(self, script, input=None, timeout=600):
         for attempt in range(SSH_ATTEMPTS):

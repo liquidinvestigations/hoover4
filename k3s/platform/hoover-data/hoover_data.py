@@ -3,7 +3,7 @@
 
 The databases of a zone stay on local volumes of its home node. Only the data directories, which Hoover scans and
 where uploads arrive, use NFS. Hoover pods on any node then read the same files.
-hoover_data in k3s/private/settings.json holds the site values:
+hoover_data in <state folder>/settings.json holds the site values:
   roots  the data root of each node, for example {"node-a": "/srv/hoover-data"}. A node without a root gets
          DEFAULT_ROOT. The root has one folder for each zone, with testdata and uploads.
   zones  the data node of each zone. The default is the home node of the zone.

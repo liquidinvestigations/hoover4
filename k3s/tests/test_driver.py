@@ -123,12 +123,11 @@ def env(tmp_path, monkeypatch):
     private = tmp_path / 'private'
     private.mkdir()
 
-    def make(fixture='single-node.ini', extra=''):
-        state = tmp_path / 'state'
-        text = site_text(fixture).replace('[site]\n', f'[site]\nstate_path = {state}\n', 1) + extra
-        site_path = tmp_path / 'site.ini'
+    def make(fixture='single-node.yml'):
+        text = site_text(fixture)
+        site_path = tmp_path / 'site.yml'
         site_path.write_text(text)
-        site = config.parse(text)
+        site = config.read(site_path)
         ctx = deploy.Context(site_path, site, private=private, repo=repo)
         ctx.kubeconfig = private / 'kubeconfig'
         return ctx
@@ -167,7 +166,7 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
 
 
 def test_remote_plan_puts_the_control_plane_first_and_gpu_nodes_last(env):
-    ctx = env.make('remote.ini')
+    ctx = env.make('remote.yml')
     steps = list(deploy.plan(ctx, 'up', ['gpu-1', 'edge', 'server-a']))
     # One Ansible run for each host step covers every target node.
     assert [s for s in steps if s.startswith('hosts:')] == ['hosts:prepare', 'hosts:k3s', 'hosts:verify']
@@ -240,18 +239,21 @@ def test_the_independent_steps_act_on_different_nodes():
 
 
 def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(env, monkeypatch):
-    ctx = env.make('remote.ini')
+    ctx = env.make('remote.yml')
     before = sorted(p for p in env.tmp.rglob('*') if 'commands.log' not in str(p))
     out = deploy.render(ctx, ['server-a', 'worker-b'], deploy.resolve_revision(env.repo, 'HEAD'))
     assert out['up'][0] == 'hosts:prepare' and out['down'][-1] == 'stop:k3s:server-a'
-    assert out['inventory']['all']['children']['hoover4_server']['hosts'] == {'server-a': {}}
+    assert out['site'] == 'example-org' and out['ansible_variables']['hoover4_nodes']['server-a']['server'] is True
     (env.private / 'facts').mkdir()
     (env.private / 'facts' / 'worker-b.json').write_text('{"os_family": "RedHat"}')
     problems, state = deploy.check(ctx, ['server-a', 'worker-b'])
     after = sorted(p for p in env.tmp.rglob('*') if 'commands.log' not in str(p))
-    assert {p.relative_to(env.private).parts[0] for p in set(after) - set(before)} == {'ansible', 'facts'}
+    assert {p.relative_to(env.private).parts[0] for p in set(after) - set(before)} == {'facts'}
     playbooks = [c for c in env.commands() if c[0] == 'ansible-playbook']
     assert len(playbooks) == 1 and playbooks[0][-2:] == ['--tags', 'facts']
+    # The site file is the inventory, and the derived values are extra variables.
+    assert playbooks[0][1:3] == ['-i', str(ctx.site_path)]
+    assert json.loads(playbooks[0][playbooks[0].index('-e') + 1])['hoover4_nodes']['worker-b']['ssh_host'] == 'worker-b'
     assert not [c for c in env.commands() if c[0] in ('sudo', 'ssh')]
     assert state['worker-b']['os_family'] == 'RedHat' and state['server-a'] == {'reachable': False, 'ready': False}
     assert any('the operator tools are missing' in p for p in problems)
@@ -260,7 +262,7 @@ def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(
 
 def test_a_failed_play_names_the_node_and_keeps_a_resumable_record(env, monkeypatch):
     monkeypatch.setenv('FAKE_ANSIBLE', 'fail')
-    ctx = env.make('remote.ini')
+    ctx = env.make('remote.yml')
     rev = deploy.resolve_revision(env.repo, 'HEAD')
     steps = deploy.select(deploy.plan(ctx, 'up', ['edge']), ['hosts'])
     record = ctx.records.new('up', ['edge'], rev, list(steps))
@@ -271,7 +273,7 @@ def test_a_failed_play_names_the_node_and_keeps_a_resumable_record(env, monkeypa
 
 
 def test_verify_names_a_missing_kubeconfig_and_the_differences_of_each_node(env, monkeypatch):
-    ctx = env.make('remote.ini')
+    ctx = env.make('remote.yml')
     ctx.record = {'targets': ['server-a', 'edge']}
     with pytest.raises(deploy.StepFailed, match=f'the admin kubeconfig {ctx.kubeconfig} is missing'):
         deploy.step_verify(ctx)
@@ -372,23 +374,23 @@ def test_the_command_refuses_a_missing_or_unknown_target(env):
 def test_the_topolvm_values_follow_the_volume_groups_of_the_site():
     sys.path.insert(0, str(K3S / 'cluster'))
     import topolvm_values
-    single, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('single-node.ini'))))
+    single, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('single-node.yml'))))
     assert single['lvmd']['deviceClasses'] == [{'name': 'nvme', 'volume-group': 'hoover4', 'default': True, 'spare-gb': 10}]
     defaults = [c['name'] for c in single['storageClasses'] if c['storageClass']['isDefaultClass']]
     assert defaults == ['nvme-ext4']
-    remote, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('remote.ini'))))
+    remote, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('remote.yml'))))
     assert [c['name'] for c in remote['storageClasses'] if c['storageClass']['isDefaultClass']] == ['hdd-ext4']
     assert labels == {'edge': 'nvme.tier-nvme', 'server-a': 'hdd.tier-hdd', 'worker-b': 'hdd.tier-hdd'}
     assert len(remote['lvmd']['additionalConfigs']) == 1
 
 
 def test_the_legacy_settings_of_a_single_node_site_use_the_local_address():
-    values = config.legacy_settings(config.parse(site_text('single-node.ini')))
+    values = config.legacy_settings(config.parse(site_text('single-node.yml')))
     assert values['registry_endpoint'] == f'{config.LOCAL_ADDRESS}:5000'
     assert values['frontend_bind'] == [config.LOCAL_ADDRESS] and values['frontend_local'] is True
     assert 'frontend_ssh' not in values
-    remote = config.legacy_settings(config.parse(site_text('remote.ini')))
-    assert remote['frontend_ssh'] == '203.0.113.10' and remote['registry_endpoint'] == '10.0.0.2:5000'
+    remote = config.legacy_settings(config.parse(site_text('remote.yml')))
+    assert remote['frontend_ssh'] == 'edge' and remote['registry_endpoint'] == '10.0.0.2:5000'
     assert remote['frontend_bind'] == ['10.0.0.1', '203.0.113.10']
 
 
@@ -502,7 +504,7 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     ('Pending', '', False),
 ])
 def test_a_broken_token_exchange_fails_the_zone_step(env, monkeypatch, phase, logs, passes):
-    ctx = env.make('remote.ini')
+    ctx = env.make('remote.yml')
     hoover = next(h for h in ctx.site.hoovers.values() if h.zone == 'zone-a')
     calls = []
 
@@ -527,8 +529,8 @@ def test_a_broken_token_exchange_fails_the_zone_step(env, monkeypatch, phase, lo
     assert pod['metadata']['labels']['app.kubernetes.io/name'] != 'oauth2-proxy'
     assert pod['spec']['volumes'][0]['secret']['secretName'] == 'oauth2-proxy'
     issuer, redirect = pod['spec']['containers'][0]['command'][3:]
-    assert issuer == f'https://id.zone-a.{ctx.site.suffix}/realms/opendesk'
-    assert redirect == f'https://hoover.zone-a.{ctx.site.suffix}/oauth2/callback'
+    assert issuer == f'https://id.zone-a.{ctx.site.domain}/realms/opendesk'
+    assert redirect == f'https://hoover.zone-a.{ctx.site.domain}/oauth2/callback'
     assert calls[-1][:4] == ('-n', hoover.namespace, 'delete', 'pod')
 
 
@@ -576,7 +578,7 @@ def test_the_sign_in_check_accepts_only_invalid_grant(tmp_path):
 
 
 def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatch):
-    ctx = env.make('remote.ini')
+    ctx = env.make('remote.yml')
     ctx.revision = '0' * 40
 
     def registry_get(endpoint, path, accept=None):
@@ -596,10 +598,12 @@ def test_a_local_shell_runs_in_the_home_folder_like_a_remote_one():
     # The bundle paths are relative to the home folder. A driver run from another folder still finds the bundle.
     import types
     import nodeshell
-    local = nodeshell.Shell(types.SimpleNamespace(name='a', local=True, ssh_address=''))
-    remote = nodeshell.Shell(types.SimpleNamespace(name='b', local=False, ssh_address='op@b'))
+    local = nodeshell.Shell(types.SimpleNamespace(name='a', local=True, ssh_host=''))
+    remote = nodeshell.Shell(types.SimpleNamespace(name='b', local=False, ssh_host=''))
+    alias = nodeshell.Shell(types.SimpleNamespace(name='c', local=False, ssh_host='C'))
     assert local.command('ls k3s-install') == ['sh', '-c', 'cd && ls k3s-install']
-    assert remote.command('ls k3s-install')[-1] == 'ls k3s-install'
+    assert remote.command('ls k3s-install')[-3:] == ['b', '--', 'ls k3s-install']
+    assert alias.command('ls k3s-install')[-3:] == ['C', '--', 'ls k3s-install']
 
 
 def test_an_on_delete_statefulset_waits_for_its_ready_replicas(monkeypatch):
@@ -622,7 +626,7 @@ def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
     import json
     import os
     import subprocess
-    site = config.parse(site_text('remote.ini'))
+    site = config.parse(site_text('remote.yml'))
     hosts = config.legacy_hosts(site)
     for name in hosts['hosts']:
         hosts['hosts'][name]['tiers'] = ['ssd']
@@ -674,7 +678,7 @@ def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):
     import types
     import nodeshell
     monkeypatch.setattr(nodeshell, 'SSH_PAUSE', 0)
-    shell = nodeshell.Shell(types.SimpleNamespace(name='edge', local=False, ssh_address='op@edge'))
+    shell = nodeshell.Shell(types.SimpleNamespace(name='edge', local=False, ssh_host=''))
     answers = [(255, 'kex_exchange_identification: Connection closed by remote host'),
                (255, 'Connection reset by 203.0.113.10 port 22'), (0, 'done')]
     calls = []
@@ -690,22 +694,23 @@ def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):
 
 
 def test_a_node_that_keeps_its_vpn_gets_no_wireguard_play(tmp_path):
-    text = site_text('remote.ini')
-    groups = config.ansible_inventory(config.parse(text), tmp_path)['all']['children']
-    assert 'server-a' in groups['hoover4_wireguard']['hosts'] and 'gpu-1' not in groups['hoover4_wireguard']['hosts']
-    assert 'hoover4_wireguard' not in groups['hoover4']['hosts']['gpu-1']
-    foreign = config.parse(text.replace('[node.calls]\n', '[node.calls]\nvpn_interface = wg-site\n'))
-    assert 'calls' not in config.ansible_inventory(foreign, tmp_path)['all']['children']['hoover4_wireguard']['hosts']
+    text = site_text('remote.yml')
+    nodes = config.ansible_variables(config.parse(text), tmp_path)['hoover4_nodes']
+    assert nodes['server-a']['wireguard'] and nodes['gpu-1']['wireguard'] == {}
+    foreign = config.parse(text.replace('node_roles: calls', 'node_roles: calls\n      vpn_interface: wg-site'))
+    assert config.ansible_variables(foreign, tmp_path)['hoover4_nodes']['calls']['wireguard'] == {}
+    play = (K3S / 'ansible/playbooks/hoover4-hosts.yml').read_text()
+    assert 'role: hoover4_wireguard\n      when: hoover4_wireguard | length > 0' in play
 
 
 
 
 def test_the_frontend_step_names_the_local_ca_of_the_internal_mode(tmp_path):
     import types
-    text = site_text('remote.ini').replace('tls_dns_credentials_file = /etc/letsencrypt/cloudflare.ini', 'tls_mode = internal')
+    text = site_text('remote.yml').replace('tls_dns_credentials_file: /etc/letsencrypt/cloudflare.ini', 'tls_mode: internal')
     ran = []
     ctx = types.SimpleNamespace(site=config.parse(text), private=tmp_path, run=lambda argv, **kw: ran.append(argv) or (0, ''))
     assert deploy.step_frontend(ctx) == {'tls_mode': 'internal', 'local_ca': str(tmp_path / 'frontend' / 'local-ca.crt')}
     assert str(ran[0][1]).endswith('platform/frontend/install-frontend.sh')
-    ctx.site = config.parse(site_text('remote.ini'))
+    ctx.site = config.parse(site_text('remote.yml'))
     assert deploy.step_frontend(ctx) == {'tls_mode': 'cloudflare'}

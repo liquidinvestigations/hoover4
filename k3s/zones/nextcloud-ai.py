@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn on the Nextcloud Assistant with the private LLM in k3s/private/ai.json. Usage: nextcloud-ai.py [zone ...]
+"""Turn on the Nextcloud Assistant with the private LLM in <state folder>/ai.json. Usage: nextcloud-ai.py [zone ...]
 
 The image from ../images/nextcloud-ai adds the Assistant and integration_openai apps. zones.py sets that image in
 the zone values, and this script sets it on a running zone too.

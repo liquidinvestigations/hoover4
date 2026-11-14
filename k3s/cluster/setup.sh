@@ -1,9 +1,9 @@
 #!/bin/bash
 # Set up the cluster on the k3s nodes: node labels, RuntimeClasses, cert-manager and TopoLVM.
 # Run it on a host with kubectl, helm, python3 and the admin kubeconfig. A second run changes nothing.
-# KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig.
+# KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 # The site file (settings.py) gives the storage tiers and the AVX2 flag of each node.
-# HELM names the helm command. The default is k3s/private/bin/helm, else helm.
+# HELM names the helm command. The default is <state folder>/bin/helm, else helm.
 set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
 if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi

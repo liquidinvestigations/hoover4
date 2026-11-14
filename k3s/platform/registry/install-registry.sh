@@ -2,9 +2,9 @@
 # Install the image registry of the cluster and point every node at it.
 # settings.json names the node in registry_node and the address and port in registry_endpoint, for example
 # <VPN address of that node>:5000. The registry runs with runc, because it is a platform service and holds no zone data.
-# The push password is k3s/private/registry-push-password. The script creates it once. It writes the podman
-# credentials for build-image.sh to k3s/private/registry-auth.json.
-# KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig.
+# The push password is <state folder>/registry-push-password. The script creates it once. It writes the podman
+# credentials for build-image.sh to <state folder>/registry-auth.json.
+# KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
 if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi

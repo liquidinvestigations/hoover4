@@ -10,12 +10,12 @@ Destructive controls are refused. A click target whose text, label or address na
 words is skipped. A page navigation to another host, to a logout address, or to an admin area is aborted. Every
 browser dialog is dismissed, which cancels a confirmation.
 
-Run it with the Python environment k3s/private/load-venv, which has Playwright and uses /usr/bin/chromium.
+Run it with the Python environment <state folder>/load-venv, which has Playwright and uses /usr/bin/chromium.
 Usage: load-venv/bin/python monkey.py run [app ...] [--seconds 60] [--users N] [--tabs N]
        load-venv/bin/python monkey.py explore <app> [user]   (one tab, a screenshot every 5 s, then 20 s of exercise)
-Apps: portal files office notes projects chat pad wiki meet hoover. The output goes to k3s/private/load/load-<time>/.
+Apps: portal files office notes projects chat pad wiki meet hoover. The output goes to <state folder>/load/load-<time>/.
 The users are Administrator, test.user and the zone users of ../../zones/zone-users.json, with the passwords of
-k3s/private and the zone.
+the state folder and the zone.
 LOAD_ZONE names the zone, zone-a by default. LOAD_HOST names the SSH alias of the node that runs sampler.py. The script
 reads the clock of that node to align the samples. Without it the clock offset is 0.
 """

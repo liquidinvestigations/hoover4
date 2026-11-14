@@ -137,9 +137,9 @@ def test_the_plan_maps_each_source_folder_to_its_claim_and_reads_a_serena_ini(tm
 
 def test_a_nondefault_storage_identity_reaches_the_migrated_render(tmp_path):
     import manifests
-    text = site_text('single-node.ini').replace('clickhouse_database_prefix = Hoover4', 'clickhouse_database_prefix = Archive2') \
-        .replace('collection_bucket_prefix = hoover4-c-', 'collection_bucket_prefix = archive2-c-')
-    site = tmp_path / 'site.ini'
+    text = site_text('single-node.yml').replace('clickhouse_database_prefix: Hoover4', 'clickhouse_database_prefix: Archive2') \
+        .replace('collection_bucket_prefix: hoover4-c-', 'collection_bucket_prefix: archive2-c-')
+    site = tmp_path / 'site.yml'
     site.write_text(text)
     target = manifests.target_from_site(site, 'main', revision='0123456789abcdef0123', state=tmp_path / 'no-state', nfs={})
     items = json.loads(manifests.render(target))['items']
@@ -161,8 +161,8 @@ def test_image_references_and_manticore_answers():
 
 def test_a_step_waits_for_the_steps_before_it(tmp_path, monkeypatch):
     migrate = migrate_module()
-    site = tmp_path / 'site.ini'
-    site.write_text(site_text('single-node.ini').replace('[site]\n', f'[site]\nstate_path = {tmp_path / "state"}\n', 1))
+    site = tmp_path / 'site.yml'
+    site.write_text(site_text('single-node.yml'))
     with pytest.raises(SystemExit) as stopped:
         migrate.main(['copy', 'main', '--site', str(site)])
     assert 'needs the steps plan, freeze, record, stop, images first' in str(stopped.value)
@@ -206,8 +206,8 @@ def test_rootful_docker_keeps_the_owners_and_rootless_docker_is_refused(monkeypa
 
 def test_a_changed_input_stops_every_later_step(tmp_path):
     migrate = migrate_module()
-    site_path = tmp_path / 'site.ini'
-    site_path.write_text(site_text('single-node.ini').replace('[site]\n', f'[site]\nstate_path = {tmp_path / "state"}\n', 1))
+    site_path = tmp_path / 'site.yml'
+    site_path.write_text(site_text('single-node.yml'))
     site = config.read(site_path)
     r = migrate.Run(site, site.hoovers['main'], '1', site_path)
     with pytest.raises(SystemExit, match='no inputs.json'):

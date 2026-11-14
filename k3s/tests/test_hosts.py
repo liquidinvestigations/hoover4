@@ -1,4 +1,4 @@
-"""The host steps: the Ansible inventory of the site file, the k3s configuration of servers and agents, the WireGuard
+"""The host steps: the variables of the host plays, the k3s configuration of servers and agents, the WireGuard
 peers, the datastore script of the k3s server, and the removal of a local installation.
 
 The tests render the templates of ../ansible/roles with Jinja and load the module and the scripts of the roles as
@@ -11,12 +11,15 @@ import sys
 
 import jinja2
 import pytest
+import yaml
 
 from conftest import K3S, site_text
 import config
 
 ROLES = K3S / 'ansible' / 'roles'
-REMOTE_GPU = site_text('remote.ini').replace('architecture = arm64\n', 'architecture = arm64\nvpn_interface = wg-site\n')
+# The indentation of a host key in the YAML fixtures.
+H = '\n      '
+REMOTE_GPU = site_text('remote.yml').replace('architecture: arm64', 'architecture: arm64' + H + 'vpn_interface: wg-site')
 
 
 def load(path, name):
@@ -26,11 +29,27 @@ def load(path, name):
     return module
 
 
+GROUP_VARS = K3S / 'ansible' / 'playbooks' / 'group_vars' / 'hoover4.yml'
+
+
 def host_vars(text, node, state='/state'):
-    inventory = config.ansible_inventory(config.parse(text), state)['all']
-    return {**inventory['vars'], **inventory['children']['hoover4']['hosts'][node], 'inventory_hostname': node,
-            'hoover4_kata': inventory['children']['hoover4']['hosts'][node]['hoover4_architecture'] == 'amd64'
-            and not inventory['children']['hoover4']['hosts'][node]['hoover4_gpu']}
+    """The variables of one node in the host plays: the extra variables of the driver, and the node values that
+    playbooks/group_vars/hoover4.yml maps to hoover4_* names."""
+    variables = config.ansible_variables(config.parse(text), state)
+    own = variables['hoover4_nodes'][node]
+    values = {k: v for k, v in variables.items() if k != 'hoover4_nodes'}
+    for name, template in yaml.safe_load(GROUP_VARS.read_text()).items():
+        if template.startswith('{{ hoover4_node.'):
+            values[name] = own[template.removeprefix('{{ hoover4_node.').removesuffix(' }}')]
+    return {**values, 'inventory_hostname': node,
+            'hoover4_kata': values['hoover4_architecture'] == 'amd64' and not values['hoover4_gpu']}
+
+
+def test_the_group_variables_name_every_node_value():
+    own = config.ansible_variables(config.parse(site_text('remote.yml')), '/state')['hoover4_nodes']['edge']
+    mapped = {t.removeprefix('{{ hoover4_node.').removesuffix(' }}') for t in yaml.safe_load(GROUP_VARS.read_text()).values()
+              if t.startswith('{{ hoover4_node.')}
+    assert set(own) <= mapped
 
 
 def render(template, values):
@@ -41,8 +60,8 @@ def render(template, values):
 
 
 def test_every_server_initializes_etcd_and_no_agent_does():
-    server = render('config.yaml.j2', host_vars(site_text('remote.ini'), 'server-a'))
-    agent = render('config.yaml.j2', host_vars(site_text('remote.ini'), 'worker-b'))
+    server = render('config.yaml.j2', host_vars(site_text('remote.yml'), 'server-a'))
+    agent = render('config.yaml.j2', host_vars(site_text('remote.yml'), 'worker-b'))
     assert 'cluster-init: true\n' in server and 'agent-token-file: /etc/rancher/k3s/agent-token\n' in server
     assert 'cluster-init' not in agent and agent.startswith('server: https://10.0.0.2:6443\ntoken-file: /etc/rancher/k3s/agent-token\n')
     assert 'node-ip: 10.0.0.3\nflannel-iface: wg0\n' in agent
@@ -50,7 +69,7 @@ def test_every_server_initializes_etcd_and_no_agent_does():
 
 def test_the_configuration_of_a_lan_server_keeps_the_bytes_of_the_earlier_installer():
     # The earlier root script wrote this file on a LAN server. The same bytes keep k3s running without a restart.
-    text = site_text('remote.ini')
+    text = site_text('remote.yml')
     values = host_vars(text, 'server-a') | {'hoover4_node_address': '192.0.2.25', 'hoover4_flannel_iface': 'enp3s0',
                                             'inventory_hostname': 'lan-3', 'hoover4_reserved': ''}
     assert render('config.yaml.j2', values) == """# The server keeps its datastore in embedded etcd, also on a site with one node. etcd gives the snapshots of
@@ -81,7 +100,7 @@ kubelet-arg:
 
 def test_a_gpu_node_keeps_its_own_vpn_interface_and_gets_the_gpu_handler():
     values = host_vars(REMOTE_GPU, 'gpu-1')
-    assert values['hoover4_flannel_iface'] == 'wg-site' and 'hoover4_wireguard' not in values
+    assert values['hoover4_flannel_iface'] == 'wg-site' and values['hoover4_wireguard'] == {}
     text = render('config.yaml.j2', values)
     assert 'node-taint:\n  - hoover.dev/gpu=true:NoSchedule\n' in text
     runtimes = render('runtimes.toml.j2', values)
@@ -89,27 +108,26 @@ def test_a_gpu_node_keeps_its_own_vpn_interface_and_gets_the_gpu_handler():
     assert 'runtimes.kata]' in render('runtimes.toml.j2', host_vars(REMOTE_GPU, 'server-a'))
 
 
-def test_the_inventory_connects_with_the_ssh_address_and_keeps_the_state_paths(tmp_path):
-    inventory = config.ansible_inventory(config.parse(site_text('remote.ini')), tmp_path)['all']
-    assert inventory['vars']['hoover4_kubeconfig'] == str(tmp_path / 'kubeconfig')
-    assert inventory['vars']['hoover4_tokens_dir'] == str(tmp_path / 'staging/tokens')
-    hosts = inventory['children']['hoover4']['hosts']
-    assert inventory['children']['hoover4_server']['hosts'] == {'server-a': {}}
-    assert 'server-a' not in inventory['children']['hoover4_agents']['hosts']
-    assert hosts['server-a']['hoover4_convert_sqlite'] is True and hosts['worker-b']['hoover4_convert_sqlite'] is False
-    assert inventory['hosts']['localhost']['ansible_connection'] == 'local'
-    local = config.ansible_inventory(config.parse(site_text('single-node.ini')), tmp_path)['all']['children']['hoover4']
-    assert local['hosts']['dev']['ansible_host'] == 'localhost' and local['hosts']['dev']['hoover4_single_local'] is True
+def test_the_nodes_connect_with_their_name_or_alias_and_keep_the_state_paths(tmp_path):
+    variables = config.ansible_variables(config.parse(site_text('remote.yml')), tmp_path)
+    assert variables['hoover4_kubeconfig'] == str(tmp_path / 'kubeconfig')
+    assert variables['hoover4_tokens_dir'] == str(tmp_path / 'staging/tokens')
+    assert variables['hoover4_domain'] == 'example.org'
+    nodes = variables['hoover4_nodes']
+    assert nodes['server-a']['convert_sqlite'] is True and nodes['worker-b']['convert_sqlite'] is False
+    assert nodes['server-a']['ssh_host'] == 'server-a' and nodes['calls']['ssh_host'] == 'calls-public'
+    local = config.ansible_variables(config.parse(site_text('single-node.yml')), tmp_path)['hoover4_nodes']['dev']
+    assert local['ssh_host'] == 'localhost' and local['single_local'] is True
 
 
 # calls sits on another LAN. It peers only with the public node edge, and the other nodes reach it through edge.
-ROUTED = site_text('remote.ini').replace('public_address = 203.0.113.11\n',
-                                         'public_address = 203.0.113.11\nwireguard_public_key = calls-public-key\n'
-                                         'wireguard_peers = edge\nwireguard_via = edge\n')
+ROUTED = site_text('remote.yml').replace('public_address: 203.0.113.11',
+                                         'public_address: 203.0.113.11' + H + 'wireguard_public_key: calls-public-key' + H
+                                         + 'wireguard_peers: edge' + H + 'wireguard_via: edge')
 # gpu-1 keeps its VPN interface and names edge as its direct peer. The person adds the reverse peer on gpu-1.
-PEERED_GPU = REMOTE_GPU.replace('gpu_api_key_file = /root/vllm-key\n',
-                                'gpu_api_key_file = /root/vllm-key\nwireguard_public_key = gpu-1-public-key\n'
-                                'wireguard_peers = edge\n')
+PEERED_GPU = REMOTE_GPU.replace('gpu_api_key_file: /root/vllm-key',
+                                'gpu_api_key_file: /root/vllm-key' + H + 'wireguard_public_key: gpu-1-public-key' + H
+                                + 'wireguard_peers: edge')
 
 
 def test_a_node_with_wireguard_peers_gets_direct_peers_only_with_them():
@@ -124,28 +142,28 @@ def test_a_node_with_wireguard_peers_gets_direct_peers_only_with_them():
     assert hosts['edge']['routes'] == {}
     site = config.parse(ROUTED)
     assert config.parse(config.dump(site)) == site
-    assert config.legacy_hosts(config.parse(site_text('remote.ini')))['hosts']['server-a']['routes'] == {}
+    assert config.legacy_hosts(config.parse(site_text('remote.yml')))['hosts']['server-a']['routes'] == {}
 
 
 def test_a_route_needs_direct_peers_with_the_forwarding_node():
     with pytest.raises(config.SiteError, match='have no direct peer'):
-        config.parse(ROUTED.replace('wireguard_peers = edge\n', 'wireguard_peers = server-a\n'))
+        config.parse(ROUTED.replace('wireguard_peers: edge', 'wireguard_peers: server-a'))
     with pytest.raises(config.SiteError, match='not another node of the site'):
-        config.parse(ROUTED.replace('wireguard_peers = edge\n', 'wireguard_peers = edge, nowhere\n'))
+        config.parse(ROUTED.replace('wireguard_peers: edge', 'wireguard_peers: edge, nowhere'))
     with pytest.raises(config.SiteError, match='has no direct peer for edge'):
-        config.parse(ROUTED.replace('[node.worker-b]\n', '[node.worker-b]\nwireguard_peers = server-a\n'))
+        config.parse(ROUTED.replace('node_roles: worker, data', 'node_roles: worker, data' + H + 'wireguard_peers: server-a'))
 
 
 def test_a_node_that_keeps_its_vpn_gets_no_route_and_a_hand_made_reverse_peer():
     # The installer adds no interface on gpu-1, so it cannot add the routes there.
     with pytest.raises(config.SiteError, match='configures no WireGuard interface on this node'):
-        config.parse(PEERED_GPU.replace('wireguard_peers = edge\n', 'wireguard_peers = edge\nwireguard_via = edge\n'))
+        config.parse(PEERED_GPU.replace('wireguard_peers: edge', 'wireguard_peers: edge' + H + 'wireguard_via: edge'))
     site = config.parse(PEERED_GPU)
     hosts = config.legacy_hosts(site)['hosts']
     # Only edge adds a direct peer for gpu-1. The other nodes keep the route of the existing VPN.
     assert 'gpu-1' in hosts['edge']['peers'] and 'gpu-1' not in hosts['server-a']['peers']
     assert config.manual_peers(site) == [
-        '[node.gpu-1] keeps its VPN interface wg-site. Add a peer for edge on that interface by hand: the public '
+        'hosts.gpu-1 keeps its VPN interface wg-site. Add a peer for edge on that interface by hand: the public '
         'key of edge, its endpoint, and AllowedIPs 10.0.0.1/32.']
     # Without wireguard_peers no node adds a direct peer for gpu-1, because no reverse peer exists there.
     plain = config.parse(REMOTE_GPU)
@@ -185,7 +203,7 @@ def test_the_wireguard_peers_add_routed_addresses_and_remove_none():
 
 def test_the_vpn_interface_must_be_a_valid_name():
     with pytest.raises(config.SiteError, match='is not a network interface name'):
-        config.parse(site_text('remote.ini').replace('architecture = arm64\n', 'architecture = arm64\nvpn_interface = a b\n'))
+        config.parse(site_text('remote.yml').replace('architecture: arm64', 'architecture: arm64' + H + 'vpn_interface: a b'))
     site = config.parse(REMOTE_GPU)
     assert config.parse(config.dump(site)) == site
 

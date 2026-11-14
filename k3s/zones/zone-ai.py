@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Connect Notes and Collabora of each zone to the private LLM in k3s/private/ai.json. Usage: zone-ai.py [zone ...]
+"""Connect Notes and Collabora of each zone to the private LLM in <state folder>/ai.json. Usage: zone-ai.py [zone ...]
 
 openDesk wires Notes and Collabora through one ai setting (endpoint, API key, model). zones.py writes the same
 setting into the zone values, so a zone install applies it. This script applies it to the running zones.

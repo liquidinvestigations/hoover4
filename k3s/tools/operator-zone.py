@@ -2,10 +2,10 @@
 """Send a zone operation through the operator portal and wait until the zone runner ends it.
 
 Usage: operator-zone.py create <zone> <home node> | upgrade <zone> | delete <zone>
-The browser signs in to https://operator.<suffix>/ as admin with k3s/private/operator-login/admin-password. It
+The browser signs in to https://operator.<suffix>/ as admin with <state folder>/operator-login/admin-password. It
 sends the operation from the portal page, as the page form does, and reads the operation list of /zones.json every
 30 s. It prints the state, the step and the error of the operation, and exits with 1 when the operation fails or does
-not end within 90 minutes. Run it with k3s/private/browser-venv, which has nodriver.
+not end within 90 minutes. Run it with <state folder>/browser-venv, which has nodriver.
 """
 import asyncio
 import json

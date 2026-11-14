@@ -1,5 +1,5 @@
 # The rights of the zone runner (runner.py). The runner uses the token of the ServiceAccount zone-runner, which
-# install-runner.sh writes into k3s/private/operator-runner/kubeconfig.
+# install-runner.sh writes into <state folder>/operator-runner/kubeconfig.
 # - In a zone namespace it has every right through the RoleBinding zone-runner, which zone.py creates with each zone
 #   namespace. It binds the ClusterRole zone-admin.
 # - Outside the zone namespaces it can create, change and delete zone namespaces and RoleBindings, bind zone-admin,

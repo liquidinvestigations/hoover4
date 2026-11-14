@@ -9,8 +9,9 @@ This tool proposes the limit for the next upgrade.
 The tool reads memory.peak and memory.max of the container cgroup inside each VM with kubectl exec. Inside the VM the
 cgroup counts only the container, and memory.peak is its peak since the start. The proposal uses the rule of the
 cluster. It takes the larger of 1.5 times the peak and the peak plus 256 MiB, and rounds it up to 128 MiB. A worker pod gets at least the sum of
-its derived processes (../hoover/zone_ini.py). It writes the proposal to k3s/private/zones/<zone>/hoover-budget-proposal.json.
---accept writes the proposed worker memory into hoover_budget of k3s/private/settings.json, and the next zone upgrade
+its derived processes (../hoover/zone_ini.py). It writes the proposal to
+<state folder>/zones/<zone>/hoover-budget-proposal.json.
+--accept writes the proposed worker memory into hoover_budget of <state folder>/settings.json, and the next zone upgrade
 applies it. --watch repeats the reading, keeps the highest peak of each pod, and writes the proposal after each round.
 The operator accepts a proposal. The tool changes no cluster object.
 """

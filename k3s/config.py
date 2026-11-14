@@ -1,33 +1,41 @@
 #!/usr/bin/env python3
-"""Read and check the site file of a cluster installation, hoover4-site.ini, and the Compose ini of an earlier install.
+"""Read and check the site file of a cluster installation, and the Compose ini of an earlier install.
 
-The site file names the resources of the installation and the roles of its nodes. It holds no port, no tuning, no
-feature switch, no backup schedule and no secret value. Tunings, switches and schedules are operator settings
-(platform/operator/settings.py). A secret is a reference to a private file on the node that reads it.
+The site file is a YAML Ansible inventory with one group, hoover4. The group variables (hoover4.vars) are the site
+values, and each host of the group (hoover4.hosts) is one node with its values as host variables. The file names the
+resources of the installation and the roles of its nodes. It holds no SSH address, port or user, no port of a service,
+no tuning, no feature switch, no backup schedule and no secret value. Tunings, switches and schedules are operator
+settings (platform/operator/settings.py). A secret is a reference to a private file on the node that reads it.
 
-Sections:
-  [site]             name, suffix, control_plane, operator_user, vpn_cidr, state_path
-  [node.<name>]      one node: roles, local, ssh_address, architecture, the VPN and public addresses, storage, the
-                     TLS mode of a public node and the secret files of the node
-  [gpu_pool]         optional. The GPU services: the GPU nodes of the site, or the address of a shared pool
-  [backup]           optional. One node and one host folder that receive the backups
-  [hoover.<name>]    one Hoover installation: its zone, home node, store layout, Temporal backend, history source,
-                     storage identity, an optional source_ini of an earlier Compose install, and optional
-                     extra_datasets: read-only dataset folders of data nodes, as name:node:/path
+  hoover4:
+    vars:                domain, control_plane, vpn_cidr, and the optional mappings gpu_pool, backup and hoovers
+      gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
+      backup:            one node and one host folder that receive the backups
+      hoovers:           one entry per Hoover installation: its zone, home node, store layout, Temporal backend,
+                         history source, storage identity, an optional source_ini of an earlier Compose install, and
+                         optional extra_datasets: read-only dataset folders of data nodes, as name:node:/path
+    hosts:
+      <node>:            node_roles, local, ssh_host, architecture, the VPN and public addresses, storage, the TLS mode
+                         of a public node and the secret files of the node
 
+The state folder of a site is beside the site file and has the name of the file without its extension
+(state_folder()). The site id is the domain with each . replaced by - (Site.id).
+The driver connects to a node with `ssh <node name>` and the SSH configuration of the current user. ssh_host names
+another alias of that configuration for the node. The local node of a single-node site connects to localhost.
 The node roles are control-plane, worker, public, registry, data, calls and gpu. The value `single` gives one host
 every role except calls and gpu. A site with one node needs no VPN address and no public address.
 The storage identity of a Hoover installation is independent of its zone name. A migrated installation keeps the
 database, table and bucket names of its source install.
 
-parse() refuses an unknown section, an unknown key, a missing resource and an incompatible role combination, and names
+parse() refuses an unknown group, an unknown key, a missing resource and an incompatible role combination, and names
 every problem in one message. It changes nothing on any host. read_source_ini() reads the hoover4.ini of a Compose
 install. It accepts the settings that deploy.py removed, reports them, and checks every path before any copy.
+A YAML site file needs PyYAML. A site file in JSON form needs only the standard library.
 
-Usage: config.py check <site.ini>             checks the file and prints its summary as JSON
-       config.py project <site.ini> <node>    prints the part of the site that one node receives
-       config.py source <hoover4.ini>         checks the Compose ini of an earlier install
-       config.py inventory <site.ini> <state> prints the Ansible inventory of the host steps as JSON
+Usage: config.py check <site file>           checks the file and prints its summary as JSON
+       config.py project <site file> <node>  prints the part of the site that one node receives
+       config.py source <hoover4.ini>        checks the Compose ini of an earlier install
+       config.py ansible <site file>         prints the variables that the driver gives to the host plays as JSON
 """
 import configparser
 import importlib.util
@@ -41,21 +49,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-PRIVATE = HERE / 'private'
-DEFAULT_SITE = PRIVATE / 'hoover4-site.ini'
+STORAGE_IDENTITY = REPO / 'main_services/processing/tasks/storage_identity.json'
 
 
 def state_folder(site_path):
-    """The state folder of a site file: the folder beside the file with the name of the file without its extension.
+    """The state folder of a site file: the folder beside the file with the name of the file without its extension."""
+    return Path(site_path).resolve().with_suffix('')
 
-    A site file directly in k3s/private of this checkout keeps k3s/private as its state folder, which is the folder of
-    the earlier installations.
-    """
-    path = Path(site_path).resolve()
-    if path.parent == PRIVATE.resolve():
-        return PRIVATE
-    return path.with_suffix('')
-STORAGE_IDENTITY = REPO / 'main_services/processing/tasks/storage_identity.json'
 
 # The fixed address of the local node of a single-node site. The host script puts it on the dummy link hoover4, so
 # k3s, the registry, the HTTPS frontend and the local DNS server keep one address when the LAN address changes.
@@ -77,15 +77,16 @@ TIERS = ('nvme', 'ssd', 'hdd')
 ARCHITECTURES = ('amd64', 'arm64')
 NAME = re.compile(r'[a-z][a-z0-9-]{0,31}')
 ZONE = re.compile(r'zone-[a-z0-9]{1,12}')
+GROUP = 'hoover4'
 
 # Each key of a section: (required, kind). Kinds: text, name, bool, address, cidr, path, list, roles, tiers, choice
-# values, secret (the absolute path of a private file).
-SITE_KEYS = {
-    'name': (True, 'name'), 'suffix': (True, 'domain'), 'control_plane': (True, 'name'),
-    'operator_user': (False, 'text'), 'vpn_cidr': (False, 'cidr'), 'state_path': (False, 'path'),
-}
+# values, secret (the absolute path of a private file), alias (an SSH host alias).
+SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name'), 'vpn_cidr': (False, 'cidr')}
+# The mappings of hoover4.vars beside the site values.
+SITE_MAPPINGS = ('gpu_pool', 'backup', 'hoovers')
 NODE_KEYS = {
-    'roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_address': (False, 'text'),
+    # Ansible reserves the variable name roles, so the node roles have the key node_roles.
+    'node_roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_host': (False, 'alias'),
     'architecture': (False, ('choice', ARCHITECTURES)), 'vpn_address': (False, 'address'),
     'wireguard_public_key': (False, 'wgkey'), 'wireguard_port': (False, 'port'), 'vpn_interface': (False, 'interface'),
     'wireguard_peers': (False, 'names'), 'wireguard_via': (False, 'name'),
@@ -119,7 +120,7 @@ DEFAULTS = {
 # Secrets of the cluster.
 SECRET_ROLES = {'tls_dns_credentials_file': 'public', 'tls_certificate_file': 'public', 'tls_key_file': 'public',
                 'gpu_api_key_file': 'gpu'}
-# The storage identity keys of a Hoover section and the names in storage_identity.json.
+# The storage identity keys of a Hoover installation and the names in storage_identity.json.
 IDENTITY = {'clickhouse_database_prefix': 'clickhouse_database_prefix', 'manticore_table_prefix': 'manticore_table_prefix',
             'system_bucket': 'system_bucket', 'collection_bucket_prefix': 'collection_bucket_prefix'}
 
@@ -133,7 +134,8 @@ class Node:
     name: str
     roles: tuple
     local: bool = False
-    ssh_address: str = ''
+    # The SSH alias of the node. Empty: the node name, or localhost for the local node (ssh_host()).
+    ssh_host: str = ''
     architecture: str = 'amd64'
     vpn_address: str = ''
     wireguard_public_key: str = ''
@@ -191,18 +193,20 @@ class Hoover:
 
 @dataclass
 class Site:
-    name: str
-    suffix: str
+    domain: str
     control_plane: str
     nodes: dict
     hoovers: dict = field(default_factory=dict)
-    operator_user: str = ''
     vpn_cidr: str = ''
-    state_path: str = ''
     gpu_pool: dict = field(default_factory=dict)
     backup: dict = field(default_factory=dict)
     # The site file that read() parsed, or empty for parse().
     path: str = ''
+
+    @property
+    def id(self):
+        """The site id: the domain with each . replaced by -, for example k8-example-org."""
+        return self.domain.replace('.', '-')
 
     @property
     def single(self):
@@ -211,11 +215,15 @@ class Site:
     def with_role(self, role):
         return [n for n in self.nodes.values() if n.has(role)]
 
+    def state_folder(self):
+        """The state folder of the site file. A Site of parse() has no file, so it has no state folder."""
+        if not self.path:
+            raise SiteError('this site has no site file, so it has no state folder.')
+        return state_folder(self.path)
+
     def operator_state(self):
-        """The folder of the operator state: [site] state_path, else operator/ of the state folder of the site file."""
-        if self.state_path:
-            return Path(self.state_path)
-        return (state_folder(self.path) if self.path else PRIVATE) / 'operator'
+        """The folder of the operator state: operator/ of the state folder."""
+        return self.state_folder() / 'operator'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -245,6 +253,19 @@ def _value(label, kind, raw, problems):
         # A Linux interface name has at most 15 characters.
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}', raw):
             problems.append(f'{label} = {raw} is not a network interface name.')
+            return None
+        return raw
+    if kind == 'alias':
+        # The alias of a Host entry of the SSH configuration. An address belongs to that configuration.
+        try:
+            ipaddress.ip_address(raw)
+        except ValueError:
+            pass
+        else:
+            problems.append(f'{label} = {raw} is an address. Name a Host alias of the SSH configuration instead.')
+            return None
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', raw):
+            problems.append(f'{label} = {raw} is not an SSH host alias.')
             return None
         return raw
     if kind in ('text', 'name_any'):
@@ -342,34 +363,44 @@ def _value(label, kind, raw, problems):
     raise AssertionError(kind)
 
 
-def _section(parser, section, keys, defaults, problems):
-    """The typed values of one section. Unknown keys and missing required keys are problems."""
+def _raw(value):
+    """The text form of a YAML value: a list is a comma-separated text, a boolean is true or false."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (list, tuple)):
+        return ', '.join(_raw(v) for v in value)
+    if value is None:
+        return ''
+    return str(value)
+
+
+def _section(label, values, keys, defaults, problems):
+    """The typed values of one mapping of the site file. Unknown keys and missing required keys are problems."""
     out = {}
-    present = set(parser.options(section))
-    for key in sorted(present - set(keys)):
-        problems.append(f'[{section}] {key} is not a known key. The keys are {", ".join(keys)}.')
+    for key in sorted(set(values) - set(keys)):
+        problems.append(f'{label} {key} is not a known key. The keys are {", ".join(keys)}.')
     for key, (required, kind) in keys.items():
-        label = f'[{section}] {key}'
-        if key in present:
-            raw = parser.get(section, key)
-            if re.search(r'(?:^|\s)[;#]', raw):
-                problems.append(f'{label} has a comment after its value. Move the comment to its own line.')
+        name = f'{label} {key}'
+        if key in values:
+            if isinstance(values[key], dict):
+                problems.append(f'{name} is a mapping. It needs a value.')
                 continue
+            raw = _raw(values[key])
             if raw.strip() == '' and kind == 'identity':
                 out[key] = ''
                 continue
             if raw.strip() == '' and not required:
                 continue
             if raw.strip() == '':
-                problems.append(f'{label} is empty.')
+                problems.append(f'{name} is empty.')
                 continue
-            value = _value(label, kind, raw, problems)
+            value = _value(name, kind, raw, problems)
             if value is not None:
                 out[key] = value
         elif required:
-            problems.append(f'[{section}] has no {key}.')
+            problems.append(f'{label} has no {key}.')
         elif key in defaults:
-            out[key] = _value(label, kind, defaults[key], problems)
+            out[key] = _value(name, kind, defaults[key], problems)
     return out
 
 
@@ -377,51 +408,73 @@ def _section(parser, section, keys, defaults, problems):
 # The site file
 # ----------------------------------------------------------------------------------------------------------------------
 
-def _parser(text):
-    parser = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=None, default_section='\n',
-                                       strict=True)
-    parser.optionxform = str
+def _load(text):
+    """The document of a site file text. JSON needs no PyYAML, because a JSON document is also a YAML document."""
     try:
-        parser.read_string(text)
-    except configparser.Error as error:
+        import yaml
+    except ImportError:
+        try:
+            return json.loads(text)
+        except ValueError:
+            raise SiteError('the site file is YAML, and this Python has no PyYAML. Install PyYAML, or give the site '
+                            'file in JSON form.') from None
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as error:
         raise SiteError(f'the site file cannot be parsed: {error}') from None
-    return parser
+
+
+def _mapping(value, label, problems):
+    """value when it is a mapping or empty, else a problem and an empty mapping."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        problems.append(f'{label} is not a mapping.')
+        return {}
+    return value
 
 
 def parse(text, check_files=False):
     """The Site of a site file text. check_files also checks that the secret files of the local node exist."""
-    parser = _parser(text)
+    document = _load(text)
     problems = []
-    site_values, nodes, hoovers, gpu_pool, backup = None, {}, {}, {}, {}
-    for section in parser.sections():
-        kind, _, name = section.partition('.')
-        if section == 'site':
-            site_values = _section(parser, section, SITE_KEYS, {}, problems)
-        elif kind == 'node' and name:
-            if not NAME.fullmatch(name):
-                problems.append(f'[{section}] has an invalid node name. Use a-z, 0-9 and -, starting with a-z.')
-                continue
-            values = _section(parser, section, NODE_KEYS, DEFAULTS['node'], problems)
-            # AVX2 is an x86 instruction set, so an arm64 node has no avx2 label unless the site file sets the key.
-            values.setdefault('avx2', values.get('architecture', 'amd64') == 'amd64')
-            if 'roles' in values:
-                nodes[name] = Node(name=name, **values)
-        elif section == 'gpu_pool':
-            gpu_pool = _section(parser, section, GPU_POOL_KEYS, {}, problems)
-        elif section == 'backup':
-            backup = _section(parser, section, BACKUP_KEYS, {}, problems)
-        elif kind == 'hoover' and name:
-            if not NAME.fullmatch(name):
-                problems.append(f'[{section}] has an invalid installation name.')
-                continue
-            values = _section(parser, section, HOOVER_KEYS, DEFAULTS['hoover'], problems)
-            if all(k in values for k, (required, _) in HOOVER_KEYS.items() if required):
-                hoovers[name] = Hoover(name=name, **values)
-        else:
-            problems.append(f'[{section}] is not a known section. The sections are [site], [node.<name>], '
-                            '[gpu_pool], [backup] and [hoover.<name>].')
-    if site_values is None:
-        problems.append('the site file has no [site] section.')
+    if not isinstance(document, dict) or GROUP not in document:
+        raise SiteError(f'the site file has no group {GROUP}. It needs {GROUP}: with vars: and hosts:.')
+    for name in sorted(set(document) - {GROUP}):
+        problems.append(f'the group {name} is not known. The site file has one group, {GROUP}.')
+    group = _mapping(document[GROUP], GROUP, problems)
+    for name in sorted(set(group) - {'vars', 'hosts'}):
+        problems.append(f'{GROUP}.{name} is not known. The group has vars and hosts.')
+    variables = _mapping(group.get('vars'), 'vars', problems)
+    site_values = _section('vars', {k: v for k, v in variables.items() if k not in SITE_MAPPINGS},
+                           dict(SITE_KEYS, **{k: (False, 'mapping') for k in SITE_MAPPINGS}), {}, problems)
+    gpu_pool = _section('vars.gpu_pool', _mapping(variables.get('gpu_pool'), 'vars.gpu_pool', problems), GPU_POOL_KEYS,
+                        {}, problems)
+    backup = {}
+    if variables.get('backup') is not None:
+        backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
+    nodes, hoovers = {}, {}
+    for name, values in _mapping(group.get('hosts'), 'hosts', problems).items():
+        name = str(name)
+        if not NAME.fullmatch(name):
+            problems.append(f'hosts.{name} has an invalid node name. Use a-z, 0-9 and -, starting with a-z.')
+            continue
+        values = _section(f'hosts.{name}', _mapping(values, f'hosts.{name}', problems), NODE_KEYS, DEFAULTS['node'],
+                          problems)
+        # AVX2 is an x86 instruction set, so an arm64 node has no avx2 label unless the site file sets the key.
+        values.setdefault('avx2', values.get('architecture', 'amd64') == 'amd64')
+        if 'node_roles' in values:
+            values['roles'] = values.pop('node_roles')
+            nodes[name] = Node(name=name, **values)
+    for name, values in _mapping(variables.get('hoovers'), 'vars.hoovers', problems).items():
+        name = str(name)
+        label = f'vars.hoovers.{name}'
+        if not NAME.fullmatch(name):
+            problems.append(f'{label} has an invalid installation name.')
+            continue
+        values = _section(label, _mapping(values, label, problems), HOOVER_KEYS, DEFAULTS['hoover'], problems)
+        if all(k in values for k, (required, _) in HOOVER_KEYS.items() if required):
+            hoovers[name] = Hoover(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
     site = Site(nodes=nodes, hoovers=hoovers, gpu_pool=gpu_pool, backup=backup, **site_values)
@@ -431,7 +484,10 @@ def parse(text, check_files=False):
     return site
 
 
-def read(path=DEFAULT_SITE, check_files=False):
+def read(path, check_files=False):
+    """The Site of the site file at path. Site.path is the absolute path of the file."""
+    if not path:
+        raise SiteError('no site file is given. Give --site FILE, or set HOOVER4_SITE.')
     path = Path(path)
     try:
         text = path.read_text()
@@ -451,7 +507,7 @@ def check(site, check_files=False):
     problems = []
     nodes = site.nodes
     if not nodes:
-        problems.append('the site has no [node.<name>] section.')
+        problems.append('the site has no node in hosts.')
         return problems
     single = site.single
     for role in ('control-plane', 'registry'):
@@ -459,9 +515,9 @@ def check(site, check_files=False):
         if len(holders) != 1:
             problems.append(f'the site needs exactly one node with the role {role}. It has {len(holders)}: {", ".join(holders) or "none"}.')
     if site.control_plane not in nodes:
-        problems.append(f'[site] control_plane = {site.control_plane} is not a node of the site.')
+        problems.append(f'vars control_plane = {site.control_plane} is not a node of the site.')
     elif not nodes[site.control_plane].has('control-plane'):
-        problems.append(f'[site] control_plane = {site.control_plane} does not have the role control-plane.')
+        problems.append(f'vars control_plane = {site.control_plane} does not have the role control-plane.')
     if not site.with_role('public'):
         problems.append('the site needs at least one node with the role public.')
     if not site.with_role('worker'):
@@ -473,18 +529,16 @@ def check(site, check_files=False):
         problems.append(f'only one node can be local. These nodes are: {", ".join(locals_)}.')
     network = ipaddress.ip_network(site.vpn_cidr) if site.vpn_cidr else None
     if not single and not network:
-        problems.append('[site] vpn_cidr is required for a site with more than one node.')
+        problems.append('vars vpn_cidr is required for a site with more than one node.')
     for node in nodes.values():
-        label = f'[node.{node.name}]'
+        label = f'hosts.{node.name}'
         if node.has('gpu') and len(node.roles) > 1:
             problems.append(f'{label} combines gpu with {", ".join(r for r in node.roles if r != "gpu")}. A GPU node runs only the GPU services.')
-        if not node.local and not node.ssh_address:
-            problems.append(f'{label} has no ssh_address. Only the local node needs none.')
         if not single:
             if not node.vpn_address:
                 problems.append(f'{label} has no vpn_address, which a site with more than one node needs.')
             elif network and ipaddress.ip_address(node.vpn_address) not in network:
-                problems.append(f'{label} vpn_address = {node.vpn_address} is outside [site] vpn_cidr = {site.vpn_cidr}.')
+                problems.append(f'{label} vpn_address = {node.vpn_address} is outside vars vpn_cidr = {site.vpn_cidr}.')
             for role in ('public', 'calls'):
                 if node.has(role) and not node.public_address:
                     problems.append(f'{label} has the role {role} and no public_address.')
@@ -501,7 +555,7 @@ def check(site, check_files=False):
             problems.append(f'{label} tls_mode belongs to a node with the role public.')
     problems += tls_problems(site)
     for node in nodes.values():
-        label = f'[node.{node.name}]'
+        label = f'hosts.{node.name}'
         for name in node.wireguard_peers:
             if name not in nodes or name == node.name:
                 problems.append(f'{label} wireguard_peers names {name}, which is not another node of the site.')
@@ -519,36 +573,36 @@ def check(site, check_files=False):
                 routed = [n for n in nodes.values() if n.name not in (node.name, via) and not wireguard_direct(n, node)]
                 for other in routed:
                     if not wireguard_direct(other, nodes[via]):
-                        problems.append(f'{label} is reached through {via}, but [node.{other.name}] has no direct peer for {via}.')
+                        problems.append(f'{label} is reached through {via}, but hosts.{other.name} has no direct peer for {via}.')
     addresses = {}
     for node in nodes.values():
         for key in ('vpn_address', 'public_address'):
             value = getattr(node, key)
             if value and key == 'vpn_address':
                 if value in addresses:
-                    problems.append(f'[node.{node.name}] and [node.{addresses[value]}] have the same vpn_address.')
+                    problems.append(f'hosts.{node.name} and hosts.{addresses[value]} have the same vpn_address.')
                 addresses[value] = node.name
     pool = site.gpu_pool
     if pool:
         for name in pool.get('nodes', ()):
             if name not in nodes or not nodes[name].has('gpu'):
-                problems.append(f'[gpu_pool] nodes names {name}, which is not a node with the role gpu.')
+                problems.append(f'vars.gpu_pool nodes names {name}, which is not a node with the role gpu.')
         if bool(pool.get('nodes')) == bool(pool.get('address')):
-            problems.append('[gpu_pool] needs either nodes (GPU nodes of the site) or address (a shared pool), not both.')
+            problems.append('vars.gpu_pool needs either nodes (GPU nodes of the site) or address (a shared pool), not both.')
         if not pool.get('api_key_file'):
-            problems.append('[gpu_pool] has no api_key_file, the key of the model server.')
+            problems.append('vars.gpu_pool has no api_key_file, the key of the model server.')
     elif site.with_role('gpu'):
-        problems.append('the site has GPU nodes and no [gpu_pool] section.')
+        problems.append('the site has GPU nodes and no vars.gpu_pool.')
     if site.backup:
         node = nodes.get(site.backup.get('node'))
         if node is None:
-            problems.append(f'[backup] node = {site.backup.get("node")} is not a node of the site.')
+            problems.append(f'vars.backup node = {site.backup.get("node")} is not a node of the site.')
         elif node.has('gpu'):
-            problems.append('[backup] node is a GPU node. Choose a node that holds application data.')
+            problems.append('vars.backup node is a GPU node. Choose a node that holds application data.')
     patterns = _identity_patterns()
     seen = {}
     for hoover in site.hoovers.values():
-        label = f'[hoover.{hoover.name}]'
+        label = f'vars.hoovers.{hoover.name}'
         home = nodes.get(hoover.home_node)
         if home is None:
             problems.append(f'{label} home_node = {hoover.home_node} is not a node of the site.')
@@ -573,7 +627,7 @@ def check(site, check_files=False):
             problems.append(f'{label} has a source_ini. A Compose install keeps Temporal on Cassandra, so temporal_backend = cassandra.')
         # Each installation has its own namespace and its own stores. Two installations of one zone would share them.
         if hoover.zone in seen:
-            problems.append(f'{label} and [hoover.{seen[hoover.zone]}] have the same zone = {hoover.zone}.')
+            problems.append(f'{label} and vars.hoovers.{seen[hoover.zone]} have the same zone = {hoover.zone}.')
         seen[hoover.zone] = hoover.name
     if check_files:
         problems += missing_files(site)
@@ -592,7 +646,7 @@ def tls_problems(site):
     if not public:
         return []
     node = public[0]
-    label = f'[node.{node.name}]'
+    label = f'hosts.{node.name}'
     mode = tls_mode(node)
     shown = f'tls_mode = {mode}' if node.tls_mode else f'tls_mode (default {mode})'
     problems = []
@@ -609,7 +663,7 @@ def tls_problems(site):
     for other in public[1:]:
         for key in ('tls_mode',) + TLS_KEYS:
             if getattr(other, key):
-                problems.append(f'[node.{other.name}] {key}: only the first public node, {node.name}, runs the HTTPS '
+                problems.append(f'hosts.{other.name} {key}: only the first public node, {node.name}, runs the HTTPS '
                                 'frontend. Move the key there.')
     return problems
 
@@ -635,7 +689,7 @@ def missing_files(site):
     if local and local[0].name == site.control_plane:
         for hoover in site.hoovers.values():
             if hoover.source_ini and not os.path.isfile(hoover.source_ini):
-                problems.append(f'[hoover.{hoover.name}] source_ini = {hoover.source_ini} is not an existing file.')
+                problems.append(f'vars.hoovers.{hoover.name} source_ini = {hoover.source_ini} is not an existing file.')
     return problems
 
 
@@ -651,29 +705,30 @@ def _text(value):
     return str(value)
 
 
-def dump(site):
-    """The site file text of a Site. parse(dump(site)) gives an equal Site."""
-    lines = ['[site]']
-    for key in SITE_KEYS:
-        value = getattr(site, key)
-        if value:
-            lines.append(f'{key} = {_text(value)}')
-    for node in site.nodes.values():
-        lines += ['', f'[node.{node.name}]']
-        for key in NODE_KEYS:
-            value = getattr(node, key)
-            if value not in ('', ()):
-                lines.append(f'{key} = {_text(value)}')
+def document(site):
+    """The site file document of a Site, as a dict. parse(json.dumps(document(site))) gives an equal Site."""
+    variables = {k: getattr(site, k) for k in SITE_KEYS if getattr(site, k)}
     for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS)):
         if values:
-            lines += ['', f'[{title}]'] + [f'{k} = {_text(values[k])}' for k in keys if values.get(k) not in (None, '', ())]
-    for hoover in site.hoovers.values():
-        lines += ['', f'[hoover.{hoover.name}]']
-        for key in HOOVER_KEYS:
-            value = getattr(hoover, key)
-            if value not in ('', ()) or key == 'manticore_table_prefix':
-                lines.append(f'{key} = {_text(value)}')
-    return '\n'.join(lines) + '\n'
+            variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
+    if site.hoovers:
+        variables['hoovers'] = {
+            h.name: {k: _text(getattr(h, k)) for k in HOOVER_KEYS
+                     if getattr(h, k) not in ('', ()) or k == 'manticore_table_prefix'}
+            for h in site.hoovers.values()}
+    hosts = {}
+    for node in site.nodes.values():
+        values = {'node_roles': _text(node.roles)}
+        for key in NODE_KEYS:
+            if key != 'node_roles' and getattr(node, key) not in ('', ()):
+                values[key] = _text(getattr(node, key))
+        hosts[node.name] = values
+    return {GROUP: {'vars': variables, 'hosts': hosts}}
+
+
+def dump(site):
+    """The site file text of a Site in JSON form, which is also YAML."""
+    return json.dumps(document(site), indent=1) + '\n'
 
 
 def project(site, node_name):
@@ -706,6 +761,14 @@ def project(site, node_name):
     return out
 
 
+def ssh_host(node):
+    """The SSH destination of a node: ssh_host of the site file, else localhost for the local node, else the node name.
+
+    The SSH configuration of the current user gives the address, port, user and key of that name.
+    """
+    return node.ssh_host or ('localhost' if node.local else node.name)
+
+
 def node_address(site, node):
     """The address that the other nodes and the pods use for a node: the VPN address, else the LAN address, else the
     fixed local address of a single-node site."""
@@ -715,7 +778,7 @@ def node_address(site, node):
         return node.lan_address
     if site.single and node.local:
         return LOCAL_ADDRESS
-    raise SiteError(f'[node.{node.name}] has no vpn_address and no lan_address.')
+    raise SiteError(f'hosts.{node.name} has no vpn_address and no lan_address.')
 
 
 def legacy_settings(site):
@@ -726,7 +789,7 @@ def legacy_settings(site):
     # A LAN node can have one address as its VPN and public address. Caddy and coturn get each address once.
     binds = list(dict.fromkeys(a for a in (public.vpn_address, public.public_address) if a)) or [node_address(site, public)]
     out = {
-        'suffix': site.suffix,
+        'suffix': site.domain,
         'registry_node': registry.name,
         'registry_endpoint': f'{node_address(site, registry)}:{REGISTRY_PORT}',
         'ingress_node': public.name,
@@ -742,12 +805,12 @@ def legacy_settings(site):
     if site.vpn_cidr:
         out['vpn_cidr'] = site.vpn_cidr
     if not public.local:
-        out['frontend_ssh'] = public.ssh_address
+        out['frontend_ssh'] = ssh_host(public)
     out['frontend_tls_mode'] = tls_mode(public)
     if out['frontend_tls_mode'] == 'cloudflare':
-        out['frontend_tls'] = f'/etc/letsencrypt/live/{site.suffix}'
-        out['frontend_tls_certificate'] = f'/etc/letsencrypt/live/{site.suffix}/fullchain.pem'
-        out['frontend_tls_key'] = f'/etc/letsencrypt/live/{site.suffix}/privkey.pem'
+        out['frontend_tls'] = f'/etc/letsencrypt/live/{site.domain}'
+        out['frontend_tls_certificate'] = f'/etc/letsencrypt/live/{site.domain}/fullchain.pem'
+        out['frontend_tls_key'] = f'/etc/letsencrypt/live/{site.domain}/privkey.pem'
         out['frontend_dns_credentials'] = public.tls_dns_credentials_file
     elif out['frontend_tls_mode'] == 'files':
         out['frontend_tls_certificate'] = public.tls_certificate_file
@@ -779,8 +842,10 @@ def local_ca(site):
     frontend/local-ca.crt of the state folder. The pods that call the zone names over HTTPS trust it.
     """
     public = site.with_role('public')
-    path = (state_folder(site.path) if site.path else PRIVATE) / 'frontend' / 'local-ca.crt'
-    return path.read_text() if public and tls_mode(public[0]) == 'internal' and path.exists() else ''
+    if not public or tls_mode(public[0]) != 'internal' or not site.path:
+        return ''
+    path = site.state_folder() / 'frontend' / 'local-ca.crt'
+    return path.read_text() if path.exists() else ''
 
 
 def manages_wireguard(node):
@@ -803,7 +868,7 @@ def manual_peers(site):
             continue
         for other in site.nodes.values():
             if other.name != node.name and manages_wireguard(other) and wireguard_direct(node, other) and node.wireguard_peers:
-                out.append(f'[node.{node.name}] keeps its VPN interface {node.vpn_interface}. Add a peer for {other.name} '
+                out.append(f'hosts.{node.name} keeps its VPN interface {node.vpn_interface}. Add a peer for {other.name} '
                            f'on that interface by hand: the public key of {other.name}, its endpoint, and AllowedIPs '
                            f'{other.vpn_address}/32.')
     return out
@@ -848,7 +913,7 @@ def wireguard_routes(site, node):
 
 
 def legacy_hosts(site):
-    """The site in the format of hosts.json, which cluster/setup.sh reads through settings.py hosts. ansible_inventory()
+    """The site in the format of hosts.json, which cluster/setup.sh reads through settings.py hosts. ansible_variables()
     takes the WireGuard peers and routes from it."""
     hosts = {}
     for node in site.nodes.values():
@@ -865,12 +930,12 @@ def legacy_hosts(site):
                       and wireguard_peer_wanted(site.nodes[n])],
             'routes': wireguard_routes(site, node),
         }
-    return {'server': site.control_plane, 'user': site.operator_user, 'suffix': site.suffix, 'hosts': hosts,
+    return {'server': site.control_plane, 'suffix': site.domain, 'hosts': hosts,
             'backup': {'node': site.backup.get('node', ''), 'path': site.backup.get('path', '')} if site.backup else {}}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# The Ansible inventory of the host steps
+# The variables of the host plays
 # ----------------------------------------------------------------------------------------------------------------------
 
 def _memory_gib(text):
@@ -881,47 +946,42 @@ def _memory_gib(text):
     return float(text) / 2 ** 30
 
 
-def ansible_inventory(site, private):
-    """The Ansible inventory of the site, as a dict in the YAML inventory format. private is the state folder.
+def ansible_variables(site, private):
+    """The extra variables of the host plays, as a dict. private is the state folder.
 
-    The roles of ../ansible/roles/hoover4_* read the hoover4_* variables. A node connects with its ssh_address, as
-    user@host or host, else with its name and the SSH configuration of the operator. The local node of a site without
-    ssh_address connects to localhost.
+    The site file is the inventory of the plays. These variables add what the driver derives from it: the paths of the
+    state folder, the domain, and hoover4_nodes with the values of each node. ../ansible/playbooks/group_vars/
+    hoover4.yml gives each value of hoover4_nodes to its node as a hoover4_* variable, which the roles of
+    ../ansible/roles/hoover4_* read. ansible_host of a node is ssh_host().
     """
     private = Path(private)
     legacy = legacy_hosts(site)
     registry = site.with_role('registry')
-    hosts = {}
+    nodes = {}
     for node in site.nodes.values():
-        values = {}
-        if node.ssh_address:
-            user, _, host = node.ssh_address.rpartition('@')
-            values['ansible_host'] = host
-            if user:
-                values['ansible_user'] = user
-        elif node.local:
-            values['ansible_host'] = 'localhost'
         reserved = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
         single_local = site.single and node.local
-        values.update({
-            'hoover4_node_address': node_address(site, node),
-            'hoover4_flannel_iface': 'hoover4' if single_local else node.vpn_interface,
-            'hoover4_server': node.name == site.control_plane,
-            'hoover4_server_address': node_address(site, site.nodes[site.control_plane]),
-            'hoover4_architecture': node.architecture,
-            'hoover4_gpu': node.has('gpu'),
-            'hoover4_single_local': single_local,
-            'hoover4_reserved': node.reserved,
-            'hoover4_reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),
-            'hoover4_reserved_cpus': float(reserved.get('cpu', '2')),
+        values = {
+            'ssh_host': ssh_host(node),
+            'node_address': node_address(site, node),
+            'flannel_iface': 'hoover4' if single_local else node.vpn_interface,
+            'server': node.name == site.control_plane,
+            'server_address': node_address(site, site.nodes[site.control_plane]),
+            'architecture': node.architecture,
+            'gpu': node.has('gpu'),
+            'single_local': single_local,
+            'reserved': node.reserved,
+            'reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),
+            'reserved_cpus': float(reserved.get('cpu', '2')),
             # An on-prem node and the local node keep the k3s data on their own volumes.
-            'hoover4_require_k3s_volumes': node.onprem or single_local,
-            'hoover4_volume_group': node.lvm_volume_group if single_local else '',
-            'hoover4_stop_docker': node.onprem,
-            'hoover4_backup_path': site.backup.get('path', '') if site.backup.get('node') == node.name else '',
-            'hoover4_registry_endpoint': f'{node_address(site, registry[0])}:{REGISTRY_PORT}' if registry else '',
-            'hoover4_convert_sqlite': node.name == site.control_plane,
-        })
+            'require_k3s_volumes': node.onprem or single_local,
+            'volume_group': node.lvm_volume_group if single_local else '',
+            'stop_docker': node.onprem,
+            'backup_path': site.backup.get('path', '') if site.backup.get('node') == node.name else '',
+            'registry_endpoint': f'{node_address(site, registry[0])}:{REGISTRY_PORT}' if registry else '',
+            'convert_sqlite': node.name == site.control_plane,
+            'wireguard': {},
+        }
         if manages_wireguard(node):
             me = legacy['hosts'][node.name]
             peers = []
@@ -932,23 +992,13 @@ def ansible_inventory(site, private):
                 endpoint = peer['public'] or (f"{peer['lan_ip']}:{peer['port']}" if me['onprem'] and peer['onprem'] else '')
                 peers.append({'name': name, 'key': peer['key'], 'endpoint': endpoint,
                               'allowed_ips': [f"{peer['wg_ip']}/32"] + list(me['routes'].get(name, []))})
-            values['hoover4_wireguard'] = {'interface': node.vpn_interface, 'port': node.wireguard_port,
-                                           'public_key': node.wireguard_public_key, 'peers': peers}
-        hosts[node.name] = values
-    names = list(site.nodes)
-    return {'all': {
-        # The delegated tasks write into the state folder from the operator container, whose home folder is read-only.
-        'hosts': {'localhost': {'ansible_connection': 'local', 'ansible_python_interpreter': '{{ ansible_playbook_python }}',
-                                'ansible_remote_tmp': '/tmp/ansible/remote'}},
-        'vars': {'hoover4_state_dir': str(private), 'hoover4_tokens_dir': str(private / 'staging' / 'tokens'),
-                 'hoover4_kubeconfig': str(private / 'kubeconfig'), 'hoover4_facts_dir': str(private / 'facts'),
-                 'hoover4_suffix': site.suffix},
-        'children': {
-            'hoover4': {'hosts': hosts},
-            'hoover4_server': {'hosts': {site.control_plane: {}}},
-            'hoover4_agents': {'hosts': {n: {} for n in names if n != site.control_plane}},
-            'hoover4_wireguard': {'hosts': {n: {} for n in names if manages_wireguard(site.nodes[n])}},
-        }}}
+            values['wireguard'] = {'interface': node.vpn_interface, 'port': node.wireguard_port,
+                                   'public_key': node.wireguard_public_key, 'peers': peers}
+        nodes[node.name] = values
+    # The delegated tasks write into the state folder from the operator container, whose home folder is read-only.
+    return {'hoover4_state_dir': str(private), 'hoover4_tokens_dir': str(private / 'staging' / 'tokens'),
+            'hoover4_kubeconfig': str(private / 'kubeconfig'), 'hoover4_facts_dir': str(private / 'facts'),
+            'hoover4_domain': site.domain, 'hoover4_nodes': nodes}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1068,12 +1118,14 @@ def read_source_ini(path, check_paths=True):
 def main(argv):
     if len(argv) >= 2 and argv[0] == 'check':
         site = read(argv[1], check_files=True)
-        print(json.dumps({'site': site.name, 'nodes': {n.name: list(n.roles) for n in site.nodes.values()},
+        print(json.dumps({'site': site.id, 'site_file': site.path, 'state': str(site.state_folder()),
+                          'nodes': {n.name: list(n.roles) for n in site.nodes.values()},
                           'hoovers': sorted(site.hoovers)}, indent=1))
     elif len(argv) == 3 and argv[0] == 'project':
         print(json.dumps(project(read(argv[1]), argv[2]), indent=1, default=list))
-    elif len(argv) == 3 and argv[0] == 'inventory':
-        print(json.dumps(ansible_inventory(read(argv[1]), argv[2]), indent=1))
+    elif len(argv) == 2 and argv[0] == 'ansible':
+        site = read(argv[1])
+        print(json.dumps(ansible_variables(site, site.state_folder()), indent=1))
     elif len(argv) == 2 and argv[0] == 'source':
         print(json.dumps(asdict(read_source_ini(argv[1])), indent=1))
     else:

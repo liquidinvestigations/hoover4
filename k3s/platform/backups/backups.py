@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Run the optional backups of a site and restore a copy into an isolated target.
 
-The site file [backup] names the node and the folder of the destination. The operator settings `backup.*` of the
-applied revision turn each job on and set its retained copies. Without [backup] or with every job off, nothing runs.
+vars.backup of the site file names the node and the folder of the destination. The operator settings `backup.*` of the
+applied revision turn each job on and set its retained copies. Without vars.backup or with every job off, nothing runs.
 schedule.py holds the rules. This file reads the receipts and the sizes, runs one job at a time and keeps the state in
 <operator state>/backups/state.json, which it writes atomically.
 
 Arguments are names: a zone, a collection, a job and a generation (the name of a copy). No command takes a host path.
-The site file [backup] names the node and the mount folder of the destination. The copies of a zone are in
+vars.backup of the site file names the node and the mount folder of the destination. The copies of a zone are in
 <mount>/zones/<zone>/<generation>/, the collection exports of a zone in <mount>/zones/<zone>/collections/<collection>/
 <generation>/, and the platform copies in <mount>/platform/<generation>/. The level zones/ keeps a zone named
 platform apart from the platform copies.
@@ -35,10 +35,10 @@ Jobs:
   SQLite.
 The copy of a job is made in <operator state>/backups/staging/ on this host. Each tar stream of a pod must reach its
 end-of-archive marker and each database dump must end with the trailer line of its dump tool, or the part is read again.
-The copy then gets copy-manifest.json with the size and SHA-256 of every file. It then goes over the user shell of the [backup] node into <folder>/<generation>.partial,
+The copy then gets copy-manifest.json with the size and SHA-256 of every file. It then goes over the user shell of the backup node into <folder>/<generation>.partial,
 is read again there against the manifest, and is renamed. Only then does retention remove older copies. A failed transfer
 or check leaves the older copies. The capacity check, the marker check, the check of the copy and retention run on the
-[backup] node.
+backup node.
 The zone job closes intake first: it scales the applications of the zone and of its Hoover installation to zero and
 suspends their CronJobs, and records the earlier replicas and suspensions in the state file. The stores keep running,
 because the dumps and the Block copies need them. After the copy the job restores the recorded values. A runner that
@@ -268,7 +268,7 @@ def jobs(s, data):
 
 
 class Destination:
-    """The destination folder on the [backup] node. Every check, write and removal runs on that node."""
+    """The destination folder on the backup node. Every check, write and removal runs on that node."""
 
     def __init__(self, s):
         self.node = s.nodes[s.backup['node']]
@@ -397,9 +397,9 @@ print(json.dumps({'files': len(wanted['files']), 'bytes': sum(r['bytes'] for r i
 
 
 def destination(s):
-    """(Destination, problem). The Destination is None when the site has no [backup] section."""
+    """(Destination, problem). The Destination is None when the site file has no vars.backup."""
     if not s.backup:
-        return None, 'the site file has no [backup] section.'
+        return None, 'the site file has no vars.backup.'
     target = Destination(s)
     return target, target.problem()
 
@@ -817,7 +817,7 @@ def run_platform(s, partial):
         'format': RECOVERY_FORMAT, 'format_version': 2, 'datastore': 'etcd', 'route': route,
         'execution_host': socket.gethostname(), 'control_plane': node.name, 'destination_node': s.backup.get('node'),
         'k3s_version': host['k3s_version'], 'snapshot': f'etcd/{host["snapshot"]}', 'token': 'etcd/token',
-        'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.name,
+        'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.id,
         'source_revision': applied.get('revision', ''), 'settings_revision': settings_applied.get('revision', 0),
         'settings_scopes': settings_applied.get('scopes', {}),
         'artifacts': json.loads((K3S / 'driver' / 'artifacts.json').read_text()),
@@ -1246,7 +1246,7 @@ def main(argv):
     elif argv == ['enable']:
         target, _ = destination(site())
         if target is None:
-            raise SystemExit('the site file has no [backup] section.')
+            raise SystemExit('the site file has no vars.backup.')
         q = shlex.quote(target.path)
         code, out = target.run(f'mkdir -p {q}/zones {q}/platform && echo "This folder receives the backups of the hoover4 '
                                f'site." > {q}/{schedule.MARKER}')

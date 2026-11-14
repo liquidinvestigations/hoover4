@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Write every deployment login and password in clear text into k3s/private/passwords.md, which Git ignores.
+"""Write every deployment login and password in clear text into <state folder>/passwords.md, which Git ignores.
 
 The hoover4 inventory keeps no credential values, so the table stays in the private folder of the site.
 
 The script reads the live cluster Secrets, so the table shows the values that the services use.
 It replaces the block between the two marker lines and prints only the row count.
 Above that block it writes the users of ../zones/zone-users.json with their passwords from
-k3s/private/fixture-user-passwords.json, which zone-users.py makes.
+<state folder>/fixture-user-passwords.json, which zone-users.py makes.
 """
 import base64,json,os,pathlib,subprocess,sys
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings

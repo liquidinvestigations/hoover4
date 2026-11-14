@@ -11,9 +11,9 @@ Usage:
   deploy-k3s status    [RECORD]                                          print the records
 
 --target names nodes of the site file, or `all`. Every command except status needs it.
---site names the site file. The default is $HOOVER4_SITE, else k3s/private/hoover4-site.ini. The state folder of the
-site is beside the site file and has the name of the file without its extension. A site file directly in k3s/private
-keeps k3s/private as its state folder.
+--site names the site file, a YAML Ansible inventory (config.py). Without it, $HOOVER4_SITE names it. Every command
+needs one of them. The state folder of the site is beside the site file and has the name of the file without its
+extension. Each command first prints the site id, the site file and the state folder.
 --ask-become-pass asks once for the sudo password of the nodes. Without it, the nodes need sudo without a password.
 Every step runs the scripts of this checkout. The record keeps the commit of HEAD and `git status --porcelain` of the
 checkout. A resume needs the same commit.
@@ -68,14 +68,19 @@ def bootstrap_checkout(argv):
 
 
 def site_argument(argv):
-    """The absolute path of the site file of the command line, $HOOVER4_SITE or the default."""
-    value = os.environ.get('HOOVER4_SITE') or str(HERE / 'private' / 'hoover4-site.ini')
+    """The absolute path of the site file of the command line, else of $HOOVER4_SITE."""
+    value = os.environ.get('HOOVER4_SITE', '')
     for i, arg in enumerate(argv):
         if arg == '--site' and i + 1 < len(argv):
             value = argv[i + 1]
         elif arg.startswith('--site='):
             value = arg.split('=', 1)[1]
-    return Path(value).expanduser().resolve()
+    if not value:
+        raise SystemExit('deploy-k3s: give the site file with --site FILE, or set HOOVER4_SITE.')
+    path = Path(value).expanduser().resolve()
+    if not path.is_file():
+        raise SystemExit(f'deploy-k3s: the site file {path} does not exist.')
+    return path
 
 
 def image_digest():
@@ -109,12 +114,10 @@ def ensure_image(tool):
 
 def run_in_image(argv):
     """Run this command in the operator image and return its exit code."""
+    site = site_argument(argv)
     tool = engine()
     image = ensure_image(tool)
     repo = HERE.parent
-    site = site_argument(argv)
-    if not site.parent.is_dir():
-        raise SystemExit(f'deploy-k3s: the folder of the site file {site} does not exist.')
     home = Path.home()
     uid, gid = os.getuid(), os.getgid()
     user = os.environ.get('USER') or 'operator'
@@ -179,7 +182,7 @@ def main(argv):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'status'))
     parser.add_argument('record', nargs='?')
-    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE') or str(config.DEFAULT_SITE))
+    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'), required=not os.environ.get('HOOVER4_SITE'))
     parser.add_argument('--target', nargs='+', default=[])
     parser.add_argument('--steps', nargs='+', default=[])
     parser.add_argument('--resume')
@@ -193,6 +196,7 @@ def main(argv):
     except (config.SiteError, OSError) as error:
         raise SystemExit(f'deploy-k3s: the site file {args.site} has problems: {error}')
     ctx = deploy.Context(args.site, site)
+    print(json.dumps({'site': site.id, 'site_file': str(ctx.site_path), 'state': str(ctx.private)}), flush=True)
     if args.ask_become_pass:
         ctx.ask_become_pass()
 
@@ -223,7 +227,6 @@ def main(argv):
         if unknown:
             raise SystemExit(f'deploy-k3s: {", ".join(unknown)} is not a node of the site. The nodes are: {", ".join(site.nodes)}.')
 
-    print(json.dumps({'site': site.name, 'site_file': str(ctx.site_path), 'state': str(ctx.private)}), flush=True)
     try:
         revision = deploy.resolve_revision(ctx.repo, 'HEAD')
         if args.command == 'render':

@@ -76,14 +76,14 @@
     dest: /etc/hoover4/dnsmasq.conf
     mode: "0644"
     content: |
-      # The local DNS server of the single-node site. It answers only the names below {{ hoover4_suffix }}.
+      # The local DNS server of the single-node site. It answers only the names below {{ hoover4_domain }}.
       listen-address={{ hoover4_node_address }}
       bind-interfaces
       no-resolv
       no-hosts
       no-poll
-      local=/{{ hoover4_suffix }}/
-      address=/{{ hoover4_suffix }}/{{ hoover4_node_address }}
+      local=/{{ hoover4_domain }}/
+      address=/{{ hoover4_domain }}/{{ hoover4_node_address }}
       log-facility=-
   register: hoover4_dns_conf
 
@@ -93,13 +93,13 @@
     mode: "0644"
     content: |
       [Unit]
-      Description=DNS server for the names below {{ hoover4_suffix }}
+      Description=DNS server for the names below {{ hoover4_domain }}
       Requires=hoover4-address.service
       After=hoover4-address.service network.target
       [Service]
       ExecStart=/usr/bin/dnsmasq --keep-in-foreground --conf-file=/etc/hoover4/dnsmasq.conf --pid-file=
       ExecStartPost=/usr/bin/resolvectl dns hoover4 {{ hoover4_node_address }}
-      ExecStartPost=/usr/bin/resolvectl domain hoover4 ~{{ hoover4_suffix }}
+      ExecStartPost=/usr/bin/resolvectl domain hoover4 ~{{ hoover4_domain }}
       Restart=on-failure
       [Install]
       WantedBy=multi-user.target

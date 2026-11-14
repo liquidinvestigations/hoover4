@@ -4,7 +4,7 @@
 The check turns on the four application admin flags of test.user, waits until each application shows the user as
 admin, then turns them off and waits again. The check reads the admin state from the application databases, from MAS
 for chat, and from occ in Nextcloud.
-It writes k3s/private/checks/group-sync-check-<zone>.json and prints no credential. It exits with 1 when an
+It writes <state folder>/checks/group-sync-check-<zone>.json and prints no credential. It exits with 1 when an
 application does not follow the flag within the timeout.
 """
 import json,pathlib,subprocess,sys,time,urllib.parse,urllib.request

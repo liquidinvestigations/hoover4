@@ -6,8 +6,8 @@ It waits until the operation is done, opens the onboarding login and signs in to
 Then it deletes the zone through the delete button and waits until that operation is done.
 --delete-only signs in and deletes the zone, for example after a create that failed.
 After the delete the check reads the cluster and the host files for any part of the zone that is left.
-The check writes k3s/private/checks/operator-zone-check.json and screenshots. It prints no password.
-Run it with the browser Python environment in k3s/private/browser-venv, which has nodriver.
+The check writes <state folder>/checks/operator-zone-check.json and screenshots. It prints no password.
+Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
 """
 import asyncio,base64,json,os,pathlib,re,subprocess,sys,time
 root=pathlib.Path(__file__).resolve().parent

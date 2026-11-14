@@ -19,7 +19,7 @@ mkdir -p "$login"
 # name without it. Each run makes a new secret, and the restart below gives it to the hop and the portal together.
 python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/proxy-secret.new"
 mv "$login/proxy-secret.new" "$login/proxy-secret"
-# The admin password is k3s/private/operator-login/admin-password. The script makes a random one when the file is
+# The admin password is operator-login/admin-password of the state folder. The script makes a random one when the file is
 # missing, so no installation keeps the development password admin. The manifest gets its bcrypt hash.
 [ -s "$login/admin-password" ] || python3 -c 'import secrets; print(secrets.token_urlsafe(18))' > "$login/admin-password"
 hash_rule=''
@@ -31,8 +31,8 @@ if [ -s "$login/admin-password" ]; then
 fi
 # cpu_policy.py writes the CPU policy values into the manifest.
 # The portal runs on the control-plane node with the operator state of that host (portal_settings.py).
-read -r control_plane state site_file < <(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s
-print(s.SITE.control_plane, s.SITE.operator_state(), s.SITE_FILE.resolve()) if s.SITE else print("- - -")' "$source_dir")
+read -r control_plane state < <(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s
+print(s.SITE.control_plane, s.SITE.operator_state()) if s.SITE else print("- -")' "$source_dir")
 [ "$control_plane" != - ] || { echo "the operator portal needs a site file. Set HOOVER4_SITE." >&2; exit 1; }
 mkdir -p "$state"
 # The pods of a single-node site run below hoover4.slice (../../ansible/roles/hoover4_host/tasks/local.yml).
@@ -40,9 +40,12 @@ pod_cgroup=/sys/fs/cgroup/kubepods.slice
 [ -d /sys/fs/cgroup/hoover4.slice ] && pod_cgroup=/sys/fs/cgroup/hoover4.slice
 # The node, user and path values go into the YAML first, so the numbers stay numbers in the JSON of cpu_policy.py.
 sed -e "s|CONTROL_PLANE|$control_plane|; s|OPERATOR_UID|$(id -u)|; s|OPERATOR_GID|$(id -g)|; s|POD_CGROUP|$pod_cgroup|" \
-  -e "s|REPO/|$(realpath "$source_dir/..")/|g; s|path: STATE,|path: $state,|; s|path: SITE_FILE,|path: $site_file,|" operator-login.yaml |
+  -e "s|REPO/|$(realpath "$source_dir/..")/|g; s|path: STATE,|path: $state,|" operator-login.yaml |
   python3 "$source_dir/zones/cpu_policy.py" --render - | sed -e "s/hoover\.test/$(python3 "$source_dir/settings.py" suffix)/g" -e "$hash_rule" | kubectl apply -f -
 kubectl -n operator-portal create secret generic operator-login --from-file="$login/client-secret" --from-file="$login/cookie-secret" --from-file="$login/proxy-secret" --dry-run=client -o yaml | kubectl apply -f -
+# The portal reads the site file in its JSON form, because its Python image has no PyYAML.
+python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s,config;print(config.dump(s.SITE),end="")' "$source_dir" |
+  kubectl -n operator-portal create configmap portal-site --from-file=site.json=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n operator-portal create configmap dex-templates --from-file=password.html=dex-password.html --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n operator-portal create configmap portal --from-file=portal-server.py --from-file=portal_settings.py \
   --from-file=portal/index.html --from-file=portal/settings.html --dry-run=client -o yaml | kubectl apply -f -

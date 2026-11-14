@@ -163,7 +163,7 @@ function renderBackup(scope) {
  const d = data.backup_destination;
  box.replaceChildren(el('div', {className: 'panel'}, el('h3', {textContent: 'Backup destination'}),
   d ? el('p', {textContent: `Backups go to ${d.path} on node ${d.node}. The site file sets this destination.`})
-    : el('p', {textContent: 'The site file names no backup destination. Add a [backup] section with node and path to turn on backups.'}),
+    : el('p', {textContent: 'The site file names no backup destination. To turn on backups, add backup with node and path to vars of the site file.'}),
   el('p', {className: 'notice', textContent: 'Keep the backup storage on another site. A copy on the same hosts does not survive a loss of those hosts.'})));
 }
 

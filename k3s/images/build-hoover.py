@@ -109,7 +109,7 @@ def remote_build(node, tree, sha, name, context, dockerfile, env):
                               f'http://{endpoint}/v2/hoover/hoover-{name}/manifests/{sha[:12]}']).returncode == 0
     if present or subprocess.run(['podman', 'image', 'exists', local_name]).returncode == 0:
         return
-    ssh = ['ssh', '-o', 'BatchMode=yes', node.ssh_address, '--']
+    ssh = ['ssh', '-o', 'BatchMode=yes', settings.config.ssh_host(node), '--']
     folder = f'hoover4-build/{sha}'
     if subprocess.run(ssh + [f'test -f {folder}/.hoover-build-commit']).returncode:
         pack = subprocess.Popen(['tar', '-C', str(tree), '--exclude=./k3s/private', '-cf', '-', '.'], stdout=subprocess.PIPE)

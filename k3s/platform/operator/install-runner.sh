@@ -46,14 +46,16 @@ if [ "$(python3 "$source_dir/settings.py" get frontend_local false)" != true ]; 
   line="restrict,command=\"sudo -n /opt/hoover-frontend/sync\" $(cat "$folder/ssh-key.pub")"
   ssh "$ssh_host" "grep -qxF '$line' ~/.ssh/authorized_keys || echo '$line' >> ~/.ssh/authorized_keys"
 fi
-# The runner runs the scripts of this checkout and reads the site file of this deployment.
-site_file=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s;print(s.SITE_FILE.resolve())' "$source_dir")
-# The unit name belongs to this checkout, so a runner of another installation on the same host keeps its own unit.
-unit=hoover4-operator-runner
+# The runner runs the scripts of this checkout and reads the site file of this deployment. /usr/bin/python3 of the
+# host needs PyYAML to read a YAML site file.
+read -r site_file site_id < <(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s
+print(s.SITE_FILE.resolve(), s.SITE.id)' "$source_dir")
+# The unit name has the site id, so the runner of each site of one checkout or host keeps its own unit.
+unit=hoover4-operator-runner-$site_id
 mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/$unit.service <<UNIT
 [Unit]
-Description=Hoover4 operator runner of ${source_dir}
+Description=Hoover4 operator runner of ${site_file}
 [Service]
 WorkingDirectory=${source_dir}
 Environment=KUBECONFIG=${folder}/kubeconfig

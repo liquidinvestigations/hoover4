@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the XWiki LLM Application and connect it to the model in k3s/private/ai.json. Usage: xwiki-ai.sh <zone>
+# Install the XWiki LLM Application and connect it to the model in <state folder>/ai.json. Usage: xwiki-ai.sh <zone>
 # Administrator must be an XWiki admin. The LDAP group jobs give that right within a minute after the wiki starts.
 # XWiki installs the extension from the extension repository (manifests/xwiki-extensions.yaml).
 # The key goes to the script through a private file, so it is not in a command line.

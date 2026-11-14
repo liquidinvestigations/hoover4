@@ -25,21 +25,26 @@ The operator host is a workstation that reaches every node with SSH. It runs the
 1. Install Python 3 and `podman` or `docker`. `k3s/deploy-k3s` builds the operator image ([k3s/images/operator](../../../k3s/images/operator)) when its inputs change.
    The image holds Ansible, `kubectl`, `helm`, `ssh` and `git`. The host needs no other tool.
 2. Clone the repository. Every step runs the scripts of this checkout. The record of a run keeps the commit and the uncommitted changes.
-3. Put the site file in a folder of your choice. Its state folder is beside it, with the name of the file without its extension.
-   A site file directly in `k3s/private/` keeps `k3s/private/` as its state folder. Git ignores `k3s/private/`.
+3. Put the site file in a folder of your choice, for example `k3s/private/<site>.yml`. Git ignores `k3s/private/`.
+   Its state folder is beside it, with the name of the file without its extension, for example `k3s/private/<site>/`.
+   One checkout manages more than one site. Each site has its own site file and state folder.
 
 ## Write the site file
 
-Give the site file with `--site FILE` or `HOOVER4_SITE`. The default is `k3s/private/hoover4-site.ini`. It is the only file that holds host paths.
+Give the site file to every command with `--site FILE`, or set `HOOVER4_SITE`. No command has a default site file.
+Each command first prints the site id, the site file and the state folder. The site id is the domain with each `.` replaced by `-`.
+The site file is the only file that holds host paths.
+
+The site file is a YAML Ansible inventory with one group, `hoover4`.
 [The single-node and remote examples](../../../k3s/tests/fixtures) show the format.
 
-| Section | Content |
+| Place | Content |
 |---|---|
-| `[site]` | The site name, the domain suffix of the zones, the control-plane node and the operator user. |
-| `[node.<name>]` | The roles, addresses, storage tiers and volume group of the node, and the TLS mode of a public node. |
-| `[gpu_pool]` | The GPU nodes or the address of an external GPU pool, and the key file of the pool. |
-| `[backup]` | The backup node and the backup folder on that node. |
-| `[hoover.<name>]` | One Hoover installation: its zone, its home node, its store layout and its storage identity. |
+| `hoover4.vars` | The domain of the zones (`domain`), the control-plane node and the VPN range. |
+| `hoover4.hosts.<name>` | One node: its roles (`node_roles`), addresses, storage tiers and volume group, and the TLS mode of a public node. |
+| `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool, and the key file of the pool. |
+| `hoover4.vars.backup` | The backup node and the backup folder on that node. |
+| `hoover4.vars.hoovers.<name>` | One Hoover installation: its zone, its home node, its store layout and its storage identity. |
 
 Check the file before each change:
 
@@ -63,7 +68,7 @@ Every k3s server uses embedded etcd, also on a site with one node. One server do
 
 ## Choose the certificates of the HTTPS frontend
 
-The HTTPS frontend runs on the first public node. Set `tls_mode` in its `[node.<name>]` section.
+The HTTPS frontend runs on the first public node. Set `tls_mode` in its entry of `hoover4.hosts`.
 `config.py check` refuses a missing key of the selected mode, so `up` stops before the first step.
 
 | `tls_mode` | Use it when | Keys |
@@ -75,7 +80,7 @@ The HTTPS frontend runs on the first public node. Set `tls_mode` in its `[node.<
 With `internal`, the frontend step copies the root certificate of the CA into `frontend/local-ca.crt` of the state folder, and prints that path.
 Import that file as a trusted certificate authority in each browser that opens the site. The pods of the zones trust it without a change.
 
-With `files`, the certificate must have the names `*.<suffix>` and `*.<zone>.<suffix>` of each zone.
+With `files`, the certificate must have the names `*.<domain>` and `*.<zone>.<domain>` of each zone.
 A zone without its name stops the frontend step and the zone creation, and the message names the missing names.
 Replace the files on the public node, then run the frontend step again.
 
@@ -85,7 +90,9 @@ The host steps are Ansible plays ([k3s/ansible](../../../k3s/ansible)) that the 
 The image mounts `~/.ssh` read-only and the SSH agent socket, so `ssh` uses the configuration and the keys of the current user.
 Ansible writes new host keys into `known_hosts` of the state folder.
 
-1. Give the user of the workstation SSH access with a key to every node. `ssh_address` of the node names `user@host`. Without it, the node name and `~/.ssh/config` apply.
+1. Give the user of the workstation SSH access with a key to every node. The driver runs `ssh <node name>`.
+   Add a `Host` entry with the node name, the address and the user to `~/.ssh/config`.
+   A node whose `Host` alias has another name names that alias in `ssh_host`. The site file holds no address, port or user for SSH.
 2. Give that user `sudo` on every node.
    Without a password, the plays run unattended. With a password, add `--ask-become-pass` to the command. The driver asks once for each command.
 
@@ -94,36 +101,42 @@ The host play removes `/usr/local/libexec/hoover4`, the sudo rule `/etc/sudoers.
 
 ## Install the site
 
-1. Show the configuration and the steps. The command changes nothing.
+1. Name the site file for the commands of this shell:
+
+   ```sh
+   export HOOVER4_SITE=k3s/private/<site>.yml
+   ```
+
+2. Show the configuration and the steps. The command changes nothing.
 
    ```sh
    k3s/deploy-k3s render --target all
    k3s/deploy-k3s check --target all
    ```
 
-2. Install the site from the commit of the checkout:
+3. Install the site from the commit of the checkout:
 
    ```sh
-   k3s/deploy-k3s up --site <site file> --target all
+   k3s/deploy-k3s up --target all
    ```
 
    The steps `hosts:prepare` and `hosts:k3s` run one Ansible play each on all target nodes in parallel.
    The k3s play writes the admin kubeconfig into the state folder, with the node address of the server. `hosts:verify` reads every node through it.
    The driver then installs the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU services, each zone and the call services.
-3. When a step fails, read its error, correct the cause, and continue with the same inputs:
+4. When a step fails, read its error, correct the cause, and continue with the same inputs:
 
    ```sh
    k3s/deploy-k3s up --resume <record>
    ```
 
    A resume refuses a changed site file, another commit of the checkout and another cluster. Start a new run after such a change.
-4. A complete run writes `deploy/applied.json` in the operator state. `k3s/deploy-k3s status` shows the applied revision.
+5. A complete run writes `deploy/applied.json` in the operator state. `k3s/deploy-k3s status` shows the applied revision.
 
 ## Add a GPU node
 
 A GPU node keeps its existing VPN interface. Name that interface in the site file.
 
-1. Add `[node.<name>]` with the role `gpu`, the architecture `arm64` or `amd64`, the VPN address, `vpn_interface` and `wireguard_public_key`.
+1. Add a node to `hoover4.hosts` with the role `gpu`, the architecture `arm64` or `amd64`, the VPN address, `vpn_interface` and `wireguard_public_key`.
    The public key is the key of the existing VPN interface of the node.
    The installer configures no peer on the GPU node. Without `wireguard_peers`, the other nodes reach it through the existing VPN.
    To give the GPU node a direct peer, set `wireguard_peers` to the node that it can reach, for example the public node. Do not set `wireguard_via`.
@@ -139,8 +152,8 @@ Add the reverse peer first. Then run the host steps of the peer node, and check 
 
 ## Sign in for the first time
 
-1. Open the operator portal at `https://operator.<suffix>/`.
-2. Sign in with the operator account. Its password is in `k3s/private/operator-login/`.
+1. Open the operator portal at `https://operator.<domain>/`.
+2. Sign in with the operator account. Its password is in `operator-login/` of the state folder.
 3. Create the first zone. [The zone manual](Zone_Operator_Manual.md) describes the zone tasks.
 
 <a href="img/operator-home.png"><img src="img/operator-home.png" alt="The start page of the operator portal with the cluster use and the links to the tools" width="100%"></a>

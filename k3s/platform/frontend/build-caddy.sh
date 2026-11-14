@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the Caddy binary of the HTTPS frontend with the Coraza WAF module into k3s/private/bin/caddy.
+# Build the Caddy binary of the HTTPS frontend with the Coraza WAF module into <state folder>/bin/caddy.
 # The build runs in the Caddy builder image with podman, or with docker when podman is missing, so the operator host
-# needs no Go toolchain. A host without either engine needs a binary of another host in k3s/private/bin/caddy.
+# needs no Go toolchain. A host without either engine needs a binary of another host in <state folder>/bin/caddy.
 # The module embeds the OWASP Core Rule Set, so the frontend host needs no rule files.
 # A binary that already has the module and the Caddy version stays. REBUILD=1 builds again.
 # Usage: build-caddy.sh

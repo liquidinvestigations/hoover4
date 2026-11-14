@@ -1,0 +1,22 @@
+---
+# The values that the driver derives from the site file for each node (config.ansible_variables(), extra variable
+# hoover4_nodes). The roles of ../../roles/hoover4_* read them as hoover4_* variables. The site file is the inventory.
+hoover4_node: "{{ hoover4_nodes[inventory_hostname] }}"
+ansible_host: "{{ hoover4_node.ssh_host }}"
+hoover4_node_address: "{{ hoover4_node.node_address }}"
+hoover4_flannel_iface: "{{ hoover4_node.flannel_iface }}"
+hoover4_server: "{{ hoover4_node.server }}"
+hoover4_server_address: "{{ hoover4_node.server_address }}"
+hoover4_architecture: "{{ hoover4_node.architecture }}"
+hoover4_gpu: "{{ hoover4_node.gpu }}"
+hoover4_single_local: "{{ hoover4_node.single_local }}"
+hoover4_reserved: "{{ hoover4_node.reserved }}"
+hoover4_reserved_memory_gib: "{{ hoover4_node.reserved_memory_gib }}"
+hoover4_reserved_cpus: "{{ hoover4_node.reserved_cpus }}"
+hoover4_require_k3s_volumes: "{{ hoover4_node.require_k3s_volumes }}"
+hoover4_volume_group: "{{ hoover4_node.volume_group }}"
+hoover4_stop_docker: "{{ hoover4_node.stop_docker }}"
+hoover4_backup_path: "{{ hoover4_node.backup_path }}"
+hoover4_registry_endpoint: "{{ hoover4_node.registry_endpoint }}"
+hoover4_convert_sqlite: "{{ hoover4_node.convert_sqlite }}"
+hoover4_wireguard: "{{ hoover4_node.wireguard }}"

@@ -2,7 +2,7 @@
 """The inference proxy between the Hoover installations and the shared GPU pool.
 
 The GPU pool serves the three GPU services of ai_services: the model server (21960), the NER, embedding and reranker
-server (21961) and EasyOCR (21962). Only the model server checks a key. The [gpu_pool] section of the site file
+server (21961) and EasyOCR (21962). Only the model server checks a key. vars.gpu_pool of the site file
 (../config.py) names the pool: the GPU nodes of the site, or the address of a shared pool, and the key file of the
 model server.
 - The Deployment gpu-proxy in the namespace gpu-proxy is the only cluster workload that reaches the pool. It accepts a
@@ -15,7 +15,7 @@ The proxy derives each token from the zone name, so a new zone needs no change o
 A pool of GPU nodes of the site (../platform/gpu/gpu_pool.py) has a gateway that checks the pool key on every port, so
 the proxy sends the key on every port to it. A pool at an address is a Compose GPU host, so the proxy sends the key to
 the model server port only.
-The proxy key is k3s/private/gpu-proxy-key, which the script creates once.
+The proxy key is gpu-proxy-key of the state folder, which the script creates once.
 Usage: gpu.py token <zone>             prints the token of a zone
        gpu.py install [<site.ini>]     applies the central proxy with the admin kubeconfig
 """
@@ -38,10 +38,10 @@ KEY = settings.PRIVATE / 'gpu-proxy-key'
 def site_pool(site_path=None):
     """The address and the model server key file of the GPU pool of the site file."""
     import config as site_config
-    site = site_config.read(site_path or site_config.DEFAULT_SITE)
+    site = site_config.read(site_path or settings.SITE_FILE)
     pool = site.gpu_pool
     if not pool:
-        raise SystemExit('the site file has no [gpu_pool] section.')
+        raise SystemExit('the site file has no vars.gpu_pool.')
     if pool.get('nodes'):
         # The GPU nodes of the site run the pool with its gateway (../platform/gpu/gpu_pool.py).
         return {'address': 'gateway.gpu-pool.svc.cluster.local', 'api_key_file': pool['api_key_file'], 'gateway': True}

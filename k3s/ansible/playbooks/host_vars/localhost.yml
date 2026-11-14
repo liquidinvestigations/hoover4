@@ -1,0 +1,3 @@
+---
+# The delegated tasks write into the state folder from the operator container, whose home folder is read-only.
+ansible_remote_tmp: /tmp/ansible/remote

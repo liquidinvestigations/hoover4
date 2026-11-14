@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install monitoring, logs and dashboards: kube-prometheus-stack, Loki, Alloy, Headlamp, the disk dashboard and the
 # alarms of alarms.yaml. The services with data run on the control-plane node of the site file.
-# KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig. HELM names the helm command.
+# KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig. HELM names the helm command.
 set -euo pipefail
 cd "$(dirname "$0")"
 source_dir=$(realpath ../..)

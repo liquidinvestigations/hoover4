@@ -2,11 +2,12 @@
 """Sign in to the Hoover of one zone in a fresh browser, and record what the page shows.
 
 HOOVER_USER names the account, test.user by default. The password of test.user comes from
-k3s/private/zones/<zone>/test-user-password, and the password of a zone user from k3s/private/fixture-user-passwords.json.
+<state folder>/zones/<zone>/test-user-password, and the password of a zone user from
+<state folder>/fixture-user-passwords.json.
 With LAB_INVENTORY it comes from the zone row of that login table instead. The script never prints it.
 It opens the Hoover address, which redirects to the zone Keycloak, signs in, and waits for the Hoover page.
 With a search word it also types the word into the search box and records the result text.
-The JSON result goes to stdout. The screenshot goes to k3s/private/checks/hoover, which Git ignores.
+The JSON result goes to stdout. The screenshot goes to <state folder>/checks/hoover, which Git ignores.
 Usage: <browser-venv python> hoover-browser-check.py <zone> [search word | logout | viewer | stay]
 page <path> opens one site path. viewer checks that the PDF viewer bundle loads as JavaScript. A third argument names a document path to download.
 logout ends the Keycloak session in a second tab, then reloads Hoover 5 s and 130 s later.

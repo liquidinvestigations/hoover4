@@ -327,7 +327,7 @@ def apply_module():
 
 def test_the_apply_plan_names_one_step_for_each_changed_part(state):
     A = apply_module()
-    site = config.parse((FIXTURES / 'single-node.ini').read_text().replace('@REPO@', str(REPO)))
+    site = config.parse((FIXTURES / 'single-node.yml').read_text().replace('@REPO@', str(REPO)))
     assert A.plan(state, site) == ['record']
     state.save(0, {SCOPE: {'main_services.common_workers': '5'}, 'zone:zone-a': {'app.xwiki': 'false', 'app.hoover': 'false',
                'backup.opendesk.enabled': 'true'}, 'cluster': {'cpu.oversubscription': '3'}})
@@ -354,11 +354,11 @@ def test_backup_policies_keep_their_ranges(state):
 # Scope-aware applied revisions ------------------------------------------------------------------------------------------
 
 def single_site():
-    return config.parse((FIXTURES / 'single-node.ini').read_text().replace('@REPO@', str(REPO)))
+    return config.parse((FIXTURES / 'single-node.yml').read_text().replace('@REPO@', str(REPO)))
 
 
 def remote_site():
-    return config.parse((FIXTURES / 'remote.ini').read_text().replace('@REPO@', str(REPO)))
+    return config.parse((FIXTURES / 'remote.yml').read_text().replace('@REPO@', str(REPO)))
 
 
 def test_gpu_runtime_applies_the_gpu_pool_and_no_zone(state, monkeypatch):

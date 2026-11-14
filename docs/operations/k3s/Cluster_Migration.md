@@ -19,7 +19,7 @@ The site keeps the zone names, the home nodes, the claims, the database prefixes
 The existing zones keep the zone store layout (`stores = zone`), the PostgreSQL Temporal backend and `history_source = k3s-branch`.
 No step converts the Temporal backend.
 
-1. Write the site file with the nodes and one `[hoover.<name>]` section for each zone.
+1. Write the site file with the nodes and one entry of `hoovers` for each zone.
 2. Compare the cluster with the site file. The command changes nothing.
 
    ```sh
@@ -75,7 +75,7 @@ The migration needs full root on the source host and on the operator host.
 The scoped root rules of the site cover only the site root scripts, so they do not cover the migration.
 Give the operator user unrestricted `sudo -n` on both hosts for the migration.
 
-1. Add a `[hoover.<name>]` section with `source_ini`, the `hoover4.ini` of the Compose installation.
+1. Add an entry to `hoovers` of the site file with `source_ini`, the `hoover4.ini` of the Compose installation.
    A migrated installation keeps the storage identity `Hoover4`, an empty table prefix, `hoover4-system` and `hoover4-c-`, and `history_source = compose`.
 2. Show the plan. The command changes nothing.
 

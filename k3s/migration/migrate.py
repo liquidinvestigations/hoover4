@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Move a stopped Compose installation of Hoover into a Hoover installation of the cluster, offline.
 
-The target is a [hoover.<name>] section of the site file with source_ini, the hoover4.ini of the Compose install.
+The target is an entry of vars.hoovers of the site file with source_ini, the hoover4.ini of the Compose install.
 Each step writes its result into <operator state>/migration/<run>/ and prints a JSON summary. A step that finished is
 not run again. The steps follow the offline sequence of the design: the source stays unchanged and stopped from the
 copy on, and no target service starts before the hashes of its copy are verified.
@@ -961,7 +961,7 @@ def users(r):
     The Compose install signed every request in as one header identity, so the owners have no zone account. The user
     gets the same username, so the website finds the owner of the data. An owner that was an administrator in Compose
     joins Domain Admins, the administrator group of the cluster render (website.admin_groups). The passwords are in
-    k3s/private/zones/<zone>/migrated-users.json. The step prints no password.
+    <state folder>/zones/<zone>/migrated-users.json. The step prints no password.
     """
     sys.path.insert(0, str(K3S / 'zones'))
     k3s_settings.use_kubeconfig()
@@ -987,7 +987,7 @@ def users(r):
                     break
             call('POST', 'users/user/', {'position': f'cn=users,{base}', 'properties': {
                 'username': name, 'firstname': name, 'lastname': 'Migrated', 'password': value, 'groups': groups,
-                'mailPrimaryAddress': f'{name}@{r.hoover.zone}.{r.site.suffix}', **flags}})
+                'mailPrimaryAddress': f'{name}@{r.hoover.zone}.{r.site.domain}', **flags}})
             stored[name] = value
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(stored, indent=1) + '\n')

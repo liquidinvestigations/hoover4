@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the rights of the zone runner with its own kubeconfig. Usage: runner-scope-check.py <zone>
 
-Each case runs one kubectl command as the ServiceAccount zone-runner (k3s/private/operator-runner/kubeconfig). A
+Each case runs one kubectl command as the ServiceAccount zone-runner (<state folder>/operator-runner/kubeconfig). A
 write runs with --dry-run=server, so the API server checks the rights and the admission policies, and stores nothing.
 The pod cases check the pod limits of the zone pod policy. The cases for calls run with the admin kubeconfig, because
 the runner creates no pod there itself, and the ReplicaSet controller would create the pods of its Deployments.

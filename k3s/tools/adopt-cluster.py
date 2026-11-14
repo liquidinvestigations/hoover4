@@ -14,8 +14,8 @@ identities of that cluster, so the driver keeps them.
               secret of the server token as agent token, which is the token that its agents already use.
   runners     Lists the operator runner units of the earlier tool on the control plane, as the user shell sees them.
   settings    Saves the explicit values of the hoover4.ini of each installation of the earlier tool,
-              k3s/private/zones/<zone>/hoover4.ini, once as operator settings of the installation (State.seed), so the
-              first render keeps the values that the installation runs. A saved value stays.
+              <state folder>/zones/<zone>/hoover4.ini, once as operator settings of the installation (State.seed),
+              so the first render keeps the values that the installation runs. A saved value stays.
 Usage: adopt-cluster.py inventory|tokens|runners|settings [--site FILE]
 """
 import argparse
@@ -56,7 +56,7 @@ def inventory(site):
     for hoover in site.hoovers.values():
         for ns in (hoover.zone, hoover.namespace):
             if ns not in namespaces:
-                out['differences'].append(f'the namespace {ns} of [hoover.{hoover.name}] does not exist')
+                out['differences'].append(f'the namespace {ns} of vars.hoovers.{hoover.name} does not exist')
                 continue
             claims = {c['metadata']['name']: {'uid': c['metadata']['uid'], 'volume': c['spec'].get('volumeName', ''),
                                               'size': c['spec']['resources']['requests']['storage'],
@@ -82,7 +82,7 @@ def inventory(site):
                         out['differences'].append(f'{ns} runs {key} = {value}, and the site file names {wanted.get(key)}')
         home = nodes.get(hoover.home_node)
         if home is None:
-            out['differences'].append(f'the home node {hoover.home_node} of [hoover.{hoover.name}] is not a node')
+            out['differences'].append(f'the home node {hoover.home_node} of vars.hoovers.{hoover.name} is not a node')
     control = nodes.get(site.control_plane, {})
     out['etcd_role'] = control.get('labels', {}).get('node-role.kubernetes.io/etcd') == 'true'
     for name in site.nodes:
@@ -98,8 +98,11 @@ def inventory(site):
 def tokens(site):
     node = site.nodes[site.control_plane]
     shell = nodeshell.Shell(node)
-    code, home = shell.run('echo "$HOME"', timeout=30)
-    user = site.operator_user or os.environ.get('USER', '')
+    # The SSH user of the node owns the copy, so the next command of the same user reads it.
+    code, out = shell.run('echo "$HOME"; id -un', timeout=30)
+    if code:
+        raise SystemExit(f'the user shell of {node.name} does not answer: {out[-200:]}')
+    home, user = out.split('\n')[-2:]
     folder = f'{home.strip()}/.hoover4-adopt'
     copy = (f'install -d -m 0700 -o {shlex.quote(user)} {folder} && '
             f'install -m 0600 -o {shlex.quote(user)} /var/lib/rancher/k3s/server/token {folder}/server-token && '

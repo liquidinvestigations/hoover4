@@ -4,7 +4,7 @@ The runner also starts the next due backup job once a minute (../backups/backups
 names a destination and an operator turns a backup policy on.
 
 The portal writes each operation as a ConfigMap with the label hoover.dev/operation in the namespace operator-portal.
-The runner runs on the operator host, which holds k3s/private: the zone state, the zone secrets, the openDesk
+The runner runs on the operator host, which holds the state folder: the zone state, the zone secrets, the openDesk
 release and the Helm tools. install-runner.sh starts it as a systemd user service.
 The runner uses the kubeconfig of the ServiceAccount zone-runner (runner-rights.yaml). It can change the zone
 namespaces, the shared call services and the operation ConfigMaps only. It updates the HTTPS frontend through an SSH
@@ -16,7 +16,7 @@ The operations and their steps:
   delete-zone   delete (zone.py delete), frontend, calls
 The runner runs one operation at a time, oldest first. It records each finished step in the ConfigMap, so after a
 restart or a retry it continues at the first unfinished step. Each step can run again without a different result.
-The command output of each operation goes to k3s/private/operations/<operation>.log. The ConfigMap keeps its last
+The command output of each operation goes to <state folder>/operations/<operation>.log. The ConfigMap keeps its last
 lines, which name no secret, because the install scripts print none.
 --once runs the queued operations and exits.
 """
@@ -127,7 +127,7 @@ def settings_apply():
  print(json.dumps({'apply':done.id,'status':done.status,'error':done.error[:300]}),flush=True)
  return True
 def backup_tick():
- """Start the next due backup job (../backups/backups.py). Backups stay off without [backup] and the backup settings."""
+ """Start the next due backup job (../backups/backups.py). Backups stay off without vars.backup and the backup settings."""
  sys.path.insert(0,str(source/'platform/backups'));import backups
  result=backups.tick()
  if result.get('state') not in ('off','idle','paused'):print(json.dumps({'backups':result}),flush=True)

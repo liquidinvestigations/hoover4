@@ -7,8 +7,8 @@ Two roles work with a zone.
 
 | Role | Signs in to | Tasks |
 |---|---|---|
-| Platform operator | The operator portal `https://operator.<suffix>/` | Create, upgrade, back up, restore and delete zones. Change the settings of the site and the zones. |
-| Zone administrator | The portal of the zone `https://portal.<zone>.<suffix>/` | Manage the users and groups of the zone. |
+| Platform operator | The operator portal `https://operator.<domain>/` | Create, upgrade, back up, restore and delete zones. Change the settings of the site and the zones. |
+| Zone administrator | The portal of the zone `https://portal.<zone>.<domain>/` | Manage the users and groups of the zone. |
 
 The operator login and the zone logins are separate. An operator login gives no access to the data of a zone.
 
@@ -26,7 +26,7 @@ The operator login and the zone logins are separate. An operator login gives no 
 
 ## Sign in to the operator portal
 
-1. Open `https://operator.<suffix>/`.
+1. Open `https://operator.<domain>/`.
 2. Sign in with the operator account.
 3. The start page shows the cluster resources, the links to Headlamp, Grafana, Prometheus and the settings, the zones, the operations and the recent warning events.
 
@@ -101,7 +101,7 @@ A delete removes the zone namespaces with all their volumes. No copy remains in 
 
 The zone administrator does these tasks in the portal of the zone.
 
-1. Sign in to `https://portal.<zone>.<suffix>/` with the administrator account.
+1. Sign in to `https://portal.<zone>.<domain>/` with the administrator account.
 2. Open the user administration of the portal.
 3. Add a user with a user name, a name and an email address, or change an existing user.
 4. Add the user to groups. The group of the zone administrators gives the administrator rights in the applications.

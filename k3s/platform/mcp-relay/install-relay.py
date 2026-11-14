@@ -122,12 +122,13 @@ def main(argv):
     parser.add_argument('installation')
     parser.add_argument('command', choices=('show', 'apply', 'delete'))
     parser.add_argument('--ports', choices=('compose', 'temporary'))
-    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
+    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'),
+                        required=not os.environ.get('HOOVER4_SITE'))
     args = parser.parse_args(argv)
     site = site_config.read(args.site)
     hoover = next((h for h in site.hoovers.values() if args.installation in (h.name, h.zone)), None)
     if hoover is None:
-        raise SystemExit(f'the site file has no [hoover.<name>] section with the name or zone {args.installation}.')
+        raise SystemExit(f'vars.hoovers of the site file has no installation with the name or zone {args.installation}.')
     saved = json.loads(state_file(site).read_text()) if state_file(site).exists() else {}
     mode = args.ports or saved.get('ports', 'temporary')
     if args.command == 'delete':

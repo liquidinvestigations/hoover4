@@ -12,9 +12,9 @@
 #               frontend/local-ca.crt of the state folder. The pods trust it (config.local_ca()), and the person installs
 #               it in each browser that opens the site.
 # With cloudflare and files, systemd gives the certificate files to the unit as credentials, so Caddy runs with no root.
-# Other values: the SSH address of the public node, [site] vpn_cidr (the VPN network of the operators, which reaches
+# Other values: the SSH destination of the public node, vpn_cidr of vars (the VPN network of the operators, which reaches
 # the admin routes), the bind addresses (the VPN address and the public address of the public node) and the Service
-# address of the ingress (../ingress/install-ingress.sh). The operator user on the public host needs sudo -n.
+# address of the ingress (../ingress/install-ingress.sh). The SSH user on the public host needs sudo -n.
 # The cluster sources that pass without the gate are the pod range of each node and the VPN address of each node of
 # hosts.json, because a pod request to another node leaves through wg0 with the address of its node.
 # Pods reach the frontend at the first bind address: a CoreDNS block answers every name below the suffix with it.
@@ -39,8 +39,8 @@ binds=$(python3 -c 'import sys,json;sys.path.insert(0,sys.argv[1]);import settin
 # config.py check refuses a site file without these values, so a missing one means a site file that the check did not
 # read. Each message names the site file key.
 problems=()
-[ -n "$ssh_host" ] || problems+=("the public node has no ssh_address")
-[ -n "$vpn" ] || problems+=("[site] has no vpn_cidr")
+[ -n "$ssh_host" ] || problems+=("settings.py gives no frontend_ssh")
+[ -n "$vpn" ] || problems+=("vars has no vpn_cidr")
 [ -n "$binds" ] || problems+=("the public node has no vpn_address and no public_address")
 [ -n "$ingress" ] || problems+=("settings.py gives no ingress_address")
 case "$tls_mode" in

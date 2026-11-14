@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Render and install the shared GPU pool on the GPU nodes of a site.
 
-The [gpu_pool] section of the site file names the GPU nodes (nodes = ...). Each GPU node runs the GPU services of the
+vars.gpu_pool of the site file names the GPU nodes (nodes). Each GPU node runs the GPU services of the
 ai_services Compose files, as `./deploy --ai-services` starts them on a GPU host: the model server (hoover4-vllm), the
 NER, embedding and reranker server (hoover4-ai-server) and EasyOCR (hoover4-easyocr-gpu). compose.load_ai() reads them
 from hoover4.ini.release, so the commands, the environment and the limits stay those of Compose.
 
 Runtime (the cluster setting gpu.runtime of the operator settings):
-- runsc: the RuntimeClass gvisor-gpu, gVisor with nvproxy. ../../hosts/root-install-k3s.py registers its handler on a
-  GPU node, with the runsc build of gVisor PR 16643 when stage-runsc-nvproxy.sh staged it (decision D3).
+- runsc: the RuntimeClass gvisor-gpu, gVisor with nvproxy. The k3s play (../../ansible/roles/hoover4_k3s/tasks/gpu.yml)
+  registers its handler on a GPU node, with the runsc build of gVisor PR 16643 when stage-runsc-nvproxy.sh staged it
+  (decision D3).
 - runc: the RuntimeClass nvidia of the NVIDIA container toolkit. This is the fallback of decision D20, when the GPU
   services do not work in gVisor after a bounded diagnosis. Record the failure before an operator selects it.
 Authentication: the gateway of each GPU node accepts a request on the ports 21960, 21961 and 21962 only with the
-header `Authorization: Bearer <pool key>`, where the pool key is the content of [gpu_pool] api_key_file. It sends the
+header `Authorization: Bearer <pool key>`, where the pool key is the content of vars.gpu_pool api_key_file. It sends the
 key on to the model server, which checks it too, and no key to the other services. The gateway listens on the VPN
 address of its node, so the gpu-proxy of another installation of the shared pool reaches it (decision D27), and on the
 Service gateway inside the cluster. ../../hoover/gpu.py sends the key on every port to a pool of GPU nodes.
@@ -179,7 +180,7 @@ def gateway(node, services):
 def objects(site, runtime, revision, tree=site_config.REPO):
     pool = site.gpu_pool
     if not pool.get('nodes'):
-        raise SystemExit('[gpu_pool] names no GPU nodes of the site. A pool at an address runs outside this site.')
+        raise SystemExit('vars.gpu_pool names no GPU nodes of the site. A pool at an address runs outside this site.')
     services = {n: d for n, d in gpu_services(tree).items() if n in SERVICES}
     items = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}]
     ports = [p for n, (_, p, _) in SERVICES.items() if n in services]
@@ -289,7 +290,8 @@ def verify(kubectl, services, timeout=600):
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=('show', 'apply', 'verify'))
-    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
+    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'),
+                        required=not os.environ.get('HOOVER4_SITE'))
     parser.add_argument('--revision')
     parser.add_argument('--state')
     args = parser.parse_args(argv)

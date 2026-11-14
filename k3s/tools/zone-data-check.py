@@ -11,7 +11,7 @@ application from its own page, with the session of the browser:
             authentication service for the user, because Element keeps its token encrypted in the browser)
 read looks for each item and prints whether it exists. CryptPad keeps its data encrypted in the browser and Jitsi
 keeps none, so the check has no item for them. The script prints one JSON line for each application and no password.
-Run it with the browser Python environment in k3s/private/browser-venv, which has nodriver.
+Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
 """
 import asyncio
 import importlib.util

@@ -1,6 +1,7 @@
 # This file defines one login gateway for the local operator portal.
 # start-web-tools.sh creates the operator-login secret with the client secret and the cookie secret.
-# The development login is admin with the password admin. k3s/private/operator-login/admin-password replaces that password.
+# The development login is admin with the password admin. <state folder>/operator-login/admin-password replaces that
+# password.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -273,7 +274,7 @@ spec:
             - {name: PORTAL_SUFFIX, value: hoover.test}
             - {name: PORTAL_CGROUP, value: /host-cgroup}
             - {name: PORTAL_REPO, value: /repo}
-            - {name: HOOVER4_SITE, value: /site/hoover4-site.ini}
+            - {name: HOOVER4_SITE, value: /site/site.json}
             - {name: PYTHONPATH, value: /app}
             - {name: PYTHONDONTWRITEBYTECODE, value: '1'}
             - name: PORTAL_PROXY_SECRET
@@ -288,19 +289,19 @@ spec:
             - {name: app, mountPath: /app, readOnly: true}
             - {name: cgroup, mountPath: /host-cgroup, readOnly: true}
             # The settings registry reads the k3s folder, deploy.py, hoover4.ini.release and the storage identities.
-            # The private folder of the checkout stays outside the pod, apart from the operator state and the site file.
+            # The state folder of the site stays outside the pod, apart from the operator state. The site file is
+            # the JSON form that start-web-tools.sh writes into the ConfigMap portal-site, so the pod needs no PyYAML.
+            # The state folder of /site/site.json is /site/site.
             - {name: k3s, mountPath: /repo/k3s, readOnly: true}
-            - {name: private, mountPath: /repo/k3s/private}
-            - {name: state, mountPath: /repo/k3s/private/operator}
-            - {name: site, mountPath: /site/hoover4-site.ini, readOnly: true}
+            - {name: state, mountPath: /site/site/operator}
+            - {name: site, mountPath: /site/site.json, subPath: site.json, readOnly: true}
             - {name: deploy, mountPath: /repo/deploy.py, readOnly: true}
             - {name: release, mountPath: /repo/hoover4.ini.release, readOnly: true}
             - {name: identity, mountPath: /repo/main_services/processing/tasks/storage_identity.json, readOnly: true}
       volumes:
         - {name: k3s, hostPath: {path: REPO/k3s, type: Directory}}
-        - {name: private, emptyDir: {sizeLimit: 1Mi}}
         - {name: state, hostPath: {path: STATE, type: DirectoryOrCreate}}
-        - {name: site, hostPath: {path: SITE_FILE, type: File}}
+        - {name: site, configMap: {name: portal-site}}
         - {name: deploy, hostPath: {path: REPO/deploy.py, type: File}}
         - {name: release, hostPath: {path: REPO/hoover4.ini.release, type: File}}
         - {name: identity, hostPath: {path: REPO/main_services/processing/tasks/storage_identity.json, type: File}}

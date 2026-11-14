@@ -209,7 +209,7 @@ from conftest import site_text  # noqa: E402
 
 def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password():
     backups = backups_module()
-    remote = config.parse(site_text('remote.ini'))
+    remote = config.parse(site_text('remote.yml'))
     ns, pod, container, command = backups.clickhouse_command(remote.hoovers['zone-a'])
     assert (ns, pod, container) == ('zone-a', 'clickhouse-0', 'clickhouse')
     assert '--user zone_a --password "$CH_ZONE_PASSWORD"' in command
@@ -226,7 +226,7 @@ def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password():
 def local_destination(tmp_path):
     backups = backups_module()
     dest = tmp_path / 'dest'
-    text = site_text('single-node.ini').replace('path = /srv/hoover4-backups', f'path = {dest}')
+    text = site_text('single-node.yml').replace('path: /srv/hoover4-backups', f'path: {dest}')
     s = config.parse(text)
     return backups, s, dest
 
@@ -503,7 +503,7 @@ class FakeTarget:
 
 def test_a_fetched_copy_is_verified_against_the_copy_on_the_backup_node(tmp_path, monkeypatch):
     backups = backups_module()
-    s = config.parse(site_text('remote.ini'))
+    s = config.parse(site_text('remote.yml'))
     monkeypatch.setattr(type(s), 'operator_state', lambda self: tmp_path / 'state')
     source = copy_folder(backups, tmp_path / 'source', {'postgresql.sql': b'dump', 'claims.json': b'[]'})
     damaged = FakeTarget(backups, source, damage=True)
@@ -538,3 +538,11 @@ def test_a_restored_secret_keeps_the_items_that_the_copy_lacks(tmp_path, monkeyp
     monkeypatch.setattr(backups, 'kubectl', kubectl)
     backups.restore_secrets(tmp_path, 'hoover-zone-a')
     assert applied[0]['data'] == {'a': 'Y29weQ==', 'gpu-token': 'dG9rZW4='}
+
+
+def test_the_local_retirement_uses_the_tar_check_of_the_backups():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('local_retirement', K3S / 'tools/local-retirement.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.tar_complete.__code__.co_filename == str(K3S / 'platform/backups/backups.py')

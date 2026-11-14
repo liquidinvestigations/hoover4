@@ -9,7 +9,7 @@ The images of the cluster come from commits of this repository.
 | Folder or file | Purpose |
 |---|---|
 | [deploy-k3s](deploy-k3s) | Installs, updates, stops, starts and checks a site. [driver/](driver) holds its modules. |
-| [config.py](config.py) | Reads and checks the site file `hoover4-site.ini`, writes the part of the site that each node receives, and reads the `hoover4.ini` of an earlier Compose install. |
+| [config.py](config.py) | Reads and checks the site file, a YAML Ansible inventory, gives the variables of the host plays and the part of the site that each node receives, and reads the `hoover4.ini` of an earlier Compose install. |
 | [hoover/](hoover) | Renders the Kubernetes objects of a Hoover installation from the Compose files ([manifests.py](hoover/manifests.py)), writes its `hoover4.ini` ([zone_ini.py](hoover/zone_ini.py)), prepares its stores and Secrets ([setup.py](hoover/setup.py)), and holds the GPU proxy ([gpu.py](hoover/gpu.py)). |
 | [Compose_Parity.md](Compose_Parity.md) | Names the cluster form of every Compose service and volume folder. |
 | [platform/operator/settings.py](platform/operator/settings.py) | Holds the operator settings registry, the saved and applied revisions, and the apply operations. |
@@ -27,27 +27,46 @@ The images of the cluster come from commits of this repository.
 | [tools/](tools) | Holds checks and operator tools. |
 | [tests/](tests) | Holds the test suites and their fixtures. |
 
-The state folder of a site holds the secrets, the kubeconfigs, the operator state and the generated files.
-It is beside the site file and has the name of the file without its extension (`config.state_folder()`).
-A site file directly in `private/` keeps `private/` as its state folder. Git ignores `private/`.
-The scripts of `platform/`, `zones/` and `cluster/` read the site file and the state folder through [settings.py](settings.py).
-`config.legacy_settings()` gives the values of the earlier `private/settings.json`, and `config.legacy_hosts()` gives the `hosts.json` form.
-An installation without a site file still reads `private/settings.json`.
+The state folder of a site holds the secrets, the kubeconfigs, the zone state, the operator state and the generated files.
+It is beside the site file and has the name of the file without its extension (`config.state_folder()`), for example `private/demo/` for `private/demo.yml`.
+One checkout manages more than one site, each with its own site file and state folder. Git ignores `private/`.
+Every command needs the site file: `--site FILE`, else `HOOVER4_SITE`. No command has a default site file.
+The scripts of `platform/`, `zones/`, `hoover/`, `tools/` and `cluster/` read the site file and every private path through [settings.py](settings.py), whose `PRIVATE` is the state folder of `HOOVER4_SITE`.
+`config.legacy_settings()` gives the values of the earlier `settings.json`, and `config.legacy_hosts()` gives the `hosts.json` form.
+A site file that does not exist gives the values of `settings.json` of its state folder.
 
 ## Write the site file.
 
-The site file names the resources of the installation and the roles of its nodes.
-It holds no port, tuning, feature switch, backup schedule or secret value.
-The default path is `k3s/private/hoover4-site.ini`. [tests/fixtures/](tests/fixtures) has a single-node and a remote example.
+The site file is a YAML Ansible inventory with one group, `hoover4`. The group variables are the site values, and each host of the group is one node with its values as host variables.
+It names the resources of the installation and the roles of its nodes.
+It holds no SSH address, port or user, and no port of a service, tuning, feature switch, backup schedule or secret value.
+[tests/fixtures/](tests/fixtures) has a single-node and a remote example.
 
-| Section | Keys |
+```yaml
+hoover4:
+  vars:
+    domain: k8.example.org
+    control_plane: server-a
+    vpn_cidr: 10.0.0.0/24
+    backup: {node: server-a, path: /srv/hoover4-backups}
+  hosts:
+    server-a:
+      node_roles: [control-plane, worker, registry, data]
+      vpn_address: 10.0.0.2
+      storage_tiers: [hdd]
+      lvm_volume_group: tier-hdd
+```
+
+| Place | Keys |
 |---|---|
-| `[site]` | `name`, `suffix`, `control_plane`, and optional `operator_user`, `vpn_cidr`, `state_path` |
-| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `wireguard_peers`, `wireguard_via`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file`, `gpu_api_key_file` |
-| `[gpu_pool]` | `nodes` or `address`, and `api_key_file` |
-| `[backup]` | `node` and `path` of the backup destination |
-| `[hoover.<name>]` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
+| `hoover4.vars` | `domain`, `control_plane`, and optional `vpn_cidr`, `gpu_pool`, `backup`, `hoovers` |
+| `hoover4.hosts.<name>` | `node_roles`, and optional `local`, `ssh_host`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `wireguard_peers`, `wireguard_via`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file`, `gpu_api_key_file` |
+| `hoover4.vars.gpu_pool` | `nodes` or `address`, and `api_key_file` |
+| `hoover4.vars.backup` | `node` and `path` of the backup destination |
+| `hoover4.vars.hoovers.<name>` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
 
+The site id is the domain with each `.` replaced by `-`, for example `k8-example-org`. Each command prints it with the site file and the state folder.
+A list value is a YAML list or a text with commas. Ansible reserves the variable name `roles`, so the node roles have the key `node_roles`.
 The roles are `control-plane`, `worker`, `public`, `registry`, `data`, `calls` and `gpu`.
 The value `single` gives one host every role except `calls` and `gpu`.
 A site with one node needs no VPN address and no public address.
@@ -58,7 +77,7 @@ A GPU node has no other role. A key that ends with `_file` names a private file 
 |---|---|---|
 | `cloudflare` | `tls_dns_credentials_file` | certbot gets a public wildcard certificate with the Cloudflare DNS challenge. It adds the name of each new zone. |
 | `internal` | No key. | Caddy issues the certificates from its local CA. The frontend step copies the root certificate into `frontend/local-ca.crt` of the state folder. The pods trust it. Install that file in each browser that opens the site. |
-| `files` | `tls_certificate_file`, `tls_key_file` | Put a certificate and its key on the node. The certificate must have the names `*.<suffix>` and `*.<zone>.<suffix>` of each zone. |
+| `files` | `tls_certificate_file`, `tls_key_file` | Put a certificate and its key on the node. The certificate must have the names `*.<domain>` and `*.<zone>.<domain>` of each zone. |
 
 The default is `internal` on the local node, which has no other mode, and `cloudflare` on another node.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
@@ -76,13 +95,13 @@ The play adds addresses and peers and removes none, so an existing route, for ex
 Check a site file, or print the part that one node receives:
 
 ```sh
-python3 k3s/config.py check k3s/private/hoover4-site.ini
-python3 k3s/config.py project k3s/private/hoover4-site.ini <node>
+python3 k3s/config.py check k3s/private/<site>.yml
+python3 k3s/config.py project k3s/private/<site>.yml <node>
 python3 k3s/config.py source /path/to/hoover4.ini
-python3 k3s/config.py inventory k3s/private/hoover4-site.ini <state folder>
+python3 k3s/config.py ansible k3s/private/<site>.yml
 ```
 
-`inventory` prints the Ansible inventory of the host steps. The driver writes it into `ansible/inventory.yml` of the state folder before each play.
+`ansible` prints the variables that the driver gives to the host plays. A YAML site file needs PyYAML. The operator image has it.
 
 The storage identity of a Hoover installation is independent of its zone name.
 A migrated Compose install keeps `Hoover4`, an empty table prefix, `hoover4-system` and `hoover4-c-`.
@@ -106,14 +125,17 @@ k3s/deploy-k3s status --site <file>
   It runs with the UID of the user and the network of the host. Inside it, `HOOVER4_OPERATOR_IMAGE=1` makes `deploy-k3s` run the driver ([driver/deploy.py](driver/deploy.py)).
 - `up` runs the host steps, then the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
-- The host steps are one Ansible run each on all target nodes, with the inventory of the site file:
+- The host steps are one Ansible run each on all target nodes. The site file is the inventory.
+  The driver gives the values that it derives from the site file as the extra variable `hoover4_nodes`.
+  [ansible/playbooks/group_vars/hoover4.yml](ansible/playbooks/group_vars/hoover4.yml) gives each value to its node as a `hoover4_*` variable.
   `hosts:prepare` runs [ansible/playbooks/hoover4-hosts.yml](ansible/playbooks/hoover4-hosts.yml): the facts of each node into `facts/<node>.json` of the state folder (architecture, AVX2, GPUs, volume groups), the packages of the node in one task, the kernel modules, sysctl, NetworkManager, SELinux, the local node of a single-node site, the backup folder, the public firewall when `hoover4_public_firewall` is true, and the WireGuard peers.
   `hosts:k3s` runs [ansible/playbooks/hoover4-k3s.yml](ansible/playbooks/hoover4-k3s.yml): gVisor, Kata Containers and the GPU runtime, the tokens, the k3s configuration and the registry mirror, then k3s on the server and on the agents.
   Each node downloads k3s, its install script, gVisor and Kata Containers itself and verifies the pinned digests of [ansible/roles/hoover4_k3s/defaults/main.yml](ansible/roles/hoover4_k3s/defaults/main.yml).
   A node restarts k3s only when an input file, the binary or a token file changed, or when the unit is not active.
   The server play writes the admin kubeconfig into `kubeconfig` of the state folder, with the node address of the server.
   `hosts:verify` reads every target through that kubeconfig: Ready, the k3s version, the flannel interface, and `cluster-init` and the `etcd` role of the server. A missing kubeconfig fails the step with its path.
-- The nodes connect as the user of the workstation, with `ssh_address` of the node or with its name and `~/.ssh/config`. New host keys go to `known_hosts` of the state folder.
+- The driver connects to a node with `ssh <node name>` and the SSH configuration of the user of the workstation. `~/.ssh/config` gives the address, the port, the user and the key of that name.
+  A node whose `Host` alias differs from its name names the alias in `ssh_host`. New host keys go to `known_hosts` of the state folder.
   `become` uses `sudo` without a password. `--ask-become-pass` asks once for the password of each command.
   The installer adds no SSH key, no sudo rule and no root script to a node. The host play removes `/usr/local/libexec/hoover4`, `/etc/sudoers.d/90-hoover4` and the revision folders of `~/k3s-install` of an earlier installer.
 - The tokens of the site are in `staging/tokens/` of the state folder. The server play copies the tokens of a running server into an empty folder, and writes random tokens for a new site.
@@ -144,14 +166,14 @@ k3s/deploy-k3s status --site <file>
 - The etcd snapshot of the platform backup, the restore of a snapshot and the copy of a retired server run [ansible/roles/hoover4_k3s/files/k3s-datastore.py](ansible/roles/hoover4_k3s/files/k3s-datastore.py) with `sudo -n` over SSH ([driver/nodeshell.py](driver/nodeshell.py)).
   The script writes `~/hoover4-snapshots/<name>/` of the user that runs sudo, and takes names only.
 
-The local node of a single-node site gets the dummy link `hoover4` with the address `10.254.54.1`, a dnsmasq for the names below the suffix, and the units `hoover4-address`, `hoover4-dns` and `hoover4-frontend`.
+The local node of a single-node site gets the dummy link `hoover4` with the address `10.254.54.1`, a dnsmasq for the names below the domain, and the units `hoover4-address`, `hoover4-dns` and `hoover4-frontend`.
 k3s and every pod run in `hoover4.slice`. The node value `reserved` sets the memory and CPU that stay with the rest of the host, for example a Compose stack.
 The k3s data and the kubelet folder are volumes of the volume group of the node, which the person creates. TopoLVM uses the free space of the group.
-The node connects to `localhost` over SSH when it has no `ssh_address`, so the workstation needs an SSH server for its own user.
+The local node connects to `localhost` over SSH unless it has `ssh_host`, so the workstation needs an SSH server for its own user.
 The admin kubeconfig is `kubeconfig` of the state folder. k3s writes it as `/etc/rancher/k3s/hoover4-admin.yaml`, because `/etc/rancher/k3s/k3s.yaml` can belong to another k3s user of the host.
 A new Hoover installation of a single-node site keeps its dataset folders `testdata` and `uploads` on claims, so it needs no NFS server.
 The frontend step adds the local CA to the trust store of the host and to the NSS stores of the operator user, so a browser of the host trusts the site.
-`tools/write-password-table.py` writes the logins of the site into `private/passwords.md`.
+`tools/write-password-table.py` writes the logins of the site into `passwords.md` of the state folder.
 `tools/local-site-check.py [--restart]` checks the storage, a registry pull and a restart of the host services of a single-node site.
 `tools/zone-data-check.py <zone> write|read` writes one item into each openDesk application of a zone and reads it back.
 
@@ -163,7 +185,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 
 1. `tools/adopt-cluster.py inventory` writes the nodes, namespaces, claims, Secret names, images and storage identities of the cluster into `<operator state>/adoption/` and lists each difference from the site file.
 2. `tools/adopt-cluster.py runners` lists the runner units of the earlier tool. Stop them before the first run of this driver.
-3. `tools/adopt-cluster.py tokens` copies the tokens of the server into `private/staging/tokens/`.
+3. `tools/adopt-cluster.py tokens` copies the tokens of the server into `staging/tokens/` of the state folder.
 4. `tools/adopt-cluster.py settings` saves the explicit values of the `hoover4.ini` of each zone of the earlier tool once as operator settings. It lists the keys that this revision does not read.
 
 ## Retire the local single-node site.
@@ -171,7 +193,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 `tools/local-retirement.py` preserves the local site and writes the removal script. It removes nothing.
 
 1. `inventory <folder>` records the units, mounts, volumes, link, DNS routing, claims and the protected resources.
-2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and `k3s/private`, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`k3s-datastore.py preserve <name>`). `manifest <folder>` writes the manifest again after that step.
+2. `archive <folder>` stops the site with `deploy-k3s down` without the k3s step, copies each claim, the objects and the state folder, and writes `archive-manifest.json`. It prints the root step that copies the k3s datastore and token (`k3s-datastore.py preserve <name>`). `manifest <folder>` writes the manifest again after that step.
 3. `verify <folder>` reads the archive again against its manifest.
 4. `removal <folder>` writes `remove-local-k3s.sh`. A person reviews it and runs it as root.
    The script removes the services, units, data, volumes, link and DNS setup of the site. The k3s binary, `kubectl`, `crictl`, `ctr`, the k3s scripts and `/etc/rancher/k3s/k3s.yaml` stay, because another project uses them.
@@ -210,15 +232,15 @@ They also hold the openDesk applications and memory limits of each zone, and the
 - A failed operation keeps the applied revision of each unfinished scope and records the services that already changed. A scope whose steps all finished gets its applied revision at once.
 - `gpu.runtime` applies the GPU pool (`gpu_pool.py apply`) and calls each GPU service with and without the pool key (`gpu_pool.py verify`). It changes no zone.
 - The values of an earlier Compose ini become saved values once. A saved value stays.
-- The settings page of the operator portal (`https://operator.<suffix>/settings.html`) edits the saved values, shows the hardware suggestions, the pending changes, the affected services and the Apply operation, and offers Retry and Abandon.
-  [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The operator runner (unit `hoover4-operator-runner` of the operator user) runs them.
+- The settings page of the operator portal (`https://operator.<domain>/settings.html`) edits the saved values, shows the hardware suggestions, the pending changes, the affected services and the Apply operation, and offers Retry and Abandon.
+  [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The operator runner (unit `hoover4-operator-runner-<site id>` of the operator user) runs them.
   A failed operation waits for Retry or Abandon. A restarted runner continues a running operation.
   `tools/operator-settings-check.py` drives the page in a browser: an invalid value, a save, Apply, Retry, Abandon and Use default.
   `tools/operator-portal-shots.py` captures a portal page for the manuals at 1400 by 900 pixels, with the host names and addresses replaced.
 - The zone settings `app.<name>` turn openDesk applications and Hoover off and on. An application that is off has zero replicas and keeps its claims.
   The zone memory limits and the cluster CPU policy reach the zone render through [zones/postrender.py](zones/postrender.py).
 - The backup policies are settings: `backup.opendesk.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.
-  The site file `[backup]` names the destination. Without it the portal keeps the backup controls off.
+  `backup` of the site file names the destination. Without it the portal keeps the backup controls off.
 
 ## Reach an installation from the workstation.
 
@@ -231,14 +253,14 @@ It listens on 127.0.0.1 only and forwards each port to a Service of the installa
 - The relay keeps the chosen mode in `<operator state>/mcp-relay.json`. The driver step `mcp-relay` applies it again.
 - `tools/mcp-relay-check.py <name>=<port> ...` sends the MCP requests of a development client to each port.
 
-The website of an installation is `https://hoover.<zone>.<suffix>/`. A user signs in through the Keycloak of the zone.
+The website of an installation is `https://hoover.<zone>.<domain>/`. A user signs in through the Keycloak of the zone.
 The browser harness (`website/take-screenshots.sh`) runs Chromium in a container that must reach that name and trust the local CA.
 `tools/harness-browser.sh start` runs the container `hoover4-harness-browser` from the Compose image of the browser server, in the host network, with the local CA as a Chromium policy.
-Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://hoover.<zone>.<suffix>`, and give a zone login in `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD`.
+Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://hoover.<zone>.<domain>`, and give a zone login in `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD`.
 
 ## Move a Compose installation into the cluster.
 
-Add a `[hoover.<name>]` section with `source_ini`, the `hoover4.ini` of the Compose install, and run the steps of [migration/migrate.py](migration/migrate.py) in order.
+Add an installation to `hoovers` of the site file with `source_ini`, the `hoover4.ini` of the Compose install, and run the steps of [migration/migrate.py](migration/migrate.py) in order.
 Each step records its result in `<operator state>/migration/<name>-<run>/`, and a finished step does not run again.
 
 ```sh
@@ -267,8 +289,8 @@ After the target takes new work, a return to Compose loses that work.
 
 ## Run the GPU services on GPU nodes.
 
-A site with `[gpu_pool] nodes = <GPU nodes>` runs the GPU services on those nodes ([platform/gpu/gpu_pool.py](platform/gpu/gpu_pool.py), driver step `gpu-pool`).
-A site with `[gpu_pool] address` uses a GPU host outside the site, for example the Compose GPU host of this workstation.
+A site with `gpu_pool` `nodes: <GPU nodes>` runs the GPU services on those nodes ([platform/gpu/gpu_pool.py](platform/gpu/gpu_pool.py), driver step `gpu-pool`).
+A site with `gpu_pool` `address` uses a GPU host outside the site, for example the Compose GPU host of this workstation.
 
 1. The node needs the NVIDIA driver. The k3s play refuses a GPU node where `nvidia-smi -L` fails. The host play installs the NVIDIA container toolkit from the NVIDIA repository when the node does not have it.
 2. The k3s play registers the runtime `runsc-nvproxy` (gVisor with GPU support), and labels and taints the node `hoover.dev/gpu=true`.
@@ -277,7 +299,7 @@ A site with `[gpu_pool] address` uses a GPU host outside the site, for example t
 
 When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <state folder>` on a host of the node architecture.
 Copy `runsc-nvproxy/` into the state folder of the workstation, then run `deploy-k3s up --target <node> --steps hosts:k3s`, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
-The gateway of each GPU node accepts a request only with the pool key of `[gpu_pool] api_key_file`, on every port, and listens on the VPN address of the node for the other installations of the shared pool.
+The gateway of each GPU node accepts a request only with the pool key of `gpu_pool` `api_key_file`, on every port, and listens on the VPN address of the node for the other installations of the shared pool.
 The step `gpu-pool` waits for the GPU workloads and calls each port with the key, which must answer, and without it, which must answer 403.
 
 ## Place the call services.
@@ -297,14 +319,14 @@ The role runs the same scripts and confirms after a new SSH connection works. Th
 
 Check a call from outside the site after a remote installation:
 
-1. Join a meeting at `https://meet.<zone>.<suffix>/` from a computer outside the VPN, and a second participant from another network.
+1. Join a meeting at `https://meet.<zone>.<domain>/` from a computer outside the VPN, and a second participant from another network.
 2. Run `tools/call-check.py <zone>` with `LAB_SUFFIX`, `LAB_KUBECONFIG`, `LAB_USER` and `LAB_PASSWORD_FILE` of the remote site.
 3. The check passes when the JVB counts the conference and the ICE candidate of the browser is the public address of the media node.
 
 ## Back up and restore.
 
-Backups are off until the site file has `[backup]`, the destination folder has its marker, and an operator turns a policy on in the portal.
-The `[backup]` node holds the backup folder (`path`). The capacity check, the marker check, the check of each copy and retention run on that node over its user shell.
+Backups are off until the site file has `backup`, the destination folder has its marker, and an operator turns a policy on in the portal.
+The `backup` node holds the backup folder (`path`). The capacity check, the marker check, the check of each copy and retention run on that node over its user shell.
 The commands take names: a zone, a collection, a job and a generation (the name of a copy). No command takes a host path.
 
 | Copy | Folder below the backup folder |

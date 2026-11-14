@@ -50,7 +50,7 @@ class ApplyFailed(RuntimeError):
 
 
 def site():
-    return config.read(os.environ.get('HOOVER4_SITE') or config.DEFAULT_SITE)
+    return config.read(os.environ.get('HOOVER4_SITE'))
 
 
 def scopes(s):
@@ -147,7 +147,7 @@ def run_command(argv, op, log):
 
 
 def kubectl(*args):
-    kubeconfig = os.environ.get('KUBECONFIG') or str(K3S / 'private' / 'kubeconfig')
+    kubeconfig = os.environ.get('KUBECONFIG') or str(site().state_folder() / 'kubeconfig')
     return subprocess.run(['kubectl', '--kubeconfig', kubeconfig, *args], capture_output=True, text=True)
 
 

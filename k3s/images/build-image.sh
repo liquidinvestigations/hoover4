@@ -5,7 +5,7 @@
 # BUILD_ARGS holds build arguments as NAME=value words, for example the base image of the model server.
 # <name> is the path in the registry, for example hoover/blockmount. Pods name the image
 # registry.hoover.internal/<name:tag>. Each node maps that name to the registry endpoint in /etc/rancher/k3s/registries.yaml.
-# The endpoint is registry_endpoint in k3s/private/settings.json, for example <VPN address of the registry node>:5000.
+# The endpoint is registry_endpoint of ../settings.py, for example <VPN address of the registry node>:5000.
 # A tag that the registry already has is left unchanged. A local image with the tag is pushed without a new build.
 # REBUILD=1 builds and pushes again. The images run on every node, so the build targets the x86-64-v2 baseline:
 # a Containerfile must not compile for the build host CPU.

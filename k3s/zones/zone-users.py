@@ -5,10 +5,11 @@ The openDesk bootstrap creates Administrator with every application flag off, so
 The script turns on each application flag and each application admin flag of Administrator.
 It creates test.user with the application flags and without admin flags when the user is missing.
 It creates each user of zone-users.json in the same way. A user has the same password in every zone and on
-every host, from k3s/private/fixture-user-passwords.json. The script makes a password for a user that has none in the file.
+every host, from <state folder>/fixture-user-passwords.json. The script makes a password for a user that has none
+in the file.
 For an existing test.user it turns on the application flags that are off. --refresh turns the test.user flags off
 and on again, so Nubus computes the group membership again.
-The test.user password is in k3s/private/zones/<zone>/test-user-password. The script prints no password.
+The test.user password is in <state folder>/zones/<zone>/test-user-password. The script prints no password.
 A user whose stored password the Nubus password check refuses stops the script, because that password is the login.
 Each UDM request runs in the UDM REST API container through kubectl exec (udm.py). Without zones it covers every zone of the zone state.
 """

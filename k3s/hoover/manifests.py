@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the Kubernetes objects of one Hoover installation as one List.
 
-The installation is a [hoover.<name>] section of the site file (../config.py). Its operator settings
+The installation is an entry of vars.hoovers of the site file (../config.py). Its operator settings
 (../platform/operator/settings.py) give the hoover4.ini of zone_ini.py, and compose.py reads the Compose services of
 that ini with deploy.py of the source tree. This file translates each service into Kubernetes objects. It keeps the
 command, environment, memory and CPU limits, health check, user and capabilities of each service, and maps its volumes
@@ -227,7 +227,7 @@ class Target:
 
     @property
     def host(self):
-        return f'hoover.{self.zone}.{self.site.suffix}'
+        return f'hoover.{self.zone}.{self.site.domain}'
 
     @property
     def local(self):
@@ -255,7 +255,7 @@ def find_hoover(site, name):
     for hoover in site.hoovers.values():
         if name in (hoover.name, hoover.zone):
             return hoover
-    raise RenderError(f'the site file has no [hoover.<name>] section with the name or zone {name}.')
+    raise RenderError(f'vars.hoovers of the site file has no installation with the name or zone {name}.')
 
 
 def target_from_site(site_path, name, revision=None, state=None, nfs=None, settings_revision=None):
@@ -904,7 +904,7 @@ def temporal_pg(target, shards):
 
 def proxy(target):
     """oauth2-proxy with the alpha configuration, which can add a header from a file."""
-    issuer = f'https://id.{target.zone}.{target.site.suffix}/realms/opendesk'
+    issuer = f'https://id.{target.zone}.{target.site.domain}/realms/opendesk'
     # A header claim can name only a session field. userIDClaim puts opendesk_username into the session field `email`,
     # so X-Forwarded-User reads that field. The session keeps no mail address, so the email header has no source: the
     # claim name below gives no value, and the entry only removes a value that the client sent.
@@ -923,7 +923,7 @@ def proxy(target):
     }
     args = ['--alpha-config=/config/alpha.yaml', '--email-domain=*', f'--redirect-url=https://{target.host}/oauth2/callback',
             '--cookie-secure=true', '--cookie-name=_hoover_proxy', '--reverse-proxy=true', '--skip-provider-button=true',
-            f'--whitelist-domain=.{target.zone}.{target.site.suffix}', '--silence-ping-logging=true',
+            f'--whitelist-domain=.{target.zone}.{target.site.domain}', '--silence-ping-logging=true',
             # oauth2-proxy 7.12 has no OIDC back-channel logout. The proxy refreshes its tokens with Keycloak one minute
             # after the last refresh. Keycloak refuses the refresh after the user logged out, and the proxy then drops
             # its session.
@@ -1123,7 +1123,8 @@ def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('installation')
     parser.add_argument('command', nargs='?', default='show', choices=('show', 'apply', 'diff'))
-    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
+    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'),
+                        required=not os.environ.get('HOOVER4_SITE'))
     parser.add_argument('--revision', help='the source revision of the images. The default is the commit of the tree.')
     # A nested call, for example from ../zones/zone.py, gets the pinned revision of its operation in the environment.
     parser.add_argument('--settings-revision', type=int,

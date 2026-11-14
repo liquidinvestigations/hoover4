@@ -18,9 +18,9 @@ participant is a second tab of the first user. JITSI_HOLD=<seconds> keeps both
 Jitsi participants in the call and records every 10 s whether each tab keeps its media session, its ICE state, and the
 local candidate type. A session that the client starts again, as after an ICE failure, fails the check. JITSI_P2P=1
 keeps peer-to-peer on, as in a normal call of two people. Without it, the call uses the bridge.
-The script writes k3s/private/checks/call-check-<zone>.json, or call-check-<zone>-<LAB_SUFFIX>.json for another
+The script writes <state folder>/checks/call-check-<zone>.json, or call-check-<zone>-<LAB_SUFFIX>.json for another
 host, and prints no token or password.
-Run it with the browser Python environment in k3s/private/browser-venv, which has nodriver.
+Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
 """
 import asyncio,base64,hashlib,hmac,json,os,pathlib,re,subprocess,sys,time,urllib.error,urllib.request
 root=pathlib.Path(__file__).resolve().parent

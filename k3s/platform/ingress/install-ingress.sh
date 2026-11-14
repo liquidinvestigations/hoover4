@@ -2,7 +2,7 @@
 # Install the cluster ingress. Only the HTTPS frontend on the public host connects to it from outside the cluster.
 # settings.json gives the fixed Service address (ingress_address, in the k3s Service range) and the node of the
 # controller (ingress_node, the node of the frontend).
-# KUBECONFIG names the admin kubeconfig. The default is k3s/private/kubeconfig. HELM names the helm command.
+# KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig. HELM names the helm command.
 set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
 if [ -n "${KUBECONFIG:-}" ]; then KUBECONFIG=$(realpath "$KUBECONFIG"); fi

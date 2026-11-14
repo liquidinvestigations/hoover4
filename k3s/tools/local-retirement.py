@@ -9,8 +9,9 @@
   archive DEST     Closes the site with deploy-k3s down without the k3s step, so every writer, Temporal and the stores
                    stop and stopped.json keeps their replicas. It then copies each claim through a short pod into
                    DEST/claims/<namespace>/<claim>.tar (a Block claim through the Kata wrapper of the stores), exports
-                   the objects of the namespaces of the claims into DEST/objects.json, copies k3s/private into
-                   DEST/private.tar and writes DEST/archive-manifest.json with the size and SHA-256 of every file.
+                   the objects of the namespaces of the claims into DEST/objects.json, copies the state folder of
+                   the site into DEST/private.tar and writes DEST/archive-manifest.json with the size and SHA-256 of
+                   every file.
                    k3s keeps running. The k3s datastore and token need root: the command prints that step.
   verify DEST      Reads every file of the archive again against archive-manifest.json.
   manifest DEST    Writes archive-manifest.json again, for files that a root step added after archive, for example
@@ -33,11 +34,15 @@ HERE = Path(__file__).resolve().parent
 K3S = HERE.parent
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
+sys.path.insert(0, str(K3S / 'platform' / 'backups'))
 import config  # noqa: E402
 import settings as k3s_settings  # noqa: E402
+# The completeness check of a tar file of the backups: every member and the end-of-archive marker after the last one.
+from backups import tar_complete  # noqa: E402
 
 UNITS = ('k3s.service', 'hoover4-address.service', 'hoover4-dns.service', 'hoover4-frontend.service')
-USER_UNITS = ('hoover4-operator-runner.service',)
+USER_UNITS = (f'hoover4-operator-runner-{k3s_settings.SITE.id}.service' if k3s_settings.SITE else
+              'hoover4-operator-runner.service',)
 PATHS = ('/etc/rancher/k3s/config.yaml', '/etc/rancher/k3s/token', '/etc/rancher/k3s/agent-token',
          '/etc/rancher/k3s/hoover4-admin.yaml', '/etc/rancher/k3s/registries.yaml', '/usr/local/bin/k3s',
          '/usr/local/bin/k3s-killall.sh', '/usr/local/bin/k3s-uninstall.sh', '/usr/local/libexec/hoover4',
@@ -147,18 +152,6 @@ def digest(path):
     return h.hexdigest()
 
 
-def tar_complete(path):
-    """True when the tar file at path reads to its end-of-archive marker."""
-    import tarfile
-    try:
-        with tarfile.open(path) as tar:
-            for _ in tar:
-                pass
-        return True
-    except (tarfile.TarError, EOFError, OSError):
-        return False
-
-
 def write_manifest(dest):
     rows = []
     for root, _, files in os.walk(dest):
@@ -255,7 +248,7 @@ systemctl stop k3s.service || true
 pkill -KILL -f '^/opt/gvisor/' || true
 pkill -KILL -f '^runsc-' || true
 systemctl disable hoover4-frontend.service hoover4-dns.service hoover4-address.service k3s.service || true
-# The runner of the local site is a user unit of {user}. Run as {user}: systemctl --user disable --now hoover4-operator-runner
+# The runner of the local site is a user unit of {user}. Run as {user}: systemctl --user disable --now {runner}
 rm -rf /etc/systemd/system/k3s.service /etc/systemd/system/k3s.service.env /etc/systemd/system/k3s.service.d
 # /etc/rancher/k3s/k3s.yaml and hoover4-admin.yaml, which it names, stay for the other project. The other files of the
 # folder belong to this site.
@@ -295,7 +288,8 @@ def removal(dest):
                  + ' '.join(data['volume_group']['physical_volumes']))
     protected = '\n'.join(f'#   {k}: {v}' for k, v in sorted(data['protected'].items()))
     text = REMOVAL.format(node=data['node'], inventory=dest / 'inventory.json', time=data['time'], protected=protected,
-                          user=os.environ.get('USER', ''), volume_lines='\n'.join(lines))
+                          user=os.environ.get('USER', ''), runner=USER_UNITS[0].removesuffix('.service'),
+                          volume_lines='\n'.join(lines))
     path = dest / 'remove-local-k3s.sh'
     path.write_text(text)
     os.chmod(path, 0o700)

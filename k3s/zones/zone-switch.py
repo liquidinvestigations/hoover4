@@ -2,7 +2,7 @@
 """Stop or start the zones. `down` records the replicas of every Deployment and StatefulSet and sets them to zero.
 
 `up` sets the recorded replicas again. A namespace of a disabled zone stays at zero. The record is
-`zones-replicas.json` in k3s/private/stores. `down` keeps an existing record, so a second `down` does not lose
+`zones-replicas.json` in <state folder>/stores. `down` keeps an existing record, so a second `down` does not lose
 the replicas of the first one. The zone list comes from the zone state (zonestate.py) and includes extensions.
 Usage: zone-switch.py down | up | status
 """

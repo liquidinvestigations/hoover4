@@ -7,7 +7,7 @@ The script saves the file content as the hidden page Hoover.AdminScript, renders
 the page. A page that Administrator saves runs with the programming right of Administrator.
 Each name=value argument replaces the text @name@ in the file before the save. A value file:<path> reads the file.
 A file that ends with .js runs as an async function body in the signed-in page instead, for REST reads.
-Run it with the browser Python environment in k3s/private/browser-venv, which has nodriver.
+Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
 """
 import asyncio,base64,json,os,pathlib,subprocess,sys
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings

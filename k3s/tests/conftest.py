@@ -1,5 +1,6 @@
 """Shared helpers of the cluster test suites. The tests import the modules of k3s/ from the repository."""
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,8 @@ TESTS = Path(__file__).resolve().parent
 K3S = TESTS.parent
 REPO = K3S.parent
 FIXTURES = TESTS / 'fixtures'
+# ../settings.py needs a site file name. A missing file gives the defaults of an installation without a site file.
+os.environ.setdefault('HOOVER4_SITE', '/nonexistent/site.yml')
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'hoover'))
 sys.path.insert(0, str(K3S / 'hoover' / 'stores'))

@@ -47,11 +47,11 @@ def address(node):
 def dns(site):
     frontend = site.with_role('public')[0]
     media = site_config.calls_node(site)
-    rows = [{'name': f'operator.{site.suffix}', 'address': address(frontend), 'internal': not frontend.public_address}]
+    rows = [{'name': f'operator.{site.domain}', 'address': address(frontend), 'internal': not frontend.public_address}]
     for zone in sorted({h.zone for h in site.hoovers.values()}):
         rows += [{'name': name, 'address': address(frontend), 'internal': not frontend.public_address}
-                 for name in [f'{zone}.{site.suffix}'] + [f'{n}.{zone}.{site.suffix}' for n in zone_names()]]
-    rows.append({'name': f'turn.{site.suffix}', 'address': address(media), 'internal': not media.public_address})
+                 for name in [f'{zone}.{site.domain}'] + [f'{n}.{zone}.{site.domain}' for n in zone_names()]]
+    rows.append({'name': f'turn.{site.domain}', 'address': address(media), 'internal': not media.public_address})
     return rows
 
 
@@ -75,7 +75,8 @@ def firewall(site):
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=('dns', 'firewall', 'show'))
-    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE', str(site_config.DEFAULT_SITE)))
+    parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'),
+                        required=not os.environ.get('HOOVER4_SITE'))
     args = parser.parse_args(argv)
     site = site_config.read(args.site)
     out = {'dns': dns(site), 'firewall': firewall(site), 'media_node': site_config.calls_node(site).name}

@@ -12,7 +12,7 @@ the changes of application state. Each change checks the current state first, so
 - Nextcloud keeps the first Collabora discovery answer in its app data, with no expiry. An answer from before Collabora
   was ready is empty, and each document open then fails with HTTP 500. The script fetches it again after Collabora is
   Ready and keeps the callback address.
-The three AI steps run only when k3s/private/ai.json exists.
+The three AI steps run only when <state folder>/ai.json exists.
 The script prints one JSON line for each change it makes.
 """
 import json,os,pathlib,subprocess,sys,time

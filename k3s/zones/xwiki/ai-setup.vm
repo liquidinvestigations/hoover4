@@ -1,5 +1,6 @@
 {{velocity}}
-## Point the LLM Application at the model of k3s/private/ai.json. Arguments: url (ends with /), model, token, context.
+## Point the LLM Application at the model of <state folder>/ai.json.
+## Arguments: url (ends with /), model, token, context.
 ## The script adds or updates the server "Hoover" and the model page AI.Models.<model>.
 ## It deletes the example chat models, because their servers are not reachable from the zones.
 #set ($config = $xwiki.getDocument('AI.Code.AIConfig'))

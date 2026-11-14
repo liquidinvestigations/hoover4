@@ -1,6 +1,6 @@
 """Read the persistent zone state: the zones, their home nodes, their storage tiers and their on and off switch.
 
-k3s/private/zone-state.json names each zone, whether it is enabled, its home node, the namespaces that it owns, and
+zone-state.json of the state folder of the site (../settings.py PRIVATE) names each zone, whether it is enabled, its home node, the namespaces that it owns, and
 whether its first openDesk install completed (bootstrapped, which zone.py writes for a new zone).
 zone-state.example.json shows the format. The file is state, so Git does not track it. zone.py adds and removes zones.
 A disabled zone keeps its manifests, credentials, databases and volumes, but no workload of it runs.
@@ -15,9 +15,13 @@ storage.tier/<tier>=true.
 """
 import json
 import subprocess
+import sys
 from pathlib import Path
 
-PATH = Path(__file__).resolve().parents[1] / 'private' / 'zone-state.json'
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import settings  # noqa: E402
+
+PATH = settings.PRIVATE / 'zone-state.json'
 SCHEMA = 1
 TIER_ORDER = ['nvme', 'ssd', 'hdd']
 FAST = ['nvme', 'ssd', 'hdd']

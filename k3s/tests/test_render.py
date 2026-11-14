@@ -24,7 +24,7 @@ def target(site_name, installation, tmp_path, overrides=None, source_text=None):
     if source_text is not None:
         source = tmp_path / 'source.ini'
         source.write_text(source_text)
-        text = re.sub(r'source_ini = .*', f'source_ini = {source}', text)
+        text = re.sub(r'source_ini: .*', f"source_ini: '{source}'", text)
     path = tmp_path / site_name
     path.write_text(text)
     t = manifests.target_from_site(path, installation, revision=REVISION, state=tmp_path / 'no-state', nfs=NFS)
@@ -58,7 +58,7 @@ def workloads(items):
 
 @pytest.fixture
 def single(tmp_path):
-    return items_of(target('single-node.ini', 'main', tmp_path))
+    return items_of(target('single-node.yml', 'main', tmp_path))
 
 
 # The single-node migrated installation ----------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def test_single_node_keeps_the_compose_storage_identity_and_history_source(singl
 
 
 def test_several_worker_pods_poll_their_host_queues(tmp_path):
-    t = target('single-node.ini', 'main', tmp_path, overrides={'budget.worker_pods': '2'})
+    t = target('single-node.yml', 'main', tmp_path, overrides={'budget.worker_pods': '2'})
     e = env(containers(get(items_of(t), 'StatefulSet', 'hoover-workers'))[0])
     assert e['HOOVER4_HOST_QUEUE'] == {'fieldRef': {'fieldPath': 'metadata.name'}}
 
@@ -153,7 +153,7 @@ def test_temporal_on_cassandra_and_elasticsearch(single):
 def test_migrated_install_keeps_its_shard_count(tmp_path):
     source = (REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini').read_text()
     source = source.replace('[main_services]', '[main_services]\ntemporal_history_shards = 64')
-    items = items_of(target('single-node.ini', 'main', tmp_path, source_text=source))
+    items = items_of(target('single-node.yml', 'main', tmp_path, source_text=source))
     assert env(containers(get(items, 'Deployment', 'temporal'))[0])['NUM_HISTORY_SHARDS'] == '64'
 
 
@@ -223,7 +223,7 @@ def test_gpu_forwarder_keeps_the_three_gpu_interfaces(single):
 
 
 def test_internet_tools_follow_the_setting(tmp_path):
-    items = items_of(target('single-node.ini', 'main', tmp_path, overrides={'main_services.internet_tools_enabled': 'true'}))
+    items = items_of(target('single-node.yml', 'main', tmp_path, overrides={'main_services.internet_tools_enabled': 'true'}))
     for name in ('hoover4-mcp-whois', 'hoover4-mcp-metasearch', 'hoover4-mcp-browser', 'hoover4-web-tor'):
         item = get(items, 'Deployment', name)
         assert item['spec']['template']['metadata']['labels']['hoover.dev/egress'] == 'internet'
@@ -240,14 +240,14 @@ def test_garage_init_job_name_follows_its_spec(tmp_path, single):
         assert len(jobs) == 1
         return jobs[0]
     first = job(single)
-    grown = job(items_of(target('single-node.ini', 'main', tmp_path, overrides={'volume.garage-data': '25Gi'})))
+    grown = job(items_of(target('single-node.yml', 'main', tmp_path, overrides={'volume.garage-data': '25Gi'})))
     assert env(containers(first)[0])['GARAGE_CAPACITY'] != env(containers(grown)[0])['GARAGE_CAPACITY']
     assert first['metadata']['name'] != grown['metadata']['name']
-    assert job(items_of(target('single-node.ini', 'main', tmp_path)))['metadata']['name'] == first['metadata']['name']
+    assert job(items_of(target('single-node.yml', 'main', tmp_path)))['metadata']['name'] == first['metadata']['name']
 
 
 def test_service_commands_and_limits_follow_compose(tmp_path, single):
-    t = target('single-node.ini', 'main', tmp_path)
+    t = target('single-node.yml', 'main', tmp_path)
     ini = tmp_path / 'hoover4.ini'
     ini.write_text(manifests.zone_ini_text(t))
     _, _, _, services = compose.load(ini, REPO)
@@ -288,8 +288,8 @@ def test_agent_api_callers_reach_the_cluster_website(single):
 
 
 def test_second_render_is_equal(tmp_path):
-    first = manifests.render(target('single-node.ini', 'main', tmp_path))
-    second = manifests.render(target('single-node.ini', 'main', tmp_path))
+    first = manifests.render(target('single-node.yml', 'main', tmp_path))
+    second = manifests.render(target('single-node.yml', 'main', tmp_path))
     assert first == second
     images = sorted(set(re.findall(r'"image": "([^"]+)"', first)))
     assert all(':0123456789ab' in i for i in images if i.startswith(manifests.REGISTRY))
@@ -298,7 +298,7 @@ def test_second_render_is_equal(tmp_path):
 # The remote topology ------------------------------------------------------------------------------------------------
 
 def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
-    items = items_of(target('remote.ini', 'zone-a', tmp_path))
+    items = items_of(target('remote.yml', 'zone-a', tmp_path))
     temporal = containers(get(items, 'Deployment', 'temporal'))[0]
     assert env(temporal)['DB'] == 'postgres12'
     names = {(i['kind'], i['metadata']['name']) for i in items}
@@ -315,7 +315,7 @@ def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
 
 
 def test_new_remote_install_with_its_own_identity_and_nfs_data(tmp_path):
-    items = items_of(target('remote.ini', 'research', tmp_path))
+    items = items_of(target('remote.yml', 'research', tmp_path))
     e = env(containers(get(items, 'StatefulSet', 'hoover-workers'))[0])
     assert e['HOOVER4_CLICKHOUSE_DB_PREFIX'] == 'Research'
     assert e['S3_SYSTEM_BUCKET'] == 'research-system'
@@ -327,14 +327,14 @@ def test_new_remote_install_with_its_own_identity_and_nfs_data(tmp_path):
 
 
 def test_missing_nfs_address_is_a_specific_error(tmp_path):
-    t = target('remote.ini', 'research', tmp_path)
+    t = target('remote.yml', 'research', tmp_path)
     t.nfs = {}
     with pytest.raises(manifests.RenderError, match='NFS Service address of the data node server-a is unknown'):
         manifests.render(t)
 
 
 def test_settings_that_deploy_refuses_stop_the_render(tmp_path):
-    t = target('single-node.ini', 'main', tmp_path, overrides={'main_services.tika_mem_limit': '1G'})
+    t = target('single-node.yml', 'main', tmp_path, overrides={'main_services.tika_mem_limit': '1G'})
     with pytest.raises(manifests.RenderError, match='deploy.py refuses'):
         manifests.render(t)
 
@@ -407,7 +407,7 @@ def changed_value(setting):
 def test_registry_services_cover_the_changed_compose_services(tmp_path):
     """A changed ini setting changes only the services that the registry names."""
     registry = operator_settings().REGISTRY
-    t = target('single-node.ini', 'main', tmp_path)
+    t = target('single-node.yml', 'main', tmp_path)
 
     def services_with(values):
         ini = tmp_path / 'probe.ini'
@@ -437,8 +437,8 @@ def test_registry_services_cover_the_changed_compose_services(tmp_path):
 # A new installation of a single-node site, and the application switch ------------------------------------------------
 
 def test_a_new_single_node_installation_keeps_its_datasets_on_claims(tmp_path):
-    text = re.sub(r'source_ini = .*\n', '', site_text('single-node.ini'))
-    path = tmp_path / 'new.ini'
+    text = re.sub(r' *source_ini: .*\n', '', site_text('single-node.yml'))
+    path = tmp_path / 'new.yml'
     path.write_text(text)
     t = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'no-state', nfs={})
     items = items_of(t)
@@ -456,8 +456,8 @@ def test_a_disabled_hoover_renders_zero_replicas_and_keeps_its_claims(tmp_path):
     S = operator_settings()
     state = S.State(tmp_path / 'state')
     state.save(0, {'zone:zone-a': {'app.hoover': 'false'}})
-    path = tmp_path / 'single.ini'
-    path.write_text(site_text('single-node.ini'))
+    path = tmp_path / 'single.yml'
+    path.write_text(site_text('single-node.yml'))
     t = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'state', nfs=NFS)
     items = items_of(t)
     assert all(i['spec']['replicas'] == 0 for i in items if i['kind'] in ('Deployment', 'StatefulSet'))
@@ -480,7 +480,7 @@ def _gpu_pool():
 def test_gpu_pool_runs_every_gpu_service_on_its_node_with_the_selected_runtime():
     import config
     pool = _gpu_pool()
-    site = config.parse(site_text('remote.ini'))
+    site = config.parse(site_text('remote.yml'))
     for runtime, runtime_class in (('runsc', 'gvisor-gpu'), ('runc', 'nvidia')):
         items = pool.objects(site, runtime, REVISION)
         deployments = {i['metadata']['name']: i for i in items if i['kind'] == 'Deployment'}
@@ -516,8 +516,8 @@ def test_the_central_gpu_proxy_sends_the_pool_key_on_every_port_of_a_site_pool(t
 
 def test_gpu_nodes_reach_the_host_steps_with_their_flag(tmp_path):
     import config
-    hosts = config.ansible_inventory(config.parse(site_text('remote.ini')), tmp_path)['all']['children']['hoover4']['hosts']
-    assert hosts['gpu-1']['hoover4_gpu'] is True and hosts['edge']['hoover4_gpu'] is False
+    nodes = config.ansible_variables(config.parse(site_text('remote.yml')), tmp_path)['hoover4_nodes']
+    assert nodes['gpu-1']['gpu'] is True and nodes['edge']['gpu'] is False
 
 
 # The calls placement and the public endpoints -------------------------------------------------------------------------
@@ -532,21 +532,22 @@ def _public_endpoints():
 
 def test_a_calls_node_takes_the_media_services_and_its_public_address():
     import config
-    remote = config.parse(site_text('remote.ini'))
+    remote = config.parse(site_text('remote.yml'))
     values = config.legacy_settings(remote)
     assert values['calls_node'] == 'calls' and values['calls_public_address'] == '203.0.113.11'
     assert values['calls_turn_listen'] == ['10.0.0.4', '203.0.113.11']
     # Without a calls node the public node runs them. The local node has no public address, so the pods advertise.
-    single = config.legacy_settings(config.parse(site_text('single-node.ini')))
+    single = config.legacy_settings(config.parse(site_text('single-node.yml')))
     assert single['calls_node'] == 'dev' and single['calls_public_address'] == ''
-    without = config.parse(site_text('remote.ini').replace('[node.calls]\nroles = calls', '[node.calls]\nroles = worker\nstorage_tiers = hdd\nlvm_volume_group = tier-hdd'))
+    without = config.parse(site_text('remote.yml').replace('node_roles: calls', 'node_roles: worker\n      storage_tiers: hdd\n'
+                                                                                  '      lvm_volume_group: tier-hdd'))
     assert config.legacy_settings(without)['calls_node'] == 'edge'
 
 
 def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
     import config
     module = _public_endpoints()
-    remote = config.parse(site_text('remote.ini'))
+    remote = config.parse(site_text('remote.yml'))
     records = {r['name']: r for r in module.dns(remote)}
     assert records['turn.example.org']['address'] == '203.0.113.11'
     assert records['hoover.zone-a.example.org']['address'] == '203.0.113.10'
@@ -560,7 +561,7 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
     assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script
 
 
-@pytest.mark.parametrize('fixture,name', [('remote.ini', 'zone-a'), ('remote.ini', 'research'), ('single-node.ini', 'main')])
+@pytest.mark.parametrize('fixture,name', [('remote.yml', 'zone-a'), ('remote.yml', 'research'), ('single-node.yml', 'main')])
 def test_no_workload_names_a_volume_or_mount_twice(tmp_path, fixture, name):
     import collections
     for item in items_of(target(fixture, name, tmp_path)):
@@ -575,14 +576,14 @@ def test_no_workload_names_a_volume_or_mount_twice(tmp_path, fixture, name):
 
 
 def test_an_extra_dataset_folder_is_a_read_only_export_of_its_data_node(tmp_path):
-    text = site_text('remote.ini').replace('collection_bucket_prefix = zone-a-c-',
-                                           'collection_bucket_prefix = zone-a-c-\nextra_datasets = archive:worker-b:/storage/archive')
+    text = site_text('remote.yml').replace('collection_bucket_prefix: zone-a-c-',
+                                           "collection_bucket_prefix: zone-a-c-\n        extra_datasets: 'archive:worker-b:/storage/archive'")
     site = config.parse(text)
     assert site.hoovers['zone-a'].extra_datasets == (('archive', 'worker-b', '/storage/archive'),)
     assert config.parse(config.dump(site)) == site
     assert config.legacy_settings(site)['hoover_data']['extra'] == {
         'zone-a': [{'name': 'archive', 'node': 'worker-b', 'path': '/storage/archive'}]}
-    path = tmp_path / 'site.ini'
+    path = tmp_path / 'site.yml'
     path.write_text(text)
     t = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'no-state',
                                    nfs={**NFS, 'worker-b': '10.43.0.12'})
@@ -596,7 +597,7 @@ def test_an_extra_dataset_folder_is_a_read_only_export_of_its_data_node(tmp_path
 def test_the_proxy_reaches_the_sign_in_service_on_every_frontend_address(tmp_path):
     # The zone names resolve to the first frontend bind inside the cluster, the VPN address of the public node. A policy
     # with only the public address made the token exchange of each sign-in fail with "connection refused".
-    items = items_of(target('remote.ini', 'zone-a', tmp_path))
+    items = items_of(target('remote.yml', 'zone-a', tmp_path))
     rule = get(items, 'NetworkPolicy', 'egress-oidc')['spec']['egress'][0]
     assert [b['ipBlock']['cidr'] for b in rule['to']] == ['10.0.0.1/32', '203.0.113.10/32']
     assert rule['ports'] == [{'port': 443}]

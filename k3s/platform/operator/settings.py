@@ -152,10 +152,10 @@ def deploy_module():
 EXCLUDED = {
     ('storage', 'volumes_path'): 'The cluster gives each volume its own claim.',
     ('storage', 'garage_capacity'): 'The renderer derives it from the size of the Garage data volume.',
-    ('ai_services', 'enabled'): 'The [gpu_pool] section of the site file turns the GPU services on.',
+    ('ai_services', 'enabled'): 'vars.gpu_pool of the site file turns the GPU services on.',
     ('ai_services', 'host'): 'The GPU forwarder of the Hoover namespace is the GPU host.',
     ('ai_services', 'bind_ip'): 'The GPU installation publishes its own ports.',
-    ('ai_services', 'vllm_api_key_file'): 'The key is a secret file of [gpu_pool] in the site file.',
+    ('ai_services', 'vllm_api_key_file'): 'The key is a secret file of vars.gpu_pool in the site file.',
     ('main_services', 'website_release_mode'): 'The cluster runs the release image.',
     ('main_services', 'development_auth_backdoor_enabled'): 'Keycloak and oauth2-proxy sign in every user.',
     ('main_services', 'proxy_username'): 'Only the development identity proxy reads it.',
@@ -312,7 +312,7 @@ ZONE_SETTINGS = [Setting('zone.enabled', 'zone', 'bool', 'true', ('zone',), 'rec
 ZONE_SETTINGS += [Setting(f'app.{name}', 'zone', 'bool', 'true', (name,), 'reconcile', 'switch') for name in APPLICATIONS]
 
 
-# The backup policies. The site file names the destination ([backup] node and path). Each policy is weekly: a
+# The backup policies. The site file names the destination (vars.backup node and path). Each policy is weekly: a
 # zone gets one openDesk copy a week and keeps 2 or 3, a Hoover collection gets at most one copy a week after its first
 # ingestion or a complete reprocessing and keeps 1 or 2, and the platform recovery set keeps 1 to 3 weekly copies.
 # Mode schedule: the backup scheduler reads the applied value, and no service restarts.

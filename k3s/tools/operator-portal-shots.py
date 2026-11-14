@@ -12,7 +12,7 @@ The script saves a 1400 by 900 viewport image as <private>/checks/portal-shots/<
 It appends the name, the path, the image SHA-256, the size and the time to portal-shots/manifest.jsonl.
 The admin password comes from <private>/operator-login/admin-password. The script prints no password.
 <private> is the private folder beside the tree. Run the script from the tree of the site, for example an exported tree.
-Run it with the browser Python environment in k3s/private/browser-venv, which has nodriver.
+Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
 """
 import asyncio
 import hashlib

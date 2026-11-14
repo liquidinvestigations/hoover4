@@ -2,7 +2,8 @@
 """Exercise the settings page of the operator portal in a browser. Usage: operator-settings-check.py <phase> [args]
 
 The browser signs in to the operator portal as admin and opens settings.html. The password comes from
-k3s/private/operator-login/admin-password, else it is the development password. Each phase uses the page as an operator does.
+<state folder>/operator-login/admin-password, else it is the development password. Each phase uses the page as an
+operator does.
   invalid <scope> <key> <value>     enter a value, Save, and expect a marked refusal and no new revision
   save <scope> <key> <value>        enter a value and Save. Expect a new revision in the pending table.
   apply [timeout]                   press Apply and wait until the operation succeeds or fails
@@ -10,9 +11,9 @@ k3s/private/operator-login/admin-password, else it is the development password. 
   abandon                           press Abandon on the failed operation
   default <scope> <key>             press Use default and Save
   show                              take a screenshot only
-The check appends one result per run to k3s/private/checks/operator-settings-check.jsonl and writes a screenshot to
-k3s/private/checks/operator-settings/<n>-<phase>.png. It prints no password.
-Run it with the browser Python environment in k3s/private/browser-venv, which has nodriver.
+The check appends one result per run to <state folder>/checks/operator-settings-check.jsonl and writes a screenshot to
+<state folder>/checks/operator-settings/<n>-<phase>.png. It prints no password.
+Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
 """
 import asyncio
 import json

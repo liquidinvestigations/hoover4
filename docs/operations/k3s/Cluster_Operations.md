@@ -22,7 +22,7 @@ This manual describes the daily tasks of a platform operator on a site of `k3s/d
 
 An upgrade installs the scripts and the images of the commit of the checkout.
 
-1. Check out the commit in the checkout that runs `k3s/deploy-k3s`.
+1. Check out the commit in the checkout that runs `k3s/deploy-k3s`. Set `HOOVER4_SITE` to the site file, or add `--site <site file>` to each command.
 2. Show the steps. The command changes nothing.
 
    ```sh
@@ -58,7 +58,7 @@ An earlier image does not reverse stored data. A database migration of the later
 ## Save and apply settings
 
 The operator settings hold the tunings, switches, applications, memory limits and backup policies of the site and its zones.
-The settings page is `https://operator.<suffix>/settings.html`.
+The settings page is `https://operator.<domain>/settings.html`.
 
 1. Edit a value and select **Save**. A save changes no service.
 2. Read the pending changes and the services that each change restarts.
@@ -88,7 +88,7 @@ It also suspends the CronJobs of the zones. The workers end through their grace 
 
 ## Monitor the site
 
-The operator portal at `https://operator.<suffix>/` links the monitoring tools.
+The operator portal at `https://operator.<domain>/` links the monitoring tools.
 
 | Tool | Use |
 |---|---|
@@ -100,7 +100,7 @@ The portal also shows the recent warning events of the cluster and the operation
 
 ## Back up the site
 
-The site file `[backup]` names the backup node and its backup folder.
+`backup` of the site file names the backup node and its backup folder.
 The settings `backup.opendesk.*` and `backup.hoover.*` of each zone and `backup.platform.*` of the cluster turn each job on and set its retained copies.
 
 1. Create the backup folder. The `up` run creates it on the backup node with the folders `zones` and `platform`.

@@ -21,7 +21,7 @@ these ports as host ports of the media node, and ../calls/public_endpoints.py pr
 records that the operator adds. A media node without a public address, such as the local node of a single-node site,
 advertises the pod addresses, which the host reaches.
 Each zone must be installed first, because the script reads its JVB template. The secrets come from
-k3s/private/zones/secrets.json, which zones.py writes. The script prints no secret.
+<state folder>/zones/secrets.json, which zones.py writes. The script prints no secret.
 """
 import base64,copy,hashlib,ipaddress,json,os,pathlib,subprocess,sys,time
 source=pathlib.Path(__file__).resolve().parents[2]

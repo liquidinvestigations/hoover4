@@ -1,7 +1,7 @@
 ---  # noqa: run-once[play]
-# The host steps of a hoover4 site (../../deploy-k3s up, step hosts:prepare). The driver passes the inventory of the
-# site file and the target nodes as the limit. The plays run on all target nodes in parallel. Each node installs its
-# packages once, before the tasks that need them.
+# The host steps of a hoover4 site (../../deploy-k3s up, step hosts:prepare). The driver passes the site file as the
+# inventory, the variables of config.ansible_variables() and the target nodes as the limit. The plays run on all target
+# nodes in parallel. Each node installs its packages once, before the tasks that need them.
 - name: Read the facts of each node
   hosts: hoover4
   gather_facts: false
@@ -22,9 +22,10 @@
 
 # The hubs first: a new peer works when both of its nodes have it.
 - name: Add the WireGuard peers of each node that the installer configures
-  hosts: hoover4_wireguard
+  hosts: hoover4
   gather_facts: false
   become: true
   order: sorted
   roles:
     - role: hoover4_wireguard
+      when: hoover4_wireguard | length > 0

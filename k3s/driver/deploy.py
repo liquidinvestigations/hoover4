@@ -128,7 +128,7 @@ class Context:
         self.site = site
         self.repo = Path(repo)
         self.private = Path(private) if private else config.state_folder(self.site_path)
-        self.state = site.operator_state()
+        self.state = self.private / 'operator'
         self.records = records_module.Records(self.state / 'deploy')
         self.kubeconfig = Path(os.environ.get('KUBECONFIG') or self.private / 'kubeconfig')
         self.revision = None
@@ -254,21 +254,16 @@ POD_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d
 
 
 class Ansible:
-    """Runs the playbooks of ../ansible on target nodes with the inventory of the site file.
+    """Runs the playbooks of ../ansible on target nodes, with the site file as the inventory.
 
-    The inventory is written into ansible/inventory.yml of the state folder before each run (config.ansible_inventory).
-    New host keys go to known_hosts of the state folder, because ~/.ssh is read-only in the operator image. A run with
-    a sudo password reads it from a private file of the container, which ask_become_pass() of the context writes.
+    The variables that the driver derives from the site file go to the plays as extra variables
+    (config.ansible_variables). New host keys go to known_hosts of the state folder, because ~/.ssh is read-only in the
+    operator image. A run with a sudo password reads it from a private file of the container, which ask_become_pass()
+    of the context writes.
     """
 
     def __init__(self, ctx):
         self.ctx = ctx
-
-    def inventory(self):
-        path = self.ctx.private / 'ansible' / 'inventory.yml'
-        # A JSON document is a YAML document, so the YAML inventory plugin reads it.
-        private_write(path, json.dumps(config.ansible_inventory(self.ctx.site, self.ctx.private), indent=1) + '\n')
-        return path
 
     def env(self):
         known = self.ctx.private / 'known_hosts'
@@ -278,7 +273,8 @@ class Ansible:
                                     f'-o "UserKnownHostsFile={known} ~/.ssh/known_hosts"'}
 
     def argv(self, playbook, targets, extra=None, tags=()):
-        argv = ['ansible-playbook', '-i', self.inventory(), '--limit', ','.join(targets), ANSIBLE / 'playbooks' / playbook]
+        argv = ['ansible-playbook', '-i', self.ctx.site_path, '--limit', ','.join(targets), ANSIBLE / 'playbooks' / playbook,
+                '-e', json.dumps(config.ansible_variables(self.ctx.site, self.ctx.private))]
         if self.ctx.become_password_file:
             argv += ['--become-password-file', self.ctx.become_password_file]
         if extra:
@@ -289,8 +285,7 @@ class Ansible:
 
     def run(self, playbook, targets, extra=None, tags=()):
         """Run a playbook. Raise StepFailed with the recap when a task failed or a node was unreachable."""
-        for folder in ('ansible', 'facts'):
-            (self.ctx.private / folder).mkdir(parents=True, exist_ok=True)
+        (self.ctx.private / 'facts').mkdir(parents=True, exist_ok=True)
         code, out = self.ctx.run(self.argv(playbook, targets, extra, tags), env=self.env(), check=False)
         if code:
             failed = [name.split(' -> ')[0] for name in re.findall(r'(?m)^\s*fatal: \[([^\]]+)\]', out)]
@@ -454,7 +449,7 @@ def tool_paths(ctx):
 
 
 def step_tools(ctx):
-    """Download the pinned operator tools once, verify their digests and install them into k3s/private."""
+    """Download the pinned operator tools once, verify their digests and install them into the state folder."""
     import hashlib
     import shutil
     import tarfile
@@ -686,7 +681,7 @@ except Exception as e:
 
 def sign_in_check_pod(ctx, hoover):
     """A pod with the OIDC egress label of oauth2-proxy, so the NetworkPolicy of the proxy applies to it."""
-    zone = f'{hoover.zone}.{ctx.site.suffix}'
+    zone = f'{hoover.zone}.{ctx.site.domain}'
     return {'apiVersion': 'v1', 'kind': 'Pod',
             'metadata': {'name': 'sign-in-check', 'namespace': hoover.namespace,
                          'labels': {'app.kubernetes.io/name': 'sign-in-check', 'hoover.dev/oidc': 'client'}},
@@ -1092,10 +1087,10 @@ def public_endpoints(site):
 
 def render(ctx, targets, revision, manifests=False):
     """The configuration of the selected targets, as a dict. It reads files and the cluster, and changes nothing."""
-    out = {'site': ctx.site.name, 'site_file': str(ctx.site_path), 'state': str(ctx.private), 'revision': revision,
+    out = {'site': ctx.site.id, 'site_file': str(ctx.site_path), 'state': str(ctx.private), 'revision': revision,
            'checkout_changes': dirty_files(ctx.repo), 'settings': config.legacy_settings(ctx.site),
            'nodes': {t: config.project(ctx.site, t) for t in targets},
-           'inventory': config.ansible_inventory(ctx.site, ctx.private),
+           'ansible_variables': config.ansible_variables(ctx.site, ctx.private),
            'up': list(plan(ctx, 'up', targets)), 'start': list(plan(ctx, 'up', targets, start=True)),
            'down': list(plan(ctx, 'down', targets)),
            'applied': (ctx.records.applied() or {}).get('revision'), 'operator_settings': {},

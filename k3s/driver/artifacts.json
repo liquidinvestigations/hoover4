@@ -1,5 +1,5 @@
 {
- "comment": "The pinned operator tools of the control-plane host. deploy-k3s downloads each file once into k3s/private/downloads, verifies its sha256 digest and installs the named member. The digests are the published release digests. The platform scripts use Helm 4 (bin/helm). openDesk v1.19.1 and its helmfile use Helm 3 (bin/opendesk/helm).",
+ "comment": "The pinned operator tools of the control-plane host. deploy-k3s downloads each file once into <state folder>/downloads, verifies its sha256 digest and installs the named member. The digests are the published release digests. The platform scripts use Helm 4 (bin/helm). openDesk v1.19.1 and its helmfile use Helm 3 (bin/opendesk/helm).",
  "tools": [
   {
    "name": "helm",
