@@ -53,8 +53,8 @@ that is up is not a site that renders.
 
 ## Access
 
-Use the untracked root `INFRASTRUCTURE_INVENTORY.md` as the private infrastructure log.
-Record access details, ownership, paths, and infrastructure changes there.
+The untracked root `INFRASTRUCTURE_INVENTORY.md` describes the current infrastructure only.
+When access details, ownership, paths or networks change, replace the affected entry. Record no history there.
 Tools and private operational scripts may use those details when the authorized work needs them.
 Keep infrastructure details out of tracked files, public output, and commit messages.
 Do not print credentials.

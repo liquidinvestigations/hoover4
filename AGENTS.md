@@ -16,8 +16,9 @@ public**, at `github.com/liquidinvestigations/hoover4`, so every tracked file is
 [docs/](docs) with it. Keep every hostname, port, address and auth boundary out of them, and out of
 these skills.
 Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the repository root.
-Use that file as the private infrastructure log. Tools may use its details for authorized operations.
-Record private access details and infrastructure changes there. Keep credentials out of output.
+That file describes only the current infrastructure: hosts, access, credentials, host paths, networks and services.
+Tools may use its details for authorized operations. When the infrastructure changes, replace the affected entry.
+Do not add dates, plan names, deployment records or earlier states to it. Keep credentials out of output.
 [CONTEXT.md](CONTEXT.md) at the repository root records the words this tree uses in more than one sense,
 and the words that compete for one sense. Read it before you write a term that already has an
 entry there.
