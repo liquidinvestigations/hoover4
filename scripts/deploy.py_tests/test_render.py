@@ -1174,7 +1174,11 @@ def test_disabled_model_servers_render_no_endpoint(enabled, tier):
     for name in deploy.LLM_ENDPOINT_VARS:
         assert env[name] == "", name
     assert env["LLM_SEND_TEMPERATURE"] == "false"
-    assert "LLM_API_KEY_FILE_HOST" not in env
+    # The GPU key goes to the main side whenever the GPU tier is on, also for the AI server.
+    if tier == "true":
+        assert env["LLM_API_KEY_FILE_HOST"] == "/srv/keys/vllm"
+    else:
+        assert "LLM_API_KEY_FILE_HOST" not in env
     assert not any(value.startswith("https://") for value in env.values()
                    if isinstance(value, str))
 
@@ -1405,7 +1409,7 @@ def test_the_model_server_values_render_whether_or_not_the_server_is_enabled():
     assert {key: deploy.render_ai_env(on)[key] for key in QWEN_FLASH_DEFAULT_ENV} == \
         {key: deploy.render_ai_env(off)[key] for key in QWEN_FLASH_DEFAULT_ENV} == \
         QWEN_FLASH_DEFAULT_ENV
-    assert deploy.render_ai_env(on)["VLLM_API_KEY_FILE_HOST"] == "/srv/keys/vllm"
+    assert deploy.render_ai_env(on)["GPU_API_KEY_FILE_HOST"] == "/srv/keys/vllm"
 
 
 def test_the_fingerprint_changes_with_a_fixed_model_value(monkeypatch):
@@ -1449,7 +1453,7 @@ def test_the_model_server_service_reads_the_rendered_names():
     import re
     # `$${NAME}` is the shell's own variable, which compose does not interpolate.
     used = set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)", str(service)))
-    optional = {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"}
+    optional = {"AI_BIND_IP"}
     assert used - optional <= set(env), sorted(used - optional - set(env))
     assert service["image"] == "${QWEN_FLASH_IMAGE}"
     assert service["build"]["context"] == "${HOOVER4_REPO_ROOT}/ai_services/qwen_flash"
@@ -2381,9 +2385,13 @@ class _Clock:
 
 
 def _vllm_cfg():
+    # The start writes or checks the GPU key file before the model server starts.
+    import tempfile
+    key = Path(tempfile.mkdtemp()) / "gpu-api-key"
+    key.write_text("k\n")
     cfg = _config("settings-defaults.ini")
     cfg.values["ai_services"].update(enabled="true", llm_enabled="true", ai_server_enabled="true",
-                                     easyocr_enabled="true", vllm_api_key_file="")
+                                     easyocr_enabled="true", vllm_api_key_file=str(key))
     return cfg
 
 
@@ -2519,3 +2527,47 @@ def test_the_compose_files_render_no_storage_identity_variable():
         for variable in ("HOOVER4_CLICKHOUSE_DB_PREFIX", "HOOVER4_MANTICORE_TABLE_PREFIX",
                          "HOOVER4_HISTORY_SOURCE", "HOOVER4_HOST_QUEUE", "HOOVER4_PROXY_SECRET"):
             assert variable not in text, (name, variable)
+
+
+def test_every_gpu_service_mounts_the_gpu_key_and_sets_its_variable():
+    """The three GPU services read HOOVER4_GPU_API_KEY, which the wrapper sets from the key
+    file. The model server also passes it to --api-key."""
+    documents = dict(_ai_compose_documents())
+    for name, service_name in (("ai_services/vllm.yaml", "hoover4-vllm"),
+                               ("ai_services/ai-server.yaml", "hoover4-ai-server"),
+                               ("ai_services/easyocr.yaml", "hoover4-easyocr-gpu")):
+        service = documents[name]["services"][service_name]
+        assert ("${GPU_API_KEY_FILE_HOST:?deploy.py renders it from [ai_services] vllm_api_key_file}"
+                ":/run/secrets/gpu_api_key:ro") in service["volumes"], name
+        wrapper = service["entrypoint"][2]
+        assert "HOOVER4_GPU_API_KEY" in wrapper and "/run/secrets/gpu_api_key" in wrapper, name
+        assert service.get("command"), name
+    assert '--api-key "$$HOOVER4_GPU_API_KEY"' in documents["ai_services/vllm.yaml"]["services"]["hoover4-vllm"]["entrypoint"][2]
+
+
+def test_an_empty_key_file_setting_uses_a_generated_key_once(tmp_path, monkeypatch, capsys):
+    generated = tmp_path / "gpu-api-key"
+    monkeypatch.setattr(deploy, "GENERATED_GPU_KEY", generated)
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(enabled="true", vllm_api_key_file="")
+    assert deploy.render_ai_env(cfg)["GPU_API_KEY_FILE_HOST"] == str(generated)
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        assert deploy.render_main_env(cfg)["LLM_API_KEY_FILE_HOST"] == str(generated)
+    deploy.ensure_gpu_key(cfg)
+    key = generated.read_text().strip()
+    assert len(key) == 64 and oct(generated.stat().st_mode & 0o777) == "0o600"
+    assert key not in capsys.readouterr().out
+    deploy.ensure_gpu_key(cfg)
+    assert generated.read_text().strip() == key
+
+
+def test_a_named_key_file_must_exist_and_hold_a_key(tmp_path):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(enabled="true", vllm_api_key_file=str(tmp_path / "missing"))
+    with pytest.raises(deploy.DeployError):
+        deploy.ensure_gpu_key(cfg)
+    (tmp_path / "empty").write_text("\n")
+    cfg.values["ai_services"]["vllm_api_key_file"] = str(tmp_path / "empty")
+    with pytest.raises(deploy.DeployError):
+        deploy.ensure_gpu_key(cfg)
+    assert not (tmp_path / "missing").exists()

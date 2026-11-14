@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-from conftest import K3S, REPO, site_text
+from conftest import K3S, REPO, site_text, write_site
 import config
 
 sys.path.insert(0, str(K3S / 'migration'))
@@ -135,19 +135,6 @@ def test_the_plan_maps_each_source_folder_to_its_claim_and_reads_a_serena_ini(tm
     assert not [m for m in read_only if m['host_path'] in claims]
 
 
-def test_a_nondefault_storage_identity_reaches_the_migrated_render(tmp_path):
-    import manifests
-    text = site_text('single-node.yml').replace('clickhouse_database_prefix: Hoover4', 'clickhouse_database_prefix: Archive2') \
-        .replace('collection_bucket_prefix: hoover4-c-', 'collection_bucket_prefix: archive2-c-')
-    site = tmp_path / 'site.yml'
-    site.write_text(text)
-    target = manifests.target_from_site(site, 'main', revision='0123456789abcdef0123', state=tmp_path / 'no-state', nfs={})
-    items = json.loads(manifests.render(target))['items']
-    workers = next(i for i in items if i['kind'] == 'StatefulSet' and i['metadata']['name'] == 'hoover-workers')
-    env = {e['name']: e.get('value') for e in workers['spec']['template']['spec']['containers'][0]['env']}
-    assert 'Archive2' in env.values() and 'archive2-c-' in env.values()
-
-
 def test_image_references_and_manticore_answers():
     migrate = migrate_module()
     assert migrate.full_reference('cassandra:3.11.9') == 'docker.io/library/cassandra:3.11.9'
@@ -161,10 +148,9 @@ def test_image_references_and_manticore_answers():
 
 def test_a_step_waits_for_the_steps_before_it(tmp_path, monkeypatch):
     migrate = migrate_module()
-    site = tmp_path / 'site.yml'
-    site.write_text(site_text('single-node.yml'))
+    site = write_site(tmp_path, 'single-node.yml')
     with pytest.raises(SystemExit) as stopped:
-        migrate.main(['copy', 'main', '--site', str(site)])
+        migrate.main(['copy', 'zone-a', '--site', str(site)])
     assert 'needs the steps plan, freeze, record, stop, images first' in str(stopped.value)
 
 
@@ -206,15 +192,15 @@ def test_rootful_docker_keeps_the_owners_and_rootless_docker_is_refused(monkeypa
 
 def test_a_changed_input_stops_every_later_step(tmp_path):
     migrate = migrate_module()
-    site_path = tmp_path / 'site.yml'
-    site_path.write_text(site_text('single-node.yml'))
+    site_path = write_site(tmp_path, 'single-node.yml')
     site = config.read(site_path)
-    r = migrate.Run(site, site.hoovers['main'], '1', site_path)
+    hoover = config.hoovers(site)['zone-a']
+    r = migrate.Run(site, hoover, '1', site_path)
     with pytest.raises(SystemExit, match='no inputs.json'):
         migrate.check_inputs(r, 'a' * 40)
     r.write('inputs.json', {'revision': 'a' * 40, 'settings_revision': 3, 'engine': 'docker', 'source_host': '',
                             'site_fingerprint': migrate.site_fingerprint(site_path), 'images': {},
-                            'identity': site.hoovers['main'].identity(), 'home_node': 'dev'})
+                            'identity': hoover.identity(), 'home_node': 'dev'})
     assert migrate.check_inputs(r, 'a' * 40)['settings_revision'] == 3
     with pytest.raises(SystemExit, match='is not the pinned'):
         migrate.check_inputs(r, 'b' * 40)

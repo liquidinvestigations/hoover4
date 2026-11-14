@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Serve dashboard links, cluster cgroup measurements, the recent cluster event feed, and the zone pages.
 
-The zone pages list each zone with its resource use and operations. A create, upgrade or delete request becomes an
+The zone pages list each zone with its resource use and operations. POST /gpu/key returns the GPU key of the installation,
+which a GPU host outside the cluster needs. A create, upgrade or delete request becomes an
 operation ConfigMap, which runner.py runs. A create names the home node of the zone.
 The settings page (settings.html) reads and saves the operator settings and starts Apply operations through
 portal_settings.py. runner.py runs the Apply operations on the control-plane host.
@@ -107,6 +108,13 @@ def onboarding(zone):
  secret=api('GET',f'/api/v1/namespaces/{zone}/secrets/ums-nubus-credentials')
  return {'zone':zone,'portal':f'https://portal.{zone}.{SUFFIX}/','username':'Administrator',
   'password':base64.b64decode(secret['data']['administrator_password']).decode()}
+def gpu_key():
+ """The GPU key of the installation, the Secret gpu-api-key (../../hoover/gpu.py). A GPU host outside the cluster needs it."""
+ try:secret=api('GET',f'/api/v1/namespaces/{NS}/secrets/gpu-api-key')
+ except urllib.error.HTTPError as error:
+  if error.code==404:raise Refused('The GPU key does not exist. Run deploy-k3s up to create it.')
+  raise
+ return {'key':base64.b64decode(secret['data']['key']).decode().strip()}
 def nodes():
  """The allocatable CPUs and memory of each node, for the hardware suggestions."""
  out={}
@@ -143,6 +151,7 @@ class Handler(SimpleHTTPRequestHandler):
    if parts==['operations']:result=create_operation(actor,body)
    elif len(parts)==3 and parts[0]=='operations' and parts[2]=='retry':result=retry(parts[1])
    elif len(parts)==3 and parts[0]=='zones' and parts[2]=='onboarding':result=onboarding(parts[1])
+   elif parts==['gpu','key']:result=gpu_key()
    else:return self.reply(404,{'error':'Unknown request.'})
   except Refused as error:return self.reply(400,{'error':str(error)})
   except (OSError,ValueError,KeyError):return self.reply(503,{'error':'The cluster API did not answer.'})

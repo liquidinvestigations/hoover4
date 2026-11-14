@@ -45,6 +45,9 @@ Select **Sign out** at the end of the page to end the session.
 
 A create, upgrade or delete restarts the shared call services and the HTTPS frontend. Calls that run at that time end.
 
+The zone state of the site holds the zone. The site file names no zone. The storage names of the Hoover installation come from the zone name.
+The operator workstation can create a zone with `python3 k3s/zones/zone.py apply <zone> --home <node>`. [The cluster deployment reference](../../../k3s/Readme.md#create-and-delete-zones) gives the options.
+
 ## Give the zone to its administrator
 
 1. In the zone list, select **Show the onboarding login** of the zone.

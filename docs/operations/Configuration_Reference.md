@@ -179,11 +179,11 @@ server itself.
 | model server | `ai_server_enabled`, `ai_server_port`, `*_concurrency` | the embeddings, reranking and entity service, and how many of each it will do at once |
 | capabilities | `ner_enabled`, `embeddings_enabled`, `reranker_enabled` | which capabilities load, and which endpoints the main side receives. The models, the embedding dimension and the precision are constants of [the model server](../../ai_services/hoover4_ai_server/README.md) |
 | OCR | `easyocr_enabled`, `easyocr_port` | the accelerated OCR service. Its language groups are constants of [the EasyOCR server](../../ai_services/easyocr_server/README.md) |
-| credentials | `vllm_api_key_file` | the path of the API key file of the model server, never the value |
+| credentials | `vllm_api_key_file` | the path of the GPU key file, never the value. Empty: `./deploy` writes a new key to `ai_services/gpu-api-key` once |
 
-NER, embeddings, reranking and EasyOCR have no authentication. The model servers accept only
-the key of `vllm_api_key_file`. Connect the two hosts through a private network, and set
-`bind_ip` to the private address of the GPU host.
+The model server, NER, embeddings, reranking and EasyOCR accept a request only with the key of
+`vllm_api_key_file`, except `/health`. Both hosts need the same key file. Connect the two hosts
+through a private network, and set `bind_ip` to the private address of the GPU host.
 
 `enabled = false` turns the GPU services off. Main services then clear each URL that points
 to the GPU tier. NER then has no endpoint, because NER runs on the GPU only.
@@ -657,13 +657,12 @@ and `vllm_port`.
 | `LLM_VISION_MODELS` | the served model. Both catalog refreshes mark it `supports_vision`, and an agent turn sends it the images of tool results. |
 | `LLM_PROVIDER_NAME` | `selfhosted`, the catalog name of the endpoint |
 | `LLM_SEND_TEMPERATURE` | `false`, so the server applies the sampling values of the checkpoint |
-| `LLM_API_KEY_FILE_HOST` | `vllm_api_key_file`, when it is set |
+| `LLM_API_KEY_FILE_HOST` | the GPU key file, when the GPU tier is on. The worker, the website, the agents, the collection search server and the OCR PDF service mount it and send the key to the GPU services. |
 
 With `llm_enabled = false` or the GPU tier off, every endpoint variable is empty, so no service
 calls a model.
 
-The worker and both agent services send every request to `LLM_BASE_URL`, with the key of
-`vllm_api_key_file` or a placeholder when there is none
+The worker and both agent services send every request to `LLM_BASE_URL`, with the GPU key
 ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py), [research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)).
 The worker runs `main.py refresh-llm-catalog` once at start, and the admin LLM page runs the
 website refresh. Compaction of agent turns divides by the context window of that catalog row,

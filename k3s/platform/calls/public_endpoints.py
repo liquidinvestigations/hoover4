@@ -49,7 +49,7 @@ def dns(site):
     frontend = site.with_role('public')[0]
     media = site_config.calls_node(site)
     rows = [{'name': f'operator.{site.domain}', 'address': address(site, frontend), 'internal': not frontend.public_address}]
-    for zone in sorted({h.zone for h in site.hoovers.values()}):
+    for zone in sorted({h.zone for h in site_config.hoovers(site).values()}):
         rows += [{'name': name, 'address': address(site, frontend), 'internal': not frontend.public_address}
                  for name in [f'{zone}.{site.domain}'] + [f'{n}.{zone}.{site.domain}' for n in zone_names()]]
     rows.append({'name': f'turn.{site.domain}', 'address': address(site, media), 'internal': not media.public_address})

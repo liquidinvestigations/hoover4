@@ -22,8 +22,10 @@ Pinned inputs. The record of an up or a down keeps the commit of HEAD of the che
 checkout, the SHA-256 of the site file, the settings revision of the operator state and the identity of the cluster
 (the UID of the namespace kube-system). A resume refuses a changed site file, another commit or another cluster. The
 commands of the steps get HOOVER4_REVISION and HOOVER4_SETTINGS_REVISION, so every render, also a nested one, uses the
-pinned values. A zone step records the scopes of its zone and its Hoover installations as applied with the pinned
+pinned values. A zone step records the scopes of its zone and its Hoover installation as applied with the pinned
 settings revision after their workloads are ready. A finished complete up records the revision for every scope.
+The zone state of the state folder (zone-state.json, ../zones/zonestate.py) names the zones. up applies each zone of
+it again. zone.py and the operator portal create and delete zones.
 """
 import json
 import os
@@ -157,6 +159,17 @@ class Context:
         if self.settings_revision is not None:
             env['HOOVER4_SETTINGS_REVISION'] = str(self.settings_revision)
         return env
+
+    def hoovers(self):
+        """{zone: Hoover} of the zone state of the state folder. A site without a zone state has no zone."""
+        path = self.private / 'zone-state.json'
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text())
+        except ValueError as error:
+            raise StepFailed(f'the zone state {path} is unreadable: {error}') from None
+        return config.hoovers(self.site, data)
 
     def operator_state(self):
         """The operator settings State of the site, or None before the first save."""
@@ -754,7 +767,7 @@ def step_zone(zone, home):
                  SOURCE / 'zones', zone, home])
         step_frontend(ctx)
         ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone, '--home', home])
-        hoovers = [h for h in ctx.site.hoovers.values() if h.zone == zone]
+        hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)
         for hoover in hoovers:
@@ -796,15 +809,19 @@ def cluster_steps(ctx):
         # A pool at an address runs outside the site, for example on a Compose GPU host.
         del steps['gpu-pool']
         del steps['gpu-images']
+    if not ctx.site.gpu_pool:
+        # A site without a GPU pool has no GPU services, so it needs no proxy.
+        del steps['gpu-proxy']
     if ctx.site.single:
         # The Hoover pods of a single-node site share one node, so their dataset folders are claims and need no NFS.
         del steps['hoover-data']
-    for hoover in ctx.site.hoovers.values():
+    zones = ctx.hoovers()
+    for hoover in zones.values():
         steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone, hoover.home_node)
-    if ctx.site.single and ctx.site.hoovers:
-        # The development relay of a single-node site serves the loopback ports of one Hoover installation, the
-        # migrated one when the site has it. install-relay.py keeps the port mode that the operator chose.
-        relayed = next((h for h in ctx.site.hoovers.values() if h.source_ini), next(iter(ctx.site.hoovers.values())))
+    if ctx.site.single and zones:
+        # The development relay of a single-node site serves the loopback ports of one Hoover installation, the first
+        # zone of the zone state. install-relay.py keeps the port mode that the operator chose.
+        relayed = next(iter(zones.values()))
         steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', relayed.name, 'apply')
     # The call services join the Jitsi of every zone, so they follow the zones.
     steps['calls'] = step_script(sys.executable, '@platform/calls/install-calls.py')
@@ -834,7 +851,7 @@ def tier(namespace, name):
 
 def zone_namespaces(ctx):
     names = []
-    for hoover in ctx.site.hoovers.values():
+    for hoover in ctx.hoovers().values():
         names += [hoover.zone, hoover.namespace]
     return names
 
@@ -1126,7 +1143,7 @@ def render(ctx, targets, revision, manifests=False):
         sys.path.insert(0, str(SOURCE / 'hoover'))
         import manifests as hoover_manifests
         out['manifests'] = {}
-        for hoover in ctx.site.hoovers.values():
+        for hoover in ctx.hoovers().values():
             try:
                 target = hoover_manifests.target_from_site(str(ctx.site_path), hoover.name, revision=revision,
                                                            nfs=nfs_read_only(ctx))
@@ -1143,6 +1160,11 @@ def check(ctx, targets):
     facts into facts/<node>.json of the state folder.
     """
     problems, state = list(config.missing_files(ctx.site)), {}
+    try:
+        zone_state = ctx.private / 'zone-state.json'
+        problems += config.zones_problems(ctx.site, json.loads(zone_state.read_text()) if zone_state.exists() else {'zones': {}})
+    except (ValueError, config.SiteError) as error:
+        problems.append(str(error))
     try:
         Ansible(ctx).run('hoover4-hosts.yml', targets, tags=['facts'])
     except StepFailed as error:

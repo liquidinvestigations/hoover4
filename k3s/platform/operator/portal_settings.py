@@ -40,7 +40,7 @@ def state(s):
 def suggestions(s, nodes):
     """Hardware suggestions for each Hoover installation, from the allocatable CPU and memory of its home node."""
     out = {}
-    for hoover in s.hoovers.values():
+    for hoover in config.hoovers(s).values():
         node = nodes.get(hoover.home_node)
         if not node:
             continue

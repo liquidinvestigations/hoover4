@@ -25,7 +25,7 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from tasks.remote import READ_TIMEOUT, RemoteUnavailable, post_json
+from tasks.remote import READ_TIMEOUT, RemoteUnavailable, gpu_headers, post_json
 from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT
 
 log = logging.getLogger(__name__)
@@ -83,8 +83,9 @@ def run_ocr(engine: str, languages: str, image_bytes: bytes,
     if psm is not None:
         payload["psm"] = psm
 
+    # EasyOCR is a GPU service and checks the GPU key. Tesseract runs beside the worker.
     result = post_json(_endpoints_for(engine), payload, read_timeout=OCR_READ_TIMEOUT,
-                       service="ocr")
+                       service="ocr", headers=gpu_headers() if engine == ENGINE_EASYOCR else None)
     data = result.data if isinstance(result.data, dict) else {}
 
     return OcrOutcome(

@@ -25,15 +25,26 @@ OCR_ENDPOINTS = {
 }
 
 
+def gpu_headers():
+    """The GPU key header for EasyOCR, from the key file of LLM_API_KEY_FILE, or nothing."""
+    path = (os.getenv("LLM_API_KEY_FILE") or "").strip()
+    try:
+        key = open(path).read().strip() if path else ""
+    except OSError:
+        key = ""
+    return {"Authorization": "Bearer " + key} if key else {}
+
+
 def _ocr_page(engine, languages, image_bytes):
     url = OCR_ENDPOINTS.get(engine, "")
     if not url:
         raise HTTPException(501, "OCR engine %r has no endpoint configured" % engine)
     try:
+        # EasyOCR is a GPU service and checks the GPU key. Tesseract runs beside this service.
         response = requests.post(url, json={
             "image_b64": base64.b64encode(image_bytes).decode("ascii"),
             "languages": languages,
-        }, timeout=(5, OCR_READ_TIMEOUT))
+        }, headers=gpu_headers() if engine == "easyocr" else None, timeout=(5, OCR_READ_TIMEOUT))
     except requests.RequestException as exc:
         raise HTTPException(503, "OCR tier unreachable: %s" % exc)
     if response.status_code == 503:

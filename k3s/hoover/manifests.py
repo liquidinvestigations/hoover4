@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """Render the Kubernetes objects of one Hoover installation as one List.
 
-The installation is an entry of vars.hoovers of the site file (../config.py). Its operator settings
+The installation belongs to one zone of the zone state (../config.py hoovers()), and has the name of the zone. Its storage
+names come from the zone id. Its operator settings
 (../platform/operator/settings.py) give the hoover4.ini of zone_ini.py, and compose.py reads the Compose services of
 that ini with deploy.py of the source tree. This file translates each service into Kubernetes objects. It keeps the
 command, environment, memory and CPU limits, health check, user and capabilities of each service, and maps its volumes
 (see volumes()). SERVICES classifies every Compose service of both sides. A Compose service that SERVICES does not
 name stops the render with an error that names the service and its file.
 
-Store layouts (the stores key of the site file):
+Store layouts (the value stores of the zone state):
 - local: the stores of the Compose files run in the Hoover namespace on file system claims of the home node:
   ClickHouse, both Manticore daemons, Garage with its init job, and ZooKeeper, which the ClickHouse configuration
   names. The operations worker mounts the store claims as in Compose, so store backup and restore work. A migrated
   install keeps the claims of its copied store folders.
 - zone: ClickHouse, both Manticore daemons and Garage run in Kata on block volumes in the zone namespace
   (stores/hoover.py), and ExternalName Services keep the Compose names. setup.py creates the Garage buckets.
-Temporal backends (the temporal_backend key):
+Temporal backends (the value temporal_backend of the zone state):
 - cassandra: Temporal, Cassandra and Elasticsearch as in Compose, with the dynamic configuration of deploy.py, the
   history shard count of the operator settings, a retention job for the default namespace, and claims for both stores.
 - postgresql: Temporal on the PostgreSQL of the zone, as an existing remote zone runs it. setup.py creates the
@@ -39,7 +40,7 @@ The ingress sends every request to oauth2-proxy. It removes client identity head
 proxy secret, and forwards to the website. The website accepts identity headers only with that secret.
 Every store credential, the proxy secret and every shared secret comes from a Secret. The render holds no secret value.
 apply also deletes the objects of an earlier apply that the render no longer has (prune()).
-Usage: manifests.py <installation or zone> [show|apply|diff] [--site FILE] [--revision REV]
+Usage: manifests.py <zone> [show|apply|diff] [--site FILE] [--revision REV]
 """
 import argparse
 import hashlib
@@ -210,6 +211,8 @@ class Target:
     values: dict
     revision: str
     nfs: dict = field(default_factory=dict)
+    # The Compose ini of an imported install (config.read_source_ini()). The zone state names none, so only a caller
+    # that imports a Compose install gives it.
     source: object = None
     tree: Path = site_config.REPO
     # The zone setting app.hoover. A disabled installation renders zero replicas and keeps its claims and Secrets.
@@ -252,10 +255,11 @@ def resolve_revision(tree=site_config.REPO):
 
 
 def find_hoover(site, name):
-    for hoover in site.hoovers.values():
-        if name in (hoover.name, hoover.zone):
-            return hoover
-    raise RenderError(f'vars.hoovers of the site file has no installation with the name or zone {name}.')
+    """The Hoover installation of the zone name in the zone state of the site."""
+    hoover = site_config.hoovers(site).get(name)
+    if hoover is None:
+        raise RenderError(f'the zone state {site.zone_state()} has no zone {name}.')
+    return hoover
 
 
 def target_from_site(site_path, name, revision=None, state=None, nfs=None, settings_revision=None):
@@ -270,9 +274,8 @@ def target_from_site(site_path, name, revision=None, state=None, nfs=None, setti
     values = operator_settings.effective(f'hoover:{hoover.name}', overrides.get(f'hoover:{hoover.name}', {}))
     zone_values = operator_settings.effective(f'zone:{hoover.zone}', overrides.get(f'zone:{hoover.zone}', {}))
     enabled = zone_values['app.hoover'] == 'true' and zone_values['zone.enabled'] == 'true'
-    source = site_config.read_source_ini(hoover.source_ini, check_paths=False) if hoover.source_ini else None
     return Target(site=site, hoover=hoover, values=values, revision=revision or resolve_revision(), nfs=nfs or {},
-                  source=source, enabled=enabled, local_ca=site_config.local_ca(site))
+                  enabled=enabled, local_ca=site_config.local_ca(site))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -500,7 +503,7 @@ def volumes(target, name, service_def, mounts):
     - A bind of a configuration file or folder of the source tree is a ConfigMap (CONFIG_FILES, CONFIG_DIRS).
     - A volume folder is a claim (CLAIMS) or an emptyDir. The zone layout has no store folders, so the operations
       worker mounts no store there.
-    - /control is the chat_control_dir of the site file, as the read-only host folder claim host-chat-control, or absent.
+    - /control, the chat control folder of a Compose install, is absent.
     - The worker, the operations worker and the website get the dataset mounts.
     Any other bind stops the render.
     """
@@ -533,8 +536,6 @@ def volumes(target, name, service_def, mounts):
             add(CONFIG_DIRS[target_path], {'configMap': {'name': CONFIG_DIRS[target_path]}}, {'mountPath': target_path, 'readOnly': True})
             continue
         if target_path == '/control':
-            if target.hoover.chat_control_dir:
-                add('chat-control', host_volume('host-chat-control'), {'mountPath': '/control', 'readOnly': True})
             continue
         if source.startswith(root):
             folder = source[len(root):].split('/')[0]
@@ -579,8 +580,7 @@ def store_env(target):
     """The store addresses and the storage identity of the installation."""
     env = {'CLICKHOUSE_URL': 'http://clickhouse:8123', 'MANTICORE_HOST': 'manticore', 'MANTICORE_URL': 'http://manticore:9308',
            'MANTICORE_VECTORS_HOST': 'manticore-vectors', 'MANTICORE_VECTORS_URL': 'http://manticore-vectors:9308',
-           'S3_ENDPOINT': 'http://garage:3900', 'TEMPORAL_HTTP_URL': 'http://temporal:7243',
-           'HOOVER4_HISTORY_SOURCE': target.hoover.history_source}
+           'S3_ENDPOINT': 'http://garage:3900', 'TEMPORAL_HTTP_URL': 'http://temporal:7243'}
     env.update(target.hoover.identity())
     # The telemetry of the agent servers writes into CLICKHOUSE_DATABASE.
     env['CLICKHOUSE_DATABASE'] = f'{target.hoover.clickhouse_database_prefix}_Processing'
@@ -709,8 +709,6 @@ def translated(target, services, mounts, deploy):
     common = {**store_env(target), 'HOOVER4_DATASET_MOUNTS': json.dumps(
         [{'name': m['name'], 'path': m['path'], 'writable': m['writable']} for m in mounts], separators=(',', ':')),
         'DATASETS_MOUNT_PATH': mounts[0]['path']}
-    if target.hoover.chat_control_dir:
-        common['HOOVER4_CHAT_CONTROL_DIR'] = '/control'
     python = ['/opt/pysetup/.venv/bin/python3', 'main.py']
     memory_table = {s.key.removeprefix('memory.hoover.'): target.values[s.key] for s in operator_settings.REGISTRY.values()
                     if s.key.startswith('memory.hoover.')}
@@ -1063,8 +1061,6 @@ def objects(target):
             name = m['volume']['persistentVolumeClaim']['claimName']
             claims.append({'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': name, 'namespace': target.ns},
                            'spec': claim_spec(target, 'upload-tmp', target.values['volume.upload-tmp'])})
-    if target.hoover.chat_control_dir:
-        claims += host_folder(target, 'host-chat-control', target.hoover.chat_control_dir)
     stores = [] if target.local else [external(target, n) for n in ('clickhouse', 'manticore', 'manticore-vectors', 'garage')]
     items, configs = translated(target, services, mounts, deploy)
     shards = cfg.get('main_services', 'temporal_history_shards')
@@ -1133,8 +1129,7 @@ def main(argv):
     args = parser.parse_args(argv)
     kubectl = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG]
     site = site_config.read(args.site)
-    hoover = find_hoover(site, args.installation)
-    nfs = {} if hoover.source_ini else nfs_addresses(kubectl, site)
+    nfs = nfs_addresses(kubectl, site)
     target = target_from_site(args.site, args.installation, revision=args.revision, nfs=nfs,
                               settings_revision=args.settings_revision)
     rendered = render(target)

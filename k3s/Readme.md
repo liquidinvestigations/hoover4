@@ -65,14 +65,13 @@ hoover4:
 
 | Place | Keys |
 |---|---|
-| `hoover4.vars` | `domain`, `control_plane`, and optional `networks`, `lans`, `gpu_pool`, `backup`, `hoovers` |
+| `hoover4.vars` | `domain`, `control_plane`, and optional `networks`, `lans`, `gpu_pool`, `backup` |
 | `hoover4.vars.networks.<name>` | `cidr`, and optional `interface` (default `wg0`), `hubs`, `port` (default 51820), `managed` (default true) |
 | `hoover4.vars.lans.<name>` | optional `cidr` |
-| `hoover4.hosts.<name>` | `node_roles`, and optional `local`, `ssh_host`, `networks`, `lan`, `public_address`, `storage`, `k3s_volume_group`, `stop_docker`, `public_firewall`, `reserved`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file`, `gpu_api_key_file` |
+| `hoover4.hosts.<name>` | `node_roles`, and optional `local`, `ssh_host`, `networks`, `lan`, `public_address`, `storage`, `k3s_volume_group`, `stop_docker`, `public_firewall`, `reserved`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file` |
 | `hoover4.hosts.<name>.networks.<network>` | an address, or `address` and optional `public_key`, `interface`, `port`, `managed`, which replace the values of the network for this node |
-| `hoover4.vars.gpu_pool` | `nodes` or `address`, and `api_key_file` |
+| `hoover4.vars.gpu_pool` | `nodes` or `address` |
 | `hoover4.vars.backup` | `node` and `path` of the backup destination |
-| `hoover4.vars.hoovers.<name>` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
 
 The site id is the domain with each `.` replaced by `-`, for example `k8-example-org`. Each command prints it with the site file and the state folder.
 A list value is a YAML list or a text with commas. Ansible reserves the variable name `roles`, so the node roles have the key `node_roles`.
@@ -145,9 +144,19 @@ python3 k3s/config.py ansible k3s/private/<site>.yml
 
 `ansible` prints the variables that the driver gives to the host plays. A YAML site file needs PyYAML. The operator image has it.
 
-The storage identity of a Hoover installation is independent of its zone name.
-A migrated Compose install keeps `Hoover4`, an empty table prefix, `hoover4-system` and `hoover4-c-`.
-Set `history_source = k3s-branch` only for an installation that ran the earlier `k3s` branch of Hoover.
+### Create and delete zones.
+
+The site file names no zone. The zone state `zone-state.json` of the state folder holds the zones, and [zones/zone.py](zones/zone.py) and the operator portal change it.
+
+```sh
+python3 k3s/zones/zone.py apply zone-x --home <node> [--stores zone|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
+python3 k3s/zones/zone.py delete zone-x
+```
+
+- The home node needs the role `worker`. Every pod and volume of the zone stays on it.
+- `stores` and `temporal_backend` have the defaults `zone` and `postgresql`. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
+- The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
+- `deploy-k3s up` applies each zone of the zone state again, after the platform steps.
 
 ## Deploy a site.
 
@@ -242,7 +251,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 
 ## Choose the stores and the Temporal backend.
 
-| Key | Value | Result |
+| Zone state value | Value | Result |
 |---|---|---|
 | `stores` | `local` | The Compose stores run in the Hoover namespace on claims of the home node. The operations worker mounts them, so store backup and restore work. |
 | `stores` | `zone` | ClickHouse, Manticore and Garage run in Kata on block volumes in the zone namespace, with a user for each service. Existing remote zones use this layout. |
@@ -252,13 +261,12 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 ## Render a Hoover installation.
 
 ```sh
-python3 k3s/hoover/manifests.py <installation> show --revision <commit>
+python3 k3s/hoover/manifests.py <zone> show --revision <commit>
 python3 k3s/images/build-hoover.py --revision <commit>
 ```
 
 `show` prints the objects and changes nothing.
-A migrated installation reads its dataset mounts from its `source_ini`, and its render runs no command when `--revision` is given.
-Another installation reads the addresses of the NFS servers of `platform/hoover-data/` from the cluster.
+The argument is the zone. The render reads the addresses of the NFS servers of `platform/hoover-data/` from the cluster.
 The image tag is the first 12 characters of the commit. The build exports the commit, so local changes stay out of the images.
 
 ## Save and apply operator settings.
@@ -302,7 +310,8 @@ Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://hoover.<
 
 ## Move a Compose installation into the cluster.
 
-Add an installation to `hoovers` of the site file with `source_ini`, the `hoover4.ini` of the Compose install, and run the steps of [migration/migrate.py](migration/migrate.py) in order.
+The migration steps of [migration/migrate.py](migration/migrate.py) need a rewrite: the site file names no zone and no Compose install, so the steps below have no target until the Compose import command replaces them.
+The steps read the target and its `source_ini` from the earlier site file key `hoovers`.
 Each step records its result in `<operator state>/migration/<name>-<run>/`, and a finished step does not run again.
 
 ```sh
@@ -341,8 +350,17 @@ A site with `gpu_pool` `address` uses a GPU host outside the site, for example t
 
 When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <state folder>` on a host of the node architecture.
 Copy `runsc-nvproxy/` into the state folder of the workstation, then run `deploy-k3s up --target <node> --steps hosts:k3s`, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
-The gateway of each GPU node accepts a request only with the pool key of `gpu_pool` `api_key_file`, on every port, and listens on the node address for the other installations of the shared pool.
 The step `gpu-pool` waits for the GPU workloads and calls each port with the key, which must answer, and without it, which must answer 403.
+
+## Share one GPU key.
+
+The installation has one GPU key. The operator step generates it once and keeps it in the Secret `gpu-api-key` of the namespace `operator-portal`. The site file names no key.
+
+- The model server, the AI server and EasyOCR read the key from `HOOVER4_GPU_API_KEY` and refuse to start without it. Each checks `Authorization: Bearer <key>` on every route except `/health`. The model server checks it with `--api-key`.
+- The gateway of each GPU node checks the key on every port too, and listens on the node address for the other installations of the shared pool.
+- The GPU proxy (`hoover/gpu.py`) sends the key on every port. The token of each zone is the HMAC-SHA256 of the zone name with the GPU key.
+- The operator portal shows the key with a copy control. A GPU host outside the cluster, for example a Compose GPU host at `gpu_pool` `address`, needs the same key in the file of its `[ai_services] vllm_api_key_file`.
+- `hoover/gpu.py set-key` replaces the key with the key on standard input, for example the key of an existing Compose GPU host. A new key changes every zone token. Run `hoover/gpu.py install`, `platform/gpu/gpu_pool.py apply` and `zones/zone.py apply` of each zone after it.
 
 ## Place the call services.
 

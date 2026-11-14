@@ -42,6 +42,8 @@ pod_cgroup=/sys/fs/cgroup/kubepods.slice
 sed -e "s|CONTROL_PLANE|$control_plane|; s|OPERATOR_UID|$(id -u)|; s|OPERATOR_GID|$(id -g)|; s|POD_CGROUP|$pod_cgroup|" \
   -e "s|REPO/|$(realpath "$source_dir/..")/|g; s|path: STATE,|path: $state,|" operator-login.yaml |
   python3 "$source_dir/zones/cpu_policy.py" --render - | sed -e "s/hoover\.test/$(python3 "$source_dir/settings.py" suffix)/g" -e "$hash_rule" | kubectl apply -f -
+# The one GPU key of the installation, which the portal shows and from which the GPU proxy derives the zone tokens.
+python3 "$source_dir/hoover/gpu.py" ensure-key
 kubectl -n operator-portal create secret generic operator-login --from-file="$login/client-secret" --from-file="$login/cookie-secret" --from-file="$login/proxy-secret" --dry-run=client -o yaml | kubectl apply -f -
 # The portal reads the site file in its JSON form, because its Python image has no PyYAML.
 python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s,config;print(config.dump(s.SITE),end="")' "$source_dir" |

@@ -53,10 +53,10 @@ def inventory(site):
              for n in kubectl_json('get', 'nodes')['items']}
     namespaces = [n['metadata']['name'] for n in kubectl_json('get', 'namespaces')['items']]
     out = {'time': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'nodes': nodes, 'namespaces': {}, 'differences': []}
-    for hoover in site.hoovers.values():
+    for hoover in config.hoovers(site).values():
         for ns in (hoover.zone, hoover.namespace):
             if ns not in namespaces:
-                out['differences'].append(f'the namespace {ns} of vars.hoovers.{hoover.name} does not exist')
+                out['differences'].append(f'the namespace {ns} of the zone {hoover.zone} does not exist')
                 continue
             claims = {c['metadata']['name']: {'uid': c['metadata']['uid'], 'volume': c['spec'].get('volumeName', ''),
                                               'size': c['spec']['resources']['requests']['storage'],
@@ -79,10 +79,10 @@ def inventory(site):
                 wanted = hoover.identity()
                 for key, value in identity.items():
                     if key in wanted and wanted[key] != value:
-                        out['differences'].append(f'{ns} runs {key} = {value}, and the site file names {wanted.get(key)}')
+                        out['differences'].append(f'{ns} runs {key} = {value}, and the zone {hoover.zone} derives {wanted.get(key)}')
         home = nodes.get(hoover.home_node)
         if home is None:
-            out['differences'].append(f'the home node {hoover.home_node} of vars.hoovers.{hoover.name} is not a node')
+            out['differences'].append(f'the home node {hoover.home_node} of the zone {hoover.zone} is not a node')
     control = nodes.get(site.control_plane, {})
     out['etcd_role'] = control.get('labels', {}).get('node-role.kubernetes.io/etcd') == 'true'
     for name in site.nodes:
@@ -187,7 +187,7 @@ def settings(site):
     spec.loader.exec_module(module)
     state = module.State(site.operator_state())
     out = {}
-    for hoover in site.hoovers.values():
+    for hoover in config.hoovers(site).values():
         path = k3s_settings.PRIVATE / 'zones' / hoover.zone / 'hoover4.ini'
         if not path.exists():
             out[hoover.name] = f'{path} does not exist'

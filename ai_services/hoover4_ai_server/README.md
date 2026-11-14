@@ -22,6 +22,9 @@ An embedding request that names a different model returns an error.
 
 ## Use the HTTP routes.
 
+Every route except `GET /health` needs `Authorization: Bearer <GPU key>`, else the server answers 401.
+The server reads the key from `HOOVER4_GPU_API_KEY` and refuses to start without it ([gpu_key.py](gpu_key.py)).
+
 | Method and route | Result |
 |---|---|
 | `GET /` | Server information and available routes. |
@@ -111,3 +114,5 @@ A skipped test does not verify the capability.
 The runtime image does not include the test suite or test runner.
 Use the container-based [test procedure](../README.md#testing) with the checkout mounted into the test image.
 Select the health, embedding, reranking, NER, and admission tests required by the configured capabilities.
+Set `HOOVER4_GPU_API_KEY` to the GPU key of the server, so each HTTP test sends it ([tests/conftest.py](tests/conftest.py)).
+[tests/test_gpu_key.py](tests/test_gpu_key.py) checks the key check without a server or a model.

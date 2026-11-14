@@ -11,10 +11,9 @@
 #   compose/easyocr.yaml    [ai_services] easyocr_enabled   (no server image in tree)
 #
 # SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
-# NER, embeddings and EasyOCR are UNAUTHENTICATED, and vLLM's API key is its only
-# protection. An exposed hoover4-vllm is a free GPU for the internet, an exposed
-# EasyOCR endpoint is a free DoS surface. Set [ai_services] bind_ip to the private
-# interface.
+# The model server, NER, embeddings and EasyOCR check one GPU key, the content of
+# [ai_services] vllm_api_key_file, on every route except /health. Set [ai_services]
+# bind_ip to the private interface.
 #
 # Podman notes:
 #   * GPUs are requested with `devices: nvidia.com/gpu=all` (CDI). The

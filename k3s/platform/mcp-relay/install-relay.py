@@ -8,14 +8,14 @@ and it connects to the Services of the Hoover namespace. The relay passes bytes 
 MCP servers keep their own authentication.
 
 Ports:
-- compose: the ports of the Compose install, from the source ini of the installation, else the deploy.py defaults.
-  .mcp.json and the harness files then need no change. Compose must not hold these ports.
+- compose: the default ports of a Compose install (deploy.py). .mcp.json and the harness files then need no change.
+  Compose must not hold these ports.
 - temporary: each Compose port plus 1000, for a check while Compose still holds its ports.
 The mode is saved in <operator state>/mcp-relay.json. The driver step mcp-relay and a call without --ports use the
 saved mode, and the first install uses temporary.
 A route whose Service does not exist in the namespace is left out, for example the internet services when
 internet_tools_enabled is off.
-Usage: install-relay.py <installation or zone> show|apply|delete [--ports compose|temporary] [--site FILE]
+Usage: install-relay.py <zone> show|apply|delete [--ports compose|temporary] [--site FILE]
 """
 import argparse
 import hashlib
@@ -65,13 +65,9 @@ ROUTES = (
 
 
 def compose_ports(hoover):
-    """The port of each route in the Compose install of the installation, or the deploy.py default."""
-    deploy = site_config.deploy_module()
-    values = {}
-    if hoover.source_ini:
-        values = site_config.read_source_ini(hoover.source_ini, check_paths=False).values.get('main_services', {})
-    defaults = deploy.Config(None)
-    return {name: int(values.get(key) or defaults.get('main_services', key)) for name, key, _, _ in ROUTES}
+    """The deploy.py default port of each route."""
+    defaults = site_config.deploy_module().Config(None)
+    return {name: int(defaults.get('main_services', key)) for name, key, _, _ in ROUTES}
 
 
 def routes(hoover, mode, services=None):
@@ -126,9 +122,9 @@ def main(argv):
                         required=not os.environ.get('HOOVER4_SITE'))
     args = parser.parse_args(argv)
     site = site_config.read(args.site)
-    hoover = next((h for h in site.hoovers.values() if args.installation in (h.name, h.zone)), None)
+    hoover = site_config.hoovers(site).get(args.installation)
     if hoover is None:
-        raise SystemExit(f'vars.hoovers of the site file has no installation with the name or zone {args.installation}.')
+        raise SystemExit(f'the zone state {site.zone_state()} has no zone {args.installation}.')
     saved = json.loads(state_file(site).read_text()) if state_file(site).exists() else {}
     mode = args.ports or saved.get('ports', 'temporary')
     if args.command == 'delete':

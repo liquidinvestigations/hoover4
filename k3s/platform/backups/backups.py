@@ -254,7 +254,7 @@ def jobs(s, data):
     cluster = applied_values(s, 'cluster')
     if cluster['backup.platform.enabled'] == 'true':
         out.append(schedule.Job('platform', int(cluster['backup.platform.copies']), duration=600))
-    for hoover in s.hoovers.values():
+    for hoover in site_config.hoovers(s).values():
         zone = applied_values(s, f'zone:{hoover.zone}')
         if zone.get('backup.opendesk.enabled') == 'true':
             out.append(schedule.Job(f'zone:{hoover.zone}', int(zone['backup.opendesk.copies'])))
@@ -578,7 +578,7 @@ def operations_pod(ns):
 
 
 def run_hoover(s, zone, collection, generation, partial):
-    hoover = next(h for h in s.hoovers.values() if h.zone == zone)
+    hoover = next(h for h in site_config.hoovers(s).values() if h.zone == zone)
     ns = hoover.namespace
     pod = operations_pod(ns)
     name = f'backup-{collection}-{generation}'
@@ -620,7 +620,7 @@ def close_zone(s, zone):
 
     The applications, gates and workers scale to zero and the CronJobs are suspended. The stores keep running.
     """
-    namespaces = [zone] + [h.namespace for h in s.hoovers.values() if h.zone == zone]
+    namespaces = [zone] + [h.namespace for h in site_config.hoovers(s).values() if h.zone == zone]
     record = {'namespaces': namespaces, 'workloads': {}, 'cronjobs': {}}
     for ns in namespaces:
         items = json.loads(kubectl('-n', ns, 'get', 'deployments,statefulsets,cronjobs', '-o', 'json'))['items']
@@ -675,7 +675,7 @@ def run_zone(s, zone, partial, key=None):
         save_state(s, data)
     apply_closure(closed)
     copy_namespace(zone, partial)
-    for hoover in (h for h in s.hoovers.values() if h.zone == zone):
+    for hoover in (h for h in site_config.hoovers(s).values() if h.zone == zone):
         copy_namespace(hoover.namespace, partial / 'hoover' / hoover.name)
     reopen(closed)
     if key:
@@ -975,7 +975,7 @@ def copy_problem(folder, digest):
 def restore_hoover(zone, collection, generation, source_zone=None):
     """Import a collection copy into the Hoover installation of a zone that has no collection of that name."""
     s = site()
-    hoover = next((h for h in s.hoovers.values() if h.zone == name_arg(zone, 'zone')), None)
+    hoover = next((h for h in site_config.hoovers(s).values() if h.zone == name_arg(zone, 'zone')), None)
     if hoover is None:
         raise SystemExit(f'the site file has no Hoover installation in {zone}.')
     folder = fetched(s, f'hoover:{source_zone or zone}:{name_arg(collection, "collection")}', generation)
@@ -1021,7 +1021,7 @@ def zone_parts(s, folder, zone):
     into the one installation of the target zone, also under another name.
     """
     parts = [(folder, zone)]
-    targets = [h for h in s.hoovers.values() if h.zone == zone]
+    targets = [h for h in site_config.hoovers(s).values() if h.zone == zone]
     sources = sorted(p for p in (folder / 'hoover').iterdir() if p.is_dir()) if (folder / 'hoover').is_dir() else []
     for part in sources:
         match = next((h for h in targets if h.name == part.name), None)

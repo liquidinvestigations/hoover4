@@ -6,7 +6,7 @@ NER has no CPU endpoint.
 import logging
 import os
 
-from tasks.remote import post_json
+from tasks.remote import gpu_headers, post_json
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def extract_ner_from_texts(texts: list[str]) -> tuple[list[dict[str, list[str]]]
         "input": texts,
         "include_confidence": False,
         "entity_types": None,
-    }, service="ner")
+    }, service="ner", headers=gpu_headers())
     if result.data.get("coverage_version") != 2 or result.data.get("processed_inputs") != len(texts):
         raise RuntimeError("NER service has no complete current input coverage")
     entities_by_text = _group_entities_by_text(result.data["data"], len(texts))

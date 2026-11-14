@@ -12,18 +12,21 @@ Runtime (the cluster setting gpu.runtime of the operator settings):
   (decision D3).
 - runc: the RuntimeClass nvidia of the NVIDIA container toolkit. This is the fallback of decision D20, when the GPU
   services do not work in gVisor after a bounded diagnosis. Record the failure before an operator selects it.
-Authentication: the gateway of each GPU node accepts a request on the ports 21960, 21961 and 21962 only with the
-header `Authorization: Bearer <pool key>`, where the pool key is the content of vars.gpu_pool api_key_file. It sends the
-key on to the model server, which checks it too, and no key to the other services. The gateway listens on the VPN
-address of its node, so the gpu-proxy of another installation of the shared pool reaches it (decision D27), and on the
-Service gateway inside the cluster. ../../hoover/gpu.py sends the key on every port to a pool of GPU nodes.
+Authentication: the pool key is the GPU key of the installation, the Secret gpu-api-key (../../hoover/gpu.py
+api_key()). The apply copies it into the Secret gpu-pool. Each GPU service gets it in HOOVER4_GPU_API_KEY and checks it
+on every route except /health: the model server with --api-key, the AI server and EasyOCR with their own check. The
+gateway of each GPU node also accepts a request on the ports 21960, 21961 and 21962 only with the header
+`Authorization: Bearer <pool key>`, and sends the header on. It listens on the node address, so the gpu-proxy of
+another installation of the shared pool reaches it, and on the Service gateway inside the cluster.
+../../hoover/gpu.py sends the key on every port.
 Model caches stay on the GPU node below <data_root>/gpu/<Compose volume folder>, so a new pod keeps the downloaded
 models. The images are hoover-ai-server, hoover-easyocr and hoover-vllm of the registry, which
 ../../images/build-hoover.py --gpu builds for the architecture of the GPU nodes.
 The runtime comes from the settings revision in HOOVER4_SETTINGS_REVISION, which deploy-k3s and an Apply pin, else
 from the applied revision of the cluster scope. apply waits until every GPU workload runs its new revision.
 verify runs a short pod in the namespace that calls each port of the gateway Service with the pool key, which must
-answer 2xx (the model list of the model server, /health of the others), and without the key, which must answer 403.
+answer 2xx (the model list of the model server, /v1/models of the AI server, /health of EasyOCR), and without the key,
+which must answer 403.
 Usage: gpu_pool.py show|apply|verify [--site FILE] [--revision REV] [--state FOLDER]
 """
 import argparse
@@ -47,9 +50,9 @@ import manifests  # noqa: E402
 
 NS = 'gpu-pool'
 NGINX = 'docker.io/library/nginx:1.29.3-alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14'
-# The Compose service, its image key in compose.GPU_IMAGES, the port of the pool and whether the service checks the key.
-SERVICES = {'hoover4-vllm': ('vllm', 21960, True), 'hoover4-ai-server': ('ai-server', 21961, False),
-            'hoover4-easyocr-gpu': ('easyocr', 21962, False)}
+# The Compose service, its image key in compose.GPU_IMAGES and the port of the pool. Every service checks the key.
+SERVICES = {'hoover4-vllm': ('vllm', 21960), 'hoover4-ai-server': ('ai-server', 21961),
+            'hoover4-easyocr-gpu': ('easyocr', 21962)}
 RUNTIMES = {'runsc': 'gvisor-gpu', 'runc': 'nvidia'}
 TOLERATION = {'key': 'hoover.dev/gpu', 'operator': 'Equal', 'value': 'true', 'effect': 'NoSchedule'}
 
@@ -93,7 +96,7 @@ def volumes(node, service_def):
 
 
 def service_objects(node, name, service_def, runtime, revision):
-    key, _, _ = SERVICES[name]
+    key, _ = SERVICES[name]
     app = f'{key}-{node.name}'
     labels = {'app.kubernetes.io/name': app, 'hoover.dev/gpu-service': key}
     pod_volumes, mounts = volumes(node, service_def)
@@ -103,7 +106,8 @@ def service_objects(node, name, service_def, runtime, revision):
     env.setdefault('NVIDIA_DRIVER_CAPABILITIES', 'compute,utility')
     port = container_port(service_def)
     c = {'name': key, 'image': f'{manifests.REGISTRY}/hoover-{key}:{manifests.image_tag(revision)}', 'imagePullPolicy': 'IfNotPresent',
-         'env': [{'name': k, 'value': str(v)} for k, v in sorted(env.items())],
+         'env': [{'name': k, 'value': str(v)} for k, v in sorted(env.items())]
+                + [{'name': 'HOOVER4_GPU_API_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-pool', 'key': 'pool-key'}}}],
          'ports': [{'name': 'http', 'containerPort': port}],
          'resources': {'requests': {'cpu': '500m', 'memory': '1Gi'}, 'limits': {'memory': memory, **({'cpu': str(cpu)} if cpu else {})}},
          'volumeMounts': mounts}
@@ -132,7 +136,7 @@ def gateway(node, services, address=''):
     """The nginx gateway of one GPU node. It checks the pool key on every port. address is the node address, where the
     gateway takes the connections of other installations as a host port."""
     servers = ''
-    for name, (key, port, checks) in SERVICES.items():
+    for name, (key, port) in SERVICES.items():
         if name not in services:
             continue
         target = f'{key}-{node.name}.{NS}.svc.cluster.local:{container_port(services[name])}'
@@ -142,7 +146,7 @@ def gateway(node, services, address=''):
     location / {{
       if ($http_authorization != "Bearer ${{POOL_KEY}}") {{ return 403; }}
       proxy_pass http://{target};
-      proxy_set_header Authorization {'$http_authorization' if checks else '""'};
+      proxy_set_header Authorization $http_authorization;
       proxy_http_version 1.1;
       proxy_buffering off;
       proxy_request_buffering off;
@@ -156,7 +160,7 @@ def gateway(node, services, address=''):
                                        f'access_log /dev/stdout pool;{servers}\n'}
     name = f'gateway-{node.name}'
     labels = {'app.kubernetes.io/name': name, 'hoover.dev/gpu-gateway': 'true'}
-    ports = [p for n, (_, p, _) in SERVICES.items() if n in services]
+    ports = [p for n, (_, p) in SERVICES.items() if n in services]
     container = {'name': 'nginx', 'image': NGINX,
                  'env': [{'name': 'POOL_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-pool', 'key': 'pool-key'}}},
                          {'name': 'NGINX_ENVSUBST_FILTER', 'value': '^POOL_KEY$'}],
@@ -184,7 +188,7 @@ def objects(site, runtime, revision, tree=site_config.REPO):
         raise SystemExit('vars.gpu_pool names no GPU nodes of the site. A pool at an address runs outside this site.')
     services = {n: d for n, d in gpu_services(tree).items() if n in SERVICES}
     items = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}]
-    ports = [p for n, (_, p, _) in SERVICES.items() if n in services]
+    ports = [p for n, (_, p) in SERVICES.items() if n in services]
     for node_name in pool['nodes']:
         node = site.nodes[node_name]
         for name, service_def in services.items():
@@ -217,7 +221,7 @@ def runtime_setting(site, state=None, revision=None):
 
 
 # The call of each port: the path that needs the key at the service, and the status without the key.
-CHECKS = {21960: '/v1/models', 21961: '/health', 21962: '/health'}
+CHECKS = {21960: '/v1/models', 21961: '/v1/models', 21962: '/health'}
 CHECK_SCRIPT = r"""
 import json, os, sys, urllib.request, urllib.error
 key = os.environ['POOL_KEY']
@@ -268,7 +272,7 @@ def wait_rollouts(kubectl, timeout=1800):
 def verify(kubectl, services, timeout=600):
     """Call each port of the gateway with and without the pool key. Exit with the results on a failure."""
     import time
-    ports = [p for n, (_, p, _) in SERVICES.items() if n in services]
+    ports = [p for n, (_, p) in SERVICES.items() if n in services]
     subprocess.run(kubectl + ['-n', NS, 'delete', 'pod', 'gpu-pool-check', '--ignore-not-found', '--wait=true'], check=True,
                    capture_output=True)
     subprocess.run(kubectl + ['apply', '-f', '-'], input=json.dumps(check_pod(ports)), text=True, check=True,
@@ -307,7 +311,9 @@ def main(argv):
     if args.command == 'show':
         print(text)
         return
-    key = Path(site.gpu_pool['api_key_file']).read_text().strip()
+    sys.path.insert(0, str(K3S / 'hoover'))
+    import gpu
+    key = gpu.api_key()
     secret = {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'gpu-pool', 'namespace': NS}, 'type': 'Opaque',
               'stringData': {'pool-key': key}}
     subprocess.run(kubectl + ['apply', '-f', '-'], input=json.dumps(items[0]), text=True, check=True)

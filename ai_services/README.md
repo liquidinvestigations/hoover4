@@ -202,11 +202,18 @@ gives the consequences.
 | `agent_queue_wait_seconds` | the wait of one step for a free slot | 5,400 |
 | `title_request_timeout_seconds` | the title request | 120 |
 
-### The API key
+### The GPU key
 
-vLLM asks for `Authorization: Bearer <key>` on `/v1` when the key file in
-`vllm_api_key_file` holds a key. The compose wrapper reads the key file and adds `--api-key`
-to `vllm serve`. An empty key file turns the key off.
+The model server, the AI server and EasyOCR check one GPU key. Each reads it from
+`HOOVER4_GPU_API_KEY` and refuses to start without it. Each asks for
+`Authorization: Bearer <key>` on every route except `/health`. The compose wrapper of each
+service sets the variable from the key file that `[ai_services] vllm_api_key_file` names,
+and the model server wrapper passes it to `vllm serve --api-key`.
+With an empty `vllm_api_key_file`, `./deploy` writes a new key to `ai_services/gpu-api-key`
+once. The GPU host and the main host need the same key file, so copy it to the other host,
+or name one shared file on both hosts. The main side mounts the file and sends the key.
+A cluster installation shows its key on the operator portal. A Compose GPU host that serves
+the cluster needs that key in its key file.
 
 ### Requests
 

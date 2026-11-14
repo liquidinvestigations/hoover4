@@ -189,3 +189,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# The GPU key that ./deploy writes when [ai_services] vllm_api_key_file is empty.
+/gpu-api-key

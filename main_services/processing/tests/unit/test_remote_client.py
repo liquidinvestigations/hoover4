@@ -202,3 +202,24 @@ def test_no_endpoint_configured_is_a_clear_error(monkeypatch):
     with pytest.raises(remote.RemoteUnavailable) as excinfo:
         remote.post_json([("gpu", ""), ("second", "")], {})
     assert "no endpoint is configured" in str(excinfo.value)
+
+
+def test_the_gpu_key_header_comes_from_the_key_file_and_reaches_the_request(monkeypatch, tmp_path):
+    key = tmp_path / "gpu-key"
+    key.write_text("k123\n")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_API_KEY_FILE", str(key))
+    assert remote.gpu_headers() == {"Authorization": "Bearer k123"}
+    sent = {}
+
+    def post(url, **kwargs):
+        sent.update(kwargs["headers"])
+        return _Response({"ok": True})
+
+    monkeypatch.setattr(requests, "post", post)
+    remote.post_json([GPU], {"input": []}, headers=remote.gpu_headers())
+    assert sent == {"Content-Type": "application/json", "Authorization": "Bearer k123"}
+    key.write_text("")
+    assert remote.gpu_headers() == {}
+    monkeypatch.setenv("LLM_API_KEY_FILE", str(tmp_path / "missing"))
+    assert remote.gpu_headers() == {}

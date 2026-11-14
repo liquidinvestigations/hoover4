@@ -421,6 +421,11 @@ rules:
   - apiGroups: ['']
     resources: [configmaps]
     verbs: [get, list, create, patch]
+  # The GPU page shows the GPU key of the installation (../../hoover/gpu.py).
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [gpu-api-key]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

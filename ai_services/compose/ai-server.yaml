@@ -34,6 +34,18 @@ services:
     container_name: hoover4-ai-server
     ports:
       - "${AI_BIND_IP:-0.0.0.0}:${AI_SERVER_PORT}:8000"
+    # The service reads the GPU key from HOOVER4_GPU_API_KEY and refuses to start without it.
+    # The wrapper sets the variable from the key file, which ./deploy mounts from
+    # [ai_services] vllm_api_key_file. A value that the environment already holds wins.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        HOOVER4_GPU_API_KEY="$${HOOVER4_GPU_API_KEY:-$$(cat /run/secrets/gpu_api_key 2>/dev/null)}";
+        export HOOVER4_GPU_API_KEY;
+        exec "$$@"
+      - sh
+    command: ["python", "hoover4_ai_server.py"]
     environment:
       - HOST=0.0.0.0
       - PORT=8000
@@ -58,6 +70,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
+      - ${GPU_API_KEY_FILE_HOST:?deploy.py renders it from [ai_services] vllm_api_key_file}:/run/secrets/gpu_api_key:ro
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/ai_models_cache:/root/.cache/huggingface
     devices:
       - nvidia.com/gpu=all

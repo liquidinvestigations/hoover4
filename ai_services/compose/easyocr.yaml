@@ -32,6 +32,18 @@ services:
     container_name: hoover4-easyocr-gpu
     ports:
       - "${AI_BIND_IP:-0.0.0.0}:${EASYOCR_PORT}:8000"
+    # The service reads the GPU key from HOOVER4_GPU_API_KEY and refuses to start without it.
+    # The wrapper sets the variable from the key file, which ./deploy mounts from
+    # [ai_services] vllm_api_key_file. A value that the environment already holds wins.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        HOOVER4_GPU_API_KEY="$${HOOVER4_GPU_API_KEY:-$$(cat /run/secrets/gpu_api_key 2>/dev/null)}";
+        export HOOVER4_GPU_API_KEY;
+        exec "$$@"
+      - sh
+    command: ["sh", "-c", "uvicorn easyocr_server:app --host $${HOST} --port $${PORT} --workers 1"]
     environment:
       - HOST=0.0.0.0
       - PORT=8000
@@ -40,6 +52,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
+      - ${GPU_API_KEY_FILE_HOST:?deploy.py renders it from [ai_services] vllm_api_key_file}:/run/secrets/gpu_api_key:ro
       # EasyOCR's own cache folder, not the ai-server's: the two hold different model
       # formats, and sharing one folder overlays EasyOCR's flat *.pth files on top of a
       # HuggingFace `hub/` tree. It happens to work because the names do not collide,

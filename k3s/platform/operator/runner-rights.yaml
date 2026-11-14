@@ -4,7 +4,7 @@
 #   namespace. It binds the ClusterRole zone-admin.
 # - Outside the zone namespaces it can create, change and delete zone namespaces and RoleBindings, bind zone-admin,
 #   read the nodes and the zone pod policy, update the XWiki extension repository, run the shared call services,
-#   read the Services of the Hoover NFS servers, and update the operation ConfigMaps of the portal.
+#   read the Services of the Hoover NFS servers, update the operation ConfigMaps of the portal and read the GPU key.
 # - The ValidatingAdmissionPolicy zone-runner-scope refuses a namespace or a RoleBinding outside the zone namespaces,
 #   and a RoleBinding to a ClusterRole other than zone-admin.
 # - The ValidatingAdmissionPolicy hoover-pod-limits (../../zones/manifests/zone-pods.yaml) refuses host access in the
@@ -73,6 +73,11 @@ rules:
   - apiGroups: ['']
     resources: [configmaps]
     verbs: [get, list, patch]
+  # The GPU key, from which the zone token of the GPU proxy derives (../../hoover/gpu.py).
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [gpu-api-key]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

@@ -26,6 +26,10 @@
 <h3>Operations</h3>
 <p id="operations-status" aria-live="polite"></p>
 <table><thead><tr><th>Time</th><th>Operator</th><th>Operation</th><th>State</th><th>Output</th></tr></thead><tbody id="operations"></tbody></table>
+<h2>GPU key</h2>
+<p>The GPU services of this installation check one key. A GPU host outside the cluster needs the same key in the file that its <code>[ai_services] vllm_api_key_file</code> names.</p>
+<p><button type="button" id="gpu-show">Show the GPU key</button> <button type="button" id="gpu-copy" hidden>Copy the GPU key</button></p>
+<p id="gpu-key" aria-live="polite"></p>
 <h2>Recent events</h2>
 <p id="events-status" aria-live="polite">The event feed is loading.</p>
 <table><thead><tr><th>Time</th><th>Type</th><th>Object</th><th>Reason</th><th>Message</th></tr></thead><tbody id="events"></tbody></table>
@@ -115,6 +119,16 @@ async function updateZones() {
 document.getElementById('create').onsubmit = event => {
  event.preventDefault(); const form = new FormData(event.target);
  act('/operations', {kind: 'create-zone', zone: form.get('zone'), home: form.get('home')}, `The create of ${form.get('zone')} is queued.`);
+};
+document.getElementById('gpu-show').onclick = async () => {
+ const out = document.getElementById('gpu-key'); const copy = document.getElementById('gpu-copy');
+ try { const d = await post('/gpu/key'); out.textContent = d.key; copy.hidden = false; }
+ catch (error) { out.textContent = error.message; copy.hidden = true; }
+};
+document.getElementById('gpu-copy').onclick = async () => {
+ const out = document.getElementById('gpu-key');
+ try { await navigator.clipboard.writeText(out.textContent); document.getElementById('gpu-copy').textContent = 'Copied'; }
+ catch (error) { out.textContent += ' The browser refused the copy. Select the key and copy it.'; }
 };
 update(); setInterval(update, 5000); updateEvents(); setInterval(updateEvents, 15000); updateZones(); setInterval(updateZones, 10000);
 </script>

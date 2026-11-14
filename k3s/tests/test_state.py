@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from conftest import FIXTURES, REPO, operator_settings
+from conftest import FIXTURES, REPO, operator_settings, write_site
 import compose
 import config
 import zone_ini
 
 S = operator_settings()
-SCOPE = 'hoover:main'
+SCOPE = 'hoover:zone-a'
 
 
 @pytest.fixture
@@ -327,13 +327,13 @@ def apply_module():
 
 def test_the_apply_plan_names_one_step_for_each_changed_part(state):
     A = apply_module()
-    site = config.parse((FIXTURES / 'single-node.yml').read_text().replace('@REPO@', str(REPO)))
+    site = single_site()
     assert A.plan(state, site) == ['record']
     state.save(0, {SCOPE: {'main_services.common_workers': '5'}, 'zone:zone-a': {'app.xwiki': 'false', 'app.hoover': 'false',
                'backup.opendesk.enabled': 'true'}, 'cluster': {'cpu.oversubscription': '3'}})
     steps = A.plan(state, site)
     assert steps == sorted(steps, key=steps.index)
-    assert set(steps) == {'hoover:main', 'apps:zone-a', 'schedule', 'zone:zone-a'}
+    assert set(steps) == {'hoover:zone-a', 'apps:zone-a', 'schedule', 'zone:zone-a'}
     assert 'backups' in A.services(state, site) and 'xwiki' in A.services(state, site)
     log = []
     op = state.start_apply('abc', steps)
@@ -353,12 +353,18 @@ def test_backup_policies_keep_their_ranges(state):
 
 # Scope-aware applied revisions ------------------------------------------------------------------------------------------
 
+def site_with_zones(name):
+    """The site of a fixture with the zone state of its fixture, in a new temporary folder."""
+    import tempfile
+    return config.read(write_site(tempfile.mkdtemp(prefix='hoover4-site-'), name))
+
+
 def single_site():
-    return config.parse((FIXTURES / 'single-node.yml').read_text().replace('@REPO@', str(REPO)))
+    return site_with_zones('single-node.yml')
 
 
 def remote_site():
-    return config.parse((FIXTURES / 'remote.yml').read_text().replace('@REPO@', str(REPO)))
+    return site_with_zones('remote.yml')
 
 
 def test_gpu_runtime_applies_the_gpu_pool_and_no_zone(state, monkeypatch):
@@ -400,9 +406,9 @@ def test_a_partly_finished_apply_records_the_finished_scopes_only(state):
     site = single_site()
     state.save(0, {SCOPE: {'main_services.common_workers': '5'}, 'zone:zone-a': {'app.xwiki': 'false'}})
     steps, by_scope = A.plan_scopes(state, site)
-    assert by_scope == {SCOPE: ['hoover:main'], 'zone:zone-a': ['apps:zone-a']}
+    assert by_scope == {SCOPE: ['hoover:zone-a'], 'zone:zone-a': ['apps:zone-a']}
     op = state.start_apply('abc', steps, by_scope)
-    assert [x['name'] for x in op.steps] == ['apps:zone-a', 'hoover:main']
+    assert [x['name'] for x in op.steps] == ['apps:zone-a', 'hoover:zone-a']
     calls = []
 
     def ok(op, overrides):
@@ -411,7 +417,7 @@ def test_a_partly_finished_apply_records_the_finished_scopes_only(state):
 
     def broken(op, overrides):
         raise RuntimeError('the rollout of the workers failed')
-    failed = state.run({'apps:zone-a': ok, 'hoover:main': broken})
+    failed = state.run({'apps:zone-a': ok, 'hoover:zone-a': broken})
     assert failed.status == 'failed' and failed.applied_scopes == ['zone:zone-a']
     assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision(SCOPE) == 0
     assert state.applied()['revision'] == 0
@@ -420,7 +426,7 @@ def test_a_partly_finished_apply_records_the_finished_scopes_only(state):
     # A save during the operation stays a later desired revision after the retry succeeds.
     state.save(1, {SCOPE: {'main_services.common_workers': '7'}})
     state.retry(op.id)
-    done = state.run({'apps:zone-a': ok, 'hoover:main': lambda op, o: []})
+    done = state.run({'apps:zone-a': ok, 'hoover:zone-a': lambda op, o: []})
     assert done.status == 'succeeded' and calls == ['apps']
     assert state.applied()['revision'] == 1 and state.applied()['scopes'] == {}
     assert A.changes(state, site) == {SCOPE: {'main_services.common_workers': ('5', '7')}}

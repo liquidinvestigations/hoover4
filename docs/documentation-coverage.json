@@ -3147,14 +3147,19 @@
         "k3s/platform/gpu/gpu_pool.py",
         "k3s/hoover/gpu.py",
         "k3s/ansible/roles/hoover4_k3s/tasks/main.yml",
-        "k3s/cluster/runtimeclasses.yaml"
+        "k3s/cluster/runtimeclasses.yaml",
+        "ai_services/hoover4_ai_server/gpu_key.py",
+        "ai_services/easyocr_server/gpu_key.py",
+        "k3s/platform/operator/portal/index.html"
       ],
       "docs": [
         "docs/technical-specification/Features.md",
-        "k3s/Readme.md#run-the-gpu-services-on-gpu-nodes"
+        "k3s/Readme.md#run-the-gpu-services-on-gpu-nodes",
+        "k3s/Readme.md#share-one-gpu-key",
+        "ai_services/README.md#the-gpu-key"
       ],
       "audience": "operator",
-      "no_screenshot_reason": "The capability is operator deployment code. It has no interface."
+      "no_screenshot_reason": "The GPU key section of the operator portal has no screenshot. No site ran the changed portal, and the section shows a secret."
     },
     {
       "id": "F-admin-54",
@@ -3183,6 +3188,21 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability is operator deployment code. The portal controls of the policies belong to F-admin-50."
+    },
+    {
+      "id": "F-admin-56",
+      "source": [
+        "k3s/zones/zone.py",
+        "k3s/zones/zonestate.py",
+        "k3s/config.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#create-and-delete-zones",
+        "docs/operations/k3s/Zone_Operator_Manual.md#create-a-zone"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The zone form of the operator portal is unchanged, and the screenshot of the zone manual shows it."
     }
   ],
   "routes": {

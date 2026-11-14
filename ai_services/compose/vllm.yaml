@@ -31,7 +31,7 @@ services:
   # about 455,000 fp8 tokens and leaves room for hoover4-ai-server and GPU EasyOCR at
   # their highest use.
   #
-  # SECURITY: the published port binds to bind_ip. An empty key file turns the key off.
+  # SECURITY: the published port binds to bind_ip. Every request needs the GPU key.
   hoover4-vllm:
     logging: *logging
     build:
@@ -61,7 +61,7 @@ services:
       # The vLLM, FlashInfer, b12x and Triton caches are folders of qwen_flash_cache.
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/qwen_flash_cache:/root/.cache
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/qwen_flash_hf:/root/.cache/huggingface
-      - ${VLLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/vllm_api_key:ro
+      - ${GPU_API_KEY_FILE_HOST:?deploy.py renders it from [ai_services] vllm_api_key_file}:/run/secrets/gpu_api_key:ro
     environment:
       HF_HOME: /root/.cache/huggingface
       TRITON_CACHE_DIR: /root/.cache/triton
@@ -82,14 +82,17 @@ services:
       B12X_W4A16_A4_PREFILL: "1"
       DO_NOT_TRACK: "1"
       VLLM_NO_USAGE_STATS: "1"
-    # The wrapper adds the API key when the key file is not empty.
+    # The model server checks the GPU key with --api-key. The wrapper reads the key from
+    # HOOVER4_GPU_API_KEY, else from the key file that ./deploy mounts from
+    # [ai_services] vllm_api_key_file, and refuses to start without a key.
     entrypoint:
       - /bin/sh
       - -c
       - >-
-        key="$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)";
-        if [ -n "$$key" ]; then set -- "$$@" --api-key "$$key"; fi;
-        exec vllm serve "$$@"
+        HOOVER4_GPU_API_KEY="$${HOOVER4_GPU_API_KEY:-$$(cat /run/secrets/gpu_api_key 2>/dev/null)}";
+        if [ -z "$$HOOVER4_GPU_API_KEY" ]; then echo "HOOVER4_GPU_API_KEY is empty. Set [ai_services] vllm_api_key_file." >&2; exit 1; fi;
+        export HOOVER4_GPU_API_KEY;
+        exec vllm serve "$$@" --api-key "$$HOOVER4_GPU_API_KEY"
       - sh
     command:
       - ${QWEN_FLASH_CHECKPOINT}

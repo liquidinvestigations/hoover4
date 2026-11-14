@@ -1,8 +1,13 @@
 """Read the persistent zone state: the zones, their home nodes, their storage tiers and their on and off switch.
 
-zone-state.json of the state folder of the site (../settings.py PRIVATE) names each zone, whether it is enabled, its home node, the namespaces that it owns, and
-whether its first openDesk install completed (bootstrapped, which zone.py writes for a new zone).
-zone-state.example.json shows the format. The file is state, so Git does not track it. zone.py adds and removes zones.
+zone-state.json of the state folder of the site (../settings.py PRIVATE) is the list of the zones of the site. The site
+file names no zone. Each entry names whether the zone is enabled, its home node, the namespaces that it owns, and
+whether its first openDesk install completed (bootstrapped, which zone.py writes for a new zone). The values stores
+(zone or local) and temporal_backend (postgresql or cassandra) of the Hoover installation of the zone have the defaults
+zone and postgresql. extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
+../config.py zone_hoover() reads these values and derives the storage names from the zone id.
+zone-state.example.json shows the format. The file is state, so Git does not track it. zone.py and the zone runner of
+the operator portal add and remove zones.
 A disabled zone keeps its manifests, credentials, databases and volumes, but no workload of it runs.
 A file that is missing or invalid raises ZoneStateError. Callers must then treat every zone as disabled.
 A namespace that no zone owns, such as calls or monitoring, is outside zone control.
@@ -19,6 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import config  # noqa: E402
 import settings  # noqa: E402
 
 PATH = settings.PRIVATE / 'zone-state.json'
@@ -48,6 +54,9 @@ def validate(data):
     for zone, entry in data['zones'].items():
         if not isinstance(entry, dict) or not isinstance(entry.get('enabled'), bool):
             raise ZoneStateError(f'the zone {zone} has no boolean enabled field')
+        problems = config.zone_problems(zone, entry)
+        if problems:
+            raise ZoneStateError('; '.join(problems))
         entry.setdefault('namespaces', [zone])
         for namespace in entry['namespaces']:
             if owners.setdefault(namespace, zone) != zone:

@@ -33,6 +33,8 @@ services:
       # configured rather than retried.
       - OCR_TESSERACT_URL=${OCR_TESSERACT_URL:-}
       - OCR_EASYOCR_URL=${OCR_EASYOCR_URL:-}
+      # The GPU key, which each EasyOCR call sends. The file is empty without the GPU tier.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       # The blob store. `S3_ENDPOINT` carries a scheme; every client strips it when its
       # library wants bare host:port. Garage refuses an access key id under 8 characters
       # and a secret under 16, which is why these are not the old short literals.
@@ -52,6 +54,8 @@ services:
       - OCR_READ_TIMEOUT_SECONDS=${OCR_READ_TIMEOUT_SECONDS:-600}
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     memswap_limit: ${OCR_PDF_MEM_LIMIT:-8000M}
     mem_limit: ${OCR_PDF_MEM_LIMIT:-8000M}
     restart: unless-stopped

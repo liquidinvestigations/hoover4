@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import K3S, FIXTURES, site_text
+from conftest import K3S, FIXTURES, site_text, write_site
 
 sys.path.insert(0, str(K3S / 'driver'))
 import config  # noqa: E402
@@ -124,9 +124,15 @@ def env(tmp_path, monkeypatch):
     private.mkdir()
 
     def make(fixture='single-node.yml'):
-        text = site_text(fixture)
-        site_path = tmp_path / 'site.yml'
-        site_path.write_text(text)
+        # The zone state of the fixture goes into the state folder of the site file and into the private folder of
+        # the context, which the driver reads.
+        site_path = write_site(tmp_path, fixture)
+        site_path = site_path.rename(tmp_path / 'site.yml')
+        zones = site_path.parent / Path(fixture).stem / 'zone-state.json'
+        if zones.exists():
+            (tmp_path / 'site').mkdir(exist_ok=True)
+            (tmp_path / 'site' / 'zone-state.json').write_text(zones.read_text())
+            (private / 'zone-state.json').write_text(zones.read_text())
         site = config.read(site_path)
         ctx = deploy.Context(site_path, site, private=private, repo=repo)
         ctx.kubeconfig = private / 'kubeconfig'
@@ -477,11 +483,11 @@ def test_a_finished_complete_up_records_its_settings_revision_for_every_scope(en
     ctx = env.make()
     S = operator_settings()
     state = S.State(ctx.state)
-    state.save(0, {'hoover:main': {'main_services.common_workers': '5'}})
+    state.save(0, {'hoover:zone-a': {'main_services.common_workers': '5'}})
     rev = deploy.resolve_revision(env.repo, 'HEAD')
     record = ctx.records.new('up', ['dev'], rev, ['a'], complete=True, inputs=deploy.pinned_inputs(ctx))
     # A save after the start of the run stays pending.
-    state.save(1, {'hoover:main': {'main_services.common_workers': '6'}})
+    state.save(1, {'hoover:zone-a': {'main_services.common_workers': '6'}})
     assert deploy.execute(ctx, record, fake_steps(['a'], [])) == 0
     assert state.applied()['revision'] == 1 and state.applied()['operation'] == f'deploy:{record["id"]}'
     assert state.revision() == 2
@@ -504,7 +510,7 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     assert deploy.execute(ctx, record, steps) == 0
     assert waited == ['zone-a', 'hoover-zone-a']
     assert checked == ['hoover-zone-a']
-    assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision('hoover:main') == 1
+    assert state.applied_revision('zone:zone-a') == 1 and state.applied_revision('hoover:zone-a') == 1
     # The cluster scope needs every zone and the GPU pool, so a scoped run leaves it pending.
     assert state.applied_revision('cluster') == 0 and state.applied()['revision'] == 0
     # The zone is registered and the frontend serves its names before zone.py applies it.
@@ -521,7 +527,7 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
 ])
 def test_a_broken_token_exchange_fails_the_zone_step(env, monkeypatch, phase, logs, passes):
     ctx = env.make('remote.yml')
-    hoover = next(h for h in ctx.site.hoovers.values() if h.zone == 'zone-a')
+    hoover = ctx.hoovers()['zone-a']
     calls = []
 
     def kubectl(*args, check=True):

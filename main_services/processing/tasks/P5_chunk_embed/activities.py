@@ -30,7 +30,7 @@ from database.clickhouse import get_collection_client, get_server_setting
 from database.manticore import limit_encoded_runs
 from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
-from tasks.remote import post_json
+from tasks.remote import gpu_headers, post_json
 from tasks.text_quality import non_linguistic_reason
 from tasks.text_sources import pages_over_work_limit
 
@@ -275,6 +275,7 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
                 [("embeddings", f"{base_url}/embeddings")],
                 {"input": prefixed},
                 service="embeddings",
+                headers=gpu_headers(),
             )
             data = result.data
             served_model = data.get("model") or ""

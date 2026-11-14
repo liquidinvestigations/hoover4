@@ -64,6 +64,7 @@ RUN python -m venv $VENV_PATH
 COPY ./hoover4_ai_server/pyproject.toml ./
 COPY ./hoover4_ai_server/hoover4_ai_server.py ./
 COPY ./hoover4_ai_server/admission.py ./
+COPY ./hoover4_ai_server/gpu_key.py ./
 COPY ./hoover4_ai_server/ner_pipeline.py ./
 COPY ./hoover4_ai_server/requirements.txt ./
 
@@ -116,6 +117,7 @@ COPY --from=builder $VENV_PATH $VENV_PATH
 # Copy application files
 COPY ./hoover4_ai_server/hoover4_ai_server.py ./
 COPY ./hoover4_ai_server/admission.py ./
+COPY ./hoover4_ai_server/gpu_key.py ./
 COPY ./hoover4_ai_server/ner_pipeline.py ./
 COPY ./hoover4_ai_server/pyproject.toml ./
 

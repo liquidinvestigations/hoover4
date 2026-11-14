@@ -27,6 +27,24 @@ import time
 
 from agent_common import telemetry
 
+
+def gpu_headers() -> dict:
+    """``Authorization: Bearer <GPU key>`` for a call to the AI server, or nothing without a key.
+
+    The GPU services check one key on every route except ``/health``. The key is the content
+    of ``LLM_API_KEY_FILE``, the key file that deploy.py mounts. In the cluster the file holds
+    the zone token, and the GPU proxy replaces the header with the GPU key.
+    """
+    path = (os.getenv("LLM_API_KEY_FILE") or "").strip()
+    key = ""
+    if path:
+        try:
+            with open(path) as handle:
+                key = handle.read().strip()
+        except OSError:
+            key = ""
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
 log = logging.getLogger(__name__)
 
 #: Dead-host detection, in seconds. Never inherit the read timeout here.
@@ -104,6 +122,7 @@ def embed_query(query: str, model_id: str) -> list[float]:
         response = requests.post(
             f"{url}/embeddings",
             json=payload,
+            headers=gpu_headers(),
             timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
         )
     except requests.exceptions.RequestException as exc:

@@ -12,6 +12,10 @@ GET  /health -> {"status", "engine", "languages_available", "languages_supported
                  "failed_downloads", "gpu", ...}
 ```
 
+`POST /ocr` and every other route except `GET /health` need `Authorization: Bearer <GPU key>`,
+else the server answers 401. The server reads the key from `HOOVER4_GPU_API_KEY` and refuses
+to start without it ([gpu_key.py](gpu_key.py)).
+
 This is the same request and response shape the Tesseract twin serves, because
 [`tasks/ocr_client.py`](../../main_services/processing/tasks/ocr_client.py) builds one
 payload and posts it to the engine that the automatic OCR plan chose. `psm` is accepted and
@@ -104,6 +108,7 @@ place that shows it before a dataset takes a day.
 | `OCR_QUEUE_DEPTH` | `8` | Requests that may wait before the service sheds load |
 | `OCR_READER_CACHE_SIZE` | `3` | Warm `Reader`s kept; each holds GPU memory, and the key is caller-supplied |
 | `OCR_MAX_IMAGE_BYTES` | `67108864` | Ceiling on one decoded image |
+| `HOOVER4_GPU_API_KEY` | none | The GPU key. The start stops without it |
 
 ## Tests
 

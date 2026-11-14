@@ -44,9 +44,8 @@ The site file is a YAML Ansible inventory with one group, `hoover4`.
 | `hoover4.vars.networks.<name>` | One WireGuard network: its range (`cidr`), interface, hub nodes, port and the switch `managed`. |
 | `hoover4.vars.lans.<name>` | One LAN, with an optional range (`cidr`). |
 | `hoover4.hosts.<name>` | One node: its roles (`node_roles`), its address in each network and LAN, its public address, the volume group of each storage tier (`storage`), the switches of its host changes, and the TLS mode of a public node. |
-| `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool, and the key file of the pool. |
+| `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool. |
 | `hoover4.vars.backup` | The backup node and the backup folder on that node. |
-| `hoover4.vars.hoovers.<name>` | One Hoover installation: its zone, its home node, its store layout and its storage identity. |
 
 Check the file before each change:
 
@@ -158,6 +157,10 @@ A GPU node can keep its existing VPN interface. Then name that interface in the 
    The host play adds the NVIDIA repository and installs the NVIDIA container toolkit when the node does not have it.
 3. Run `k3s/deploy-k3s up --target <name> --steps hosts`.
 4. Stop the Compose GPU services of the node only after the GPU pool of the cluster answers authenticated requests.
+
+The GPU services of the site share one GPU key, which `k3s/deploy-k3s up` generates. Open **GPU key** on the operator portal to copy it.
+A Compose GPU host at `gpu_pool` `address` needs the same key in the file of its `[ai_services] vllm_api_key_file`.
+To keep the key of an existing Compose GPU host instead, give that key to `python3 k3s/hoover/gpu.py set-key` on standard input before the first `up`.
 
 The direct peer takes the VPN address of the GPU node away from the earlier route of the peer node.
 Until the reverse peer exists on the GPU node, the peer node cannot reach that address. A GPU pool at that address then does not answer it.

@@ -1,28 +1,13 @@
-# One workstation with every role, and the Hoover of its earlier Compose install.
-# The tests replace @REPO@ with the path of the repository.
+# One workstation with every role. single-node.zones.json holds its zone.
 hoover4:
   vars:
     domain: hoover.test
     control_plane: dev
     gpu_pool:
       address: 192.0.2.50
-      api_key_file: /etc/hoover4/gpu-api-key
     backup:
       node: dev
       path: /srv/hoover4-backups
-    hoovers:
-      main:
-        zone: zone-a
-        home_node: dev
-        stores: local
-        temporal_backend: cassandra
-        history_source: compose
-        clickhouse_database_prefix: Hoover4
-        manticore_table_prefix: ''
-        system_bucket: hoover4-system
-        collection_bucket_prefix: hoover4-c-
-        source_ini: '@REPO@/scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini'
-        chat_control_dir: /srv/hoover4-chat-control
   hosts:
     dev:
       node_roles: single

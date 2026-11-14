@@ -7,7 +7,8 @@
    "namespaces": [
     "zone-a",
     "hoover-zone-a"
-   ]
+   ],
+   "bootstrapped": true
   },
   "zone-b": {
    "enabled": true,
@@ -16,6 +17,10 @@
     "zone-b",
     "hoover-zone-b"
    ],
+   "bootstrapped": true,
+   "stores": "zone",
+   "temporal_backend": "postgresql",
+   "extra_datasets": ["archive:server-node:/storage/archive"],
    "tiers": {
     "default": ["hdd"]
    }

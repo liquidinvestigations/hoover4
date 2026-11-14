@@ -485,7 +485,9 @@ services:
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/worker_temp_files:/tmp/hoover4
       # Secrets rule: the ini stores the host PATH, deploy.py renders it as a mount
       # source, and the container reads the file. No key value ever enters a .env, a
-      # compose file, a log line or a command line. /dev/null when no provider is set.
+      # compose file, a log line or a command line. The file holds the GPU key, which the
+      # calls to the model server, the AI server and EasyOCR send. /dev/null without the
+      # GPU tier.
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
       # The custom chat policy handlers and definitions ([main_services]
       # chat_control_dir), read-only. /dev/null when the key is empty, and then

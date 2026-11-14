@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from conftest import K3S, REPO, operator_settings, site_text
+from conftest import K3S, REPO, operator_settings, site_text, write_site
 import compose
 import config
 import manifests
@@ -19,15 +19,18 @@ COMPOSE_SECRETS = ('hoover4-garage-blob-secret-key-0', 'cbc5a1dbd1c832a3bdcb0abf
                    'hoover4-garage-admin-token')
 
 
-def target(site_name, installation, tmp_path, overrides=None, source_text=None):
-    text = site_text(site_name)
+# The Compose ini of an imported install. The single fixture renders the zone of the single-node site with it.
+SOURCE_INI = REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini'
+
+
+def target(site_name, zone, tmp_path, overrides=None, source_text=None):
+    """The Target of a zone of a site fixture. source_text is the Compose ini of an imported install."""
+    path = write_site(tmp_path, site_name)
+    t = manifests.target_from_site(path, zone, revision=REVISION, state=tmp_path / 'no-state', nfs=NFS)
     if source_text is not None:
         source = tmp_path / 'source.ini'
         source.write_text(source_text)
-        text = re.sub(r'source_ini: .*', f"source_ini: '{source}'", text)
-    path = tmp_path / site_name
-    path.write_text(text)
-    t = manifests.target_from_site(path, installation, revision=REVISION, state=tmp_path / 'no-state', nfs=NFS)
+        t.source = config.read_source_ini(source, check_paths=False)
     if overrides:
         t.values.update(overrides)
     return t
@@ -58,25 +61,25 @@ def workloads(items):
 
 @pytest.fixture
 def single(tmp_path):
-    return items_of(target('single-node.yml', 'main', tmp_path))
+    return items_of(target('single-node.yml', 'zone-a', tmp_path, source_text=SOURCE_INI.read_text()))
 
 
-# The single-node migrated installation ----------------------------------------------------------------------------
+# The single-node imported installation -----------------------------------------------------------------------------
 
-def test_single_node_keeps_the_compose_storage_identity_and_history_source(single):
+def test_a_zone_derives_its_storage_names_from_its_id(single):
     workers = get(single, 'StatefulSet', 'hoover-workers')
     e = env(containers(workers)[0])
-    assert e['HOOVER4_CLICKHOUSE_DB_PREFIX'] == 'Hoover4'
-    assert e['HOOVER4_MANTICORE_TABLE_PREFIX'] == ''
-    assert e['S3_SYSTEM_BUCKET'] == 'hoover4-system'
-    assert e['S3_COLLECTION_BUCKET_PREFIX'] == 'hoover4-c-'
-    assert e['HOOVER4_HISTORY_SOURCE'] == 'compose'
+    assert e['HOOVER4_CLICKHOUSE_DB_PREFIX'] == 'zone_a'
+    assert e['HOOVER4_MANTICORE_TABLE_PREFIX'] == 'zone_a_'
+    assert e['S3_SYSTEM_BUCKET'] == 'zone-a-system'
+    assert e['S3_COLLECTION_BUCKET_PREFIX'] == 'zone-a-c-'
+    assert 'HOOVER4_HISTORY_SOURCE' not in e
     # One worker pod polls the shared queues, so the open work of the Compose install keeps its queues.
     assert 'HOOVER4_HOST_QUEUE' not in e
 
 
 def test_several_worker_pods_poll_their_host_queues(tmp_path):
-    t = target('single-node.yml', 'main', tmp_path, overrides={'budget.worker_pods': '2'})
+    t = target('single-node.yml', 'zone-a', tmp_path, overrides={'budget.worker_pods': '2'})
     e = env(containers(get(items_of(t), 'StatefulSet', 'hoover-workers'))[0])
     assert e['HOOVER4_HOST_QUEUE'] == {'fieldRef': {'fieldPath': 'metadata.name'}}
 
@@ -151,9 +154,8 @@ def test_temporal_on_cassandra_and_elasticsearch(single):
 
 
 def test_migrated_install_keeps_its_shard_count(tmp_path):
-    source = (REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini').read_text()
-    source = source.replace('[main_services]', '[main_services]\ntemporal_history_shards = 64')
-    items = items_of(target('single-node.yml', 'main', tmp_path, source_text=source))
+    source = SOURCE_INI.read_text().replace('[main_services]', '[main_services]\ntemporal_history_shards = 64')
+    items = items_of(target('single-node.yml', 'zone-a', tmp_path, source_text=source))
     assert env(containers(get(items, 'Deployment', 'temporal'))[0])['NUM_HISTORY_SHARDS'] == '64'
 
 
@@ -166,7 +168,7 @@ def test_dataset_mounts_keep_their_container_paths(single):
     assert volumes['data-testdata']['persistentVolumeClaim'] == {'claimName': 'host-dataset-testdata', 'readOnly': True}
     assert volumes['data-uploads']['persistentVolumeClaim'] == {'claimName': 'dataset-uploads'}
     get(single, 'PersistentVolumeClaim', 'dataset-uploads')
-    assert volumes['chat-control']['persistentVolumeClaim'] == {'claimName': 'host-chat-control', 'readOnly': True}
+    assert 'chat-control' not in volumes
 
 
 def test_host_folders_are_volumes_of_the_admin_render(single):
@@ -174,7 +176,7 @@ def test_host_folders_are_volumes_of_the_admin_render(single):
     for item in single:
         if item['kind'] in ('Deployment', 'StatefulSet', 'Job'):
             assert not [v for v in item['spec']['template']['spec'].get('volumes', []) if 'hostPath' in v], item['metadata']['name']
-    for claim_name, path in (('host-dataset-testdata', '/srv/hoover4-testdata'), ('host-chat-control', '/srv/hoover4-chat-control')):
+    for claim_name, path in (('host-dataset-testdata', '/srv/hoover4-testdata'),):
         pv = get(single, 'PersistentVolume', f'hoover-zone-a-{claim_name}')
         assert pv['spec']['hostPath'] == {'path': path, 'type': 'Directory'}
         assert pv['spec']['accessModes'] == ['ReadOnlyMany']
@@ -223,7 +225,7 @@ def test_gpu_forwarder_keeps_the_three_gpu_interfaces(single):
 
 
 def test_internet_tools_follow_the_setting(tmp_path):
-    items = items_of(target('single-node.yml', 'main', tmp_path, overrides={'main_services.internet_tools_enabled': 'true'}))
+    items = items_of(target('single-node.yml', 'zone-a', tmp_path, overrides={'main_services.internet_tools_enabled': 'true'}))
     for name in ('hoover4-mcp-whois', 'hoover4-mcp-metasearch', 'hoover4-mcp-browser', 'hoover4-web-tor'):
         item = get(items, 'Deployment', name)
         assert item['spec']['template']['metadata']['labels']['hoover.dev/egress'] == 'internet'
@@ -240,14 +242,14 @@ def test_garage_init_job_name_follows_its_spec(tmp_path, single):
         assert len(jobs) == 1
         return jobs[0]
     first = job(single)
-    grown = job(items_of(target('single-node.yml', 'main', tmp_path, overrides={'volume.garage-data': '25Gi'})))
+    grown = job(items_of(target('single-node.yml', 'zone-a', tmp_path, overrides={'volume.garage-data': '25Gi'})))
     assert env(containers(first)[0])['GARAGE_CAPACITY'] != env(containers(grown)[0])['GARAGE_CAPACITY']
     assert first['metadata']['name'] != grown['metadata']['name']
-    assert job(items_of(target('single-node.yml', 'main', tmp_path)))['metadata']['name'] == first['metadata']['name']
+    assert job(items_of(target('single-node.yml', 'zone-a', tmp_path)))['metadata']['name'] == first['metadata']['name']
 
 
 def test_service_commands_and_limits_follow_compose(tmp_path, single):
-    t = target('single-node.yml', 'main', tmp_path)
+    t = target('single-node.yml', 'zone-a', tmp_path)
     ini = tmp_path / 'hoover4.ini'
     ini.write_text(manifests.zone_ini_text(t))
     _, _, _, services = compose.load(ini, REPO)
@@ -288,8 +290,8 @@ def test_agent_api_callers_reach_the_cluster_website(single):
 
 
 def test_second_render_is_equal(tmp_path):
-    first = manifests.render(target('single-node.yml', 'main', tmp_path))
-    second = manifests.render(target('single-node.yml', 'main', tmp_path))
+    first = manifests.render(target('single-node.yml', 'zone-a', tmp_path))
+    second = manifests.render(target('single-node.yml', 'zone-a', tmp_path))
     assert first == second
     images = sorted(set(re.findall(r'"image": "([^"]+)"', first)))
     assert all(':0123456789ab' in i for i in images if i.startswith(manifests.REGISTRY))
@@ -306,7 +308,6 @@ def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
     assert get(items, 'Service', 'clickhouse')['spec'] == {'type': 'ExternalName', 'externalName': 'clickhouse.zone-a.svc.cluster.local'}
     workers = get(items, 'Deployment', 'hoover-workers')
     e = env(containers(workers)[0])
-    assert e['HOOVER4_HISTORY_SOURCE'] == 'k3s-branch'
     assert e['CLICKHOUSE_USER'] == 'zone_a_worker'
     assert e['HOOVER4_MANTICORE_TABLE_PREFIX'] == 'zone_a_'
     assert workers['spec']['template']['spec'].get('topologySpreadConstraints')
@@ -314,12 +315,11 @@ def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
     assert clamav['nodeSelector'] == {'kubernetes.io/hostname': 'edge'}
 
 
-def test_new_remote_install_with_its_own_identity_and_nfs_data(tmp_path):
-    items = items_of(target('remote.yml', 'research', tmp_path))
+def test_a_local_store_zone_of_a_remote_site_has_its_own_names_and_nfs_data(tmp_path):
+    items = items_of(target('remote.yml', 'zone-c', tmp_path))
     e = env(containers(get(items, 'StatefulSet', 'hoover-workers'))[0])
-    assert e['HOOVER4_CLICKHOUSE_DB_PREFIX'] == 'Research'
-    assert e['S3_SYSTEM_BUCKET'] == 'research-system'
-    assert e['HOOVER4_HISTORY_SOURCE'] == 'compose'
+    assert e['HOOVER4_CLICKHOUSE_DB_PREFIX'] == 'zone_c'
+    assert e['S3_SYSTEM_BUCKET'] == 'zone-c-system'
     volumes = {v['name']: v for v in get(items, 'StatefulSet', 'hoover-workers')['spec']['template']['spec']['volumes']}
     assert volumes['data-uploads']['nfs'] == {'server': '10.43.0.10', 'path': '/zone-c/uploads', 'readOnly': False}
     assert get(items, 'PersistentVolumeClaim', 'clickhouse-data')['spec']['storageClassName'] == 'hdd-ext4'
@@ -327,14 +327,14 @@ def test_new_remote_install_with_its_own_identity_and_nfs_data(tmp_path):
 
 
 def test_missing_nfs_address_is_a_specific_error(tmp_path):
-    t = target('remote.yml', 'research', tmp_path)
+    t = target('remote.yml', 'zone-c', tmp_path)
     t.nfs = {}
     with pytest.raises(manifests.RenderError, match='NFS Service address of the data node server-a is unknown'):
         manifests.render(t)
 
 
 def test_settings_that_deploy_refuses_stop_the_render(tmp_path):
-    t = target('single-node.yml', 'main', tmp_path, overrides={'main_services.tika_mem_limit': '1G'})
+    t = target('single-node.yml', 'zone-a', tmp_path, overrides={'main_services.tika_mem_limit': '1G'})
     with pytest.raises(manifests.RenderError, match='deploy.py refuses'):
         manifests.render(t)
 
@@ -407,7 +407,7 @@ def changed_value(setting):
 def test_registry_services_cover_the_changed_compose_services(tmp_path):
     """A changed ini setting changes only the services that the registry names."""
     registry = operator_settings().REGISTRY
-    t = target('single-node.yml', 'main', tmp_path)
+    t = target('single-node.yml', 'zone-a', tmp_path)
 
     def services_with(values):
         ini = tmp_path / 'probe.ini'
@@ -437,10 +437,8 @@ def test_registry_services_cover_the_changed_compose_services(tmp_path):
 # A new installation of a single-node site, and the application switch ------------------------------------------------
 
 def test_a_new_single_node_installation_keeps_its_datasets_on_claims(tmp_path):
-    text = re.sub(r' *source_ini: .*\n', '', site_text('single-node.yml'))
-    path = tmp_path / 'new.yml'
-    path.write_text(text)
-    t = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'no-state', nfs={})
+    path = write_site(tmp_path, 'single-node.yml')
+    t = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'no-state', nfs={})
     items = items_of(t)
     claims = {i['metadata']['name'] for i in items if i['kind'] == 'PersistentVolumeClaim'}
     assert {'dataset-testdata', 'dataset-uploads'} <= claims
@@ -456,14 +454,13 @@ def test_a_disabled_hoover_renders_zero_replicas_and_keeps_its_claims(tmp_path):
     S = operator_settings()
     state = S.State(tmp_path / 'state')
     state.save(0, {'zone:zone-a': {'app.hoover': 'false'}})
-    path = tmp_path / 'single.yml'
-    path.write_text(site_text('single-node.yml'))
-    t = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'state', nfs=NFS)
+    path = write_site(tmp_path, 'single-node.yml')
+    t = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'state', nfs=NFS)
     items = items_of(t)
     assert all(i['spec']['replicas'] == 0 for i in items if i['kind'] in ('Deployment', 'StatefulSet'))
     assert [i for i in items if i['kind'] == 'PersistentVolumeClaim']
     # The pinned revision 0 has no override, so the installation runs.
-    t0 = manifests.target_from_site(path, 'main', revision=REVISION, state=tmp_path / 'state', nfs=NFS, settings_revision=0)
+    t0 = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'state', nfs=NFS, settings_revision=0)
     assert t0.enabled
 
 
@@ -491,27 +488,68 @@ def test_gpu_pool_runs_every_gpu_service_on_its_node_with_the_selected_runtime()
             assert spec['nodeSelector'] == {'kubernetes.io/hostname': 'gpu-1'}
             assert {'key': 'hoover.dev/gpu', 'operator': 'Equal', 'value': 'true', 'effect': 'NoSchedule'} in spec['tolerations']
             assert not [v for v in spec['volumes'] if 'hostPath' in v and not v['hostPath']['path'].startswith('/srv/hoover-data/gpu/')]
+            # Each GPU service reads the GPU key from HOOVER4_GPU_API_KEY and checks it.
+            env = {e['name']: e for e in spec['containers'][0]['env']}
+            assert env['HOOVER4_GPU_API_KEY']['valueFrom'] == {'secretKeyRef': {'name': 'gpu-pool', 'key': 'pool-key'}}
+            command = ' '.join(spec['containers'][0].get('command', []))
+            assert 'HOOVER4_GPU_API_KEY' in command and '/run/secrets/gpu_api_key' in command, name
+            mounts = {m['mountPath']: m for m in spec['containers'][0]['volumeMounts']}
+            assert mounts['/run/secrets/gpu_api_key']['name'] == 'pool-key'
     gateway = next(i for i in items if i['kind'] == 'ConfigMap' and i['metadata']['name'] == 'gateway-gpu-1')
     text = gateway['data']['default.conf.template']
-    # Every port checks the pool key, and only the model server receives it.
+    # Every port checks the pool key and sends it on, because every service checks it too.
     assert text.count('if ($http_authorization != "Bearer ${POOL_KEY}") { return 403; }') == 3
-    assert text.count('proxy_set_header Authorization $http_authorization;') == 1
+    assert text.count('proxy_set_header Authorization $http_authorization;') == 3
     ports = deployments['gateway-gpu-1']['spec']['template']['spec']['containers'][0]['ports']
     assert {(p['containerPort'], p.get('hostIP')) for p in ports} == {(21960, '10.0.0.5'), (21961, '10.0.0.5'), (21962, '10.0.0.5')}
 
 
-def test_the_central_gpu_proxy_sends_the_pool_key_on_every_port_of_a_site_pool(tmp_path, monkeypatch):
+def test_the_central_gpu_proxy_sends_the_gpu_key_on_every_port_and_derives_the_zone_tokens_from_it():
+    import hashlib
+    import hmac
     import gpu
-    key = tmp_path / 'key'
-    key.write_text('pool-key')
-    # The proxy key is in the state folder of the site file, which the test site does not have.
-    (tmp_path / 'gpu-proxy-key').write_text('proxy-key')
-    monkeypatch.setattr(gpu, 'KEY', tmp_path / 'gpu-proxy-key')
-    for gateway, keyed in ((True, 3), (False, 1)):
+    for gateway in (True, False):
         items = gpu.proxy({'address': 'gateway.gpu-pool.svc.cluster.local' if gateway else '192.0.2.50',
-                           'api_key_file': str(key), 'gateway': gateway})
+                           'gateway': gateway}, 'the-gpu-key')
         config_map = next(i for i in items if i['kind'] == 'ConfigMap')
-        assert config_map['data']['default.conf.template'].count('Bearer ${VLLM_KEY}') == keyed
+        assert config_map['data']['default.conf.template'].count('proxy_set_header Authorization "Bearer ${GPU_KEY}";') == 3
+        assert "createHmac('sha256', '${GPU_KEY}')" in config_map['data']['auth.js.template']
+        secret = next(i for i in items if i['kind'] == 'Secret')
+        assert secret['stringData'] == {'gpu-key': 'the-gpu-key'}
+        deployment = next(i for i in items if i['kind'] == 'Deployment')
+        assert deployment['spec']['template']['metadata']['annotations']['hoover.dev/key'] == \
+            hashlib.sha256(b'the-gpu-key').hexdigest()[:12]
+    assert gpu.zone_token('the-gpu-key', 'zone-a') == hmac.new(b'the-gpu-key', b'zone-a', hashlib.sha256).hexdigest()
+    assert gpu.zone_token('another-key', 'zone-a') != gpu.zone_token('the-gpu-key', 'zone-a')
+
+
+def test_the_gpu_key_is_one_secret_that_the_first_read_creates(monkeypatch):
+    import base64
+    import json as json_module
+    import gpu
+    stored = {}
+
+    class Done:
+        def __init__(self, stdout=''):
+            self.stdout = stdout
+
+    def kubectl(*args, input=None, check=True):
+        if args[:1] == ('apply',):
+            item = json_module.loads(input)
+            if item['kind'] == 'Secret':
+                stored.update(item)
+            return Done()
+        assert args[:5] == ('-n', 'operator-portal', 'get', 'secret', 'gpu-api-key')
+        return Done(base64.b64encode(stored['stringData']['key'].encode()).decode() if stored else '')
+
+    monkeypatch.setattr(gpu, 'kubectl', kubectl)
+    with pytest.raises(SystemExit, match='gpu-api-key of operator-portal is missing'):
+        gpu.api_key(create=False)
+    first = gpu.api_key()
+    assert len(first) == 64 and gpu.api_key() == first
+    assert stored['metadata'] == {'name': 'gpu-api-key', 'namespace': 'operator-portal', 'labels': {'hoover.dev/secret': 'gpu-api-key'}}
+    with pytest.raises(SystemExit, match='without spaces'):
+        gpu.write_key('a b')
 
 
 def test_gpu_nodes_reach_the_host_steps_with_their_flag(tmp_path):
@@ -544,10 +582,10 @@ def test_a_calls_node_takes_the_media_services_and_its_public_address():
     assert config.legacy_settings(without)['calls_node'] == 'edge'
 
 
-def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
+def test_public_dns_and_firewall_name_the_frontend_and_the_media_node(tmp_path):
     import config
     module = _public_endpoints()
-    remote = config.parse(site_text('remote.yml'))
+    remote = config.read(write_site(tmp_path, 'remote.yml'))
     records = {r['name']: r for r in module.dns(remote)}
     assert records['turn.example.org']['address'] == '203.0.113.11'
     assert records['hoover.zone-a.example.org']['address'] == '203.0.113.10'
@@ -562,7 +600,7 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
     assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script
 
 
-@pytest.mark.parametrize('fixture,name', [('remote.yml', 'zone-a'), ('remote.yml', 'research'), ('single-node.yml', 'main')])
+@pytest.mark.parametrize('fixture,name', [('remote.yml', 'zone-a'), ('remote.yml', 'zone-c'), ('single-node.yml', 'zone-a')])
 def test_no_workload_names_a_volume_or_mount_twice(tmp_path, fixture, name):
     import collections
     for item in items_of(target(fixture, name, tmp_path)):
@@ -577,22 +615,21 @@ def test_no_workload_names_a_volume_or_mount_twice(tmp_path, fixture, name):
 
 
 def test_an_extra_dataset_folder_is_a_read_only_export_of_its_data_node(tmp_path):
-    text = site_text('remote.yml').replace('collection_bucket_prefix: zone-a-c-',
-                                           "collection_bucket_prefix: zone-a-c-\n        extra_datasets: 'archive:worker-b:/storage/archive'")
-    site = config.parse(text)
-    assert site.hoovers['zone-a'].extra_datasets == (('archive', 'worker-b', '/storage/archive'),)
-    assert config.parse(config.dump(site)) == site
+    path = write_site(tmp_path, 'remote.yml')
+    state = json.loads(config.read(path).zone_state().read_text())
+    state['zones']['zone-a']['extra_datasets'] = ['archive:worker-b:/storage/archive']
+    config.read(path).zone_state().write_text(json.dumps(state))
+    site = config.read(path)
+    assert config.hoovers(site)['zone-a'].extra_datasets == (('archive', 'worker-b', '/storage/archive'),)
     assert config.legacy_settings(site)['hoover_data']['extra'] == {
         'zone-a': [{'name': 'archive', 'node': 'worker-b', 'path': '/storage/archive'}]}
-    path = tmp_path / 'site.yml'
-    path.write_text(text)
     t = manifests.target_from_site(path, 'zone-a', revision=REVISION, state=tmp_path / 'no-state',
                                    nfs={**NFS, 'worker-b': '10.43.0.12'})
     mounts = {m['name']: m for m in manifests.dataset_mounts(t)}
     assert mounts['archive']['path'] == '/data/archive' and mounts['archive']['writable'] is False
     assert mounts['archive']['volume'] == {'nfs': {'server': '10.43.0.12', 'path': '/extra/zone-a/archive', 'readOnly': True}}
-    with pytest.raises(config.SiteError, match='not a node with the role data'):
-        config.parse(text.replace('archive:worker-b:', 'archive:edge:'))
+    state['zones']['zone-a']['extra_datasets'] = ['archive:edge:/storage/archive']
+    assert any('not a node with the role data' in p for p in config.zones_problems(site, state))
 
 
 def test_the_proxy_reaches_the_sign_in_service_on_every_frontend_address(tmp_path):

@@ -17,6 +17,7 @@ import numpy as np
 import uvicorn
 
 from admission import CapabilityGate
+import gpu_key
 
 # Try to import tiktoken for token decoding (for LangChain compatibility)
 try:
@@ -48,6 +49,9 @@ app = FastAPI(
     version="1.0.0",
     description="OpenAI-compatible embedding API with reranking and metadata expansion capabilities."
 )
+
+# Every route except /health needs the GPU key (gpu_key.py). The start stops without it.
+gpu_key.install(app)
 
 # Add CORS middleware
 app.add_middleware(

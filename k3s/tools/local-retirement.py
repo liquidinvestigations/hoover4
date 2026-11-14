@@ -116,7 +116,8 @@ def inventory(dest):
                 'uid': c['metadata']['uid'], 'volume': c['spec'].get('volumeName', ''),
                 'size': c['spec']['resources']['requests']['storage'], 'mode': c['spec'].get('volumeMode', 'Filesystem'),
                 'class': c['spec'].get('storageClassName')}
-    source_inis = [h.source_ini for h in s.hoovers.values() if h.source_ini]
+    # The Compose install of this workstation is the hoover4.ini of the checkout. The site file names no Compose install.
+    source_inis = [str(p) for p in (k3s_settings.HOOVER4 / 'hoover4.ini',) if p.exists()]
     for ini in source_inis:
         try:
             found = config.read_source_ini(ini, check_paths=False)

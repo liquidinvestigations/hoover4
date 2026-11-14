@@ -156,6 +156,8 @@ pdf_ocr_provider      = tesseract
 it renders its endpoint from `host` and `vllm_port`. The model and its capacity are
 constants of [deploy.py](../../deploy.py), so both hosts serve the same model. Copy the same
 `[ai_services]` section to both hosts.
+The file of `vllm_api_key_file` holds the GPU key, which every GPU service checks. Copy the
+same key file to both hosts.
 
 `--print-env` settles it before anything starts:
 

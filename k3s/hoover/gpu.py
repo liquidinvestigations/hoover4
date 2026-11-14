@@ -2,22 +2,25 @@
 """The inference proxy between the Hoover installations and the shared GPU pool.
 
 The GPU pool serves the three GPU services of ai_services: the model server (21960), the NER, embedding and reranker
-server (21961) and EasyOCR (21962). Only the model server checks a key. vars.gpu_pool of the site file
-(../config.py) names the pool: the GPU nodes of the site, or the address of a shared pool, and the key file of the
-model server.
+server (21961) and EasyOCR (21962). vars.gpu_pool of the site file (../config.py) names the pool: the GPU nodes of the
+site, or the address of a shared pool, for example a Compose GPU host.
+The installation has one GPU key. The script generates it once and keeps it in the Secret gpu-api-key of the namespace
+operator-portal (api_key()). The operator portal shows it. Each GPU service checks it on every port except /health,
+and a Compose GPU host needs the same key in its [ai_services] vllm_api_key_file.
 - The Deployment gpu-proxy in the namespace gpu-proxy is the only cluster workload that reaches the pool. It accepts a
   request with the headers X-Hoover-Zone and X-Hoover-Zone-Token, where the token is the HMAC-SHA256 of the zone name
-  with the proxy key. It answers 403 to any other request. It sends the model server key to the model server port and
-  no key to the other ports. Its access log names the zone of each request.
+  with the GPU key. It answers 403 to any other request. It sends the GPU key on every port. Its access log names the
+  zone of each request.
 - The Deployment gpu in each Hoover namespace adds the headers of its zone and forwards to gpu-proxy. Hoover names gpu
   as its GPU host (zone_ini.py), so the installation needs no change of the Hoover clients and never holds the key.
-The proxy derives each token from the zone name, so a new zone needs no change of the proxy.
-A pool of GPU nodes of the site (../platform/gpu/gpu_pool.py) has a gateway that checks the pool key on every port, so
-the proxy sends the key on every port to it. A pool at an address is a Compose GPU host, so the proxy sends the key to
-the model server port only.
-The proxy key is gpu-proxy-key of the state folder, which the script creates once.
+The proxy derives each token from the zone name, so a new zone needs no change of the proxy. A new GPU key changes
+every token: run gpu.py install, ../platform/gpu/gpu_pool.py apply and ../zones/zone.py apply of each zone after it.
 Usage: gpu.py token <zone>             prints the token of a zone
-       gpu.py install [<site.ini>]     applies the central proxy with the admin kubeconfig
+       gpu.py install [<site file>]    applies the central proxy with the admin kubeconfig
+       gpu.py ensure-key               creates the GPU key when it is missing, and prints no key
+       gpu.py key                      creates the GPU key when it is missing, and prints it
+       gpu.py set-key                  replaces the GPU key with the key on standard input, for example the key of a
+                                       Compose GPU host
 """
 import hashlib
 import hmac
@@ -31,12 +34,14 @@ import settings  # noqa: E402
 
 NS = 'gpu-proxy'
 NGINX = 'docker.io/library/nginx:1.29.3-alpine@sha256:b3c656d55d7ad751196f21b7fd2e8d4da9cb430e32f646adcf92441b72f82b14'
-PORTS = {21960: True, 21961: False, 21962: False}
-KEY = settings.PRIVATE / 'gpu-proxy-key'
+PORTS = (21960, 21961, 21962)
+# The Secret of the GPU key. The operator portal reads it from its own namespace.
+KEY_NAMESPACE = 'operator-portal'
+KEY_SECRET = 'gpu-api-key'
 
 
 def site_pool(site_path=None):
-    """The address and the model server key file of the GPU pool of the site file."""
+    """The address of the GPU pool of the site file, and whether it is the gateway of the GPU nodes of the site."""
     import config as site_config
     site = site_config.read(site_path or settings.SITE_FILE)
     pool = site.gpu_pool
@@ -44,8 +49,8 @@ def site_pool(site_path=None):
         raise SystemExit('the site file has no vars.gpu_pool.')
     if pool.get('nodes'):
         # The GPU nodes of the site run the pool with its gateway (../platform/gpu/gpu_pool.py).
-        return {'address': 'gateway.gpu-pool.svc.cluster.local', 'api_key_file': pool['api_key_file'], 'gateway': True}
-    return {'address': pool['address'], 'api_key_file': pool['api_key_file'], 'gateway': False}
+        return {'address': 'gateway.gpu-pool.svc.cluster.local', 'gateway': True}
+    return {'address': pool['address'], 'gateway': False}
 # A model answer can take minutes, and an OCR request can carry a large image.
 PROXY = '''proxy_http_version 1.1;
       proxy_buffering off;
@@ -55,15 +60,47 @@ PROXY = '''proxy_http_version 1.1;
       client_max_body_size 512m;'''
 
 
-def key():
-    if not KEY.exists():
-        KEY.write_text(secrets.token_hex(32))
-        KEY.chmod(0o600)
-    return KEY.read_text().strip()
+def kubectl(*args, input=None, check=True):
+    import subprocess
+    return subprocess.run(['kubectl', '--kubeconfig', settings.KUBECONFIG, *args], input=input, text=True,
+                          capture_output=True, check=check)
+
+
+def secret_object(value):
+    return {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque',
+            'metadata': {'name': KEY_SECRET, 'namespace': KEY_NAMESPACE, 'labels': {'hoover.dev/secret': 'gpu-api-key'}},
+            'stringData': {'key': value}}
+
+
+def write_key(value):
+    """Store a GPU key in the Secret gpu-api-key. The namespace is created when it is missing."""
+    if not value or any(c.isspace() for c in value):
+        raise SystemExit('a GPU key is one word without spaces.')
+    kubectl('apply', '-f', '-', input=json.dumps({'apiVersion': 'v1', 'kind': 'Namespace',
+                                                   'metadata': {'name': KEY_NAMESPACE}}))
+    kubectl('apply', '-f', '-', input=json.dumps(secret_object(value)))
+
+
+def api_key(create=True):
+    """The GPU key of the installation from the Secret gpu-api-key. Without the Secret, create=True generates a key and
+    stores it, and create=False stops with a message."""
+    import base64
+    found = kubectl('-n', KEY_NAMESPACE, 'get', 'secret', KEY_SECRET, '--ignore-not-found', '-o', 'jsonpath={.data.key}').stdout
+    if found.strip():
+        return base64.b64decode(found.strip()).decode().strip()
+    if not create:
+        raise SystemExit(f'the Secret {KEY_SECRET} of {KEY_NAMESPACE} is missing. deploy-k3s up creates it.')
+    write_key(secrets.token_hex(32))
+    return api_key(create=False)
+
+
+def zone_token(gpu_key, zone):
+    """The token of a zone: the HMAC-SHA256 of the zone name with the GPU key."""
+    return hmac.new(gpu_key.encode(), zone.encode(), hashlib.sha256).hexdigest()
 
 
 def token(zone):
-    return hmac.new(key().encode(), zone.encode(), hashlib.sha256).hexdigest()
+    return zone_token(api_key(), zone)
 
 
 # The main configuration of the central proxy. It loads the njs module, which the image has and does not load.
@@ -123,9 +160,8 @@ def forwarder(zone, namespace):
     return pod('gpu', namespace, config, env, list(PORTS))
 
 
-def proxy(box):
-    """The central proxy. The njs function checks the zone token with the proxy key."""
-    vllm_key = Path(box['api_key_file']).read_text().strip()
+def proxy(box, gpu_key):
+    """The central proxy. The njs function checks the zone token with the GPU key, and every port sends the GPU key."""
     servers = ''.join(f'''
   server {{
     listen {p};
@@ -134,18 +170,18 @@ def proxy(box):
       proxy_pass http://{box["address"]}:{p};
       proxy_set_header X-Hoover-Zone "";
       proxy_set_header X-Hoover-Zone-Token "";
-      proxy_set_header Authorization {'"Bearer ${VLLM_KEY}"' if checks or box.get('gateway') else '""'};
+      proxy_set_header Authorization "Bearer ${{GPU_KEY}}";
       {PROXY}
     }}
-  }}''' for p, checks in PORTS.items())
+  }}''' for p in PORTS)
     config = {
-        'auth.js.template': '''// Accept a request when its zone token is the HMAC-SHA256 of the zone name with the proxy key.
+        'auth.js.template': '''// Accept a request when its zone token is the HMAC-SHA256 of the zone name with the GPU key.
 const crypto = require('crypto');
 function zone_ok(r) {
   const zone = r.headersIn['X-Hoover-Zone'] || '';
   const given = r.headersIn['X-Hoover-Zone-Token'] || '';
   if (!/^zone-[a-z0-9]{1,12}$/.test(zone)) return 'no';
-  const want = crypto.createHmac('sha256', '${GPU_PROXY_KEY}').update(zone).digest('hex');
+  const want = crypto.createHmac('sha256', '${GPU_KEY}').update(zone).digest('hex');
   return given.length === want.length && given === want ? 'yes' : 'no';
 }
 export default {zone_ok};
@@ -158,13 +194,15 @@ log_format zone '$time_iso8601 $http_x_hoover_zone $server_port $request_method 
 access_log /dev/stdout zone;{servers}
 ''',
     }
-    env = [{'name': 'GPU_PROXY_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-proxy', 'key': 'proxy-key'}}},
-           {'name': 'VLLM_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-proxy', 'key': 'vllm-key'}}},
-           {'name': 'NGINX_ENVSUBST_FILTER', 'value': '^(GPU_PROXY_KEY|VLLM_KEY)$'},
+    env = [{'name': 'GPU_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-proxy', 'key': 'gpu-key'}}},
+           {'name': 'NGINX_ENVSUBST_FILTER', 'value': '^GPU_KEY$'},
            {'name': 'NGINX_ENVSUBST_OUTPUT_DIR', 'value': '/etc/nginx/conf.d'}]
     items = pod('gpu-proxy', NS, config, env, list(PORTS), runtime='gvisor', main=MAIN)
+    # A copy of the GPU key in the namespace of the proxy. The config hash of pod() does not see a new key, so the
+    # Deployment carries the hash of the key too, and a new key restarts the proxy.
     secret = {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'gpu-proxy', 'namespace': NS}, 'type': 'Opaque',
-              'stringData': {'proxy-key': key(), 'vllm-key': vllm_key}}
+              'stringData': {'gpu-key': gpu_key}}
+    items[1]['spec']['template']['metadata']['annotations']['hoover.dev/key'] = hashlib.sha256(gpu_key.encode()).hexdigest()[:12]
     # Only the zone forwarders reach the proxy, and the proxy reaches only the GPU box and the cluster DNS.
     policy = {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': 'gpu-proxy', 'namespace': NS},
               'spec': {'podSelector': {}, 'policyTypes': ['Ingress', 'Egress'],
@@ -182,7 +220,7 @@ access_log /dev/stdout zone;{servers}
 def install(site_path=None):
     """Apply the central proxy with the admin kubeconfig."""
     import subprocess
-    items = {'apiVersion': 'v1', 'kind': 'List', 'items': proxy(site_pool(site_path))}
+    items = {'apiVersion': 'v1', 'kind': 'List', 'items': proxy(site_pool(site_path), api_key())}
     subprocess.run(['kubectl', '--kubeconfig', settings.KUBECONFIG, 'apply', '-f', '-'], input=json.dumps(items), text=True, check=True)
     subprocess.run(['kubectl', '--kubeconfig', settings.KUBECONFIG, '-n', NS, 'rollout', 'status', 'deployment/gpu-proxy', '--timeout=300s'],
                    check=True)
@@ -191,6 +229,14 @@ def install(site_path=None):
 if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == 'token':
         print(token(sys.argv[2]))
+    elif sys.argv[1:] == ['ensure-key']:
+        api_key()
+        print(json.dumps({'gpu_key': f'Secret {KEY_SECRET} of {KEY_NAMESPACE}'}))
+    elif sys.argv[1:] == ['key']:
+        print(api_key())
+    elif sys.argv[1:] == ['set-key']:
+        write_key(sys.stdin.read().strip())
+        print(json.dumps({'gpu_key': 'replaced', 'next': 'run gpu.py install, gpu_pool.py apply and zone.py apply of each zone'}))
     elif sys.argv[1:2] == ['install'] and len(sys.argv) <= 3:
         install(sys.argv[2] if len(sys.argv) == 3 else None)
     else:

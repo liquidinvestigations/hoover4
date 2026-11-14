@@ -204,20 +204,20 @@ def test_the_export_check_finds_a_truncated_manticore_meta_file(tmp_path):
 # The store client, the destination node, the recovery set and the zone closure ---------------------------------------
 
 import config  # noqa: E402
-from conftest import site_text  # noqa: E402
+from conftest import site_text, write_site  # noqa: E402
 
 
-def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password():
+def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password(tmp_path):
     backups = backups_module()
-    remote = config.parse(site_text('remote.yml'))
-    ns, pod, container, command = backups.clickhouse_command(remote.hoovers['zone-a'])
+    zones = config.hoovers(config.read(write_site(tmp_path, 'remote.yml')))
+    ns, pod, container, command = backups.clickhouse_command(zones['zone-a'])
     assert (ns, pod, container) == ('zone-a', 'clickhouse-0', 'clickhouse')
     assert '--user zone_a --password "$CH_ZONE_PASSWORD"' in command
-    ns, pod, container, command = backups.clickhouse_command(remote.hoovers['research'])
+    ns, pod, container, command = backups.clickhouse_command(zones['zone-c'])
     assert (ns, pod, container) == ('hoover-zone-c', 'clickhouse-0', None) and '${CLICKHOUSE_PASSWORD:-hoover4}' in command
     calls = []
     backups.kubectl = lambda *args, **kw: calls.append(args) or ''
-    backups.clickhouse(remote.hoovers['zone-a'], 'SELECT 1')
+    backups.clickhouse(zones['zone-a'], 'SELECT 1')
     assert calls[0][:8] == ('-n', 'zone-a', 'exec', '-i', 'clickhouse-0', '-c', 'clickhouse', '--')
     assert not any('hoover4' == a for a in calls[0])
 
@@ -227,7 +227,7 @@ def local_destination(tmp_path):
     backups = backups_module()
     dest = tmp_path / 'dest'
     text = site_text('single-node.yml').replace('path: /srv/hoover4-backups', f'path: {dest}')
-    s = config.parse(text)
+    s = config.read(write_site(tmp_path, 'single-node.yml', text))
     return backups, s, dest
 
 

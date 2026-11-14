@@ -26,6 +26,7 @@ import time
 from dataclasses import dataclass
 
 from agent_common import telemetry
+from agent_common.embeddings import gpu_headers
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +153,7 @@ def rerank(query: str, documents: list[str], model: str | None = None) -> tuple[
         response = requests.post(
             f"{url}/rerank",
             json=payload,
+            headers=gpu_headers(),
             timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
         )
     except requests.exceptions.ConnectTimeout as exc:

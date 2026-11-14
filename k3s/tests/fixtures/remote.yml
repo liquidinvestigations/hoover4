@@ -1,4 +1,4 @@
-# Three nodes, a public node, a calls node and a shared GPU pool, with two zones of the earlier cluster and a new one.
+# Three nodes, a public node, a calls node and a shared GPU pool. remote.zones.json holds its zones.
 hoover4:
   vars:
     domain: example.org
@@ -11,27 +11,6 @@ hoover4:
       office: {cidr: 192.0.2.0/24}
     gpu_pool:
       nodes: gpu-1
-      api_key_file: /home/operator/hoover4/gpu-api-key
-    hoovers:
-      zone-a:
-        zone: zone-a
-        home_node: edge
-        stores: zone
-        temporal_backend: postgresql
-        history_source: k3s-branch
-        clickhouse_database_prefix: zone_a
-        manticore_table_prefix: zone_a_
-        system_bucket: zone-a-system
-        collection_bucket_prefix: zone-a-c-
-      research:
-        zone: zone-c
-        home_node: server-a
-        stores: local
-        temporal_backend: cassandra
-        clickhouse_database_prefix: Research
-        manticore_table_prefix: research_
-        system_bucket: research-system
-        collection_bucket_prefix: research-c-
   hosts:
     server-a:
       node_roles: control-plane, worker, registry, data
@@ -66,4 +45,3 @@ hoover4:
       node_roles: gpu
       networks:
         site: {address: 10.0.0.5, public_key: gpu-1-public-key, interface: wg-site, managed: false}
-      gpu_api_key_file: /root/vllm-key

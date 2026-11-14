@@ -62,11 +62,14 @@ services:
       # serves both). Empty disables the vector branch and the search is keyword-only.
       - EMBEDDINGS_URL=${EMBEDDINGS_URL:-}
       - RERANK_URL=${RERANK_URL:-}
+      # The GPU key, which both calls send. The file is empty without the GPU tier.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}
       - GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=5)\""]

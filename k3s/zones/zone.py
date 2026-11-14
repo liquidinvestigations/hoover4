@@ -2,13 +2,18 @@
 """Create, upgrade or delete one zone: openDesk, its stores and its Hoover. This is the one installer command of a zone.
 
 Usage:
-  zone.py apply <zone> [--home <node>]   create the zone, or bring it to the source state. --home is required for a
-                                          new zone and must match for an existing zone.
+  zone.py apply <zone> [--home <node>] [--stores zone|local] [--temporal-backend postgresql|cassandra]
+                [--dataset name:node:/path ...]
+                                          create the zone, or bring it to the source state. --home is required for a
+                                          new zone. The other options set the values of a new zone (zonestate.py),
+                                          and each option must match for an existing zone.
   zone.py delete <zone>                   delete the zone namespaces with their volumes, and the zone entry.
+The zone state of the state folder holds the zones. The site file names no zone.
 Apply reads the current state before each step. Verify unchanged output with ../tools/zone-snapshot.py after an upgrade.
 An apply of a disabled zone saves a private render without applying objects or running hooks.
 The steps of apply, in order:
-  1. The zone state (zonestate.py) gets the zone with its home node. zones.py writes the openDesk values.
+  1. The zone state (zonestate.py) gets the zone with its home node and the values of its Hoover installation.
+     zones.py writes the openDesk values.
   2. The workstation builds and pushes the images that the registry does not have (../images/).
   3. The cluster gets the zone pod policy (manifests/zone-pods.yaml) and the XWiki extension repository. The zone
      runner cannot change the pod policy, so with its kubeconfig the step only checks that the cluster has the policy
@@ -25,8 +30,8 @@ The steps of apply, in order:
      The installer replaces outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      gate.py adds the sign-in service of the zone gate.
-  7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). An installation with
-     stores = local in the site file gets its Secrets from setup.py local-secrets and its objects from manifests.py.
+  7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
+     stores = local in the zone state gets its Secrets from setup.py local-secrets and its objects from manifests.py.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -88,7 +93,14 @@ def apply_manifest(text, namespace=None):
             print(line, flush=True)
 
 
-def register(zone, home):
+def register(zone, home, values=None):
+    """Add a new zone to the zone state, or check that an existing zone has the given home node and values.
+
+    values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A value that is not given
+    keeps its default.
+    """
+    import config
+    values = {k: v for k, v in (values or {}).items() if v not in (None, '', [], ())}
     try:
         state = zonestate.load()
     except zonestate.ZoneStateError:
@@ -99,13 +111,22 @@ def register(zone, home):
     if entry is None:
         if not home:
             raise SystemExit(f'{zone} is a new zone, so it needs --home <node>')
-        kubectl('get', 'node', home)
         # bootstrapped turns true after the first complete openDesk install (opendesk()).
-        state['zones'][zone] = {'enabled': True, 'home': home, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False}
+        entry = {'enabled': True, 'home': home, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, **values}
+        problems = config.zone_problems(zone, entry, settings.SITE)
+        if problems:
+            raise SystemExit('; '.join(problems))
+        kubectl('get', 'node', home)
+        state['zones'][zone] = entry
         zonestate.save(state)
         step('zone-state', zone=zone, home=home, change='added')
-    elif home and entry.get('home') != home:
+        return zonestate.home(zone)
+    if home and entry.get('home') != home:
         raise SystemExit(f'{zone} has the home node {entry.get("home")}. A move to another node is not supported.')
+    for key, value in values.items():
+        default = config.ZONE_VALUES.get(key, ('',))[0]
+        if entry.get(key, default) != value:
+            raise SystemExit(f'{zone} has {key} = {entry.get(key, default)}. A change of an existing zone is not supported.')
     return zonestate.home(zone)
 
 
@@ -344,8 +365,9 @@ def opendesk(zone):
 
 
 def hoover(zone):
-    installation = next((h for h in (settings.SITE.hoovers.values() if settings.SITE else []) if h.zone == zone), None)
-    if installation is not None and installation.stores == 'local':
+    import config
+    installation = config.zone_hoover(zone, zonestate.load()['zones'][zone])
+    if installation.stores == 'local':
         # The local store layout runs the Compose stores in the Hoover namespace (../hoover/manifests.py).
         run(sys.executable, SOURCE / 'hoover' / 'setup.py', zone, 'local-secrets')
         run(sys.executable, SOURCE / 'hoover' / 'manifests.py', installation.name, 'apply')
@@ -376,8 +398,8 @@ def hoover(zone):
     run(sys.executable, SOURCE / 'hoover' / 'manifests.py', zone, 'apply')
 
 
-def apply(zone, home):
-    home = register(zone, home)
+def apply(zone, home, values=None):
+    home = register(zone, home, values)
     run(sys.executable, HERE / 'zones.py', quiet=True)
     step('values', zone=zone, home=home)
     if not zonestate.enabled(zone):
@@ -430,18 +452,23 @@ def delete(zone):
 
 
 def main():
-    args = sys.argv[1:]
-    home = None
-    if '--home' in args:
-        i = args.index('--home')
-        if i + 1 == len(args):
-            raise SystemExit('--home needs a node name')
-        home = args[i + 1]
-        del args[i:i + 2]
-    if len(args) != 2 or args[0] not in ('apply', 'delete') or not zonestate_name(args[1]):
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('command', choices=('apply', 'delete'))
+    parser.add_argument('zone')
+    parser.add_argument('--home')
+    parser.add_argument('--stores')
+    parser.add_argument('--temporal-backend')
+    parser.add_argument('--dataset', action='append', default=[], help='name:node:/path of a read-only dataset folder')
+    args = parser.parse_args()
+    if not zonestate_name(args.zone):
         raise SystemExit(__doc__)
     settings.use_kubeconfig()
-    (apply if args[0] == 'apply' else lambda z, _: delete(z))(args[1], home)
+    if args.command == 'delete':
+        delete(args.zone)
+        return
+    apply(args.zone, args.home, {'stores': args.stores, 'temporal_backend': args.temporal_backend,
+                                 'extra_datasets': args.dataset})
 
 
 def zonestate_name(name):

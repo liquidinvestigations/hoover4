@@ -127,3 +127,24 @@ def test_zone_operations_accept_names_only(monkeypatch):
         module.onboarding('zone-a/../../secrets')
     assert module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-a', 'home': 'node-a'})
     assert created[0]['data']['zone'] == 'zone-a'
+
+
+def test_the_gpu_key_needs_the_operator_and_reads_only_its_secret(portal, monkeypatch):
+    for headers in ({'Origin': 'https://operator.hoover.test'},
+                    {'X-Forwarded-User': 'admin', 'X-Operator-Proxy-Secret': SECRET}):
+        request = urllib.request.Request(portal + '/gpu/key', data=b'{}', method='POST', headers=headers)
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=10)
+        assert error.value.code == 403
+    spec = importlib.util.spec_from_file_location('portal_server_gpu', OPERATOR / 'portal-server.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    import base64
+    paths = []
+    monkeypatch.setattr(module, 'api', lambda method, path, body=None, content=None:
+                        paths.append((method, path)) or {'data': {'key': base64.b64encode(b'k123\n').decode()}})
+    assert module.gpu_key() == {'key': 'k123'}
+    assert paths == [('GET', '/api/v1/namespaces/operator-portal/secrets/gpu-api-key')]
+    docs = [d for d in yaml.safe_load_all((OPERATOR / 'operator-login.yaml').read_text()) if d]
+    role = next(d for d in docs if d['kind'] == 'Role' and d['metadata']['name'] == 'portal-operations')
+    assert {'apiGroups': [''], 'resources': ['secrets'], 'resourceNames': ['gpu-api-key'], 'verbs': ['get']} in role['rules']

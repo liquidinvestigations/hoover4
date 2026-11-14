@@ -109,7 +109,7 @@ COPY --from=builder /root/.EasyOCR /opt/easyocr-baked
 ENV EASYOCR_BAKED_DIR=/opt/easyocr-baked
 
 WORKDIR /app
-COPY easyocr_server.py language_groups.py /app/
+COPY easyocr_server.py language_groups.py gpu_key.py /app/
 
 EXPOSE 8000
 

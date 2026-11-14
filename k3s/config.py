@@ -9,18 +9,15 @@ secret value. Tunings, application switches and schedules are operator settings 
 secret is a reference to a private file on the node that reads it.
 
   hoover4:
-    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool, backup and hoovers
+    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool and backup
       networks:          one entry per WireGuard network: interface, cidr, hubs, port and managed (NETWORK_KEYS)
       lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
       backup:            one node and one host folder that receive the backups
-      hoovers:           one entry per Hoover installation: its zone, home node, store layout, Temporal backend,
-                         history source, storage identity, an optional source_ini of an earlier Compose install, and
-                         optional extra_datasets: read-only dataset folders of data nodes, as name:node:/path
     hosts:
       <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
-                         public_firewall, the TLS mode of a public node and the secret files of the node
+                         public_firewall, the TLS mode of a public node and its secret files
 
 The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the GPUs and the volume
 groups into facts/<node>.json of the state folder. The site file does not state them.
@@ -30,8 +27,9 @@ The driver connects to a node with `ssh <node name>` and the SSH configuration o
 another alias of that configuration for the node. The local node of a single-node site connects to localhost.
 The node roles are control-plane, worker, public, registry, data, calls and gpu. The value `single` gives one host
 every role except calls and gpu. A site with one node needs no network, no LAN address and no public address.
-The storage identity of a Hoover installation is independent of its zone name. A migrated installation keeps the
-database, table and bucket names of its source install.
+The site file names no zone. The zone state of the state folder (zone-state.json, ../zones/zonestate.py) holds each
+zone, and hoovers() gives the Hoover installation of each zone. The storage names of an installation come from its
+zone id (Hoover). The GPU services share one generated key, which the cluster keeps in a Secret (../hoover/gpu.py).
 
 parse() refuses an unknown group, an unknown key, a missing resource and an incompatible role combination, and names
 every problem in one message. It changes nothing on any host. read_source_ini() reads the hoover4.ini of a Compose
@@ -92,7 +90,7 @@ STORAGE_RESERVE = 0.05
 # secret (the absolute path of a private file), alias (an SSH host alias).
 SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name')}
 # The mappings of hoover4.vars beside the site values.
-SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'hoovers')
+SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup')
 # A WireGuard network: vars.networks.<name>. hubs names the nodes that every other node of the network peers with.
 # Without hubs, every node peers with every other node. managed: the installer writes and starts the interface on each
 # node of the network and adds its peers. Without it, the installer reads the interface and changes nothing on it.
@@ -113,31 +111,23 @@ NODE_KEYS = {
     'public_address': (False, 'address'), 'k3s_volume_group': (False, 'name_any'), 'stop_docker': (False, 'bool'),
     'public_firewall': (False, 'bool'), 'reserved': (False, 'reserved'), 'data_root': (False, 'path'),
     'tls_mode': (False, ('choice', tuple(TLS_MODES))), 'tls_dns_credentials_file': (False, 'secret'),
-    'tls_certificate_file': (False, 'secret'), 'tls_key_file': (False, 'secret'), 'gpu_api_key_file': (False, 'secret'),
+    'tls_certificate_file': (False, 'secret'), 'tls_key_file': (False, 'secret'),
 }
-GPU_POOL_KEYS = {
-    'nodes': (False, 'names'), 'address': (False, 'address'), 'api_key_file': (False, 'secret'),
-}
+# The GPU pool names nodes or an address. Its key is a generated Secret of the cluster, so the site file names no key.
+GPU_POOL_KEYS = {'nodes': (False, 'names'), 'address': (False, 'address')}
 BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
-HOOVER_KEYS = {
-    'zone': (True, 'zone'), 'home_node': (True, 'name'), 'stores': (True, ('choice', ('local', 'zone'))),
-    'temporal_backend': (True, ('choice', ('cassandra', 'postgresql'))),
-    'history_source': (False, ('choice', ('compose', 'k3s-branch'))),
-    'clickhouse_database_prefix': (True, 'identity'), 'manticore_table_prefix': (True, 'identity'),
-    'system_bucket': (True, 'identity'), 'collection_bucket_prefix': (True, 'identity'),
-    'source_ini': (False, 'path'), 'chat_control_dir': (False, 'path'), 'extra_datasets': (False, 'datasets'),
-}
+# The values of a zone entry of the zone state that the Hoover installation of the zone reads (zone_hoover()):
+# stores, the store layout, and temporal_backend, the store of Temporal, each with its default first. extra_datasets
+# lists read-only dataset folders of data nodes as name:node:/path.
+ZONE_VALUES = {'stores': ('zone', 'local'), 'temporal_backend': ('postgresql', 'cassandra')}
 # The defaults of the optional keys. A key without a default here is empty. public_firewall has no default here: it is
 # true on a public or calls node with a public address (parse).
 DEFAULTS = {
     'node': {'local': 'false', 'stop_docker': 'false', 'data_root': '/srv/hoover-data'},
     'network': {'interface': 'wg0', 'port': '51820', 'managed': 'true'},
-    'hoover': {'history_source': 'compose'},
 }
-# The secret files that each role reads. The control plane reads the files of the GPU pool, because it creates the
-# Secrets of the cluster.
-SECRET_ROLES = {'tls_dns_credentials_file': 'public', 'tls_certificate_file': 'public', 'tls_key_file': 'public',
-                'gpu_api_key_file': 'gpu'}
+# The secret files that each role reads.
+SECRET_ROLES = {'tls_dns_credentials_file': 'public', 'tls_certificate_file': 'public', 'tls_key_file': 'public'}
 # The storage identity keys of a Hoover installation and the names in storage_identity.json.
 IDENTITY = {'clickhouse_database_prefix': 'clickhouse_database_prefix', 'manticore_table_prefix': 'manticore_table_prefix',
             'system_bucket': 'system_bucket', 'collection_bucket_prefix': 'collection_bucket_prefix'}
@@ -194,7 +184,6 @@ class Node:
     tls_dns_credentials_file: str = ''
     tls_certificate_file: str = ''
     tls_key_file: str = ''
-    gpu_api_key_file: str = ''
 
     def has(self, role):
         return role in self.roles
@@ -207,23 +196,41 @@ class Node:
 
 @dataclass
 class Hoover:
-    name: str
+    """The Hoover installation of one zone, from the zone entry of the zone state (zone_hoover()).
+
+    The installation has the name of its zone. Its storage names come from the zone id: for zone-x the ClickHouse
+    database prefix zone_x, the Manticore table prefix zone_x_, the system bucket zone-x-system and the collection
+    bucket prefix zone-x-c-.
+    """
     zone: str
     home_node: str
-    stores: str
-    temporal_backend: str
-    clickhouse_database_prefix: str
-    manticore_table_prefix: str
-    system_bucket: str
-    collection_bucket_prefix: str
-    history_source: str = 'compose'
-    source_ini: str = ''
-    chat_control_dir: str = ''
+    stores: str = 'zone'
+    temporal_backend: str = 'postgresql'
     extra_datasets: tuple = ()
+
+    @property
+    def name(self):
+        return self.zone
 
     @property
     def namespace(self):
         return 'hoover-' + self.zone
+
+    @property
+    def clickhouse_database_prefix(self):
+        return self.zone.replace('-', '_')
+
+    @property
+    def manticore_table_prefix(self):
+        return self.zone.replace('-', '_') + '_'
+
+    @property
+    def system_bucket(self):
+        return f'{self.zone}-system'
+
+    @property
+    def collection_bucket_prefix(self):
+        return f'{self.zone}-c-'
 
     def identity(self):
         """The storage identity as the environment variables of storage_identity.json."""
@@ -236,7 +243,6 @@ class Site:
     domain: str
     control_plane: str
     nodes: dict
-    hoovers: dict = field(default_factory=dict)
     # {name: Network}, in the order of the site file. The first network is the cluster network (node_address()).
     networks: dict = field(default_factory=dict)
     # {name: cidr or empty}.
@@ -268,15 +274,86 @@ class Site:
         """The folder of the operator state: operator/ of the state folder."""
         return self.state_folder() / 'operator'
 
+    def zone_state(self):
+        """The zone state file of the site: zone-state.json of the state folder (../zones/zonestate.py)."""
+        return self.state_folder() / 'zone-state.json'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Zones
+# ----------------------------------------------------------------------------------------------------------------------
+
+def zone_problems(zone, entry, site=None):
+    """The problems of the Hoover values of one zone entry of the zone state, as messages. With a site, the check
+    also needs a home node with the role worker and a data node for each extra dataset."""
+    label = f'the zone {zone}'
+    problems = []
+    if not ZONE.fullmatch(zone):
+        problems.append(f'{label} must be zone- and 1 to 12 characters from a-z and 0-9.')
+    for key, choices in ZONE_VALUES.items():
+        if entry.get(key, choices[0]) not in choices:
+            problems.append(f'{label} has {key} = {entry.get(key)}, which is not one of {", ".join(choices)}.')
+    datasets = _value(f'{label} extra_datasets', 'datasets', _raw(entry.get('extra_datasets') or ''), problems) or ()
+    if site is None:
+        return problems
+    home = site.nodes.get(entry.get('home') or '')
+    if home is None:
+        problems.append(f'{label} has the home node {entry.get("home")}, which is not a node of the site.')
+    elif not home.has('worker'):
+        problems.append(f'{label} has the home node {home.name}, which does not have the role worker.')
+    for name, node_name, _ in datasets:
+        if node_name not in site.nodes or not site.nodes[node_name].has('data'):
+            problems.append(f'{label} extra_datasets names {node_name}, which is not a node with the role data.')
+        if name in ('testdata', 'uploads'):
+            problems.append(f'{label} extra_datasets uses the reserved name {name}.')
+    if datasets and site.single:
+        problems.append(f'{label} has extra_datasets, which only a site with NFS data folders reads.')
+    return problems
+
+
+def zone_hoover(zone, entry, site=None):
+    """The Hoover installation of one zone entry of the zone state. A value outside ZONE_VALUES raises SiteError."""
+    problems = zone_problems(zone, entry, site)
+    if problems:
+        raise SiteError(f'the zone state has {len(problems)} problem{"s" if len(problems) != 1 else ""}:\n    '
+                        + '\n    '.join(problems))
+    datasets = _value('extra_datasets', 'datasets', _raw(entry.get('extra_datasets') or ''), []) or ()
+    return Hoover(zone=zone, home_node=entry.get('home', ''), extra_datasets=datasets,
+                  **{k: entry.get(k, choices[0]) for k, choices in ZONE_VALUES.items()})
+
+
+def hoovers(site, data=None):
+    """{zone: Hoover} of every zone of the zone state of a site, in the order of the file.
+
+    data is the parsed zone state. Without it, the function reads the zone state file of the site. A site without a
+    file or without a zone state has no zone. The function checks the values of each entry, and zones_problems()
+    checks them against the nodes of the site.
+    """
+    return {zone: zone_hoover(zone, entry) for zone, entry in _zone_entries(site, data).items()}
+
+
+def zones_problems(site, data=None):
+    """The problems of every zone of the zone state of a site, with the checks against its nodes, as messages."""
+    return [p for zone, entry in _zone_entries(site, data).items() for p in zone_problems(zone, entry, site)]
+
+
+def _zone_entries(site, data):
+    if data is None:
+        if not site.path or not site.zone_state().exists():
+            return {}
+        try:
+            data = json.loads(site.zone_state().read_text())
+        except (OSError, ValueError) as error:
+            raise SiteError(f'the zone state {site.zone_state()} is unreadable: {error}') from None
+    zones = data.get('zones') if isinstance(data, dict) else None
+    if not isinstance(zones, dict):
+        raise SiteError('the zone state has no zone table.')
+    return zones
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Values
 # ----------------------------------------------------------------------------------------------------------------------
-
-def _identity_patterns():
-    settings = json.loads(STORAGE_IDENTITY.read_text())['settings']
-    return {k: re.compile(settings[v]['pattern']) for k, v in IDENTITY.items()}
-
 
 def _value(label, kind, raw, problems):
     """The typed value of one raw text, or None after a problem."""
@@ -378,8 +455,6 @@ def _value(label, kind, raw, problems):
             problems.append(f'{label} = {raw} must look like memory=6Gi,cpu=2.')
             return None
         return raw
-    if kind == 'identity':
-        return raw
     if kind == 'datasets':
         # name:node:/absolute/path, separated by commas. Each is a read-only dataset folder of a data node.
         items = []
@@ -417,9 +492,6 @@ def _section(label, values, keys, defaults, problems):
                 problems.append(f'{name} is a mapping. It needs a value.')
                 continue
             raw = _raw(values[key])
-            if raw.strip() == '' and kind == 'identity':
-                out[key] = ''
-                continue
             if raw.strip() == '' and not required:
                 continue
             if raw.strip() == '':
@@ -552,7 +624,7 @@ def parse(text, check_files=False):
             problems.append(f'{label} has an invalid LAN name. Use a-z, 0-9 and -, starting with a-z.')
             continue
         lans[name] = _section(label, _mapping(values, label, problems), LAN_KEYS, {}, problems).get('cidr', '')
-    nodes, hoovers = {}, {}
+    nodes = {}
     for name, values in _mapping(group.get('hosts'), 'hosts', problems).items():
         name = str(name)
         if not NAME.fullmatch(name):
@@ -571,19 +643,9 @@ def parse(text, check_files=False):
             values.setdefault('public_firewall', bool(values.get('public_address'))
                               and ('public' in values['roles'] or 'calls' in values['roles']))
             nodes[name] = Node(name=name, **values)
-    for name, values in _mapping(variables.get('hoovers'), 'vars.hoovers', problems).items():
-        name = str(name)
-        label = f'vars.hoovers.{name}'
-        if not NAME.fullmatch(name):
-            problems.append(f'{label} has an invalid installation name.')
-            continue
-        values = _section(label, _mapping(values, label, problems), HOOVER_KEYS, DEFAULTS['hoover'], problems)
-        if all(k in values for k, (required, _) in HOOVER_KEYS.items() if required):
-            hoovers[name] = Hoover(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
-    site = Site(nodes=nodes, hoovers=hoovers, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup,
-                **site_values)
+    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, **site_values)
     problems = check(site, check_files=check_files)
     if problems:
         raise SiteError(_message(problems))
@@ -665,8 +727,6 @@ def check(site, check_files=False):
         for key, role in SECRET_ROLES.items():
             if getattr(node, key) and not node.has(role):
                 problems.append(f'{label} {key} belongs to a node with the role {role}.')
-        if node.has('gpu') and not node.gpu_api_key_file:
-            problems.append(f'{label} has the role gpu and no gpu_api_key_file.')
         if node.tls_mode and not node.has('public'):
             problems.append(f'{label} tls_mode belongs to a node with the role public.')
     problems += tls_problems(site)
@@ -678,8 +738,6 @@ def check(site, check_files=False):
                 problems.append(f'vars.gpu_pool nodes names {name}, which is not a node with the role gpu.')
         if bool(pool.get('nodes')) == bool(pool.get('address')):
             problems.append('vars.gpu_pool needs either nodes (GPU nodes of the site) or address (a shared pool), not both.')
-        if not pool.get('api_key_file'):
-            problems.append('vars.gpu_pool has no api_key_file, the key of the model server.')
     elif site.with_role('gpu'):
         problems.append('the site has GPU nodes and no vars.gpu_pool.')
     if site.backup:
@@ -688,36 +746,6 @@ def check(site, check_files=False):
             problems.append(f'vars.backup node = {site.backup.get("node")} is not a node of the site.')
         elif node.has('gpu'):
             problems.append('vars.backup node is a GPU node. Choose a node that holds application data.')
-    patterns = _identity_patterns()
-    seen = {}
-    for hoover in site.hoovers.values():
-        label = f'vars.hoovers.{hoover.name}'
-        home = nodes.get(hoover.home_node)
-        if home is None:
-            problems.append(f'{label} home_node = {hoover.home_node} is not a node of the site.')
-        elif not home.has('worker'):
-            problems.append(f'{label} home_node = {hoover.home_node} does not have the role worker.')
-        for key, pattern in patterns.items():
-            if not pattern.fullmatch(getattr(hoover, key)):
-                problems.append(f'{label} {key} = {getattr(hoover, key)} does not match {pattern.pattern}.')
-        if hoover.stores == 'zone' and hoover.clickhouse_database_prefix != hoover.zone.replace('-', '_'):
-            problems.append(f'{label} has stores = zone, whose service users and grants use the zone name. '
-                            f'Set clickhouse_database_prefix = {hoover.zone.replace("-", "_")}, or use stores = local.')
-        if hoover.stores == 'zone' and hoover.source_ini:
-            problems.append(f'{label} has a source_ini. A migrated Compose install uses stores = local.')
-        for name, node_name, _ in hoover.extra_datasets:
-            if node_name not in nodes or not nodes[node_name].has('data'):
-                problems.append(f'{label} extra_datasets names {node_name}, which is not a node with the role data.')
-            if name in ('testdata', 'uploads'):
-                problems.append(f'{label} extra_datasets uses the reserved name {name}.')
-        if hoover.extra_datasets and (hoover.source_ini or single):
-            problems.append(f'{label} has extra_datasets, which only an installation with NFS data folders reads.')
-        if hoover.source_ini and hoover.temporal_backend != 'cassandra':
-            problems.append(f'{label} has a source_ini. A Compose install keeps Temporal on Cassandra, so temporal_backend = cassandra.')
-        # Each installation has its own namespace and its own stores. Two installations of one zone would share them.
-        if hoover.zone in seen:
-            problems.append(f'{label} and vars.hoovers.{seen[hoover.zone]} have the same zone = {hoover.zone}.')
-        seen[hoover.zone] = hoover.name
     if check_files:
         problems += missing_files(site)
     return problems
@@ -760,25 +788,16 @@ def tls_problems(site):
 def secret_files(site, node_name):
     """The secret file references that one node reads, as {label: path}."""
     node = site.nodes[node_name]
-    out = {f'node.{node_name}.{k}': getattr(node, k) for k in SECRET_ROLES if getattr(node, k)}
-    if node_name == site.control_plane:
-        if site.gpu_pool.get('api_key_file'):
-            out['gpu_pool.api_key_file'] = site.gpu_pool['api_key_file']
-    return out
+    return {f'node.{node_name}.{k}': getattr(node, k) for k in SECRET_ROLES if getattr(node, k)}
 
 
 def missing_files(site):
-    """The secret files and source paths of the local node that do not exist, as messages."""
+    """The secret files of the local node that do not exist, as messages."""
     problems = []
-    local = [n for n in site.nodes.values() if n.local]
-    for node in local:
+    for node in (n for n in site.nodes.values() if n.local):
         for label, path in secret_files(site, node.name).items():
             if not os.path.isfile(path):
                 problems.append(f'{label} = {path} is not an existing file on this host.')
-    if local and local[0].name == site.control_plane:
-        for hoover in site.hoovers.values():
-            if hoover.source_ini and not os.path.isfile(hoover.source_ini):
-                problems.append(f'vars.hoovers.{hoover.name} source_ini = {hoover.source_ini} is not an existing file.')
     return problems
 
 
@@ -805,11 +824,6 @@ def document(site):
     for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
-    if site.hoovers:
-        variables['hoovers'] = {
-            h.name: {k: _text(getattr(h, k)) for k in HOOVER_KEYS
-                     if getattr(h, k) not in ('', ()) or k == 'manticore_table_prefix'}
-            for h in site.hoovers.values()}
     hosts = {}
     for node in site.nodes.values():
         values = {'node_roles': _text(node.roles)}
@@ -836,8 +850,8 @@ def project(site, node_name):
 
     Every node gets the site values and the addresses, roles and storage of every node, which its host scripts need
     for the VPN peers and the k3s join. A node gets only its own secret file references. The control plane also gets
-    the GPU pool keys, the backup destination and the Hoover installations, because it creates the Secrets and runs
-    the operator. No projection holds a secret value.
+    the GPU pool and the backup destination, because it creates the Secrets and runs the operator. No projection holds
+    a secret value.
     """
     if node_name not in site.nodes:
         raise SiteError(f'{node_name} is not a node of the site.')
@@ -855,7 +869,6 @@ def project(site, node_name):
     if node_name == site.control_plane:
         out['gpu_pool'] = dict(site.gpu_pool)
         out['backup'] = dict(site.backup)
-        out['hoovers'] = {name: asdict(h) for name, h in site.hoovers.items()}
     elif site.backup.get('node') == node_name:
         out['backup'] = dict(site.backup)
     return out
@@ -919,7 +932,7 @@ def legacy_settings(site):
         **calls_settings(site),
         'hoover_data': {'roots': {n.name: n.data_root for n in site.with_role('data')},
                         'extra': {h.zone: [{'name': n, 'node': node, 'path': path} for n, node, path in h.extra_datasets]
-                                  for h in site.hoovers.values() if h.extra_datasets}},
+                                  for h in hoovers(site).values() if h.extra_datasets}},
     }
     if admin_ranges(site):
         out['admin_ranges'] = admin_ranges(site)
@@ -1349,10 +1362,14 @@ def read_source_ini(path, check_paths=True):
 def main(argv):
     if len(argv) >= 2 and argv[0] == 'check':
         site = read(argv[1], check_files=True)
+        problems = zones_problems(site)
+        if problems:
+            raise SiteError(f'the zone state {site.zone_state()} has {len(problems)} problem'
+                            f'{"s" if len(problems) != 1 else ""}:\n    ' + '\n    '.join(problems))
         print(json.dumps({'site': site.id, 'site_file': site.path, 'state': str(site.state_folder()),
                           'nodes': {n.name: list(n.roles) for n in site.nodes.values()},
                           'switches': {n.name: switches(n) for n in site.nodes.values()},
-                          'peers': peer_table(site), 'hoovers': sorted(site.hoovers)}, indent=1))
+                          'peers': peer_table(site), 'zones': sorted(hoovers(site))}, indent=1))
     elif len(argv) == 3 and argv[0] == 'project':
         print(json.dumps(project(read(argv[1]), argv[2]), indent=1, default=list))
     elif len(argv) == 2 and argv[0] == 'ansible':

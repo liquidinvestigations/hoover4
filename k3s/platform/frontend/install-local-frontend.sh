@@ -41,7 +41,7 @@ suffix=$(get suffix)
 binds=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings;print(" ".join(settings.FRONTEND_BIND))' "$source_dir")
 first_bind=${binds%% *}
 ingress=$(get ingress_address)
-zones=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings;print("\n".join(sorted({h.zone for h in settings.SITE.hoovers.values()})))' "$source_dir")
+zones=$(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings;print("\n".join(sorted({h.zone for h in settings.config.hoovers(settings.SITE).values()})))' "$source_dir")
 # The pods of the node and the node itself pass without the gate, as on a remote site.
 cluster="$(kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{" "}{end}' 2>/dev/null || true)${first_bind}/32"
 vpn=${first_bind}/32

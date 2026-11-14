@@ -54,8 +54,8 @@ def site():
 
 
 def scopes(s):
-    out = ['cluster'] + [f'zone:{z}' for z in sorted({h.zone for h in s.hoovers.values()})]
-    return out + [f'hoover:{h}' for h in sorted(s.hoovers)]
+    out = ['cluster'] + [f'zone:{z}' for z in sorted({h.zone for h in config.hoovers(s).values()})]
+    return out + [f'hoover:{h}' for h in sorted(config.hoovers(s))]
 
 
 def changes(state, s, revision=None):
@@ -75,7 +75,7 @@ def changes(state, s, revision=None):
 def key_steps(s, scope, key):
     """The steps that bring one changed key of a scope to the services."""
     kind, _, name = scope.partition(':')
-    zone_of = {h.zone: h.name for h in s.hoovers.values()}
+    zone_of = {h.zone: h.name for h in config.hoovers(s).values()}
     if key.startswith('backup.'):
         return ['schedule']
     if kind == 'hoover':
@@ -192,7 +192,7 @@ def wait_hoover(namespace, timeout=900):
 
 def executors(s, log, wait=wait_hoover, wait_namespaces=None):
     wait_namespaces = wait_namespaces or (lambda names: [wait_rollouts(n) for n in names])
-    by_name = {h.name: h for h in s.hoovers.values()}
+    by_name = {h.name: h for h in config.hoovers(s).values()}
 
     class Steps(dict):
         def __missing__(self, step):
@@ -213,7 +213,7 @@ def executors(s, log, wait=wait_hoover, wait_namespaces=None):
             if kind == 'zone':
                 def run(op, overrides, name=name):
                     run_command([sys.executable, K3S / 'zones/zone.py', 'apply', name], op, log)
-                    wait_namespaces([name] + [h.namespace for h in s.hoovers.values() if h.zone == name])
+                    wait_namespaces([name] + [h.namespace for h in config.hoovers(s).values() if h.zone == name])
                     return [f'zone:{name}']
                 return run
             if kind == 'gpu-pool':

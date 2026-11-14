@@ -51,6 +51,7 @@ from fastapi import FastAPI, HTTPException, Response
 from PIL import Image
 from pydantic import BaseModel, Field
 
+import gpu_key
 from language_groups import installed_languages, loadable_languages
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -125,6 +126,8 @@ log.info(
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
 
 app = FastAPI(title="hoover4 easyocr", version="1.0")
+# Every route except /health needs the GPU key (gpu_key.py). The start stops without it.
+gpu_key.install(app)
 
 _pool = ThreadPoolExecutor(max_workers=OCR_CONCURRENCY, thread_name_prefix="ocr")
 _inflight = threading.Semaphore(OCR_CONCURRENCY + OCR_QUEUE_DEPTH)

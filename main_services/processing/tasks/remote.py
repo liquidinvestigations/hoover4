@@ -33,6 +33,10 @@ The ``(connect, read)`` two-tuple is what this module exists for. The failure mo
 completely different. A dead host must be detected in ~2 seconds, while a live
 host chewing through a batch legitimately needs minutes. A single scalar forces
 one number to serve both and guarantees one of them is wrong.
+
+The GPU services check one key on every route except ``/health``. ``gpu_headers()``
+reads it from ``LLM_API_KEY_FILE``, the key file that ``deploy.py`` mounts, and the
+callers of the AI server and EasyOCR pass the header to ``post_json``.
 """
 
 import logging
@@ -57,6 +61,23 @@ class RemoteBusy(RuntimeError):
 import requests
 
 log = logging.getLogger(__name__)
+
+
+def gpu_headers() -> dict:
+    """``Authorization: Bearer <GPU key>`` for a call to a GPU service, or nothing without a key.
+
+    The key is ``LLM_API_KEY``, else the content of ``LLM_API_KEY_FILE``. In the cluster the
+    file holds the zone token, and the GPU proxy replaces the header with the GPU key.
+    """
+    key = (os.getenv("LLM_API_KEY") or "").strip()
+    path = (os.getenv("LLM_API_KEY_FILE") or "").strip()
+    if not key and path:
+        try:
+            with open(path) as handle:
+                key = handle.read().strip()
+        except OSError:
+            key = ""
+    return {"Authorization": f"Bearer {key}"} if key else {}
 
 
 def _env_float(name: str, default: float) -> float:
@@ -165,6 +186,7 @@ def post_json(
     read_timeout: float = READ_TIMEOUT,
     session: requests.Session | None = None,
     service: str = "",
+    headers: dict | None = None,
 ) -> RemoteResult:
     """POST ``payload`` to the first endpoint that answers.
 
@@ -186,7 +208,8 @@ def post_json(
     ``embeddings``). It is separate from ``provider`` because provider is *which endpoint
     answered* -- under fallback those differ, and that difference is the evidence an
     outage happened. Empty means do not record: the callers that opt in are the ones
-    ``/admin/ai_status`` has a panel for.
+    ``/admin/ai_status`` has a panel for. ``headers`` go with each request, for example
+    ``gpu_headers()``.
     """
     live = [(name, url) for name, url in endpoints if url]
     if not live:
@@ -209,7 +232,7 @@ def post_json(
             response = post(
                 url,
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", **(headers or {})},
                 timeout=(CONNECT_TIMEOUT, read_timeout),
             )
         except (requests.ConnectionError, requests.Timeout) as exc:
@@ -286,6 +309,7 @@ def probe_embeddings(base_url: str) -> tuple[str, int]:
         {"input": "dimension probe"},
         read_timeout=30.0,
         service="embeddings",
+        headers=gpu_headers(),
     )
     data = result.data
     embedding = data["data"][0]["embedding"]

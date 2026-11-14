@@ -534,3 +534,29 @@ def test_actual_child_http_contract_with_stub_ocr(monkeypatch, inline_field, sel
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_only_an_easyocr_call_sends_the_gpu_key(monkeypatch, tmp_path):
+    import requests
+
+    key = tmp_path / "gpu-key"
+    key.write_text("k123\n")
+    monkeypatch.setenv("LLM_API_KEY_FILE", str(key))
+    monkeypatch.setitem(render_worker.OCR_ENDPOINTS, "easyocr", "http://gpu.test/ocr")
+    monkeypatch.setitem(render_worker.OCR_ENDPOINTS, "tesseract", "http://cpu.test/ocr")
+    sent = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"text": ""}
+
+    def post(url, **kwargs):
+        sent[url] = kwargs.get("headers")
+        return Response()
+
+    monkeypatch.setattr(requests, "post", post)
+    render_worker._ocr_page("easyocr", "en", b"x")
+    render_worker._ocr_page("tesseract", "en", b"x")
+    assert sent == {"http://gpu.test/ocr": {"Authorization": "Bearer k123"}, "http://cpu.test/ocr": None}

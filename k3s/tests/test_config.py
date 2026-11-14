@@ -1,14 +1,15 @@
 """The site file schema, the per-node projection and the reader of a Compose ini (k3s/config.py)."""
 import json
 import os
+import re
 
 import pytest
 
 from conftest import FIXTURES, REPO, site_text
 
-# The indentation of a host key and of a key of a Hoover installation in the YAML fixtures.
+# The indentation of a host key and of a key of a mapping of vars in the YAML fixtures.
 H = '\n      '
-V = '\n        '
+V = '\n      '
 import config
 
 
@@ -52,12 +53,33 @@ def test_single_node_needs_no_network_or_public_address():
     assert node.public_firewall is False
 
 
-def test_storage_identity_is_independent_of_the_zone():
-    site = parse('single-node.yml')
-    main = site.hoovers['main']
-    assert main.zone == 'zone-a'
-    assert main.identity() == {'HOOVER4_CLICKHOUSE_DB_PREFIX': 'Hoover4', 'HOOVER4_MANTICORE_TABLE_PREFIX': '',
-                               'S3_SYSTEM_BUCKET': 'hoover4-system', 'S3_COLLECTION_BUCKET_PREFIX': 'hoover4-c-'}
+def test_a_zone_derives_its_storage_names_and_has_the_defaults():
+    hoover = config.zone_hoover('zone-x', {'enabled': True, 'home': 'dev'})
+    assert (hoover.name, hoover.namespace, hoover.stores, hoover.temporal_backend) == ('zone-x', 'hoover-zone-x', 'zone', 'postgresql')
+    assert hoover.identity() == {'HOOVER4_CLICKHOUSE_DB_PREFIX': 'zone_x', 'HOOVER4_MANTICORE_TABLE_PREFIX': 'zone_x_',
+                                 'S3_SYSTEM_BUCKET': 'zone-x-system', 'S3_COLLECTION_BUCKET_PREFIX': 'zone-x-c-'}
+    patterns = json.loads(config.STORAGE_IDENTITY.read_text())['settings']
+    for key in config.IDENTITY:
+        assert re.fullmatch(patterns[key]['pattern'], getattr(config.zone_hoover('zone-abcdef123456', {}), key)), key
+
+
+def test_the_zone_state_values_are_checked_against_the_site(tmp_path):
+    from conftest import write_site
+    site = config.read(write_site(tmp_path, 'remote.yml'))
+    assert sorted(config.hoovers(site)) == ['zone-a', 'zone-c']
+    assert config.hoovers(site)['zone-c'].stores == 'local'
+    assert config.zones_problems(site) == []
+    bad = {'zones': {'zone-a': {'enabled': True, 'home': 'calls', 'stores': 'nfs'},
+                     'zone-b': {'enabled': True, 'home': 'nowhere', 'temporal_backend': 'mysql'}}}
+    message = '\n'.join(config.zones_problems(site, bad))
+    assert 'the zone zone-a has stores = nfs, which is not one of zone, local.' in message
+    assert 'the zone zone-a has the home node calls, which does not have the role worker.' in message
+    assert 'the zone zone-b has the home node nowhere, which is not a node of the site.' in message
+    assert 'the zone zone-b has temporal_backend = mysql' in message
+    with pytest.raises(config.SiteError, match='stores = nfs'):
+        config.hoovers(site, bad)
+    # A site file without a zone state has no zone.
+    assert config.hoovers(config.parse(site_text('remote.yml'))) == {}
 
 
 def problems_of(text):
@@ -92,18 +114,19 @@ def test_tunings_and_schedules_are_not_site_keys():
     assert 'vars.backup retention is not a known key' in problems_of(text)
 
 
-def test_removed_compose_keys_are_refused_in_the_site_file():
-    text = site_text('single-node.yml').replace('zone: zone-a', 'zone: zone-a' + V + 'serena_enabled: false')
-    assert 'vars.hoovers.main serena_enabled is not a known key' in problems_of(text)
+def test_the_site_file_names_no_zone_and_no_gpu_key():
+    text = site_text('remote.yml')
+    message = problems_of(text.replace('      nodes: gpu-1', '      nodes: gpu-1' + V + 'api_key_file: /srv/gpu-key')
+                          .replace('node_roles: gpu', 'node_roles: gpu' + H + 'gpu_api_key_file: /root/vllm-key')
+                          .replace('  hosts:\n', '    hoovers:\n      zone-a: {zone: zone-a}\n  hosts:\n', 1))
+    assert 'vars hoovers is not a known key' in message
+    assert 'vars.gpu_pool api_key_file is not a known key' in message
+    assert 'hosts.gpu-1 gpu_api_key_file is not a known key' in message
 
 
 def test_missing_resources():
     text = site_text('remote.yml')
-    message = problems_of(text.replace('home_node: edge', 'home_node: nowhere')
-                          .replace('      api_key_file: /home/operator/hoover4/gpu-api-key\n', '')
-                          .replace('    hoovers:\n', '    backup:\n      node: missing\n      path: /srv/backups\n    hoovers:\n'))
-    assert 'vars.hoovers.zone-a home_node = nowhere is not a node of the site.' in message
-    assert 'vars.gpu_pool has no api_key_file' in message
+    message = problems_of(text.replace('  hosts:\n', '    backup:\n      node: missing\n      path: /srv/backups\n  hosts:\n', 1))
     assert 'vars.backup node = missing is not a node of the site.' in message
     no_control = site_text('single-node.yml').replace('node_roles: single', 'node_roles: worker, public, registry, data')
     assert 'exactly one node with the role control-plane' in problems_of(no_control)
@@ -121,22 +144,13 @@ def test_incompatible_roles():
     assert 'hosts.worker-b tls_dns_credentials_file belongs to a node with the role public.' in message
     message = problems_of(text.replace('address: 10.0.0.3', 'address: 10.9.0.3'))
     assert 'hosts.worker-b networks.site address = 10.9.0.3 is outside vars.networks.site cidr = 10.0.0.0/24.' in message
-    message = problems_of(text.replace('stores: zone', 'stores: zone' + V + 'source_ini: /srv/hoover4.ini'))
-    assert 'A migrated Compose install uses stores = local.' in message
-    message = problems_of(text.replace('clickhouse_database_prefix: zone_a', 'clickhouse_database_prefix: other'))
-    assert 'Set clickhouse_database_prefix = zone_a' in message
-
-
-def test_identity_patterns_come_from_storage_identity_json():
-    text = site_text('single-node.yml').replace('clickhouse_database_prefix: Hoover4', 'clickhouse_database_prefix: 1bad')
-    assert 'clickhouse_database_prefix = 1bad does not match' in problems_of(text)
 
 
 def test_per_node_secret_isolation():
     site = parse('remote.yml')
-    secrets = {'/etc/letsencrypt/cloudflare.ini', '/root/vllm-key', '/home/operator/hoover4/gpu-api-key'}
-    expected = {'edge': {'/etc/letsencrypt/cloudflare.ini'}, 'gpu-1': {'/root/vllm-key'},
-                'server-a': {'/home/operator/hoover4/gpu-api-key'}, 'worker-b': set(), 'calls': set()}
+    secrets = {'/etc/letsencrypt/cloudflare.ini'}
+    expected = {'edge': {'/etc/letsencrypt/cloudflare.ini'}, 'gpu-1': set(), 'server-a': set(), 'worker-b': set(),
+                'calls': set()}
     for node, own in expected.items():
         projection = config.project(site, node)
         text = json.dumps(projection)
@@ -144,8 +158,7 @@ def test_per_node_secret_isolation():
         assert set(projection['secret_files'].values()) == own
         # Every node knows its peers for the VPN and the k3s join.
         assert set(projection['nodes']) == set(site.nodes)
-    assert 'hoovers' in config.project(site, 'server-a')
-    assert 'hoovers' not in config.project(site, 'edge')
+    assert 'gpu_pool' in config.project(site, 'server-a')
 
 
 def test_legacy_hosts_projection_for_the_host_scripts():
@@ -168,22 +181,6 @@ def test_legacy_hosts_projection_for_the_host_scripts():
                                                      'ssd': {'volume_group': 'tier-ssd', 'spare_gb': 2}}
     assert hosts['hosts']['server-a']['storage']['hdd']['spare_gb'] == 11
     assert hosts['hosts']['edge']['storage']['nvme']['spare_gb'] is None
-
-
-def test_check_files_reports_missing_secret_files_of_the_local_node(tmp_path):
-    key = tmp_path / 'gpu-key'
-    text = site_text('single-node.yml').replace('/etc/hoover4/gpu-api-key', str(key))
-    message = problems_of_files(text)
-    assert f'gpu_pool.api_key_file = {key} is not an existing file' in message
-    key.write_text('k')
-    ok = config.parse(text, check_files=True)
-    assert ok.gpu_pool['api_key_file'] == str(key)
-
-
-def problems_of_files(text):
-    with pytest.raises(config.SiteError) as caught:
-        config.parse(text, check_files=True)
-    return str(caught.value)
 
 
 # The reader of a Compose ini --------------------------------------------------------------------------------------

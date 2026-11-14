@@ -32,10 +32,20 @@ def site_text(name):
     return (FIXTURES / name).read_text().replace('@REPO@', str(REPO))
 
 
+def write_site(folder, name, text=None):
+    """Write the site file fixture name into folder, with the zone state of fixtures/<stem>.zones.json in its state
+    folder when that fixture exists. Return the path of the site file."""
+    path = Path(folder) / name
+    path.write_text(text if text is not None else site_text(name))
+    zones = FIXTURES / (Path(name).stem + '.zones.json')
+    if zones.exists():
+        path.with_suffix('').mkdir(parents=True, exist_ok=True)
+        (path.with_suffix('') / 'zone-state.json').write_text(zones.read_text())
+    return path
+
+
 @pytest.fixture
 def site_file(tmp_path):
     def write(name, text=None):
-        path = tmp_path / name
-        path.write_text(text if text is not None else site_text(name))
-        return path
+        return write_site(tmp_path, name, text)
     return write
