@@ -1,7 +1,8 @@
 ---
-# Prepare a node for k3s: the packages, Docker, the kernel modules, sysctl, NetworkManager, SELinux, the backup folder
-# and the removal of the files of the earlier installer. Every task reads the state first, so a second run changes
-# nothing. The role changes no disk, no partition and no file system.
+# Prepare a node for k3s: the packages, Docker, the kernel modules, sysctl, NetworkManager, SELinux, the k3s data
+# volumes, the backup folder and the removal of the files of the earlier installer. Every task reads the state first,
+# so a second run changes nothing. The role changes no disk, no partition and no existing file system. It creates
+# logical volumes only in the volume group of the switch k3s_volume_group.
 - name: Set the paths of the settings files
   ansible.builtin.set_fact:
     # The local node of a single-node site keeps the file names of its earlier installer, so no second file appears.
@@ -31,9 +32,17 @@
   changed_when: false
   check_mode: false
   failed_when: false
-  when: hoover4_stop_docker | bool
 
-# k3s brings its own containerd.
+# Docker and k3s can run on one host, for example a GPU node or a host with other services. Each has its own
+# containerd.
+- name: Report an enabled Docker that the switch stop_docker keeps
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} keeps the enabled Docker units {{ hoover4_docker_on | join(', ') }}. Set stop_docker: true in the site file to stop them."
+  vars:
+    hoover4_docker_on: "{{ hoover4_docker_enabled.results | selectattr('stdout', 'in', ['enabled', 'enabled-runtime', 'static']) | map(attribute='item') | list }}"
+  when: not hoover4_stop_docker | bool and hoover4_docker_on | length > 0
+
+# The switch stop_docker. k3s brings its own containerd.
 - name: Stop and disable Docker
   ansible.builtin.systemd_service:
     name: "{{ item.item }}"
@@ -81,6 +90,15 @@
 - name: Disable SELinux
   ansible.builtin.include_tasks: selinux.yml
   when: ansible_facts['os_family'] == 'RedHat'
+
+# The switch k3s_volume_group. The person creates the volume group. The role creates and mounts the k3s data volumes
+# in it, and keeps existing volumes of these names. The facts of the node count their size out of the storage reserve.
+- name: Create the k3s data volumes
+  ansible.builtin.include_tasks: k3s-volume.yml
+  loop: [{name: rancher, size: 150G, path: /var/lib/rancher}, {name: kubelet, size: 40G, path: /var/lib/kubelet}]
+  loop_control:
+    loop_var: volume
+  when: hoover4_k3s_volume_group | length > 0
 
 - name: Prepare the local node of a single-node site
   ansible.builtin.include_tasks: local.yml

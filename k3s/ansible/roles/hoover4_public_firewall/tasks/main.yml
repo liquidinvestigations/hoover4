@@ -1,32 +1,86 @@
 ---
-# The host firewall of a public or calls node: files/public-guard.sh drops the k3s node ports on the public interface,
-# and files/public-firewall.sh admits only the allowed ports there, with the chain coturn_peers of the calls node.
-# A changed firewall table starts a rollback timer of 180 seconds on the node. The role opens a new SSH connection,
-# and confirms the table only when that connection works. Without the confirmation the node returns to the earlier
-# table.
+# The switch public_firewall of a public or calls node. The role installs two parts.
+# - On the media node of the call services, when it has a public address: files/coturn-peers.sh, the chain
+#   coturn_peers in its own table. It limits that address to the LiveKit media ports for the coturn user.
+# - On a node whose public interface does not carry the node address: files/public-guard.sh drops the k3s node ports
+#   on the public interface, and files/public-firewall.sh admits only the allowed ports there. A node that uses one
+#   interface for the cluster and the public address, for example a LAN node, gets neither, because they would drop
+#   the cluster traffic of the other nodes.
+# A changed input filter starts a rollback timer of 180 seconds on the node. The role opens a new SSH connection, and
+# confirms the table only when that connection works. Without the confirmation the node returns to the earlier table.
+- name: Read the interface of the public address
+  ansible.builtin.command: ip -o addr show to {{ hoover4_public_address }}
+  register: hoover4_public_iface
+  changed_when: false
+  check_mode: false
+
+- name: Read the default route
+  ansible.builtin.command: ip route show default
+  register: hoover4_default_route
+  changed_when: false
+  check_mode: false
+
+- name: Read the interface of the node address
+  ansible.builtin.command: ip -o addr show to {{ hoover4_node_address }}
+  register: hoover4_node_iface
+  changed_when: false
+  check_mode: false
+
+# A public address behind NAT is on no interface of the node. Its traffic then enters on the interface of the default
+# route.
+- name: Set the public interface and the interface of the node address
+  ansible.builtin.set_fact:
+    hoover4_public_if: >-
+      {{ (hoover4_public_iface.stdout.split() + ['', ''])[1]
+         or (hoover4_default_route.stdout | regex_search('dev ([^ ]+)', '\\1') or ['']) | first }}
+    hoover4_cluster_if: "{{ (hoover4_node_iface.stdout.split() + ['', ''])[1] }}"
+
+- name: Limit the public media address for the coturn user
+  ansible.builtin.script:
+    cmd: coturn-peers.sh
+  environment:
+    HOOVER4_PUBLIC_IP: "{{ hoover4_public_address }}"
+  register: hoover4_coturn
+  changed_when: "'the table is loaded' not in hoover4_coturn.stdout"
+  when: hoover4_coturn_peers | bool
+
+- name: Report a node without a separate public interface
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} uses {{ hoover4_public_if or 'one interface' }} for the public address and the node
+      address, so the role adds no input filter there. Limit the public ports in the router or the provider firewall.
+  when: hoover4_public_if | length == 0 or hoover4_public_if == hoover4_cluster_if
+
 - name: Drop the k3s node ports on the public interface
   ansible.builtin.script:
     cmd: public-guard.sh
+  environment:
+    HOOVER4_PUBLIC_IF: "{{ hoover4_public_if }}"
   register: hoover4_guard
   changed_when: "'is enabled and active, and the table is loaded' not in hoover4_guard.stdout"
+  when: hoover4_public_if | length > 0 and hoover4_public_if != hoover4_cluster_if
 
 - name: Load the public firewall with a rollback timer
   ansible.builtin.script:
     cmd: public-firewall.sh
+  environment:
+    HOOVER4_PUBLIC_IF: "{{ hoover4_public_if }}"
+    HOOVER4_WIREGUARD_PORTS: "{{ hoover4_wireguard_ports | join(' ') }}"
   register: hoover4_firewall
   changed_when: "'the table is loaded' not in hoover4_firewall.stdout"
+  when: hoover4_public_if | length > 0 and hoover4_public_if != hoover4_cluster_if
 
 # The three tasks run in this order in the same play, so they are tasks and not handlers.
 - name: Open a new SSH connection after the firewall change  # noqa: no-handler
   ansible.builtin.meta: reset_connection
-  when: hoover4_firewall.changed
+  when: hoover4_firewall.changed | default(false)
 
 - name: Verify SSH through the new firewall  # noqa: no-handler
   ansible.builtin.ping:
-  when: hoover4_firewall.changed
+  when: hoover4_firewall.changed | default(false)
 
 - name: Confirm the firewall and stop the rollback timer  # noqa: no-handler
   ansible.builtin.script:
     cmd: public-firewall.sh --confirm
-  when: hoover4_firewall.changed
+  when: hoover4_firewall.changed | default(false)
   changed_when: true

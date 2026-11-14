@@ -98,12 +98,14 @@ def inventory(dest):
                                                                                        'file' if p.exists() else 'absent')
         except PermissionError:
             out['paths'][path] = 'unreadable'
+    groups = sorted(set(node.storage.values()) | ({node.k3s_volume_group} - {''}))
     out['mounts'] = run(['findmnt', '-rn', '-o', 'TARGET,SOURCE,FSTYPE'])[1].splitlines()
     out['mounts'] = [m for m in out['mounts'] if m.split()[0].startswith(('/var/lib/rancher', '/var/lib/kubelet'))
-                     or node.lvm_volume_group in m]
-    code, lvs = run(['sudo', '-n', 'lvs', '--noheadings', '-o', 'lv_name,lv_size,lv_tags', node.lvm_volume_group])
-    out['volume_group'] = {'name': node.lvm_volume_group, 'physical_volumes': list(node.lvm_physical_volumes),
-                           'volumes': lvs.splitlines() if code == 0 else 'unreadable without root'}
+                     or any(g in m for g in groups)]
+    out['volume_groups'] = {}
+    for group in groups:
+        code, lvs = run(['sudo', '-n', 'lvs', '--noheadings', '-o', 'lv_name,lv_size,lv_tags', group])
+        out['volume_groups'][group] = {'volumes': lvs.splitlines() if code == 0 else 'unreadable without root'}
     out['link'] = run(['ip', '-o', 'addr', 'show', 'hoover4'])[1]
     out['dns'] = run(['resolvectl', 'domain'])[1]
     out['claims'] = {}
@@ -276,16 +278,16 @@ def removal(dest):
     data = json.loads((dest / 'inventory.json').read_text())
     if not (dest / 'archive-manifest.json').exists():
         raise SystemExit(f'{dest} holds no archive. Run archive and verify before the removal script.')
-    vg = data['volume_group']['name']
     lines = []
     for mount in ('/var/lib/kubelet', '/var/lib/rancher'):
         lines.append(f'umount -R {mount} 2>/dev/null || true')
         lines.append(f"sed -i '\\# {mount} #d' /etc/fstab")
-    lines.append(f'# The volume group {vg} holds the k3s volumes and the TopoLVM volumes of the site. lvs lists them:')
-    lines.append(f'lvs {vg}')
-    lines.append(f'lvremove -y {vg}')
-    lines.append(f'# Remove the group only when lvs shows no other volume: vgremove {vg} && pvremove '
-                 + ' '.join(data['volume_group']['physical_volumes']))
+    for vg in sorted(data['volume_groups']):
+        lines.append(f'# The volume group {vg} holds the k3s volumes or the TopoLVM volumes of the site. lvs lists them:')
+        lines.append(f'lvs {vg}')
+        lines.append(f'lvremove -y {vg}')
+        lines.append(f'# Remove the group only when lvs shows no other volume: vgremove {vg}, then pvremove of the '
+                     f'physical volumes that pvs -S vg_name={vg} lists')
     protected = '\n'.join(f'#   {k}: {v}' for k, v in sorted(data['protected'].items()))
     text = REMOVAL.format(node=data['node'], inventory=dest / 'inventory.json', time=data['time'], protected=protected,
                           user=os.environ.get('USER', ''), runner=USER_UNITS[0].removesuffix('.service'),

@@ -374,14 +374,30 @@ def test_the_command_refuses_a_missing_or_unknown_target(env):
 def test_the_topolvm_values_follow_the_volume_groups_of_the_site():
     sys.path.insert(0, str(K3S / 'cluster'))
     import topolvm_values
-    single, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('single-node.yml'))))
-    assert single['lvmd']['deviceClasses'] == [{'name': 'nvme', 'volume-group': 'hoover4', 'default': True, 'spare-gb': 10}]
+    gib = 2 ** 30
+    single = {'dev': {'volume_groups': {'hoover4': {'size_bytes': 1000 * gib, 'k3s_volumes_bytes': 190 * gib}}}}
+    single, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('single-node.yml')), single))
+    # The k3s data volumes in the group do not count: 5 % of 810 GiB is 40.5 GiB, rounded up.
+    assert single['lvmd']['deviceClasses'] == [{'name': 'nvme', 'volume-group': 'hoover4', 'default': True, 'spare-gb': 41}]
     defaults = [c['name'] for c in single['storageClasses'] if c['storageClass']['isDefaultClass']]
     assert defaults == ['nvme-ext4']
-    remote, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('remote.yml'))))
+    facts = {'server-a': {'volume_groups': {'tier-hdd': {'size_bytes': 400 * gib}}},
+             'worker-b': {'volume_groups': {'tier-hdd': {'size_bytes': 200 * gib}, 'tier-ssd': {'size_bytes': 100 * gib}}},
+             'edge': {'volume_groups': {'tier-nvme': {'size_bytes': 50 * gib}}}}
+    remote, labels = topolvm_values.values(config.legacy_hosts(config.parse(site_text('remote.yml')), facts))
     assert [c['name'] for c in remote['storageClasses'] if c['storageClass']['isDefaultClass']] == ['hdd-ext4']
-    assert labels == {'edge': 'nvme.tier-nvme', 'server-a': 'hdd.tier-hdd', 'worker-b': 'hdd.tier-hdd'}
-    assert len(remote['lvmd']['additionalConfigs']) == 1
+    assert {c['name'] for c in remote['storageClasses']} == {f'{t}-{k}' for t in ('hdd', 'ssd', 'nvme') for k in ('ext4', 'block')}
+    # Each node has its own lvmd configuration, and each tier its own volume group.
+    assert labels == {'edge': 'edge', 'server-a': 'server-a', 'worker-b': 'worker-b'}
+    configs = {c['nodeSelector']['storage.hoover/lvmd']: c['deviceClasses']
+               for c in [remote['lvmd']] + remote['lvmd']['additionalConfigs']}
+    assert configs['worker-b'] == [{'name': 'hdd', 'volume-group': 'tier-hdd', 'default': True, 'spare-gb': 10},
+                                   {'name': 'ssd', 'volume-group': 'tier-ssd', 'default': False, 'spare-gb': 5}]
+    assert configs['edge'] == [{'name': 'nvme', 'volume-group': 'tier-nvme', 'default': True, 'spare-gb': 3}]
+    # A node without the facts of a volume group stops the render with its name.
+    del facts['edge']
+    with pytest.raises(SystemExit, match='edge has no facts of the volume group tier-nvme'):
+        topolvm_values.values(config.legacy_hosts(config.parse(site_text('remote.yml')), facts))
 
 
 def test_the_legacy_settings_of_a_single_node_site_use_the_local_address():
@@ -591,6 +607,11 @@ def test_an_image_of_the_wrong_architecture_fails_the_image_step(env, monkeypatc
                    {'digest': 'sha256:aa', 'architectures': ['amd64']}}
     with pytest.raises(deploy.StepFailed, match='not arm64'):
         deploy.image_references(ctx, ['hoover/hoover-vllm:000000000000'], architecture='arm64')
+    # The architecture of a node comes from its facts.
+    with pytest.raises(deploy.StepFailed, match='deploy-k3s check --target gpu-1'):
+        deploy.gpu_architecture(ctx)
+    (ctx.private / 'facts').mkdir(parents=True, exist_ok=True)
+    (ctx.private / 'facts' / 'gpu-1.json').write_text(json.dumps({'architecture': 'aarch64'}))
     assert deploy.gpu_architecture(ctx) == 'arm64'
 
 
@@ -627,9 +648,10 @@ def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
     import os
     import subprocess
     site = config.parse(site_text('remote.yml'))
-    hosts = config.legacy_hosts(site)
-    for name in hosts['hosts']:
-        hosts['hosts'][name]['tiers'] = ['ssd']
+    facts = {name: {'avx2': name != 'worker-b', 'gpus': [{'name': 'GB10', 'memory_mib': 1000}] if name == 'gpu-1' else [],
+                    'volume_groups': {g: {'size_bytes': 2 ** 40} for g in node.storage.values()}}
+             for name, node in site.nodes.items()}
+    hosts = config.legacy_hosts(site, facts)
     (tmp_path / 'hosts.json').write_text(json.dumps(hosts))
     joined = [n for n in hosts['hosts'] if n != 'gpu-1']
     calls = tmp_path / 'calls.log'
@@ -648,6 +670,17 @@ def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
     assert r.returncode == 0, r.stdout[-500:] + r.stderr[-500:]
     assert 'node gpu-1 has not joined the cluster' in r.stdout
     assert 'gpu-1' not in labelled and set(joined) <= set(labelled)
+    lines = {line.split()[2]: line for line in calls.read_text().splitlines()
+             if line.startswith('label node') and 'storage.hoover/lvmd' not in line}
+    # The labels of the facts. A node without the fact loses the label.
+    assert 'cpu.hoover/avx2=true' in lines['server-a'] and 'cpu.hoover/avx2-' in lines['worker-b']
+    assert 'storage.tier/hdd=true' in lines['worker-b'] and 'storage.tier/ssd=true' in lines['worker-b']
+    assert 'gpu.hoover/count-' in lines['edge']
+    # A node without facts stops the setup, because its labels are unknown.
+    hosts['hosts']['edge']['facts'] = False
+    (tmp_path / 'hosts.json').write_text(json.dumps(hosts))
+    r = subprocess.run(['bash', str(K3S / 'cluster/setup.sh')], env=env, capture_output=True, text=True)
+    assert r.returncode and 'no facts for edge' in r.stderr
 
 
 def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
@@ -656,12 +689,15 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
     sys.path.insert(0, str(K3S / 'platform/calls'))
     import turn_peers
     assert turn_peers.peer_lines('10.42.3.0/24', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
-    firewall = (K3S / 'ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
+    firewall = (K3S / 'ansible/roles/hoover4_public_firewall/files/coturn-peers.sh').read_text()
     assert f'COTURN_UID={turn_peers.COTURN_UID}' in firewall
+    # The chain is in its own table, independent of the public interface and of the input filter.
+    assert 'table inet hoover_coturn_peers {' in firewall and 'coturn_peers' not in (
+        K3S / 'ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
     chain = firewall[firewall.index('chain coturn_peers {'):].split('}')[0].splitlines()
     rules = [line.split(' comment ')[0].strip() for line in chain[1:] if line.strip()]
     assert rules == ['type filter hook output priority raw; policy accept;', 'meta skuid != $COTURN_UID accept',
-                     'ip daddr != $PUBLIC_IP accept', f'udp dport {turn_peers.LIVEKIT_UDP} accept',
+                     '$FAMILY daddr != $PUBLIC_IP accept', f'udp dport {turn_peers.LIVEKIT_UDP} accept',
                      f'tcp dport {turn_peers.LIVEKIT_TCP} accept', 'counter drop']
     text = (K3S / 'platform/calls/install-calls.py').read_text()
     assert "'runAsUser':turn_peers.COTURN_UID" in text and 'turn_peers.peer_lines(PODS,public)' in text
@@ -696,9 +732,10 @@ def test_ssh_that_sshd_refused_before_the_command_starts_again(monkeypatch):
 def test_a_node_that_keeps_its_vpn_gets_no_wireguard_play(tmp_path):
     text = site_text('remote.yml')
     nodes = config.ansible_variables(config.parse(text), tmp_path)['hoover4_nodes']
-    assert nodes['server-a']['wireguard'] and nodes['gpu-1']['wireguard'] == {}
-    foreign = config.parse(text.replace('node_roles: calls', 'node_roles: calls\n      vpn_interface: wg-site'))
-    assert config.ansible_variables(foreign, tmp_path)['hoover4_nodes']['calls']['wireguard'] == {}
+    assert nodes['server-a']['wireguard'] and nodes['gpu-1']['wireguard'] == []
+    kept = config.parse(text.replace('site: {address: 10.0.0.4, public_key: calls-public-key}',
+                                     'site: {address: 10.0.0.4, public_key: calls-public-key, managed: false}'))
+    assert config.ansible_variables(kept, tmp_path)['hoover4_nodes']['calls']['wireguard'] == []
     play = (K3S / 'ansible/playbooks/hoover4-hosts.yml').read_text()
     assert 'role: hoover4_wireguard\n      when: hoover4_wireguard | length > 0' in play
 

@@ -19,7 +19,7 @@ import config
 ROLES = K3S / 'ansible' / 'roles'
 # The indentation of a host key in the YAML fixtures.
 H = '\n      '
-REMOTE_GPU = site_text('remote.yml').replace('architecture: arm64', 'architecture: arm64' + H + 'vpn_interface: wg-site')
+REMOTE = site_text('remote.yml')
 
 
 def load(path, name):
@@ -32,15 +32,17 @@ def load(path, name):
 GROUP_VARS = K3S / 'ansible' / 'playbooks' / 'group_vars' / 'hoover4.yml'
 
 
-def host_vars(text, node, state='/state'):
+def host_vars(text, node, state='/state', architecture=None):
     """The variables of one node in the host plays: the extra variables of the driver, and the node values that
-    playbooks/group_vars/hoover4.yml maps to hoover4_* names."""
+    playbooks/group_vars/hoover4.yml maps to hoover4_* names. The k3s role reads the architecture on the host, and the
+    test gives it: arm64 on a GPU node, else amd64."""
     variables = config.ansible_variables(config.parse(text), state)
     own = variables['hoover4_nodes'][node]
     values = {k: v for k, v in variables.items() if k != 'hoover4_nodes'}
     for name, template in yaml.safe_load(GROUP_VARS.read_text()).items():
         if template.startswith('{{ hoover4_node.'):
             values[name] = own[template.removeprefix('{{ hoover4_node.').removesuffix(' }}')]
+    values['hoover4_architecture'] = architecture or ('arm64' if values['hoover4_gpu'] else 'amd64')
     return {**values, 'inventory_hostname': node,
             'hoover4_kata': values['hoover4_architecture'] == 'amd64' and not values['hoover4_gpu']}
 
@@ -99,13 +101,29 @@ kubelet-arg:
 
 
 def test_a_gpu_node_keeps_its_own_vpn_interface_and_gets_the_gpu_handler():
-    values = host_vars(REMOTE_GPU, 'gpu-1')
-    assert values['hoover4_flannel_iface'] == 'wg-site' and values['hoover4_wireguard'] == {}
+    values = host_vars(REMOTE, 'gpu-1')
+    assert values['hoover4_flannel_iface'] == 'wg-site' and values['hoover4_wireguard'] == []
     text = render('config.yaml.j2', values)
     assert 'node-taint:\n  - hoover.dev/gpu=true:NoSchedule\n' in text
     runtimes = render('runtimes.toml.j2', values)
     assert 'runtimes.runsc-nvproxy]' in runtimes and 'runtimes.kata]' not in runtimes
-    assert 'runtimes.kata]' in render('runtimes.toml.j2', host_vars(REMOTE_GPU, 'server-a'))
+    assert 'runtimes.kata]' in render('runtimes.toml.j2', host_vars(REMOTE, 'server-a'))
+
+
+def test_the_switches_reach_the_host_roles():
+    server = host_vars(REMOTE, 'server-a')
+    assert server['hoover4_stop_docker'] is True and server['hoover4_k3s_volume_group'] == 'tier-hdd'
+    assert server['hoover4_storage'] == {'hdd': 'tier-hdd'} and server['hoover4_public_firewall'] is False
+    calls = host_vars(REMOTE, 'calls')
+    # The media node with a public address gets the chain coturn_peers, and the WireGuard port of its network.
+    assert calls['hoover4_public_firewall'] and calls['hoover4_coturn_peers'] and calls['hoover4_wireguard_ports'] == [51820]
+    edge = host_vars(REMOTE, 'edge')
+    assert edge['hoover4_public_firewall'] and not edge['hoover4_coturn_peers']
+    roles = (K3S / 'ansible/roles/hoover4_host/tasks/main.yml').read_text()
+    assert 'when: hoover4_k3s_volume_group | length > 0' in roles and 'when: hoover4_stop_docker | bool' in roles
+    firewall = (ROLES / 'hoover4_public_firewall/tasks/main.yml').read_text()
+    assert 'when: hoover4_coturn_peers | bool' in firewall
+    assert firewall.count('when: hoover4_public_if | length > 0 and hoover4_public_if != hoover4_cluster_if') == 2
 
 
 def test_the_nodes_connect_with_their_name_or_alias_and_keep_the_state_paths(tmp_path):
@@ -120,60 +138,69 @@ def test_the_nodes_connect_with_their_name_or_alias_and_keep_the_state_paths(tmp
     assert local['ssh_host'] == 'localhost' and local['single_local'] is True
 
 
-# calls sits on another LAN. It peers only with the public node edge, and the other nodes reach it through edge.
-ROUTED = site_text('remote.yml').replace('public_address: 203.0.113.11',
-                                         'public_address: 203.0.113.11' + H + 'wireguard_public_key: calls-public-key' + H
-                                         + 'wireguard_peers: edge' + H + 'wireguard_via: edge')
-# gpu-1 keeps its VPN interface and names edge as its direct peer. The person adds the reverse peer on gpu-1.
-PEERED_GPU = REMOTE_GPU.replace('gpu_api_key_file: /root/vllm-key',
-                                'gpu_api_key_file: /root/vllm-key' + H + 'wireguard_public_key: gpu-1-public-key' + H
-                                + 'wireguard_peers: edge')
+# edge is the hub of the network site. server-a and worker-b share the LAN office. calls is on no LAN, so it peers only
+# with edge, and the managed nodes reach each other through edge. gpu-1 keeps its own interface.
+def peers(site, node):
+    return {p['name']: p for w in config.wireguard(site, site.nodes[node]) for p in w['peers']}
 
 
-def test_a_node_with_wireguard_peers_gets_direct_peers_only_with_them():
-    hosts = config.legacy_hosts(config.parse(ROUTED))['hosts']
-    assert hosts['calls']['peers'] == ['edge']
-    assert 'calls' in hosts['edge']['peers'] and 'calls' not in hosts['server-a']['peers']
-    # The nodes without the key keep the full mesh among themselves. gpu-1 keeps its own VPN and names no peers.
-    assert set(hosts['server-a']['peers']) == {'worker-b', 'edge'}
-    # Each side routes the other through edge, and edge only forwards.
-    assert hosts['server-a']['routes'] == {'edge': ['10.0.0.4/32']}
-    assert hosts['calls']['routes'] == {'edge': ['10.0.0.2/32', '10.0.0.3/32']}
-    assert hosts['edge']['routes'] == {}
-    site = config.parse(ROUTED)
+def test_a_spoke_peers_with_the_hubs_and_the_nodes_of_its_lan():
+    site = config.parse(REMOTE)
+    assert set(peers(site, 'edge')) == {'server-a', 'worker-b', 'calls', 'gpu-1'}
+    assert set(peers(site, 'server-a')) == {'worker-b', 'edge'}
+    assert set(peers(site, 'calls')) == {'edge'}
+    # A LAN peer uses the LAN address, a public peer the public address. A peer without either waits for the handshake.
+    assert peers(site, 'server-a')['worker-b']['endpoint'] == '192.0.2.11:51820'
+    assert peers(site, 'server-a')['edge']['endpoint'] == '203.0.113.10:51820'
+    assert peers(site, 'edge')['server-a']['endpoint'] == ''
+    # Each side routes the other through the hub, and the hub only forwards. No route goes to gpu-1, which keeps the
+    # routes of its own VPN.
+    assert peers(site, 'server-a')['edge']['allowed_ips'] == ['10.0.0.1/32', '10.0.0.4/32']
+    assert peers(site, 'calls')['edge']['allowed_ips'] == ['10.0.0.1/32', '10.0.0.2/32', '10.0.0.3/32']
+    assert peers(site, 'edge')['calls']['allowed_ips'] == ['10.0.0.4/32']
     assert config.parse(config.dump(site)) == site
-    assert config.legacy_hosts(config.parse(site_text('remote.yml')))['hosts']['server-a']['routes'] == {}
 
 
-def test_a_route_needs_direct_peers_with_the_forwarding_node():
-    with pytest.raises(config.SiteError, match='have no direct peer'):
-        config.parse(ROUTED.replace('wireguard_peers: edge', 'wireguard_peers: server-a'))
-    with pytest.raises(config.SiteError, match='not another node of the site'):
-        config.parse(ROUTED.replace('wireguard_peers: edge', 'wireguard_peers: edge, nowhere'))
-    with pytest.raises(config.SiteError, match='has no direct peer for edge'):
-        config.parse(ROUTED.replace('node_roles: worker, data', 'node_roles: worker, data' + H + 'wireguard_peers: server-a'))
+def test_without_hubs_every_node_peers_with_every_node():
+    site = config.parse(REMOTE.replace('        hubs: [edge]\n', ''))
+    assert set(peers(site, 'calls')) == {'server-a', 'worker-b', 'edge', 'gpu-1'}
+    assert peers(site, 'calls')['edge']['allowed_ips'] == ['10.0.0.1/32']
 
 
-def test_a_node_that_keeps_its_vpn_gets_no_route_and_a_hand_made_reverse_peer():
-    # The installer adds no interface on gpu-1, so it cannot add the routes there.
-    with pytest.raises(config.SiteError, match='configures no WireGuard interface on this node'):
-        config.parse(PEERED_GPU.replace('wireguard_peers: edge', 'wireguard_peers: edge' + H + 'wireguard_via: edge'))
-    site = config.parse(PEERED_GPU)
-    hosts = config.legacy_hosts(site)['hosts']
-    # Only edge adds a direct peer for gpu-1. The other nodes keep the route of the existing VPN.
-    assert 'gpu-1' in hosts['edge']['peers'] and 'gpu-1' not in hosts['server-a']['peers']
-    assert config.manual_peers(site) == [
-        'hosts.gpu-1 keeps its VPN interface wg-site. Add a peer for edge on that interface by hand: the public '
-        'key of edge, its endpoint, and AllowedIPs 10.0.0.1/32.']
-    # Without wireguard_peers no node adds a direct peer for gpu-1, because no reverse peer exists there.
-    plain = config.parse(REMOTE_GPU)
-    assert all('gpu-1' not in h['peers'] for h in config.legacy_hosts(plain)['hosts'].values())
-    assert config.manual_peers(plain) == []
+def test_the_network_check_names_unreachable_peers():
+    with pytest.raises(config.SiteError, match='hubs names nowhere, which has no address in this network'):
+        config.parse(REMOTE.replace('hubs: [edge]', 'hubs: [edge, nowhere]'))
+    # Two managed nodes without a public address and without a shared LAN cannot start a handshake.
+    with pytest.raises(config.SiteError, match='hosts.server-a and hosts.worker-b peer in site, and neither can start'):
+        config.parse(REMOTE.replace('        hubs: [edge]\n', '').replace('lan: {office: 192.0.2.11}', 'lan: {}'))
+    # A node that keeps its interface needs its key in the site file, because the installer cannot read it.
+    with pytest.raises(config.SiteError, match='hosts.gpu-1 networks.site has no public_key'):
+        config.parse(REMOTE.replace('public_key: gpu-1-public-key, ', ''))
+    with pytest.raises(config.SiteError, match='has no address in the network site'):
+        config.parse(REMOTE.replace("        site: {address: 10.0.0.4, public_key: calls-public-key}\n", ''))
+    with pytest.raises(config.SiteError, match='the site has no network other in vars.networks'):
+        config.parse(REMOTE.replace('site: {address: 10.0.0.4,', 'other: {address: 10.0.0.4,'))
+
+
+def test_the_peer_table_names_the_peers_that_the_person_adds_by_hand():
+    rows = config.peer_table(config.parse(REMOTE))
+    hand = [r for r in rows if r['by'] == 'hand']
+    assert hand == [{'network': 'site', 'node': 'gpu-1', 'interface': 'wg-site', 'peer': 'edge',
+                     'endpoint': '203.0.113.10:51820', 'allowed_ips': ['10.0.0.1/32'], 'by': 'hand', 'key': 'present'}]
+
+
+def test_a_managed_node_without_a_key_gets_its_interface_and_no_peer():
+    site = config.parse(REMOTE.replace('public_key: calls-public-key', 'port: 51821'))
+    interface = config.wireguard(site, site.nodes['calls'])[0]
+    assert interface['public_key'] == '' and interface['address'] == '10.0.0.4/24' and interface['port'] == 51821
+    # The other nodes add the peer after the key is in the site file.
+    assert 'calls' not in peers(site, 'edge')
+    assert next(r for r in config.peer_table(site) if r['peer'] == 'calls')['key'] == 'missing'
 
 
 def test_the_direct_peer_for_a_node_behind_nat_has_no_endpoint(tmp_path):
-    values = host_vars(PEERED_GPU, 'edge')
-    peer = next(p for p in values['hoover4_wireguard']['peers'] if p['name'] == 'gpu-1')
+    values = host_vars(REMOTE, 'edge')
+    peer = next(p for p in values['hoover4_wireguard'][0]['peers'] if p['name'] == 'gpu-1')
     assert peer == {'name': 'gpu-1', 'key': 'gpu-1-public-key', 'endpoint': '', 'allowed_ips': ['10.0.0.5/32']}
     block = wireguard_module().peer_blocks('[Interface]\n', [peer])
     assert 'AllowedIPs = 10.0.0.5/32' in block and not any(line.startswith('Endpoint') for line in block)
@@ -185,7 +212,7 @@ def wireguard_module():
 
 def test_the_wireguard_peers_add_routed_addresses_and_remove_none():
     wg = wireguard_module()
-    values = host_vars(ROUTED, 'server-a')['hoover4_wireguard']
+    values = host_vars(REMOTE, 'server-a')['hoover4_wireguard'][0]
     # server-a has a hub peer for the whole range and a peer for edge from an earlier run.
     lines = ('[Interface]\nPrivateKey = private\n\n[Peer]\nPublicKey = hub-key\nAllowedIPs = 10.0.0.0/24\n\n'
              '[Peer]\nPublicKey = edge-public-key\nAllowedIPs = 10.0.0.1/32\n').splitlines()
@@ -196,16 +223,27 @@ def test_the_wireguard_peers_add_routed_addresses_and_remove_none():
     assert 'AllowedIPs = 10.0.0.1/32, 10.0.0.4/32' in text
     assert 'calls-public-key' not in text and 'PublicKey = worker-b-public-key' in text
     # On calls the new peer for edge carries the addresses that edge forwards.
-    peers = host_vars(ROUTED, 'calls')['hoover4_wireguard']['peers']
-    blocks = '\n'.join(wg.peer_blocks('[Interface]\n', peers))
+    calls = host_vars(REMOTE, 'calls')['hoover4_wireguard'][0]['peers']
+    blocks = '\n'.join(wg.peer_blocks('[Interface]\n', calls))
     assert blocks.count('[Peer]') == 1 and 'AllowedIPs = 10.0.0.1/32, 10.0.0.2/32, 10.0.0.3/32' in blocks
 
 
 def test_the_vpn_interface_must_be_a_valid_name():
     with pytest.raises(config.SiteError, match='is not a network interface name'):
-        config.parse(site_text('remote.yml').replace('architecture: arm64', 'architecture: arm64' + H + 'vpn_interface: a b'))
-    site = config.parse(REMOTE_GPU)
-    assert config.parse(config.dump(site)) == site
+        config.parse(REMOTE.replace('interface: wg-site', "interface: 'a b'"))
+    with pytest.raises(config.SiteError, match='uses the interface wg0 in more than one network'):
+        config.parse(REMOTE.replace('    lans:', '      other: {cidr: 10.1.0.0/24}\n    lans:').replace(
+            'site: {address: 10.0.0.4, public_key: calls-public-key}',
+            'site: {address: 10.0.0.4, public_key: calls-public-key}\n        other: 10.1.0.4'))
+
+
+def test_the_wireguard_module_writes_a_missing_interface():
+    wg = wireguard_module()
+    assert wg.interface_text('private', '10.0.0.4/24', 51821).splitlines() == [
+        '# Written by hoover4. The installer adds the peers of the site file.', '[Interface]', 'PrivateKey = private',
+        'Address = 10.0.0.4/24', 'ListenPort = 51821']
+    tasks = (ROLES / 'hoover4_wireguard/tasks/interface.yml').read_text()
+    assert "Set public_key: '{{ hoover4_wireguard_change.public_key }}'" in tasks
 
 
 @pytest.fixture
@@ -269,7 +307,7 @@ def test_the_removal_script_needs_an_archive_and_keeps_the_protected_resources(t
     import json
     lr = retirement()
     inventory = {'time': 't', 'node': 'dev', 'protected': {**lr.PROTECTED, '/srv/compose-volumes': 'the stopped Compose volumes'},
-                 'volume_group': {'name': 'hoover4', 'physical_volumes': ['/dev/nvme2n1p2']}}
+                 'volume_groups': {'hoover4': {'volumes': []}}}
     (tmp_path / 'inventory.json').write_text(json.dumps(inventory))
     with pytest.raises(SystemExit, match='holds no archive'):
         lr.removal(tmp_path)

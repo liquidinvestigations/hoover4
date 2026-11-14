@@ -8,7 +8,8 @@ k3s/private. Every private path of the scripts of platform/, zones/, hoover/ and
 write it as <state folder>/<path>.
 config.legacy_settings() gives these values:
   suffix          the domain of the site, below which each zone has its names, for example <app>.<zone>.<suffix>
-  frontend_bind   the addresses where the HTTPS frontend listens, for example a VPN address and a public address
+  frontend_bind   the addresses where the HTTPS frontend listens, for example a node address and a public address
+  admin_ranges    the cidr of each network and LAN of the site file. Only these ranges reach the admin routes.
   frontend_local  true when the HTTPS frontend runs on this host with a local CA
   frontend_ssh    the SSH destination of the public node (config.ssh_host())
   frontend_tls_mode  the TLS mode of the frontend: cloudflare, internal or files (config.TLS_MODES)

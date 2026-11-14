@@ -1,24 +1,28 @@
 #!/bin/bash
-# Admit only the allowed ports on the public interface of the public host. The role hoover4_public_firewall runs it as root.
+# Admit only the allowed ports on the public interface of a public or calls node. The role hoover4_public_firewall runs
+# it as root, only on a node whose public interface does not carry the node address of the cluster.
 # Allowed: SSH, HTTP and HTTPS (TCP and UDP 443) of the frontend, TURN (UDP and TCP 3478) and the direct media ports of
-# the call services (UDP 10000 of the JVB, TCP 7881 and UDP 7882 of LiveKit), and WireGuard (UDP 42069). A separate
-# calls node runs the same script. ../../../../platform/calls/public_endpoints.py firewall prints the ports of each node. Answers to connections of the host and ICMP also pass. The table drops every other packet that
-# enters on the public interface. The drop rules of public-guard.sh stay, and its table runs first.
-# On a node with the public address of the call services, the chain coturn_peers lets the coturn user reach that address
-# only on the LiveKit media ports, because coturn may relay to it (../../../../platform/calls/turn_peers.py). Its hook runs
-# before the DNAT of the host ports. The host play runs it before the calls step of the driver.
+# the call services (UDP 10000 of the JVB, TCP 7881 and UDP 7882 of LiveKit), and the WireGuard ports of the node.
+# ../../../../platform/calls/public_endpoints.py firewall prints the ports of each node. Answers to connections of the
+# host and ICMP also pass. The table drops every other packet that enters on the public interface. The drop rules of
+# public-guard.sh stay, and its table runs first. coturn-peers.sh holds the rule of the coturn user in its own table.
+# Environment: HOOVER4_PUBLIC_IF names the public interface, and HOOVER4_WIREGUARD_PORTS the WireGuard ports,
+# separated by spaces.
 # The table loads at boot before the network. A second run writes nothing and restarts nothing.
 # A changed table starts a timer that removes the table again after 180 seconds. Test SSH from a new connection, then
 # run the script with --confirm, which stops the timer. Without --confirm the host returns to the earlier state.
 # Usage: public-firewall.sh [--dry-run | --confirm]
 set -euo pipefail
 MODE=${1:-}
-PUBLIC_IF=$(ip route show default | awk '{print $5; exit}')
-[ -n "$PUBLIC_IF" ] && [ "$PUBLIC_IF" != wg0 ] || { echo "ERROR: no public interface found" >&2; exit 1; }
-PUBLIC_IP=$(ip -4 -o addr show dev "$PUBLIC_IF" scope global | awk '{split($4, a, "/"); print a[1]; exit}')
-[ -n "$PUBLIC_IP" ] || { echo "ERROR: $PUBLIC_IF has no global IPv4 address" >&2; exit 1; }
-# The user id of coturn, COTURN_UID of ../../../../platform/calls/turn_peers.py.
-COTURN_UID=64981
+if [ "$MODE" != --confirm ]; then
+  PUBLIC_IF=${HOOVER4_PUBLIC_IF:-}
+  [ -n "$PUBLIC_IF" ] || { echo "ERROR: HOOVER4_PUBLIC_IF names no public interface" >&2; exit 1; }
+fi
+WIREGUARD=''
+for port in ${HOOVER4_WIREGUARD_PORTS:-}; do
+  [[ "$port" =~ ^[0-9]+$ ]] || { echo "ERROR: $port is not a WireGuard port" >&2; exit 1; }
+  WIREGUARD+="    udp dport $port accept comment \"WireGuard\""$'\n'
+done
 NFT_FILE=/etc/hoover-public-firewall.nft
 UNIT_FILE=/etc/systemd/system/hoover-public-firewall.service
 TIMER=hoover-public-firewall-rollback
@@ -43,16 +47,7 @@ table inet hoover_public_firewall {
     meta l4proto { tcp, udp } th dport 3478 accept comment "TURN of the call services"
     udp dport { 7882, 10000 } accept comment "direct media of LiveKit and the JVB"
     tcp dport 7881 accept comment "LiveKit media over TCP"
-    udp dport 42069 accept comment "WireGuard"
-    counter drop
-  }
-  chain coturn_peers {
-    type filter hook output priority raw; policy accept;
-    meta skuid != $COTURN_UID accept
-    ip daddr != $PUBLIC_IP accept
-    udp dport 7882 accept comment "LiveKit media"
-    tcp dport 7881 accept comment "LiveKit media over TCP"
-    counter drop comment "coturn relays to no other port of the public address"
+${WIREGUARD}    counter drop
   }
 }
 EOF

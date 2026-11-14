@@ -311,7 +311,7 @@ def renamed_hosts(text):
 
 def tier(target, claim):
     """The storage tier of a claim on the home node: the first preferred tier that the node has."""
-    tiers = target.site.nodes[target.hoover.home_node].storage_tiers
+    tiers = target.site.nodes[target.hoover.home_node].tiers
     preferred = ('nvme', 'ssd', 'hdd') if claim in FAST else ('hdd', 'ssd', 'nvme')
     for name in preferred:
         if name in tiers:

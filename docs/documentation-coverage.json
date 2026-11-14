@@ -3161,7 +3161,8 @@
       "source": [
         "k3s/platform/calls/install-calls.py",
         "k3s/platform/calls/public_endpoints.py",
-        "k3s/ansible/roles/hoover4_public_firewall/files/public-firewall.sh"
+        "k3s/ansible/roles/hoover4_public_firewall/files/public-firewall.sh",
+        "k3s/ansible/roles/hoover4_public_firewall/files/coturn-peers.sh"
       ],
       "docs": [
         "docs/technical-specification/Features.md",

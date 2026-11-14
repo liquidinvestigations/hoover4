@@ -239,8 +239,8 @@ def plan(r, dry_run=False):
     for path, claim in claims.items():
         folders[path] = {'claim': claim, 'bytes': du(path), 'owner': owner(path)}
     uid_map, gid_map = owner_maps()
-    vg = r.site.nodes[hoover.home_node].lvm_volume_group
-    free = volume_group_free(r.site, hoover.home_node, vg)
+    vg = ', '.join(sorted(set(r.site.nodes[hoover.home_node].storage.values())))
+    free = volume_group_free(r.site, hoover.home_node)
     target = manifests.target_from_site(r.site_path, hoover.name, revision='0' * 40)
     sizes = {c: target.values.get(f'volume.{c}', target.values['volume.upload-tmp']) for c in set(claims.values())}
     sizes[WORKER_CLAIM] = target.values['volume.worker-temp-files']
@@ -252,7 +252,7 @@ def plan(r, dry_run=False):
             problems.append(f"{path} holds {row['bytes']} bytes, and the claim {row['claim']} has {sizes[row['claim']]}. "
                             f"Save a larger volume.{row['claim']} in the operator settings.")
     if needed > free:
-        problems.append(f'the claims need {needed} bytes, and the volume group {vg} has {free} free.')
+        problems.append(f'the claims need {needed} bytes, and the volume groups {vg} have {free} free.')
     result = {'installation': hoover.name, 'namespace': hoover.namespace, 'source_ini': hoover.source_ini,
               'dropped_settings': source.dropped, 'volumes_path': source.volumes_path, 'folders': folders,
               'skipped': {source.volumes[k]: v for k, v in SKIPPED.items() if k in source.volumes},
@@ -277,10 +277,12 @@ def plan(r, dry_run=False):
             'settings_revision': result['settings_revision']}
 
 
-def volume_group_free(site, node_name, vg):
-    """The free bytes of the volume group of the home node: vgs on the local node, else the TopoLVM node capacity."""
+def volume_group_free(site, node_name):
+    """The free bytes of the volume groups of the storage of the home node: vgs on the local node, else the TopoLVM
+    node capacity."""
     if site.nodes[node_name].local:
-        return int(float(sudo('vgs', '--noheadings', '--units', 'b', '--nosuffix', '-o', 'vg_free', vg).strip()))
+        return sum(int(float(sudo('vgs', '--noheadings', '--units', 'b', '--nosuffix', '-o', 'vg_free', vg).strip()))
+                   for vg in sorted(set(site.nodes[node_name].storage.values())))
     annotations = json.loads(kubectl('get', 'node', node_name, '-o', 'jsonpath={.metadata.annotations}') or '{}')
     values = [int(v) for k, v in annotations.items() if k.startswith('capacity.topolvm.io/') and v.isdigit()]
     if not values:
@@ -574,7 +576,9 @@ def bind_claims(r, claims):
             raise StepFailed(f'the claim {c} has no volume after the bind pod.')
         handle = kubectl('get', 'pv', volume, '-o', 'jsonpath={.spec.csi.volumeHandle}').strip()
         # The device path exists on the home node only. copy() uses it when the home node is this host.
-        out[c] = f'/dev/{r.site.nodes[r.hoover.home_node].lvm_volume_group}/{handle}'
+        # The storage class <tier>-ext4 names the tier, and the site file names its volume group.
+        tier = kubectl('-n', ns, 'get', 'pvc', c, '-o', 'jsonpath={.spec.storageClassName}').strip().split('-')[0]
+        out[c] = f'/dev/{r.site.nodes[r.hoover.home_node].storage[tier]}/{handle}'
     return out
 
 

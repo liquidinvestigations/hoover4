@@ -1,18 +1,20 @@
 #!/bin/bash
-# Drop the k3s node ports on the public interface of the public host. The role hoover4_public_firewall runs it as root.
-# The provider firewall in front of the host passes these ports. The cluster uses them over wg0 only.
+# Drop the k3s node ports on the public interface of a public or calls node. The role hoover4_public_firewall runs it as
+# root, only on a node whose public interface does not carry the node address of the cluster. HOOVER4_PUBLIC_IF names
+# the public interface. The provider firewall in front of the host passes these ports. The cluster uses them on the
+# interface of the node address only.
 # Flannel VXLAN (UDP 8472) takes packets from any address, so a public packet could enter the pod network.
 # The table loads at boot before k3s-agent. A second run writes nothing and restarts nothing.
 # Usage: public-guard.sh [--dry-run]. --dry-run shows the changes and changes nothing.
 set -euo pipefail
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
-PUBLIC_IF=$(ip route show default | awk '{print $5; exit}')
-[ -n "$PUBLIC_IF" ] && [ "$PUBLIC_IF" != wg0 ] || { echo "ERROR: no public interface found" >&2; exit 1; }
+PUBLIC_IF=${HOOVER4_PUBLIC_IF:-}
+[ -n "$PUBLIC_IF" ] || { echo "ERROR: HOOVER4_PUBLIC_IF names no public interface" >&2; exit 1; }
 NFT_FILE=/etc/k3s-public-guard.nft
 UNIT_FILE=/etc/systemd/system/k3s-public-guard.service
 NFT_TEXT=$(cat <<EOF
-# Written by public-guard.sh. The k3s node ports are for wg0 and the pod network only.
+# Written by public-guard.sh. The k3s node ports are for the node address and the pod network only.
 table inet k3s_public_guard
 delete table inet k3s_public_guard
 table inet k3s_public_guard {

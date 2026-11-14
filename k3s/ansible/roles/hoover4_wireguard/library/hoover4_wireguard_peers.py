@@ -1,11 +1,13 @@
 #!/usr/bin/python3
-"""Add the direct WireGuard peers of a hoover4 node to its running interface. An Ansible module.
+"""Write a WireGuard interface of a hoover4 node when it is missing, and add its direct peers. An Ansible module.
 
-The interface must be up and hold the public key of the node. The module sets ListenPort, adds a [Peer] section for
+Without the interface file /etc/wireguard/<interface>.conf, the module writes one with a new private key, the address
+and the listen port, and starts the unit wg-quick@<interface>. The result names the new public key, which the site file
+needs. An existing interface must be up and hold public_key. The module sets ListenPort, adds a [Peer] section for
 each peer whose key the file does not have, and adds the missing routed addresses to the AllowedIPs of the peers. It
 removes no peer and no address, so the other peers and routes of the interface stay unchanged. The new file is
 checked with wg-quick strip and applied with wg syncconf before it replaces the interface file. A refused file
-changes nothing. The private key of the file never reaches the output.
+changes nothing. The private key never reaches the output.
 """
 import os
 import re
@@ -67,11 +69,40 @@ def peer_blocks(text, peers):
     return blocks
 
 
+def interface_text(private_key, address, port):
+    """The text of a new interface file."""
+    return '\n'.join(['# Written by hoover4. The installer adds the peers of the site file.', '[Interface]',
+                      f'PrivateKey = {private_key}', f'Address = {address}', f'ListenPort = {port}']) + '\n'
+
+
+def create(module, interface, conf):
+    """Write the interface file with a new key and start its unit. Return the new public key."""
+    p = module.params
+    if not p['address']:
+        module.fail_json(msg=f'{conf} does not exist, and the module has no address for a new interface.')
+    if module.check_mode:
+        module.exit_json(changed=True, created=True, public_key='', added=[f'new interface {interface}'])
+    code, private, err = module.run_command(['wg', 'genkey'])
+    if code:
+        module.fail_json(msg=f'wg genkey failed: {err.strip()[-300:]}')
+    code, public, err = module.run_command(['wg', 'pubkey'], data=private.strip())
+    if code:
+        module.fail_json(msg=f'wg pubkey failed: {err.strip()[-300:]}')
+    os.makedirs('/etc/wireguard', mode=0o700, exist_ok=True)
+    with open(os.open(conf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as f:
+        f.write(interface_text(private.strip(), p['address'], p['listen_port']))
+    code, _, err = module.run_command(['systemctl', 'enable', '--now', f'wg-quick@{interface}'])
+    if code:
+        module.fail_json(msg=f'wg-quick@{interface} did not start: {err.strip()[-300:]}. {conf} stays for the next run.')
+    return public.strip()
+
+
 def main():
     module = AnsibleModule(argument_spec={
         'interface': {'type': 'str', 'required': True},
+        'address': {'type': 'str', 'default': ''},
         'listen_port': {'type': 'int', 'required': True},
-        'public_key': {'type': 'str', 'required': True},
+        'public_key': {'type': 'str', 'default': ''},
         'peers': {'type': 'list', 'elements': 'dict', 'default': []},
     }, supports_check_mode=True)
     p = module.params
@@ -79,21 +110,33 @@ def main():
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,15}', interface):
         module.fail_json(msg=f'{interface!r} is not an interface name')
     conf = f'/etc/wireguard/{interface}.conf'
+    created = False
+    if not os.path.exists(conf):
+        created_key = create(module, interface, conf)
+        created = True
     code, key, _ = module.run_command(['wg', 'show', interface, 'public-key'])
     if code:
         module.fail_json(msg=f'{interface} is not up. Start the interface of the VPN, then run the play again.')
-    if key.strip() != p['public_key']:
-        module.fail_json(msg=f'the public key of {interface} is not the wireguard_public_key of the site file.')
+    key = key.strip()
+    if created:
+        if p['public_key'] and key != p['public_key']:
+            module.fail_json(msg=f'the new interface {interface} has the public key {created_key}, and the site file '
+                                 f'names {p["public_key"]}. Set the new key in the site file.')
+    elif p['public_key'] and key != p['public_key']:
+        module.fail_json(msg=f'the public key of {interface} is {key}, not the public_key of the site file.')
+    if not p['public_key']:
+        # The site file does not have the key yet, so no other node has a peer for this node. Add no peer.
+        module.exit_json(changed=created, created=created, public_key=key)
     peers = [x for x in p['peers'] if x.get('key') and x.get('allowed_ips')]
     text = open(conf).read()
     lines = text.splitlines()
     new = widen_allowed_ips(set_listen_port(lines, p['listen_port'], lambda m: module.fail_json(msg=m)), peers)
     new += peer_blocks(text, peers)
     if new == lines:
-        module.exit_json(changed=False, msg=f'{conf} has the listen port and every peer')
+        module.exit_json(changed=created, created=created, public_key=key, msg=f'{conf} has the listen port and every peer')
     shown = [line for line in new if line not in lines and not re.match(r'\s*PrivateKey', line, re.I)]
     if module.check_mode:
-        module.exit_json(changed=True, added=shown)
+        module.exit_json(changed=True, created=created, public_key=key, added=shown)
     folder = tempfile.mkdtemp(dir='/run', prefix='hoover4-wg-')
     try:
         candidate = os.path.join(folder, f'{interface}.conf')
@@ -118,7 +161,7 @@ def main():
         os.replace(tmp, conf)
     finally:
         shutil.rmtree(folder, ignore_errors=True)
-    module.exit_json(changed=True, added=shown)
+    module.exit_json(changed=True, created=created, public_key=key, added=shown)
 
 
 if __name__ == '__main__':

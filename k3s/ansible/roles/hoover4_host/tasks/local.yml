@@ -63,14 +63,6 @@
     daemon_reload: true
   when: hoover4_slice.changed or hoover4_slice_dropin.changed
 
-# The person creates the volume group (lvm_volume_group). The role creates and mounts the k3s data volumes in it.
-- name: Create the k3s data volumes
-  ansible.builtin.include_tasks: k3s-volume.yml
-  loop: [{name: rancher, size: 150G, path: /var/lib/rancher}, {name: kubelet, size: 40G, path: /var/lib/kubelet}]
-  loop_control:
-    loop_var: volume
-  when: hoover4_volume_group | length > 0
-
 - name: Write the local DNS server configuration
   ansible.builtin.copy:
     dest: /etc/hoover4/dnsmasq.conf

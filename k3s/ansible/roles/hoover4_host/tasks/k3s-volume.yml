@@ -1,11 +1,11 @@
 ---
 - name: Refuse a missing volume group
-  ansible.builtin.command: vgs {{ hoover4_volume_group }}
+  ansible.builtin.command: vgs {{ hoover4_k3s_volume_group }}
   changed_when: false
   check_mode: false
 
 - name: Read the volume {{ volume.name }}
-  ansible.builtin.command: lvs --noheadings {{ hoover4_volume_group }}/{{ volume.name }}
+  ansible.builtin.command: lvs --noheadings {{ hoover4_k3s_volume_group }}/{{ volume.name }}
   register: hoover4_lv
   changed_when: false
   check_mode: false
@@ -14,8 +14,8 @@
 - name: Create the file system of the volume {{ volume.name }}
   ansible.builtin.shell: |
     set -eu
-    lvcreate --yes -n {{ volume.name }} -L {{ volume.size }} {{ hoover4_volume_group }}
-    mkfs.ext4 -q -L hoover4-{{ volume.name }} /dev/{{ hoover4_volume_group }}/{{ volume.name }}
+    lvcreate --yes -n {{ volume.name }} -L {{ volume.size }} {{ hoover4_k3s_volume_group }}
+    mkfs.ext4 -q -L hoover4-{{ volume.name }} /dev/{{ hoover4_k3s_volume_group }}/{{ volume.name }}
   when: hoover4_lv.rc != 0
   changed_when: true
 
@@ -32,7 +32,7 @@
     set -eu
     if [ -d {{ volume.path }} ] && [ -n "$(ls -A {{ volume.path }})" ]; then
       mkdir -p /run/hoover4-{{ volume.name }}
-      mount /dev/{{ hoover4_volume_group }}/{{ volume.name }} /run/hoover4-{{ volume.name }}
+      mount /dev/{{ hoover4_k3s_volume_group }}/{{ volume.name }} /run/hoover4-{{ volume.name }}
       cp -a {{ volume.path }}/. /run/hoover4-{{ volume.name }}/
       umount /run/hoover4-{{ volume.name }}
     fi
@@ -41,7 +41,7 @@
 
 - name: Mount the volume at {{ volume.path }}
   ansible.posix.mount:
-    src: /dev/{{ hoover4_volume_group }}/{{ volume.name }}
+    src: /dev/{{ hoover4_k3s_volume_group }}/{{ volume.name }}
     path: "{{ volume.path }}"
     fstype: ext4
     opts: defaults,noatime

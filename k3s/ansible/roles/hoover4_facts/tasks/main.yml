@@ -28,12 +28,27 @@
   ansible.builtin.set_fact:
     hoover4_facts: "{{ hoover4_facts_script.stdout | from_json }}"
 
-- name: Refuse an architecture that differs from the site file
+- name: Refuse an architecture without k3s, gVisor and image builds
   ansible.builtin.assert:
     that:
-      - "hoover4_facts.architecture == {'amd64': 'x86_64', 'arm64': 'aarch64'}[hoover4_architecture]"
-    fail_msg: "Node {{ inventory_hostname }}: the site file names {{ hoover4_architecture }}, and the host is {{ hoover4_facts.architecture }}."
+      - hoover4_facts.architecture in ['x86_64', 'aarch64']
+    fail_msg: "Node {{ inventory_hostname }} has the architecture {{ hoover4_facts.architecture }}. A node needs x86_64 or aarch64."
     quiet: true
+
+# The person creates each volume group of storage and k3s_volume_group. The installer changes no disk.
+- name: Refuse a volume group of the site file that the node does not have
+  ansible.builtin.assert:
+    that:
+      - hoover4_missing_groups | length == 0
+    fail_msg: >-
+      Node {{ inventory_hostname }} has no volume group {{ hoover4_missing_groups | join(', ') }}, which storage or
+      k3s_volume_group of the site file names. Create it, or correct the site file. The node has
+      {{ hoover4_facts.volume_groups.keys() | list | join(', ') or 'no volume group' }}.
+    quiet: true
+  vars:
+    hoover4_missing_groups: >-
+      {{ ((hoover4_storage | default({})).values() | list + ([hoover4_k3s_volume_group] if hoover4_k3s_volume_group | default('') | length > 0 else []))
+         | unique | difference(hoover4_facts.volume_groups.keys() | list) }}
 
 - name: Write the facts of the node into the state folder
   ansible.builtin.copy:

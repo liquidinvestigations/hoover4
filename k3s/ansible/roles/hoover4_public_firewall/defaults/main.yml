@@ -1,4 +1,7 @@
 ---
-# The host firewall of the public and calls nodes. The earlier installer did not run it, and the operator ran the
-# scripts by hand, so the switch is off by default.
+# The switch public_firewall of the site file. The driver sets these values for each node (config.ansible_variables()).
+# public_firewall is true on a public or calls node unless the site file turns it off.
 hoover4_public_firewall: false
+hoover4_public_address: ""
+hoover4_coturn_peers: false
+hoover4_wireguard_ports: []

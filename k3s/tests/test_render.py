@@ -539,8 +539,8 @@ def test_a_calls_node_takes_the_media_services_and_its_public_address():
     # Without a calls node the public node runs them. The local node has no public address, so the pods advertise.
     single = config.legacy_settings(config.parse(site_text('single-node.yml')))
     assert single['calls_node'] == 'dev' and single['calls_public_address'] == ''
-    without = config.parse(site_text('remote.yml').replace('node_roles: calls', 'node_roles: worker\n      storage_tiers: hdd\n'
-                                                                                  '      lvm_volume_group: tier-hdd'))
+    without = config.parse(site_text('remote.yml').replace('node_roles: calls', 'node_roles: worker\n'
+                                                                                  '      storage: {hdd: tier-hdd}'))
     assert config.legacy_settings(without)['calls_node'] == 'edge'
 
 
@@ -557,6 +557,7 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node():
     media = {(r['protocol'], r['port']) for r in rules['calls']}
     assert {('udp', 10000), ('tcp', 7881), ('udp', 7882), ('udp', 3478), ('tcp', 3478)} <= media
     assert ('tcp', 443) not in media and ('tcp', 443) in {(r['protocol'], r['port']) for r in rules['edge']}
+    assert ('udp', 51820) in media
     script = (REPO / 'k3s/ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
     assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script
 

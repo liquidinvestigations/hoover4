@@ -40,8 +40,10 @@ The site file is a YAML Ansible inventory with one group, `hoover4`.
 
 | Place | Content |
 |---|---|
-| `hoover4.vars` | The domain of the zones (`domain`), the control-plane node and the VPN range. |
-| `hoover4.hosts.<name>` | One node: its roles (`node_roles`), addresses, storage tiers and volume group, and the TLS mode of a public node. |
+| `hoover4.vars` | The domain of the zones (`domain`) and the control-plane node. |
+| `hoover4.vars.networks.<name>` | One WireGuard network: its range (`cidr`), interface, hub nodes, port and the switch `managed`. |
+| `hoover4.vars.lans.<name>` | One LAN, with an optional range (`cidr`). |
+| `hoover4.hosts.<name>` | One node: its roles (`node_roles`), its address in each network and LAN, its public address, the volume group of each storage tier (`storage`), the switches of its host changes, and the TLS mode of a public node. |
 | `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool, and the key file of the pool. |
 | `hoover4.vars.backup` | The backup node and the backup folder on that node. |
 | `hoover4.vars.hoovers.<name>` | One Hoover installation: its zone, its home node, its store layout and its storage identity. |
@@ -51,6 +53,17 @@ Check the file before each change:
 ```sh
 python3 k3s/config.py check <site file>
 ```
+
+The check prints the switches of each node and the WireGuard peer table. Prepare these items on the nodes before the first run.
+
+1. Create a volume group for each storage tier of each node, for example with `vgcreate`. The installer changes no disk.
+   The facts play of `k3s/deploy-k3s check` refuses a volume group that the node does not have.
+2. Choose the switches of each node: `stop_docker`, `k3s_volume_group` and `public_firewall`.
+   [The reference](../../../k3s/Readme.md) lists what each switch changes.
+3. A site without a WireGuard network connects its nodes at their LAN addresses. Give each node `lan` and declare the LAN in `vars.lans`.
+4. The cidr of each network, and of each LAN that states one, reaches the admin routes of the HTTPS frontend.
+
+The facts play reads the architecture, AVX2, the GPUs and the volume group sizes of each node. Do not write them in the site file.
 
 ## Choose the node roles
 
@@ -134,13 +147,13 @@ The host play removes `/usr/local/libexec/hoover4`, the sudo rule `/etc/sudoers.
 
 ## Add a GPU node
 
-A GPU node keeps its existing VPN interface. Name that interface in the site file.
+A GPU node can keep its existing VPN interface. Then name that interface in the site file and turn off `managed` for the node.
 
-1. Add a node to `hoover4.hosts` with the role `gpu`, the architecture `arm64` or `amd64`, the VPN address, `vpn_interface` and `wireguard_public_key`.
+1. Add a node to `hoover4.hosts` with the role `gpu` and its entry in the cluster network, for example
+   `networks: {site: {address: <address>, public_key: '<key>', interface: <interface>, managed: false}}`.
    The public key is the key of the existing VPN interface of the node.
-   The installer configures no peer on the GPU node. Without `wireguard_peers`, the other nodes reach it through the existing VPN.
-   To give the GPU node a direct peer, set `wireguard_peers` to the node that it can reach, for example the public node. Do not set `wireguard_via`.
-   Add the reverse peer on the GPU node by hand: the public key of that node, its endpoint, and its VPN address as AllowedIPs. `k3s/deploy-k3s check` lists it in `manual_peers`.
+   The installer configures nothing on that interface. The nodes that peer with it, for example a hub, add a direct peer for it.
+   Add the reverse peers on the GPU node by hand. The peer table of `k3s/deploy-k3s check` lists them with `by: hand`.
 2. Install the NVIDIA driver on the node. The k3s play refuses a GPU node where `nvidia-smi -L` fails.
    The host play adds the NVIDIA repository and installs the NVIDIA container toolkit when the node does not have it.
 3. Run `k3s/deploy-k3s up --target <name> --steps hosts`.

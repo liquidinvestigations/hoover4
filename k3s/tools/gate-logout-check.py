@@ -43,12 +43,13 @@ def request(opener, url, data=None):
 def logout(zone, opener):
     """End the Keycloak sessions of Administrator through the Keycloak admin API.
 
-    The frontend answers the admin routes only from the VPN, so the host id.<zone>.<suffix> connects to the VPN address
-    of the frontend. The requests carry the gate cookie of the opener.
+    The frontend answers the admin routes only from the admin ranges (the networks and LANs of the site file), so the
+    host id.<zone>.<suffix> connects to the frontend address in those ranges. The requests carry the gate cookie of the
+    opener.
     """
     host = f'id.{zone}.{settings.SUFFIX}'
-    vpn = ipaddress.ip_network(settings.HOST['vpn_cidr'])
-    address = next(a for a in settings.FRONTEND_BIND if ipaddress.ip_address(a) in vpn)
+    ranges = [ipaddress.ip_network(r) for r in settings.HOST['admin_ranges']]
+    address = next(a for a in settings.FRONTEND_BIND if any(ipaddress.ip_address(a) in r for r in ranges))
     system = socket.getaddrinfo
     socket.getaddrinfo = lambda name, *args, **kwargs: system(address if name == host else name, *args, **kwargs)
     form = {'grant_type': 'password', 'client_id': 'admin-cli', 'username': 'kcadmin',

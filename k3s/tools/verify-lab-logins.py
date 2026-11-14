@@ -3,8 +3,8 @@
 
 Each check signs in the way a person does, or checks the password where the login is in the cluster only.
 Each request asks for a page, so the zone gate sends it to the Keycloak sign-in. The checks of the internal admin logins
-sign in at the gate as Administrator first. The Keycloak admin check connects to the VPN address of the frontend,
-because the frontend refuses the admin routes outside vpn_cidr.
+sign in at the gate as Administrator first. The Keycloak admin check connects to the frontend address in the admin ranges,
+because the frontend refuses the admin routes outside the admin ranges of the site file.
 An application answers 502 or 503 while it starts. A check repeats such a request for up to 600 seconds.
 Without zones the script checks every zone of the zone state. --no-platform leaves out the operator portal and Grafana,
 for a cluster that does not run them yet. Each zone check covers Administrator, test.user and the users of zone-users.json.
@@ -21,9 +21,9 @@ def secret(zone,name,key):
 def browser():
  jar=http.cookiejar.CookieJar();o=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
  o.addheaders=[('Accept','text/html,*/*')];o.jar=jar;return o
-# A host name in VPN_HOSTS connects to the VPN address of the frontend. TLS and the Host header keep the name.
-VPN=ipaddress.ip_network(settings.HOST.get('vpn_cidr','0.0.0.0/32'))
-FRONTEND_VPN=next((a for a in settings.FRONTEND_BIND if ipaddress.ip_address(a) in VPN),None)
+# A host name in VPN_HOSTS connects to the frontend address in the admin ranges. TLS and the Host header keep the name.
+VPN=[ipaddress.ip_network(r) for r in settings.HOST.get('admin_ranges',[])]
+FRONTEND_VPN=next((a for a in settings.FRONTEND_BIND if any(ipaddress.ip_address(a) in r for r in VPN)),None)
 VPN_HOSTS=set();system_getaddrinfo=socket.getaddrinfo
 def getaddrinfo(host,*args,**kwargs):return system_getaddrinfo(FRONTEND_VPN if host in VPN_HOSTS else host,*args,**kwargs)
 socket.getaddrinfo=getaddrinfo
@@ -87,7 +87,7 @@ def keycloak_admin(zone):
  d=f'{zone}.{settings.SUFFIX}';console=f'https://id.{d}/admin/master/console/'
  url=f'https://id.{d}/realms/master/protocol/openid-connect/auth?'+urllib.parse.urlencode({'client_id':'security-admin-console','redirect_uri':console,
   'response_type':'code','scope':'openid','state':'check','nonce':'check','code_challenge':'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM','code_challenge_method':'S256'})
- if not FRONTEND_VPN:return False,'frontend_bind has no address in vpn_cidr'
+ if not FRONTEND_VPN:return False,'frontend_bind has no address in the admin ranges'
  VPN_HOSTS.add(f'id.{d}')
  status,landing,_=keycloak_login(gated(zone),url,'kcadmin',secret(zone,'keycloak-admin-password','adminPassword'))
  return status==200 and landing.startswith(console) and 'code=' in landing,f'{status} {landing.split("?")[0]}'

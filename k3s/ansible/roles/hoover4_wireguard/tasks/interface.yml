@@ -1,0 +1,45 @@
+---
+# One WireGuard interface of the node (an item of hoover4_wireguard, in hoover4_network).
+- name: Write the interface and add the direct peers of {{ hoover4_network.network }}
+  hoover4_wireguard_peers:
+    interface: "{{ hoover4_network.interface }}"
+    address: "{{ hoover4_network.address }}"
+    listen_port: "{{ hoover4_network.port }}"
+    public_key: "{{ hoover4_network.public_key }}"
+    peers: "{{ hoover4_network.peers }}"
+  register: hoover4_wireguard_change
+
+# A new interface has a new key. The other nodes add their peer for it after the key is in the site file.
+- name: Stop at a public key that the site file does not have
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} has the WireGuard public key {{ hoover4_wireguard_change.public_key }} on
+      {{ hoover4_network.interface }}. Set public_key: '{{ hoover4_wireguard_change.public_key }}' in
+      hosts.{{ inventory_hostname }} networks.{{ hoover4_network.network }} of the site file, then run the step again.
+  when: hoover4_network.public_key | length == 0 and not ansible_check_mode
+
+- name: Wait for a handshake with each direct peer of {{ hoover4_network.network }}
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pending="{{ hoover4_network.peers | map(attribute='key') | join(' ') }}"
+    for _ in $(seq 15); do
+      left=''
+      for key in $pending; do
+        stamp=$(wg show {{ hoover4_network.interface }} latest-handshakes | awk -v k="$key" '$1 == k {print $2}')
+        [ "${stamp:-0}" != 0 ] || left="$left $key"
+      done
+      [ -z "$left" ] && exit 0
+      sleep 2
+    done
+    echo "no handshake with:$left"
+  args:
+    executable: /bin/bash
+  register: hoover4_handshakes
+  changed_when: false
+  check_mode: false
+  when: hoover4_network.peers | length > 0 and not ansible_check_mode
+
+- name: Report the peers without a handshake in {{ hoover4_network.network }}
+  ansible.builtin.debug:
+    msg: "{{ hoover4_handshakes.stdout }}. Run the play on the peer nodes, then run it again on {{ inventory_hostname }}."
+  when: hoover4_handshakes.stdout | default('') | length > 0

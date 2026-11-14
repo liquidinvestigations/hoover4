@@ -128,8 +128,9 @@ def service_objects(node, name, service_def, runtime, revision):
     ]
 
 
-def gateway(node, services):
-    """The nginx gateway of one GPU node. It checks the pool key on every port."""
+def gateway(node, services, address=''):
+    """The nginx gateway of one GPU node. It checks the pool key on every port. address is the node address, where the
+    gateway takes the connections of other installations as a host port."""
     servers = ''
     for name, (key, port, checks) in SERVICES.items():
         if name not in services:
@@ -159,8 +160,8 @@ def gateway(node, services):
     container = {'name': 'nginx', 'image': NGINX,
                  'env': [{'name': 'POOL_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-pool', 'key': 'pool-key'}}},
                          {'name': 'NGINX_ENVSUBST_FILTER', 'value': '^POOL_KEY$'}],
-                 # The gateway listens on the VPN address of the node, so the installations of the shared pool reach it.
-                 'ports': [{'name': f'p{p}', 'containerPort': p, **({'hostPort': p, 'hostIP': node.vpn_address} if node.vpn_address else {})}
+                 # The gateway listens on the node address, so the installations of the shared pool reach it.
+                 'ports': [{'name': f'p{p}', 'containerPort': p, **({'hostPort': p, 'hostIP': address} if address else {})}
                            for p in ports],
                  'readinessProbe': {'tcpSocket': {'port': ports[0]}, 'periodSeconds': 5},
                  'resources': {'requests': {'cpu': '20m', 'memory': '32Mi'}, 'limits': {'cpu': '2', 'memory': '256Mi'}},
@@ -188,11 +189,11 @@ def objects(site, runtime, revision, tree=site_config.REPO):
         node = site.nodes[node_name]
         for name, service_def in services.items():
             items += service_objects(node, name, service_def, runtime, revision)
-        items += gateway(node, services)
+        items += gateway(node, services, '' if site.single else site_config.node_address(site, node))
     items.append({'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': 'gateway', 'namespace': NS},
                   'spec': {'selector': {'hoover.dev/gpu-gateway': 'true'}, 'ports': [{'name': f'p{p}', 'port': p, 'targetPort': p} for p in ports]}})
     # The GPU services take connections from the gateways only. The gateways take them from the gpu-proxy of this
-    # cluster, and from other installations through the host port on the VPN address.
+    # cluster, and from other installations through the host port on the node address.
     items += [
         {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': 'services-from-gateway', 'namespace': NS},
          'spec': {'podSelector': {'matchExpressions': [{'key': 'hoover.dev/gpu-service', 'operator': 'Exists'}]}, 'policyTypes': ['Ingress'],

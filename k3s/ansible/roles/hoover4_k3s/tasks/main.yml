@@ -3,22 +3,38 @@
 # (cluster-init), also on a site with one node. The other nodes join it as agents. Each node uses its node address on
 # its flannel interface. A second run writes the same files and restarts k3s only when an input changed. A generated
 # file that differs only in its comment lines counts as changed here, so keep the comments of the templates stable.
-- name: Set the role values of the node
-  ansible.builtin.set_fact:
-    hoover4_unit: "{{ 'k3s' if hoover4_server | bool else 'k3s-agent' }}"
-    hoover4_kata: "{{ hoover4_architecture == 'amd64' and not hoover4_gpu | bool }}"
-    hoover4_kubeconfig_source: "/etc/rancher/k3s/{{ 'hoover4-admin.yaml' if hoover4_single_local | bool else 'k3s.yaml' }}"
-
-- name: Read the addresses of the flannel interface
-  ansible.builtin.command: ip -4 -o addr show {{ hoover4_flannel_iface }}
-  register: hoover4_iface
+# The architecture comes from the host, and the site file does not state it.
+- name: Read the architecture of the node
+  ansible.builtin.command: uname -m
+  register: hoover4_machine
   changed_when: false
   check_mode: false
 
+# A node at its LAN address has no interface in the site file. flannel uses the interface that holds the address.
+- name: Read the interface of the node address
+  ansible.builtin.command: ip -4 -o addr show to {{ hoover4_node_address }}/32
+  register: hoover4_address_iface
+  changed_when: false
+  check_mode: false
+
+- name: Set the role values of the node
+  ansible.builtin.set_fact:
+    hoover4_architecture: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[hoover4_machine.stdout | trim] }}"
+    hoover4_unit: "{{ 'k3s' if hoover4_server | bool else 'k3s-agent' }}"
+    hoover4_kubeconfig_source: "/etc/rancher/k3s/{{ 'hoover4-admin.yaml' if hoover4_single_local | bool else 'k3s.yaml' }}"
+    hoover4_found_iface: "{{ (hoover4_address_iface.stdout.split() + ['', ''])[1] }}"
+
+- name: Set the flannel interface and the runtimes of the node
+  ansible.builtin.set_fact:
+    hoover4_kata: "{{ hoover4_architecture == 'amd64' and not hoover4_gpu | bool }}"
+    hoover4_flannel_iface: "{{ hoover4_flannel_iface if hoover4_flannel_iface | length > 0 else hoover4_found_iface }}"
+
 - name: Refuse a node whose interface does not hold the node address
   ansible.builtin.assert:
-    that: (' ' ~ hoover4_node_address ~ '/') in hoover4_iface.stdout
-    fail_msg: "{{ hoover4_flannel_iface }} of {{ inventory_hostname }} does not have the node address {{ hoover4_node_address }}."
+    that: hoover4_found_iface | length > 0 and hoover4_found_iface == hoover4_flannel_iface
+    fail_msg: >-
+      {{ inventory_hostname }} has the node address {{ hoover4_node_address }} on
+      {{ hoover4_found_iface or 'no interface' }}, not on {{ hoover4_flannel_iface or 'an interface' }}.
     quiet: true
 
 - name: Read the mounts of the k3s data
@@ -28,7 +44,7 @@
   changed_when: false
   check_mode: false
   failed_when: hoover4_k3s_mounts.rc != 0
-  when: hoover4_require_k3s_volumes | bool
+  when: hoover4_k3s_volume_group | length > 0
 
 - name: Create the configuration folders
   ansible.builtin.file:

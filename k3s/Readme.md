@@ -38,8 +38,9 @@ A site file that does not exist gives the values of `settings.json` of its state
 ## Write the site file.
 
 The site file is a YAML Ansible inventory with one group, `hoover4`. The group variables are the site values, and each host of the group is one node with its values as host variables.
-It names the resources of the installation and the roles of its nodes.
-It holds no SSH address, port or user, and no port of a service, tuning, feature switch, backup schedule or secret value.
+It names the resources of the installation, the roles of its nodes and the host changes that the installer makes on each node.
+It holds no SSH address, port or user, and no port of a service, tuning, application switch, backup schedule or secret value.
+It does not state the facts of a host. The facts play reads them on each node (see "Read the host facts").
 [tests/fixtures/](tests/fixtures) has a single-node and a remote example.
 
 ```yaml
@@ -47,20 +48,28 @@ hoover4:
   vars:
     domain: k8.example.org
     control_plane: server-a
-    vpn_cidr: 10.0.0.0/24
+    networks:
+      site: {cidr: 10.0.0.0/24, hubs: [edge]}
+    lans:
+      office: {cidr: 192.0.2.0/24}
     backup: {node: server-a, path: /srv/hoover4-backups}
   hosts:
     server-a:
       node_roles: [control-plane, worker, registry, data]
-      vpn_address: 10.0.0.2
-      storage_tiers: [hdd]
-      lvm_volume_group: tier-hdd
+      networks:
+        site: {address: 10.0.0.2, public_key: '<WireGuard public key>'}
+      lan: {office: 192.0.2.10}
+      storage: {hdd: vg-hdd, nvme: vg-nvme}
+      k3s_volume_group: vg-nvme
 ```
 
 | Place | Keys |
 |---|---|
-| `hoover4.vars` | `domain`, `control_plane`, and optional `vpn_cidr`, `gpu_pool`, `backup`, `hoovers` |
-| `hoover4.hosts.<name>` | `node_roles`, and optional `local`, `ssh_host`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `wireguard_peers`, `wireguard_via`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file`, `gpu_api_key_file` |
+| `hoover4.vars` | `domain`, `control_plane`, and optional `networks`, `lans`, `gpu_pool`, `backup`, `hoovers` |
+| `hoover4.vars.networks.<name>` | `cidr`, and optional `interface` (default `wg0`), `hubs`, `port` (default 51820), `managed` (default true) |
+| `hoover4.vars.lans.<name>` | optional `cidr` |
+| `hoover4.hosts.<name>` | `node_roles`, and optional `local`, `ssh_host`, `networks`, `lan`, `public_address`, `storage`, `k3s_volume_group`, `stop_docker`, `public_firewall`, `reserved`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file`, `gpu_api_key_file` |
+| `hoover4.hosts.<name>.networks.<network>` | an address, or `address` and optional `public_key`, `interface`, `port`, `managed`, which replace the values of the network for this node |
 | `hoover4.vars.gpu_pool` | `nodes` or `address`, and `api_key_file` |
 | `hoover4.vars.backup` | `node` and `path` of the backup destination |
 | `hoover4.vars.hoovers.<name>` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
@@ -69,7 +78,7 @@ The site id is the domain with each `.` replaced by `-`, for example `k8-example
 A list value is a YAML list or a text with commas. Ansible reserves the variable name `roles`, so the node roles have the key `node_roles`.
 The roles are `control-plane`, `worker`, `public`, `registry`, `data`, `calls` and `gpu`.
 The value `single` gives one host every role except `calls` and `gpu`.
-A site with one node needs no VPN address and no public address.
+A site with one node needs no network, no LAN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
 `tls_mode` of the first public node selects the certificates of the HTTPS frontend. `config.py check` refuses a missing key of the selected mode.
 
@@ -81,16 +90,49 @@ A GPU node has no other role. A key that ends with `_file` names a private file 
 
 The default is `internal` on the local node, which has no other mode, and `cloudflare` on another node.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
-`vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here.
-The installer configures only `wg0` on a node without the role `gpu`. A GPU node and a node with another `vpn_interface` keep their VPN as it is, and get no WireGuard play.
-The interface `wg0` must exist and be up. The WireGuard play (role `hoover4_wireguard`) gives each node a direct peer for every other node with a `wireguard_public_key`.
-A node on a LAN that the other nodes cannot reach names the nodes that it can reach in `wireguard_peers`, for example a node with a public address.
-Its `wireguard_via` names the peer that forwards between it and the other nodes. Each side then adds the address of the other side to the AllowedIPs of that peer.
-A node that keeps its VPN gets a direct peer only on the nodes in its `wireguard_peers`, and it cannot have `wireguard_via`.
-The person adds the reverse peer on that node by hand. `deploy-k3s check` lists these peers in `manual_peers`.
-The direct peer for a node without a public address has no endpoint, so the node behind NAT starts the handshake.
-The play adds addresses and peers and removes none, so an existing route, for example to a VPN hub, stays.
-`avx2` is true by default only on an `amd64` node.
+### Give each tier its own volume group.
+
+`storage` maps each storage tier (`hdd`, `ssd`, `nvme`) of a node to a volume group. The person creates each volume group before the deployment.
+The installer changes no disk, no partition and no existing file system. Two tiers of one node need two volume groups.
+TopoLVM gives each node its own lvmd configuration, with one device class per tier on its volume group.
+The facts play refuses a volume group that the node does not have.
+The device class of each tier keeps 5 % of its volume group free (`spare-gb`), so the cluster schedules at most 95 % of each tier on each node.
+The facts give the size of each group. The k3s data volumes of `k3s_volume_group` do not count.
+
+### Turn the host changes on or off.
+
+| Key | Default | Change on the node |
+|---|---|---|
+| `networks.<name>.managed` | true | Write and start a missing WireGuard interface, and add the peers of the network to it. With false, the installer changes nothing on the interface. |
+| `stop_docker` | false | Stop and disable Docker. With false, the host play reports enabled Docker units and keeps them. |
+| `k3s_volume_group` | empty | Create the logical volumes `rancher` and `kubelet` in this volume group and mount them at `/var/lib/rancher` and `/var/lib/kubelet`. Existing volumes of these names stay. |
+| `public_firewall` | true on a `public` or `calls` node with a `public_address` | Install the host firewall of the role `hoover4_public_firewall`. |
+
+`public_firewall` installs two parts. The media node of the call services gets the chain `coturn_peers` in its own table `inet hoover_coturn_peers`.
+A node whose public address is on another interface than its node address also gets the drop rules of the k3s ports and the input filter of the public interface.
+A node that uses one interface for both, for example a LAN node, does not get them, because they would drop the cluster traffic of the other nodes.
+`config.py check` and `deploy-k3s check` print the switches of each node.
+
+### Connect the nodes.
+
+The first network of `vars.networks` is the cluster network: each node uses its address there as its node address and the interface of the network for flannel.
+A site without networks connects its nodes at their LAN addresses (`lan`), and flannel uses the interface that holds the address on the node.
+A network without `hubs` gives every node a direct peer for every other node.
+With `hubs`, a hub peers with every node of the network. Another node peers with each hub and with each node on one of its LANs.
+A LAN peer uses the LAN address as its endpoint, else a peer with a `public_address` uses that address. A peer without either has no endpoint and waits for the handshake of the other node.
+A managed node that is no hub reaches each other managed node without a direct peer through the first hub. Both add the address of the other node to the AllowedIPs of the hub peer.
+A node with `managed: false` keeps the routes of its own VPN, and its `public_key` must be in the site file.
+The person adds its peers by hand. The peer table of `config.py check` and `deploy-k3s check` lists them with `by: hand`.
+A managed node without `public_key` gets a new interface with a new key. The play then stops and names the key for the site file. The other nodes add their peer after the next run.
+The play adds addresses and peers and removes none, so an existing route, for example to a VPN hub outside the site, stays.
+The cidr of each network, and of each LAN that states one, reaches the admin routes of the HTTPS frontend.
+
+### Read the host facts.
+
+The facts play (role `hoover4_facts`) reads each node and writes `facts/<node>.json` of the state folder: the architecture (`uname -m`), AVX2 (`/proc/cpuinfo`), the name and memory of each GPU (`nvidia-smi`), the size of each volume group and of its k3s data volumes, and the interface of each address.
+`deploy-k3s check` and the step `hosts:prepare` run it. The site file has no `architecture` and no `avx2`.
+The cluster step labels the nodes from the facts: `cpu.hoover/avx2=true`, `gpu.hoover/count` and `gpu.hoover/memory-mib` (the memory of the smallest GPU of the node). A node without the fact loses the label.
+The cluster step and the image steps stop with the name of a node that has no facts.
 
 Check a site file, or print the part that one node receives:
 
@@ -128,7 +170,7 @@ k3s/deploy-k3s status --site <file>
 - The host steps are one Ansible run each on all target nodes. The site file is the inventory.
   The driver gives the values that it derives from the site file as the extra variable `hoover4_nodes`.
   [ansible/playbooks/group_vars/hoover4.yml](ansible/playbooks/group_vars/hoover4.yml) gives each value to its node as a `hoover4_*` variable.
-  `hosts:prepare` runs [ansible/playbooks/hoover4-hosts.yml](ansible/playbooks/hoover4-hosts.yml): the facts of each node into `facts/<node>.json` of the state folder (architecture, AVX2, GPUs, volume groups), the packages of the node in one task, the kernel modules, sysctl, NetworkManager, SELinux, the local node of a single-node site, the backup folder, the public firewall when `hoover4_public_firewall` is true, and the WireGuard peers.
+  `hosts:prepare` runs [ansible/playbooks/hoover4-hosts.yml](ansible/playbooks/hoover4-hosts.yml): the facts of each node into `facts/<node>.json` of the state folder, the packages of the node in one task, Docker (`stop_docker`), the kernel modules, sysctl, NetworkManager, SELinux, the k3s data volumes (`k3s_volume_group`), the local node of a single-node site, the backup folder, the public firewall (`public_firewall`), and the WireGuard interfaces of the managed networks.
   `hosts:k3s` runs [ansible/playbooks/hoover4-k3s.yml](ansible/playbooks/hoover4-k3s.yml): gVisor, Kata Containers and the GPU runtime, the tokens, the k3s configuration and the registry mirror, then k3s on the server and on the agents.
   Each node downloads k3s, its install script, gVisor and Kata Containers itself and verifies the pinned digests of [ansible/roles/hoover4_k3s/defaults/main.yml](ansible/roles/hoover4_k3s/defaults/main.yml).
   A node restarts k3s only when an input file, the binary or a token file changed, or when the unit is not active.
@@ -299,7 +341,7 @@ A site with `gpu_pool` `address` uses a GPU host outside the site, for example t
 
 When the GPU services fail in gVisor, build runsc with gVisor PR 16643 with `hosts/stage-runsc-nvproxy.sh <arch> <state folder>` on a host of the node architecture.
 Copy `runsc-nvproxy/` into the state folder of the workstation, then run `deploy-k3s up --target <node> --steps hosts:k3s`, which installs the build. When the services still fail, save `gpu.runtime = runc` and Apply, and record the failure.
-The gateway of each GPU node accepts a request only with the pool key of `gpu_pool` `api_key_file`, on every port, and listens on the VPN address of the node for the other installations of the shared pool.
+The gateway of each GPU node accepts a request only with the pool key of `gpu_pool` `api_key_file`, on every port, and listens on the node address for the other installations of the shared pool.
 The step `gpu-pool` waits for the GPU workloads and calls each port with the key, which must answer, and without it, which must answer 403.
 
 ## Place the call services.
@@ -309,13 +351,14 @@ A media node with a public address advertises it, and the clients send their med
 coturn relays UDP only, so a TURN user reaches no store of a zone, which all serve TCP.
 It relays to the pods of the media node and, on a media node with a public address, to that address for a client that can only use TURN.
 The pods of the other nodes and the bridge address of the media node are no peers ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
-The chain `coturn_peers` of [public-firewall.sh](ansible/roles/hoover4_public_firewall/files/public-firewall.sh) limits the public address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node.
+The chain `coturn_peers` of [coturn-peers.sh](ansible/roles/hoover4_public_firewall/files/coturn-peers.sh), in its own table, limits the public address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node.
 The `calls` step checks that chain with a probe pod on the media node before it adds the public address. Without the chain, the step stops and names the node.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.
 `python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
-Run `public-guard.sh` and `public-firewall.sh` of the role `hoover4_public_firewall` as root on the public node and on the calls node.
-`public-firewall.sh` starts a rollback timer of 180 seconds. Test SSH from a new connection, then run `public-firewall.sh --confirm`.
-The role runs the same scripts and confirms after a new SSH connection works. The host play runs it only when the inventory variable `hoover4_public_firewall` is true, and the site file has no key that sets it.
+The switch `public_firewall` of the site file installs the role `hoover4_public_firewall` on the public node and on the calls node (see "Turn the host changes on or off").
+The role installs the chain `coturn_peers` on the media node also when the public address is on the interface of the node address, for example on a LAN site.
+`public-firewall.sh` starts a rollback timer of 180 seconds. The role confirms the table after a new SSH connection works.
+On a site with `public_firewall: false` on the media node, the `calls` step stops at its probe until the chain exists.
 
 Check a call from outside the site after a remote installation:
 

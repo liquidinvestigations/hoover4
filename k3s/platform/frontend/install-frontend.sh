@@ -12,11 +12,12 @@
 #               frontend/local-ca.crt of the state folder. The pods trust it (config.local_ca()), and the person installs
 #               it in each browser that opens the site.
 # With cloudflare and files, systemd gives the certificate files to the unit as credentials, so Caddy runs with no root.
-# Other values: the SSH destination of the public node, vpn_cidr of vars (the VPN network of the operators, which reaches
-# the admin routes), the bind addresses (the VPN address and the public address of the public node) and the Service
-# address of the ingress (../ingress/install-ingress.sh). The SSH user on the public host needs sudo -n.
-# The cluster sources that pass without the gate are the pod range of each node and the VPN address of each node of
-# hosts.json, because a pod request to another node leaves through wg0 with the address of its node.
+# Other values: the SSH destination of the public node, the admin ranges (the cidr of each network and LAN of the site
+# file, config.admin_ranges(), which reach the admin routes), the bind addresses (the node address and the public
+# address of the public node) and the Service address of the ingress (../ingress/install-ingress.sh). The SSH user on
+# the public host needs sudo -n.
+# The cluster sources that pass without the gate are the pod range of each node and the node address of each node of
+# hosts.json, because a pod request to another node leaves with the address of its node.
 # Pods reach the frontend at the first bind address: a CoreDNS block answers every name below the suffix with it.
 # ./build-caddy.sh builds the Caddy binary with the WAF module. A second run with the same zones changes no file and
 # restarts nothing.
@@ -33,15 +34,15 @@ tls_dir=$(get frontend_tls)
 tls_certificate=$(get frontend_tls_certificate)
 tls_key=$(get frontend_tls_key)
 dns_credentials=$(get frontend_dns_credentials)
-vpn=$(get vpn_cidr)
+vpn=$(python3 "$source_dir/settings.py" get admin_ranges '[]' | python3 -c 'import json,sys;print(" ".join(json.load(sys.stdin)))')
 ingress=$(get ingress_address)
 binds=$(python3 -c 'import sys,json;sys.path.insert(0,sys.argv[1]);import settings;print(" ".join(settings.FRONTEND_BIND))' "$source_dir")
 # config.py check refuses a site file without these values, so a missing one means a site file that the check did not
 # read. Each message names the site file key.
 problems=()
 [ -n "$ssh_host" ] || problems+=("settings.py gives no frontend_ssh")
-[ -n "$vpn" ] || problems+=("vars has no vpn_cidr")
-[ -n "$binds" ] || problems+=("the public node has no vpn_address and no public_address")
+[ -n "$vpn" ] || problems+=("vars has no networks and no lans with a cidr, so no range reaches the admin routes")
+[ -n "$binds" ] || problems+=("the public node has no node address and no public_address")
 [ -n "$ingress" ] || problems+=("settings.py gives no ingress_address")
 case "$tls_mode" in
   cloudflare) [ -n "$dns_credentials" ] || problems+=("the public node has tls_mode = cloudflare and no tls_dns_credentials_file") ;;
@@ -59,7 +60,7 @@ first_bind=${binds%% *}
 python3 "$source_dir/zones/zones.py" >/dev/null
 source "$private/zones/frontend.env"
 cluster=$(kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{" "}{end}')
-cluster+=$(python3 -c 'import json,sys;print(" ".join(h["wg_ip"] for h in json.load(open(sys.argv[1]))["hosts"].values()))' <(python3 "$source_dir/settings.py" hosts))
+cluster+=$(python3 -c 'import json,sys;print(" ".join(h["node_ip"] for h in json.load(open(sys.argv[1]))["hosts"].values()))' <(python3 "$source_dir/settings.py" hosts))
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 for name in binds ingress cluster vpn tls_mode tls_dir tls_certificate tls_key dns_credentials suffix; do printf '%s=%q\n' "$name" "${!name}"; done > "$work/site.env"

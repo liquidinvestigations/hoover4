@@ -41,12 +41,15 @@ def test_the_site_id_comes_from_the_domain(tmp_path):
         config.read('')
 
 
-def test_single_node_needs_no_vpn_or_public_address():
+def test_single_node_needs_no_network_or_public_address():
     site = parse('single-node.yml')
     node = site.nodes['dev']
     assert site.single and node.local
     assert set(node.roles) == {'control-plane', 'worker', 'public', 'registry', 'data'}
-    assert not node.vpn_address and not node.public_address
+    assert not node.networks and not node.lan and not node.public_address
+    assert config.node_address(site, node) == config.LOCAL_ADDRESS
+    # A public node without a public address gets no host firewall.
+    assert node.public_firewall is False
 
 
 def test_storage_identity_is_independent_of_the_zone():
@@ -104,8 +107,8 @@ def test_missing_resources():
     assert 'vars.backup node = missing is not a node of the site.' in message
     no_control = site_text('single-node.yml').replace('node_roles: single', 'node_roles: worker, public, registry, data')
     assert 'exactly one node with the role control-plane' in problems_of(no_control)
-    no_tiers = site_text('single-node.yml').replace('      storage_tiers: nvme\n', '')
-    assert 'hosts.dev has the role worker and no storage_tiers.' in problems_of(no_tiers)
+    no_storage = site_text('single-node.yml').replace('      storage: {nvme: hoover4}\n', '')
+    assert 'hosts.dev has the role worker and no storage.' in problems_of(no_storage)
 
 
 def test_incompatible_roles():
@@ -116,8 +119,8 @@ def test_incompatible_roles():
     assert 'hosts.calls has the role calls and no public_address.' in message
     message = problems_of(text.replace('node_roles: worker, data', 'node_roles: worker, data' + H + 'tls_dns_credentials_file: /etc/x'))
     assert 'hosts.worker-b tls_dns_credentials_file belongs to a node with the role public.' in message
-    message = problems_of(text.replace('vpn_address: 10.0.0.3', 'vpn_address: 10.9.0.3'))
-    assert 'outside vars vpn_cidr' in message
+    message = problems_of(text.replace('address: 10.0.0.3', 'address: 10.9.0.3'))
+    assert 'hosts.worker-b networks.site address = 10.9.0.3 is outside vars.networks.site cidr = 10.0.0.0/24.' in message
     message = problems_of(text.replace('stores: zone', 'stores: zone' + V + 'source_ini: /srv/hoover4.ini'))
     assert 'A migrated Compose install uses stores = local.' in message
     message = problems_of(text.replace('clickhouse_database_prefix: zone_a', 'clickhouse_database_prefix: other'))
@@ -146,12 +149,25 @@ def test_per_node_secret_isolation():
 
 
 def test_legacy_hosts_projection_for_the_host_scripts():
-    hosts = config.legacy_hosts(parse('remote.yml'))
+    facts = {'worker-b': {'avx2': False, 'volume_groups': {'tier-hdd': {'size_bytes': 100 * 2 ** 30},
+                                                           'tier-ssd': {'size_bytes': 21 * 2 ** 30}}},
+             'server-a': {'avx2': True, 'volume_groups': {'tier-hdd': {'size_bytes': 400 * 2 ** 30,
+                                                                       'k3s_volumes_bytes': 190 * 2 ** 30}}},
+             'gpu-1': {'avx2': False, 'gpus': [{'name': 'GB10', 'memory_mib': 122000}, {'name': 'GB10', 'memory_mib': 98000}]}}
+    hosts = config.legacy_hosts(parse('remote.yml'), facts)
     assert hosts['server'] == 'server-a'
     # A GPU node gets its flag, which cluster/setup.sh reads through settings.py hosts.
     assert hosts['hosts']['gpu-1']['gpu'] is True
-    assert hosts['hosts']['edge']['public'] == '203.0.113.10:51820'
-    assert hosts['hosts']['worker-b']['avx2'] is False
+    assert hosts['hosts']['edge']['node_ip'] == '10.0.0.1'
+    # The node labels come from the facts.
+    assert hosts['hosts']['worker-b']['avx2'] is False and hosts['hosts']['server-a']['avx2'] is True
+    assert hosts['hosts']['gpu-1']['gpu_count'] == 2 and hosts['hosts']['gpu-1']['gpu_memory_mib'] == 98000
+    assert hosts['hosts']['edge']['facts'] is False
+    # The reserve is 5 % of each volume group, rounded up. The k3s data volumes of k3s_volume_group do not count.
+    assert hosts['hosts']['worker-b']['storage'] == {'hdd': {'volume_group': 'tier-hdd', 'spare_gb': 5},
+                                                     'ssd': {'volume_group': 'tier-ssd', 'spare_gb': 2}}
+    assert hosts['hosts']['server-a']['storage']['hdd']['spare_gb'] == 11
+    assert hosts['hosts']['edge']['storage']['nvme']['spare_gb'] is None
 
 
 def test_check_files_reports_missing_secret_files_of_the_local_node(tmp_path):
@@ -237,22 +253,93 @@ def test_fixture_folder_is_tracked_with_both_sites():
 def test_a_wireguard_key_with_spaces_is_refused():
     good = 'a' * 42 + 'E='
     for key, accepted in ((good, True), (good[:20] + ' ' + good[21:], False), ('ab;c=', False)):
-        text = site_text('remote.yml').replace('wireguard_public_key: server-a-public-key', f"wireguard_public_key: '{key}'", 1)
+        text = site_text('remote.yml').replace('public_key: server-a-public-key', f"public_key: '{key}'", 1)
         if accepted:
-            assert config.parse(text).nodes['server-a'].wireguard_public_key == key
+            assert config.parse(text).nodes['server-a'].networks['site'].public_key == key
         else:
             with pytest.raises(config.SiteError, match='not a WireGuard public key'):
                 config.parse(text)
 
 
-def test_avx2_defaults_to_true_only_on_amd64():
-    site = config.parse(site_text('remote.yml'))
-    assert site.nodes['server-a'].avx2 is True and site.nodes['worker-b'].avx2 is False
-    # gpu-1 is an arm64 node without the key.
-    assert site.nodes['gpu-1'].avx2 is False
-    assert config.legacy_hosts(site)['hosts']['gpu-1']['avx2'] is False
-    forced = config.parse(site_text('remote.yml').replace('architecture: arm64', 'architecture: arm64' + H + 'avx2: true'))
-    assert forced.nodes['gpu-1'].avx2 is True
+def test_the_host_facts_are_no_site_keys():
+    text = site_text('remote.yml')
+    message = problems_of(text.replace('node_roles: gpu', 'node_roles: gpu' + H + 'architecture: arm64' + H + 'avx2: false'))
+    assert 'hosts.gpu-1 architecture is not a known key' in message and 'hosts.gpu-1 avx2 is not a known key' in message
+
+
+def test_the_earlier_node_keys_are_refused():
+    text = site_text('remote.yml').replace('    networks:\n      site:', '    vpn_cidr: 10.0.0.0/24\n    networks:\n      site:')
+    earlier = ('vpn_address: 10.0.0.9', 'wireguard_public_key: k', 'wireguard_port: 1', 'vpn_interface: wg0',
+               'wireguard_peers: edge', 'wireguard_via: edge', 'lan_address: 192.0.2.9', 'onprem: true',
+               'storage_tiers: hdd', 'lvm_volume_group: x', 'lvm_physical_volumes: /dev/sdb2')
+    message = problems_of(text.replace('node_roles: calls', 'node_roles: calls' + H + H.join(earlier)))
+    assert 'vars vpn_cidr is not a known key' in message
+    for line in earlier:
+        assert f'hosts.calls {line.split(":")[0]} is not a known key' in message
+
+
+def test_the_storage_maps_each_tier_to_its_own_volume_group():
+    site = parse('remote.yml')
+    assert site.nodes['worker-b'].storage == {'hdd': 'tier-hdd', 'ssd': 'tier-ssd'}
+    assert site.nodes['worker-b'].tiers == ('hdd', 'ssd')
+    text = site_text('remote.yml')
+    message = problems_of(text.replace('storage: {hdd: tier-hdd, ssd: tier-ssd}', 'storage: {hdd: one, ssd: one}'))
+    assert 'hosts.worker-b storage gives the volume group one to more than one tier.' in message
+    message = problems_of(text.replace('storage: {hdd: tier-hdd, ssd: tier-ssd}', 'storage: {tape: t}'))
+    assert 'hosts.worker-b storage.tape is not a storage tier.' in message
+
+
+def test_the_switches_have_their_defaults():
+    site = parse('remote.yml')
+    assert config.switches(site.nodes['server-a']) == {'stop_docker': True, 'k3s_volume_group': 'tier-hdd',
+                                                       'public_firewall': False, 'wireguard': {'site': 'managed'}}
+    assert config.switches(site.nodes['gpu-1'])['wireguard'] == {'site': 'kept'}
+    # A public or calls node with a public address gets the host firewall unless the site file turns it off.
+    assert site.nodes['edge'].public_firewall and site.nodes['calls'].public_firewall
+    text = site_text('remote.yml')
+    assert not config.parse(text.replace('node_roles: calls', 'node_roles: calls' + H + 'public_firewall: false')).nodes['calls'].public_firewall
+    message = problems_of(text.replace('node_roles: worker, data', 'node_roles: worker, data' + H + 'public_firewall: true'))
+    assert 'hosts.worker-b public_firewall belongs to a node with the role public or calls and a public_address.' in message
+
+
+def test_a_lan_site_uses_the_lan_addresses():
+    site = config.parse(LAN)
+    assert {n.name: config.node_address(site, n) for n in site.nodes.values()} == {
+        'a': '192.168.1.2', 'b': '192.168.1.3', 'c': '192.168.1.4'}
+    assert config.node_interface(site, site.nodes['a']) == ''
+    assert config.admin_ranges(site) == ['192.168.1.0/24']
+    assert config.legacy_settings(site)['frontend_bind'] == ['192.168.1.3']
+    assert config.ansible_variables(site, '/s')['hoover4_nodes']['a']['wireguard'] == []
+    message = problems_of(LAN.replace('      lan: {home: 192.168.1.4}\n', ''))
+    assert 'hosts.c has no lan address.' in message
+    message = problems_of(LAN.replace('lan: {home: 192.168.1.4}', 'lan: {home: 10.1.1.4}'))
+    assert 'hosts.c lan.home = 10.1.1.4 is outside vars.lans.home cidr = 192.168.1.0/24.' in message
+    message = problems_of(LAN.replace('lan: {home: 192.168.1.2}', 'lan: {away: 192.168.1.2}'))
+    assert 'hosts.a lan.away: the site has no LAN away in vars.lans.' in message
+
+
+LAN = """hoover4:
+  vars:
+    domain: lan.example
+    control_plane: a
+    lans:
+      home: {cidr: 192.168.1.0/24}
+  hosts:
+    a:
+      node_roles: [control-plane, worker, data]
+      lan: {home: 192.168.1.2}
+      storage: {ssd: a-vg}
+    b:
+      node_roles: [public, worker, registry]
+      lan: {home: 192.168.1.3}
+      public_address: 192.168.1.3
+      storage: {ssd: b-vg}
+      tls_mode: internal
+    c:
+      node_roles: [worker]
+      lan: {home: 192.168.1.4}
+      storage: {ssd: c-vg}
+"""
 
 
 # The TLS mode of the HTTPS frontend ------------------------------------------------------------------------------------

@@ -80,7 +80,7 @@ def build(args, sha, tree):
         nodes = [n for n in site.nodes.values() if n.has('gpu')] if site else []
         if not nodes:
             raise SystemExit('the site file has no node with the role gpu.')
-        architectures = {n.architecture for n in nodes}
+        architectures = {settings.config.architecture(site, n.name) for n in nodes}
         if len(architectures) > 1:
             raise SystemExit(f'the GPU nodes have the architectures {sorted(architectures)}. Build each architecture on its own site.')
         env['PLATFORM'] = f'linux/{architectures.pop()}'

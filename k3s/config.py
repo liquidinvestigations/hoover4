@@ -3,27 +3,33 @@
 
 The site file is a YAML Ansible inventory with one group, hoover4. The group variables (hoover4.vars) are the site
 values, and each host of the group (hoover4.hosts) is one node with its values as host variables. The file names the
-resources of the installation and the roles of its nodes. It holds no SSH address, port or user, no port of a service,
-no tuning, no feature switch, no backup schedule and no secret value. Tunings, switches and schedules are operator
-settings (platform/operator/settings.py). A secret is a reference to a private file on the node that reads it.
+resources of the installation, the roles of its nodes and the host changes that the installer makes on each node. It
+holds no SSH address, port or user, no port of a service, no tuning, no application switch, no backup schedule and no
+secret value. Tunings, application switches and schedules are operator settings (platform/operator/settings.py). A
+secret is a reference to a private file on the node that reads it.
 
   hoover4:
-    vars:                domain, control_plane, vpn_cidr, and the optional mappings gpu_pool, backup and hoovers
+    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool, backup and hoovers
+      networks:          one entry per WireGuard network: interface, cidr, hubs, port and managed (NETWORK_KEYS)
+      lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
       backup:            one node and one host folder that receive the backups
       hoovers:           one entry per Hoover installation: its zone, home node, store layout, Temporal backend,
                          history source, storage identity, an optional source_ini of an earlier Compose install, and
                          optional extra_datasets: read-only dataset folders of data nodes, as name:node:/path
     hosts:
-      <node>:            node_roles, local, ssh_host, architecture, the VPN and public addresses, storage, the TLS mode
-                         of a public node and the secret files of the node
+      <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
+                         public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
+                         public_firewall, the TLS mode of a public node and the secret files of the node
 
+The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the GPUs and the volume
+groups into facts/<node>.json of the state folder. The site file does not state them.
 The state folder of a site is beside the site file and has the name of the file without its extension
 (state_folder()). The site id is the domain with each . replaced by - (Site.id).
 The driver connects to a node with `ssh <node name>` and the SSH configuration of the current user. ssh_host names
 another alias of that configuration for the node. The local node of a single-node site connects to localhost.
 The node roles are control-plane, worker, public, registry, data, calls and gpu. The value `single` gives one host
-every role except calls and gpu. A site with one node needs no VPN address and no public address.
+every role except calls and gpu. A site with one node needs no network, no LAN address and no public address.
 The storage identity of a Hoover installation is independent of its zone name. A migrated installation keeps the
 database, table and bucket names of its source install.
 
@@ -73,27 +79,39 @@ ROLES = ('control-plane', 'worker', 'public', 'registry', 'data', 'calls', 'gpu'
 TLS_MODES = {'cloudflare': ('tls_dns_credentials_file',), 'internal': (), 'files': ('tls_certificate_file', 'tls_key_file')}
 TLS_KEYS = ('tls_dns_credentials_file', 'tls_certificate_file', 'tls_key_file')
 SINGLE = ('control-plane', 'worker', 'public', 'registry', 'data')
-TIERS = ('nvme', 'ssd', 'hdd')
-ARCHITECTURES = ('amd64', 'arm64')
+# The storage tiers, in the order of the default storage class (../cluster/topolvm_values.py).
+TIERS = ('hdd', 'ssd', 'nvme')
 NAME = re.compile(r'[a-z][a-z0-9-]{0,31}')
 ZONE = re.compile(r'zone-[a-z0-9]{1,12}')
 GROUP = 'hoover4'
+# The share of each volume group that TopoLVM keeps free (spare-gb of a device class). The cluster schedules at most
+# the rest of the capacity of each tier on each node.
+STORAGE_RESERVE = 0.05
 
-# Each key of a section: (required, kind). Kinds: text, name, bool, address, cidr, path, list, roles, tiers, choice
-# values, secret (the absolute path of a private file), alias (an SSH host alias).
-SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name'), 'vpn_cidr': (False, 'cidr')}
+# Each key of a section: (required, kind). Kinds: text, name, bool, address, cidr, path, list, roles, choice values,
+# secret (the absolute path of a private file), alias (an SSH host alias).
+SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name')}
 # The mappings of hoover4.vars beside the site values.
-SITE_MAPPINGS = ('gpu_pool', 'backup', 'hoovers')
+SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'hoovers')
+# A WireGuard network: vars.networks.<name>. hubs names the nodes that every other node of the network peers with.
+# Without hubs, every node peers with every other node. managed: the installer writes and starts the interface on each
+# node of the network and adds its peers. Without it, the installer reads the interface and changes nothing on it.
+NETWORK_KEYS = {'interface': (False, 'interface'), 'cidr': (True, 'cidr'), 'hubs': (False, 'names'),
+                'port': (False, 'port'), 'managed': (False, 'bool')}
+# The values of one node in a network: hosts.<node>.networks.<name>, an address or a mapping with these keys.
+# interface, port and managed replace the values of the network for this node.
+MEMBER_KEYS = {'address': (True, 'address'), 'public_key': (False, 'wgkey'), 'interface': (False, 'interface'),
+               'port': (False, 'port'), 'managed': (False, 'bool')}
+# A LAN: vars.lans.<name>. Two nodes on one LAN reach each other at their LAN addresses. A cidr also admits the admin
+# routes of the HTTPS frontend from that range, as the cidr of each network does.
+LAN_KEYS = {'cidr': (False, 'cidr')}
+# The mappings of a node beside its values.
+NODE_MAPPINGS = ('networks', 'lan', 'storage')
 NODE_KEYS = {
     # Ansible reserves the variable name roles, so the node roles have the key node_roles.
     'node_roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_host': (False, 'alias'),
-    'architecture': (False, ('choice', ARCHITECTURES)), 'vpn_address': (False, 'address'),
-    'wireguard_public_key': (False, 'wgkey'), 'wireguard_port': (False, 'port'), 'vpn_interface': (False, 'interface'),
-    'wireguard_peers': (False, 'names'), 'wireguard_via': (False, 'name'),
-    'lan_address': (False, 'address'),
-    'onprem': (False, 'bool'), 'public_address': (False, 'address'), 'storage_tiers': (False, 'tiers'),
-    'lvm_volume_group': (False, 'name_any'), 'lvm_physical_volumes': (False, 'devices'), 'reserved': (False, 'reserved'),
-    'avx2': (False, 'bool'), 'data_root': (False, 'path'),
+    'public_address': (False, 'address'), 'k3s_volume_group': (False, 'name_any'), 'stop_docker': (False, 'bool'),
+    'public_firewall': (False, 'bool'), 'reserved': (False, 'reserved'), 'data_root': (False, 'path'),
     'tls_mode': (False, ('choice', tuple(TLS_MODES))), 'tls_dns_credentials_file': (False, 'secret'),
     'tls_certificate_file': (False, 'secret'), 'tls_key_file': (False, 'secret'), 'gpu_api_key_file': (False, 'secret'),
 }
@@ -109,11 +127,11 @@ HOOVER_KEYS = {
     'system_bucket': (True, 'identity'), 'collection_bucket_prefix': (True, 'identity'),
     'source_ini': (False, 'path'), 'chat_control_dir': (False, 'path'), 'extra_datasets': (False, 'datasets'),
 }
-# The defaults of the optional keys. A key without a default here is empty.
+# The defaults of the optional keys. A key without a default here is empty. public_firewall has no default here: it is
+# true on a public or calls node with a public address (parse).
 DEFAULTS = {
-    # avx2 has no default here: without the key it is true only for an amd64 node (parse).
-    'node': {'local': 'false', 'architecture': 'amd64', 'wireguard_port': '51820', 'vpn_interface': 'wg0', 'onprem': 'false',
-             'data_root': '/srv/hoover-data'},
+    'node': {'local': 'false', 'stop_docker': 'false', 'data_root': '/srv/hoover-data'},
+    'network': {'interface': 'wg0', 'port': '51820', 'managed': 'true'},
     'hoover': {'history_source': 'compose'},
 }
 # The secret files that each role reads. The control plane reads the files of the GPU pool, because it creates the
@@ -130,29 +148,46 @@ class SiteError(ValueError):
 
 
 @dataclass
+class Member:
+    """The values of one node in one network. interface, port and managed are the effective values: the values of the
+    node, else the values of the network."""
+    address: str
+    interface: str
+    port: int
+    managed: bool
+    public_key: str = ''
+
+
+@dataclass
+class Network:
+    name: str
+    cidr: str
+    interface: str = 'wg0'
+    port: int = 51820
+    managed: bool = True
+    hubs: tuple = ()
+
+
+@dataclass
 class Node:
     name: str
     roles: tuple
     local: bool = False
     # The SSH alias of the node. Empty: the node name, or localhost for the local node (ssh_host()).
     ssh_host: str = ''
-    architecture: str = 'amd64'
-    vpn_address: str = ''
-    wireguard_public_key: str = ''
-    wireguard_port: int = 51820
-    vpn_interface: str = 'wg0'
-    # The nodes that get a direct WireGuard peer for this node. Empty means every node (wireguard_pairs).
-    wireguard_peers: tuple = ()
-    # The node through which the nodes without a direct peer reach this node, or empty.
-    wireguard_via: str = ''
-    lan_address: str = ''
-    onprem: bool = False
+    # {network name: Member}, in the order of vars.networks.
+    networks: dict = field(default_factory=dict)
+    # {LAN name: address}.
+    lan: dict = field(default_factory=dict)
     public_address: str = ''
-    storage_tiers: tuple = ()
-    lvm_volume_group: str = ''
-    lvm_physical_volumes: tuple = ()
+    # {tier: volume group}. The person creates each volume group. The installer changes no disk.
+    storage: dict = field(default_factory=dict)
+    # The volume group of the k3s data volumes /var/lib/rancher and /var/lib/kubelet, or empty to keep them on the root
+    # file system.
+    k3s_volume_group: str = ''
+    stop_docker: bool = False
+    public_firewall: bool = False
     reserved: str = ''
-    avx2: bool = True
     data_root: str = '/srv/hoover-data'
     # Empty: internal on the local node, else cloudflare (tls_mode()).
     tls_mode: str = ''
@@ -163,6 +198,11 @@ class Node:
 
     def has(self, role):
         return role in self.roles
+
+    @property
+    def tiers(self):
+        """The storage tiers of the node, in the order of TIERS."""
+        return tuple(t for t in TIERS if t in self.storage)
 
 
 @dataclass
@@ -197,7 +237,10 @@ class Site:
     control_plane: str
     nodes: dict
     hoovers: dict = field(default_factory=dict)
-    vpn_cidr: str = ''
+    # {name: Network}, in the order of the site file. The first network is the cluster network (node_address()).
+    networks: dict = field(default_factory=dict)
+    # {name: cidr or empty}.
+    lans: dict = field(default_factory=dict)
     gpu_pool: dict = field(default_factory=dict)
     backup: dict = field(default_factory=dict)
     # The site file that read() parsed, or empty for parse().
@@ -319,14 +362,7 @@ def _value(label, kind, raw, problems):
             problems.append(f'{label} = {raw} must be an absolute, normalized path.')
             return None
         return raw
-    if kind == 'devices':
-        items = tuple(p.strip() for p in raw.split(',') if p.strip())
-        for item in items:
-            if not item.startswith('/dev/'):
-                problems.append(f'{label} has {item}, which is not a device path below /dev.')
-                return None
-        return items
-    if kind in ('roles', 'names', 'tiers'):
+    if kind in ('roles', 'names'):
         items = tuple(p.strip() for p in raw.split(',') if p.strip())
         if kind == 'roles':
             if items == ('single',):
@@ -336,11 +372,6 @@ def _value(label, kind, raw, problems):
                 problems.append(f'{label} = {raw} must be single or a list of {", ".join(ROLES)}.')
                 return None
             return tuple(r for r in ROLES if r in items)
-        if kind == 'tiers':
-            unknown = [i for i in items if i not in TIERS]
-            if unknown:
-                problems.append(f'{label} = {raw} must be a list of {", ".join(TIERS)}.')
-                return None
         return items
     if kind == 'reserved':
         if raw and not re.fullmatch(r'(memory|cpu)=[0-9]+[A-Za-z]*(,(memory|cpu)=[0-9]+[A-Za-z]*)*', raw):
@@ -434,6 +465,57 @@ def _mapping(value, label, problems):
     return value
 
 
+def _members(label, value, networks, problems):
+    """{network name: Member} of hosts.<node>.networks. Each value is an address or a mapping of MEMBER_KEYS."""
+    out = {}
+    for name, entry in _mapping(value, f'{label} networks', problems).items():
+        name = str(name)
+        where = f'{label} networks.{name}'
+        if name not in networks:
+            problems.append(f'{where}: the site has no network {name} in vars.networks.')
+            continue
+        values = _section(where, _mapping(entry, where, problems) if isinstance(entry, dict) else {'address': entry},
+                          MEMBER_KEYS, {}, problems)
+        if 'address' not in values:
+            continue
+        network = networks[name]
+        out[name] = Member(address=values['address'], public_key=values.get('public_key', ''),
+                           interface=values.get('interface', network.interface), port=values.get('port', network.port),
+                           managed=values.get('managed', network.managed))
+    # The order of vars.networks, so the first network of a node is its first network of the site.
+    return {name: out[name] for name in networks if name in out}
+
+
+def _lan(label, value, lans, problems):
+    """{LAN name: address} of hosts.<node>.lan."""
+    out = {}
+    for name, address in _mapping(value, f'{label} lan', problems).items():
+        name = str(name)
+        if name not in lans:
+            problems.append(f'{label} lan.{name}: the site has no LAN {name} in vars.lans.')
+            continue
+        typed = _value(f'{label} lan.{name}', 'address', _raw(address), problems)
+        if typed:
+            out[name] = typed
+    return out
+
+
+def _storage(label, value, problems):
+    """{tier: volume group} of hosts.<node>.storage."""
+    out = {}
+    for tier, group in _mapping(value, f'{label} storage', problems).items():
+        tier = str(tier)
+        if tier not in TIERS:
+            problems.append(f'{label} storage.{tier} is not a storage tier. The tiers are {", ".join(TIERS)}.')
+            continue
+        typed = _value(f'{label} storage.{tier}', 'name_any', _raw(group), problems)
+        if typed:
+            out[tier] = typed
+        elif typed == '':
+            problems.append(f'{label} storage.{tier} names no volume group.')
+    return out
+
+
 def parse(text, check_files=False):
     """The Site of a site file text. check_files also checks that the secret files of the local node exist."""
     document = _load(text)
@@ -453,18 +535,41 @@ def parse(text, check_files=False):
     backup = {}
     if variables.get('backup') is not None:
         backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
+    networks, lans = {}, {}
+    for name, values in _mapping(variables.get('networks'), 'vars.networks', problems).items():
+        name = str(name)
+        label = f'vars.networks.{name}'
+        if not NAME.fullmatch(name):
+            problems.append(f'{label} has an invalid network name. Use a-z, 0-9 and -, starting with a-z.')
+            continue
+        values = _section(label, _mapping(values, label, problems), NETWORK_KEYS, DEFAULTS['network'], problems)
+        if 'cidr' in values:
+            networks[name] = Network(name=name, **values)
+    for name, values in _mapping(variables.get('lans'), 'vars.lans', problems).items():
+        name = str(name)
+        label = f'vars.lans.{name}'
+        if not NAME.fullmatch(name):
+            problems.append(f'{label} has an invalid LAN name. Use a-z, 0-9 and -, starting with a-z.')
+            continue
+        lans[name] = _section(label, _mapping(values, label, problems), LAN_KEYS, {}, problems).get('cidr', '')
     nodes, hoovers = {}, {}
     for name, values in _mapping(group.get('hosts'), 'hosts', problems).items():
         name = str(name)
         if not NAME.fullmatch(name):
             problems.append(f'hosts.{name} has an invalid node name. Use a-z, 0-9 and -, starting with a-z.')
             continue
-        values = _section(f'hosts.{name}', _mapping(values, f'hosts.{name}', problems), NODE_KEYS, DEFAULTS['node'],
-                          problems)
-        # AVX2 is an x86 instruction set, so an arm64 node has no avx2 label unless the site file sets the key.
-        values.setdefault('avx2', values.get('architecture', 'amd64') == 'amd64')
+        label = f'hosts.{name}'
+        raw = _mapping(values, label, problems)
+        values = _section(label, {k: v for k, v in raw.items() if k not in NODE_MAPPINGS},
+                          dict(NODE_KEYS, **{k: (False, 'mapping') for k in NODE_MAPPINGS}), DEFAULTS['node'], problems)
+        values['networks'] = _members(label, raw.get('networks'), networks, problems)
+        values['lan'] = _lan(label, raw.get('lan'), lans, problems)
+        values['storage'] = _storage(label, raw.get('storage'), problems)
         if 'node_roles' in values:
             values['roles'] = values.pop('node_roles')
+            # The host firewall of a public or calls node with a public address is on unless the site file turns it off.
+            values.setdefault('public_firewall', bool(values.get('public_address'))
+                              and ('public' in values['roles'] or 'calls' in values['roles']))
             nodes[name] = Node(name=name, **values)
     for name, values in _mapping(variables.get('hoovers'), 'vars.hoovers', problems).items():
         name = str(name)
@@ -477,7 +582,8 @@ def parse(text, check_files=False):
             hoovers[name] = Hoover(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
-    site = Site(nodes=nodes, hoovers=hoovers, gpu_pool=gpu_pool, backup=backup, **site_values)
+    site = Site(nodes=nodes, hoovers=hoovers, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup,
+                **site_values)
     problems = check(site, check_files=check_files)
     if problems:
         raise SiteError(_message(problems))
@@ -527,25 +633,35 @@ def check(site, check_files=False):
     locals_ = [n.name for n in nodes.values() if n.local]
     if len(locals_) > 1:
         problems.append(f'only one node can be local. These nodes are: {", ".join(locals_)}.')
-    network = ipaddress.ip_network(site.vpn_cidr) if site.vpn_cidr else None
-    if not single and not network:
-        problems.append('vars vpn_cidr is required for a site with more than one node.')
+    cluster = next(iter(site.networks.values()), None)
     for node in nodes.values():
         label = f'hosts.{node.name}'
         if node.has('gpu') and len(node.roles) > 1:
             problems.append(f'{label} combines gpu with {", ".join(r for r in node.roles if r != "gpu")}. A GPU node runs only the GPU services.')
         if not single:
-            if not node.vpn_address:
-                problems.append(f'{label} has no vpn_address, which a site with more than one node needs.')
-            elif network and ipaddress.ip_address(node.vpn_address) not in network:
-                problems.append(f'{label} vpn_address = {node.vpn_address} is outside vars vpn_cidr = {site.vpn_cidr}.')
+            if cluster and cluster.name not in node.networks:
+                problems.append(f'{label} has no address in the network {cluster.name}. The first network of vars.networks '
+                                'holds the node addresses of the cluster, so every node needs one.')
+            elif not cluster and not node.lan:
+                problems.append(f'{label} has no lan address. A site with more than one node and without vars.networks '
+                                'connects its nodes at their LAN addresses.')
             for role in ('public', 'calls'):
                 if node.has(role) and not node.public_address:
                     problems.append(f'{label} has the role {role} and no public_address.')
-        if node.storage_tiers and not node.lvm_volume_group:
-            problems.append(f'{label} has storage_tiers and no lvm_volume_group.')
-        if (node.has('worker') or node.has('data') or node.has('registry')) and not node.storage_tiers:
-            problems.append(f'{label} has the role {"worker" if node.has("worker") else "data" if node.has("data") else "registry"} and no storage_tiers.')
+        if len(node.lan) > 1:
+            problems.append(f'{label} lan names {len(node.lan)} LANs. A node has at most one LAN address.')
+        for name, address in node.lan.items():
+            if site.lans.get(name) and ipaddress.ip_address(address) not in ipaddress.ip_network(site.lans[name]):
+                problems.append(f'{label} lan.{name} = {address} is outside vars.lans.{name} cidr = {site.lans[name]}.')
+        if (node.has('worker') or node.has('data') or node.has('registry')) and not node.storage:
+            problems.append(f'{label} has the role {"worker" if node.has("worker") else "data" if node.has("data") else "registry"} '
+                            'and no storage. Map a tier to a volume group, for example storage: {hdd: vg-hdd}.')
+        shared = sorted({g for g in node.storage.values() if list(node.storage.values()).count(g) > 1})
+        for group in shared:
+            problems.append(f'{label} storage gives the volume group {group} to more than one tier. Each tier needs its '
+                            'own volume group, else the faster class has the speed of the slower disks.')
+        if node.public_firewall and not ((node.has('public') or node.has('calls')) and node.public_address):
+            problems.append(f'{label} public_firewall belongs to a node with the role public or calls and a public_address.')
         for key, role in SECRET_ROLES.items():
             if getattr(node, key) and not node.has(role):
                 problems.append(f'{label} {key} belongs to a node with the role {role}.')
@@ -554,34 +670,7 @@ def check(site, check_files=False):
         if node.tls_mode and not node.has('public'):
             problems.append(f'{label} tls_mode belongs to a node with the role public.')
     problems += tls_problems(site)
-    for node in nodes.values():
-        label = f'hosts.{node.name}'
-        for name in node.wireguard_peers:
-            if name not in nodes or name == node.name:
-                problems.append(f'{label} wireguard_peers names {name}, which is not another node of the site.')
-        if node.wireguard_via and not manages_wireguard(node):
-            problems.append(f'{label} wireguard_via = {node.wireguard_via}, but the installer configures no WireGuard '
-                            f'interface on this node ({"role gpu" if node.has("gpu") else f"vpn_interface = {node.vpn_interface}"}), '
-                            'so it cannot add the routes there. Remove wireguard_via.')
-        elif node.wireguard_via:
-            via = node.wireguard_via
-            if via not in nodes or via == node.name:
-                problems.append(f'{label} wireguard_via = {via} is not another node of the site.')
-            elif not wireguard_direct(nodes[via], node):
-                problems.append(f'{label} wireguard_via = {via}, but the two nodes have no direct peer. Name it in wireguard_peers.')
-            else:
-                routed = [n for n in nodes.values() if n.name not in (node.name, via) and not wireguard_direct(n, node)]
-                for other in routed:
-                    if not wireguard_direct(other, nodes[via]):
-                        problems.append(f'{label} is reached through {via}, but hosts.{other.name} has no direct peer for {via}.')
-    addresses = {}
-    for node in nodes.values():
-        for key in ('vpn_address', 'public_address'):
-            value = getattr(node, key)
-            if value and key == 'vpn_address':
-                if value in addresses:
-                    problems.append(f'hosts.{node.name} and hosts.{addresses[value]} have the same vpn_address.')
-                addresses[value] = node.name
+    problems += network_problems(site)
     pool = site.gpu_pool
     if pool:
         for name in pool.get('nodes', ()):
@@ -708,6 +797,11 @@ def _text(value):
 def document(site):
     """The site file document of a Site, as a dict. parse(json.dumps(document(site))) gives an equal Site."""
     variables = {k: getattr(site, k) for k in SITE_KEYS if getattr(site, k)}
+    if site.networks:
+        variables['networks'] = {n.name: {'interface': n.interface, 'cidr': n.cidr, 'port': n.port, 'managed': n.managed,
+                                          **({'hubs': list(n.hubs)} if n.hubs else {})} for n in site.networks.values()}
+    if site.lans:
+        variables['lans'] = {name: ({'cidr': cidr} if cidr else {}) for name, cidr in site.lans.items()}
     for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
@@ -722,6 +816,12 @@ def document(site):
         for key in NODE_KEYS:
             if key != 'node_roles' and getattr(node, key) not in ('', ()):
                 values[key] = _text(getattr(node, key))
+        if node.networks:
+            values['networks'] = {name: {k: v for k, v in asdict(m).items() if v != ''}
+                                  for name, m in node.networks.items()}
+        for key in ('lan', 'storage'):
+            if getattr(node, key):
+                values[key] = dict(getattr(node, key))
         hosts[node.name] = values
     return {GROUP: {'vars': variables, 'hosts': hosts}}
 
@@ -770,15 +870,34 @@ def ssh_host(node):
 
 
 def node_address(site, node):
-    """The address that the other nodes and the pods use for a node: the VPN address, else the LAN address, else the
-    fixed local address of a single-node site."""
-    if node.vpn_address:
-        return node.vpn_address
-    if node.lan_address:
-        return node.lan_address
+    """The address that the other nodes and the pods use for a node: its address in the cluster network (the first
+    network of vars.networks), else its LAN address, else the fixed local address of a single-node site."""
+    cluster = next(iter(site.networks.values()), None)
+    if cluster and cluster.name in node.networks:
+        return node.networks[cluster.name].address
+    if node.lan:
+        return next(iter(node.lan.values()))
     if site.single and node.local:
         return LOCAL_ADDRESS
-    raise SiteError(f'hosts.{node.name} has no vpn_address and no lan_address.')
+    raise SiteError(f'hosts.{node.name} has no address in a network and no lan address.')
+
+
+def node_interface(site, node):
+    """The interface of the node address, which flannel uses: hoover4 on the local node of a single-node site, the
+    interface of the cluster network, or empty for a LAN address. With an empty value the k3s role of ../ansible/ uses
+    the interface that holds the address, and the facts of the node name it (facts/<node>.json addresses)."""
+    if site.single and node.local:
+        return 'hoover4'
+    cluster = next(iter(site.networks.values()), None)
+    if cluster and cluster.name in node.networks:
+        return node.networks[cluster.name].interface
+    return ''
+
+
+def admin_ranges(site):
+    """The address ranges that reach the admin routes of the HTTPS frontend: the cidr of each network and of each LAN
+    that states one."""
+    return [n.cidr for n in site.networks.values()] + [c for c in site.lans.values() if c]
 
 
 def legacy_settings(site):
@@ -787,7 +906,7 @@ def legacy_settings(site):
     public = site.with_role('public')[0]
     registry = site.with_role('registry')[0]
     # A LAN node can have one address as its VPN and public address. Caddy and coturn get each address once.
-    binds = list(dict.fromkeys(a for a in (public.vpn_address, public.public_address) if a)) or [node_address(site, public)]
+    binds = list(dict.fromkeys(a for a in (node_address(site, public), public.public_address) if a))
     out = {
         'suffix': site.domain,
         'registry_node': registry.name,
@@ -802,8 +921,8 @@ def legacy_settings(site):
                         'extra': {h.zone: [{'name': n, 'node': node, 'path': path} for n, node, path in h.extra_datasets]
                                   for h in site.hoovers.values() if h.extra_datasets}},
     }
-    if site.vpn_cidr:
-        out['vpn_cidr'] = site.vpn_cidr
+    if admin_ranges(site):
+        out['admin_ranges'] = admin_ranges(site)
     if not public.local:
         out['frontend_ssh'] = ssh_host(public)
     out['frontend_tls_mode'] = tls_mode(public)
@@ -831,7 +950,7 @@ def calls_settings(site):
     that node. A media node without one, such as the local node of a single-node site, advertises the pod addresses.
     """
     node = calls_node(site)
-    turn = list(dict.fromkeys(a for a in (node.vpn_address, node.public_address) if a)) or [node_address(site, node)]
+    turn = list(dict.fromkeys(a for a in (node_address(site, node), node.public_address) if a))
     return {'calls_node': node.name, 'calls_public_address': node.public_address, 'calls_turn_listen': turn}
 
 
@@ -848,87 +967,209 @@ def local_ca(site):
     return path.read_text() if path.exists() else ''
 
 
-def manages_wireguard(node):
-    """True when the installer configures the WireGuard interface of node (the role hoover4_wireguard of ansible/).
+# ----------------------------------------------------------------------------------------------------------------------
+# Networks
+# ----------------------------------------------------------------------------------------------------------------------
 
-    A GPU node, and a node that keeps the interface of an existing VPN (vpn_interface other than wg0), keep their VPN as
-    it is. The installer adds no wg0 there.
+def members(site, network):
+    """The nodes of a network, in the order of the site file."""
+    return [n for n in site.nodes.values() if network.name in n.networks]
+
+
+def shared_lan(a, b):
+    """The name of a LAN that holds nodes a and b, or empty."""
+    return next((name for name in a.lan if name in b.lan), '')
+
+
+def direct_peers(site, network, node):
+    """The nodes of network that node peers with directly.
+
+    Without hubs, every node peers with every other node. A hub peers with every node. Another node peers with each
+    hub, and with each node of the network that is on one of its LANs.
     """
-    return bool(node.vpn_address) and not node.has('gpu') and node.vpn_interface == 'wg0'
+    if network.name not in node.networks:
+        return []
+    others = [n for n in members(site, network) if n.name != node.name]
+    if not network.hubs or node.name in network.hubs:
+        return others
+    return [n for n in others if n.name in network.hubs or shared_lan(node, n)]
 
 
-def manual_peers(site):
-    """The peers that the person adds by hand: on a node that the installer does not configure, one for each direct peer.
+def endpoint(network, node, peer):
+    """The WireGuard endpoint of peer as node sees it: the LAN address when they share a LAN, else the public address
+    of peer, else empty. A peer without an endpoint waits for the other node to start the handshake."""
+    port = peer.networks[network.name].port
+    lan = shared_lan(node, peer)
+    address = peer.lan[lan] if lan else peer.public_address
+    if not address:
+        return ''
+    return f'[{address}]:{port}' if ':' in address else f'{address}:{port}'
 
-    The direct peer node gets its side from the installer, without an endpoint, so the node behind NAT starts the handshake.
+
+def routed(site, network, node):
+    """{hub name: [addresses]}: the addresses of the network that node reaches through a hub.
+
+    A node that is no hub reaches each node of the network without a direct peer through the first hub. Both nodes
+    must be managed, so both add the route. A node that the installer does not manage keeps the routes of its VPN.
+    """
+    if not network.hubs or node.name in network.hubs or not node.networks[network.name].managed:
+        return {}
+    hub = network.hubs[0]
+    direct = {n.name for n in direct_peers(site, network, node)}
+    out = [f'{n.networks[network.name].address}/32' for n in members(site, network)
+           if n.name not in direct and n.name != node.name and n.networks[network.name].managed]
+    return {hub: out} if out else {}
+
+
+def wireguard(site, node):
+    """The WireGuard interfaces that the installer manages on node, as a list for the role hoover4_wireguard.
+
+    A peer without a public key in the site file is left out. Its node gets the key when the role writes its interface,
+    and the next run adds the peer.
     """
     out = []
-    for node in site.nodes.values():
-        if not node.vpn_address or manages_wireguard(node):
+    for network in site.networks.values():
+        member = node.networks.get(network.name)
+        if not member or not member.managed:
             continue
-        for other in site.nodes.values():
-            if other.name != node.name and manages_wireguard(other) and wireguard_direct(node, other) and node.wireguard_peers:
-                out.append(f'hosts.{node.name} keeps its VPN interface {node.vpn_interface}. Add a peer for {other.name} '
-                           f'on that interface by hand: the public key of {other.name}, its endpoint, and AllowedIPs '
-                           f'{other.vpn_address}/32.')
+        routes = routed(site, network, node)
+        peers = []
+        for peer in direct_peers(site, network, node):
+            other = peer.networks[network.name]
+            if not other.public_key:
+                continue
+            peers.append({'name': peer.name, 'key': other.public_key, 'endpoint': endpoint(network, node, peer),
+                          'allowed_ips': [f'{other.address}/32'] + routes.get(peer.name, [])})
+        prefix = ipaddress.ip_network(network.cidr).prefixlen
+        out.append({'network': network.name, 'interface': member.interface, 'port': member.port,
+                    'address': f'{member.address}/{prefix}', 'public_key': member.public_key, 'peers': peers})
     return out
 
 
-def wireguard_peer_wanted(node):
-    """True when the other nodes add a direct peer for node. A node that the installer does not configure gets one only
-    when it names its peers, because only then does the person add the reverse peer (manual_peers). Without the reverse
-    peer the direct peer takes the route to the node from the existing VPN."""
-    return manages_wireguard(node) or bool(node.wireguard_peers)
+def peer_table(site):
+    """Each direct peer of each network, as rows for the check: who adds it, its endpoint and its addresses.
 
-
-def wireguard_direct(a, b):
-    """True when nodes a and b have a direct WireGuard peer for each other.
-
-    A node without wireguard_peers pairs with every node that does not exclude it, so a site without the key keeps the
-    full mesh. A node on a LAN that the other nodes cannot reach names the nodes that it can reach, for example a
-    public node.
+    by is installer for a managed node, and hand for a node that keeps its own interface. The person adds those peers.
     """
-    return (not a.wireguard_peers or b.name in a.wireguard_peers) and (not b.wireguard_peers or a.name in b.wireguard_peers)
+    rows = []
+    for network in site.networks.values():
+        for node in members(site, network):
+            member = node.networks[network.name]
+            routes = routed(site, network, node)
+            for peer in direct_peers(site, network, node):
+                rows.append({'network': network.name, 'node': node.name, 'interface': member.interface,
+                             'peer': peer.name, 'endpoint': endpoint(network, node, peer),
+                             'allowed_ips': [f'{peer.networks[network.name].address}/32'] + routes.get(peer.name, []),
+                             'by': 'installer' if member.managed else 'hand',
+                             'key': 'present' if peer.networks[network.name].public_key else 'missing'})
+    return rows
 
 
-def wireguard_routes(site, node):
-    """{peer name: [extra AllowedIPs]} of node: the VPN addresses that it reaches through a peer.
+def network_problems(site):
+    """The problems of the networks and LANs of a site, as messages."""
+    problems = []
+    for network in site.networks.values():
+        label = f'vars.networks.{network.name}'
+        cidr = ipaddress.ip_network(network.cidr)
+        nodes = members(site, network)
+        names = [n.name for n in nodes]
+        for hub in network.hubs:
+            if hub not in names:
+                problems.append(f'{label} hubs names {hub}, which has no address in this network.')
+        seen = {}
+        for node in nodes:
+            member = node.networks[network.name]
+            where = f'hosts.{node.name} networks.{network.name}'
+            if ipaddress.ip_address(member.address) not in cidr:
+                problems.append(f'{where} address = {member.address} is outside {label} cidr = {network.cidr}.')
+            if member.address in seen:
+                problems.append(f'hosts.{node.name} and hosts.{seen[member.address]} have the same address in {network.name}.')
+            seen[member.address] = node.name
+            for peer in direct_peers(site, network, node):
+                other = peer.networks[network.name]
+                if member.managed and not other.managed and not other.public_key:
+                    problems.append(f'hosts.{peer.name} networks.{network.name} has no public_key. The installer does not '
+                                    f'write its interface, and {node.name} needs the key for its peer.')
+                if (member.managed and other.managed and node.name < peer.name and not endpoint(network, node, peer)
+                        and not endpoint(network, peer, node)):
+                    problems.append(f'hosts.{node.name} and hosts.{peer.name} peer in {network.name}, and neither can '
+                                    'start the handshake: give one of them a public_address, or put both on one LAN.')
+    for node in site.nodes.values():
+        interfaces = [m.interface for m in node.networks.values()]
+        for interface in sorted({i for i in interfaces if interfaces.count(i) > 1}):
+            problems.append(f'hosts.{node.name} uses the interface {interface} in more than one network.')
+    return problems
 
-    A node X with wireguard_via = H and a node Y without a direct peer for X reach each other through H. Y adds the
-    address of X to its peer H, and X adds the address of Y to its peer H. H forwards between its peers.
+
+def switches(node):
+    """The host changes of a node that the site file turns on or off, for the summary of the check."""
+    return {'stop_docker': node.stop_docker, 'k3s_volume_group': node.k3s_volume_group or None,
+            'public_firewall': node.public_firewall,
+            'wireguard': {name: 'managed' if m.managed else 'kept' for name, m in node.networks.items()}}
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Host facts
+# ----------------------------------------------------------------------------------------------------------------------
+
+ARCHITECTURES = {'x86_64': 'amd64', 'aarch64': 'arm64'}
+
+
+def node_facts(site, name):
+    """The facts of a node that the facts play wrote into facts/<node>.json of the state folder, or an empty dict."""
+    if not site.path:
+        return {}
+    path = site.state_folder() / 'facts' / f'{name}.json'
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def architecture(site, name, facts=None):
+    """The Kubernetes architecture of a node (amd64 or arm64) from its facts. A node without facts is a problem."""
+    facts = node_facts(site, name) if facts is None else facts
+    machine = facts.get('architecture', '')
+    if machine not in ARCHITECTURES:
+        raise SiteError(f'the facts of {name} name no supported architecture ({machine or "no facts"}). Run '
+                        f'deploy-k3s check --target {name}. Its facts play writes facts/{name}.json of the state folder.')
+    return ARCHITECTURES[machine]
+
+
+def storage_reserve(node, facts):
+    """{tier: spare GiB or None}: the TopoLVM spare-gb of each tier of node, STORAGE_RESERVE of its volume group.
+
+    The k3s data volumes in the k3s_volume_group do not count, because they are no part of a tier. None means that the
+    facts name no such volume group.
     """
-    routes = {}
-    for x in site.nodes.values():
-        via = x.wireguard_via
-        if not via or not x.vpn_address:
+    import math
+    groups = facts.get('volume_groups') or {}
+    out = {}
+    for tier, group in node.storage.items():
+        found = groups.get(group)
+        if found is None:
+            out[tier] = None
             continue
-        for y in site.nodes.values():
-            if y.name in (x.name, via) or wireguard_direct(x, y) or not manages_wireguard(y):
-                continue
-            if node.name == y.name:
-                routes.setdefault(via, []).append(f'{x.vpn_address}/32')
-            elif node.name == x.name:
-                routes.setdefault(via, []).append(f'{y.vpn_address}/32')
-    return {k: sorted(set(v)) for k, v in routes.items()}
+        size = found['size_bytes'] - (found.get('k3s_volumes_bytes', 0) if group == node.k3s_volume_group else 0)
+        out[tier] = math.ceil(max(size, 0) * STORAGE_RESERVE / 2 ** 30)
+    return out
 
 
-def legacy_hosts(site):
-    """The site in the format of hosts.json, which cluster/setup.sh reads through settings.py hosts. ansible_variables()
-    takes the WireGuard peers and routes from it."""
+def legacy_hosts(site, facts=None):
+    """The site in the format of hosts.json, which ../cluster/setup.sh and topolvm_values.py read through settings.py
+    hosts, with the host facts of each node. facts is {node: facts}, else the facts files of the state folder."""
     hosts = {}
     for node in site.nodes.values():
+        known = (facts or {}).get(node.name) if facts is not None else node_facts(site, node.name)
+        known = known or {}
+        reserve = storage_reserve(node, known)
+        gpus = known.get('gpus') or []
         hosts[node.name] = {
-            'wg_ip': node.vpn_address or None, 'wg_if': node.vpn_interface, 'key': node.wireguard_public_key,
-            'port': node.wireguard_port,
-            'public': f'{node.public_address}:{node.wireguard_port}' if node.public_address else None,
-            'lan_ip': node.lan_address or None, 'onprem': node.onprem, 'reserved': node.reserved,
-            'tiers': list(node.storage_tiers), 'avx2': node.avx2,
-            'local': node.local, 'single': site.single, 'architecture': node.architecture,
-            'node_ip': node_address(site, node), 'vg': node.lvm_volume_group,
-            'physical_volumes': list(node.lvm_physical_volumes), 'gpu': node.has('gpu'),
-            'peers': [n for n in site.nodes if n != node.name and wireguard_direct(node, site.nodes[n])
-                      and wireguard_peer_wanted(site.nodes[n])],
-            'routes': wireguard_routes(site, node),
+            'node_ip': node_address(site, node), 'reserved': node.reserved, 'local': node.local, 'single': site.single,
+            'gpu': node.has('gpu'), 'tiers': list(node.tiers), 'facts': bool(known),
+            'storage': {t: {'volume_group': node.storage[t], 'spare_gb': reserve[t]} for t in node.tiers},
+            'avx2': bool(known.get('avx2')), 'gpu_count': len(gpus),
+            'gpu_memory_mib': min((g.get('memory_mib', 0) for g in gpus), default=0),
         }
     return {'server': site.control_plane, 'suffix': site.domain, 'hosts': hosts,
             'backup': {'node': site.backup.get('node', ''), 'path': site.backup.get('path', '')} if site.backup else {}}
@@ -955,46 +1196,36 @@ def ansible_variables(site, private):
     ../ansible/roles/hoover4_* read. ansible_host of a node is ssh_host().
     """
     private = Path(private)
-    legacy = legacy_hosts(site)
     registry = site.with_role('registry')
+    media = calls_node(site) if site.with_role('public') else None
     nodes = {}
     for node in site.nodes.values():
         reserved = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
         single_local = site.single and node.local
-        values = {
+        nodes[node.name] = {
             'ssh_host': ssh_host(node),
             'node_address': node_address(site, node),
-            'flannel_iface': 'hoover4' if single_local else node.vpn_interface,
+            'flannel_iface': node_interface(site, node),
             'server': node.name == site.control_plane,
             'server_address': node_address(site, site.nodes[site.control_plane]),
-            'architecture': node.architecture,
             'gpu': node.has('gpu'),
             'single_local': single_local,
             'reserved': node.reserved,
             'reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),
             'reserved_cpus': float(reserved.get('cpu', '2')),
-            # An on-prem node and the local node keep the k3s data on their own volumes.
-            'require_k3s_volumes': node.onprem or single_local,
-            'volume_group': node.lvm_volume_group if single_local else '',
-            'stop_docker': node.onprem,
+            'storage': dict(node.storage),
+            'k3s_volume_group': node.k3s_volume_group,
+            'stop_docker': node.stop_docker,
+            'public_firewall': node.public_firewall,
+            'public_address': node.public_address,
+            # The media node with a public address gets the chain coturn_peers (../platform/calls/turn_peers.py).
+            'coturn_peers': bool(media and media.name == node.name and node.public_address),
+            'wireguard_ports': sorted({m.port for m in node.networks.values()}),
             'backup_path': site.backup.get('path', '') if site.backup.get('node') == node.name else '',
             'registry_endpoint': f'{node_address(site, registry[0])}:{REGISTRY_PORT}' if registry else '',
             'convert_sqlite': node.name == site.control_plane,
-            'wireguard': {},
+            'wireguard': wireguard(site, node),
         }
-        if manages_wireguard(node):
-            me = legacy['hosts'][node.name]
-            peers = []
-            for name in me['peers']:
-                peer = legacy['hosts'][name]
-                if not peer['key'] or not peer['wg_ip']:
-                    continue
-                endpoint = peer['public'] or (f"{peer['lan_ip']}:{peer['port']}" if me['onprem'] and peer['onprem'] else '')
-                peers.append({'name': name, 'key': peer['key'], 'endpoint': endpoint,
-                              'allowed_ips': [f"{peer['wg_ip']}/32"] + list(me['routes'].get(name, []))})
-            values['wireguard'] = {'interface': node.vpn_interface, 'port': node.wireguard_port,
-                                   'public_key': node.wireguard_public_key, 'peers': peers}
-        nodes[node.name] = values
     # The delegated tasks write into the state folder from the operator container, whose home folder is read-only.
     return {'hoover4_state_dir': str(private), 'hoover4_tokens_dir': str(private / 'staging' / 'tokens'),
             'hoover4_kubeconfig': str(private / 'kubeconfig'), 'hoover4_facts_dir': str(private / 'facts'),
@@ -1120,7 +1351,8 @@ def main(argv):
         site = read(argv[1], check_files=True)
         print(json.dumps({'site': site.id, 'site_file': site.path, 'state': str(site.state_folder()),
                           'nodes': {n.name: list(n.roles) for n in site.nodes.values()},
-                          'hoovers': sorted(site.hoovers)}, indent=1))
+                          'switches': {n.name: switches(n) for n in site.nodes.values()},
+                          'peers': peer_table(site), 'hoovers': sorted(site.hoovers)}, indent=1))
     elif len(argv) == 3 and argv[0] == 'project':
         print(json.dumps(project(read(argv[1]), argv[2]), indent=1, default=list))
     elif len(argv) == 2 and argv[0] == 'ansible':

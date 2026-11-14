@@ -21,4 +21,5 @@ hoover4_sysctl:
   vm.max_map_count: "262144"
 hoover4_docker_units: [docker.socket, docker.service, containerd.service]
 hoover4_stop_docker: false
+hoover4_k3s_volume_group: ""
 hoover4_backup_path: ""

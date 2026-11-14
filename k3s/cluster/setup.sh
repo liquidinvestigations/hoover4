@@ -2,7 +2,9 @@
 # Set up the cluster on the k3s nodes: node labels, RuntimeClasses, cert-manager and TopoLVM.
 # Run it on a host with kubectl, helm, python3 and the admin kubeconfig. A second run changes nothing.
 # KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
-# The site file (settings.py) gives the storage tiers and the AVX2 flag of each node.
+# The site file (settings.py) gives the storage tiers of each node. The facts of each node in facts/<node>.json of the
+# state folder give its AVX2 flag, its GPUs and the size of its volume groups. deploy-k3s check and the host step write
+# them.
 # HELM names the helm command. The default is <state folder>/bin/helm, else helm.
 set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
@@ -31,18 +33,25 @@ label_node() {
 }
 
 # A node with a storage tier is enrolled for stateful pods. The tier labels select the lvmd configuration.
-# A node without AVX2 has no cpu.hoover/avx2 label. Workloads that need AVX2 select this label.
+# The labels of the facts: cpu.hoover/avx2 on a node with AVX2, which the workloads that need AVX2 select, and
+# gpu.hoover/count and gpu.hoover/memory-mib (the memory of its smallest GPU) on a node with GPUs. A node without the
+# fact loses its label. A node without facts stops the script, because its labels are unknown.
 python3 - "$SITE" <<'PY' | while read -r node labels; do label_node "$node" $labels; done
 import json, sys
 site = json.load(open(sys.argv[1]))
+missing = [name for name, host in site["hosts"].items() if not host.get("facts")]
+if missing:
+    sys.exit(f"no facts for {', '.join(missing)}. Run deploy-k3s check --target all. Its facts play writes facts/<node>.json.")
 for name, host in site["hosts"].items():
     labels = [f"storage.tier/{tier}=true" for tier in host.get("tiers", [])]
     if labels:
         labels.append("storage.hoover/enrolled=true")
-    if host.get("avx2"):
-        labels.append("cpu.hoover/avx2=true")
-    if labels:
-        print(name, " ".join(labels))
+    labels.append("cpu.hoover/avx2=true" if host.get("avx2") else "cpu.hoover/avx2-")
+    if host.get("gpu_count"):
+        labels += [f"gpu.hoover/count={host['gpu_count']}", f"gpu.hoover/memory-mib={host['gpu_memory_mib']}"]
+    else:
+        labels += ["gpu.hoover/count-", "gpu.hoover/memory-mib-"]
+    print(name, " ".join(labels))
 PY
 # The lvmd label selects the lvmd configuration of the volume group of each node (topolvm_values.py).
 python3 topolvm_values.py "$SITE" labels | while read -r node label; do label_node "$node" "$label"; done
@@ -85,6 +94,6 @@ kubectl create namespace topolvm-system --dry-run=client -o yaml | kubectl apply
 kubectl label namespace kube-system topolvm-system topolvm.io/webhook=ignore --overwrite
 helm_install topolvm topolvm-system topolvm/topolvm "$TOPOLVM_CHART_VERSION" "$values"
 
-kubectl get nodes -L storage.hoover/enrolled,storage.hoover/lvmd,cpu.hoover/avx2
+kubectl get nodes -L storage.hoover/enrolled,storage.hoover/lvmd,cpu.hoover/avx2,gpu.hoover/count,gpu.hoover/memory-mib
 kubectl get runtimeclass,storageclass
 kubectl -n topolvm-system get pods -o wide

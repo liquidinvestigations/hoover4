@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Print the TopoLVM chart values of a site as JSON, which Helm reads as YAML. Usage: topolvm_values.py <hosts.json>
 
-Each node with storage tiers gets one lvmd configuration with one device class per tier, on the volume group of the
-node (`lvm_volume_group` of the site file). Nodes with the same tiers and volume group share a configuration, and the
-node selectors of the configurations do not overlap. Each tier gets the storage classes <tier>-ext4 and <tier>-block.
-The default storage class is hdd-ext4 when a node has the tier hdd, else ssd-ext4, else nvme-ext4, so a claim without
-a class binds on every site. A hosts.json without a volume group name (the earlier form) keeps tier-<tier>.
+hosts.json is the form of the site file that `settings.py hosts` prints (config.legacy_hosts()), with the facts of
+each node. Each node with storage gets its own lvmd configuration, selected by the label storage.hoover/lvmd=<node>.
+The configuration has one device class per tier, on the volume group of that tier (storage of the site file). The
+spare-gb of a class is the reserve of its volume group, 5 % of its size from the facts of the node
+(config.storage_reserve()), so the cluster schedules at most 95 % of each tier on each node. Each tier gets the storage
+classes <tier>-ext4 and <tier>-block. The default storage class is hdd-ext4 when a node has the tier hdd, else
+ssd-ext4, else nvme-ext4, so a claim without a class binds on every site.
 """
 import json
 import sys
@@ -14,20 +16,27 @@ ORDER = ('hdd', 'ssd', 'nvme')
 
 
 def values(hosts):
-    groups = {}
+    configs, problems = [], []
     for name, host in sorted(hosts['hosts'].items()):
-        tiers = tuple(t for t in ORDER if t in host.get('tiers', []))
-        if tiers:
-            groups.setdefault((tiers, host.get('vg') or ''), []).append(name)
-    tiers_used = [t for t in ORDER if any(t in key[0] for key in groups)]
+        storage = host.get('storage') or {}
+        if not storage:
+            continue
+        tiers = [t for t in ORDER if t in storage]
+        for tier in tiers:
+            if storage[tier].get('spare_gb') is None:
+                problems.append(f'{name} has no facts of the volume group {storage[tier]["volume_group"]} of the tier '
+                                f'{tier}. Run deploy-k3s check --target {name}. Its facts play reads the volume groups '
+                                'and refuses a missing one.')
+        classes = [{'name': t, 'volume-group': storage[t]['volume_group'], 'default': t == tiers[0],
+                    'spare-gb': storage[t].get('spare_gb')} for t in tiers]
+        configs.append({'tolerations': [], 'nodeSelector': {'storage.hoover/lvmd': name}, 'deviceClasses': classes,
+                        'nodes': [name]})
+    if problems:
+        raise SystemExit('\n'.join(problems))
+    tiers_used = [t for t in ORDER if any(c['name'] == t for config in configs for c in config['deviceClasses'])]
     if not tiers_used:
-        raise SystemExit('no node of the site has storage tiers.')
+        raise SystemExit('no node of the site has storage.')
     default = tiers_used[0]
-    configs = []
-    for (tiers, vg), names in sorted(groups.items()):
-        classes = [{'name': t, 'volume-group': vg or f'tier-{t}', 'default': t == tiers[0], 'spare-gb': 10} for t in tiers]
-        configs.append({'tolerations': [], 'nodeSelector': {'storage.hoover/lvmd': '-'.join(tiers) + ('.' + vg if vg else '')},
-                        'deviceClasses': classes, 'nodes': names})
     first = configs[0]
     out = {
         'lvmd': {'deviceClasses': first['deviceClasses'], 'nodeSelector': first['nodeSelector'],

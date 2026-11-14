@@ -27,7 +27,6 @@ hoover4:
     dev:
       node_roles: single
       local: true
-      storage_tiers: nvme
-      lvm_volume_group: hoover4
-      lvm_physical_volumes: /dev/nvme9n1p2
+      storage: {nvme: hoover4}
+      k3s_volume_group: hoover4
       reserved: memory=8Gi,cpu=2

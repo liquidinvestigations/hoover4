@@ -10,7 +10,8 @@
 #     checks it and refuses an attack pattern with 403,
 #   - the gate oauth2-proxy of the zone (../../zones/gate.py) accepts its cookie at auth.<zone>.<suffix>/oauth2/auth.
 # A page load without a gate cookie goes to the Keycloak sign-in of the zone. Any other request gets 401.
-# The Keycloak admin routes and the admin routes of Synapse and lk-jwt answer 403 outside the VPN (vpn in site.env).
+# The Keycloak admin routes and the admin routes of Synapse and lk-jwt answer 403 outside the admin ranges of the site
+# file (vpn in site.env).
 # site.env names the TLS mode (tls_mode, ../../config.py TLS_MODES):
 #   cloudflare  certbot holds a public certificate in tls_dir. When it lacks the name *.<zone>.<suffix> of a zone,
 #               certbot adds it with the DNS challenge. The list replaces the names of a deleted zone at that time.

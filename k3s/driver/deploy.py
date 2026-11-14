@@ -324,8 +324,12 @@ def node_problems(ctx, name, k3s_args=None):
         problems.append(f'k3s is {version or "unknown"}, not {K3S_VERSION}')
     args = node_args(ctx, name) if k3s_args is None else k3s_args
     interface = arg_value(args, '--flannel-iface')
-    if interface != expected_interface(ctx.site, node):
-        problems.append(f'flannel-iface is {interface!r}, not {expected_interface(ctx.site, node)!r}')
+    expected = expected_interface(ctx, node)
+    if not expected:
+        problems.append(f'the facts of the node name no interface of its address {config.node_address(ctx.site, node)}. '
+                        f'Run deploy-k3s check --target {name}')
+    elif interface != expected:
+        problems.append(f'flannel-iface is {interface!r}, not {expected!r}')
     if name == ctx.site.control_plane:
         if arg_value(args, '--cluster-init') != 'true':
             problems.append('k3s runs without cluster-init')
@@ -429,8 +433,19 @@ def arg_value(args, name):
     return next((args[i + 1] for i, a in enumerate(args[:-1]) if a == name), '')
 
 
-def expected_interface(site, node):
-    return 'hoover4' if site.single and node.local else node.vpn_interface
+def node_facts(ctx, name):
+    """The facts of a node in facts/<node>.json of the state folder, which the facts play writes, or an empty dict."""
+    try:
+        return json.loads((ctx.private / 'facts' / f'{name}.json').read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def expected_interface(ctx, node):
+    """The flannel interface of node: the interface of its network, else the interface that holds its LAN address in
+    the facts of the node, else empty when the facts are missing."""
+    return config.node_interface(ctx.site, node) or (node_facts(ctx, node.name).get('addresses') or {}).get(
+        config.node_address(ctx.site, node), '')
 
 
 def private_write(path, text):
@@ -453,7 +468,7 @@ def step_tools(ctx):
     import hashlib
     import shutil
     import tarfile
-    arch = ctx.site.nodes[ctx.site.control_plane].architecture
+    arch = node_architecture(ctx, ctx.site.control_plane)
     installed = {}
     for item in ARTIFACTS['tools']:
         targets = [ctx.private / t.rstrip('/') for t in item['install']]
@@ -561,7 +576,7 @@ def step_images(ctx):
                              ('xwiki-extensions', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}')):
         ctx.run(['bash', SOURCE / 'images/build-image.sh', SOURCE / 'images' / directory, image])
     ctx.run([sys.executable, SOURCE / 'images/build-hoover.py', '--revision', ctx.revision])
-    arch = ctx.site.nodes[ctx.site.control_plane].architecture
+    arch = node_architecture(ctx, ctx.site.control_plane)
     ctx.record['images'] = image_references(ctx, architecture=arch)
     return {'images': len(ctx.record['images']), 'architecture': arch}
 
@@ -572,9 +587,16 @@ def gpu_image_names(ctx):
     return [f'hoover/hoover-{n}:{ctx.revision[:12]}' for n in compose.GPU_IMAGES]
 
 
+def node_architecture(ctx, name):
+    """The architecture of a node from its facts (config.architecture())."""
+    try:
+        return config.architecture(ctx.site, name, node_facts(ctx, name))
+    except config.SiteError as error:
+        raise StepFailed(str(error)) from None
+
+
 def gpu_architecture(ctx):
-    nodes = [ctx.site.nodes[n] for n in ctx.site.gpu_pool.get('nodes', ())]
-    architectures = {n.architecture for n in nodes}
+    architectures = {node_architecture(ctx, n) for n in ctx.site.gpu_pool.get('nodes', ())}
     if len(architectures) != 1:
         raise StepFailed(f'the GPU nodes have the architectures {sorted(architectures)}. One architecture is supported.')
     return architectures.pop()
@@ -1137,7 +1159,8 @@ def check(ctx, targets):
             problems.append(f'the admin kubeconfig {ctx.kubeconfig} is missing. deploy-k3s up writes it.')
         state['checkout_changes'] = dirty_files(ctx.repo)
         state['applied'] = (ctx.records.applied() or {}).get('revision')
-        # The installer configures no interface on these nodes. The person adds these peers by hand.
-        state['manual_peers'] = config.manual_peers(ctx.site)
+        # The direct WireGuard peers. The person adds the rows with by = hand on the node that keeps its interface.
+        state['peers'] = config.peer_table(ctx.site)
+        state['switches'] = {n.name: config.switches(n) for n in ctx.site.nodes.values()}
         state['stopped'] = ctx.records.stopped()
     return problems, state

@@ -6,11 +6,12 @@ DNS: every name below the suffix that a browser or a call client uses, and the a
   the public address of the first public node, where the HTTPS frontend runs.
 - turn.<suffix> points to the public address of the media node (the calls node, else the public node), because a call
   client sends its TURN traffic there.
-A node without a public address gets its VPN address, and the record is marked internal: a client outside the VPN
-cannot use it.
+A node without a public address gets its node address, and the record is marked internal: a client outside the
+networks of the site cannot use it.
 Firewall: the ports that each public or calls node admits on its public interface. The media ports of the media node
 are UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit) and UDP and TCP 3478 (TURN).
-../../ansible/roles/hoover4_public_firewall/files/public-firewall.sh admits these ports. Run it on each node of the table.
+The switch public_firewall of each of these nodes installs ../../ansible/roles/hoover4_public_firewall, whose
+files/public-firewall.sh admits these ports on a separate public interface.
 Usage: public_endpoints.py dns|firewall|show [--site FILE]
 """
 import argparse
@@ -40,18 +41,18 @@ MEDIA_PORTS = [('udp', 3478, 'TURN'), ('tcp', 3478, 'TURN over TCP'), ('udp', 10
                ('tcp', 7881, 'LiveKit media over TCP'), ('udp', 7882, 'LiveKit media')]
 
 
-def address(node):
-    return node.public_address or node.vpn_address
+def address(site, node):
+    return node.public_address or site_config.node_address(site, node)
 
 
 def dns(site):
     frontend = site.with_role('public')[0]
     media = site_config.calls_node(site)
-    rows = [{'name': f'operator.{site.domain}', 'address': address(frontend), 'internal': not frontend.public_address}]
+    rows = [{'name': f'operator.{site.domain}', 'address': address(site, frontend), 'internal': not frontend.public_address}]
     for zone in sorted({h.zone for h in site.hoovers.values()}):
-        rows += [{'name': name, 'address': address(frontend), 'internal': not frontend.public_address}
+        rows += [{'name': name, 'address': address(site, frontend), 'internal': not frontend.public_address}
                  for name in [f'{zone}.{site.domain}'] + [f'{n}.{zone}.{site.domain}' for n in zone_names()]]
-    rows.append({'name': f'turn.{site.domain}', 'address': address(media), 'internal': not media.public_address})
+    rows.append({'name': f'turn.{site.domain}', 'address': address(site, media), 'internal': not media.public_address})
     return rows
 
 
@@ -65,8 +66,9 @@ def firewall(site):
             rules += [r for r in FRONTEND_PORTS if r not in rules]
         if node is media:
             rules += [r for r in MEDIA_PORTS if r not in rules]
-        if node.vpn_address and ('udp', node.wireguard_port, 'WireGuard') not in rules:
-            rules.append(('udp', node.wireguard_port, 'WireGuard'))
+        for port in sorted({m.port for m in node.networks.values()}):
+            if ('udp', port, 'WireGuard') not in rules:
+                rules.append(('udp', port, 'WireGuard'))
         if ('tcp', 22, 'SSH') not in rules:
             rules.insert(0, ('tcp', 22, 'SSH'))
     return {name: [{'protocol': p, 'port': port, 'purpose': purpose} for p, port, purpose in rules] for name, rules in out.items()}
