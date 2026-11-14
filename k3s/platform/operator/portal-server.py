@@ -5,7 +5,8 @@ The zone pages list each zone with its resource use and operations. POST /gpu/ke
 which a GPU host outside the cluster needs. A create, upgrade or delete request becomes an
 operation ConfigMap, which runner.py runs. A create names the home node of the zone.
 The settings page (settings.html) reads and saves the operator settings and starts Apply operations through
-portal_settings.py. runner.py runs the Apply operations on the control-plane host.
+portal_settings.py. The runner container of the operator pod (runner.py) runs the operations. An operation can end
+with a warning, for example that the HTTPS frontend serves the names of a new zone only after the next deployment.
 The gateway sets X-Forwarded-User after the operator login, and network policy lets only the gateway pods connect.
 A process of the host can reach the pod address without the network policy, so the portal accepts X-Forwarded-User only
 together with X-Operator-Proxy-Secret. The secret is the key proxy-secret of the Secret operator-login
@@ -66,7 +67,7 @@ def prometheus(query):
 def operations():
  items=api('GET',f'/api/v1/namespaces/{NS}/configmaps?labelSelector={LABEL}')['items']
  items.sort(key=lambda i:i['metadata']['creationTimestamp'],reverse=True)
- keys=('kind','zone','actor','state','step','steps','error','log','created','updated','finished')
+ keys=('kind','zone','actor','state','step','steps','error','warning','log','created','updated','finished')
  return [{'name':i['metadata']['name'],**{k:(i.get('data') or {}).get(k,'') for k in keys}} for i in items[:20]]
 def zones():
  spaces=api('GET','/api/v1/namespaces?labelSelector=hoover.dev%2Fzone%3Dtrue')['items']
@@ -144,7 +145,7 @@ class Handler(SimpleHTTPRequestHandler):
    if parts[1] not in module.ACTIONS:return self.reply(404,{'error':'Unknown request.'})
    try:result=module.ACTIONS[parts[1]](actor,body)
    except module.Refused as error:return self.reply(error.status,{'error':str(error),'problems':error.problems})
-   except (OSError,ValueError,KeyError) as error:return self.reply(503,{'error':f'The operator state is unavailable: {error}'})
+   except (OSError,ValueError,KeyError,RuntimeError) as error:return self.reply(503,{'error':f'The operator state is unavailable: {error}'})
    print(json.dumps({'time':time.time(),'actor':actor,'request':self.path,'result':'accepted'}),flush=True)
    return self.reply(200,result)
   try:

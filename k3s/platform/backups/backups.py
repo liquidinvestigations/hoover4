@@ -443,7 +443,7 @@ def tick(now=None):
             data = load_state(s)
             data['jobs'][key].pop('closed', None)
             save_state(s, data)
-    holder = oplock.SiteLock(s.operator_state()).busy()
+    holder = oplock.site_lock(s.operator_state()).busy()
     if holder:
         return {'state': 'waiting', 'reason': f'the site operation {holder.get("kind")} {holder.get("id")} runs'}
     selected = jobs(s, data)
@@ -883,7 +883,7 @@ def run_job(key, generation):
     partial.parent.mkdir(parents=True, exist_ok=True)
     started = time.time()
     kind, _, rest = key.partition(':')
-    lock = oplock.SiteLock(s.operator_state())
+    lock = oplock.site_lock(s.operator_state())
     try:
         if kind in ('zone', 'opendesk', 'platform'):
             # The copy is the consistency boundary of the zone or the cluster, so no other operation changes the site.
@@ -1070,7 +1070,7 @@ def restore_zone(zone, generation, source_zone=None):
         record_path.parent.mkdir(parents=True, exist_ok=True)
         record_path.write_text(json.dumps(progress, indent=1))
 
-    lock = oplock.SiteLock(s.operator_state())
+    lock = oplock.site_lock(s.operator_state())
     lock.acquire('restore', f'restore-{zone}')
     try:
         source = json.loads((folder / 'closure.json').read_text()) if (folder / 'closure.json').exists() else None

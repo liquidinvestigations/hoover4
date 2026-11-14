@@ -1,8 +1,10 @@
 """The settings pages of the operator portal: read, save, Apply, retry and abandon, through settings.py and apply.py.
 
-The portal pod runs on the control-plane node. It mounts the k3s folder of the checkout read-only (PORTAL_REPO), the
-operator state folder read-write and the site file read-only. It does not mount the other private files.
-runner.py on the host runs the Apply operations that this module starts.
+The portal container of the operator pod runs the k3s folder of the operator image (PORTAL_REPO) with the site file of
+the ConfigMap portal-site. Its state folder holds the ConfigMaps of the cluster copy of the state, without the zone
+secrets (../../clusterstate.py). With HOOVER4_CLUSTER_STATE=1, each request first reads the cluster copy, and a
+request that changes the operator state writes it back. The runner container runs the Apply operations that this
+module starts.
 """
 import json
 import os
@@ -14,6 +16,7 @@ sys.path.insert(0, str(REPO / 'k3s'))
 sys.path.insert(0, str(REPO / 'k3s/platform/operator'))
 import config  # noqa: E402
 import apply  # noqa: E402
+import clusterstate  # noqa: E402
 import oplock  # noqa: E402
 
 S = apply.operator_settings
@@ -31,6 +34,24 @@ class Refused(Exception):
 
 def site():
     return config.read(os.environ.get('HOOVER4_SITE'))
+
+
+def synced(function):
+    """Read the cluster copy of the operator state before the request and write the changes after it."""
+    import functools
+
+    @functools.wraps(function)
+    def run(*args):
+        if os.environ.get(clusterstate.ENV) != '1':
+            return function(*args)
+        folder = site().state_folder()
+        try:
+            clusterstate.pull(folder, ('configmap',))
+            result = function(*args)
+        finally:
+            clusterstate.push(folder, ('configmap',))
+        return result
+    return run
 
 
 def state(s):
@@ -72,6 +93,7 @@ def operation_view(st, op):
             'created': op.created, 'updated': op.updated, 'log': [line[:300] for line in lines]}
 
 
+@synced
 def overview(nodes):
     s = site()
     st = state(s)
@@ -96,11 +118,12 @@ def overview(nodes):
             'pending': pending, 'services': apply.services(st, s, revision), 'steps': apply.plan(st, s, revision),
             'active': operation_view(st, st.active()),
             # A queued Apply waits while another site operation, for example a deployment, holds the site lock.
-            'site_operation': oplock.SiteLock(s.operator_state()).busy(),
+            'site_operation': oplock.site_lock(s.operator_state()).busy(),
             'operations': [operation_view(st, st.operation(p.stem)) for p in history],
             'backup_destination': backup, 'nodes': nodes}
 
 
+@synced
 def save(actor, body):
     s = site()
     st = state(s)
@@ -134,6 +157,7 @@ def save(actor, body):
     return {'revision': revision}
 
 
+@synced
 def start(actor, body):
     s = site()
     st = state(s)
@@ -149,6 +173,7 @@ def start(actor, body):
     return {'operation': op.id, 'steps': [x['name'] for x in op.steps]}
 
 
+@synced
 def retry(actor, body):
     try:
         return {'operation': state(site()).retry(str(body.get('id', '')), actor=actor).id}
@@ -156,6 +181,7 @@ def retry(actor, body):
         raise Refused(str(error))
 
 
+@synced
 def abandon(actor, body):
     try:
         state(site()).abandon(str(body.get('id', '')), actor=actor)

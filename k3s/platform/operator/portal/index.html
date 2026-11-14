@@ -108,7 +108,7 @@ async function updateZones() {
    const steps = JSON.parse(op.steps || '[]').map(s => `${s.name} ${s.state}`).join(', ');
    const log = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = 'Last output lines';
    const text = document.createElement('pre'); text.textContent = op.log; log.append(summary, text);
-   const state = [op.state, op.step ? `at ${op.step}` : '', op.error].filter(Boolean).join(' ');
+   const state = [op.state, op.step ? `at ${op.step}` : '', op.error, op.warning].filter(Boolean).join(' ');
    row.append(cell(new Date(op.created).toLocaleString()), cell(op.actor), cell(`${op.kind} ${op.zone}`, document.createElement('br'), steps),
     cell(state, ' ', op.state === 'failed' ? button('Run again', () => act(`/operations/${op.name}/retry`, {}, 'The operation is queued again.')) : ''), cell(log));
    return row;

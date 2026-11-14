@@ -8,7 +8,7 @@ The folder is <operator state>/deploy (config.Site.operator_state()):
   applied.json        a copy of the newest record of an up that finished
   previous.json       the copy that applied.json held before, so a failed update can return to it
   stopped.json        the replica counts that down recorded, which `up --start` restores
-The driver holds the site operation lock of ../oplock.py while it runs, so no Apply, zone operation, migration step
+The driver holds the site operation lock of ../oplock.py (the Lease of the cluster, else a file lock) while it runs, so no Apply, zone operation, migration step
 or backup consistency step changes the site at the same time.
 Each write goes to a temporary file, is synced and renamed, so a stopped driver leaves complete files.
 A step has the state pending, running, done, failed or waiting. A waiting step needs an operator action.
@@ -59,7 +59,7 @@ class Records:
 
     def lock(self, kind='deploy', operation_id=None):
         """Hold the site operation lock. Raise Busy while another operation holds it."""
-        lock = oplock.SiteLock(self.folder.parent)
+        lock = oplock.site_lock(self.folder.parent)
         lock.acquire(kind, operation_id or f'{kind}-{uuid.uuid4().hex[:8]}')
         self._lock = lock
 

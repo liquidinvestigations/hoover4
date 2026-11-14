@@ -3203,6 +3203,22 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The zone form of the operator portal is unchanged, and the screenshot of the zone manual shows it."
+    },
+    {
+      "id": "F-admin-57",
+      "source": [
+        "k3s/clusterstate.py",
+        "k3s/oplock.py",
+        "k3s/platform/operator/pod.py",
+        "k3s/platform/operator/runner.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#keep-the-state-in-the-cluster",
+        "docs/operations/k3s/Zone_Operator_Manual.md#create-a-zone"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The zone pages of the operator portal keep their layout. The operations table adds the warning text to the state column."
     }
   ],
   "routes": {

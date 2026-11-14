@@ -14,7 +14,7 @@ An apply of a disabled zone saves a private render without applying objects or r
 The steps of apply, in order:
   1. The zone state (zonestate.py) gets the zone with its home node and the values of its Hoover installation.
      zones.py writes the openDesk values.
-  2. The workstation builds and pushes the images that the registry does not have (../images/).
+  2. The step checks that the registry has the images of the revision. deploy-k3s up builds them (step images).
   3. The cluster gets the zone pod policy (manifests/zone-pods.yaml) and the XWiki extension repository. The zone
      runner cannot change the pod policy, so with its kubeconfig the step only checks that the cluster has the policy
      of the source.
@@ -35,7 +35,12 @@ The steps of apply, in order:
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
+The command holds the site operation lock (../oplock.py), or runs inside the operation of deploy-k3s or the zone
+runner. With the lock of a running cluster it first reads the cluster copy of the zone state and the zone secrets
+(../clusterstate.py). With HOOVER4_CLUSTER_STATE=1 (the operator pod, deploy-k3s and this case), apply and delete
+write the zone state and the zone secrets into the cluster copy as soon as they change.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -47,6 +52,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent
 sys.path.insert(0, str(SOURCE))
+import clusterstate  # noqa: E402
 import settings  # noqa: E402
 import zonestate  # noqa: E402
 
@@ -131,13 +137,18 @@ def register(zone, home, values=None):
 
 
 def images():
-    import zones
-    build = SOURCE / 'images' / 'build-image.sh'
-    for directory, image in (('blockmount', 'hoover/blockmount:8'),
-                             ('nextcloud-ai', f'hoover/nextcloud-ai:{zones.NEXTCLOUD_IMAGE_TAG}'),
-                             ('xwiki-extensions', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}')):
-        run('bash', build, SOURCE / 'images' / directory, image)
-    run(sys.executable, SOURCE / 'images' / 'build-hoover.py')
+    """Check that the registry has every image of a zone for the revision. The step images of deploy-k3s up builds them.
+
+    The revision is HOOVER4_REVISION, which deploy-k3s and the operator pod set, else HEAD of the checkout.
+    """
+    sys.path.insert(0, str(SOURCE / 'driver'))
+    import deploy
+    revision = os.environ.get('HOOVER4_REVISION') or deploy.resolve_revision(deploy.REPO, 'HEAD')
+    try:
+        deploy.registry_references(settings.SITE, deploy.revision_image_names(revision))
+    except deploy.StepFailed as error:
+        raise SystemExit(f'{error}. Run deploy-k3s up --steps images on the operator workstation for the revision '
+                         f'{revision[:12]}.') from None
 
 
 def cluster():
@@ -303,6 +314,7 @@ def mark_bootstrapped(zone):
     if entry is not None and entry.get('bootstrapped') is False:
         entry['bootstrapped'] = True
         zonestate.save(state)
+        clusterstate.checkpoint(PRIVATE)
         step('zone-state', zone=zone, change='bootstrapped')
 
 
@@ -401,6 +413,8 @@ def hoover(zone):
 def apply(zone, home, values=None):
     home = register(zone, home, values)
     run(sys.executable, HERE / 'zones.py', quiet=True)
+    # The zone secrets exist before the first object that uses them, so the cluster copy gets them now.
+    clusterstate.checkpoint(PRIVATE)
     step('values', zone=zone, home=home)
     if not zonestate.enabled(zone):
         rendered = helmfile(zone, 'template')
@@ -447,6 +461,7 @@ def delete(zone):
         if data.pop(zone, None) is not None:
             secrets_file.write_text(json.dumps(data, indent=1))
     run('rm', '-rf', PRIVATE / 'zones' / zone)
+    clusterstate.checkpoint(PRIVATE)
     step('zone-state', zone=zone, change='removed')
     run(sys.executable, SOURCE / 'tools' / 'write-password-table.py')
 
@@ -464,11 +479,41 @@ def main():
     if not zonestate_name(args.zone):
         raise SystemExit(__doc__)
     settings.use_kubeconfig()
-    if args.command == 'delete':
-        delete(args.zone)
+    with operation(f'zone-{args.command}-{args.zone}'):
+        if args.command == 'delete':
+            delete(args.zone)
+            return
+        apply(args.zone, args.home, {'stores': args.stores, 'temporal_backend': args.temporal_backend,
+                                     'extra_datasets': args.dataset})
+
+
+@contextlib.contextmanager
+def operation(operation_id):
+    """Run inside the site operation of the caller, else hold the site lock and use the cluster copy of the state.
+
+    deploy-k3s and the zone runner hold the lock and give HOOVER4_SITE_OPERATION to this process. A command of the
+    workstation takes the lock itself. When the lock is the Lease of the cluster, the command first reads the cluster
+    copy into the state folder and writes its changes back at the end (../clusterstate.py).
+    """
+    import oplock
+    if os.environ.get(oplock.ENV):
+        yield
         return
-    apply(args.zone, args.home, {'stores': args.stores, 'temporal_backend': args.temporal_backend,
-                                 'extra_datasets': args.dataset})
+    lock = oplock.site_lock(PRIVATE / 'operator')
+    try:
+        lock.acquire('zone', operation_id)
+    except oplock.Busy as error:
+        raise SystemExit(str(error)) from None
+    try:
+        if isinstance(lock, oplock.LeaseLock):
+            os.environ[clusterstate.ENV] = '1'
+            clusterstate.pull(PRIVATE)
+        try:
+            yield
+        finally:
+            clusterstate.checkpoint(PRIVATE)
+    finally:
+        lock.release()
 
 
 def zonestate_name(name):

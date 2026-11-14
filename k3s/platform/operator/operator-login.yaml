@@ -243,7 +243,12 @@ spec:
       http:
         paths: [{path: /, pathType: Prefix, backend: {service: {name: gateway, port: {name: http}}}}]
 ---
-# The portal page reads cluster slice usage from the host cgroup files.
+# The operator pod: the portal and the zone runner (pod.py) from the operator image of the registry, which the step
+# images of deploy-k3s builds from the checkout. start-web-tools.sh sets the image, the revision and the node.
+# The portal page reads cluster slice usage from the host cgroup files, so the pod runs on the control-plane node.
+# The pod mounts no checkout and no state folder of a host. The state folder of /site/site.json is /site/site, a
+# folder of the pod that both containers share. The cluster holds the authoritative copy of the state
+# (../../clusterstate.py). The runner keeps the zone secrets in its own folder at /site/site/zones.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -251,65 +256,71 @@ metadata:
   namespace: operator-portal
 spec:
   replicas: 1
+  # A second pod would run a second runner, so the old pod stops before the new one starts.
+  strategy: {type: Recreate}
   selector:
     matchLabels: {app.kubernetes.io/name: portal}
   template:
     metadata:
       labels: {app.kubernetes.io/name: portal}
     spec:
-      # The portal reads cluster events and the zone namespaces. It writes zone operations as ConfigMaps.
+      # The portal reads cluster events and the zone namespaces. It writes zone operations and its settings as
+      # ConfigMaps. The runner uses the token of the ServiceAccount zone-runner (runner-rights.yaml).
       serviceAccountName: portal
-      # The portal runs on the control-plane node as the operator user, because it reads and writes the operator state
-      # of that host (portal_settings.py). start-web-tools.sh sets the node, the user and the paths.
       nodeSelector: {kubernetes.io/hostname: CONTROL_PLANE}
-      securityContext: {runAsNonRoot: true, runAsUser: OPERATOR_UID, runAsGroup: OPERATOR_GID, seccompProfile: {type: RuntimeDefault}}
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: portal
-          image: docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd
-          args: [python3, /app/portal-server.py]
+          image: OPERATOR_IMAGE
+          args: [portal]
           env:
             - {name: PORTAL_ADDRESS, value: 0.0.0.0}
             - {name: PORTAL_PORT, value: '8080'}
             - {name: PORTAL_ORIGIN, value: 'https://operator.hoover.test'}
             - {name: PORTAL_SUFFIX, value: hoover.test}
             - {name: PORTAL_CGROUP, value: /host-cgroup}
-            - {name: PORTAL_REPO, value: /repo}
+            - {name: PORTAL_REPO, value: /opt/hoover4}
             - {name: HOOVER4_SITE, value: /site/site.json}
-            - {name: PYTHONPATH, value: /app}
-            - {name: PYTHONDONTWRITEBYTECODE, value: '1'}
+            - {name: HOOVER4_REVISION, value: OPERATOR_REVISION}
+            - {name: PYTHONPATH, value: /opt/hoover4/k3s/platform/operator}
+            - {name: HOME, value: /tmp/home}
             - name: PORTAL_PROXY_SECRET
               valueFrom: {secretKeyRef: {name: operator-login, key: proxy-secret}}
           ports: [{name: http, containerPort: 8080}]
           readinessProbe: {httpGet: {path: /healthz, port: http}}
           resources:
-            requests: {cpu: 10m, memory: 24Mi}
-            limits: {cpu: 500m, memory: 192Mi}
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           volumeMounts:
-            - {name: app, mountPath: /app, readOnly: true}
             - {name: cgroup, mountPath: /host-cgroup, readOnly: true}
-            # The settings registry reads the k3s folder, deploy.py, hoover4.ini.release and the storage identities.
-            # The state folder of the site stays outside the pod, apart from the operator state. The site file is
-            # the JSON form that start-web-tools.sh writes into the ConfigMap portal-site, so the pod needs no PyYAML.
-            # The state folder of /site/site.json is /site/site.
-            - {name: k3s, mountPath: /repo/k3s, readOnly: true}
-            - {name: state, mountPath: /site/site/operator}
             - {name: site, mountPath: /site/site.json, subPath: site.json, readOnly: true}
-            - {name: deploy, mountPath: /repo/deploy.py, readOnly: true}
-            - {name: release, mountPath: /repo/hoover4.ini.release, readOnly: true}
-            - {name: identity, mountPath: /repo/main_services/processing/tasks/storage_identity.json, readOnly: true}
+            - {name: state, mountPath: /site/site}
+            - {name: portal-tmp, mountPath: /tmp}
+        - name: runner
+          image: OPERATOR_IMAGE
+          args: [runner]
+          env:
+            - {name: HOOVER4_SITE, value: /site/site.json}
+            - {name: HOOVER4_REVISION, value: OPERATOR_REVISION}
+            - {name: HOME, value: /tmp/home}
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {cpu: '2', memory: 2Gi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: site, mountPath: /site/site.json, subPath: site.json, readOnly: true}
+            - {name: state, mountPath: /site/site}
+            - {name: zone-secrets, mountPath: /site/site/zones}
+            - {name: runner-token, mountPath: /var/run/zone-runner, readOnly: true}
+            - {name: runner-tmp, mountPath: /tmp}
       volumes:
-        - {name: k3s, hostPath: {path: REPO/k3s, type: Directory}}
-        - {name: state, hostPath: {path: STATE, type: DirectoryOrCreate}}
         - {name: site, configMap: {name: portal-site}}
-        - {name: deploy, hostPath: {path: REPO/deploy.py, type: File}}
-        - {name: release, hostPath: {path: REPO/hoover4.ini.release, type: File}}
-        - {name: identity, hostPath: {path: REPO/main_services/processing/tasks/storage_identity.json, type: File}}
-        - name: app
-          configMap:
-            name: portal
-            items: [{key: portal-server.py, path: portal-server.py}, {key: portal_settings.py, path: portal_settings.py},
-                    {key: index.html, path: portal/index.html}, {key: settings.html, path: portal/settings.html}]
+        - {name: state, emptyDir: {sizeLimit: 1Gi}}
+        - {name: zone-secrets, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+        - {name: runner-token, secret: {secretName: zone-runner-token}}
+        - {name: portal-tmp, emptyDir: {sizeLimit: 64Mi}}
+        - {name: runner-tmp, emptyDir: {sizeLimit: 2Gi}}
         - name: cgroup
           hostPath: {path: POD_CGROUP, type: Directory}
 ---
@@ -411,7 +422,8 @@ metadata:
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: operator-portal-zones}
 subjects: [{kind: ServiceAccount, name: portal, namespace: operator-portal}]
 ---
-# The portal writes each zone operation as a ConfigMap, and operator/runner.py on the host runs it.
+# The portal writes each zone operation as a ConfigMap, and the runner of the operator pod runs it. The portal reads
+# and writes the ConfigMaps of the cluster copy of the operator state (../../clusterstate.py), and reads the site lock.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -420,7 +432,11 @@ metadata:
 rules:
   - apiGroups: ['']
     resources: [configmaps]
-    verbs: [get, list, create, patch]
+    verbs: [get, list, create, patch, update, delete]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    resourceNames: [site-operation]
+    verbs: [get]
   # The GPU page shows the GPU key of the installation (../../hoover/gpu.py).
   - apiGroups: ['']
     resources: [secrets]

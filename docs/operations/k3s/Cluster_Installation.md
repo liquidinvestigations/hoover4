@@ -20,7 +20,7 @@ Keep host names, addresses and credentials in the private site folder and in the
 
 ## Prepare the operator host
 
-The operator host is a workstation that reaches every node with SSH. It runs the driver and the operator runner.
+The operator host is a workstation that reaches every node with SSH. It runs the driver. The operator portal and the zone runner run as a pod in the cluster.
 
 1. Install Python 3 and `podman` or `docker`. `k3s/deploy-k3s` builds the operator image ([k3s/images/operator](../../../k3s/images/operator)) when its inputs change.
    The image holds Ansible, `kubectl`, `helm`, `ssh` and `git`. The host needs no other tool.

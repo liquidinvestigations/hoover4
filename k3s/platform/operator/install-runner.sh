@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Install the zone runner of the operator portal on the operator host. Usage: install-runner.sh
-# The runner (runner.py) runs as a systemd user service of the operator user, because the private installation files
-# and podman belong to that user. Lingering keeps it running without a login session.
+# Prepare the rights of the zone runner. Usage: install-runner.sh
+# The runner (runner.py) is a container of the operator pod, which start-web-tools.sh starts. It uses the token of the
+# ServiceAccount zone-runner, the Secret zone-runner-token, which the pod mounts.
 # The script applies the runner rights (runner-rights.yaml) and the zone pod policy (../../zones/manifests/zone-pods.yaml)
 # with the admin kubeconfig, because the runner cannot change the policy. It writes the runner kubeconfig
-# operator-runner/kubeconfig of the state folder with the token of the ServiceAccount zone-runner.
-# It makes the SSH key operator-runner/ssh-key of the state folder once. On the public host the key may run only
-# /opt/hoover-frontend/sync as root (../frontend/frontend-sync.sh). Run ../frontend/install-frontend.sh and
-# ../calls/install-calls.py first, because the rights name the namespace calls and the sync script.
-# A second run changes nothing and restarts the runner.
+# operator-runner/kubeconfig of the state folder for ../../tools/runner-scope-check.py.
+# The runner needs no SSH key and no access to a host. Run ../calls/install-calls.py first, because the rights name
+# the namespace calls. A second run changes nothing.
 set -euo pipefail
 source_dir=$(cd "$(dirname "$0")/../.." && pwd)
 private=$(python3 "$source_dir/settings.py" private)
@@ -17,7 +15,12 @@ folder=$private/operator-runner
 mkdir -p "$folder"
 chmod 700 "$folder"
 # The rights name these namespaces. The calls and the zones fill them later, and a single-node site keeps hoover-data empty.
-for namespace in calls hoover-data extensions; do kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -; done
+# The script creates only a missing namespace. An apply over an existing one would replace the last applied
+# configuration of its own manifest, and the next kubectl diff of the runner would then send an update of the
+# namespace, which the policy zone-runner-scope refuses.
+for namespace in operator-portal calls hoover-data extensions; do
+  kubectl get namespace "$namespace" >/dev/null 2>&1 || kubectl create namespace "$namespace"
+done
 kubectl apply -f "$source_dir/platform/operator/runner-rights.yaml"
 (cd "$source_dir/zones" && python3 -c 'import zone; zone.cluster()')
 token=''
@@ -39,39 +42,3 @@ current-context: zone-runner
 KUBECONFIG
 )
 mv "$folder/kubeconfig.new" "$folder/kubeconfig"
-[ -s "$folder/ssh-key" ] || ssh-keygen -q -t ed25519 -N '' -C hoover-zone-runner -f "$folder/ssh-key"
-# A single-node site runs its frontend on this host, so the runner needs no SSH key there.
-if [ "$(python3 "$source_dir/settings.py" get frontend_local false)" != true ]; then
-  ssh_host=$(python3 "$source_dir/settings.py" get frontend_ssh '')
-  line="restrict,command=\"sudo -n /opt/hoover-frontend/sync\" $(cat "$folder/ssh-key.pub")"
-  ssh "$ssh_host" "grep -qxF '$line' ~/.ssh/authorized_keys || echo '$line' >> ~/.ssh/authorized_keys"
-fi
-# The runner runs the scripts of this checkout and reads the site file of this deployment. /usr/bin/python3 of the
-# host needs PyYAML to read a YAML site file.
-read -r site_file site_id < <(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s
-print(s.SITE_FILE.resolve(), s.SITE.id)' "$source_dir")
-# The unit name has the site id, so the runner of each site of one checkout or host keeps its own unit.
-unit=hoover4-operator-runner-$site_id
-mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/$unit.service <<UNIT
-[Unit]
-Description=Hoover4 operator runner of ${site_file}
-[Service]
-WorkingDirectory=${source_dir}
-Environment=KUBECONFIG=${folder}/kubeconfig
-Environment=HOOVER4_SITE=${site_file}
-ExecStart=/usr/bin/python3 ${source_dir}/platform/operator/runner.py
-Restart=always
-RestartSec=10
-[Install]
-WantedBy=default.target
-UNIT
-# Lingering keeps the user unit running without a login session.
-if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
-  sudo -n loginctl enable-linger "$(id -un)" ||
-    { echo "lingering is off for $(id -un). Run as root once: loginctl enable-linger $(id -un)" >&2; exit 1; }
-fi
-systemctl --user daemon-reload
-systemctl --user enable -q $unit
-systemctl --user restart $unit
-systemctl --user --no-pager status $unit | head -3

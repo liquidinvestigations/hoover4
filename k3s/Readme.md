@@ -146,7 +146,8 @@ python3 k3s/config.py ansible k3s/private/<site>.yml
 
 ### Create and delete zones.
 
-The site file names no zone. The zone state `zone-state.json` of the state folder holds the zones, and [zones/zone.py](zones/zone.py) and the operator portal change it.
+The site file names no zone. The zone state `zone-state.json` holds the zones, and [zones/zone.py](zones/zone.py) and the operator portal change it.
+The cluster holds the authoritative zone state (see [the cluster copy of the state](#keep-the-state-in-the-cluster)). `zone.py` takes the site operation lock, reads the cluster copy into the state folder and writes its changes back.
 
 ```sh
 python3 k3s/zones/zone.py apply zone-x --home <node> [--stores zone|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
@@ -163,7 +164,7 @@ python3 k3s/zones/zone.py delete zone-x
 `deploy-k3s` is the one command of a site. The workstation needs Python 3 and `podman` or `docker`.
 
 ```sh
-k3s/deploy-k3s render --site <file> --target all   # prints the configuration, the inventory and the steps. Changes nothing.
+k3s/deploy-k3s render --site <file> --target all   # prints the configuration, the inventory and the steps. Changes no host.
 k3s/deploy-k3s check --site <file> --target all    # reads the facts of the nodes and checks the files and the tools
 k3s/deploy-k3s up --site <file> --target all [--ask-become-pass]
 k3s/deploy-k3s down --site <file> --target all
@@ -172,9 +173,9 @@ k3s/deploy-k3s status --site <file>
 ```
 
 - `deploy-k3s` computes a digest of the inputs of [images/operator/](images/operator) and of [ansible/requirements.yml](ansible/requirements.yml), and builds the image `localhost/hoover4-operator:<digest>` when it is missing.
-  It then runs one container with `--rm` for the command. The container mounts the checkout read-only at its own path, the folder of the site file read-write, `~/.ssh` read-only, the SSH agent socket and the runtime folder of the user.
-  It runs with the UID of the user and the network of the host. Inside it, `HOOVER4_OPERATOR_IMAGE=1` makes `deploy-k3s` run the driver ([driver/deploy.py](driver/deploy.py)).
-- `up` runs the host steps, then the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU proxy, each zone and the calls services, in this order.
+  It then runs one container with `--rm` for the command. The container mounts the checkout read-only at its own path, the folder of the site file read-write, `~/.ssh` read-only, the SSH agent socket and the runtime folder of the user for the podman service.
+  It runs with the UID of the user and the network of the host. `HOME` is `/tmp/home` of the container, so no tool writes into the checkout. Inside it, `HOOVER4_OPERATOR_IMAGE=1` makes `deploy-k3s` run the driver ([driver/deploy.py](driver/deploy.py)).
+- `up` runs the host steps, then the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator pod (the portal and the zone runner), the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
 - The host steps are one Ansible run each on all target nodes. The site file is the inventory.
   The driver gives the values that it derives from the site file as the extra variable `hoover4_nodes`.
@@ -193,10 +194,13 @@ k3s/deploy-k3s status --site <file>
   A token that differs from the token of a host stops the play before any change, so a host keeps its token.
 - Every step runs the scripts of the checkout. The record keeps the commit of HEAD, the path of the checkout and its `git status --porcelain` lines.
   The image step builds the images of that commit from a temporary `git archive` tree, so uncommitted changes stay out of the images.
+  The image step also builds the image `hoover/operator:<digest>` of the operator pod ([images/operator-pod/](images/operator-pod)) on the operator image. It holds the files of the checkout that the pod runs, with their uncommitted changes, and the operator tools of `bin/` and `downloads/` of the state folder. The tag is a digest of these files, the tool versions and the base image.
+  The control plane needs the architecture of the workstation, because the pod runs the operator image of the workstation.
 - Each run has a record in `<operator state>/deploy/records/`. A failed or stopped run keeps its finished steps.
   The record pins the commit, the SHA-256 of the site file, the saved settings revision and the UID of `kube-system`.
   `deploy-k3s up --resume <record>` continues at the first unfinished step with these inputs, and refuses a changed site file, another commit or another cluster.
-- The driver holds the site operation lock (`oplock.py`) while it runs. The settings Apply, the zone operations, the migration steps and the openDesk and platform backups take the same lock.
+- The driver holds the site operation lock ([oplock.py](oplock.py)) while it runs. The settings Apply, the zone operations, the migration steps and the openDesk and platform backups take the same lock.
+  When the cluster answers, the lock is the Lease `site-operation` of the namespace `operator-portal`, so the workstation and the runner in the cluster exclude each other. A holder renews it every 20 seconds, and a Lease without a renewal for 90 seconds is free. Before the cluster exists, the lock is a file lock of the operator state folder.
   A settings save takes no lock, so a save during a run waits as a later revision.
 - A failed step ends the run. A failed play names the nodes of its failed tasks, and the log of the record holds the output of each task.
 - A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
@@ -269,6 +273,27 @@ python3 k3s/images/build-hoover.py --revision <commit>
 The argument is the zone. The render reads the addresses of the NFS servers of `platform/hoover-data/` from the cluster.
 The image tag is the first 12 characters of the commit. The build exports the commit, so local changes stay out of the images.
 
+## Keep the state in the cluster.
+
+The cluster holds the authoritative zone state, zone secrets and operator state. [clusterstate.py](clusterstate.py) keeps one object for each file in the namespace `operator-portal`.
+
+| Files of the state folder | Objects |
+|---|---|
+| `zone-state.json`, `operator/` (settings, revisions, Apply operations and their logs, backup and relay state), `operations/` (the logs of the zone operations), `facts/`, `frontend/local-ca.crt` | ConfigMaps with the label `hoover.dev/state=file` |
+| `zones/` (the zone secrets, the openDesk values and the master passwords) | Secrets with the label `hoover.dev/state=secret` |
+
+- The annotation `hoover.dev/state-path` of each object names its file. A log keeps its last 256 KiB in the cluster.
+- `operator/deploy/` (the records of `deploy-k3s`), the tokens, the kubeconfig and the downloaded tools stay only in the state folder, because the workstation needs them before a cluster exists.
+- `deploy-k3s` reads the cluster copy into the state folder after it takes the site lock, and before `render` and `check`. After each step it writes the changed files back. The state folder keeps an export copy for inspection.
+- A folder keeps the digest of each file and the `resourceVersion` of its object from the last synchronization. A write of a file that another writer changed fails with a conflict, and the next run reads the newer copy first.
+- `python3 k3s/clusterstate.py pull|push <state folder>` reads or writes the copy by hand. `KUBECONFIG` names the kubeconfig.
+
+The operator pod (Deployment `portal` of `operator-portal`) runs the portal and the zone runner from the operator image of the registry ([platform/operator/pod.py](platform/operator/pod.py)).
+It mounts no checkout and no host state folder. Each container reads the cluster copy into a folder of the pod at its start. The runner keeps the zone secrets in its own memory folder, so the portal container cannot read them.
+The runner uses the token of the ServiceAccount `zone-runner` and needs no SSH access. A zone create or delete in the portal does not change the HTTPS frontend, because it runs outside the cluster.
+`deploy-k3s up --target <public node> --steps frontend` on the workstation adds or removes the names of the zone. A create or upgrade stops at the step `frontend` until the frontend answers for the zone names, and a delete records a warning.
+The runner checks that the registry has the images of the revision. `deploy-k3s up --steps images` builds them.
+
 ## Save and apply operator settings.
 
 The operator settings hold every Hoover ini tuning and switch, and the cluster settings of each Hoover installation.
@@ -283,7 +308,7 @@ They also hold the openDesk applications and memory limits of each zone, and the
 - `gpu.runtime` applies the GPU pool (`gpu_pool.py apply`) and calls each GPU service with and without the pool key (`gpu_pool.py verify`). It changes no zone.
 - The values of an earlier Compose ini become saved values once. A saved value stays.
 - The settings page of the operator portal (`https://operator.<domain>/settings.html`) edits the saved values, shows the hardware suggestions, the pending changes, the affected services and the Apply operation, and offers Retry and Abandon.
-  [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The operator runner (unit `hoover4-operator-runner-<site id>` of the operator user) runs them.
+  [platform/operator/apply.py](platform/operator/apply.py) names the steps of an Apply. The runner container of the operator pod runs them.
   A failed operation waits for Retry or Abandon. A restarted runner continues a running operation.
   `tools/operator-settings-check.py` drives the page in a browser: an invalid value, a save, Apply, Retry, Abandon and Use default.
   `tools/operator-portal-shots.py` captures a portal page for the manuals at 1400 by 900 pixels, with the host names and addresses replaced.

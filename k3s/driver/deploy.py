@@ -24,8 +24,14 @@ checkout, the SHA-256 of the site file, the settings revision of the operator st
 commands of the steps get HOOVER4_REVISION and HOOVER4_SETTINGS_REVISION, so every render, also a nested one, uses the
 pinned values. A zone step records the scopes of its zone and its Hoover installation as applied with the pinned
 settings revision after their workloads are ready. A finished complete up records the revision for every scope.
-The zone state of the state folder (zone-state.json, ../zones/zonestate.py) names the zones. up applies each zone of
-it again. zone.py and the operator portal create and delete zones.
+The zone state (zone-state.json, ../zones/zonestate.py) names the zones. up applies each zone of it again. zone.py
+and the operator portal create and delete zones.
+
+Cluster copy of the state. The cluster holds the authoritative zone state, zone secrets and operator state
+(../clusterstate.py). The command reads the cluster copy into the state folder after it takes the site lock, and before
+render and check. Each finished or failed step writes the changes of the state folder back. The state folder keeps
+the files that the workstation needs before a cluster exists (the tokens, the kubeconfig, the facts, the records and
+the root certificate of the internal CA) and the export copy of the cluster state.
 """
 import json
 import os
@@ -152,8 +158,10 @@ class Context:
         self.become_password_file = path
 
     def env(self):
+        # HOOVER4_CLUSTER_STATE makes the zone installer write the zone state and the zone secrets into the cluster copy
+        # as soon as they change (../clusterstate.py).
         env = {'KUBECONFIG': str(self.kubeconfig), 'HOOVER4_SITE': str(self.site_path), 'HELM': str(self.private / 'bin/helm'),
-               'PATH': f"{self.private / 'bin'}:{os.environ.get('PATH', '')}"}
+               'PATH': f"{self.private / 'bin'}:{os.environ.get('PATH', '')}", 'HOOVER4_CLUSTER_STATE': '1'}
         if self.revision:
             env['HOOVER4_REVISION'] = self.revision
         if self.settings_revision is not None:
@@ -183,6 +191,26 @@ class Context:
 
     def kubectl(self, *args, check=True):
         return self.run(['kubectl', '--kubeconfig', self.kubeconfig, *args], capture=True, check=check)[1]
+
+
+def sync_state(ctx, direction):
+    """Read (pull) or write (push) the cluster copy of the zone state and the operator state (../clusterstate.py).
+
+    The cluster holds the authoritative copy. The state folder keeps an export copy. Before the cluster answers, for
+    example before the k3s step of a first up, the state folder is the only copy, and the first push copies it into the
+    cluster. Return the changed files, or None when the cluster does not answer.
+    """
+    import clusterstate
+    import oplock
+    if not oplock.cluster_answers(ctx.kubeconfig):
+        return None
+    store = clusterstate.Kubectl(ctx.kubeconfig)
+    try:
+        if direction == 'push':
+            store.ensure_namespace()
+        return getattr(clusterstate, direction)(ctx.private, store=store)
+    except (clusterstate.Conflict, clusterstate.Unavailable, subprocess.CalledProcessError) as error:
+        raise StepFailed(f'the {direction} of the cluster copy of the state failed: {error}') from None
 
 
 def operator_settings_module():
@@ -535,11 +563,16 @@ def step_script(*argv):
 
 
 def image_names(ctx):
+    return revision_image_names(ctx.revision)
+
+
+def revision_image_names(revision):
+    """The images of the zones for a revision: the Hoover images and the images of ../images/."""
     sys.path.insert(0, str(SOURCE / 'hoover'))
     sys.path.insert(0, str(SOURCE / 'zones'))
     import compose
     import zones
-    tag = ctx.revision[:12]
+    tag = revision[:12]
     return ([f'hoover/hoover-{n}:{tag}' for n in compose.IMAGES] +
             [f'hoover/nextcloud-ai:{zones.NEXTCLOUD_IMAGE_TAG}', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}',
              'hoover/blockmount:8'])
@@ -565,9 +598,14 @@ def image_architectures(endpoint, repo, manifest):
 
 def image_references(ctx, names=None, architecture=None):
     """{reference: {digest, architectures}} of images in the registry. architecture is the one that each must have."""
-    endpoint = config.legacy_settings(ctx.site)['registry_endpoint']
+    return registry_references(ctx.site, names if names is not None else image_names(ctx), architecture)
+
+
+def registry_references(site, names, architecture=None):
+    """image_references() for a Site. The zone runner checks the images of a zone with it (../zones/zone.py)."""
+    endpoint = config.legacy_settings(site)['registry_endpoint']
     out = {}
-    for name in names if names is not None else image_names(ctx):
+    for name in names:
         repo, image_tag = name.rsplit(':', 1)
         try:
             digest, manifest = registry_get(endpoint, f'/v2/{repo}/manifests/{image_tag}')
@@ -581,7 +619,8 @@ def image_references(ctx, names=None, architecture=None):
 
 
 def step_images(ctx):
-    """Build and push the images of the revision. The registry step runs before, so the push has a target."""
+    """Build and push the images of the revision and the image of the operator pod. The registry step runs before, so
+    the push has a target. The zone runner only checks that the registry has these images."""
     sys.path.insert(0, str(SOURCE / 'zones'))
     import zones
     for directory, image in (('blockmount', 'hoover/blockmount:8'),
@@ -591,7 +630,93 @@ def step_images(ctx):
     ctx.run([sys.executable, SOURCE / 'images/build-hoover.py', '--revision', ctx.revision])
     arch = node_architecture(ctx, ctx.site.control_plane)
     ctx.record['images'] = image_references(ctx, architecture=arch)
-    return {'images': len(ctx.record['images']), 'architecture': arch}
+    operator = step_operator_image(ctx)
+    return {'images': len(ctx.record['images']), 'architecture': arch, 'operator_image': operator}
+
+
+# The image of the operator pod (../platform/operator/pod.py): the operator image of ../deploy-k3s with the parts of
+# the checkout that the portal and the zone runner run, and the operator tools of the state folder.
+OPERATOR_IMAGE = 'hoover/operator'
+# The Hoover render reads the Compose files, the storage identities and the files of its ConfigMaps (manifests.py
+# config_maps()).
+OPERATOR_TREE = ('k3s', 'deploy.py', 'hoover4.ini.release', 'main_services/processing/tasks/storage_identity.json',
+                 'main_services/processing/tasks/temporal_readiness.py',
+                 'main_services/processing/tasks/signal_calibration.json', 'website/backend/src/temporal_ready.rs',
+                 'main_services/ops/docker', 'ai_services/compose', 'ai_services/docker-compose.yaml')
+OPERATOR_EXCLUDED = ('k3s/private/', 'k3s/tests/')
+
+
+def operator_tree(repo=REPO):
+    """The files of the checkout that the operator image holds: tracked and new files, with their local changes."""
+    out = subprocess.run(['git', '--no-optional-locks', '-C', str(repo), 'ls-files', '-co', '--exclude-standard', '-z',
+                          '--', *OPERATOR_TREE], capture_output=True, check=True).stdout.decode().split('\0')
+    return sorted(f for f in out if f and not f.startswith(OPERATOR_EXCLUDED) and '__pycache__' not in f
+                  and (Path(repo) / f).is_file())
+
+
+def operator_image_tag(ctx, base, files):
+    """The tag of the operator image: a digest of the base image, the files and the tool versions."""
+    import hashlib
+    digest = hashlib.sha256(base.encode() + b'\0')
+    for name in files:
+        digest.update(name.encode() + b'\0' + (ctx.repo / name).read_bytes() + b'\0')
+    for item in ARTIFACTS['tools']:
+        digest.update(f'{item["name"]} {item["version"]}\n'.encode())
+    return digest.hexdigest()[:16]
+
+
+def build_operator_image(ctx, files, name, base, arch):
+    """Copy the files and the operator tools into a build folder of the state folder, then build and push the image."""
+    import shutil
+    context = ctx.private / 'build-operator.tmp'
+    shutil.rmtree(context, ignore_errors=True)
+    try:
+        for item in files:
+            target = context / 'tree' / item
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ctx.repo / item, target)
+        for item in ARTIFACTS['tools']:
+            for path in item['install']:
+                source = ctx.private / path.rstrip('/')
+                target = context / 'tools' / path.rstrip('/')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if source.is_dir():
+                    shutil.copytree(source, target, symlinks=True)
+                else:
+                    shutil.copy2(source, target)
+        shutil.copy2(SOURCE / 'images/operator-pod/Containerfile', context / 'Containerfile')
+        ctx.run(['bash', SOURCE / 'images/build-image.sh', context, name],
+                env={'BUILD_ARGS': f'BASE={base}', 'PLATFORM': f'linux/{arch}'})
+    finally:
+        shutil.rmtree(context, ignore_errors=True)
+
+
+def step_operator_image(ctx):
+    """Build the image of the operator pod and push it to the registry. Return its reference in the registry.
+
+    The base image is the operator image that runs this command (HOOVER4_OPERATOR_BASE of ../deploy-k3s), so the image
+    has the architecture of the workstation, which must be the architecture of the control plane.
+    """
+    import platform
+    base = os.environ.get('HOOVER4_OPERATOR_BASE', '')
+    if not base:
+        raise StepFailed('HOOVER4_OPERATOR_BASE names no operator image. Run the command through k3s/deploy-k3s.')
+    local = {'x86_64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64'}.get(platform.machine(), platform.machine())
+    arch = node_architecture(ctx, ctx.site.control_plane)
+    if arch != local:
+        raise StepFailed(f'the control plane {ctx.site.control_plane} is {arch}, and the operator image of this '
+                         f'workstation is {local}. Run deploy-k3s from a workstation of the architecture {arch}.')
+    files = operator_tree(ctx.repo)
+    name = f'{OPERATOR_IMAGE}:{operator_image_tag(ctx, base, files)}'
+    try:
+        references = registry_references(ctx.site, [name], architecture=arch)
+    except StepFailed:
+        build_operator_image(ctx, files, name, base, arch)
+        references = registry_references(ctx.site, [name], architecture=arch)
+    ctx.record.setdefault('images', {}).update(references)
+    ctx.record['operator_image'] = f'registry.hoover.internal/{name}'
+    ctx.records.save(ctx.record)
+    return ctx.record['operator_image']
 
 
 def gpu_image_names(ctx):
@@ -785,9 +910,16 @@ def step_gpu_pool(ctx):
 
 
 def step_operator(ctx):
-    ctx.run(['bash', SOURCE / 'platform/operator/start-web-tools.sh'])
+    """The rights of the zone runner, then the operator login, the portal and the runner in the operator pod.
+
+    The pod runs the operator image of the files of the checkout. The step images builds it, and this step builds it
+    only when the registry does not have it, for example after a change of the checkout.
+    """
+    image = step_operator_image(ctx)
     ctx.run(['bash', SOURCE / 'platform/operator/install-runner.sh'])
-    return {}
+    ctx.run(['bash', SOURCE / 'platform/operator/start-web-tools.sh'],
+            env={'OPERATOR_IMAGE': image, 'OPERATOR_REVISION': ctx.revision})
+    return {'operator_image': image}
 
 
 def cluster_steps(ctx):
@@ -1050,6 +1182,7 @@ def execute(ctx, record, steps):
             print(json.dumps({'at': time.strftime('%H:%M:%S'), 'record': record['id'], 'step': name}), flush=True)
             try:
                 fields = steps[name](ctx) or {}
+                sync_state(ctx, 'push')
             except StepWaiting as wait:
                 ctx.records.mark(record, name, 'waiting', message=str(wait))
                 waiting.append(name)
@@ -1060,6 +1193,10 @@ def execute(ctx, record, steps):
                 record['status'] = 'failed'
                 record['error'] = f'{name}: {error}'
                 ctx.records.save(record)
+                try:
+                    sync_state(ctx, 'push')
+                except StepFailed as sync_error:
+                    print(f'deploy-k3s: {sync_error}', file=sys.stderr)
                 print(f'deploy-k3s: step {name} failed: {error}', file=sys.stderr)
                 print(f'deploy-k3s: the record {record["id"]} keeps the finished steps and the revision '
                       f'{record["revision"][:12]}. Fix the cause, then run: deploy-k3s {record["command"]} '
@@ -1093,6 +1230,7 @@ def execute(ctx, record, steps):
         state = ctx.operator_state()
         if state is not None and ctx.settings_revision is not None:
             state.record_all(ctx.settings_revision, f'deploy:{record["id"]}', record['revision'])
+            sync_state(ctx, 'push')
         ctx.records.finish(record)
     else:
         record['status'] = 'done'

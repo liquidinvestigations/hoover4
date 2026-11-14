@@ -240,7 +240,7 @@ def main(argv):
         op = state.active()
         if op and op.status in ('running', 'queued'):
             import oplock
-            with oplock.SiteLock(s.operator_state()) as lock:
+            with oplock.site_lock(s.operator_state()) as lock:
                 lock.acquire('apply', op.id)
                 op = state.run(executors(s, log))
             print(json.dumps({'operation': op.id, 'status': op.status, 'error': op.error}))

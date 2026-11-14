@@ -1053,7 +1053,7 @@ def main(argv):
     r.revision = revision
     if args.step != 'plan':
         check_inputs(r, revision)
-    lock = oplock.SiteLock(site.operator_state())
+    lock = oplock.site_lock(site.operator_state())
     try:
         lock.acquire('migration', f'migration-{r.folder.name}-{args.step}')
     except oplock.Busy as error:

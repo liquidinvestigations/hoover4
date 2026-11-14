@@ -2,8 +2,8 @@
 """Install, update, start, stop and check a k3s site of Hoover and openDesk. Standard library only.
 
 Usage:
-  deploy-k3s render    --target NODE... [--manifests]                    print the configuration. Changes nothing.
-  deploy-k3s check     --target NODE...                                  check the hosts and the site. Changes nothing.
+  deploy-k3s render    --target NODE... [--manifests]                    print the configuration. Changes no host.
+  deploy-k3s check     --target NODE...                                  check the hosts and the site. Changes no host.
   deploy-k3s up        --target NODE... [--steps STEP...] [--start]
   deploy-k3s up        --resume RECORD
   deploy-k3s down      --target NODE... [--steps STEP...]
@@ -21,12 +21,15 @@ up installs or updates the hosts, k3s, the registry, the images, the platform se
 up --start starts what down stopped: k3s, then the stores, Temporal, the applications and the ingress.
 down stops the ingress, the applications and workers, Temporal, the stores, and then k3s. It cancels no workflow.
 --steps runs only the named steps of the plan. render prints the plan.
+The cluster holds the zone state, the zone secrets and the operator state (clusterstate.py). Each command reads the
+cluster copy into the state folder first, and up and down write the changes back after each step.
 A failed or stopped run keeps its record. `up --resume RECORD` continues at the first unfinished step.
 
 The command runs in the operator image (images/operator/). This file builds the image with podman, else docker, when
 its inputs changed, and runs one container with --rm. The container mounts this checkout read-only, the folder of
 the site file read-write, ~/.ssh read-only and the SSH agent socket, and runs with the UID of the user and the network
-of the host. Ansible writes new host keys into known_hosts of the state folder.
+of the host. Its HOME is /tmp/home of the container, so no tool writes into the checkout. Ansible writes new host keys
+into known_hosts of the state folder. The step images builds the image of the operator pod on this image.
 
 A copy of this file outside a checkout first clones the repository:
   deploy-k3s --checkout DIR [--repository URL] <command> ...
@@ -130,8 +133,9 @@ def run_in_image(argv):
                   f'{work}/group:/etc/group:ro']
         if (home / '.ssh').is_dir():
             mounts.append(f'{home / ".ssh"}:{home / ".ssh"}:ro')
-        env = {IN_IMAGE: '1', 'HOOVER4_SITE': str(site), 'HOME': str(home), 'USER': user,
-               # The home folder is read-only in the container, so the tools write their caches into /tmp.
+        # HOME is a folder of the container, so no tool writes into the read-only checkout or the home folder. ssh
+        # reads ~/.ssh of the passwd entry. HOOVER4_OPERATOR_BASE names this image, the base of the operator pod image.
+        env = {IN_IMAGE: '1', 'HOOVER4_OPERATOR_BASE': image, 'HOOVER4_SITE': str(site), 'HOME': '/tmp/home', 'USER': user,
                'ANSIBLE_HOME': '/tmp/ansible', 'ANSIBLE_LOCAL_TEMP': '/tmp/ansible/tmp', 'XDG_CACHE_HOME': '/tmp/cache',
                'XDG_CONFIG_HOME': '/tmp/config', 'XDG_DATA_HOME': '/tmp/data', 'KUBECACHEDIR': '/tmp/kube-cache',
                'PYTHONDONTWRITEBYTECODE': '1'}
@@ -141,11 +145,9 @@ def run_in_image(argv):
             env['SSH_AUTH_SOCK'] = agent
         runtime = os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{uid}'
         if Path(runtime).is_dir():
-            # The user units of the operator runner and the podman service of the image builds.
+            # The podman service of the image builds.
             mounts.append(f'{runtime}:{runtime}')
             env['XDG_RUNTIME_DIR'] = runtime
-            if Path(runtime, 'bus').exists():
-                env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={runtime}/bus'
             if Path(runtime, 'podman', 'podman.sock').exists():
                 env['CONTAINER_HOST'] = f'unix://{runtime}/podman/podman.sock'
         args = [tool, 'run', '--rm', '--network', 'host', '--workdir', str(repo)]
@@ -170,6 +172,7 @@ def main(argv):
     argv = bootstrap_checkout(argv)
     if os.environ.get(IN_IMAGE) != '1':
         return run_in_image(argv)
+    Path(os.environ.get('HOME') or '/tmp/home').mkdir(parents=True, exist_ok=True)
     import argparse
     import json
     sys.path.insert(0, str(HERE))
@@ -229,6 +232,9 @@ def main(argv):
 
     try:
         revision = deploy.resolve_revision(ctx.repo, 'HEAD')
+        if args.command in ('render', 'check'):
+            # render and check read the cluster copy of the zone state and the operator state.
+            deploy.sync_state(ctx, 'pull')
         if args.command == 'render':
             print(json.dumps(deploy.render(ctx, targets, revision, args.manifests), indent=1, default=list))
             return 0
@@ -248,6 +254,8 @@ def main(argv):
         raise SystemExit(f'deploy-k3s: {error}')
     try:
         ctx.revision = revision
+        # The plan names the zones of the zone state, so the state folder first gets the cluster copy.
+        deploy.sync_state(ctx, 'pull')
         if args.resume:
             steps = deploy.plan(ctx, record['command'], targets, start=record.get('start', False))
             names = [s['name'] for s in record['steps']]

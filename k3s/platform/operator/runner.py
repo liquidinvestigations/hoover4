@@ -4,20 +4,27 @@ The runner also starts the next due backup job once a minute (../backups/backups
 names a destination and an operator turns a backup policy on.
 
 The portal writes each operation as a ConfigMap with the label hoover.dev/operation in the namespace operator-portal.
-The runner runs on the operator host, which holds the state folder: the zone state, the zone secrets, the openDesk
-release and the Helm tools. install-runner.sh starts it as a systemd user service.
-The runner uses the kubeconfig of the ServiceAccount zone-runner (runner-rights.yaml). It can change the zone
-namespaces, the shared call services and the operation ConfigMaps only. It updates the HTTPS frontend through an SSH
-key that can run only /opt/hoover-frontend/sync on the public host, and it sends that script only the zone names.
+The runner is the container runner of the operator pod (operator-login.yaml, pod.py). Its state folder is a folder of
+the pod, and the cluster holds the authoritative copy of the zone state, the zone secrets and the operator state
+(../../clusterstate.py). Before each operation it reads the cluster copy, and after each step it writes its changes
+back. The openDesk release and the Helm tools are in the image.
+The runner uses the token of the ServiceAccount zone-runner (runner-rights.yaml). It can change the zone namespaces,
+the shared call services, the operation ConfigMaps and the cluster copy of the state only.
 It also runs the settings Apply operations of the operator state (apply.py), one at a time.
 The operations and their steps:
   create-zone   register (zone state with the home node), frontend, install (zone.py apply), calls
   upgrade-zone  frontend, install, calls
   delete-zone   delete (zone.py delete), frontend, calls
-The runner runs one operation at a time, oldest first. It records each finished step in the ConfigMap, so after a
-restart or a retry it continues at the first unfinished step. Each step can run again without a different result.
-The command output of each operation goes to <state folder>/operations/<operation>.log. The ConfigMap keeps its last
-lines, which name no secret, because the install scripts print none.
+The step frontend changes nothing, because the HTTPS frontend runs outside the cluster. For a create or an upgrade it
+checks that the frontend answers for the zone names with a valid certificate, because the install needs them. When it
+does not, the operation fails at this step, and the message names deploy-k3s up --steps frontend on the operator
+workstation. Run again then continues at this step. For a delete the step records a warning: the frontend stops serving
+the names of the zone after that command.
+The runner runs one operation at a time, oldest first, while it holds the site operation lock (../../oplock.py). It
+records each finished step in the ConfigMap, so after a restart or a retry it continues at the first unfinished step.
+Each step can run again without a different result.
+The command output of each operation goes to <state folder>/operations/<operation>.log, which the cluster copy keeps.
+The ConfigMap keeps its last lines, which name no secret, because the install scripts print none.
 --once runs the queued operations and exits.
 """
 import json,subprocess,sys,time,traceback
@@ -27,9 +34,11 @@ source=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(source));import settings
 settings.use_kubeconfig()
 sys.path.insert(0,str(source/'zones'));import zones,zonestate
+import clusterstate
 NS='operator-portal';LABEL='hoover.dev/operation'
 LOGS=settings.PRIVATE/'operations'
-KEY=settings.PRIVATE/'operator-runner/ssh-key'
+FRONTEND_WARNING=('The HTTPS frontend runs outside the cluster. It stops serving the names of the deleted zone after the '
+ 'next deploy-k3s up --steps frontend on the operator workstation.')
 STEPS={'create-zone':['register','frontend','install','calls'],
  'upgrade-zone':['frontend','install','calls'],
  'delete-zone':['delete','frontend','calls']}
@@ -73,44 +82,65 @@ class Operation:
   try:
    self.check()
    for step in steps:
-    if step['state']=='done':continue
+    if step['state'] in ('done','skipped'):continue
     step.update(state='running',started=now());save(self.op,steps=json.dumps(steps),step=step['name'])
-    getattr(self,'step_'+step['name'])()
-    step.update(state='done',finished=now());save(self.op,steps=json.dumps(steps))
+    warning=getattr(self,'step_'+step['name'])()
+    step.update(state='skipped' if warning else 'done',finished=now());save(self.op,steps=json.dumps(steps),**({'warning':warning} if warning else {}))
+    sync('push')
    save(self.op,state='done',step='',finished=now())
   except Exception as error:
    for step in steps:
     if step['state']=='running':step.update(state='failed')
    with open(self.log,'a') as out:out.write(traceback.format_exc())
    save(self.op,state='failed',steps=json.dumps(steps),error=str(error)[:500]);self.tail()
+   try:sync('push')
+   except Exception as sync_error:print(json.dumps({'state_error':str(sync_error)[:300]}),flush=True)
  def step_register(self):
   # zone.py register checks the home node and adds the zone to the zone state, so the frontend can serve its names
   # before the install. The zones need their names during the install.
   self.run(sys.executable,'-c','import sys;sys.path.insert(0,"zones");import zone;zone.register(sys.argv[1],sys.argv[2])',self.zone,self.home)
  def step_frontend(self):
-  # A single-node site runs the frontend on this host with a local CA.
-  if settings.HOST.get('frontend_local'):return self.run('bash','platform/frontend/install-local-frontend.sh')
-  # The key runs only the sync script, which reads the zone names from standard input. The connection uses no SSH
-  # configuration file, so no other key of the operator user can open a shell instead.
-  config=dict(line.split(' ',1) for line in subprocess.check_output(['ssh','-G',settings.HOST['frontend_ssh']],text=True).splitlines() if ' ' in line)
-  self.run('ssh','-F','none','-i',KEY,'-o','IdentitiesOnly=yes','-o','BatchMode=yes','-o',f"UserKnownHostsFile={config['userknownhostsfile'].split()[0]}",
-           '-p',config['port'],f"{config['user']}@{config['hostname']}",data=''.join(f'{z}\n' for z in zones.zone_names()))
+  # The frontend runs on the public node outside the cluster, and the runner has no access there. The install needs
+  # the zone names, so a create or upgrade checks that the frontend serves them. A delete only records a warning.
+  if self.kind=='delete-zone':
+   with open(self.log,'a') as out:out.write(FRONTEND_WARNING+'\n')
+   return FRONTEND_WARNING
+  problem=frontend_problem(self.zone)
+  if problem:raise RuntimeError(f'The HTTPS frontend does not serve the names of {self.zone}: {problem}. Run deploy-k3s up '
+   '--target <public node> --steps frontend on the operator workstation, then select Run again.')
  def step_install(self):self.run(sys.executable,'zones/zone.py','apply',self.zone)
  def step_calls(self):self.run(sys.executable,'platform/calls/install-calls.py')
  def step_delete(self):
   if self.zone in zones.zone_names():self.run(sys.executable,'zones/zone.py','delete',self.zone)
+def frontend_problem(zone):
+ """An empty text when the HTTPS frontend answers a TLS connection for portal.<zone>.<suffix> with a valid certificate."""
+ import socket,ssl
+ host=f'portal.{zone}.{settings.SUFFIX}'
+ context=ssl.create_default_context()
+ ca=settings.PRIVATE/'frontend/local-ca.crt'
+ if ca.exists():context.load_verify_locations(str(ca))
+ try:
+  with socket.create_connection((host,443),timeout=15) as raw,context.wrap_socket(raw,server_hostname=host):return ''
+ except (OSError,ssl.SSLError) as error:return f'{host}: {error}'
 WAITING={}
 def site_lock(kind,operation_id):
  """Hold the site operation lock (../../oplock.py) for one operation, or return None while another operation holds it."""
  import oplock
- lock=oplock.SiteLock(settings.SITE.operator_state())
+ lock=oplock.site_lock(settings.SITE.operator_state())
  try:lock.acquire(kind,operation_id)
  except oplock.Busy as error:
   # The runner prints a wait once for each holder, not every 3 s.
   if WAITING.get(operation_id)!=str(error):print(json.dumps({'waiting':operation_id,'reason':str(error)[:300]}),flush=True)
   WAITING[operation_id]=str(error)
   return None
+ try:sync('pull')
+ except Exception:
+  lock.release();raise
  return lock
+def sync(direction):
+ """Read or write the cluster copy of the state (../../clusterstate.py), when the runner runs in the operator pod."""
+ if __import__('os').environ.get(clusterstate.ENV)!='1':return {}
+ return getattr(clusterstate,direction)(settings.PRIVATE)
 def settings_apply():
  """Run the active settings Apply of the operator state (apply.py). A failed Apply waits for a retry in the portal.
  The Apply waits while another site operation, for example deploy-k3s, holds the site lock."""
@@ -123,6 +153,7 @@ def settings_apply():
  try:
   log=site.operator_state()/'logs'/f'{op.id}.log';log.parent.mkdir(parents=True,exist_ok=True)
   done=state.run(apply.executors(site,log))
+  sync('push')
  finally:lock.release()
  print(json.dumps({'apply':done.id,'status':done.status,'error':done.error[:300]}),flush=True)
  return True

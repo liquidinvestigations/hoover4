@@ -148,3 +148,45 @@ def test_the_gpu_key_needs_the_operator_and_reads_only_its_secret(portal, monkey
     docs = [d for d in yaml.safe_load_all((OPERATOR / 'operator-login.yaml').read_text()) if d]
     role = next(d for d in docs if d['kind'] == 'Role' and d['metadata']['name'] == 'portal-operations')
     assert {'apiGroups': [''], 'resources': ['secrets'], 'resourceNames': ['gpu-api-key'], 'verbs': ['get']} in role['rules']
+
+
+def test_the_operator_pod_mounts_no_host_folder_except_the_cgroup_and_keeps_zone_secrets_from_the_portal():
+    docs = [d for d in yaml.safe_load_all((OPERATOR / 'operator-login.yaml').read_text()) if d]
+    pod = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'] == 'portal')['spec']['template']['spec']
+    host = [v for v in pod['volumes'] if 'hostPath' in v]
+    assert [v['name'] for v in host] == ['cgroup']
+    containers = {c['name']: c for c in pod['containers']}
+    assert {c['image'] for c in containers.values()} == {'OPERATOR_IMAGE'}
+    assert containers['portal']['args'] == ['portal'] and containers['runner']['args'] == ['runner']
+    portal_mounts = {m['mountPath'] for m in containers['portal']['volumeMounts']}
+    runner_mounts = {m['mountPath']: m['name'] for m in containers['runner']['volumeMounts']}
+    assert '/site/site/zones' not in portal_mounts and runner_mounts['/site/site/zones'] == 'zone-secrets'
+    assert runner_mounts['/var/run/zone-runner'] == 'runner-token'
+
+
+def test_the_runner_frontend_step_checks_a_new_zone_and_warns_for_a_delete(tmp_path, monkeypatch):
+    import sys
+    from conftest import write_site
+    site = write_site(tmp_path, 'remote.yml')
+    monkeypatch.setenv('HOOVER4_SITE', str(site))
+    monkeypatch.setenv('KUBECONFIG', str(tmp_path / 'none'))
+    # The runner imports settings for the site of this test. The earlier modules come back after the test.
+    for name in ('settings', 'zones', 'zonestate', 'clusterstate'):
+        monkeypatch.setitem(sys.modules, name, None)
+        del sys.modules[name]
+    spec = importlib.util.spec_from_file_location('runner_module', OPERATOR / 'runner.py')
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    monkeypatch.setattr(runner, 'LOGS', tmp_path / 'operations')
+    calls = []
+    monkeypatch.setattr(runner.subprocess, 'Popen', lambda *a, **k: calls.append(a))
+    delete = runner.Operation({'metadata': {'name': 'op-1'}, 'data': {'kind': 'delete-zone', 'zone': 'zone-a'}})
+    assert delete.step_frontend() == runner.FRONTEND_WARNING
+    assert 'deploy-k3s up --steps frontend' in (tmp_path / 'operations/op-1.log').read_text()
+    create = runner.Operation({'metadata': {'name': 'op-2'}, 'data': {'kind': 'create-zone', 'zone': 'zone-a'}})
+    monkeypatch.setattr(runner, 'frontend_problem', lambda zone: 'portal.zone-a.example: no certificate')
+    with pytest.raises(RuntimeError, match='--steps frontend on the operator workstation, then select Run again'):
+        create.step_frontend()
+    monkeypatch.setattr(runner, 'frontend_problem', lambda zone: '')
+    assert create.step_frontend() is None
+    assert not calls

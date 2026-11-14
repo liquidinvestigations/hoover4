@@ -6,7 +6,8 @@ where uploads arrive, use NFS. Hoover pods on any node then read the same files.
 hoover_data in <state folder>/settings.json holds the site values:
   roots  the data root of each node, for example {"node-a": "/srv/hoover-data"}. A node without a root gets
          DEFAULT_ROOT. The root has one folder for each zone, with testdata and uploads.
-  zones  the data node of each zone. The default is the home node of the zone.
+  zones  the data node of each zone. The default is the home node of the zone when it has the role data, else the
+         first node with the role data, as the Hoover render chooses it (../../hoover/manifests.py).
   extra  read-only host directories of a zone, for example
          {"zone-b": [{"name": "archive", "node": "node-b", "path": "/srv/archive"}]}
 Each data node runs the Deployment nfs-<node> in the namespace hoover-data with the Service nfs-<node>.
@@ -38,7 +39,12 @@ def root(node):
 
 def data_node(zone):
     import zonestate
-    return CONFIG.get('zones', {}).get(zone) or zonestate.home(zone)
+    configured = CONFIG.get('zones', {}).get(zone)
+    if configured:
+        return configured
+    home = zonestate.home(zone)
+    data_nodes = [n.name for n in settings.SITE.with_role('data')] if settings.SITE else []
+    return home if home in data_nodes or not data_nodes else data_nodes[0]
 
 
 def extra(zone):

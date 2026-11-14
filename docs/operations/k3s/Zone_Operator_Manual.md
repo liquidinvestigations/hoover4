@@ -43,9 +43,16 @@ Select **Sign out** at the end of the page to end the session.
 
 <a href="img/operator-zones.png"><img src="img/operator-zones.png" alt="The zone list with its actions and the form to create a zone" width="100%"></a>
 
-A create, upgrade or delete restarts the shared call services and the HTTPS frontend. Calls that run at that time end.
+A create, upgrade or delete restarts the shared call services. Calls that run at that time end.
 
-The zone state of the site holds the zone. The site file names no zone. The storage names of the Hoover installation come from the zone name.
+The HTTPS frontend runs outside the cluster, so the portal cannot add the names of a new zone to it. A new zone stops at the step `frontend` with an error.
+
+1. Run `k3s/deploy-k3s up --site <file> --target <public node> --steps frontend` on the operator workstation.
+2. Select **Run again**. The operation continues with the install.
+
+After a delete, the operation shows a warning. The same command removes the names of the zone.
+
+The zone state in the cluster holds the zone. The site file names no zone. The storage names of the Hoover installation come from the zone name.
 The operator workstation can create a zone with `python3 k3s/zones/zone.py apply <zone> --home <node>`. [The cluster deployment reference](../../../k3s/Readme.md#create-and-delete-zones) gives the options.
 
 ## Give the zone to its administrator
@@ -79,7 +86,7 @@ A zone operation or an Apply that fails keeps its finished steps.
 
 ## Upgrade a zone
 
-Select **Upgrade the zone** in the zone list. The runner installs the source revision of the runner on the zone.
+Select **Upgrade the zone** in the zone list. The runner installs the revision of the last `deploy-k3s up --steps operator` on the zone.
 A site upgrade with `k3s/deploy-k3s up` also upgrades every zone. [The operations manual](Cluster_Operations.md#upgrade-the-site) describes it.
 
 ## Back up and restore a zone

@@ -14,11 +14,11 @@ ARG HELM_SHA256_amd64=0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f535
 ARG HELM_SHA256_arm64=8cf8f66ecbc252ac8f7f06cca68aba88508ddfde3a6a34feb1678ad1694b4f88
 
 # ssh and git for Ansible and the record of the checkout. curl, tar, zstd, openssl and jq for the platform scripts.
-# podman builds and pushes the images through the podman service of the workstation (CONTAINER_HOST). systemd gives
-# systemctl and loginctl for the user units of the operator runner.
+# podman builds and pushes the images through the podman service of the workstation (CONTAINER_HOST).
+# ../operator-pod/Containerfile builds the image of the operator pod on this image.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-client git ca-certificates curl tar zstd gzip openssl jq \
-       rsync bash procps iproute2 podman systemd \
+       rsync bash procps iproute2 podman \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eu; \

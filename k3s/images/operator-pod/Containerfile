@@ -1,0 +1,12 @@
+# The image of the operator pod: the operator portal and the zone runner (../../platform/operator/pod.py). The step
+# images of deploy-k3s builds it in a build folder: tree/ holds the files of the checkout that the pod runs, and tools/
+# holds the operator tools of the state folder (Helm, helmfile, yq, the Helm diff plugin and the openDesk release).
+# BASE is the operator image (../operator/Containerfile) that runs deploy-k3s. The image holds no site file, no key
+# and no state. The pod reads its state from the cluster (../../clusterstate.py).
+ARG BASE
+FROM ${BASE}
+COPY tree/ /opt/hoover4/
+COPY tools/ /opt/hoover4-tools/
+ENV HOOVER4=/opt/hoover4 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/hoover4/k3s
+ENTRYPOINT ["python3", "/opt/hoover4/k3s/platform/operator/pod.py"]

@@ -1,10 +1,13 @@
-# The rights of the zone runner (runner.py). The runner uses the token of the ServiceAccount zone-runner, which
-# install-runner.sh writes into <state folder>/operator-runner/kubeconfig.
+# The rights of the zone runner (runner.py). The runner container of the operator pod (operator-login.yaml) mounts the
+# token of the ServiceAccount zone-runner from the Secret zone-runner-token.
 # - In a zone namespace it has every right through the RoleBinding zone-runner, which zone.py creates with each zone
 #   namespace. It binds the ClusterRole zone-admin.
 # - Outside the zone namespaces it can create, change and delete zone namespaces and RoleBindings, bind zone-admin,
 #   read the nodes and the zone pod policy, update the XWiki extension repository, run the shared call services,
 #   read the Services of the Hoover NFS servers, update the operation ConfigMaps of the portal and read the GPU key.
+# - In operator-portal it reads and writes the ConfigMaps and Secrets of the cluster copy of the state
+#   (../../clusterstate.py) and the Lease site-operation of the site lock (../../oplock.py). The Secret rights cover
+#   every Secret of operator-portal, because a Role cannot name the Secrets that the runner creates.
 # - The ValidatingAdmissionPolicy zone-runner-scope refuses a namespace or a RoleBinding outside the zone namespaces,
 #   and a RoleBinding to a ClusterRole other than zone-admin.
 # - The ValidatingAdmissionPolicy hoover-pod-limits (../../zones/manifests/zone-pods.yaml) refuses host access in the
@@ -72,12 +75,19 @@ metadata:
 rules:
   - apiGroups: ['']
     resources: [configmaps]
-    verbs: [get, list, patch]
-  # The GPU key, from which the zone token of the GPU proxy derives (../../hoover/gpu.py).
+    verbs: [get, list, create, patch, update, delete]
+  # The zone secrets of the cluster copy, and the GPU key, from which the zone token of the GPU proxy derives
+  # (../../hoover/gpu.py).
   - apiGroups: ['']
     resources: [secrets]
-    resourceNames: [gpu-api-key]
-    verbs: [get]
+    verbs: [get, list, create, update, delete]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, create]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    resourceNames: [site-operation]
+    verbs: [update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
