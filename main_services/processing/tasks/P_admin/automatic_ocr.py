@@ -170,13 +170,22 @@ def verify_automatic_ocr_files(params: AutomaticOcrScope) -> None:
 @activity.defn
 @with_heartbeat
 def verify_ingested_automatic_ocr(params: AutomaticOcrScope) -> None:
-    """Apply only the exact automatic publications prepared by this ingestion operation."""
+    """Apply only the exact automatic publications prepared by this ingestion operation.
+
+    A plan of 1,000 files can need more than one attempt. A retry skips the files whose
+    prepared plan an earlier attempt applied, so each attempt continues the work.
+    """
     from database.clickhouse import get_collection_client
     with get_collection_client(params.collectionname) as client:
         rows = client.query("SELECT file_hash, argMax(output_identity, receipt_version) FROM processing_output_receipts "
             "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} AND output_kind = 'automatic_ocr' "
             "AND fingerprint = {op:String} AND stage = 'prepared' GROUP BY file_hash",
             parameters={"cd": params.collection_dataset, "hashes": params.hashes or [], "op": params.op_id}).result_rows
-    params.hashes = [h for h, _ in rows]
-    params.plans = dict(rows)
+        applied = set(client.query(
+            "SELECT hash, plan_digest FROM automatic_ocr_plans FINAL WHERE collection_dataset = {cd:String} "
+            "AND hash IN {hashes:Array(String)} AND state = 'applied'",
+            parameters={"cd": params.collection_dataset, "hashes": [h for h, _ in rows]}).result_rows) if rows else set()
+    pending = [(h, plan) for h, plan in rows if (h, plan) not in applied]
+    params.hashes = [h for h, _ in pending]
+    params.plans = dict(pending)
     verify_automatic_ocr_files(params)

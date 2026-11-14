@@ -1690,7 +1690,7 @@ def index_entity_terms(params: BuildVfsNodesParams) -> str:
     ids so a REPLACE upserts in place, no dataset-wide DELETE first, and a reconciliation
     sweep afterwards that removes rows whose term no longer exists.
     """
-    from database.manticore import create_entities_table, get_manticore_client
+    from database.manticore import create_entities_table, get_manticore_client, stored_string
 
     collection_dataset: str = params.collection_dataset
     # This table also exists when the dataset has no searchable terms.
@@ -1711,9 +1711,9 @@ def index_entity_terms(params: BuildVfsNodesParams) -> str:
         "term_field": row['term_field'],
         # The same string twice: `term_text` is the full-text field the needle matches
         # and HIGHLIGHT() reads, `term_display` is the attribute, because a text field
-        # cannot be selected back exactly.
-        "term_text": row['term_value'],
-        "term_display": row['term_value'],
+        # cannot be selected back exactly. A NUL byte would end the stored string.
+        "term_text": stored_string(row['term_value']),
+        "term_display": stored_string(row['term_value']),
         # Filters use the public term identity. The internal row identity also includes
         # the dataset, so publication and cleanup preserve each dataset's ownership.
         "term_id": int(row['term_id']),

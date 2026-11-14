@@ -116,6 +116,12 @@ class VirusPlansParams:
     after: str = ""
     done: int = 0
     failed: int = 0
+    #: The antivirus scan is complete, and the pages compare the search attribute.
+    attributes: bool = False
+    #: The last plan whose search attribute the attribute pages compared.
+    stale_after: str = ""
+    #: The files whose search rows the attribute pages wrote again.
+    reindexed: int = 0
 
 
 @dataclass

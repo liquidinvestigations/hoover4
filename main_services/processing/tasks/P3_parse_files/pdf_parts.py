@@ -190,10 +190,40 @@ def split_pdf(source: str, dest: str, first: int, last: int, *, file_hash: str =
         raise RuntimeError(f"PDF split failed for pages {first}-{last}: {result.stderr[:200]!r}")
 
 
+#: The error type of a PDF whose native text has another page count than qpdf reads.
+PDF_PAGE_MISMATCH = "PdfPageMismatch"
+
+
+def native_text_pages(path: str, count: int, folder: str, file_hash: str = "") -> tuple[list[str], str]:
+    """Return one pdftotext text for each of the `count` pages, and the PDF that gave them.
+
+    Poppler cannot open a PDF without a valid cross-reference table, and qpdf rebuilds that
+    table. When pdftotext does not return `count` pages from `path`, the text comes from a
+    qpdf copy in `folder`. The caller then uses the copy for the page checks and the parts.
+    A copy that also gives another page count raises a non-retryable `PDF_PAGE_MISMATCH`.
+    """
+    from tasks.P3_parse_files.parse_pdf import _pdftotext_pages, _qpdf_succeeded, _run_qpdf
+    pages = _pdftotext_pages(path)
+    if len(pages) == count:
+        return pages, path
+    repaired = os.path.join(folder, "repaired.pdf")
+    result = _run_qpdf(["--warning-exit-0", path, repaired], file_hash, count)
+    copied = _qpdf_succeeded(result) and os.path.exists(repaired)
+    repaired_pages = _pdftotext_pages(repaired) if copied else []
+    if copied and len(repaired_pages) == count:
+        log.warning("[P3] pdftotext read %d of %d pages of %s, the qpdf copy gives every page",
+                    len(pages), count, file_hash)
+        return repaired_pages, repaired
+    raise ApplicationError(
+        f"PDF native text has {len(pages)} pages and the qpdf copy has "
+        f"{len(repaired_pages) if copied else 'no'} pages, qpdf counts {count}",
+        type=PDF_PAGE_MISMATCH, non_retryable=True)
+
+
 def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = False, automatic: bool = False) -> dict | SkippedOutcome:
     from database.clickhouse import get_collection_client
     from database.s3 import collection_bucket, get_s3_client
-    from tasks.P3_parse_files.parse_pdf import NOT_A_PDF, _qpdf_show_npages, _pdftotext_pages, _insert_pdf_text_pages
+    from tasks.P3_parse_files.parse_pdf import NOT_A_PDF, _qpdf_show_npages, _insert_pdf_text_pages
     from tasks.P3_parse_files.insert_batch import current_batch
     cd, h, kind = params.collection_dataset, file.item_hash, file.source_kind
     with get_collection_client(params.collectionname) as client:
@@ -224,11 +254,6 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
                 log.info("[P3] %s is not a PDF: %s", h, exc)
                 return SkippedOutcome("pdf_not_a_pdf")
             size = os.path.getsize(path)
-            pages = _pdftotext_pages(path)
-            if len(pages) != count:
-                raise RuntimeError("PDF native text extraction did not return every page")
-            needs = page_needs(path, count, pages)
-            ranges = source_ranges(count, size)
             bucket = collection_bucket(params.collectionname)
             source_path = ""
             table, column = ("pdf_previews", "hash") if kind == "preview" else ("blobs", "blob_hash")
@@ -238,12 +263,16 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = Fa
             if rows:
                 source_path = rows[0][0]
             with tempfile.TemporaryDirectory(prefix="hoover4-pdf-parts-") as folder:
+                pages, readable = native_text_pages(path, count, folder, h)
+                needs = page_needs(readable, count, pages)
+                ranges = source_ranges(count, size)
                 parts = []
                 for index, (first, last) in enumerate(ranges, 1):
                     part_path, part_size = source_path, size
-                    if len(ranges) > 1:
+                    # A qpdf copy replaces the stored source, which the OCR renderer cannot open.
+                    if len(ranges) > 1 or readable != path:
                         dest = os.path.join(folder, f"{index}.pdf")
-                        split_pdf(path, dest, first, last, file_hash=h, page_count=count)
+                        split_pdf(readable, dest, first, last, file_hash=h, page_count=count)
                         key = f"derived/pdf-parts/{cd}/{h}/{kind}/s{PDF_SEGMENTATION_VERSION}/{first}-{last}.pdf"
                         get_s3_client().fput_object(bucket, key, dest, content_type="application/pdf")
                         part_path, part_size = f"s3://{bucket}/{key}", os.path.getsize(dest)

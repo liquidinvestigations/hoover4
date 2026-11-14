@@ -110,6 +110,10 @@ keeps every shared resource of the source, so it is larger, but its pages are th
 ## Automatic OCR uses detected page coverage
 
 PDF preparation stores native text with its original page numbers.
+Poppler cannot open a PDF without a valid cross-reference table, and qpdf rebuilds that table.
+When pdftotext does not return each page that qpdf counts, preparation reads the text from a qpdf copy.
+The copy is then the source of the page checks and of each stored part, also for a PDF of one part.
+When the copy also gives another page count, the file gets a `PdfPageMismatch` error that is not retried.
 The existing eligibility rule selects pages with fewer than 20 native characters or sufficient displayed image coverage.
 Detection examines every eligible page in batches of 32.
 Renderer and service failures remain retryable errors.

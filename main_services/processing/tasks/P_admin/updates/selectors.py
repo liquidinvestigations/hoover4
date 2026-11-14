@@ -157,6 +157,15 @@ def _count(client, hash_sql: str, parameters: dict, collection_dataset: str) -> 
     return int(rows[0][0] or 0), int(rows[0][1] or 0)
 
 
+def example_hashes(client, selection: Selection, limit: int = 5) -> List[str]:
+    """The first `limit` hashes of the subquery of `selection`, for a settlement message."""
+    if not selection.hash_sql:
+        return []
+    rows = client.query(f"SELECT DISTINCT hash FROM ({selection.hash_sql}) ORDER BY hash LIMIT {int(limit)}",
+                        parameters=selection.parameters).result_rows
+    return [row[0] for row in rows]
+
+
 _LIVE = ("SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} "
          "AND is_deleted = 0")
 
@@ -437,9 +446,12 @@ def select_search_terms(ctx: ScopeContext) -> Selection:
     return Selection(count=count, automatic=count)
 
 
-def missing_search_terms(client, ctx: ScopeContext) -> int:
-    """Count missing or changed terms with bounded reads from both datastores."""
-    from database.manticore import create_entities_table, get_manticore_client
+def missing_search_terms(client, ctx: ScopeContext, examples: Optional[List[str]] = None) -> int:
+    """Count missing or changed terms with bounded reads from both datastores.
+
+    When `examples` is a list, it receives `<field> term <id>` for the first 5 terms.
+    """
+    from database.manticore import create_entities_table, get_manticore_client, stored_string
     from tasks.P6_index_data.activities import SEARCHABLE_TERM_FIELDS, entity_term_row_id
 
     table = create_entities_table(ctx.collectionname)
@@ -457,22 +469,25 @@ def missing_search_terms(client, ctx: ScopeContext) -> int:
                             "field": after[0], "id": after[1]}).result_rows
             if not rows:
                 return missing
-            expected = {entity_term_row_id(ctx.scope_id, field, int(term_id)): (field, int(term_id), value)
-                        for field, term_id, value in rows}
+            expected = {entity_term_row_id(ctx.scope_id, field, int(term_id)):
+                        (field, int(term_id), stored_string(value)) for field, term_id, value in rows}
             ids = ",".join(str(row_id) for row_id in expected)
             cursor.execute(f"SELECT id, term_field, term_id, term_display FROM {table} "
                            f"WHERE id IN ({ids}) LIMIT 500 OPTION max_matches=500")
             actual = {int(row[0]): (row[1], int(row[2]), row[3]) for row in cursor.fetchall()}
             for row_id, value in expected.items():
-                if row_id not in actual:
-                    missing += 1
-                elif actual[row_id] != value:
+                wrong = row_id not in actual
+                if not wrong and actual[row_id] != value:
                     # Manticore 29.9.0 returned another term's text for a correct row in a
                     # wide `id IN` read. A read of the one row decides the comparison.
                     cursor.execute(f"SELECT term_field, term_id, term_display FROM {table} "
                                    f"WHERE id = {row_id}")
                     single = [(row[0], int(row[1]), row[2]) for row in cursor.fetchall()]
-                    missing += single != [value]
+                    wrong = single != [value]
+                if wrong:
+                    missing += 1
+                    if examples is not None and len(examples) < 5:
+                        examples.append(f"{value[0]} term {value[1]}")
             after = (rows[-1][0], int(rows[-1][1]))
 
 

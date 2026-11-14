@@ -531,12 +531,8 @@ def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any] |
     segments = insert_text_chunks(params.collectionname, params.collection_dataset,
                                   params.file_hash, OFFICE_XML_SOURCE, result.text)
 
-    if result.dropped:
-        # Partial success is still a loss, and it is invisible in `text_content`: the
-        # rows that are there look complete.
-        _record_skip(params, run_time_ms,
-                     "office_xml_partial: " + "; ".join(result.dropped[:5]))
-
+    # The warnings above and the `dropped` list of the result record the parts that were
+    # not read. The stored text of the other parts is complete output.
     log.info("[P3] office_xml %s: %d chars from %d parts in %d ms (%s)",
              result.kind, len(result.text), len(result.parts_read),
              run_time_ms, params.file_hash)

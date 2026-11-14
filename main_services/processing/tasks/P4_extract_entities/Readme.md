@@ -27,7 +27,7 @@ between P4 and P5 would move a number that existing rows already hold.
   Calls use a `(connect, read)` timeout pair and a per-endpoint,
   time-boxed circuit breaker. The call has one endpoint, so a connect failure or a
   read timeout fails the activity and Temporal retries it.
-- Save results after each `NER_SAVE_BYTES = 8 MB` of text. A retry skips the saved pages, so a plan that outlasts the 30-minute activity timeout still advances.
+- Save results after each `NER_SAVE_BYTES = 8 MB` of text. A retry skips the saved pages, so a plan that outlasts the 30-minute activity timeout still advances. Such a timeout does not use the failure limit (see Busy responses).
 - Write `entity_hit` rows and populate the `ner` string-term dictionary. **Each
   entity row carries the `nlp_model` that served its text**, and `nlp_model` is
   part of `entity_hit`'s `ORDER BY`, so two providers' hits for the same
@@ -176,6 +176,9 @@ A busy response uses `Retry-After` within 5 to 120 seconds and preserves ordinar
 The busy budget is half the activity timeout, measured from its first busy response across attempts.
 The activity reports `ServiceStayedBusy` when that budget ends.
 Ordinary failures stop after five tries. Cancellation still propagates.
+An attempt that ends without a result, for example at its timeout, counts as a failure.
+A NER attempt that saved a batch of entities before that end does not count, because its retry continues after the saved pages.
+The error of a used limit is `FailureLimit`, and its message names the last failure.
 P6 can shorten encoded runs after the source text measurement.
 
 ## Signal scans

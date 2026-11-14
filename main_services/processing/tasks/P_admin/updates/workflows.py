@@ -50,6 +50,8 @@ with workflow.unsafe.imports_passed_through():
         list_update_virus_plans,
         retire_cached_searches,
         stale_virus_attributes,
+        stale_virus_plan_hashes,
+        list_virus_attribute_plans,
         scan_update_files,
         list_update_vector_plans,
         obsolete_ocr_variants,
@@ -576,14 +578,20 @@ class UpdateDatasetVirusScan:
     """The antivirus scan of the files that the `virus_scan` step selects, plan by plan.
 
     The scans run on the antivirus queue, so they share its slots with new ingestion. After
-    the last page, `stale_virus_attributes` finds the files whose search rows hold another
-    `virus_hit`, and `IndexDatasetPlan` writes those rows again. Pages of at most 100 plans, four at a time, with continue-as-new after each.
+    the last page, the attribute pages compare the search rows of each plan with the verdicts.
+    `stale_virus_plan_hashes` finds the files of one plan whose search rows hold another
+    `virus_hit`, and `IndexDatasetPlan` writes those rows again. Pages of at most 100 plans,
+    four at a time, with continue-as-new after each.
     """
 
     @workflow.run
     async def run(self, params: VirusPlansParams) -> dict:
+        if params.attributes:
+            return await self._attribute_page(params)
         plans = await workflow.execute_activity(list_update_virus_plans, params, start_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not plans and workflow.patched("virus-attribute-pages"):
+            return await self._attribute_page(dataclasses.replace(params, attributes=True))
         if not plans:
             scope = TablePlansParams(params.op_id, params.collectionname, params.collection_dataset)
             stale = await workflow.execute_activity(
@@ -631,6 +639,44 @@ class UpdateDatasetVirusScan:
         workflow.continue_as_new(VirusPlansParams(
             params.op_id, params.collectionname, params.collection_dataset,
             plans[-1], params.done + len(plans), params.failed + failed))
+
+    async def _attribute_page(self, params: VirusPlansParams) -> dict:
+        """Write the search rows of the stale files of at most 100 plans again."""
+        plans = await workflow.execute_activity(
+            list_virus_attribute_plans, params, start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not plans:
+            if params.reindexed:
+                await workflow.execute_activity(
+                    retire_cached_searches, TablePlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                    task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=5),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            if params.failed:
+                raise ApplicationError(f"{params.failed} plans failed the antivirus scan", non_retryable=True)
+            return {"plans": params.done, "reindexed_files": params.reindexed}
+
+        async def reindex(plan_hash: str) -> int:
+            hashes = await workflow.execute_activity(
+                stale_virus_plan_hashes,
+                TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            if hashes:
+                # Manticore cannot update a columnar attribute, so the rows are written again.
+                await workflow.execute_child_workflow(
+                    "IndexDatasetPlan",
+                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                     "plan_hash": plan_hash, "op_id": params.op_id, "item_hashes": hashes},
+                    id=f"update-index-virus-{params.op_id}-{plan_hash}", task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset))
+            return len(hashes)
+
+        results = await run_with_window([lambda h=h: reindex(h) for h in plans], VECTOR_PLAN_WINDOW)
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+        workflow.continue_as_new(dataclasses.replace(
+            params, attributes=True, stale_after=plans[-1], reindexed=params.reindexed + sum(results)))
 
 
 @workflow.defn

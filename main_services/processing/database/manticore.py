@@ -91,7 +91,15 @@ def indexed_text(cleaned: str) -> str:
 
     `website/common/src/text_projection.rs` maps this text to the stored page.
     """
-    return limit_encoded_runs(cleaned).replace("\0", " ")
+    return stored_string(limit_encoded_runs(cleaned))
+
+
+def stored_string(value: str) -> str:
+    """`value` as a Manticore string attribute holds it in full.
+
+    Manticore ends a stored string at a NUL byte, so each NUL byte becomes a space.
+    """
+    return value.replace("\0", " ")
 
 
 def endpoint_for_table(table: str) -> str:

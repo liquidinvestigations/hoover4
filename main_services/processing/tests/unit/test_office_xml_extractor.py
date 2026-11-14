@@ -256,6 +256,25 @@ def test_malformed_xml_drops_the_part_with_a_reason_and_keeps_the_rest(tmp_path)
                for reason in result.dropped)
 
 
+def test_a_partly_read_document_stores_its_text_and_returns_the_dropped_parts(tmp_path, monkeypatch):
+    """The store step once called a removed helper here and failed with a NameError."""
+    from tasks.P3_parse_files import parse_common
+    from tasks.P3_parse_files.parse_office_xml import ParseOfficeXmlParams, parse_office_xml_and_store
+
+    path = write_zip(tmp_path / "broken.docx", {
+        "word/document.xml": f'<w:document xmlns:w="{W}"><w:body>'
+                             f'<w:p><w:r><w:t>Voronkov</w:t></w:r></w:p></w:body></w:document>',
+        "word/footnotes.xml": "<w:footnotes><w:p><w:t>unclosed",
+    })
+    stored = []
+    monkeypatch.setattr(parse_common, "insert_text_chunks",
+                        lambda c, d, h, source, text: stored.append((source, text)) or 1)
+    result = parse_office_xml_and_store(ParseOfficeXmlParams("c", "d", "h", path, 60))
+    assert stored == [(OFFICE_XML_SOURCE, "Voronkov")]
+    assert result["chars"] == len("Voronkov")
+    assert any("word/footnotes.xml" in reason for reason in result["dropped"])
+
+
 def test_every_part_malformed_is_an_empty_result_with_every_reason(tmp_path):
     path = write_zip(tmp_path / "allbroken.docx", {"word/document.xml": "<w:document><<<"})
     result = extract_office_xml_text(path)

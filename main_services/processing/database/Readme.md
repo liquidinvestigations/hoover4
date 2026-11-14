@@ -262,6 +262,7 @@ be assumed:
   gets the other, so `quote_manticore_values` handles both.
 
 Page text uses `indexed_text` before indexing. It applies `limit_encoded_runs` and writes a space for each NUL byte. Source text remains in ClickHouse.
+Manticore ends a stored string at a NUL byte. `stored_string` writes a space for each NUL byte, and the filter terms of `index_entity_terms` and their check use it.
 See [P6](../tasks/P6_index_data/Readme.md) for the encoded text rule and merge submission.
 
 ## Manticore infix indexing (`min_infix_len='3'`)

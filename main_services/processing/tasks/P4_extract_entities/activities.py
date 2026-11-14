@@ -15,7 +15,7 @@ from temporalio import activity
 
 from database.clickhouse import get_collection_client, insert_arrow_durable
 from tasks.entity_stoplist import filter_entity_values
-from tasks.remote_busy_retry import with_remote_busy_retry
+from tasks.remote_busy_retry import record_saved_progress, with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
 from tasks.text_sources import fetch_text_batch, ner_reads_variant, pages_over_work_limit, plan_text_batches
@@ -68,8 +68,9 @@ def batch_texts_by_chars(texts, max_texts=NLP_BATCH_TEXTS, max_chars=NLP_BATCH_C
 
 
 # Text between saves of one activity. A retry skips the pages that an earlier attempt saved,
-# so a plan that outlasts the activity timeout still advances. About 4 minutes of NER at
-# 4 activities on one GPU box.
+# so a plan that outlasts the activity timeout still advances. An attempt that saved a batch
+# and then reached its timeout does not use the failure limit of `with_remote_busy_retry`.
+# About 4 minutes of NER at 4 activities on one GPU box.
 NER_SAVE_BYTES = 8 * 1024 * 1024
 
 
@@ -282,6 +283,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             })
 
         _save_entities(params, clickhouse_ner_rows, processed_rows, ner_values)
+        record_saved_progress()
         entity_groups += len(clickhouse_ner_rows)
         heartbeat.beat(f"NER saved {processed_by_ner}/{len(text_segments)} texts")
 

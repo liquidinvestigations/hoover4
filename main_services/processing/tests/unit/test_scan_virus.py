@@ -125,8 +125,10 @@ def test_stale_virus_attributes_groups_files_by_plan(monkeypatch):
     monkeypatch.setattr(activities, "_hashes_with_attribute", rows_with_other_value)
 
     class _Client:
-        def query(self, sql, parameters):
-            assert parameters["h"] == ["inf1", "ok1"]
+        def query(self, sql, parameters, external_data=None):
+            # The hashes travel in the request body, not in a query parameter.
+            assert parameters == {"cd": "d"}
+            assert external_data.files[0].data == b'["inf1"]\n["ok1"]'
             return type("R", (), {"result_rows": [("inf1", "p2"), ("ok1", "p1")]})()
 
     @contextmanager
@@ -138,3 +140,92 @@ def test_stale_virus_attributes_groups_files_by_plan(monkeypatch):
     plans = activities.stale_virus_attributes.__wrapped__(TablePlansParams("op", "c", "d"))
     assert plans == {"p2": ["inf1"], "p1": ["ok1"]}
     assert asked == [(["inf1", "inf2"], 1), (["ok1"], 0)]
+
+
+def test_stale_virus_attributes_send_many_hashes_in_the_request_body(monkeypatch):
+    """A stale set above the 128 KiB parameter limit of ClickHouse leaves the URL empty of hashes."""
+    from contextlib import contextmanager
+
+    from tasks.P_admin.updates import activities
+    from tasks.P_admin.updates.params import TablePlansParams
+
+    hashes = [f"{i:064x}" for i in range(5000)]
+    monkeypatch.setattr(activities, "_dataset_verdicts", lambda c, d: {h: "infected" for h in hashes})
+    monkeypatch.setattr(activities, "_hashes_with_attribute", lambda c, d, h, v: set(h))
+    seen = {}
+
+    class _Client:
+        def query(self, sql, parameters, external_data=None):
+            seen.update(sql=sql, parameters=parameters, external=external_data)
+            return type("R", (), {"result_rows": [(h, "p") for h in hashes]})()
+
+    @contextmanager
+    def client(_):
+        yield _Client()
+
+    import database.clickhouse
+    monkeypatch.setattr(database.clickhouse, "get_collection_client", client)
+    plans = activities.stale_virus_attributes.__wrapped__(TablePlansParams("op", "c", "d"))
+    assert plans == {"p": hashes}
+    assert len(repr(seen["parameters"])) < 100
+    assert "Array(String)" not in seen["sql"]
+    assert len(seen["external"].files[0].data) > 128 * 1024
+
+
+def test_stale_virus_plan_hashes_compares_the_files_of_one_plan(monkeypatch):
+    """Each plan page sends at most the files of one plan to Manticore and to Temporal."""
+    from contextlib import contextmanager
+
+    from tasks.P_admin.updates import activities
+    from tasks.P_admin.updates.params import TablePlanParams
+
+    asked = []
+
+    def rows_with_other_value(collectionname, dataset, hashes, value):
+        asked.append((hashes, value))
+        return {"inf1"} if value == 1 else set()
+
+    monkeypatch.setattr(activities, "_hashes_with_attribute", rows_with_other_value)
+    seen = {}
+
+    class _Client:
+        def query(self, sql, parameters):
+            seen.update(sql=sql, parameters=parameters)
+            return type("R", (), {"result_rows": [("inf2", "infected"), ("inf1", "infected"), ("ok1", "clean")]})()
+
+    @contextmanager
+    def client(_):
+        yield _Client()
+
+    import database.clickhouse
+    monkeypatch.setattr(database.clickhouse, "get_collection_client", client)
+    stale = activities.stale_virus_plan_hashes.__wrapped__(TablePlanParams("op", "c", "d", "plan"))
+    assert stale == ["inf1"]
+    assert asked == [(["inf1", "inf2"], 1), (["ok1"], 0)]
+    assert seen["parameters"] == {"cd": "d", "plan": "plan"}
+    assert "HAVING max(plan_hash) = {plan:String}" in seen["sql"]
+
+
+def test_virus_attribute_pages_continue_after_the_last_compared_plan(monkeypatch):
+    from contextlib import contextmanager
+
+    from tasks.P_admin.updates import activities
+    from tasks.P_admin.updates.params import VirusPlansParams
+
+    seen = {}
+
+    class _Client:
+        def query(self, sql, parameters):
+            seen.update(sql=sql, parameters=parameters)
+            return type("R", (), {"result_rows": [("p2",), ("p3",)]})()
+
+    @contextmanager
+    def client(_):
+        yield _Client()
+
+    import database.clickhouse
+    monkeypatch.setattr(database.clickhouse, "get_collection_client", client)
+    params = VirusPlansParams("op", "c", "d", after="p9", attributes=True, stale_after="p1")
+    assert activities.list_virus_attribute_plans.__wrapped__(params) == ["p2", "p3"]
+    assert seen["parameters"] == {"cd": "d", "after": "p1"}
+    assert "LIMIT 100" in seen["sql"]

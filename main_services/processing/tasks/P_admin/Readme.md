@@ -42,8 +42,9 @@ exactly one source of truth in Python.
   settlement reads in [updates/selectors.py](updates/selectors.py), and the stage versions in
   [tasks/stage_versions.py](../stage_versions.py)
 - A file that a table reader or the OCR detector cannot process stays selected by its update step,
-  and settlement reports it. The other files of its plan continue. A service failure keeps its
-  Temporal retry.
+  and settlement reports it. The `ocr_detection` message names the first 5 such files, and the
+  update log names the reason of each. The other files of its plan continue. A service failure
+  keeps its Temporal retry.
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in [activities.py](activities.py)
@@ -155,7 +156,7 @@ are in [updates/registry.py](updates/registry.py), in run order.
 | `search_schema` | collection | Search tables that miss a column of the current page schema | `ALTER TABLE ADD COLUMN`. A type difference rebuilds the collection index. | No search table differs from the schema. |
 | `unfinished` | dataset | Unfinished plans and live files without a plan | `ExecutePlans` with every stage | No unfinished plan or file without a plan remains. |
 | `failed_files` | dataset | Files with a current processing error | The historical error selection, `ExecutePlans` on the failed stages, then the reconciliation | The reconciliation recorded the outcome of each selected pair. |
-| `virus_scan` | dataset | With `clamav_enabled` on: live files of at most 500 MiB without a completed scan, except files whose last attempt is `skipped_size` or `incomplete`. Earlier `failed` and `skipped_disabled` attempts are selected. | `UpdateDatasetVirusScan`: `scan_update_files` for each plan on the ClamAV queue, then `stale_virus_attributes` lists the files whose search rows hold another `virus_hit` than their verdict, `IndexDatasetPlan` writes those rows again, and `retire_cached_searches` changes the search cache epoch | No selected file remains, and no search row of an infected file has `virus_hit` 0. |
+| `virus_scan` | dataset | With `clamav_enabled` on: live files of at most 500 MiB without a completed scan, except files whose last attempt is `skipped_size` or `incomplete`. Earlier `failed` and `skipped_disabled` attempts are selected. | `UpdateDatasetVirusScan` runs `scan_update_files` for each plan on the ClamAV queue. Then it reads pages of at most 100 plans with a verdict. `stale_virus_plan_hashes` lists the files of one plan whose search rows hold another `virus_hit` than their verdict. `IndexDatasetPlan` writes those rows again. `retire_cached_searches` then changes the search cache epoch. | No selected file remains, and no search row of an infected file has `virus_hit` 0. |
 | `tables` | dataset | Earlier or failed table readings, missing JSON or delimited readings, and published tables without complete matching receipts | `UpdateDatasetTables` resumes parsing, entities, signals, embedding, and both indexes for the published generation | Every selected file has complete matching output receipts. |
 | `archive_members` | dataset | Successful split archives without a current complete manifest receipt | Re-extract, scan, reconcile removed descendants, and finish dependent processing | Current manifest receipts are complete. |
 | `image_previews` | dataset | Live uncommon images without a published preview, except files with a `preview_undecodable_` skip | Create and read each missing preview without repeating settled OCR | No selected preview remains missing. |
@@ -166,7 +167,7 @@ are in [updates/registry.py](updates/registry.py), in run order.
 | `page_text` | dataset | Pages whose stored text has a NUL byte and whose index row differs from the current indexed text | `rewrite_page_text` replaces each such row and keeps its attributes. | No such row remains. |
 | `vectors` | dataset | Files with text and no vectors of the served embedding model | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time | Each selected plan ran. |
 | `folder_counts` | dataset | Folders without counts, or every folder when the stage version is newer than the applied one | `build_vfs_nodes` | No folder lacks counts. |
-| `search_terms` | dataset | The applied term-index version is absent or earlier. | `index_entity_terms` publishes the current filter terms. | Each expected term has its current identity and value in the search table. |
+| `search_terms` | dataset | The applied term-index version is absent or earlier. Version 3 writes a space for each NUL byte of a term. | `index_entity_terms` publishes the current filter terms. | Each expected term has its current identity and value in the search table. The message names the first 5 other terms. |
 
 The first observed stage version remains its baseline.
 Historical archive errors on a direct release upgrade require explicit retry.
@@ -308,6 +309,7 @@ It processes at most 32 file descriptors in one workflow iteration.
 Each activity uses a private download directory.
 Stored page plans and request results remain outside workflow history.
 New ingestion verifies its operation-scoped prepared receipts after dependent indexing.
+A retry of that check skips the files whose prepared plan is already applied, so a plan of 1,000 files can use more than one attempt.
 The historical update verifies the exact returned plan identities after strict dependent stages.
 Both paths require durable output before they record applied state.
 Retired manual-setting workflows remain available only for recorded legacy histories.

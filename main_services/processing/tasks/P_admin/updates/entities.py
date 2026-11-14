@@ -164,9 +164,13 @@ def verify_terms(params):
     """Compare the searchable terms of the whole dataset with the term dictionary."""
     from database.clickhouse import get_collection_client
     from .selectors import ScopeContext, missing_search_terms
+    examples: list[str] = []
     with get_collection_client(params.collectionname) as client:
-        if missing_search_terms(client, ScopeContext("dataset",params.collection_dataset,params.collectionname)):
-            raise RuntimeError("NER searchable terms are incomplete")
+        missing = missing_search_terms(client, ScopeContext("dataset",params.collection_dataset,params.collectionname),
+                                       examples)
+    if missing:
+        raise RuntimeError(f"NER searchable terms are incomplete: {missing} terms are absent or incorrect, "
+                           f"for example {', '.join(examples)}")
 
 
 def rewrite_ner_attributes(params, assignments):

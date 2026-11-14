@@ -415,7 +415,12 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
                     f"OCR text of removed languages remains: {variants + [' '.join(p) for p in pairs]}")
         if step_id == "ocr_detection":
             selection = selectors.select_ocr_detection(client, ctx)
-            return selection.count == 0, f"{selection.count} files have no OCR detection result."
+            if not selection.count:
+                return True, "0 files have no OCR detection result."
+            examples = selectors.example_hashes(client, selection)
+            named = f", for example {', '.join(examples)}" if examples else ""
+            return False, (f"{selection.count} files have no OCR detection result{named}. "
+                           "The update log names the reason of each file.")
         if step_id == "virus_scan":
             selection = selectors.select_virus_scan(client, ctx)
             stale = infected_without_attribute(params.collectionname, scope_id)
@@ -459,8 +464,11 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
                     f"{selection.count} files still have an earlier PDF text layer, and {unbuilt} "
                     "removed PDF parts have no new part.")
         if step_id == "search_terms":
-            missing = selectors.missing_search_terms(client, ctx)
-            return missing == 0, f"{missing} filter terms remain absent or incorrect."
+            examples: List[str] = []
+            missing = selectors.missing_search_terms(client, ctx, examples)
+            if not missing:
+                return True, "0 filter terms remain absent or incorrect."
+            return False, f"{missing} filter terms remain absent or incorrect, for example {', '.join(examples)}."
         if step_id == "text_rows":
             selection = selectors.select_text_rows(client, ctx)
             return selection.count == 0, f"{selection.count} files still have text rows from an earlier split."
@@ -927,6 +935,8 @@ def stale_virus_attributes(params: TablePlansParams) -> Dict[str, List[str]]:
 
     Manticore refuses an UPDATE of a columnar attribute, so the caller indexes these files
     again with `IndexDatasetPlan`. The page writer reads the verdict when it writes a row.
+    Only a workflow history from before `list_virus_attribute_plans` calls this activity.
+    Its result holds every stale file of the dataset.
     """
     from database.clickhouse import get_collection_client
 
@@ -938,15 +948,62 @@ def stale_virus_attributes(params: TablePlansParams) -> Dict[str, List[str]]:
             stale.update(_hashes_with_attribute(params.collectionname, params.collection_dataset, hashes, value))
     if not stale:
         return {}
+    from database.uploads import _string_table
+
+    # The hashes travel in the request body. A query parameter above 128 KiB is refused.
     with get_collection_client(params.collectionname) as client:
         rows = client.query(
             "SELECT item_hash, max(plan_hash) FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
-            "AND item_hash IN {h:Array(String)} GROUP BY item_hash",
-            parameters={"cd": params.collection_dataset, "h": sorted(stale)}).result_rows
+            "AND item_hash IN (SELECT hash FROM stale_hashes) GROUP BY item_hash",
+            parameters={"cd": params.collection_dataset},
+            external_data=_string_table("stale_hashes", "hash", sorted(stale))).result_rows
     plans: Dict[str, List[str]] = {}
     for file_hash, plan_hash in rows:
         plans.setdefault(plan_hash, []).append(file_hash)
     return plans
+
+
+@activity.defn
+@with_heartbeat
+def list_virus_attribute_plans(params: VirusPlansParams) -> List[str]:
+    """At most 100 plans after `stale_after` that hold a file with an antivirus verdict."""
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT plan_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            "AND plan_hash > {after:String} AND item_hash IN (SELECT hash FROM virus_scan_results "
+            "WHERE attempt_status = 'completed') ORDER BY plan_hash LIMIT 100",
+            parameters={"cd": params.collection_dataset, "after": params.stale_after}).result_rows
+    return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def stale_virus_plan_hashes(params: TablePlanParams) -> List[str]:
+    """The live files of one plan whose search rows hold another `virus_hit` than their
+    effective verdict.
+
+    A file of several plans belongs to the plan with the largest hash, so one plan writes
+    its rows again. The result holds at most the files of one plan.
+    """
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT hash, argMax(verdict, result_seq) FROM virus_scan_results WHERE attempt_status = 'completed' "
+            "AND hash IN (SELECT item_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            "AND item_hash IN (SELECT item_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            "AND plan_hash = {plan:String}) GROUP BY item_hash HAVING max(plan_hash) = {plan:String}) "
+            "AND hash IN (SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND is_deleted = 0) "
+            "GROUP BY hash",
+            parameters={"cd": params.collection_dataset, "plan": params.plan_hash}).result_rows
+    stale: set = set()
+    for value, verdict in ((1, "infected"), (0, "clean")):
+        hashes = sorted(h for h, v in rows if v == verdict)
+        if hashes:
+            stale.update(_hashes_with_attribute(params.collectionname, params.collection_dataset, hashes, value))
+    return sorted(stale)
 
 
 @activity.defn
