@@ -1,5 +1,6 @@
 """CLI entry point for processing services, including migrations and workers."""
 
+from tasks import temporal_client
 import click
 import asyncio
 
@@ -377,9 +378,7 @@ async def _open_index_workflows(collectionname: str) -> list[str]:
     `CollectionDataset` search attribute is per dataset and every dataset of a collection
     is prefixed with the collection's name, so the filter is a prefix match done here.
     """
-    from temporalio.client import Client as TemporalClient
-
-    client = await TemporalClient.connect("temporal:7233")
+    client = await temporal_client.connect()
     prefix = f"{collectionname}_"
     open_ids = []
     async for execution in client.list_workflows(
@@ -561,12 +560,11 @@ def scan_signals_collection(collectionname: str):
                              "ORDER BY collection_dataset, plan_hash").result_rows
 
     async def scan():
-        from temporalio.client import Client
         from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
         from tasks.P4_extract_entities.params import ScanRegexEntitiesForPlanParams
         from tasks.P4_extract_entities.workflows import ScanRegexEntitiesForPlan
         from tasks.visibility import dataset_search_attributes
-        client = await Client.connect("temporal:7233")
+        client = await temporal_client.connect()
         for dataset, plan in plans:
             handle = await client.start_workflow(
                 ScanRegexEntitiesForPlan.run,

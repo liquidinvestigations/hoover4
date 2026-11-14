@@ -58,8 +58,8 @@ START_ORDER = ['start:stores', 'start:temporal', 'start:applications', 'start:in
 # tier() puts each Deployment and StatefulSet of a zone into a shutdown tier by its name. A name without a store word
 # and without a Temporal word is an application. The ingress tier holds the ingress controller and the zone gates.
 # Keycloak counts as a store, because the openDesk LDAP server reads its keys at start.
-STORE_WORDS = ('clickhouse', 'manticore', 'garage', 'cassandra', 'elasticsearch', 'zookeeper', 'postgres', 'redis',
-               'memcached', 'seaweedfs', 'minio', 'mariadb', 'nats', 'ldap', 'keycloak')
+STORE_WORDS = ('clickhouse', 'manticore', 'garage', 'cassandra', 'elasticsearch', 'opensearch', 'zookeeper', 'postgres',
+               'redis', 'memcached', 'seaweedfs', 'minio', 'mariadb', 'nats', 'ldap', 'keycloak')
 TEMPORAL_WORDS = ('temporal',)
 # The namespace of the shared Hoover stores of the site (../hoover/stores/shared.py).
 SHARED_STORES = 'hoover-stores'
@@ -988,7 +988,7 @@ def tier(namespace, name):
         return 'stores'
     if lowered == 'gate' or lowered.endswith('-gate') or lowered.startswith('oauth2-proxy'):
         return 'ingress'
-    # The stores of Temporal, for example temporal-cassandra, belong to the stores.
+    # The stores of Temporal, for example temporal-cassandra and temporal-opensearch, belong to the stores.
     if any(w in lowered for w in STORE_WORDS):
         return 'stores'
     if any(w in lowered for w in TEMPORAL_WORDS):
@@ -1319,6 +1319,10 @@ def check(ctx, targets):
         problems += [f'the zone {h.zone} keeps its ClickHouse and Garage in its zone namespace, from an earlier version. '
                      'The installer refuses to apply it. Delete the zone and create it again: its data does not move.'
                      for h in ctx.hoovers().values() if h.stores == 'zone']
+        problems += [f'the zone {h.zone} runs its own Temporal on the PostgreSQL of the zone, from an earlier version. '
+                     'The installer refuses to apply it. Delete the zone and create it again: its workflow history does '
+                     'not move to the Temporal of the site.'
+                     for h in ctx.hoovers().values() if h.stores == 'site' and h.temporal == 'zone']
     except (ValueError, config.SiteError, StepFailed) as error:
         problems.append(str(error))
     state['store_warnings'] = config.store_warnings(ctx.site)

@@ -14,7 +14,8 @@ secret is a reference to a private file on the node that reads it.
       lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
       backup:            one node and one host folder that receive the backups
-      stores:            the nodes, the data copies and the failover switch of the shared Hoover stores (STORES_KEYS)
+      stores:            the nodes, the data copies, the failover switch of the shared Hoover stores and the history
+                         shard count of the site Temporal (STORES_KEYS)
     hosts:
       <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
@@ -120,16 +121,25 @@ BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
 #   replicas  the data copies of each store on different nodes. Default: the node count, at most 3 (store_plan()).
 #   failover  true: a store moves its clients to another copy by itself. false (default): the clients use the first
 #             copy, and a person recovers a lost copy by hand. A change from true to false is refused (deploy check).
-STORES_KEYS = {'nodes': (False, 'names'), 'replicas': (False, 'count'), 'failover': (False, 'bool')}
+#   history_shards  the history shard count of the Temporal of the site (../hoover/stores/temporal.py). Default:
+#             HISTORY_SHARDS. Temporal keeps the count of its creation, so a change is refused (deploy check).
+STORES_KEYS = {'nodes': (False, 'names'), 'replicas': (False, 'count'), 'failover': (False, 'bool'),
+               'history_shards': (False, 'count')}
+# The history shard count of a new site Temporal. The Compose default (deploy.py temporal_history_shards) is the same.
+HISTORY_SHARDS = 128
 # The values of a zone entry of the zone state that the Hoover installation of the zone reads (zone_hoover()):
-# stores, the store layout, and temporal_backend, the store of Temporal, each with its default first. extra_datasets
-# lists read-only dataset folders of data nodes as name:node:/path.
+# stores, the store layout, and temporal, the place of the Temporal of the zone, each with its default first.
+# extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
 # The store layouts: site (ClickHouse and Garage are the shared stores of the site, Manticore runs in the zone
 # namespace), local (the Compose stores in the Hoover namespace, from the Compose import), and zone (every store in the
 # zone namespace, from an earlier version). An entry without the value is a zone of that earlier version. A new zone
 # gets site (../zones/zone.py register()). The installer refuses to apply a zone with the layout zone: delete the zone
 # and create it again.
-ZONE_VALUES = {'stores': ('zone', 'local', 'site'), 'temporal_backend': ('postgresql', 'cassandra')}
+# The Temporal places: site (the Temporal of the site in hoover-stores, with one namespace for each zone), and zone
+# (the Temporal of the zone itself). A zone with stores = local runs the Compose Temporal in its Hoover namespace. A
+# zone with stores = site and temporal = zone is from an earlier version, whose Temporal ran on the PostgreSQL of the
+# zone. The installer refuses it: delete the zone and create it again. A new zone with stores = site gets site.
+ZONE_VALUES = {'stores': ('zone', 'local', 'site'), 'temporal': ('zone', 'site')}
 # The defaults of the optional keys. A key without a default here is empty. public_firewall has no default here: it is
 # true on a public or calls node with a public address (parse).
 DEFAULTS = {
@@ -214,7 +224,7 @@ class Hoover:
     """
     zone: str
     stores: str = 'zone'
-    temporal_backend: str = 'postgresql'
+    temporal: str = 'zone'
     extra_datasets: tuple = ()
     # The value home of a zone entry of an earlier version. Only data_node() reads it, so the data folder of such a zone
     # stays on its node. No pod and no volume of the zone uses it.
@@ -789,14 +799,15 @@ def check(site, check_files=False):
 
 
 def store_plan(site):
-    """The shared Hoover stores of a site with the defaults of STORES_KEYS: {'nodes', 'replicas', 'failover'}.
+    """The shared Hoover stores of a site with the defaults of STORES_KEYS: {'nodes', 'replicas', 'failover',
+    'history_shards'}.
 
     The default nodes are the nodes with the role worker and a storage tier, in the order of the site file. The default
     replicas are the node count, at most 3: 2 nodes give a second copy, and 3 nodes give a majority of copies.
     """
     nodes = tuple(site.stores.get('nodes') or (n.name for n in site.nodes.values() if n.has('worker') and n.storage))
     return {'nodes': nodes, 'replicas': site.stores.get('replicas', min(len(nodes), 3)),
-            'failover': site.stores.get('failover', False)}
+            'failover': site.stores.get('failover', False), 'history_shards': site.stores.get('history_shards', HISTORY_SHARDS)}
 
 
 def store_problems(site):
@@ -820,7 +831,8 @@ def store_problems(site):
 def store_change_problems(before, plan):
     """The problems of a store plan against the plan that the cluster recorded at the last apply (before), as messages.
 
-    Failover cannot be turned off again, and Garage keeps the replication factor of its creation.
+    Failover cannot be turned off again, Garage keeps the replication factor of its creation, and Temporal keeps the
+    history shard count of its creation.
     """
     if not before:
         return []
@@ -830,6 +842,9 @@ def store_change_problems(before, plan):
     if before.get('garage_replication_factor') not in (None, plan['replicas']):
         out.append(f'Garage keeps the replication factor {before["garage_replication_factor"]} of its creation. '
                    f'Set vars.stores replicas to {before["garage_replication_factor"]}.')
+    if before.get('temporal_history_shards') not in (None, plan['history_shards']):
+        out.append(f'Temporal keeps the history shard count {before["temporal_history_shards"]} of its creation. '
+                   f'Set vars.stores history_shards to {before["temporal_history_shards"]}.')
     return out
 
 

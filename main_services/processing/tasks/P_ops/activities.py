@@ -9,6 +9,7 @@ dragging the pipeline's C extensions through that importer fails with a bare
 `SystemError` naming nothing in this repository.
 """
 
+from tasks import temporal_client
 import logging
 import json
 import time
@@ -16,7 +17,7 @@ import asyncio
 from datetime import datetime
 
 from temporalio import activity
-from temporalio.client import Client, WorkflowExecutionStatus, WorkflowFailureError
+from temporalio.client import WorkflowExecutionStatus, WorkflowFailureError
 from temporalio.service import RPCError, RPCStatusCode
 
 from ..heartbeat import with_heartbeat
@@ -167,7 +168,7 @@ async def _supervise_operations() -> None:
     from database.operations import _now, live_operations
     from tasks.P_upload.activities import recover_upload_queues
 
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await supervise(client, _now(), live_operations(limit=500))
     try:
         await recover_upload_queues(client)
@@ -300,7 +301,7 @@ async def _cancel_target_operation(op_id: str) -> dict:
     if row["state"] in TERMINAL_STATES:
         return context
 
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     handle = client.get_workflow_handle(op_id)
     try:
         description = await handle.describe()
@@ -526,12 +527,11 @@ def reindex_collection_activity(collectionname: str) -> int:
 
     async def _queue_them():
         import temporalio.common
-        from temporalio.client import Client as TemporalClient
         from ..P6_index_data.params import IndexDatasetPlanParams
         from ..P6_index_data.workflows import IndexDatasetPlan
         from ..visibility import dataset_search_attributes
 
-        client = await TemporalClient.connect("temporal:7233")
+        client = await temporal_client.connect()
         handles = []
         for collection_dataset, plan_hash in plans:
             handles.append(await client.start_workflow(

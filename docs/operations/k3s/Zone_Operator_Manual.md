@@ -96,7 +96,7 @@ A site upgrade with `k3s/deploy-k3s up` also upgrades every zone. [The operation
 ## Back up and restore a zone
 
 A zone copy holds the openDesk databases and volumes of the zone, its Manticore volumes and the volumes of its Hoover installation.
-The ClickHouse databases and Garage buckets of a zone are in the shared stores of the site, so the zone copy does not hold them. The collection copies of the backup settings hold them.
+The ClickHouse databases and Garage buckets of a zone are in the shared stores of the site, so the zone copy does not hold them. The collection copies of the backup settings hold them. The workflow history of the zone is in the Temporal of the site, and no copy holds it.
 
 1. Turn on `backup.opendesk.enabled` and set `backup.opendesk.copies` in the settings of the zone, and Apply.
 2. The runner makes one copy each week. The zone closes during the copy and opens again with its earlier replicas.
@@ -106,7 +106,7 @@ The ClickHouse databases and Garage buckets of a zone are in the shared stores o
 
 ## Delete a zone
 
-A delete removes the ClickHouse databases, users, Garage buckets and keys of the zone from the shared stores of the site. It then removes the zone namespaces with all their volumes. No copy remains in the cluster.
+A delete removes the ClickHouse databases, users, Garage buckets and keys of the zone from the shared stores of the site, and the Temporal namespace of the zone from the Temporal of the site. It then removes the zone namespaces with all their volumes. No copy remains in the cluster.
 The Hoover operations pod of the zone empties the Garage buckets. A disabled zone has no such pod, so its non-empty buckets and its Garage keys stay, and the operation log names them. Turn the zone on before the delete to remove them.
 
 1. Make a zone copy first when the data must stay available.

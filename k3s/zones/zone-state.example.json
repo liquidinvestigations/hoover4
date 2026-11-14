@@ -8,7 +8,8 @@
     "hoover-zone-a"
    ],
    "bootstrapped": true,
-   "stores": "site"
+   "stores": "site",
+   "temporal": "site"
   },
   "zone-b": {
    "enabled": true,
@@ -18,7 +19,7 @@
    ],
    "bootstrapped": true,
    "stores": "site",
-   "temporal_backend": "postgresql",
+   "temporal": "site",
    "extra_datasets": ["archive:server-node:/storage/archive"],
    "tiers": {
     "default": ["hdd"]

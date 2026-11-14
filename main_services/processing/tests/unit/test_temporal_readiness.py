@@ -128,7 +128,7 @@ def test_a_refused_submit_writes_the_row_errored(monkeypatch):
 
     finished = []
 
-    async def connect(_target):
+    async def connect(_target, **_options):
         return object()
 
     async def refuse(_client):

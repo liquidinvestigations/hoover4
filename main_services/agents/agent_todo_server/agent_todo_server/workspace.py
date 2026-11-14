@@ -54,7 +54,11 @@ async def temporal_client():
         if _client is None:
             from temporalio.client import Client
 
-            _client = await Client.connect(os.getenv("TEMPORAL_ADDRESS", "temporal:7233"))
+            # TEMPORAL_NAMESPACE and TEMPORAL_API_KEY name the namespace and the key of the installation, as
+            # main_services/processing/tasks/temporal_client.py reads them. Compose sets neither.
+            _client = await Client.connect(os.getenv("TEMPORAL_ADDRESS", "temporal:7233"),
+                                           namespace=os.getenv("TEMPORAL_NAMESPACE", "").strip() or "default",
+                                           api_key=os.getenv("TEMPORAL_API_KEY", "").strip() or None)
         return _client
 
 

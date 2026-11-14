@@ -1120,8 +1120,9 @@ fn new_run_id() -> String {
 /// for the server rather than failing the turn.
 async fn start_agent_workflow(start: AgentWorkflowStart<'_>) -> anyhow::Result<String> {
     let url = format!(
-        "{}/api/v1/namespaces/default/workflows/{}",
+        "{}{}/workflows/{}",
         temporal_base_url(),
+        crate::temporal_ready::namespace_path(),
         start.workflow_id
     );
 
@@ -1163,10 +1164,12 @@ async fn start_agent_workflow(start: AgentWorkflowStart<'_>) -> anyhow::Result<S
 /// which is the ordinary outcome of stopping a turn that has already finished.
 pub(crate) async fn cancel_workflow(workflow_id: &str) -> anyhow::Result<bool> {
     let url = format!(
-        "{}/api/v1/namespaces/default/workflows/{workflow_id}/cancel",
-        temporal_base_url()
+        "{}{}/workflows/{workflow_id}/cancel",
+        temporal_base_url(),
+        crate::temporal_ready::namespace_path()
     );
-    let response = reqwest::Client::new()
+    let response = crate::temporal_ready::temporal_http()
+        .build()?
         .post(&url)
         .json(&serde_json::json!({}))
         .send()
@@ -1199,10 +1202,12 @@ struct RunningWorkflow {
 async fn list_running_agent_workflows() -> anyhow::Result<Vec<RunningWorkflow>> {
     let query = "WorkflowType = 'AgentRun' AND ExecutionStatus = 'Running'";
     let url = format!(
-        "{}/api/v1/namespaces/default/workflows",
-        temporal_base_url()
+        "{}{}/workflows",
+        temporal_base_url(),
+        crate::temporal_ready::namespace_path()
     );
-    let response = reqwest::Client::new()
+    let response = crate::temporal_ready::temporal_http()
+        .build()?
         .get(&url)
         .query(&[("query", query)])
         .send()

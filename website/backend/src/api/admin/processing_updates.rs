@@ -217,7 +217,8 @@ pub async fn read_view(scope_kind: &str, scope_id: &str, collectionname: &str) -
 pub async fn signal_check(scope_id: &str) -> anyhow::Result<()> {
     let base = crate::temporal_ready::temporal_base_url();
     let url = format!(
-        "{base}/api/v1/namespaces/default/workflows/{COORDINATOR_ID}/signal-with-start/request_check"
+        "{base}{}/workflows/{COORDINATOR_ID}/signal-with-start/request_check",
+        crate::temporal_ready::namespace_path()
     );
     let body = serde_json::json!({
         "workflowType": { "name": COORDINATOR_TYPE },

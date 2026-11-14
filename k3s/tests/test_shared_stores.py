@@ -25,9 +25,9 @@ def by(items, kind, name):
 def test_the_plan_defaults_come_from_the_worker_nodes():
     plan = config.store_plan(remote())
     # The worker nodes with a storage tier, in the order of the site file. The calls and GPU nodes hold no store.
-    assert plan == {'nodes': ('server-a', 'worker-b', 'edge'), 'replicas': 3, 'failover': False}
-    assert config.store_plan(remote('{nodes: [server-a, worker-b], failover: true}')) == {
-        'nodes': ('server-a', 'worker-b'), 'replicas': 2, 'failover': True}
+    assert plan == {'nodes': ('server-a', 'worker-b', 'edge'), 'replicas': 3, 'failover': False, 'history_shards': 128}
+    assert config.store_plan(remote('{nodes: [server-a, worker-b], failover: true, history_shards: 512}')) == {
+        'nodes': ('server-a', 'worker-b'), 'replicas': 2, 'failover': True, 'history_shards': 512}
 
 
 def test_the_site_file_refuses_impossible_store_plans():

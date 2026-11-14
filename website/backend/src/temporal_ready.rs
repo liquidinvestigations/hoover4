@@ -8,9 +8,9 @@
 //! requests, in this order, each with a timeout of `PROBE_TIMEOUT_SECONDS`:
 //!
 //! 1. `GET /api/v1/system-info`;
-//! 2. `GET /api/v1/namespaces/default`, which reads Cassandra;
-//! 3. `GET /api/v1/namespaces/default/workflows?pageSize=1`;
-//! 4. `GET /api/v1/namespaces/default/workflows/collect-eta-samples`, which reads a
+//! 2. `GET /api/v1/namespaces/<namespace>`, which reads Cassandra;
+//! 3. `GET /api/v1/namespaces/<namespace>/workflows?pageSize=1`;
+//! 4. `GET /api/v1/namespaces/<namespace>/workflows/collect-eta-samples`, which reads a
 //!    history shard. A 404 counts as good only when its `details` hold a
 //!    `NotFoundFailure`, which is the answer for an absent workflow. The 404 of an unknown
 //!    route has no details, and it resets the good run.
@@ -19,6 +19,10 @@
 //! [`wait_for_temporal`] returns at once when that run is `READY_STABLE_SECONDS` old or
 //! more. Otherwise it waits for it, up to `READY_DEADLINE_SECONDS` from its call, and then
 //! returns `READY_ERROR_TEXT` with the monitor's last error.
+//!
+//! `<namespace>` is the namespace of the installation ([`namespace_path`]). Every request
+//! to Temporal goes through a client of [`temporal_http`], which sends the key of the
+//! installation.
 //!
 //! The constants and the error text are mirrored in
 //! `main_services/processing/tasks/temporal_readiness.py`. Change both files together. A
@@ -53,11 +57,46 @@ pub fn temporal_base_url() -> String {
     std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:21908".to_string())
 }
 
+/// The Temporal namespace of the installation: `TEMPORAL_NAMESPACE`, else `default`.
+///
+/// Compose runs one Temporal for one installation with the namespace `default`. A k3s
+/// site runs one Temporal for every zone, and each zone has its own namespace there.
+pub fn temporal_namespace() -> String {
+    std::env::var("TEMPORAL_NAMESPACE")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "default".to_string())
+}
+
+/// The path of the namespace of the installation in Temporal's HTTP API.
+pub fn namespace_path() -> String {
+    format!("/api/v1/namespaces/{}", temporal_namespace())
+}
+
+/// A client builder for Temporal's HTTP API. With `TEMPORAL_API_KEY`, each request
+/// sends `Authorization: Bearer <key>`. The key of a k3s zone permits only the namespace
+/// of the zone. Compose sets no key.
+pub fn temporal_http() -> reqwest::ClientBuilder {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(key) = std::env::var("TEMPORAL_API_KEY")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+    {
+        let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {key}"))
+            .expect("TEMPORAL_API_KEY holds only header characters");
+        value.set_sensitive(true);
+        headers.insert(reqwest::header::AUTHORIZATION, value);
+    }
+    reqwest::Client::builder().default_headers(headers)
+}
+
 /// The one HTTP client for workflow start requests, with the start timeout.
 pub fn start_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        temporal_http()
             .timeout(Duration::from_secs(START_REQUEST_TIMEOUT_SECONDS))
             .build()
             .expect("the start request client builds from constant settings")
@@ -156,10 +195,11 @@ fn has_not_found_failure(body: &serde_json::Value) -> bool {
 
 /// Run the four probe requests in order. Return the first failure as text.
 pub async fn probe(http: &reqwest::Client, base_url: &str) -> Result<(), String> {
+    let namespace = namespace_path();
     for path in [
-        "/api/v1/system-info",
-        "/api/v1/namespaces/default",
-        "/api/v1/namespaces/default/workflows?pageSize=1",
+        "/api/v1/system-info".to_string(),
+        namespace.clone(),
+        format!("{namespace}/workflows?pageSize=1"),
     ] {
         let url = format!("{base_url}{path}");
         let response = probe_get(http, &url).await?;
@@ -169,7 +209,7 @@ pub async fn probe(http: &reqwest::Client, base_url: &str) -> Result<(), String>
             return Err(format!("GET {url}: {status}: {body}"));
         }
     }
-    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{COLLECTOR_WORKFLOW_ID}");
+    let url = format!("{base_url}{namespace}/workflows/{COLLECTOR_WORKFLOW_ID}");
     let response = probe_get(http, &url).await?;
     let status = response.status();
     if status.is_success() {
@@ -186,7 +226,7 @@ pub async fn probe(http: &reqwest::Client, base_url: &str) -> Result<(), String>
 
 /// Probe `base_url` every second and record each result, for as long as the task runs.
 pub async fn run_monitor(readiness: &Readiness, base_url: String) {
-    let http = reqwest::Client::builder()
+    let http = temporal_http()
         .timeout(Duration::from_secs(PROBE_TIMEOUT_SECONDS))
         .build()
         .expect("the probe client builds from constant settings");

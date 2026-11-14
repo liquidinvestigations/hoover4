@@ -12,6 +12,11 @@ or the start is rejected with ``search attribute CollectionDataset is not
 defined``. Registration is a one-time, idempotent cluster operation done at
 worker startup (:func:`ensure_search_attributes`).
 
+On a k3s site the zone key of the installation permits no attribute change, because
+the attributes of the shared visibility index apply to every zone namespace. The site
+installer registers the attribute when it creates the zone namespace. A register or
+list request that Temporal refuses with ``PERMISSION_DENIED`` therefore counts as done.
+
 **That is not sufficient on its own**, and a fresh ``./deploy --reset`` is
 exactly where it shows: the CLI (``add-disk-dataset``) can reach Temporal before
 the worker has finished registering, and registration is not instant even once
@@ -27,6 +32,9 @@ from datetime import timedelta
 
 from temporalio.client import Client
 from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
+from temporalio.service import RPCError, RPCStatusCode
+
+from tasks import temporal_client
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +55,7 @@ def dataset_search_attributes(collection_dataset: str) -> TypedSearchAttributes:
 
 
 async def ensure_search_attributes(client: Client) -> None:
-    """Register the ``CollectionDataset`` keyword attribute on the default namespace.
+    """Register the ``CollectionDataset`` keyword attribute on the installation namespace.
 
     Idempotent: the cluster silently accepts re-registering an existing
     attribute, so every worker calls this on startup. A failure here is logged
@@ -60,7 +68,7 @@ async def ensure_search_attributes(client: Client) -> None:
     try:
         await client.operator_service.add_search_attributes(
             AddSearchAttributesRequest(
-                namespace="default",
+                namespace=temporal_client.namespace(),
                 search_attributes={
                     COLLECTION_DATASET_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD
                 },
@@ -68,6 +76,11 @@ async def ensure_search_attributes(client: Client) -> None:
             timeout=ATTRIBUTE_RPC_TIMEOUT,
         )
         log.info("Temporal search attribute %s registered", COLLECTION_DATASET_ATTRIBUTE)
+    except RPCError as e:
+        if e.status == RPCStatusCode.PERMISSION_DENIED:
+            log.info("The site installer registers the Temporal search attribute %s", COLLECTION_DATASET_ATTRIBUTE)
+            return
+        log.warning("Could not register Temporal search attribute %s: %s", COLLECTION_DATASET_ATTRIBUTE, e)
     except Exception as e:  # noqa: BLE001 - bootstrap must not kill the worker
         log.warning("Could not register Temporal search attribute %s: %s", COLLECTION_DATASET_ATTRIBUTE, e)
 
@@ -75,9 +88,14 @@ async def ensure_search_attributes(client: Client) -> None:
 async def _attribute_is_listed(client: Client) -> bool:
     from temporalio.api.operatorservice.v1 import ListSearchAttributesRequest
 
-    resp = await client.operator_service.list_search_attributes(
-        ListSearchAttributesRequest(namespace="default"), timeout=ATTRIBUTE_RPC_TIMEOUT,
-    )
+    try:
+        resp = await client.operator_service.list_search_attributes(
+            ListSearchAttributesRequest(namespace=temporal_client.namespace()), timeout=ATTRIBUTE_RPC_TIMEOUT,
+        )
+    except RPCError as e:
+        if e.status == RPCStatusCode.PERMISSION_DENIED:
+            return True
+        raise
     return COLLECTION_DATASET_ATTRIBUTE in resp.custom_attributes
 
 

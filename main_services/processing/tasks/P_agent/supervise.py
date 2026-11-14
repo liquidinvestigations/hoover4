@@ -14,12 +14,14 @@ input of the closed workflow, because the run row has no column for it.
 
 from __future__ import annotations
 
+from tasks import temporal_client
+
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
 from temporalio import activity
-from temporalio.client import Client, WorkflowExecutionStatus
+from temporalio.client import WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 from ..heartbeat import with_heartbeat
@@ -44,7 +46,7 @@ def supervise_agent_runs() -> None:
 
 
 async def _supervise_agent_runs() -> None:
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await sweep(client)
 
 

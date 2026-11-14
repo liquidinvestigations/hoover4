@@ -32,6 +32,7 @@ first attempt. Clearing the residue is `drop_collection_database`, which is the 
 command that prepares any other clean target.
 """
 
+from tasks import temporal_client
 import json
 import logging
 import os
@@ -652,12 +653,11 @@ def _rebuild_vectors(collectionname: str) -> int:
 
     async def queue() -> None:
         import temporalio.common
-        from temporalio.client import Client as TemporalClient
         from tasks.P6_index_data.params import IndexDatasetPlanParams
         from tasks.P6_index_data.workflows import IndexDatasetPlan
         from tasks.visibility import dataset_search_attributes
 
-        temporal = await TemporalClient.connect("temporal:7233")
+        temporal = await temporal_client.connect()
         handles = []
         for collection_dataset, plan_hash in plans:
             handles.append(await temporal.start_workflow(

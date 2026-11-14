@@ -27,7 +27,7 @@ ROOTLESS_UIDS = '         0       1001          1\n         1     165536      65
 SMALL_UIDS = '0 1001 1\n1 20000 30000\n'
 SCRIPT = K3S / 'import_compose' / 'root_copy.py'
 SERENA = REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini'
-ZONE_A = config.Hoover(zone='zone-a', stores='local', temporal_backend='cassandra')
+ZONE_A = config.Hoover(zone='zone-a', stores='local')
 
 
 def importer():
@@ -270,7 +270,7 @@ def test_the_render_of_a_new_zone_has_every_claim_of_the_copy(tmp_path):
     r.planned = {'home': 'dev'}
     import manifests
     target = module.render_target(r, '0' * 40)
-    assert target.hoover.namespace == 'hoover-zone-b' and target.local and target.cassandra and target.enabled
+    assert target.hoover.namespace == 'hoover-zone-b' and target.local and target.enabled
     items = json.loads(manifests.render(target))['items']
     claims = {i['metadata']['name'] for i in items if i['kind'] == 'PersistentVolumeClaim'}
     assert {'clickhouse-data', 'manticore-data', 'manticore-vectors-data', 'garage-meta', 'garage-data', 'temporal-cassandra',

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""The shared Hoover stores of a site: one ClickHouse and one Garage in the namespace hoover-stores.
+"""The shared Hoover stores of a site: one ClickHouse, one Garage and one Temporal in the namespace hoover-stores.
 
 Each zone of the store layout site (../../config.py ZONE_VALUES) is a tenant of both stores. ../setup.py adds the
 tenant of a zone: in ClickHouse a settings profile, the zone user and a user for each service, with grants on the
 databases of the zone prefix only, and in Garage the zone key, the service keys and the zone buckets. remove takes them
-away when the zone goes. The Manticore daemons stay in each zone namespace (hoover.py).
+away when the zone goes. The Manticore daemons stay in each zone namespace (hoover.py). The Temporal of the site, with
+its Cassandra and OpenSearch and one Temporal namespace for each zone, is in temporal.py. apply creates it after the
+other stores, ready and grow include it, and remove deletes the Temporal namespace of the zone.
 
 The site file gives the plan (vars.stores, ../../config.py store_plan()): the nodes that can run a store pod, the
 replicas and the failover switch.
@@ -26,21 +28,24 @@ which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
 ClickHouse (8123, 9000) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
 the admin port takes none.
-The ConfigMap shared-stores records the applied plan and the Garage node ids. The deploy check reads it (problems()).
+The ConfigMap shared-stores records the applied plan, the Garage node ids and the Temporal history shard count. The
+deploy check reads it (problems()).
 The Secret hoover-stores of the namespace holds the ClickHouse admin password, the Garage RPC secret and the Garage
 admin token. The script never prints a credential.
 
-Usage: shared.py apply             create or update the stores, wait for them, join the Garage nodes and record the plan
-       shared.py show              print the objects
+Usage: shared.py apply             create or update the stores and Temporal, wait for them, join the Garage nodes and
+                                   record the plan
+       shared.py show              print the objects of ClickHouse and Garage (temporal.py show prints Temporal)
        shared.py grow              make the claims large enough for the zones of the zone state
-       shared.py ready             exit 1 when a store has no ready pod
+       shared.py ready             exit 1 when a store or Temporal has no ready pod
        shared.py check             print the problems and warnings of the plan against the cluster as JSON
-       shared.py remove <zone>     delete the ClickHouse databases, users and profile and the Garage buckets and keys of a zone.
+       shared.py remove <zone>     delete the ClickHouse databases, users and profile, the Garage buckets and keys and the
+                                   Temporal namespace of a zone.
                                    The operations pod of the zone empties the buckets. Without it, a non-empty bucket
                                    and the zone keys stay, and the log names them.
 """
 import base64, json, math, re, secrets, subprocess, sys, time
-import common, hoover
+import common, hoover, temporal
 import config  # noqa: E402  (common puts the k3s folder on the path)
 import zonestate  # noqa: E402
 
@@ -325,25 +330,30 @@ def apply():
     ids = join_garage(plan, size('garage', zones))
     if ids != peers:
         hoover.apply([o for o in garage(s, plan, zones, ids) if o['kind'] == 'ConfigMap'])
+    temporal.apply(s, plan, zones)
     record = {'failover': plan['failover'], 'replicas': plan['replicas'], 'nodes': list(plan['nodes']),
-              'garage_replication_factor': (before or {}).get('garage_replication_factor', plan['replicas']), 'garage_nodes': ids}
+              'garage_replication_factor': (before or {}).get('garage_replication_factor', plan['replicas']), 'garage_nodes': ids,
+              'temporal_history_shards': (before or {}).get('temporal_history_shards', plan['history_shards'])}
     common.apply(configmap(STATE, {'plan': json.dumps(record, sort_keys=True)}))
     common.log('stores.jsonl', step='shared-stores', namespace=NS, failover=plan['failover'], replicas=plan['replicas'],
                nodes=list(plan['nodes']), zones=zones)
 
 
 def grow():
-    """Make the claims of both stores large enough for the zones of the zone state."""
+    """Make the claims of the stores and of the Temporal stores large enough for the zones of the zone state."""
     zones = len(site_zones())
-    for store in ('clickhouse', 'garage'):
+    sizes = {'clickhouse': size('clickhouse', zones), 'garage': size('garage', zones),
+             **{store: temporal.size(store, zones) for store in temporal.SIZES}}
+    for store, wanted in sizes.items():
         current = common.kubectl('-n', NS, 'get', 'statefulset', store, '--ignore-not-found', '-o', 'json').strip()
         if not current:
             raise SystemExit(f'the shared {store} does not exist in {NS}. Run deploy-k3s up --steps stores.')
-        hoover.grow_claims(NS, json.loads(current), size(store, zones))
+        hoover.grow_claims(NS, json.loads(current), wanted)
 
 
 def remove(zone):
-    """Delete the tenant of a zone from both stores. A bucket that the zone cannot empty stays, and the log names it."""
+    """Delete the tenant of a zone from ClickHouse, Garage and Temporal. A bucket that the zone cannot empty stays, and
+    the log names it."""
     prefix = zone.replace('-', '_')
     rows = clickhouse_sql(
         f"SELECT 'database', name FROM system.databases WHERE name = '{prefix}' OR startsWith(name, '{prefix}_') "
@@ -384,6 +394,7 @@ def remove(zone):
         garage_cli('key', 'delete', '--yes', key_id)
     common.log('stores.jsonl', step='garage-tenant-removed', zone=zone, buckets=len(buckets) - len(kept), kept=kept,
                keys_kept=sorted(keys.values()) if kept else [])
+    temporal.remove(zone)
 
 
 def main(argv):
@@ -397,7 +408,7 @@ def main(argv):
     elif argv[0] == 'grow':
         grow()
     elif argv[0] == 'ready':
-        for store in ('clickhouse', 'garage'):
+        for store in ('clickhouse', 'garage', 'temporal-cassandra', 'temporal-opensearch', 'temporal'):
             ready_pod(store)
     elif argv[0] == 'check':
         found, warnings = problems()

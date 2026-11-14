@@ -225,7 +225,8 @@ impl QueueNotifier for TemporalNotifier {
     fn notify(&self, collection: &str, upload_dataset: &str, batch_id: &str) -> anyhow::Result<()> {
         let base = crate::temporal_ready::temporal_base_url();
         let url = format!(
-            "{base}/api/v1/namespaces/default/workflows/{}/signal-with-start/{QUEUE_SIGNAL}",
+            "{base}{}/workflows/{}/signal-with-start/{QUEUE_SIGNAL}",
+            crate::temporal_ready::namespace_path(),
             queue_workflow_id(upload_dataset)
         );
         let body = signal_with_start_body(collection, upload_dataset, batch_id);

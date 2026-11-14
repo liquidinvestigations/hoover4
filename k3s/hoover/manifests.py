@@ -14,16 +14,18 @@ Store layouts (the value stores of the zone state):
   ClickHouse, both Manticore daemons, Garage with its init job, and ZooKeeper, which the ClickHouse configuration
   names. The operations worker mounts the store claims as in Compose, so store backup and restore work. The Compose
   import (../import_compose/) fills these claims with the copied store folders.
-- site: ClickHouse and Garage are the shared stores of the site in the namespace hoover-stores (stores/shared.py), and
-  both Manticore daemons run in Kata on block volumes in the zone namespace (stores/hoover.py). ExternalName Services
-  keep the Compose names. setup.py creates the tenant of the zone: its ClickHouse users and its Garage keys and buckets.
+- site: ClickHouse, Garage and Temporal are shared by the site in the namespace hoover-stores (stores/shared.py,
+  stores/temporal.py), and both Manticore daemons run in Kata on block volumes in the zone namespace
+  (stores/hoover.py). ExternalName Services keep the Compose names. setup.py creates the tenant of the zone: its
+  ClickHouse users, its Garage keys and buckets, and its Temporal namespace. The Temporal clients (TEMPORAL_CLIENTS) get
+  the namespace of the zone in TEMPORAL_NAMESPACE and the key of the zone in TEMPORAL_API_KEY. The key permits only
+  that namespace. A zone of this layout whose entry has temporal = zone is from an earlier version, whose Temporal ran
+  on the PostgreSQL of the zone. The render refuses it: the zone needs a delete and a new create.
 - zone: every store in the zone namespace, from an earlier version. The render refuses it: the zone needs a delete and
   a new create.
-Temporal backends (the value temporal_backend of the zone state):
-- cassandra: Temporal, Cassandra and Elasticsearch as in Compose, with the dynamic configuration of deploy.py, the
-  history shard count of the operator settings, a retention job for the default namespace, and claims for both stores.
-- postgresql: Temporal on the PostgreSQL of the zone, as an existing remote zone runs it. setup.py creates the
-  databases. No conversion between the two backends exists.
+Temporal of the local layout: Temporal, Cassandra and Elasticsearch as in Compose, with the dynamic configuration of
+deploy.py, the history shard count of the operator settings, a retention job for the namespace default, and claims for
+both stores.
 Placement and runtimes:
 - Every pod runs in gVisor, which the zone pod policy sets, except the workers and the operations worker in Kata,
   because they parse untrusted files.
@@ -95,7 +97,6 @@ PART = 'hoover.dev/part'
 # The pods with this label reach the OIDC issuer: oauth2-proxy and the sign-in check of the deploy driver.
 OIDC_CLIENT = {'hoover.dev/oidc': 'client'}
 REGISTRY = 'registry.hoover.internal/hoover'
-TEMPORAL_PG = 'docker.io/temporalio/auto-setup:1.23.1@sha256:a73792b9289ac504ee6c49fb0dfb430626bc4f422f15cf885503de49e4ae283b'
 OAUTH2_PROXY = 'quay.io/oauth2-proxy/oauth2-proxy:v7.12.0@sha256:786bed0f000c0f8a7b31619244ebab02406a8856a4faf3f5fb1df61fbd6c30ed'
 
 # Every Compose service and its cluster form. image names the key of compose.IMAGES for a service that the image
@@ -103,8 +104,8 @@ OAUTH2_PROXY = 'quay.io/oauth2-proxy/oauth2-proxy:v7.12.0@sha256:786bed0f000c0f8
 #   app         a Deployment and a Service in every layout
 #   store       a StatefulSet in the local layout. The site layout uses the stores of stores/shared.py and stores/hoover.py.
 #   store-init  a Job in the local layout. setup.py does its work in the site layout.
-#   temporal    the Compose Temporal with the cassandra backend, or the PostgreSQL Temporal of temporal_pg().
-#   temporal-store  a StatefulSet with the cassandra backend. The postgresql backend has no such store.
+#   temporal    the Compose Temporal in the local layout. The site layout uses the Temporal of stores/temporal.py.
+#   temporal-store  a StatefulSet in the local layout. The site layout has no such store.
 #   ui          an operator interface, a Deployment and a Service without ingress
 #   gpu         a GPU service. The forwarder gpu reaches it in the shared GPU pool (gpu.py).
 #   excluded    not rendered. reason says why.
@@ -203,7 +204,7 @@ REQUESTS = {'hoover-website': '320Mi', 'hoover-workers': '1856Mi', 'temporal': '
             'clickhouse': '640Mi', 'manticore': '448Mi', 'manticore-vectors': '704Mi',
             'temporal-cassandra': '3264Mi', 'temporal-elasticsearch': '1024Mi'}
 DEFAULT_REQUEST = '128Mi'
-# Elasticsearch of the cassandra backend. Two production debug reports measured 0.28 to 0.9 GiB of heap in use, so
+# Elasticsearch of the local layout. Two production debug reports measured 0.28 to 0.9 GiB of heap in use, so
 # the heap is 1.5 times the larger value, and the limit is twice the heap plus 512 MiB. Compose keeps its own values.
 ELASTICSEARCH_HEAP = '1536m'
 ELASTICSEARCH_LIMIT = '3584Mi'
@@ -222,10 +223,14 @@ LOCAL_CREDENTIALS = {'CLICKHOUSE_USER': 'clickhouse-user', 'CLICKHOUSE_PASSWORD'
                      'GARAGE_RPC_SECRET': 'garage-rpc-secret', 'GARAGE_ADMIN_TOKEN': 'garage-admin-token',
                      'VITE_CLICKHOUSE_USER': 'clickhouse-user', 'VITE_CLICKHOUSE_PASS': 'clickhouse-password'}
 # The stores of the zone namespace that the site layout uses.
-ZONE_STORES = ('manticore', 'manticore-vectors', 'postgresql')
-# The shared stores of the site (stores/shared.py) and the client ports that a Hoover namespace reaches.
+ZONE_STORES = ('manticore', 'manticore-vectors')
+# The shared stores of the site (stores/shared.py, stores/temporal.py) and the client ports that a Hoover namespace
+# reaches.
 SHARED_NS = 'hoover-stores'
-SHARED_PORTS = {'clickhouse': (8123, 9000), 'garage': (3900,)}
+SHARED_PORTS = {'clickhouse': (8123, 9000), 'garage': (3900,), 'temporal': (7233, 7243)}
+# The services that call Temporal (by the Compose name without hoover4-). In the site layout only they get the key of
+# the zone.
+TEMPORAL_CLIENTS = ('website', 'worker', 'ops', 'mcp-todo')
 LOCAL_STORES = ('clickhouse', 'manticore', 'manticore-vectors', 'garage', 'zookeeper', 'temporal-cassandra',
                 'temporal-elasticsearch')
 PRIVATE_RANGES = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '169.254.0.0/16', '127.0.0.0/8']
@@ -264,10 +269,6 @@ class Target:
     @property
     def local(self):
         return self.hoover.stores == 'local'
-
-    @property
-    def cassandra(self):
-        return self.hoover.temporal_backend == 'cassandra'
 
     @property
     def budget(self):
@@ -586,10 +587,12 @@ def volumes(target, name, service_def, mounts):
 # ----------------------------------------------------------------------------------------------------------------------
 
 def store_env(target):
-    """The store addresses and the storage identity of the installation."""
+    """The store addresses, the Temporal namespace and the storage identity of the installation."""
     env = {'CLICKHOUSE_URL': 'http://clickhouse:8123', 'MANTICORE_HOST': 'manticore', 'MANTICORE_URL': 'http://manticore:9308',
            'MANTICORE_VECTORS_HOST': 'manticore-vectors', 'MANTICORE_VECTORS_URL': 'http://manticore-vectors:9308',
            'S3_ENDPOINT': 'http://garage:3900', 'TEMPORAL_HTTP_URL': 'http://temporal:7243'}
+    if not target.local:
+        env['TEMPORAL_NAMESPACE'] = target.zone
     env.update(target.hoover.identity())
     # The telemetry of the agent servers writes into CLICKHOUSE_DATABASE.
     env['CLICKHOUSE_DATABASE'] = f'{target.hoover.clickhouse_database_prefix}_Processing'
@@ -599,13 +602,14 @@ def store_env(target):
 def store_secrets(target, service_key, wanted):
     """The store credential variables of one service, each from a Secret.
 
-    The local layout has one set of credentials (LOCAL_CREDENTIALS). The zone layout has a ClickHouse and Manticore
-    user and a Garage key for each service (stores/service_users.py).
+    The local layout has one set of credentials (LOCAL_CREDENTIALS). The site layout has a ClickHouse and Manticore
+    user and a Garage key for each service (stores/service_users.py), and the Temporal key of the zone for each
+    Temporal client (TEMPORAL_CLIENTS).
     """
     if target.local:
         return [from_secret(k, LOCAL_CREDENTIALS[k]) for k in STORE_CREDENTIALS if k in wanted]
     used = service_users.SERVICES.get(service_key, {})
-    env = []
+    env = [from_secret('TEMPORAL_API_KEY', 'temporal-api-key')] if service_key in TEMPORAL_CLIENTS else []
     if 'clickhouse' in used:
         env += [value('CLICKHOUSE_USER', service_users.user(target.zone, service_key)), from_secret('CLICKHOUSE_PASSWORD', f'clickhouse-{service_key}')]
     if 'manticore' in used:
@@ -744,9 +748,8 @@ def translated(target, services, mounts, deploy):
         if role in ('store', 'store-init', 'ui') and not target.local:
             # The zone layout has no operator user of its stores for the interfaces.
             continue
-        if role == 'temporal-store' and not target.cassandra:
-            continue
-        if role == 'temporal' and not target.cassandra:
+        if role in ('temporal', 'temporal-store') and not target.local:
+            # The site layout uses the Temporal of the site (stores/temporal.py).
             continue
         svc = services[name]
         app = role in ('app', 'ui') or name == 'temporal'
@@ -915,24 +918,6 @@ def temporal_retention(target, cfg, image):
                      'template': {'metadata': {'labels': {'app.kubernetes.io/name': 'temporal-retention'}}, 'spec': spec}}}
 
 
-def temporal_pg(target, shards):
-    """Temporal on the PostgreSQL of the zone, the backend of an existing remote zone."""
-    prefix = target.zone.replace('-', '_')
-    env = [value('DB', 'postgres12'), value('DB_PORT', '5432'), value('POSTGRES_SEEDS', f'postgresql.{target.zone}.svc.cluster.local'),
-           value('POSTGRES_USER', f'{prefix}_temporal'), from_secret('POSTGRES_PWD', 'temporal-db-password'),
-           value('DBNAME', f'{prefix}_temporal'), value('VISIBILITY_DBNAME', f'{prefix}_temporal_visibility'),
-           # setup.py creates both databases with a role that cannot create databases. The shard count is fixed after the
-           # first start.
-           value('SKIP_DB_CREATE', 'true'), value('NUM_HISTORY_SHARDS', str(shards)),
-           value('DEFAULT_NAMESPACE', 'default'), value('DEFAULT_NAMESPACE_RETENTION', target.values['main_services.temporal_retention']),
-           value('BIND_ON_IP', '0.0.0.0'), value('TEMPORAL_BROADCAST_ADDRESS', '127.0.0.1')]
-    c = {'name': 'temporal', 'image': TEMPORAL_PG, 'env': env, 'ports': [{'name': 'grpc', 'containerPort': 7233}, {'name': 'http', 'containerPort': 7243}],
-         'resources': {'requests': {'cpu': '50m', 'memory': request('temporal', target.values['memory.hoover.temporal'])},
-                       'limits': {'memory': target.values['memory.hoover.temporal'], 'cpu': '2'}},
-         'readinessProbe': {'tcpSocket': {'port': 7233}, 'periodSeconds': 2, 'failureThreshold': 3}}
-    return [workload(target, 'Deployment', 'temporal', pod_spec(target, [c])), service(target, 'temporal', [7233, 7243])]
-
-
 def proxy(target):
     """oauth2-proxy with the alpha configuration, which can add a header from a file."""
     issuer = f"https://{site_config.zone_host(target.zone, 'id', target.site.domain)}/realms/opendesk"
@@ -981,8 +966,8 @@ def network(target):
     """The ingress and egress policies of the Hoover namespace.
 
     Egress is closed by default. Every pod reaches the cluster DNS and the pods of its namespace. In the site layout
-    every pod except the internet services reaches Manticore and PostgreSQL in the zone namespace and the client ports
-    of the shared ClickHouse and Garage, and the browser server reaches the HTTP ports of ClickHouse and Garage. The
+    every pod except the internet services reaches Manticore in the zone namespace and the client ports of the shared
+    ClickHouse, Garage and Temporal, and the browser server reaches the HTTP ports of ClickHouse and Garage. The
     shared stores admit a Hoover namespace by its label hoover.dev/hoover (stores/shared.py network()). In the local
     layout the stores are pods of the namespace,
     and the internet services reach no store pod except the browser server, which reaches ClickHouse and Garage.
@@ -1085,14 +1070,16 @@ def objects(target):
     if target.hoover.stores == 'zone':
         raise RenderError(f'{target.zone} keeps its ClickHouse and Garage in its zone namespace, from an earlier version. '
                           'Delete the zone and create it again.')
+    if target.hoover.stores == 'site' and target.hoover.temporal == 'zone':
+        raise RenderError(f'{target.zone} runs its own Temporal on the PostgreSQL of the zone, from an earlier version. '
+                          'Delete the zone and create it again.')
     # The label hoover.dev/zone selects the namespace for the zone pod policy (../zones/manifests/zone-pods.yaml). The
     # shared stores admit the namespaces with the label hoover.dev/hoover (stores/shared.py).
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': target.ns, 'labels': {
         'hoover.dev/zone': 'true', 'hoover.dev/hoover': 'true'}}}
     claims = []
     if target.local:
-        claims = [claim(target, c) for c in operator_settings.VOLUMES if c != 'worker-temp-files'
-                  and (target.cassandra or not c.startswith('temporal-'))]
+        claims = [claim(target, c) for c in operator_settings.VOLUMES if c != 'worker-temp-files']
     else:
         claims = [claim(target, c) for c in sorted(ZONE_CLAIMS) if c != 'worker-temp-files']
     for m in mounts:
@@ -1100,16 +1087,14 @@ def objects(target):
             name = m['volume']['persistentVolumeClaim']['claimName']
             claims.append({'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': name, 'namespace': target.ns},
                            'spec': claim_spec(target, 'upload-tmp', target.values['volume.upload-tmp'])})
-    stores = [] if target.local else [external(target, n) for n in ('clickhouse', 'manticore', 'manticore-vectors', 'garage')]
+    stores = [] if target.local else [external(target, n) for n in ('clickhouse', 'manticore', 'manticore-vectors', 'garage',
+                                                                    'temporal')]
     items, configs = translated(target, services, mounts, deploy)
-    shards = cfg.get('main_services', 'temporal_history_shards')
     extra = []
-    if target.cassandra:
+    if target.local:
         temporal_image = next(c['image'] for i in items if i['metadata']['name'] == 'temporal' and i['kind'] == 'Deployment'
                               for c in i['spec']['template']['spec']['containers'])
         extra.append(temporal_retention(target, cfg, temporal_image))
-    else:
-        extra += temporal_pg(target, shards)
     return [namespace, *stores, *claims, *config_maps(target, deploy, cfg, configs | {'tika-config', 'mirror'}),
             *extra, *proxy(target), *(gpu.forwarder(target.zone, target.ns) if target.site.gpu_pool else []), *items,
             *network(target)]

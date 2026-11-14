@@ -38,7 +38,7 @@ The steps run in this order. A finished step does not run again, so the command 
   record    Records the Temporal namespaces, search attributes, workflow counts and open workflows with their histories,
             the row counts of each ClickHouse table, the Manticore tables and the Garage buckets with their aliases.
   stop      Stops Temporal, then the stores (Cassandra after nodetool drain), then every other Compose container.
-  zone      zone.py apply creates the zone with stores = local and temporal_backend = cassandra: openDesk, and the Hoover
+  zone      zone.py apply creates the zone with stores = local and the Compose Temporal: openDesk, and the Hoover
             objects with zero replicas. The step removes the garage-init Jobs, so no bucket of the zone exists before
             the renames.
   images    Saves each store and Temporal image on the source node and imports it into the containerd of the --home node.
@@ -100,8 +100,8 @@ STORE_CONTAINERS = ('temporal-cassandra', 'temporal-elasticsearch', 'temporal', 
 WORKER_CLAIM = 'worker-temp-files-hoover-workers-0'
 # The image of the short pods that bind and fill the claims: the pinned image of the operator portal.
 BIND_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
-# The store layout of an imported zone: the Compose stores in the Hoover namespace, and Temporal on Cassandra.
-ZONE_VALUES = {'stores': 'local', 'temporal_backend': 'cassandra'}
+# The store layout of an imported zone: the Compose stores and the Compose Temporal in the Hoover namespace.
+ZONE_VALUES = {'stores': 'local'}
 HISTORY_SHARDS = 'main_services.temporal_history_shards'
 
 
@@ -629,7 +629,7 @@ def remove_garage_init(ns):
 def create_zone(r):
     inputs = r.inputs
     argv = [sys.executable, K3S / 'zones' / 'zone.py', 'apply', r.zone,
-            '--stores', ZONE_VALUES['stores'], '--temporal-backend', ZONE_VALUES['temporal_backend']]
+            '--stores', ZONE_VALUES['stores']]
     result = subprocess.run([str(a) for a in argv])
     if result.returncode:
         raise StepFailed(f'zone.py apply {r.zone} failed with exit code {result.returncode}. Run the import again to '

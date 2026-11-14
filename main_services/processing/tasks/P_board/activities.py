@@ -21,6 +21,7 @@ request (`conversion.py`), and submits it. Every text of a board is in the board
 (`board_language`).
 """
 
+from tasks import temporal_client
 import asyncio
 import json
 import logging
@@ -196,10 +197,9 @@ def _reconcile(stale: list[tuple[str, object]]) -> list[tuple[str, str, dict]]:
     `(board_id, request_id, body)`. A fact that the intent wrote without its event names
     itself, so its explore concludes in that fact."""
     from database import boards
-    from temporalio.client import Client
 
     async def run() -> list:
-        client = await Client.connect("temporal:7233")
+        client = await temporal_client.connect()
         ends = []
         for board_id, intent in stale:
             closed, status = await _workflow_closed(client, m.explore_workflow_id(board_id, intent.intent_id))

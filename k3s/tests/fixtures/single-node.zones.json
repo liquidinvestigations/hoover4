@@ -1,7 +1,6 @@
 {
  "schemaVersion": 1,
  "zones": {
-  "zone-a": {"enabled": true, "namespaces": ["zone-a", "hoover-zone-a"], "stores": "local",
-             "temporal_backend": "cassandra"}
+  "zone-a": {"enabled": true, "namespaces": ["zone-a", "hoover-zone-a"], "stores": "local"}
  }
 }

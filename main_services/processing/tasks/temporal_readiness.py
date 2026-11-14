@@ -9,7 +9,8 @@ The gate probes Temporal every second. One probe is four calls, in this order, e
 with a timeout of ``PROBE_TIMEOUT_SECONDS``:
 
 1. the frontend health check;
-2. a describe of the namespace ``default``, which reads Cassandra;
+2. a describe of the namespace of the installation (``tasks/temporal_client.py``), which
+   reads Cassandra;
 3. a list of one workflow;
 4. a describe of the collector workflow ``collect-eta-samples``, which reads a history
    shard. A ``NOT_FOUND`` answer counts as good, because the collector does not exist on
@@ -32,6 +33,8 @@ import asyncio
 import time
 from datetime import timedelta
 
+from tasks.temporal_client import TEMPORAL_ADDRESS, namespace
+
 # Mirrored in website/backend/src/temporal_ready.rs.
 READY_STABLE_SECONDS = 5
 READY_DEADLINE_SECONDS = 60
@@ -50,7 +53,6 @@ CONNECT_TIMEOUT_SECONDS = 30
 #: The limit on each start request of a start path, given to the SDK as `rpc_timeout`.
 START_RPC_TIMEOUT = timedelta(seconds=30)
 
-TEMPORAL_ADDRESS = "temporal:7233"
 
 
 class TemporalNotReady(RuntimeError):
@@ -73,10 +75,10 @@ async def probe(client) -> None:
     if not await _call(client.service_client.check_health(timeout=rpc_timeout)):
         raise RuntimeError("the Temporal frontend reports that it is not serving")
     await _call(client.workflow_service.describe_namespace(
-        DescribeNamespaceRequest(namespace="default"), timeout=rpc_timeout,
+        DescribeNamespaceRequest(namespace=namespace()), timeout=rpc_timeout,
     ))
     await _call(client.workflow_service.list_workflow_executions(
-        ListWorkflowExecutionsRequest(namespace="default", page_size=1), timeout=rpc_timeout,
+        ListWorkflowExecutionsRequest(namespace=namespace(), page_size=1), timeout=rpc_timeout,
     ))
     try:
         await _call(client.get_workflow_handle(COLLECTOR_WORKFLOW_ID).describe(
@@ -115,8 +117,8 @@ async def wait_for_temporal(client, clock=time.monotonic, sleep=asyncio.sleep,
 
 async def connect_when_ready(address: str = TEMPORAL_ADDRESS):
     """Connect within 30 s, then wait for the gate. Return the client."""
-    from temporalio.client import Client
+    from tasks.temporal_client import connect
 
-    client = await asyncio.wait_for(Client.connect(address), CONNECT_TIMEOUT_SECONDS)
+    client = await asyncio.wait_for(connect(address), CONNECT_TIMEOUT_SECONDS)
     await wait_for_temporal(client)
     return client

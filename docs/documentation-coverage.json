@@ -3251,6 +3251,22 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability changes the store pods and the site file. No page of the portal or of a zone application changes."
+    },
+    {
+      "id": "F-admin-60",
+      "source": [
+        "k3s/hoover/stores/temporal.py",
+        "k3s/hoover/setup.py",
+        "main_services/processing/tasks/temporal_client.py",
+        "website/backend/src/temporal_ready.rs",
+        "k3s/tools/tenant-isolation-check.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#share-temporal-in-a-site"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability changes the Temporal pods, the site file and the connection of the services. No page of the portal or of a zone application changes."
     }
   ],
   "routes": {

@@ -5,14 +5,14 @@ This table names every service of the Compose files and its form in the cluster.
 The render suite compares the two, and it compares both with the Compose files of both sides.
 A Compose service without a row stops the render with an error that names the service and its file.
 
-The render has two store layouts and two Temporal backends.
-The site file sets both for each Hoover installation.
-See [the k3s Readme](Readme.md) for the site file.
+The render has two store layouts. The zone state sets the layout of each Hoover installation.
+See [the k3s Readme](Readme.md) for the zone state.
 
-- The local layout runs the Compose stores in the Hoover namespace on claims of one node.
-- The zone layout runs ClickHouse, Manticore and Garage in Kata on block volumes in the zone namespace.
-- The `cassandra` backend runs Temporal, Cassandra and Elasticsearch as Compose runs them.
-- The `postgresql` backend runs Temporal on the PostgreSQL of the zone. Existing remote zones use it.
+- The local layout runs the Compose stores, and Temporal on Cassandra and Elasticsearch, in the Hoover namespace on
+  claims of one node, as Compose runs them.
+- The site layout (column "Zone layout") uses the shared ClickHouse, Garage and Temporal of the site
+  ([hoover/stores/shared.py](hoover/stores/shared.py), [hoover/stores/temporal.py](hoover/stores/temporal.py)), and
+  runs Manticore in Kata on block volumes in the zone namespace.
 
 ## Services
 
@@ -41,9 +41,9 @@ See [the k3s Readme](Readme.md) for the site file.
 | `garage` | store | `docker-compose.yaml` | StatefulSet on the claims `garage-meta` and `garage-data` | ExternalName to the zone store | `garage.toml` is a ConfigMap. |
 | `zookeeper` | store | `docker-compose.yaml` | StatefulSet without a claim | Not rendered | The ClickHouse override names it. The zone ClickHouse has its own configuration. |
 | `garage-init` | store-init | `docker-compose.yaml` | Job for each source revision | setup.py creates the buckets and keys | The capacity follows the size of the claim `garage-data`. |
-| `temporal` | temporal | `docker-compose.yaml` | Deployment on Cassandra and Elasticsearch | Deployment on Cassandra and Elasticsearch, or on the zone PostgreSQL | The dynamic configuration is a ConfigMap. A Job sets the retention of the default namespace. |
-| `temporal-cassandra` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-cassandra` | Same with the `cassandra` backend | Same image as Compose. |
-| `temporal-elasticsearch` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-elasticsearch` | Same with the `cassandra` backend | Same image as Compose. |
+| `temporal` | temporal | `docker-compose.yaml` | Deployment on Cassandra and Elasticsearch | Not rendered. The ExternalName Service `temporal` names the Temporal of the site, and the zone uses its own namespace and key. | The dynamic configuration is a ConfigMap. In the local layout a Job sets the retention of the namespace `default`. |
+| `temporal-cassandra` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-cassandra` | Not rendered. The site runs one Cassandra cluster for its Temporal. | Same image as Compose. |
+| `temporal-elasticsearch` | temporal-store | `docker-compose.yaml` | StatefulSet on the claim `temporal-elasticsearch` | Not rendered. The site runs one OpenSearch cluster for the Temporal visibility index. | Same image as Compose. |
 | `temporal-ui` | ui | `docker-compose.yaml` | Deployment and Service, no ingress | Not rendered | The development relay of a later stage makes the interfaces reachable. |
 | `clickhouse-monitoring` | ui | `docker-compose.yaml` | Deployment on the claim `clickhouse-monitoring` | Not rendered | The zone layout has no operator user of its stores. |
 | `ch-ui` | ui | `docker-compose.yaml` | Deployment and Service, no ingress | Not rendered | Same as above. |

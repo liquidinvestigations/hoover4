@@ -16,9 +16,9 @@ Each kind has its own procedure. Do not use the procedure of one kind for anothe
 ## Adopt an earlier cluster
 
 The site keeps the zone names, the claims, the database prefixes, the buckets and the service users of the earlier cluster.
-The existing zones keep the zone store layout (`stores = zone`) and the PostgreSQL Temporal backend.
+The existing zones keep the zone store layout (`stores = zone`), which the installer refuses to apply. Their Temporal ran on the PostgreSQL of the zone, which this version does not run.
 The storage names of a zone come from its zone name, so an existing zone keeps them only when the earlier cluster used the same names.
-No step converts the Temporal backend.
+No step converts the stores or the Temporal history of a zone to the shared stores and the Temporal of the site. Delete such a zone and create it again.
 
 1. Write the site file with the nodes, and write the zone state `zone-state.json` of the state folder with one entry for each zone.
 2. Compare the cluster with the site file. The command changes nothing.

@@ -55,7 +55,7 @@ def test_single_node_needs_no_network_or_public_address():
 
 def test_a_zone_derives_its_storage_names_and_has_the_defaults():
     hoover = config.zone_hoover('zone-x', {'enabled': True})
-    assert (hoover.name, hoover.namespace, hoover.stores, hoover.temporal_backend) == ('zone-x', 'hoover-zone-x', 'zone', 'postgresql')
+    assert (hoover.name, hoover.namespace, hoover.stores, hoover.temporal) == ('zone-x', 'hoover-zone-x', 'zone', 'zone')
     assert hoover.identity() == {'HOOVER4_CLICKHOUSE_DB_PREFIX': 'zone_x', 'HOOVER4_MANTICORE_TABLE_PREFIX': 'zone_x_',
                                  'S3_SYSTEM_BUCKET': 'zone-x-system', 'S3_COLLECTION_BUCKET_PREFIX': 'zone-x-c-'}
     patterns = json.loads(config.STORAGE_IDENTITY.read_text())['settings']
@@ -72,12 +72,12 @@ def test_the_zone_state_values_are_checked_against_the_site(tmp_path):
     assert config.hoovers(site)['zone-a'].stores == 'site' and config.hoovers(site)['zone-b'].stores == 'zone'
     assert config.zones_problems(site) == []
     bad = {'zones': {'zone-a': {'enabled': True, 'home': 'calls', 'stores': 'nfs'},
-                     'zone-b': {'enabled': True, 'home': 'nowhere', 'temporal_backend': 'mysql'}}}
+                     'zone-b': {'enabled': True, 'home': 'nowhere', 'temporal': 'postgresql'}}}
     message = '\n'.join(config.zones_problems(site, bad))
     assert 'the zone zone-a has stores = nfs, which is not one of zone, local, site.' in message
     # A zone has no home node. An old value home has no effect on the checks or the placement.
     assert 'home' not in message
-    assert 'the zone zone-b has temporal_backend = mysql' in message
+    assert 'the zone zone-b has temporal = postgresql, which is not one of zone, site.' in message
     with pytest.raises(config.SiteError, match='stores = nfs'):
         config.hoovers(site, bad)
     # A site file without a zone state has no zone.

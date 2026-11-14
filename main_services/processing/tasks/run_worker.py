@@ -1,12 +1,12 @@
 """Temporal worker entry points for processing queues."""
 
+from tasks import temporal_client
 import asyncio
 import concurrent.futures
 import logging
 import os
 import signal
 from datetime import timedelta
-from temporalio.client import Client
 from temporalio.worker import (
     FixedSizeSlotSupplier, ResourceBasedSlotConfig, ResourceBasedSlotSupplier,
     ResourceBasedTunerConfig, Worker, WorkerTuner,
@@ -511,7 +511,7 @@ async def run_common_worker():
     from .visibility import ensure_search_attributes
 
     log.info("Starting common worker...")
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await ensure_search_attributes(client)
 
     # Self-scheduling ETA sampler for the admin processing page. A singleton:
@@ -756,7 +756,7 @@ async def run_tika_worker():
     from .visibility import ensure_search_attributes
 
     log.info("Starting Tika worker...")
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await ensure_search_attributes(client)
     CONCURRENCY = worker_concurrency("tika", 4)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
@@ -788,7 +788,7 @@ async def run_clamav_worker():
     from .visibility import ensure_search_attributes
 
     log.info("Starting ClamAV worker...")
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await ensure_search_attributes(client)
     CONCURRENCY = worker_concurrency("clamav", 4)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
@@ -835,7 +835,7 @@ async def run_ocr_worker():
     from .visibility import ensure_search_attributes
 
     log.info("Starting OCR worker...")
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await ensure_search_attributes(client)
     image_slots = worker_concurrency("ocr", 4)
     pdf_slots = worker_concurrency("ocr_pdf", 2)
@@ -898,7 +898,7 @@ def make_preview_worker(client, executor, slots):
 async def run_preview_worker():
     from .visibility import ensure_search_attributes
     log.info("Starting preview worker...")
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     await ensure_search_attributes(client)
     slots = worker_concurrency("pdf_preview", 2)
     with concurrent.futures.ThreadPoolExecutor(max_workers=slots) as executor:
@@ -910,7 +910,7 @@ async def run_nlp_worker():
   from .P4_extract_entities.activities import extract_entities_for_hashes
   from .visibility import ensure_search_attributes
   log.info("Starting NLP worker...")
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   await ensure_search_attributes(client)
   # NER slots match the remote admission window.
   # The activity retries busy answers with Retry-After and a persisted busy budget.
@@ -937,7 +937,7 @@ async def run_embed_worker():
   from .P5_chunk_embed.activities import chunk_embed_for_hashes
   from .visibility import ensure_search_attributes
   log.info("Starting Embed worker...")
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   await ensure_search_attributes(client)
   await _probe_embeddings_at_startup("embed worker")
   # Same reasoning as the NLP tier: match the embeddings server's admission window
@@ -973,7 +973,7 @@ async def run_indexing_worker():
   from .P_admin.updates.page_text import rewrite_page_text
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   await ensure_search_attributes(client)
   # `index_vectors` builds Manticore `_vectors` tables from the probed dimension, and a
   # table's knn_dims is fixed at creation. This worker needs the probe as much as P5.
@@ -1011,7 +1011,7 @@ async def run_index_planner_worker():
   from .P3_parse_files.table_generations import apply_table_generation_command
   from .visibility import ensure_search_attributes
   log.info("Starting Index planner worker...")
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   await ensure_search_attributes(client)
   CONCURRENCY = 1
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
@@ -1041,7 +1041,7 @@ async def run_email_graph_worker():
   from .P6_index_data.workflows import EMAIL_GRAPH_TASK_QUEUE
   from .visibility import ensure_search_attributes
   log.info("Starting Email graph worker...")
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   await ensure_search_attributes(client)
   CONCURRENCY = 1
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
@@ -1143,7 +1143,7 @@ async def run_chat_worker():
   log.info("Starting Chat worker...")
   # A missing or invalid policy handler stops the worker here, before it takes a turn.
   log.info("chat control handlers: %s", ", ".join(sorted(control_registry.load())))
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   await ensure_search_attributes(client)
   # An empty key yields 3, 8 and 16. The ini sets 3, 4 and 16.
   model_slots = worker_concurrency("chat_model", 3)
@@ -1268,7 +1268,7 @@ async def run_operations_worker():
   from .P_agent.supervise import supervise_agent_runs
   from .visibility import ensure_search_attributes
   log.info("Starting Operations worker...")
-  client = await Client.connect("temporal:7233")
+  client = await temporal_client.connect()
   attach_temporal_client(client)
   await ensure_search_attributes(client)
 

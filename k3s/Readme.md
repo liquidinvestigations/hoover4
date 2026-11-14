@@ -150,7 +150,7 @@ The site file names no zone. The zone state `zone-state.json` holds the zones, a
 The cluster holds the authoritative zone state (see [the cluster copy of the state](#keep-the-state-in-the-cluster)). `zone.py` takes the site operation lock, reads the cluster copy into the state folder and writes its changes back.
 
 ```sh
-python3 k3s/zones/zone.py apply zone-x [--stores site|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
+python3 k3s/zones/zone.py apply zone-x [--stores site|local] [--dataset name:node:/path]
 python3 k3s/zones/zone.py delete zone-x
 ```
 
@@ -162,8 +162,8 @@ python3 k3s/zones/zone.py delete zone-x
   scheduler binds it on a node with that tier and free capacity, and its pod then stays on that node (TopoLVM).
 - `--home` of an earlier version is accepted and has no effect. A zone entry with a `home` value keeps that node only as
   the NFS data node of the zone, when the node has the role `data`.
-- A new zone gets `stores = site` unless `--stores local` is given. `temporal_backend` has the default `postgresql`. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
-- A zone with `stores = site` adds its tenant to the [shared stores](#share-the-hoover-stores-of-a-site) at create, and `zone.py delete` removes the tenant before it deletes the namespaces.
+- A new zone gets `stores = site` and `temporal = site` unless `--stores local` is given. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
+- A zone with `stores = site` adds its tenant to the [shared stores](#share-the-hoover-stores-of-a-site) and its namespace to the [Temporal of the site](#share-temporal-in-a-site) at create, and `zone.py delete` removes both before it deletes the namespaces.
 - The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
 - `deploy-k3s up` applies each zone of the zone state again, after the platform steps.
 
@@ -277,20 +277,20 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 4. `removal <folder>` writes `remove-local-k3s.sh`. A person reviews it and runs it as root.
    The script removes the services, units, data, volumes, link and DNS setup of the site. The k3s binary, `kubectl`, `crictl`, `ctr`, the k3s scripts and `/etc/rancher/k3s/k3s.yaml` stay, because another project uses them.
 
-## Choose the stores and the Temporal backend.
+## Choose the store layout.
 
 | Zone state value | Value | Result |
 |---|---|---|
 | `stores` | `local` | The Compose stores run in the Hoover namespace on claims of one node. The operations worker mounts them, so store backup and restore work. The pods with a claim share the node of the first bound claim through a required pod affinity. |
-| `stores` | `site` | ClickHouse and Garage are the shared stores of the site. The two Manticore daemons run in Kata on block volumes in the zone namespace. Every new zone uses this layout. |
+| `stores` | `site` | ClickHouse, Garage and Temporal are shared by the site. The two Manticore daemons run in Kata on block volumes in the zone namespace. Every new zone uses this layout. |
 | `stores` | `zone` | ClickHouse, Manticore and Garage run in the zone namespace. A zone entry without `stores` is a zone of this earlier layout. The installer and `deploy-k3s check` refuse it. Delete the zone and create it again: its data does not move. |
-| `temporal_backend` | `cassandra` | Temporal, Cassandra and Elasticsearch run as in Compose, with the dynamic configuration of deploy.py. |
-| `temporal_backend` | `postgresql` | Temporal uses the PostgreSQL of the zone. Existing remote zones use this backend. No conversion between the backends exists. |
+| `temporal` | `site` | The zone uses its namespace in the Temporal of the site. Every new zone with `stores = site` gets this value. |
+| `temporal` | `zone` | With `stores = local`, Temporal, Cassandra and Elasticsearch run in the Hoover namespace as in Compose. With `stores = site`, the zone is from an earlier version whose Temporal ran on the PostgreSQL of the zone. The installer and `deploy-k3s check` refuse it. Delete the zone and create it again: its workflow history does not move. |
 
 ## Share the Hoover stores of a site.
 
 One ClickHouse and one Garage serve every zone of a site, in the namespace `hoover-stores` ([hoover/stores/shared.py](hoover/stores/shared.py)). The step `stores` of `deploy-k3s up` creates them, and each zone with `stores = site` is a tenant.
-The site file sets their nodes, copies and failover in `vars.stores`:
+The site file sets their nodes, copies and failover in `vars.stores`, and the history shard count of the [Temporal of the site](#share-temporal-in-a-site):
 
 ```yaml
 hoover4:
@@ -299,6 +299,7 @@ hoover4:
       nodes: [node-a, node-b, node-c]   # default: every node with the role worker and a storage tier
       replicas: 3                       # default: the node count, at most 3
       failover: false                   # default: false
+      history_shards: 128               # default: 128. Temporal keeps the count of its creation.
 ```
 
 - ClickHouse runs one pod. The Hoover tables are MergeTree tables without replication, so a second ClickHouse pod would hold no data. `deploy-k3s check` warns about this when `replicas` is above 1.
@@ -319,8 +320,25 @@ hoover4:
 2. When its node returns, the pod starts again with its volume, and the clients reach it.
 3. When the node of `garage-0` stays lost, set `failover: true` in the site file and run `deploy-k3s up --steps stores`. The clients then use the other Garage pods, which hold every object at a replication factor equal to the pod count.
 4. When the node of `clickhouse-0` stays lost, the ClickHouse data of every zone is lost with its volume. Restore the collections of each zone from their collection exports.
+5. Temporal reads and writes every Cassandra copy (consistency `ALL`), so Temporal stops while one Cassandra pod is down. When the node returns, the pod starts again with its volume, and Temporal continues. When a node with a Cassandra pod stays lost, set `failover: true` and run `deploy-k3s up --steps stores`. Temporal then uses a majority of the copies (`LOCAL_QUORUM`), which needs 3 copies. Then remove the lost Cassandra node from the ring with `nodetool removenode <host id>` in another Cassandra pod (`nodetool status` names the host id).
+6. When the node of `temporal-opensearch-0` stays lost, set `failover: true` as in step 3. OpenSearch holds a replica of the visibility index on each other node.
 
-`failover: true` points the client Service of each store at every ready pod. Garage then serves reads and writes while a majority of its copies is up, which needs 3 nodes. With 2 nodes it keeps a second copy, and writes stop while one node is down. `failover` cannot change from true to false: the stores step and `deploy-k3s check` refuse it.
+`failover: true` points the client Service of each store at every ready pod. Garage then serves reads and writes while a majority of its copies is up, which needs 3 nodes. With 2 nodes it keeps a second copy, and writes stop while one node is down. Temporal uses a majority of the Cassandra copies, and the OpenSearch nodes elect another cluster manager while a majority of them is up. `failover` cannot change from true to false: the stores step and `deploy-k3s check` refuse it.
+
+## Share Temporal in a site.
+
+One Temporal serves every zone of a site, in the namespace `hoover-stores` ([hoover/stores/temporal.py](hoover/stores/temporal.py)). The step `stores` of `deploy-k3s up` creates it with one Cassandra cluster for its history and one OpenSearch cluster for its visibility index. Temporal uses no PostgreSQL.
+
+- Each zone with `stores = site` has its own Temporal namespace, with the name of the zone. A zone create registers it with the retention of the setting `main_services.temporal_retention` of the zone and adds the search attribute `CollectionDataset`. A zone delete removes it.
+- The Hoover services of the zone that call Temporal (website, workers, operations, the to-do server) get `TEMPORAL_NAMESPACE` and the key of the zone in `TEMPORAL_API_KEY` from the Secret `hoover-runtime`. The key is a JWT with the permission `<zone>:write`. Temporal checks it on each request (the default authorizer and claim mapper). It permits the workflows, task queues and visibility of the zone namespace only, and no change of a namespace or of a search attribute. A request without a key or for another namespace gets `PERMISSION_DENIED`.
+- The signing key is in the Secret `temporal-auth` of `hoover-stores`. A sidecar of each Temporal pod publishes its public key on 127.0.0.1. A key has no expiry. To replace every key, delete the Secret `temporal-auth`, run `deploy-k3s up --steps stores`, then apply each zone again.
+- Cassandra and OpenSearch run one pod for each copy (`replicas`), each on another node of `nodes`, in gVisor on file system volumes. The keyspace `temporal` has the replication factor `replicas`, and the visibility index has `replicas - 1` replica shards. Temporal runs `replicas` pods with every Temporal service, preferably on different nodes.
+- `history_shards` sets the history shard count of a new Temporal. Temporal keeps it from its creation, so `deploy-k3s check` and the stores step refuse a change.
+- Sizes: Cassandra has a 6 GiB heap and a 13312 MiB limit (the Compose defaults of `deploy.py`), OpenSearch a 1.5 GiB heap and a 3584 MiB limit. Their memory requests are 3264 MiB and 1024 MiB. Each Temporal pod requests 448 MiB. The claims hold 20 GiB (Cassandra) and 10 GiB (OpenSearch) for each zone with `stores = site`, at least one zone.
+- Network: only namespaces with the label `hoover.dev/hoover` reach the frontend on 7233 (gRPC) and 7243 (HTTP). The internal frontend on 7236, which checks no key, and the other Temporal ports take only the Temporal pods. Cassandra and OpenSearch take only the Temporal pods and the schema Job.
+- [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) also checks that a zone cannot describe, list, start, signal, cancel or terminate a workflow in the namespace of another zone.
+- A zone created before the Temporal of the site has `temporal = zone` and ran its Temporal on the PostgreSQL of the zone. Delete it and create it again. Its workflow history does not move.
+- The zone copy of the backups does not hold the workflow history of a zone with `stores = site`.
 
 ## Render a Hoover installation.
 
@@ -423,7 +441,7 @@ python3 k3s/platform/mcp-relay/install-relay.py <zone> apply --ports compose
 |---|---|
 | `plan` | Checks the folders on the source node, the images, the claims and the free capacity, and pins the inputs. It saves `app.hoover = false` for the zone. |
 | `freeze`, `record`, `stop` | Stop the intake and the workers, record Temporal and the store contents, then stop Temporal and the stores. |
-| `zone` | Runs `zone.py apply` with `stores = local` and `temporal_backend = cassandra`. The Hoover objects have zero replicas. |
+| `zone` | Runs `zone.py apply` with `stores = local`, which runs the Compose Temporal in the Hoover namespace. The Hoover objects have zero replicas. |
 | `images`, `copy`, `secrets` | Import the source store images. Copy each folder into its claim with the mapped owners and a SHA-256 of every file. Write the Compose store credentials. |
 | `stores` | Starts the stores and Temporal, and compares them with the record. |
 | `renames` | Gives the databases, the Manticore tables and the Garage bucket aliases the names of the zone. Changes the bucket names of the `*s3_path` columns and the container paths of the dataset rows. |

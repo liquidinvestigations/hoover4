@@ -26,6 +26,7 @@ from temporalio.worker import (
     WorkflowInterceptorClassInput,
 )
 
+from tasks import temporal_client
 from tasks.heartbeat import HEARTBEAT_TIMEOUT, with_heartbeat
 from tasks.operation_failure_tree import (
     FailureNode,
@@ -277,11 +278,11 @@ def _describe_parent(workflow_id: str, run_id: str) -> Optional[Tuple[str, str]]
     if run_id:
         params["execution.runId"] = run_id
     url = (
-        f"{_temporal_http_base()}/api/v1/namespaces/default/workflows/"
+        f"{_temporal_http_base()}/api/v1/namespaces/{temporal_client.namespace()}/workflows/"
         f"{quote(workflow_id, safe='')}"
     )
     try:
-        response = requests.get(url, params=params, timeout=(2, 30))
+        response = requests.get(url, params=params, headers=temporal_client.http_headers(), timeout=(2, 30))
         response.raise_for_status()
         payload = response.json()
     except Exception:
@@ -337,10 +338,10 @@ def _fetch_history_http(
             if token:
                 params["nextPageToken"] = token
             url = (
-                f"{_temporal_http_base()}/api/v1/namespaces/default/workflows/"
+                f"{_temporal_http_base()}/api/v1/namespaces/{temporal_client.namespace()}/workflows/"
                 f"{quote(workflow_id, safe='')}/history"
             )
-            response = requests.get(url, params=params, timeout=(2, 30))
+            response = requests.get(url, params=params, headers=temporal_client.http_headers(), timeout=(2, 30))
             response.raise_for_status()
             payload = loads_temporal_http_json(response.text)
             events.extend(history_events(payload))

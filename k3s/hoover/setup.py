@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Prepare the store tenants and the runtime Secrets for the Hoover of one zone. Each step is idempotent.
 
-PostgreSQL (openDesk chart) and the two Manticore daemons (stores/hoover.py) run in the zone namespace. ClickHouse and
-Garage are the shared stores of the site in the namespace hoover-stores (stores/shared.py), where each zone is a tenant.
+The two Manticore daemons (stores/hoover.py) run in the zone namespace. ClickHouse, Garage and Temporal are shared by
+the site in the namespace hoover-stores (stores/shared.py, stores/temporal.py), where each zone is a tenant.
 The zone credentials are in the Secrets hoover-stores and garage-tenants of the zone namespace, so they go with the zone.
 
-- PostgreSQL: role <prefix>_temporal owns the databases <prefix>_temporal and <prefix>_temporal_visibility.
 - ClickHouse: the settings profile <prefix>, which limits the memory of one user to half of the ClickHouse limit, the
   zone user <prefix> and a user for each service (stores/service_users.py), with the passwords of hoover-stores and
   the profile <prefix>. The grants name only the databases <prefix> and <prefix>_*, so a zone user reaches no database
@@ -18,14 +17,15 @@ The zone credentials are in the Secrets hoover-stores and garage-tenants of the 
   to the zone. The keys are in the Secret garage-tenants.
 - Manticore: the zone user and the user of each service on both daemons, with the password of hoover-stores. The
   daemon starts with hoover_admin from its seed (stores/creds.py). A published bootstrap user manticore is removed.
-- Temporal: when its database holds another shard count than zone_ini.SHARDS, the step stops Temporal, creates both
-  databases again and starts Temporal, which then creates its tables with the new count. The workflow history goes.
+- Temporal: the namespace <zone> with the retention of the setting main_services.temporal_retention of the zone, and
+  the search attribute CollectionDataset. A present namespace gets the retention again and keeps its workflows.
 - Secrets hoover-runtime and oauth2-proxy in namespace hoover-<zone>. hoover-runtime holds the store credentials of
-  each service, which follow hoover-stores and garage-tenants. Other existing values stay unchanged. The GPU token
-  follows gpu.token, and the shared secrets of the MCP servers and of the browser fetch are random.
+  each service, which follow hoover-stores and garage-tenants, and the Temporal key of the zone (temporal-api-key),
+  which follows the signing key of the site. Other existing values stay unchanged. The GPU token follows gpu.token, and
+  the shared secrets of the MCP servers and of the browser fetch are random.
 The script reads credentials from cluster Secrets and never prints a credential.
 An installation with the local store layout (manifests.py) needs only the Secrets: setup.py <zone> local-secrets.
-Usage: setup.py <zone> [postgres] [garage] [clickhouse] [manticore] [secrets]    Without steps it runs all of them.
+Usage: setup.py <zone> [garage] [clickhouse] [secrets] [temporal] [manticore]    Without steps it runs all of them.
        setup.py <zone> local-secrets
 """
 import base64
@@ -38,11 +38,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import settings  # noqa: E402
-import zone_ini  # noqa: E402
 import gpu  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'stores'))
 import service_users  # noqa: E402
 import shared  # noqa: E402
+import temporal as site_temporal  # noqa: E402
 K = ['kubectl', '--kubeconfig', settings.KUBECONFIG]
 ZONES = settings.PRIVATE / 'zones/secrets.json'
 ZONE = sys.argv[1]
@@ -86,41 +86,12 @@ def ensure_secret(name, wanted, follow=(), drop=()):
     return data
 
 
-def postgres(runtime):
-    role = f'{PREFIX}_temporal'
-    # The password goes in through stdin, so it is not on a command line.
-    sql = (f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{role}') THEN "
-           f"CREATE ROLE {role} LOGIN PASSWORD '{runtime['temporal-db-password']}'; END IF; END $$;\n")
-    for db in (role, f'{role}_visibility'):
-        sql += (f"SELECT 'CREATE DATABASE {db} OWNER {role}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec\n"
-                f"REVOKE ALL ON DATABASE {db} FROM PUBLIC;\n")
-    kubectl('-n', STORES, 'exec', '-i', 'postgresql-0', '-c', 'postgresql', '--', 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-q',
-            input=sql)
-    print(json.dumps({'step': 'postgres', 'role': role}))
-
-
-def psql(sql, database='postgres', check=True):
-    return kubectl('-n', STORES, 'exec', '-i', 'postgresql-0', '-c', 'postgresql', '--', 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres',
-                   '-qtA', '-d', database, input=sql, check=check)
-
-
-def temporal_shards(runtime):
-    role = f'{PREFIX}_temporal'
-    found = psql('SELECT count(*) FROM shards;', role, check=False)
-    count = int(found.stdout.strip() or 0) if found.returncode == 0 else 0
-    if count in (0, zone_ini.SHARDS):
-        print(json.dumps({'step': 'temporal-shards', 'shards': count or None, 'change': 'none'}))
-        return
-    present = kubectl('-n', NS, 'get', 'deployment', 'temporal', check=False).returncode == 0
-    if present:
-        kubectl('-n', NS, 'scale', 'deployment', 'temporal', '--replicas=0')
-        kubectl('-n', NS, 'wait', '--for=delete', 'pod', '-l', 'app.kubernetes.io/name=temporal', '--timeout=180s', check=False)
-    for db in (role, f'{role}_visibility'):
-        psql(f'DROP DATABASE IF EXISTS {db} WITH (FORCE);')
-    postgres(runtime)
-    if present:
-        kubectl('-n', NS, 'scale', 'deployment', 'temporal', '--replicas=1')
-    print(json.dumps({'step': 'temporal-shards', 'shards': count, 'change': f'reset to {zone_ini.SHARDS}'}))
+def temporal(runtime):
+    """Create or update the Temporal namespace of the zone in the Temporal of the site (stores/temporal.py)."""
+    retention = site_temporal.retention_of(ZONE)
+    site_temporal.register(ZONE, retention)
+    print(json.dumps({'step': 'temporal', 'namespace': ZONE, 'retention': retention,
+                      'key': 'temporal-api-key' in runtime}))
 
 
 def garage_keys(listed):
@@ -211,10 +182,11 @@ def runtime_secrets():
             key = tenants[service_users.garage_key(ZONE, service)]
             stored[f's3-access-key-{service}'], stored[f's3-secret-key-{service}'] = key['access_key'], key['secret_key']
     runtime = ensure_secret('hoover-runtime', {
-        **stored, 'proxy-secret': secrets.token_hex(32), 'temporal-db-password': secrets.token_hex(24),
+        **stored, 'proxy-secret': secrets.token_hex(32), 'temporal-api-key': site_temporal.token(ZONE),
         'gpu-token': gpu.token(ZONE), 'mcp-shared-secret': secrets.token_hex(32), 'browser-fetch-token': secrets.token_hex(32),
         'factcheck-api-key': ''},
-        follow=('gpu-token', *stored), drop=('clickhouse-password', 'manticore-password', 's3-access-key', 's3-secret-key'))
+        follow=('gpu-token', 'temporal-api-key', *stored),
+        drop=('clickhouse-password', 'manticore-password', 's3-access-key', 's3-secret-key', 'temporal-db-password'))
     ensure_secret('oauth2-proxy', {'client-secret': zone_data['hoover_oidc_secret'], 'cookie-secret': secrets.token_hex(16),
                                    'proxy-secret': runtime['proxy-secret']}, follow=('client-secret',))
     print(json.dumps({'step': 'secrets', 'namespace': NS, 'secrets': ['hoover-runtime', 'oauth2-proxy']}))
@@ -250,7 +222,7 @@ def main():
             apply({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {'hoover.dev/zone': 'true'}}})
         local_secrets()
         return
-    steps = sys.argv[2:] or ['garage', 'clickhouse', 'secrets', 'postgres', 'manticore']
+    steps = sys.argv[2:] or ['garage', 'clickhouse', 'secrets', 'temporal', 'manticore']
     if kubectl('get', 'namespace', NS, check=False).returncode:
         apply({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {'hoover.dev/zone': 'true', shared.HOOVER_LABEL: 'true'}}})
     # The garage step creates the service keys, which the secrets step copies.
@@ -258,10 +230,9 @@ def main():
         garage()
     if 'clickhouse' in steps:
         clickhouse()
-    runtime = runtime_secrets() if 'secrets' in steps or 'postgres' in steps else None
-    if 'postgres' in steps:
-        postgres(runtime)
-        temporal_shards(runtime)
+    runtime = runtime_secrets() if 'secrets' in steps or 'temporal' in steps else None
+    if 'temporal' in steps:
+        temporal(runtime)
     if 'manticore' in steps:
         manticore()
 

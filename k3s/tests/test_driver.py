@@ -268,7 +268,18 @@ def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(
     # zone-b of the fixture is a zone of the earlier store layout, and the site has three store nodes.
     assert any(p.startswith('the zone zone-b keeps its ClickHouse and Garage in its zone namespace') for p in problems)
     assert not any('zone-a keeps' in p for p in problems)
+    # zone-a of the fixture uses the Temporal of the site, so no problem names its Temporal.
+    assert not any('Temporal on the PostgreSQL' in p for p in problems)
     assert any('ClickHouse runs one copy' in w for w in state['store_warnings'])
+
+
+def test_check_names_a_site_zone_of_the_earlier_temporal(env):
+    ctx = env.make('remote.yml')
+    state = json.loads((env.private / 'zone-state.json').read_text())
+    del state['zones']['zone-a']['temporal']
+    (env.private / 'zone-state.json').write_text(json.dumps(state))
+    problems, _ = deploy.check(ctx, ['server-a'])
+    assert any(p.startswith('the zone zone-a runs its own Temporal on the PostgreSQL of the zone') for p in problems)
 
 
 def test_check_refuses_turning_failover_off(env, monkeypatch):

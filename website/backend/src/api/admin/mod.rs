@@ -27,7 +27,8 @@ pub(crate) fn temporal_ui_base() -> String {
 /// Deep link to one operation in the Temporal UI. `op_id` is the workflow id.
 pub(crate) fn operation_temporal_url(op_id: &str) -> String {
     format!(
-        "{}/namespaces/default/workflows/{op_id}",
-        temporal_ui_base()
+        "{}/namespaces/{}/workflows/{op_id}",
+        temporal_ui_base(),
+        crate::temporal_ready::temporal_namespace()
     )
 }

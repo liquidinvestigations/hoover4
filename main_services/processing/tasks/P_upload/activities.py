@@ -10,6 +10,8 @@ activities run there beside `IngestUploadBatches`.
 
 from __future__ import annotations
 
+from tasks import temporal_client
+
 import asyncio
 import logging
 import os
@@ -212,10 +214,9 @@ def cancel_upload_operation(op_id: str) -> str:
 
 async def _cancel_operation(op_id: str) -> str:
     import temporalio.common
-    from temporalio.client import Client
     from temporalio.exceptions import WorkflowAlreadyStartedError
 
-    client = await Client.connect("temporal:7233")
+    client = await temporal_client.connect()
     finalizer_id = f"cancel-{op_id}"
     try:
         handle = await client.start_workflow(

@@ -49,7 +49,7 @@ def test_historical_reindex_decodes_string_and_waits_for_plans(monkeypatch):
     def collection_client(_collectionname):
         yield _CollectionClient()
 
-    async def connect(_target):
+    async def connect(_target, **_options):
         return temporal
 
     monkeypatch.setattr(clickhouse, "get_collection_client", collection_client)

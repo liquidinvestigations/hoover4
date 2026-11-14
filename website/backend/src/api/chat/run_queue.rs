@@ -119,7 +119,7 @@ pub fn turn_verdict(
 fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        crate::temporal_ready::temporal_http()
             .timeout(DESCRIBE_TIMEOUT)
             .build()
             .expect("the describe client builds from constant settings")
@@ -182,7 +182,7 @@ pub async fn run_step_state(workflow_id: &str) -> StepState {
     if let Some(state) = cached(state_cache(), workflow_id) {
         return state;
     }
-    let state = get_json(&format!("/api/v1/namespaces/default/workflows/{workflow_id}"))
+    let state = get_json(&format!("{}/workflows/{workflow_id}", crate::temporal_ready::namespace_path()))
         .await
         .map_or(StepState::Idle, |body| step_state(&body));
     remember(state_cache(), workflow_id, state);
@@ -203,7 +203,8 @@ pub async fn queue_has_poller(task_queue: &str) -> bool {
         return answer;
     }
     let answer = get_json(&format!(
-        "/api/v1/namespaces/default/task-queues/{task_queue}?taskQueueType=TASK_QUEUE_TYPE_ACTIVITY"
+        "{}/task-queues/{task_queue}?taskQueueType=TASK_QUEUE_TYPE_ACTIVITY",
+        crate::temporal_ready::namespace_path()
     ))
     .await
     .is_some_and(|body| has_poller(&body));

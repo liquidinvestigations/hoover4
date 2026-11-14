@@ -47,7 +47,7 @@ def test_indexing_worker_registers_entity_publication_on_its_queue(monkeypatch):
     def worker(*args, **kwargs):
         captured.update(kwargs)
         return object()
-    monkeypatch.setattr(run_worker.Client, "connect", ignore)
+    monkeypatch.setattr(run_worker.temporal_client, "connect", ignore)
     monkeypatch.setattr(visibility, "ensure_search_attributes", ignore)
     monkeypatch.setattr(run_worker, "_probe_embeddings_at_startup", ignore)
     monkeypatch.setattr(run_worker, "run_until_signalled", ignore)

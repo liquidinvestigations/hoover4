@@ -800,7 +800,8 @@ fn parse_workflow(value: &serde_json::Value, ui_base: &str) -> Option<WorkflowSu
     let run_id = execution.get("runId")?.as_str()?.to_string();
     Some(WorkflowSummary {
         temporal_url: format!(
-            "{ui_base}/namespaces/default/workflows/{workflow_id}/{run_id}/history"
+            "{ui_base}/namespaces/{}/workflows/{workflow_id}/{run_id}/history",
+            crate::temporal_ready::temporal_namespace()
         ),
         workflow_type: value
             .get("type")
@@ -859,10 +860,12 @@ pub async fn admin_list_workflows(
         collection_visibility_query(&datasets, filter)
     };
 
-    let mut request = reqwest::Client::new()
+    let mut request = crate::temporal_ready::temporal_http()
+        .build()?
         .get(format!(
-            "{}/api/v1/namespaces/default/workflows",
-            temporal_api_base()
+            "{}{}/workflows",
+            temporal_api_base(),
+            crate::temporal_ready::namespace_path()
         ))
         .query(&[("pageSize", page_size.clamp(1, 200).to_string())]);
     if let Some(q) = query {

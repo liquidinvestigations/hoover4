@@ -172,7 +172,7 @@ def test_cli_starts_one_finalizer_and_waits(monkeypatch):
             starts.append((args, kwargs))
             return Handle()
 
-    async def connect(_target):
+    async def connect(_target, **_options):
         return Client()
 
     monkeypatch.setattr(temporalio.client.Client, "connect", staticmethod(connect))
@@ -202,7 +202,7 @@ def test_cli_reuses_finished_finalizer(monkeypatch):
             assert workflow_id == "cancel-op"
             return Handle()
 
-    async def connect(_target):
+    async def connect(_target, **_options):
         return Client()
 
     monkeypatch.setattr(temporalio.client.Client, "connect", staticmethod(connect))
@@ -238,7 +238,7 @@ def test_cancel_target_waits_for_closed_history(monkeypatch):
         def get_workflow_handle(self, _op_id):
             return Handle()
 
-    async def connect(_target):
+    async def connect(_target, **_options):
         return Client()
 
     monkeypatch.setattr(temporalio.client.Client, "connect", staticmethod(connect))

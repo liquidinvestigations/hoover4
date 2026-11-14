@@ -2,7 +2,7 @@
 """Create, upgrade or delete one zone: openDesk, its stores and its Hoover. This is the one installer command of a zone.
 
 Usage:
-  zone.py apply <zone> [--stores site|local] [--temporal-backend postgresql|cassandra]
+  zone.py apply <zone> [--stores site|local]
                 [--dataset name:node:/path ...]
                                           create the zone, or bring it to the source state. The options set the
                                           values of a new zone (zonestate.py), and each option must match for an
@@ -32,13 +32,14 @@ The steps of apply, in order:
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      gate.py adds the sign-in service of the zone gate.
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
-     stores = site (every new zone) gets a tenant in the shared ClickHouse and Garage of the site, which deploy-k3s up
-     creates (step stores, ../hoover/stores/shared.py), and its own Manticore daemons. A zone with stores = local in
-     the zone state gets its Secrets from setup.py local-secrets and its objects from manifests.py. A zone with
-     stores = zone, from an earlier version, is refused: delete it and create it again.
+     stores = site (every new zone, with temporal = site) gets a tenant in the shared ClickHouse, Garage and Temporal
+     of the site, which deploy-k3s up creates (step stores, ../hoover/stores/shared.py and temporal.py), and its own
+     Manticore daemons. A zone with stores = local in the zone state gets its Secrets from setup.py local-secrets and
+     its objects from manifests.py, with the Compose Temporal in its Hoover namespace. A zone with stores = zone, or
+     with stores = site and temporal = zone, is from an earlier version and is refused: delete it and create it again.
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
-and profile, and its Garage buckets and keys. The operations pod of the zone empties the buckets. A disabled zone has
-no such pod, so its non-empty buckets and its Garage keys stay, and the log names them.
+and profile, its Garage buckets and keys, and its Temporal namespace. The operations pod of the zone empties the
+buckets. A disabled zone has no such pod, so its non-empty buckets and its Garage keys stay, and the log names them.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -110,8 +111,8 @@ def register(zone, home=None, values=None):
     """Add a new zone to the zone state, or check that an existing zone has the given values.
 
     values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A new zone gets the store
-    layout site unless values names local. home is the home node argument of an earlier version. It has no effect, and
-    a new entry does not record it.
+    layout site unless values names local. A new zone of the layout site gets the Temporal of the site (temporal =
+    site). home is the home node argument of an earlier version. It has no effect, and a new entry does not record it.
     """
     import config
     values = {k: v for k, v in (values or {}).items() if v not in (None, '', [], ())}
@@ -127,6 +128,8 @@ def register(zone, home=None, values=None):
             raise SystemExit('a new zone cannot use the store layout zone of an earlier version. Use site or local.')
         # bootstrapped turns true after the first complete openDesk install (opendesk()).
         entry = {'enabled': True, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, 'stores': 'site', **values}
+        if entry['stores'] == 'site':
+            entry['temporal'] = 'site'
         problems = config.zone_problems(zone, entry, settings.SITE)
         if problems:
             raise SystemExit('; '.join(problems))
@@ -392,7 +395,10 @@ def hoover(zone):
     if installation.stores == 'zone':
         raise SystemExit(f'{zone} keeps its ClickHouse and Garage in its zone namespace, from an earlier version. Its data '
                          'does not move to the shared stores of the site. Delete the zone and create it again.')
-    # ClickHouse and Garage are the shared stores of the site (../hoover/stores/shared.py). Their claims grow with the
+    if installation.temporal == 'zone':
+        raise SystemExit(f'{zone} runs its own Temporal on the PostgreSQL of the zone, from an earlier version. Its workflow '
+                         'history does not move to the Temporal of the site. Delete the zone and create it again.')
+    # ClickHouse, Garage and Temporal are shared by the site (../hoover/stores/shared.py). Their claims grow with the
     # zone count. The Manticore daemons run in the zone namespace.
     run(sys.executable, STORES / 'shared.py', 'ready')
     run(sys.executable, STORES / 'shared.py', 'grow')
@@ -488,7 +494,6 @@ def main():
     parser.add_argument('zone')
     parser.add_argument('--home', help='accepted for an earlier version, without effect')
     parser.add_argument('--stores')
-    parser.add_argument('--temporal-backend')
     parser.add_argument('--dataset', action='append', default=[], help='name:node:/path of a read-only dataset folder')
     args = parser.parse_args()
     if not zonestate_name(args.zone):
@@ -498,8 +503,7 @@ def main():
         if args.command == 'delete':
             delete(args.zone)
             return
-        apply(args.zone, args.home, {'stores': args.stores, 'temporal_backend': args.temporal_backend,
-                                     'extra_datasets': args.dataset})
+        apply(args.zone, args.home, {'stores': args.stores, 'extra_datasets': args.dataset})
 
 
 @contextlib.contextmanager

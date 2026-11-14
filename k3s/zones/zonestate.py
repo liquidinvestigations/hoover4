@@ -4,9 +4,9 @@ zone-state.json of the state folder of the site (../settings.py PRIVATE) is the 
 file names no zone. Each entry names whether the zone is enabled, the namespaces that it owns, and
 whether its first openDesk install completed (bootstrapped, which zone.py writes for a new zone). The value stores of
 the Hoover installation of the zone is site for a new zone (the shared ClickHouse and Garage of the site), local for a
-Compose import, and zone for an entry without the value, from an earlier version (../config.py ZONE_VALUES).
-temporal_backend (postgresql or cassandra) has the default postgresql. extra_datasets lists read-only dataset folders
-of data nodes as name:node:/path.
+Compose import, and zone for an entry without the value, from an earlier version (../config.py ZONE_VALUES). The value
+temporal is site for a new zone of the layout site (the Temporal of the site, with a namespace for the zone), and zone
+otherwise (the default). extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
 ../config.py zone_hoover() reads these values and derives the storage names from the zone id.
 zone-state.example.json shows the format. The file is state, so Git does not track it. zone.py and the zone runner of
 the operator portal add and remove zones.
@@ -37,7 +37,8 @@ SCHEMA = 1
 TIER_ORDER = ['nvme', 'ssd', 'hdd']
 FAST = ['nvme', 'ssd', 'hdd']
 # The key "default" covers the volumes of the apps and every store that the table does not name.
-TIERS = {'default': ['hdd', '*'], 'clickhouse': FAST, 'manticore': FAST, 'manticore-vectors': FAST}
+TIERS = {'default': ['hdd', '*'], 'clickhouse': FAST, 'manticore': FAST, 'manticore-vectors': FAST,
+         'temporal-cassandra': FAST, 'temporal-opensearch': FAST}
 
 
 class ZoneStateError(RuntimeError):

@@ -4,7 +4,8 @@
 Each case opens one TCP connection from a running pod of hoover-<zone> with kubectl exec. It compares the result with
 the expected one of network() in ../hoover/manifests.py and ../hoover/stores/shared.py. A worker checks its stores,
 Temporal, the GPU forwarder and the internet. It also checks the GPU box, the Manticore of the other zone, the Garage
-RPC and admin ports of the shared stores, the openDesk stores of its zone, Prometheus and the Kubernetes API.
+RPC and admin ports of the shared stores, the internal ports of a Temporal pod of the site, the Cassandra and
+OpenSearch of Temporal, the openDesk stores of its zone, Prometheus and the Kubernetes API.
 An internet service checks the internet, the GPU box, the stores and a service of its namespace. The forwarder gpu
 checks the GPU proxy and the GPU box.
 The script prints one JSON line for each case and exits with 1 when a case has another result than expected.
@@ -32,9 +33,17 @@ def connect(namespace, deployment, container, host, port):
     return out[-1] if out else 'no output'
 
 
+def temporal_pod():
+    """The address of a Temporal pod of the site. The Service temporal publishes only the frontend ports."""
+    out = subprocess.run(['kubectl', '-n', 'hoover-stores', 'get', 'pods', '-l', 'app.kubernetes.io/name=temporal', '-o',
+                          'jsonpath={.items[0].status.podIP}'], capture_output=True, text=True, timeout=60).stdout.strip()
+    return out or 'temporal-pod-not-found'
+
+
 def cases(zone, other):
     import gpu
     box = gpu.site_pool()['address']
+    temporal = temporal_pod()
     stores = [('shared ClickHouse', 'clickhouse', 8123, True), ('shared ClickHouse native', 'clickhouse', 9000, True),
               ('own Manticore', 'manticore', 9306, True), ('shared Garage', 'garage', 3900, True), ('Temporal', 'temporal', 7233, True)]
     garage_pod = 'garage-0.garage-peers.hoover-stores.svc.cluster.local'
@@ -47,6 +56,10 @@ def cases(zone, other):
         (worker, 'Manticore of the other zone', f'manticore.{other}.svc.cluster.local', 9306, False),
         (worker, 'Garage RPC', garage_pod, 3901, False),
         (worker, 'Garage admin', garage_pod, 3903, False),
+        (worker, 'Temporal internal frontend', temporal, 7236, False),
+        (worker, 'Temporal history', temporal, 7234, False),
+        (worker, 'Temporal Cassandra', 'temporal-cassandra-0.temporal-cassandra-peers.hoover-stores.svc.cluster.local', 9042, False),
+        (worker, 'Temporal OpenSearch', 'temporal-opensearch.hoover-stores.svc.cluster.local', 9200, False),
         (worker, 'openDesk Redis of the zone', f'redis-master.{zone}.svc.cluster.local', 6379, False),
         (worker, 'Prometheus', 'monitor-kube-prometheus-st-prometheus.monitoring.svc.cluster.local', 9090, False),
         (worker, 'Kubernetes API', 'kubernetes.default.svc.cluster.local', 443, False),

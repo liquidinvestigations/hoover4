@@ -40,13 +40,13 @@ class TableGenerationCommand:
 
 def send_command(command: GenerationCommand, *, deadline_seconds: float = 120) -> int:
     """Wait for a short command without retaining cell data in workflow history."""
-    from temporalio.client import Client
+    from tasks import temporal_client
 
     async def send():
         import time
         from tasks.heartbeat import stop_if_worker_is_stopping
         from tasks.temporal_readiness import CONNECT_TIMEOUT_SECONDS, START_RPC_TIMEOUT, TEMPORAL_ADDRESS
-        client = await asyncio.wait_for(Client.connect(TEMPORAL_ADDRESS), CONNECT_TIMEOUT_SECONDS)
+        client = await asyncio.wait_for(temporal_client.connect(TEMPORAL_ADDRESS), CONNECT_TIMEOUT_SECONDS)
         workflow_id = f"table-generation-{command.collectionname}-{command.file_hash}"
         deadline = time.monotonic() + deadline_seconds
         owned = None

@@ -42,8 +42,6 @@ BUDGET = {
 }
 TIKA_MIN_MIB = 4096
 BROWSER_MIN_MIB = 10240
-# The Temporal history shards of a new installation. A migrated installation keeps its count.
-SHARDS = 128
 # The peak of one common process and of one more slot, with the parser tools that it starts. These are estimates until
 # a corpus run measures them.
 PROCESS_MIB = 1024

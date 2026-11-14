@@ -895,7 +895,7 @@ async fn start_operation_workflow(
                 .unwrap_or_else(|_| serde_json::json!({})),
         } ],
     });
-    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{op_id}");
+    let url = format!("{base_url}{}/workflows/{op_id}", crate::temporal_ready::namespace_path());
     // A refusal here returns an error, and the caller writes the row as `errored`.
     crate::temporal_ready::wait_for_temporal().await?;
     let response = crate::temporal_ready::start_client()
@@ -945,8 +945,8 @@ pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow
 
 async fn request_cancel_finalizer(base_url: &str, op_id: &str) -> anyhow::Result<()> {
     let finalizer_id = format!("cancel-{op_id}");
-    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{finalizer_id}");
-    let http = reqwest::Client::builder()
+    let url = format!("{base_url}{}/workflows/{finalizer_id}", crate::temporal_ready::namespace_path());
+    let http = crate::temporal_ready::temporal_http()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
     let lookup = http.get(&url).send().await?;
