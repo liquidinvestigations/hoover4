@@ -10,7 +10,7 @@ A node without a public address gets its VPN address, and the record is marked i
 cannot use it.
 Firewall: the ports that each public or calls node admits on its public interface. The media ports of the media node
 are UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit) and UDP and TCP 3478 (TURN).
-../../hosts/root-install-public-firewall.sh admits these ports. Run it on each node of the table.
+../../ansible/roles/hoover4_public_firewall/files/public-firewall.sh admits these ports. Run it on each node of the table.
 Usage: public_endpoints.py dns|firewall|show [--site FILE]
 """
 import argparse

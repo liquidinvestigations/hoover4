@@ -444,3 +444,52 @@ def test_fixed_settings_use_the_applied_revision_of_their_scope(state):
     state.record_scopes([SCOPE], 1, 'deploy:a', 'abc')
     with pytest.raises(S.SettingsError, match='fixed after the first apply'):
         state.save(1, {SCOPE: {'main_services.temporal_history_shards': '128'}})
+
+
+# The OpenProject reset of the first zone install (k3s/zones/zone.py) ---------------------------------------------------
+
+def zone_module(tmp_path, monkeypatch, entry):
+    import importlib.util
+    import sys
+    from conftest import K3S
+    sys.path.insert(0, str(K3S / 'zones'))
+    import zonestate
+    path = tmp_path / 'zone-state.json'
+    path.write_text(json.dumps({'schemaVersion': 1, 'zones': {'zone-a': entry}}))
+    monkeypatch.setattr(zonestate, 'PATH', path)
+    monkeypatch.setattr(zonestate.load, '__defaults__', (path,))
+    monkeypatch.setattr(zonestate.save, '__defaults__', (path,))
+    spec = importlib.util.spec_from_file_location('zone_installer', K3S / 'zones' / 'zone.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    calls = []
+    monkeypatch.setattr(module.subprocess, 'run', lambda argv, **kw: calls.append(argv) or
+                        module.subprocess.CompletedProcess(argv, 0))
+    return module, path, calls
+
+
+@pytest.mark.parametrize('entry', [{'enabled': True, 'home': 'dev', 'namespaces': ['zone-a']},
+                                   {'enabled': True, 'home': 'dev', 'namespaces': ['zone-a'], 'bootstrapped': True}])
+def test_an_existing_zone_never_loses_its_openproject_integration(tmp_path, monkeypatch, entry):
+    zone, _, calls = zone_module(tmp_path, monkeypatch, entry)
+    zone.openproject_reset('zone-a')
+    assert calls == []
+
+
+def test_a_new_zone_resets_openproject_until_its_first_install_completes(tmp_path, monkeypatch):
+    zone, path, calls = zone_module(tmp_path, monkeypatch,
+                                    {'enabled': True, 'home': 'dev', 'namespaces': ['zone-a'], 'bootstrapped': False})
+    zone.openproject_reset('zone-a')
+    assert any('user:delete' in argv for argv in calls)
+    zone.mark_bootstrapped('zone-a')
+    assert json.loads(path.read_text())['zones']['zone-a']['bootstrapped'] is True
+    calls.clear()
+    zone.openproject_reset('zone-a')
+    assert calls == []
+
+
+def test_a_registered_zone_starts_without_a_completed_install(tmp_path, monkeypatch):
+    zone, path, _ = zone_module(tmp_path, monkeypatch, {'enabled': True, 'home': 'dev', 'namespaces': ['zone-a']})
+    monkeypatch.setattr(zone, 'kubectl', lambda *args, **kw: '')
+    zone.register('zone-b', 'dev')
+    assert json.loads(path.read_text())['zones']['zone-b']['bootstrapped'] is False

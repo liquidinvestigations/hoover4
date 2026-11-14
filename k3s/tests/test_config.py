@@ -219,3 +219,69 @@ def test_avx2_defaults_to_true_only_on_amd64():
     assert config.legacy_hosts(site)['hosts']['gpu-1']['avx2'] is False
     forced = config.parse(site_text('remote.ini').replace('architecture = arm64\n', 'architecture = arm64\navx2 = true\n'))
     assert forced.nodes['gpu-1'].avx2 is True
+
+
+# The TLS mode of the HTTPS frontend ------------------------------------------------------------------------------------
+
+CLOUDFLARE = 'tls_dns_credentials_file = /etc/letsencrypt/cloudflare.ini'
+
+
+def test_the_tls_mode_of_the_public_node_needs_the_keys_of_its_mode():
+    text = site_text('remote.ini')
+    site = config.parse(text)
+    assert config.tls_mode(site.nodes['edge']) == 'cloudflare'
+    assert config.legacy_settings(site)['frontend_tls_mode'] == 'cloudflare'
+    message = problems_of(text.replace(CLOUDFLARE, ''))
+    assert ('[node.edge] tls_mode (default cloudflare) needs tls_dns_credentials_file. Set tls_dns_credentials_file, '
+            'or set tls_mode to one of internal, files.') in message
+    assert 'settings.json' not in message
+    message = problems_of(text.replace(CLOUDFLARE, 'tls_mode = files\ntls_certificate_file = /etc/hoover/site.pem'))
+    assert '[node.edge] tls_mode = files needs tls_key_file.' in message
+    message = problems_of(text.replace(CLOUDFLARE, CLOUDFLARE + '\ntls_mode = internal'))
+    assert '[node.edge] tls_dns_credentials_file is not used with tls_mode = internal.' in message
+    message = problems_of(text.replace(CLOUDFLARE, 'tls_mode = acme'))
+    assert '[node.edge] tls_mode = acme is not one of cloudflare, internal, files.' in message
+    message = problems_of(text.replace('roles = worker, data', 'roles = worker, data\ntls_mode = internal'))
+    assert '[node.worker-b] tls_mode belongs to a node with the role public.' in message
+
+
+def test_the_internal_and_files_modes_give_the_frontend_values(tmp_path):
+    text = site_text('remote.ini')
+    site = config.parse(text.replace(CLOUDFLARE, 'tls_mode = internal'))
+    values = config.legacy_settings(site)
+    assert values['frontend_tls_mode'] == 'internal'
+    assert not {'frontend_tls', 'frontend_dns_credentials', 'frontend_tls_certificate'} & set(values)
+    site = config.parse(text.replace(CLOUDFLARE, 'tls_mode = files\ntls_certificate_file = /etc/hoover/site.pem\n'
+                                                 'tls_key_file = /etc/hoover/site.key'))
+    values = config.legacy_settings(site)
+    assert (values['frontend_tls_mode'], values['frontend_tls_certificate'], values['frontend_tls_key']) == \
+        ('files', '/etc/hoover/site.pem', '/etc/hoover/site.key')
+    assert config.parse(config.dump(site)) == site
+    values = config.legacy_settings(config.parse(text))
+    assert values['frontend_tls_certificate'] == f'/etc/letsencrypt/live/{site.suffix}/fullchain.pem'
+
+
+def test_the_local_node_keeps_the_local_ca():
+    text = site_text('single-node.ini')
+    site = config.parse(text)
+    assert config.tls_mode(site.nodes['dev']) == 'internal'
+    message = problems_of(text.replace('local = true', 'local = true\ntls_mode = cloudflare'))
+    assert '[node.dev] tls_mode = cloudflare: the frontend of the local node uses the local CA only.' in message
+
+
+def test_the_pods_trust_the_local_ca_of_a_remote_internal_frontend(tmp_path):
+    text = site_text('remote.ini')
+    path = tmp_path / 'site.ini'
+    path.write_text(text.replace(CLOUDFLARE, 'tls_mode = internal'))
+    ca = tmp_path / 'site' / 'frontend' / 'local-ca.crt'
+    ca.parent.mkdir(parents=True)
+    ca.write_text('-----BEGIN CERTIFICATE-----\n')
+    assert config.local_ca(config.read(path)) == '-----BEGIN CERTIFICATE-----\n'
+    path.write_text(text)
+    assert config.local_ca(config.read(path)) == ''
+
+
+def test_a_lan_node_with_one_address_gets_each_listen_address_once():
+    text = site_text('remote.ini').replace('public_address = 203.0.113.10', 'public_address = 10.0.0.1')
+    values = config.legacy_settings(config.parse(text))
+    assert values['frontend_bind'] == ['10.0.0.1']

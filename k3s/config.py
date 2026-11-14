@@ -7,8 +7,8 @@ feature switch, no backup schedule and no secret value. Tunings, switches and sc
 
 Sections:
   [site]             name, suffix, control_plane, operator_user, vpn_cidr, state_path
-  [node.<name>]      one node: roles, local, ssh_address, architecture, the VPN and public addresses, storage and
-                     the secret files of the node
+  [node.<name>]      one node: roles, local, ssh_address, architecture, the VPN and public addresses, storage, the
+                     TLS mode of a public node and the secret files of the node
   [gpu_pool]         optional. The GPU services: the GPU nodes of the site, or the address of a shared pool
   [backup]           optional. One node and one host folder that receive the backups
   [hoover.<name>]    one Hoover installation: its zone, home node, store layout, Temporal backend, history source,
@@ -65,6 +65,13 @@ INGRESS_ADDRESS = '10.43.0.80'
 REGISTRY_PORT = 5000
 
 ROLES = ('control-plane', 'worker', 'public', 'registry', 'data', 'calls', 'gpu')
+# The TLS modes of the HTTPS frontend of the public node, and the site file keys that each mode needs.
+#   cloudflare  a public wildcard certificate from certbot with the Cloudflare DNS challenge
+#   internal    certificates of the local CA of Caddy on the public node. The pods trust that CA, and the state folder
+#               gets its root certificate frontend/local-ca.crt for the browsers.
+#   files       the certificate and key files that the person puts on the public node
+TLS_MODES = {'cloudflare': ('tls_dns_credentials_file',), 'internal': (), 'files': ('tls_certificate_file', 'tls_key_file')}
+TLS_KEYS = ('tls_dns_credentials_file', 'tls_certificate_file', 'tls_key_file')
 SINGLE = ('control-plane', 'worker', 'public', 'registry', 'data')
 TIERS = ('nvme', 'ssd', 'hdd')
 ARCHITECTURES = ('amd64', 'arm64')
@@ -86,7 +93,8 @@ NODE_KEYS = {
     'onprem': (False, 'bool'), 'public_address': (False, 'address'), 'storage_tiers': (False, 'tiers'),
     'lvm_volume_group': (False, 'name_any'), 'lvm_physical_volumes': (False, 'devices'), 'reserved': (False, 'reserved'),
     'avx2': (False, 'bool'), 'data_root': (False, 'path'),
-    'tls_dns_credentials_file': (False, 'secret'), 'gpu_api_key_file': (False, 'secret'),
+    'tls_mode': (False, ('choice', tuple(TLS_MODES))), 'tls_dns_credentials_file': (False, 'secret'),
+    'tls_certificate_file': (False, 'secret'), 'tls_key_file': (False, 'secret'), 'gpu_api_key_file': (False, 'secret'),
 }
 GPU_POOL_KEYS = {
     'nodes': (False, 'names'), 'address': (False, 'address'), 'api_key_file': (False, 'secret'),
@@ -109,7 +117,8 @@ DEFAULTS = {
 }
 # The secret files that each role reads. The control plane reads the files of the GPU pool, because it creates the
 # Secrets of the cluster.
-SECRET_ROLES = {'tls_dns_credentials_file': 'public', 'gpu_api_key_file': 'gpu'}
+SECRET_ROLES = {'tls_dns_credentials_file': 'public', 'tls_certificate_file': 'public', 'tls_key_file': 'public',
+                'gpu_api_key_file': 'gpu'}
 # The storage identity keys of a Hoover section and the names in storage_identity.json.
 IDENTITY = {'clickhouse_database_prefix': 'clickhouse_database_prefix', 'manticore_table_prefix': 'manticore_table_prefix',
             'system_bucket': 'system_bucket', 'collection_bucket_prefix': 'collection_bucket_prefix'}
@@ -143,7 +152,11 @@ class Node:
     reserved: str = ''
     avx2: bool = True
     data_root: str = '/srv/hoover-data'
+    # Empty: internal on the local node, else cloudflare (tls_mode()).
+    tls_mode: str = ''
     tls_dns_credentials_file: str = ''
+    tls_certificate_file: str = ''
+    tls_key_file: str = ''
     gpu_api_key_file: str = ''
 
     def has(self, role):
@@ -484,6 +497,9 @@ def check(site, check_files=False):
                 problems.append(f'{label} {key} belongs to a node with the role {role}.')
         if node.has('gpu') and not node.gpu_api_key_file:
             problems.append(f'{label} has the role gpu and no gpu_api_key_file.')
+        if node.tls_mode and not node.has('public'):
+            problems.append(f'{label} tls_mode belongs to a node with the role public.')
+    problems += tls_problems(site)
     for node in nodes.values():
         label = f'[node.{node.name}]'
         for name in node.wireguard_peers:
@@ -561,6 +577,40 @@ def check(site, check_files=False):
         seen[hoover.zone] = hoover.name
     if check_files:
         problems += missing_files(site)
+    return problems
+
+
+def tls_mode(node):
+    """The TLS mode of the HTTPS frontend on node: tls_mode of the site file, else internal on the local node and
+    cloudflare on another node."""
+    return node.tls_mode or ('internal' if node.local else 'cloudflare')
+
+
+def tls_problems(site):
+    """The problems of the TLS settings of the frontend node, the first public node, as messages that name the keys."""
+    public = site.with_role('public')
+    if not public:
+        return []
+    node = public[0]
+    label = f'[node.{node.name}]'
+    mode = tls_mode(node)
+    shown = f'tls_mode = {mode}' if node.tls_mode else f'tls_mode (default {mode})'
+    problems = []
+    if node.local and mode != 'internal':
+        problems.append(f'{label} {shown}: the frontend of the local node uses the local CA only. Remove tls_mode.')
+        return problems
+    for key in TLS_MODES[mode]:
+        if not getattr(node, key):
+            alternatives = ', '.join(m for m in TLS_MODES if m != mode)
+            problems.append(f'{label} {shown} needs {key}. Set {key}, or set tls_mode to one of {alternatives}.')
+    for key in TLS_KEYS:
+        if getattr(node, key) and key not in TLS_MODES[mode]:
+            problems.append(f'{label} {key} is not used with {shown}. Remove it, or change tls_mode.')
+    for other in public[1:]:
+        for key in ('tls_mode',) + TLS_KEYS:
+            if getattr(other, key):
+                problems.append(f'[node.{other.name}] {key}: only the first public node, {node.name}, runs the HTTPS '
+                                'frontend. Move the key there.')
     return problems
 
 
@@ -673,7 +723,8 @@ def legacy_settings(site):
     settings.py. Each value comes from the site file."""
     public = site.with_role('public')[0]
     registry = site.with_role('registry')[0]
-    binds = [a for a in (public.vpn_address, public.public_address) if a] or [node_address(site, public)]
+    # A LAN node can have one address as its VPN and public address. Caddy and coturn get each address once.
+    binds = list(dict.fromkeys(a for a in (public.vpn_address, public.public_address) if a)) or [node_address(site, public)]
     out = {
         'suffix': site.suffix,
         'registry_node': registry.name,
@@ -692,9 +743,15 @@ def legacy_settings(site):
         out['vpn_cidr'] = site.vpn_cidr
     if not public.local:
         out['frontend_ssh'] = public.ssh_address
-    if public.tls_dns_credentials_file:
+    out['frontend_tls_mode'] = tls_mode(public)
+    if out['frontend_tls_mode'] == 'cloudflare':
         out['frontend_tls'] = f'/etc/letsencrypt/live/{site.suffix}'
+        out['frontend_tls_certificate'] = f'/etc/letsencrypt/live/{site.suffix}/fullchain.pem'
+        out['frontend_tls_key'] = f'/etc/letsencrypt/live/{site.suffix}/privkey.pem'
         out['frontend_dns_credentials'] = public.tls_dns_credentials_file
+    elif out['frontend_tls_mode'] == 'files':
+        out['frontend_tls_certificate'] = public.tls_certificate_file
+        out['frontend_tls_key'] = public.tls_key_file
     return out
 
 
@@ -711,18 +768,19 @@ def calls_settings(site):
     that node. A media node without one, such as the local node of a single-node site, advertises the pod addresses.
     """
     node = calls_node(site)
-    turn = [a for a in (node.vpn_address, node.public_address) if a] or [node_address(site, node)]
+    turn = list(dict.fromkeys(a for a in (node.vpn_address, node.public_address) if a)) or [node_address(site, node)]
     return {'calls_node': node.name, 'calls_public_address': node.public_address, 'calls_turn_listen': turn}
 
 
 def local_ca(site):
-    """The root certificate of the local CA of the HTTPS frontend, when the frontend runs on the local node of the site.
+    """The root certificate of the local CA of the HTTPS frontend, when the frontend uses the TLS mode internal.
 
-    ../platform/frontend/install-local-frontend.sh writes it. The pods that call the zone names over HTTPS trust it.
+    ../platform/frontend/install-local-frontend.sh (local node) or install-frontend.sh (another node) writes it into
+    frontend/local-ca.crt of the state folder. The pods that call the zone names over HTTPS trust it.
     """
     public = site.with_role('public')
     path = (state_folder(site.path) if site.path else PRIVATE) / 'frontend' / 'local-ca.crt'
-    return path.read_text() if public and public[0].local and path.exists() else ''
+    return path.read_text() if public and tls_mode(public[0]) == 'internal' and path.exists() else ''
 
 
 def manages_wireguard(node):

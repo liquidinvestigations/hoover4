@@ -604,3 +604,54 @@ def test_the_proxy_reaches_the_sign_in_service_on_every_frontend_address(tmp_pat
     policy = get(items, 'NetworkPolicy', 'egress-oidc')['spec']['podSelector']['matchLabels']
     proxy = get(items, 'Deployment', 'oauth2-proxy')['spec']['template']['metadata']['labels']
     assert policy == {'hoover.dev/oidc': 'client'} and proxy['hoover.dev/oidc'] == 'client'
+
+
+# The relay peers of coturn and the check of the host rule coturn_peers (k3s/platform/calls/turn_peers.py) ------------
+
+def turn_peers_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('turn_peers', K3S / 'platform/calls/turn_peers.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_coturn_relays_udp_only_to_the_pods_of_the_media_node_and_the_checked_public_address():
+    turn_peers = turn_peers_module()
+    lines = turn_peers.peer_lines('10.42.3.0/24', '')
+    assert lines == ['no-tcp-relay', 'denied-peer-ip=0.0.0.0-255.255.255.255',
+                     'denied-peer-ip=::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', 'allowed-peer-ip=10.42.3.2-10.42.3.254']
+    # The bridge address .1, the pods of other nodes and the rest of the cluster range are no peers.
+    assert not [line for line in lines if '10.42.0.0' in line or '10.42.3.1-' in line or line.endswith('10.42.3.1')]
+    assert turn_peers.peer_lines('10.42.3.0/24', '203.0.113.7')[-1] == 'allowed-peer-ip=203.0.113.7'
+
+
+def test_the_public_peer_needs_the_dropped_probe_of_the_coturn_user():
+    turn_peers = turn_peers_module()
+    assert turn_peers.chain_problem('edge', '203.0.113.7', 'blocked\n', 'open\n') == ''
+    message = turn_peers.chain_problem('edge', '203.0.113.7', 'open\n', 'open\n')
+    assert 'no host rule coturn_peers for its public address 203.0.113.7' in message
+    assert 'hoover4_public_firewall' in message
+    assert 'cannot verify' in turn_peers.chain_problem('edge', '203.0.113.7', 'blocked', 'blocked')
+    pod = turn_peers.probe_pod('calls', 'edge', '203.0.113.7', 'python:pinned', {'runAsNonRoot': True})
+    spec = pod['spec']
+    assert spec['hostNetwork'] and spec['nodeSelector'] == {'kubernetes.io/hostname': 'edge'}
+    users = {c['name']: c['securityContext']['runAsUser'] for c in spec['containers']}
+    assert users == {'coturn': turn_peers.COTURN_UID, 'control': turn_peers.PROBE_CONTROL_UID}
+    assert all(c['command'][-2:] == ['203.0.113.7', str(turn_peers.PROBE_PORT)] for c in spec['containers'])
+
+
+def test_the_probe_reports_an_open_and_a_refused_port_as_open():
+    import socket
+    import subprocess
+    import sys
+    turn_peers = turn_peers_module()
+    server = socket.socket()
+    server.bind(('127.0.0.1', 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+    out = subprocess.run([sys.executable, '-c', turn_peers.PROBE, '127.0.0.1', str(port)], capture_output=True, text=True)
+    assert out.stdout.strip() == 'open'
+    server.close()
+    out = subprocess.run([sys.executable, '-c', turn_peers.PROBE, '127.0.0.1', str(port)], capture_output=True, text=True)
+    assert out.stdout.strip() == 'open'

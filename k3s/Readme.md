@@ -43,7 +43,7 @@ The default path is `k3s/private/hoover4-site.ini`. [tests/fixtures/](tests/fixt
 | Section | Keys |
 |---|---|
 | `[site]` | `name`, `suffix`, `control_plane`, and optional `operator_user`, `vpn_cidr`, `state_path` |
-| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `wireguard_peers`, `wireguard_via`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_dns_credentials_file`, `gpu_api_key_file` |
+| `[node.<name>]` | `roles`, and optional `local`, `ssh_address`, `architecture`, `vpn_address`, `wireguard_public_key`, `wireguard_port`, `vpn_interface`, `wireguard_peers`, `wireguard_via`, `lan_address`, `onprem`, `public_address`, `storage_tiers`, `lvm_volume_group`, `lvm_physical_volumes`, `reserved`, `avx2`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file`, `gpu_api_key_file` |
 | `[gpu_pool]` | `nodes` or `address`, and `api_key_file` |
 | `[backup]` | `node` and `path` of the backup destination |
 | `[hoover.<name>]` | `zone`, `home_node`, `stores`, `temporal_backend`, `clickhouse_database_prefix`, `manticore_table_prefix`, `system_bucket`, `collection_bucket_prefix`, and optional `history_source`, `source_ini`, `chat_control_dir`, `extra_datasets` |
@@ -52,6 +52,15 @@ The roles are `control-plane`, `worker`, `public`, `registry`, `data`, `calls` a
 The value `single` gives one host every role except `calls` and `gpu`.
 A site with one node needs no VPN address and no public address.
 A GPU node has no other role. A key that ends with `_file` names a private file on the node that has the matching role.
+`tls_mode` of the first public node selects the certificates of the HTTPS frontend. `config.py check` refuses a missing key of the selected mode.
+
+| `tls_mode` | Keys | Certificates |
+|---|---|---|
+| `cloudflare` | `tls_dns_credentials_file` | certbot gets a public wildcard certificate with the Cloudflare DNS challenge. It adds the name of each new zone. |
+| `internal` | No key. | Caddy issues the certificates from its local CA. The frontend step copies the root certificate into `frontend/local-ca.crt` of the state folder. The pods trust it. Install that file in each browser that opens the site. |
+| `files` | `tls_certificate_file`, `tls_key_file` | Put a certificate and its key on the node. The certificate must have the names `*.<suffix>` and `*.<zone>.<suffix>` of each zone. |
+
+The default is `internal` on the local node, which has no other mode, and `cloudflare` on another node.
 `extra_datasets` names read-only dataset folders of data nodes as `name:node:/path`, separated by commas. The NFS server of the node exports each one, and the installation mounts it at `/data/<name>`.
 `vpn_interface` names the VPN interface of the node address. The default is `wg0`. A host that keeps the interface of an existing VPN names it here.
 The installer configures only `wg0` on a node without the role `gpu`. A GPU node and a node with another `vpn_interface` keep their VPN as it is, and get no WireGuard play.
@@ -275,9 +284,11 @@ The step `gpu-pool` waits for the GPU workloads and calls each port with the key
 
 The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
 A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
-coturn relays to the pods and, on a media node with a public address, to that address for a client that can only use TURN.
-The chain `coturn_peers` of [public-firewall.sh](ansible/roles/hoover4_public_firewall/files/public-firewall.sh) limits that address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
-Run that script on the calls node before the `calls` step. Without the chain, coturn relays to every port of the public address.
+coturn relays UDP only, so a TURN user reaches no store of a zone, which all serve TCP.
+It relays to the pods of the media node and, on a media node with a public address, to that address for a client that can only use TURN.
+The pods of the other nodes and the bridge address of the media node are no peers ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
+The chain `coturn_peers` of [public-firewall.sh](ansible/roles/hoover4_public_firewall/files/public-firewall.sh) limits the public address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node.
+The `calls` step checks that chain with a probe pod on the media node before it adds the public address. Without the chain, the step stops and names the node.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.
 `python3 k3s/platform/calls/public_endpoints.py show` prints the DNS records and the firewall ports of each node, and `deploy-k3s render` includes them.
 Run `public-guard.sh` and `public-firewall.sh` of the role `hoover4_public_firewall` as root on the public node and on the calls node.
@@ -318,7 +329,9 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 - Each zone and the platform recovery set get one copy each week, and keep two or three copies. The portal setting `backup.opendesk.*` controls the zone copy.
 - A missing marker pauses every job, so a missing remote mount does not fill the local disk.
 - A copy is made in `<operator state>/backups/staging/`, checked, sent to the node into `<generation>.partial`, checked there and renamed. A failed transfer or check keeps the older copies.
-- A restore reads a copy on the operator host in place, or fetches it into `<operator state>/backups/restore/` and checks it there.
+- A restore reads a copy on the operator host in place, or fetches it into `<operator state>/backups/restore/`.
+  A fetched copy must have the manifest of the copy on the backup node, and every file must match that manifest.
+- Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
 - The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
   The snapshot runs `k3s-datastore.py snapshot <name>` with `sudo -n` on the server, which writes `~/hoover4-snapshots/<name>/` of the operator user. The operator user needs sudo without a password on the control plane.
 - The zone copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
@@ -334,6 +347,7 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 - `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
 - `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases.
   It then applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and opens the zone.
+  A dump without its end line stops the restore before any change. `psql` and the MariaDB client stop at the first error, and the restore fails with that error.
   A copy part `hoover/<installation>/` restores into the installation of that name, or into the one installation of the zone.
   A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps.
 

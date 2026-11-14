@@ -7,8 +7,9 @@ The namespace calls holds three services:
   turn_listen in the settings file (k3s/settings.py) adds addresses: the frontend address, which the pods reach as
   turn.<suffix>, and the public address of the host. A remote client sends its media to coturn on 3478, and coturn
   relays it to the pods from the bridge address. It also relays to the public address of the media node, but a host rule
-  limits that address to the LiveKit media ports (turn_peers.py, ../../hosts/root-install-public-firewall.sh). Run that
-  script on the media node before this script, or coturn relays to every port of the public address.
+  limits that address to the LiveKit media ports (turn_peers.py, the role hoover4_public_firewall of ../../ansible/).
+  The script checks that rule on the media node with a probe pod before it adds the public address, and stops without
+  it. coturn relays UDP only, to the pods of the media node and to that address.
 - LiveKit is the MatrixRTC SFU. Each zone signs tokens with its own key.
   sfu.<zone>.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
 - JVB is the Jitsi video bridge. The script copies the JVB Deployment that the openDesk chart renders in the first
@@ -22,7 +23,7 @@ advertises the pod addresses, which the host reaches.
 Each zone must be installed first, because the script reads its JVB template. The secrets come from
 k3s/private/zones/secrets.json, which zones.py writes. The script prints no secret.
 """
-import base64,copy,hashlib,ipaddress,json,os,pathlib,subprocess,sys
+import base64,copy,hashlib,ipaddress,json,os,pathlib,subprocess,sys,time
 source=pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(source));import settings
 settings.use_kubeconfig()
@@ -32,12 +33,12 @@ sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent));import turn_peer
 data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
 NS='calls';NODE=settings.HOST.get('calls_node',settings.HOST['ingress_node']);PUBLIC=settings.HOST.get('calls_public_address','')
 def kubectl(*args,data=None):return subprocess.run(['kubectl',*args],input=data,text=True,check=True,capture_output=True).stdout
-# The bridge cni0 has the first address of the pod range of the node. The TURN peers are the pods of every node.
+# The bridge cni0 has the first address of the pod range of the node. The TURN peers are the pods of the media node.
 nodes=json.loads(kubectl('get','nodes','-o','json'))['items']
-BRIDGE=next(str(ipaddress.ip_network(n['spec']['podCIDR'])[1]) for n in nodes if n['metadata']['name']==NODE)
-cidrs=[ipaddress.ip_network(n['spec']['podCIDR']) for n in nodes]
-PODS=f'{min(c[0] for c in cidrs)}-{max(c[-1] for c in cidrs)}'
+PODS=next(n['spec']['podCIDR'] for n in nodes if n['metadata']['name']==NODE)
+BRIDGE=str(ipaddress.ip_network(PODS)[1])
 COTURN='docker.io/coturn/coturn:4.7.0-alpine@sha256:99fe8365aa12dcb4f90346c29f07a05d35b781f8c117f31165700064e70337d9'
+PROBE_IMAGE='docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
 LIVEKIT='docker.io/livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3'
 def apply(items):kubectl('apply','-f','-',data=json.dumps({'apiVersion':'v1','kind':'List','items':items}))
 def secret(name,values):
@@ -45,13 +46,30 @@ def secret(name,values):
   'data':{k:base64.b64encode(v.encode()).decode() for k,v in values.items()}}
 SECURITY={'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']},'readOnlyRootFilesystem':True,'runAsNonRoot':True,
  'runAsUser':65534,'runAsGroup':65534,'seccompProfile':{'type':'RuntimeDefault'}}
-def coturn():
+def public_peer():
+ # A public peer needs the host rule coturn_peers on the media node. A probe pod in the host network of the node shows it.
+ if not PUBLIC:return ''
+ name='coturn-peer-check'
+ kubectl('-n',NS,'delete','pod',name,'--ignore-not-found','--wait=true')
+ kubectl('apply','-f','-',data=json.dumps(turn_peers.probe_pod(NS,NODE,PUBLIC,PROBE_IMAGE,SECURITY)))
+ phase=''
+ for _ in range(100):
+  phase=kubectl('-n',NS,'get','pod',name,'-o','jsonpath={.status.phase}').strip()
+  if phase in ('Succeeded','Failed'):break
+  time.sleep(3)
+ logs={c:subprocess.run(['kubectl','-n',NS,'logs',name,'-c',c],text=True,capture_output=True).stdout for c in ('coturn','control')}
+ kubectl('-n',NS,'delete','pod',name,'--wait=false')
+ if phase!='Succeeded':sys.exit(f'the probe of the host rule coturn_peers on {NODE} ended in phase {phase or "unknown"}: {logs}')
+ problem=turn_peers.chain_problem(NODE,PUBLIC,logs['coturn'],logs['control'])
+ if problem:sys.exit(problem)
+ return PUBLIC
+def coturn(public):
  lines=['listening-port=3478','listening-ip=127.0.0.1','listening-ip=::1',f'listening-ip={BRIDGE}',f'relay-ip={BRIDGE}',
   'min-port=49160','max-port=49199',f'realm=turn.{SUFFIX}','use-auth-secret','fingerprint','no-cli','no-tls','no-dtls',
   'no-multicast-peers','no-software-attribute',
-  # Peers are the pods and the public media address. The host table of root-install-public-firewall.sh limits that
-  # address to the LiveKit media ports for the coturn user, so a TURN user cannot reach the host or another network.
-  *turn_peers.peer_lines(PODS,PUBLIC),
+  # UDP relay only, to the pods of the media node and the public media address. The host rule coturn_peers limits
+  # that address to the LiveKit media ports for the coturn user, so a TURN user cannot reach the host or another network.
+  *turn_peers.peer_lines(PODS,public),
   # Logs go to stdout only. Without a user database, coturn keeps no state on disk.
   'log-file=stdout','simple-log','pidfile=/var/lib/coturn/turnserver.pid']
  lines+=[f'listening-ip={address}' for address in settings.HOST.get('calls_turn_listen',settings.HOST.get('turn_listen',[]))]
@@ -142,7 +160,7 @@ def checksum(items):
    item['spec']['template']['metadata'].setdefault('annotations',{})['hoover.dev/config']=digest
  return items
 # The bridge copies its template from the first zone and serves only zones. Without a zone, the script removes it.
-apply(checksum(coturn()+livekit()+(jvb() if ZONES else [])))
+apply(checksum(coturn(public_peer())+livekit()+(jvb() if ZONES else [])))
 if not ZONES:kubectl('-n',NS,'delete','deployment','jvb','--ignore-not-found')
 # coturn and LiveKit stop the old pod before the new one starts, so a refused or failing pod leaves no call service.
 # The JVB starts its new pod first and keeps the old one, so this script does not wait for it.

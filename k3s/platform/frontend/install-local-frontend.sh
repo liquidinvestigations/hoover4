@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Write the HTTPS frontend of the local node of a single-node site. Run it as the operator user. ../../deploy-k3s runs it.
-# Caddy runs as the unit hoover4-frontend (../../hosts/root-install-local.py, step frontend) with the files of
-# k3s/private/frontend: site.env, the Caddyfile of frontend-sync.sh, and the data folder of the local CA.
+# Caddy runs as the unit hoover4-frontend (the role hoover4_local of ../../ansible/, tag frontend) with the files of
+# frontend/ of the state folder: site.env, the Caddyfile of frontend-sync.sh, and the data folder of the local CA.
 # Caddy listens on the node address of the site file. It ends TLS with certificates of its local CA and sends plain HTTP
 # to the Service address of the cluster ingress. The gates and the WAF are those of the remote frontend.
 # The zones are the zones of the Hoover installations of the site file. The site file also gives the operator name.
 # A CoreDNS block answers every name below the suffix with the node address, so pods reach the frontend too.
 # Usage: install-local-frontend.sh          write site.env and the Caddyfile, and reload a running Caddy
-#        install-local-frontend.sh --ca     copy the root certificate of the local CA to k3s/private/frontend/local-ca.crt
+#        install-local-frontend.sh --ca     copy the root certificate of the local CA to frontend/local-ca.crt of the
+#                                           state folder
 set -euo pipefail
 cd "$(dirname "$0")"
 source_dir=$(realpath ../..)
@@ -24,7 +25,7 @@ if [ "${1:-}" = --ca ]; then
   [ -s "$root" ] || { echo "$root is missing. Check: journalctl -u hoover4-frontend" >&2; exit 1; }
   install -m 0644 "$root" "$folder/local-ca.crt"
   echo "local CA: $folder/local-ca.crt"
-  # Chromium and Firefox read their own NSS stores. The system store gets the CA from root-install-local.py (trust).
+  # Chromium and Firefox read their own NSS stores. The system store gets the CA from the role hoover4_local (tag trust).
   name="Hoover4 local site CA"
   mkdir -p "$HOME/.pki/nssdb"
   [ -f "$HOME/.pki/nssdb/cert9.db" ] || certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password

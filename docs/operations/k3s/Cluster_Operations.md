@@ -153,6 +153,8 @@ A restore replaces the data of an installed zone with a zone copy.
 
 The restore closes the zone and its Hoover installation and stops their stores, except the zone databases.
 It applies the Secrets of the copy, replaces each claim, imports the database dumps, and opens the zone.
+A database dump without the end line of its dump tool stops the restore before it changes the zone. Restore another copy.
+A database error during the import stops the restore and shows the error.
 A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps, and a second run continues after them.
 Restore a single collection with `backups.py restore-hoover <zone> <collection> <generation>`.
 

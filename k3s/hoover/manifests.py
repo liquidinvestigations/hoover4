@@ -214,7 +214,7 @@ class Target:
     tree: Path = site_config.REPO
     # The zone setting app.hoover. A disabled installation renders zero replicas and keeps its claims and Secrets.
     enabled: bool = True
-    # The local CA of the frontend of a single-node site, which oauth2-proxy trusts for the Keycloak of the zone.
+    # The local CA of the frontend (TLS mode internal), which oauth2-proxy trusts for the Keycloak of the zone.
     local_ca: str = ''
 
     @property

@@ -61,7 +61,7 @@ def objects(zone):
     extra = []
     ca = config.local_ca(settings.SITE) if settings.SITE else ''
     if ca:
-        # The Keycloak of the zone has a certificate of the local CA of a single-node site.
+        # The Keycloak of the zone has a certificate of the local CA of the frontend (TLS mode internal).
         args += ['--provider-ca-file=/ca/local-ca.crt', '--use-system-trust-store=true']
         container['volumeMounts'].append({'name': 'local-ca', 'mountPath': '/ca', 'readOnly': True})
         pod['volumes'].append({'name': 'local-ca', 'configMap': {'name': 'local-ca'}})

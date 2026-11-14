@@ -18,8 +18,9 @@ The steps of apply, in order:
   5. helmfile applies openDesk with postrender.py as the Helm post-renderer. A new zone has no 2fa-browser flow, and the
      openDesk Keycloak bootstrap Job needs it. zone-login-no-mfa.sh creates the flow as soon as the realm exists, while
      helmfile runs. Nextcloud restarts once when its pod started before the management Job stored the complete
-     configuration. When the first pass still fails, helmfile runs once more, after the removal of the Nextcloud user
-     OpenProject that a failed OpenProject bootstrap left behind.
+     configuration. When the first pass still fails, helmfile runs once more. Before it, a zone whose first install
+     has not completed loses the Nextcloud user OpenProject that a failed OpenProject bootstrap left behind. The zone
+     state records the completion (bootstrapped), so an existing zone keeps its OpenProject integration.
      Each release that Helm lists as failed is synced again, because helmfile apply skips a release without a diff.
      The installer replaces outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
@@ -99,7 +100,8 @@ def register(zone, home):
         if not home:
             raise SystemExit(f'{zone} is a new zone, so it needs --home <node>')
         kubectl('get', 'node', home)
-        state['zones'][zone] = {'enabled': True, 'home': home, 'namespaces': [zone, f'hoover-{zone}']}
+        # bootstrapped turns true after the first complete openDesk install (opendesk()).
+        state['zones'][zone] = {'enabled': True, 'home': home, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False}
         zonestate.save(state)
         step('zone-state', zone=zone, home=home, change='added')
     elif home and entry.get('home') != home:
@@ -265,15 +267,36 @@ def failed_releases(zone):
     return run('helm', 'list', '-n', zone, '--failed', '-q', env=helmfile_env(zone), quiet=True).stdout.split()
 
 
+def first_bootstrap(zone):
+    """True for a zone whose first openDesk install has not completed: its zone state entry has bootstrapped = false.
+
+    zone.py writes bootstrapped = false for a new zone and true after its first complete install. An entry without the
+    key belongs to a zone of an earlier version, which has completed its install.
+    """
+    return zonestate.load()['zones'].get(zone, {}).get('bootstrapped') is False
+
+
+def mark_bootstrapped(zone):
+    state = zonestate.load()
+    entry = state['zones'].get(zone)
+    if entry is not None and entry.get('bootstrapped') is False:
+        entry['bootstrapped'] = True
+        zonestate.save(state)
+        step('zone-state', zone=zone, change='bootstrapped')
+
+
 def openproject_reset(zone):
     """Remove the Nextcloud user and group OpenProject that a failed OpenProject bootstrap left behind.
 
-    The caller runs it only while Helm lists the release opendesk-openproject-bootstrap as failed, so a working
-    integration of an existing zone stays.
+    The caller runs it only while Helm lists the release opendesk-openproject-bootstrap as failed. It changes only a
+    zone whose first install has not completed (first_bootstrap()), so the integration of an existing zone stays.
     The integration setup of the bootstrap creates the user and returns its client credentials. A second setup finds the
     user and returns no credentials, so every retry fails. The order follows the troubleshooting guide of the Nextcloud
     app integration_openproject: disable the app, delete the user and the group, enable the app.
     """
+    if not first_bootstrap(zone):
+        step('openproject-reset', zone=zone, result='skipped, the zone completed its first install')
+        return
     occ = ['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec', 'deployment/opendesk-nextcloud-aio',
            '--', 'php', '/var/www/html/occ']
     if subprocess.run(occ + ['user:info', 'OpenProject'], capture_output=True).returncode:
@@ -313,6 +336,7 @@ def opendesk(zone):
         helper.join()
     if errors:
         raise errors[0]
+    mark_bootstrapped(zone)
     # The portal server reads the portal data once at its start. On a new zone it can start before the portal
     # consumer wrote the data, and then it answers every page with an error until it restarts.
     kubectl('-n', zone, 'rollout', 'restart', 'deployment/ums-portal-server')

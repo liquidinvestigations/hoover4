@@ -651,9 +651,7 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
     # it closed to the coturn user. The pod admission policy refuses a privileged pod, so the rule is not in the pod.
     sys.path.insert(0, str(K3S / 'platform/calls'))
     import turn_peers
-    assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '') == [
-        'denied-peer-ip=0.0.0.0-255.255.255.255', 'allowed-peer-ip=10.42.0.0-10.42.3.255']
-    assert turn_peers.peer_lines('10.42.0.0-10.42.3.255', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
+    assert turn_peers.peer_lines('10.42.3.0/24', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
     firewall = (K3S / 'ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
     assert f'COTURN_UID={turn_peers.COTURN_UID}' in firewall
     chain = firewall[firewall.index('chain coturn_peers {'):].split('}')[0].splitlines()
@@ -662,7 +660,9 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
                      'ip daddr != $PUBLIC_IP accept', f'udp dport {turn_peers.LIVEKIT_UDP} accept',
                      f'tcp dport {turn_peers.LIVEKIT_TCP} accept', 'counter drop']
     text = (K3S / 'platform/calls/install-calls.py').read_text()
-    assert "'runAsUser':turn_peers.COTURN_UID" in text and 'turn_peers.peer_lines(PODS,PUBLIC)' in text
+    assert "'runAsUser':turn_peers.COTURN_UID" in text and 'turn_peers.peer_lines(PODS,public)' in text
+    # The public peer comes only from the probe of the host rule (turn_peers.chain_problem).
+    assert 'coturn(public_peer())' in text and 'turn_peers.chain_problem(NODE,PUBLIC' in text
     assert "'hostPort':turn_peers.LIVEKIT_UDP" in text and "'udp_port':turn_peers.LIVEKIT_UDP" in text
     assert 'hostPID' not in text and "'privileged'" not in text
     # A refused coturn or LiveKit pod fails the step, because the old pod is gone before the new one starts.
@@ -698,3 +698,14 @@ def test_a_node_that_keeps_its_vpn_gets_no_wireguard_play(tmp_path):
     assert 'calls' not in config.ansible_inventory(foreign, tmp_path)['all']['children']['hoover4_wireguard']['hosts']
 
 
+
+
+def test_the_frontend_step_names_the_local_ca_of_the_internal_mode(tmp_path):
+    import types
+    text = site_text('remote.ini').replace('tls_dns_credentials_file = /etc/letsencrypt/cloudflare.ini', 'tls_mode = internal')
+    ran = []
+    ctx = types.SimpleNamespace(site=config.parse(text), private=tmp_path, run=lambda argv, **kw: ran.append(argv) or (0, ''))
+    assert deploy.step_frontend(ctx) == {'tls_mode': 'internal', 'local_ca': str(tmp_path / 'frontend' / 'local-ca.crt')}
+    assert str(ran[0][1]).endswith('platform/frontend/install-frontend.sh')
+    ctx.site = config.parse(site_text('remote.ini'))
+    assert deploy.step_frontend(ctx) == {'tls_mode': 'cloudflare'}

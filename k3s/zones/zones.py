@@ -15,10 +15,10 @@ OPENDESK=settings.PRIVATE/'downloads/opendesk-v1.19.1/src'
 ZONE_NAME=re.compile(r'zone-[a-z0-9]{1,12}')
 
 def local_ca():
- """The local CA of the frontend for the trust bundle of a zone, when the frontend runs on the local node."""
- path=settings.PRIVATE/'frontend/local-ca.crt'
- if not settings.HOST.get('frontend_local') or not path.exists():return {}
- return {'certificateAuthorities':{'values':{'hoover4-local-ca.crt':path.read_text()}}}
+ """The local CA of the frontend for the trust bundle of a zone, when the frontend uses the TLS mode internal."""
+ import config
+ ca=config.local_ca(settings.SITE) if settings.SITE else ''
+ return {'certificateAuthorities':{'values':{'hoover4-local-ca.crt':ca}}} if ca else {}
 
 def zone_names():
  try:return list(zonestate.load()['zones'])

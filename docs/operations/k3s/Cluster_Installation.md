@@ -11,6 +11,7 @@ Keep host names, addresses and credentials in the private site folder and in the
 - [Prepare the operator host](#prepare-the-operator-host)
 - [Write the site file](#write-the-site-file)
 - [Choose the node roles](#choose-the-node-roles)
+- [Choose the certificates of the HTTPS frontend](#choose-the-certificates-of-the-https-frontend)
 - [Give the operator SSH and sudo access to each node](#give-the-operator-ssh-and-sudo-access-to-each-node)
 - [Install the site](#install-the-site)
 - [Add a GPU node](#add-a-gpu-node)
@@ -35,7 +36,7 @@ Give the site file with `--site FILE` or `HOOVER4_SITE`. The default is `k3s/pri
 | Section | Content |
 |---|---|
 | `[site]` | The site name, the domain suffix of the zones, the control-plane node and the operator user. |
-| `[node.<name>]` | The roles of the node, its SSH address, its VPN address and interface, its storage tiers and its volume group. |
+| `[node.<name>]` | The roles, addresses, storage tiers and volume group of the node, and the TLS mode of a public node. |
 | `[gpu_pool]` | The GPU nodes or the address of an external GPU pool, and the key file of the pool. |
 | `[backup]` | The backup node and the backup folder on that node. |
 | `[hoover.<name>]` | One Hoover installation: its zone, its home node, its store layout and its storage identity. |
@@ -59,6 +60,24 @@ python3 k3s/config.py check <site file>
 | `gpu` | Runs the GPU services. A GPU node has no other role. |
 
 Every k3s server uses embedded etcd, also on a site with one node. One server does not make the datastore highly available.
+
+## Choose the certificates of the HTTPS frontend
+
+The HTTPS frontend runs on the first public node. Set `tls_mode` in its `[node.<name>]` section.
+`config.py check` refuses a missing key of the selected mode, so `up` stops before the first step.
+
+| `tls_mode` | Use it when | Keys |
+|---|---|---|
+| `cloudflare` | The domain is at Cloudflare. certbot gets a public wildcard certificate with the DNS challenge. This is the default of a node that is not local. | `tls_dns_credentials_file`: the certbot Cloudflare credentials file on the public node. |
+| `internal` | The site is on a LAN or has no public domain. Caddy issues the certificates from its own CA. This is the only mode of the local node of a single-node site. | No key. |
+| `files` | You have a certificate from another authority. | `tls_certificate_file` and `tls_key_file`: the full certificate chain and the key, as files on the public node. |
+
+With `internal`, the frontend step copies the root certificate of the CA into `frontend/local-ca.crt` of the state folder, and prints that path.
+Import that file as a trusted certificate authority in each browser that opens the site. The pods of the zones trust it without a change.
+
+With `files`, the certificate must have the names `*.<suffix>` and `*.<zone>.<suffix>` of each zone.
+A zone without its name stops the frontend step and the zone creation, and the message names the missing names.
+Replace the files on the public node, then run the frontend step again.
 
 ## Give the operator SSH and sudo access to each node
 

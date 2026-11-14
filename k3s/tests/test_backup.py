@@ -354,20 +354,174 @@ def test_the_zone_closure_records_and_restores_replicas_and_cronjobs(local_desti
     assert json.loads(patches['cleanup']) == {'spec': {'suspend': False}}
 
 
-def test_an_incomplete_tar_file_is_detected(tmp_path):
+def tar_bytes(members, pad=True):
+    """A tar archive of (name, data) members. pad=False keeps only the two zero end blocks, as busybox tar writes."""
     import io
     import tarfile
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode='w', format=tarfile.GNU_FORMAT) as archive:
+        for name, data in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+        end = archive.offset
+    data = raw.getvalue()
+    return (data if pad else data[:end + 1024]), end
+
+
+def test_an_incomplete_tar_file_is_detected(tmp_path):
+    import os
     backups = backups_module()
-    good = tmp_path / 'good.tar'
-    with tarfile.open(good, 'w') as archive:
-        data = b'x' * 100000
-        info = tarfile.TarInfo('./file')
-        info.size = len(data)
-        archive.addfile(info, io.BytesIO(data))
-    assert backups.tar_complete(good)
-    cut = tmp_path / 'cut.tar'
-    cut.write_bytes(good.read_bytes()[:50000])
-    assert not backups.tar_complete(cut)
+    members = [('./empty', b''), ('./block', os.urandom(512)), ('./odd', os.urandom(1000)), ('./zeros', bytes(1024)),
+               ('./large', os.urandom(100000)), ('./tail-zeros', bytes(10240))]
+    for pad in (True, False):
+        data, end = tar_bytes(members, pad=pad)
+        whole = tmp_path / 'whole.tar'
+        whole.write_bytes(data)
+        assert backups.tar_complete(whole)
+        cut = tmp_path / 'cut.tar'
+        # Every block boundary, which includes every member boundary, and offsets inside blocks.
+        offsets = sorted(set(range(0, len(data), 512)) | set(range(1, len(data), 333)))
+        accepted = []
+        for offset in offsets:
+            cut.write_bytes(data[:offset])
+            if backups.tar_complete(cut):
+                accepted.append(offset)
+        # A cut file passes only when it keeps every member and the two zero end blocks, so only a cut in the padding
+        # after the end blocks passes, and it loses no data.
+        assert all(offset >= end + 1024 and offset % 512 == 0 for offset in accepted), accepted[:5]
+        assert len(offsets) > 200
+
+
+def test_a_stream_is_unpacked_only_after_its_tar_file_is_complete(tmp_path, monkeypatch):
+    backups = backups_module()
+    data, end = tar_bytes([('./a', b'first'), ('./b', b'second')])
+    streams = [data[:end], data]
+    written = []
+
+    def run(argv, stdout=None, **kw):
+        if argv[0] == 'kubectl':
+            stdout.write(streams[len(written)])
+            written.append(argv)
+            return backups.subprocess.CompletedProcess(argv, 0)
+        return real_run(argv, **kw)
+    real_run = backups.subprocess.run
+    monkeypatch.setattr(backups.subprocess, 'run', run)
+    target = tmp_path / 'export'
+    backups.stream_out('ns', 'pod', None, '/backups/x', target)
+    # The first stream ended between two members, so the copy ran again before the unpack.
+    assert len(written) == 2
+    assert (target / 'a').read_bytes() == b'first' and (target / 'b').read_bytes() == b'second'
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['export']
+
+
+def test_a_database_dump_without_its_trailer_is_written_again_and_then_refused(tmp_path, monkeypatch):
+    backups = backups_module()
+    complete = b'CREATE TABLE t;\n--\n-- PostgreSQL database cluster dump complete\n--\n\n'
+    outputs = [complete[:20], complete]
+    calls = []
+
+    def kubectl(*args, stdout=None, **kw):
+        calls.append(args)
+        stdout.write(outputs[min(len(calls), len(outputs)) - 1])
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    target = tmp_path / 'postgresql.sql'
+    backups.dump_out('zone-a', ['postgresql-0', '--', 'pg_dumpall'], target)
+    assert len(calls) == 2 and backups.dump_complete(target)
+    outputs[:] = [complete[:20]]
+    calls.clear()
+    with pytest.raises(SystemExit, match='incomplete after three attempts'):
+        backups.dump_out('zone-a', ['postgresql-0', '--', 'pg_dumpall'], target)
+    assert len(calls) == 3
+    maria = tmp_path / 'mariadb.sql'
+    maria.write_bytes(b'INSERT 1;\n-- Dump completed on 2026-11-14  0:52:04\n')
+    assert backups.dump_complete(maria)
+    maria.write_bytes(b'INSERT 1;\n')
+    assert not backups.dump_complete(maria)
+
+
+def fake_kubectl(tmp_path, monkeypatch, status):
+    """A kubectl on PATH that saves its arguments and its input and ends with status."""
+    import os
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    script = bin_dir / 'kubectl'
+    script.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {tmp_path}/argv\ncat > {tmp_path}/input\n'
+                      f'echo "psql:<stdin>:3: ERROR:  example failure" >&2\nexit {status}\n')
+    script.chmod(0o755)
+    monkeypatch.setenv('PATH', f'{bin_dir}{os.pathsep}{os.environ["PATH"]}')
+
+
+def test_the_postgresql_import_stops_at_the_first_error_and_skips_the_current_user(tmp_path, monkeypatch):
+    backups = backups_module()
+    dump = tmp_path / 'postgresql.sql'
+    dump.write_bytes(b'DROP DATABASE IF EXISTS app;\nDROP ROLE IF EXISTS app;\nDROP ROLE IF EXISTS postgres;\n'
+                     b'CREATE ROLE app;\nCREATE ROLE postgres;\nALTER ROLE postgres WITH SUPERUSER;\n')
+    fake_kubectl(tmp_path, monkeypatch, 0)
+    backups.import_dump('zone-a', ['postgresql-0', '--', 'psql', '-v', 'ON_ERROR_STOP=1'], dump, backups.POSTGRES_SKIPPED)
+    assert (tmp_path / 'input').read_bytes() == (b'DROP DATABASE IF EXISTS app;\nDROP ROLE IF EXISTS app;\n'
+                                                 b'CREATE ROLE app;\nALTER ROLE postgres WITH SUPERUSER;\n')
+    (tmp_path / 'bin' / 'kubectl').unlink()
+    (tmp_path / 'bin').rmdir()
+    fake_kubectl(tmp_path, monkeypatch, 3)
+    with pytest.raises(SystemExit, match='failed with status 3: psql:<stdin>:3: ERROR:  example failure'):
+        backups.import_dump('zone-a', ['postgresql-0', '--', 'psql'], dump, backups.POSTGRES_SKIPPED)
+
+
+def test_the_restore_runs_psql_with_on_error_stop(tmp_path, monkeypatch):
+    backups = backups_module()
+    (tmp_path / 'postgresql.sql').write_bytes(b'SELECT 1;\n')
+    imports = []
+    monkeypatch.setattr(backups, 'import_dump', lambda zone, args, path, skipped=frozenset(): imports.append(args))
+    monkeypatch.setattr(backups, 'kubectl', lambda *args, **kw: '')
+    backups.restore_databases(tmp_path, 'zone-a')
+    assert 'ON_ERROR_STOP=1' in imports[0] and 'ON_ERROR_STOP=0' not in imports[0]
+
+
+class FakeTarget:
+    """A remote backup destination that serves one copy folder."""
+
+    def __init__(self, backups, source, damage=False):
+        self.backups, self.source, self.damage, self.fetches = backups, source, damage, 0
+        self.node = type('Node', (), {'local': False, 'name': 'store'})()
+
+    def folder(self, key, generation):
+        return f'/srv/backups/{generation}'
+
+    def manifest_digest(self, key, generation):
+        import hashlib
+        return hashlib.sha256((self.source / self.backups.MANIFEST).read_bytes()).hexdigest()
+
+    def fetch(self, key, generation, target):
+        import shutil
+        self.fetches += 1
+        shutil.copytree(self.source, target)
+        if self.damage:
+            (target / 'postgresql.sql').write_bytes(b'damaged')
+        return target
+
+
+def test_a_fetched_copy_is_verified_against_the_copy_on_the_backup_node(tmp_path, monkeypatch):
+    backups = backups_module()
+    s = config.parse(site_text('remote.ini'))
+    monkeypatch.setattr(type(s), 'operator_state', lambda self: tmp_path / 'state')
+    source = copy_folder(backups, tmp_path / 'source', {'postgresql.sql': b'dump', 'claims.json': b'[]'})
+    damaged = FakeTarget(backups, source, damage=True)
+    monkeypatch.setattr(backups, 'destination', lambda s: (damaged, ''))
+    with pytest.raises(SystemExit, match='differs from its manifest'):
+        backups.fetched(s, 'zone:zone-a', 'g1')
+    good = FakeTarget(backups, source)
+    monkeypatch.setattr(backups, 'destination', lambda s: (good, ''))
+    folder = backups.fetched(s, 'zone:zone-a', 'g1')
+    assert (folder / 'postgresql.sql').read_bytes() == b'dump' and good.fetches == 1
+    # A verified staging folder of the same copy stays.
+    backups.fetched(s, 'zone:zone-a', 'g1')
+    assert good.fetches == 1
+    # Another copy on the node under the same name gives another manifest, so the copy is fetched again.
+    copy_folder(backups, tmp_path / 'other', {'postgresql.sql': b'other dump'})
+    good.source = tmp_path / 'other'
+    folder = backups.fetched(s, 'zone:zone-a', 'g1')
+    assert good.fetches == 2 and (folder / 'postgresql.sql').read_bytes() == b'other dump'
 
 
 def test_a_restored_secret_keeps_the_items_that_the_copy_lacks(tmp_path, monkeypatch):

@@ -606,15 +606,19 @@ def step_gpu_images(ctx):
 
 
 def step_frontend(ctx):
+    """Install the HTTPS frontend. With the TLS mode internal, the result names the root certificate of the local CA,
+    which the person installs in each browser that opens the site."""
     public = ctx.site.with_role('public')[0]
     if not public.local:
         ctx.run(['bash', SOURCE / 'platform/frontend/install-frontend.sh'])
-        return {}
-    ctx.run(['bash', SOURCE / 'platform/frontend/install-local-frontend.sh'])
-    Ansible(ctx).run('hoover4-local.yml', [public.name], tags=['frontend'])
-    ctx.run(['bash', SOURCE / 'platform/frontend/install-local-frontend.sh', '--ca'])
-    Ansible(ctx).run('hoover4-local.yml', [public.name], tags=['trust'])
-    return {}
+    else:
+        ctx.run(['bash', SOURCE / 'platform/frontend/install-local-frontend.sh'])
+        Ansible(ctx).run('hoover4-local.yml', [public.name], tags=['frontend'])
+        ctx.run(['bash', SOURCE / 'platform/frontend/install-local-frontend.sh', '--ca'])
+        Ansible(ctx).run('hoover4-local.yml', [public.name], tags=['trust'])
+    if config.tls_mode(public) == 'internal':
+        return {'tls_mode': 'internal', 'local_ca': str(ctx.private / 'frontend' / 'local-ca.crt')}
+    return {'tls_mode': config.tls_mode(public)}
 
 
 def wait_rollouts(ctx, namespace, timeout=1800):
@@ -695,7 +699,7 @@ def sign_in_check_pod(ctx, hoover):
                                                       {'name': 'local-ca', 'mountPath': '/ca', 'readOnly': True}]}],
                      'volumes': [{'name': 'secrets', 'secret': {'secretName': 'oauth2-proxy', 'items': [
                                      {'key': 'client-secret', 'path': 'client-secret'}]}},
-                                 # Only a single-node site has the local CA of its frontend.
+                                 # Only a site with the TLS mode internal has the local CA of its frontend.
                                  {'name': 'local-ca', 'configMap': {'name': 'local-ca', 'optional': True}}]}}
 
 

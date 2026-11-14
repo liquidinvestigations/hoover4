@@ -9,7 +9,9 @@ k3s/private/hoover4-site.ini. config.legacy_settings() gives these values:
   suffix          the domain below which each zone has its names, for example <app>.<zone>.<suffix>
   frontend_bind   the addresses where the HTTPS frontend listens, for example a VPN address and a public address
   frontend_local  true when the HTTPS frontend runs on this host with a local CA
-  frontend_tls    the certbot folder with fullchain.pem and privkey.pem of a public certificate for the frontend
+  frontend_tls_mode  the TLS mode of the frontend: cloudflare, internal or files (config.TLS_MODES)
+  frontend_tls    the certbot folder of the public certificate of the mode cloudflare
+  frontend_tls_certificate, frontend_tls_key  the certificate files of the modes cloudflare and files
   turn_listen     the addresses where coturn listens
   other keys      values that install scripts read with `get`
 An installation without a site file reads the earlier k3s/private/settings.json, and the defaults below apply.

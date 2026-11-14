@@ -33,8 +33,9 @@ Jobs:
   no claim data, so the application copies are part of the recovery set. read_recovery() also reads a copy of the
   earlier format, with the SQLite file k3s-state.db, for the conversion of an earlier installation. No new copy uses
   SQLite.
-The copy of a job is made in <operator state>/backups/staging/ on this host. It gets copy-manifest.json with the size and
-SHA-256 of every file. It then goes over the user shell of the [backup] node into <folder>/<generation>.partial,
+The copy of a job is made in <operator state>/backups/staging/ on this host. Each tar stream of a pod must reach its
+end-of-archive marker and each database dump must end with the trailer line of its dump tool, or the part is read again.
+The copy then gets copy-manifest.json with the size and SHA-256 of every file. It then goes over the user shell of the [backup] node into <folder>/<generation>.partial,
 is read again there against the manifest, and is renamed. Only then does retention remove older copies. A failed transfer
 or check leaves the older copies. The capacity check, the marker check, the check of the copy and retention run on the
 [backup] node.
@@ -349,8 +350,16 @@ class Destination:
             raise SystemExit(f'{path} is outside the backup destination {self.path}.')
         self.run(f'rm -rf {shlex.quote(path)}')
 
+    def manifest_digest(self, key, generation):
+        """The SHA-256 of the manifest of a copy on the node."""
+        path = f'{self.folder(key, generation)}/{MANIFEST}'
+        code, out = self.run(f'sha256sum {shlex.quote(path)}', timeout=60)
+        if code or not out.strip():
+            raise SystemExit(f'the manifest {path} on {self.node.name} is unreadable: {out[-200:]}')
+        return out.strip().splitlines()[-1].split()[0]
+
     def fetch(self, key, generation, target):
-        """Copy a copy of the node into a local staging folder, for a restore."""
+        """Copy a copy of the node into a local staging folder, for a restore. fetched() checks the result."""
         path = self.folder(key, generation)
         target = Path(target)
         target.mkdir(parents=True, exist_ok=True)
@@ -490,24 +499,48 @@ def tar_command(ns, pod, container, folder, tar=('tar',)):
 
 
 def stream_out(ns, pod, container, folder, target):
-    """Copy a folder of a pod into a host folder with tar over kubectl exec."""
+    """Copy a folder of a pod into a host folder with tar over kubectl exec.
+
+    tar -x accepts a stream that ends between two members, so the stream goes into a host tar file first. tar_out()
+    checks that file to its end-of-archive marker, and only a complete file is unpacked.
+    """
     target.mkdir(parents=True, exist_ok=True)
-    reader = subprocess.Popen(tar_command(ns, pod, container, folder), stdout=subprocess.PIPE)
-    subprocess.run(['tar', '-C', str(target), '-xf', '-', '--no-same-owner'], stdin=reader.stdout, check=True)
-    if reader.wait():
-        raise SystemExit(f'the copy of {pod}:{folder} failed.')
+    archive = target.parent / f'{target.name}.stream.tar'
+    try:
+        tar_out(ns, pod, container, folder, archive)
+        subprocess.run(['tar', '-C', str(target), '-xf', str(archive), '--no-same-owner'], check=True)
+    finally:
+        archive.unlink(missing_ok=True)
+
+
+# The block size of a tar file. tar ends an archive with two zero blocks and can pad it with more zero blocks.
+TAR_BLOCK = 512
 
 
 def tar_complete(path):
-    """True when the tar file at path reads to its end-of-archive marker."""
+    """True when the tar file at path holds every member and the end-of-archive marker after the last member.
+
+    tarfile stops without an error at the end of the file, also when a cut stream ends between two members. So the
+    file must also be a whole number of blocks, and the bytes after the last member must be at least two blocks and
+    all zero.
+    """
     import tarfile
     try:
-        with tarfile.open(path) as archive:
+        with tarfile.open(path, mode='r:') as archive:
             for _ in archive:
                 pass
-        return True
+            end = archive.offset
     except (tarfile.TarError, EOFError, OSError):
         return False
+    size = os.path.getsize(path)
+    if size % TAR_BLOCK or size - end < 2 * TAR_BLOCK:
+        return False
+    with open(path, 'rb') as f:
+        f.seek(end)
+        while chunk := f.read(1 << 20):
+            if chunk.count(0) != len(chunk):
+                return False
+    return True
 
 
 def tar_out(ns, pod, container, folder, target, tar=('tar',)):
@@ -652,6 +685,29 @@ def run_zone(s, zone, partial, key=None):
     (partial / 'closure.json').write_text(json.dumps(closed, indent=1))
 
 
+# The last line that each dump tool writes. A dump without it ended early, for example after a stream reset of
+# kubectl exec, which can end with status 0.
+DUMP_TRAILERS = {'postgresql.sql': b'-- PostgreSQL database cluster dump complete', 'mariadb.sql': b'-- Dump completed on '}
+
+
+def dump_complete(path):
+    """True when the database dump at path ends with the trailer line of its dump tool."""
+    path = Path(path)
+    with open(path, 'rb') as f:
+        f.seek(max(0, path.stat().st_size - 4096))
+        return DUMP_TRAILERS[path.name] in f.read()
+
+
+def dump_out(ns, exec_args, target):
+    """Write the output of a dump command in a pod into target. An incomplete dump is written again, up to three times."""
+    for attempt in range(3):
+        with open(target, 'wb') as out:
+            kubectl('-n', ns, 'exec', *exec_args, stdout=out)
+        if dump_complete(target):
+            return
+    raise SystemExit(f'the dump {target.name} of {ns} stayed incomplete after three attempts.')
+
+
 def copy_namespace(ns, partial):
     """Copy the database dumps, the claims, the Secrets and the ConfigMaps of one namespace into partial."""
     partial.mkdir(parents=True, exist_ok=True)
@@ -659,13 +715,12 @@ def copy_namespace(ns, partial):
     names = {p['metadata']['name'] for p in pods}
     if 'postgresql-0' in names:
         # --clean lets restore-zone replace the databases of a zone that the installer created.
-        with open(partial / 'postgresql.sql', 'wb') as out:
-            kubectl('-n', ns, 'exec', 'postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean',
-                    '--if-exists', stdout=out)
+        dump_out(ns, ['postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists'],
+                 partial / 'postgresql.sql')
     if 'mariadb-0' in names:
-        with open(partial / 'mariadb.sql', 'wb') as out:
-            kubectl('-n', ns, 'exec', 'mariadb-0', '--', 'sh', '-c',
-                    'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"', stdout=out)
+        dump_out(ns, ['mariadb-0', '--', 'sh', '-c',
+                      'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"'],
+                 partial / 'mariadb.sql')
     claims = json.loads(kubectl('-n', ns, 'get', 'pvc', '-o', 'json'))['items']
     rows = []
     for item in claims:
@@ -877,7 +932,12 @@ def run_job(key, generation):
 
 
 def fetched(s, key, generation):
-    """Fetch a copy of the destination into the restore staging folder and verify it there. Return the folder."""
+    """Fetch a copy of the destination into the restore staging folder and verify it there. Return the folder.
+
+    A fetched copy is good when its manifest has the SHA-256 of the manifest on the backup node and every file has the
+    size and SHA-256 of the manifest. A staging folder of an earlier fetch that passes the same check stays. Otherwise
+    the copy is fetched again, and a copy that fails the check after the fetch stops the restore.
+    """
     target, problem = destination(s)
     if problem:
         raise SystemExit(problem)
@@ -890,10 +950,26 @@ def fetched(s, key, generation):
             raise SystemExit(f'the copy {folder} differs from its manifest.')
         return folder
     folder = restore_staging(s, key, generation)
-    if not (folder.exists() and not verify(folder)['differences']):
+    source = target.manifest_digest(key, generation)
+    if copy_problem(folder, source):
         shutil.rmtree(folder, ignore_errors=True)
         target.fetch(key, generation, folder)
+        problem = copy_problem(folder, source)
+        if problem:
+            raise SystemExit(f'the fetched copy {folder} of {target.folder(key, generation)} on {target.node.name} '
+                             f'{problem}. Fetch it again, or check the copy on the backup node with backups.py verify.')
     return folder
+
+
+def copy_problem(folder, digest):
+    """Empty when folder holds a manifest with the SHA-256 digest and every file matches that manifest."""
+    path = Path(folder) / MANIFEST
+    if not path.exists():
+        return 'has no manifest'
+    if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+        return 'has another manifest than the copy on the backup node'
+    differences = verify(folder)['differences']
+    return f'differs from its manifest: {differences[:5]}' if differences else ''
 
 
 def restore_hoover(zone, collection, generation, source_zone=None):
@@ -975,11 +1051,15 @@ def restore_zone(zone, generation, source_zone=None):
     progress = json.loads(record_path.read_text()) if record_path.exists() else {'copy': copy, 'steps': []}
     if progress['copy'] != copy:
         raise SystemExit(f'{record_path} belongs to the restore of {progress["copy"]}. Remove it after its check.')
-    # fetched() checks the copy against its manifest.
+    # fetched() checks the copy against its manifest and the manifest against the one on the backup node.
     folder = fetched(s, key, generation)
     if (folder / 'postgresql.sql').exists() and b'DROP DATABASE' not in (folder / 'postgresql.sql').read_bytes()[:1 << 20]:
         raise SystemExit('the PostgreSQL dump of this copy has no DROP statements, because an earlier version made it. '
                          'Restore it into a new database server by hand.')
+    for name in DUMP_TRAILERS:
+        if (folder / name).exists() and not dump_complete(folder / name):
+            raise SystemExit(f'the dump {name} of this copy has no end line of its dump tool, so it is incomplete. '
+                             'Restore another copy.')
     parts = zone_parts(s, folder, zone)
 
     def step(name, function):
@@ -1089,17 +1169,46 @@ def restore_claim(folder, zone, row):
     raise SystemExit(f'the write of the claim {zone}/{row["claim"]} failed three times. The zone stays closed.')
 
 
+# The dump of pg_dumpall drops and creates every role, also postgres, which runs the import. PostgreSQL refuses to drop
+# the current user, and the role postgres exists, so the import skips these two lines. ALTER ROLE postgres still applies.
+POSTGRES_SKIPPED = {b'DROP ROLE IF EXISTS postgres;\n', b'CREATE ROLE postgres;\n'}
+
+
+def import_dump(zone, exec_args, path, skipped=frozenset()):
+    """Send the dump at path to a database client in a pod of the zone. A client error fails the restore."""
+    import tempfile
+    argv = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', *exec_args]
+    # The client writes a notice for each object that the dump drops and that does not exist. A file holds them, so a
+    # full pipe cannot stop the client.
+    with open(path, 'rb') as dump, tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors)
+        try:
+            for line in dump:
+                if line not in skipped:
+                    process.stdin.write(line)
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        code = process.wait()
+        errors.seek(0)
+        text = errors.read().decode(errors='replace')
+    if code:
+        # The client stops at the first error, so the last lines of its output name it.
+        raise SystemExit(f'the import of {path.name} into {zone} failed with status {code}: '
+                         f'{" ".join(text.strip().splitlines()[-3:])[-500:]}. The zone stays closed.')
+
+
 def restore_databases(folder, zone):
-    """Import the dumps into the running database servers of the zone, then restart them with the restored Secrets."""
+    """Import the dumps into the running database servers of the zone, then restart them with the restored Secrets.
+
+    psql stops at the first error (ON_ERROR_STOP=1) and the mariadb client stops at the first error by default, so a
+    dump that does not apply completely fails the restore.
+    """
     if (folder / 'postgresql.sql').exists():
-        with open(folder / 'postgresql.sql', 'rb') as dump:
-            subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', 'postgresql-0', '-c',
-                            'postgresql', '--', 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=0', '-q', '-d', 'postgres'],
-                           stdin=dump, check=True, stdout=subprocess.DEVNULL)
+        import_dump(zone, ['postgresql-0', '-c', 'postgresql', '--', 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1',
+                           '-q', '-d', 'postgres'], folder / 'postgresql.sql', POSTGRES_SKIPPED)
     if (folder / 'mariadb.sql').exists():
-        with open(folder / 'mariadb.sql', 'rb') as dump:
-            subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', 'mariadb-0', '--',
-                            'sh', '-c', 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'], stdin=dump, check=True)
+        import_dump(zone, ['mariadb-0', '--', 'sh', '-c', 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'], folder / 'mariadb.sql')
     for name in ('postgresql-0', 'mariadb-0'):
         kubectl('-n', zone, 'delete', 'pod', name, '--ignore-not-found', '--wait=true')
     for name in ('postgresql', 'mariadb'):

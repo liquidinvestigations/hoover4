@@ -11,23 +11,36 @@
 #   - the gate oauth2-proxy of the zone (../../zones/gate.py) accepts its cookie at auth.<zone>.<suffix>/oauth2/auth.
 # A page load without a gate cookie goes to the Keycloak sign-in of the zone. Any other request gets 401.
 # The Keycloak admin routes and the admin routes of Synapse and lk-jwt answer 403 outside the VPN (vpn in site.env).
-# When the certificate lacks the name *.<zone>.<suffix> of a zone, certbot adds it with the DNS challenge. The list
-# replaces the names of a deleted zone at that time. A second run with the same zones changes nothing.
+# site.env names the TLS mode (tls_mode, ../../config.py TLS_MODES):
+#   cloudflare  certbot holds a public certificate in tls_dir. When it lacks the name *.<zone>.<suffix> of a zone,
+#               certbot adds it with the DNS challenge. The list replaces the names of a deleted zone at that time.
+#   files       the person supplies tls_certificate and tls_key. A certificate without the name of a zone stops the
+#               script with the missing names. A changed certificate file restarts Caddy.
+#   internal    Caddy issues the certificates from its local CA. Its root certificate is pki/authorities/local/root.crt
+#               of the Caddy storage, which install-frontend.sh copies into the state folder.
+# An earlier site.env without tls_mode is cloudflare. systemd gives the certificate files of cloudflare and files to the
+# unit as credentials, so Caddy runs with no root. A second run with the same zones changes nothing.
 # On the local node of a single-node site, install-local-frontend.sh runs this script as the operator user with
-# HOOVER_FRONTEND_DIR=k3s/private/frontend and tls_mode=internal in site.env. Caddy then issues the certificates from its
-# local CA, keeps its admin API on 127.0.0.1:2029 for a reload, and certbot does not run.
+# HOOVER_FRONTEND_DIR=frontend of the state folder and tls_mode=internal in site.env. Caddy then keeps its storage in
+# that folder and its admin API on 127.0.0.1:2029 for a reload.
 set -euo pipefail
 here=${HOOVER_FRONTEND_DIR:-/opt/hoover-frontend}
 source "$here/site.env"
-if [ "${tls_mode:-}" = internal ]; then
-  tls_line='tls internal'
+tls_mode=${tls_mode:-cloudflare}
+case "$tls_mode" in
+  internal) tls_line='tls internal' ;;
+  cloudflare|files) tls_line="tls /run/credentials/hoover-frontend.service/fullchain.pem /run/credentials/hoover-frontend.service/privkey.pem" ;;
+  *) echo "site.env has the unknown tls_mode $tls_mode" >&2; exit 1 ;;
+esac
+if [ -n "${HOOVER_FRONTEND_DIR:-}" ]; then
   globals="admin 127.0.0.1:2029
 	local_certs
 	storage file_system ${here}/data"
 else
-  tls_line="tls /run/credentials/hoover-frontend.service/fullchain.pem /run/credentials/hoover-frontend.service/privkey.pem"
   globals="admin off
 	storage file_system /var/lib/hoover-frontend"
+  [ "$tls_mode" = internal ] && globals="$globals
+	local_certs"
 fi
 zones=()
 while read -r zone; do
@@ -121,7 +134,7 @@ for host in "${extra_hosts[@]}"; do
 done
 } > "$work/Caddyfile"
 "$here/caddy" adapt --config "$work/Caddyfile" --adapter caddyfile >/dev/null
-if [ "${tls_mode:-}" = internal ]; then
+if [ -n "${HOOVER_FRONTEND_DIR:-}" ]; then
   if ! cmp -s "$work/Caddyfile" "$here/Caddyfile"; then
     install -m 0644 "$work/Caddyfile" "$here/Caddyfile"
     # A running frontend loads the file through its admin API. A stopped frontend reads it at its start.
@@ -135,16 +148,32 @@ fi
 names=("*.${suffix}")
 for zone in "${zones[@]}"; do names+=("*.${zone}.${suffix}"); done
 changed=''
-have=$(openssl x509 -in "$tls_dir/fullchain.pem" -noout -ext subjectAltName | tr -d ' ' | tr ',' '\n' | sed -n 's/^DNS://p')
-# The certificate gets a new zone name, and it loses the name of a deleted zone.
-missing=$(printf '%s\n' "${names[@]}" | grep -vxF -f <(printf '%s\n' "$have") || true)
-deleted=$(printf '%s\n' "$have" | grep -xE "\*\.zone-[a-z0-9]{1,12}\.${suffix//./\\.}" | grep -vxF -f <(printf '%s\n' "${names[@]}") || true)
-if [ -n "$missing$deleted" ]; then
-  domains=()
-  for name in "${names[@]}"; do domains+=(-d "$name"); done
-  certbot certonly --non-interactive --quiet --cert-name "$(basename "$tls_dir")" --expand --key-type ecdsa --dns-cloudflare \
-    --dns-cloudflare-credentials "$dns_credentials" --dns-cloudflare-propagation-seconds 30 "${domains[@]}"
-  changed="$changed certificate"
+# certificate_names <file>: the DNS names of the certificate, one in each line.
+certificate_names() { openssl x509 -in "$1" -noout -ext subjectAltName | tr -d ' ' | tr ',' '\n' | sed -n 's/^DNS://p'; }
+if [ "$tls_mode" = cloudflare ]; then
+  have=$(certificate_names "$tls_dir/fullchain.pem")
+  # The certificate gets a new zone name, and it loses the name of a deleted zone.
+  missing=$(printf '%s\n' "${names[@]}" | grep -vxF -f <(printf '%s\n' "$have") || true)
+  deleted=$(printf '%s\n' "$have" | grep -xE "\*\.zone-[a-z0-9]{1,12}\.${suffix//./\\.}" | grep -vxF -f <(printf '%s\n' "${names[@]}") || true)
+  if [ -n "$missing$deleted" ]; then
+    domains=()
+    for name in "${names[@]}"; do domains+=(-d "$name"); done
+    certbot certonly --non-interactive --quiet --cert-name "$(basename "$tls_dir")" --expand --key-type ecdsa --dns-cloudflare \
+      --dns-cloudflare-credentials "$dns_credentials" --dns-cloudflare-propagation-seconds 30 "${domains[@]}"
+    changed="$changed certificate"
+  fi
+elif [ "$tls_mode" = files ]; then
+  have=$(certificate_names "$tls_certificate")
+  missing=$(printf '%s\n' "${names[@]}" | grep -vxF -f <(printf '%s\n' "$have") || true)
+  if [ -n "$missing" ]; then
+    echo "the certificate $tls_certificate lacks the names: $(tr '\n' ' ' <<<"$missing"). Replace it with a certificate that has them." >&2
+    exit 1
+  fi
+  digest=$(cat "$tls_certificate" "$tls_key" | sha256sum | cut -d' ' -f1)
+  if [ "$digest" != "$(cat "$here/certificate.sha256" 2>/dev/null || true)" ]; then
+    echo "$digest" > "$here/certificate.sha256"
+    changed="$changed certificate"
+  fi
 fi
 if ! cmp -s "$work/Caddyfile" "$here/Caddyfile"; then
   install -m 0644 "$work/Caddyfile" "$here/Caddyfile"
