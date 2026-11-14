@@ -549,9 +549,11 @@ class State:
     def _normalize(data):
         data['scopes'] = {k: v for k, v in data['scopes'].items() if v['revision'] > data['revision']}
 
-    def save(self, base_revision, changes, actor='', note=''):
+    def save(self, base_revision, changes, actor='', note='', new_scopes=()):
         """Save {scope id: {key: value or None}} over base_revision as a new revision. None removes an override.
 
+        A scope of new_scopes runs no service yet, so its fixed and expanding values may take any valid value. The Compose
+        import gives the scopes of the zone that it creates.
         Returns the new revision. Starts no operation and changes no service.
         """
         checked = {scope: check_values(scope, values, self.registry) for scope, values in changes.items()}
@@ -574,6 +576,8 @@ class State:
             applied = self.applied()
             if applied['revision'] or applied['scopes']:
                 for scope, values in checked.items():
+                    if scope in new_scopes:
+                        continue
                     revision_of_scope = self.applied_revision(scope, applied)
                     before = effective(scope, self.overrides(revision_of_scope).get(scope, {}), self.registry)
                     after = effective(scope, overrides.get(scope, {}), self.registry)
@@ -603,14 +607,16 @@ class State:
     def suggestions(self, scope_id):
         return (read_json(self.folder / 'suggestions.json', {}).get(scope_id) or {}).get('values', {})
 
-    def seed(self, scope_id, source, actor='seed'):
-        """Save the explicit ini values of a source Compose install once, as overrides of a Hoover scope.
+    def seed(self, scope_id, source, actor='seed', new_scope=False):
+        """Save the explicit values of a hoover4.ini once, as overrides of a Hoover scope.
 
-        source is a config.SourceInstall. A key with an override keeps it. A value equal to the default is left out.
-        A second call for the same scope saves nothing. Returns the new revision, or None.
+        source is a SourceInstall of ../../import_compose/source.py read_ini(). A key with an override keeps it. A value
+        equal to the default is left out.
+        A second call for the same scope saves nothing. new_scope: the scope runs no service yet (save()).
+        Returns the new revision, or None.
         """
         if scope_of(scope_id) != 'hoover':
-            raise SettingsError('only a Hoover scope takes the values of a Compose ini')
+            raise SettingsError('only a Hoover scope takes the values of a hoover4.ini')
         while True:
             desired = self._desired()
             if scope_id in desired['seeded']:
@@ -642,7 +648,7 @@ class State:
                     if scope_id in self._desired()['seeded']:
                         return None
                 revision = self.save(base, {scope_id: changes} if changes else {}, actor=actor,
-                                     note=f'values of {source.path}')
+                                     note=f'values of {source.path}', new_scopes=(scope_id,) if new_scope else ())
             except StaleRevision:
                 continue
             with self._lock():

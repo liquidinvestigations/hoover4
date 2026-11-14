@@ -2,6 +2,7 @@
 import json
 import multiprocessing
 import os
+import sys
 import threading
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from conftest import FIXTURES, REPO, operator_settings, write_site
 import compose
 import config
 import zone_ini
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'import_compose'))
+import source as compose_source  # noqa: E402
 
 S = operator_settings()
 SCOPE = 'hoover:zone-a'
@@ -169,7 +173,7 @@ def test_suggestions_keep_saved_overrides(state):
 # Seeding from a Compose ini -------------------------------------------------------------------------------------------
 
 def test_seed_once_from_the_source_ini_keeps_existing_overrides(state):
-    source = config.read_source_ini(FIXTURES / 'source-tuned.ini', check_paths=False)
+    source = compose_source.read_ini(FIXTURES / 'source-tuned.ini')
     assert source.dropped == ['[main_services] serena_enabled']
     state.save(0, {SCOPE: {'main_services.common_workers': '7'}})
     revision = state.seed(SCOPE, source)
@@ -189,7 +193,7 @@ def test_seed_once_from_the_source_ini_keeps_existing_overrides(state):
 def test_seed_refuses_an_invalid_value_before_it_writes(state, tmp_path):
     path = tmp_path / 'bad.ini'
     path.write_text((FIXTURES / 'source-tuned.ini').read_text().replace('common_workers = 3', 'common_workers = three'))
-    source = config.read_source_ini(path, check_paths=False)
+    source = compose_source.read_ini(path)
     with pytest.raises(S.SettingsError, match='common_workers'):
         state.seed(SCOPE, source)
     assert state.revision() == 0
@@ -199,7 +203,7 @@ def test_seed_leaves_out_an_empty_value_which_selects_the_default(state, tmp_pat
     # An empty ini value selects the deploy.py default, as the local hoover4.ini of the workstation writes worker_mem_limit =.
     path = tmp_path / 'empty.ini'
     path.write_text((FIXTURES / 'source-tuned.ini').read_text().replace('worker_mem_limit = 12000M', 'worker_mem_limit ='))
-    source = config.read_source_ini(path, check_paths=False)
+    source = compose_source.read_ini(path)
     state.seed(SCOPE, source)
     assert 'main_services.worker_mem_limit' not in state.overrides()[SCOPE]
     assert state.effective(SCOPE)['main_services.worker_mem_limit'] == S.effective(SCOPE, {})['main_services.worker_mem_limit']

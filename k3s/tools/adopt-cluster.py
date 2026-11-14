@@ -30,9 +30,11 @@ HERE = Path(__file__).resolve().parent
 K3S = HERE.parent
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'driver'))
+sys.path.insert(0, str(K3S / 'import_compose'))
 import config  # noqa: E402
 import nodeshell  # noqa: E402
 import settings as k3s_settings  # noqa: E402
+import source as compose_source  # noqa: E402
 
 # The environment variables of the storage identity, from main_services/processing/tasks/storage_identity.json.
 IDENTITY_VARIABLES = tuple(v['variable'] for v in json.loads(config.STORAGE_IDENTITY.read_text())['settings'].values())
@@ -161,8 +163,8 @@ def read_earlier_ini(path):
             with tempfile.NamedTemporaryFile('w', suffix='.ini', dir=Path(path).parent) as handle:
                 handle.write(text)
                 handle.flush()
-                return config.read_source_ini(handle.name, check_paths=False), unknown
-        except config.SiteError as error:
+                return compose_source.read_ini(handle.name), unknown
+        except compose_source.SourceError as error:
             found = re.findall(r'\[(\w+)\] (\w+) is not a known key', str(error))
             if not found:
                 raise

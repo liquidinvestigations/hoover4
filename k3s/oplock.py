@@ -1,7 +1,7 @@
 """The one site operation lock of a cluster installation. Standard library only.
 
 Every operation that changes services or stored data of a site holds this lock while it runs: deploy-k3s up and down,
-the settings Apply and the zone operations of the operator runner, the steps of a migration, and the backup jobs at
+the settings Apply and the zone operations of the operator runner, the Compose import, and the backup jobs at
 their consistency boundary. A settings save does not take it, so an operator can save settings during a deployment.
 The saved revision then waits for a later Apply.
 

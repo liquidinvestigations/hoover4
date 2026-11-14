@@ -183,66 +183,6 @@ def test_legacy_hosts_projection_for_the_host_scripts():
     assert hosts['hosts']['edge']['storage']['nvme']['spare_gb'] is None
 
 
-# The reader of a Compose ini --------------------------------------------------------------------------------------
-
-SERENA = REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini'
-
-
-def test_source_ini_accepts_and_reports_removed_serena_settings():
-    source = config.read_source_ini(SERENA, check_paths=False)
-    assert source.dropped == ['[main_services] serena_enabled', '[main_services] serena_port']
-    assert 'serena_enabled' not in source.values['main_services']
-    assert [m['container_path'] for m in source.dataset_mounts] == ['/testdata', '/uploads']
-    assert source.volumes['clickhouse_data'] == '/srv/hoover4-volumes/clickhouse_data'
-    assert source.ops_backup_dir == '/srv/hoover4-volumes/ops_backups'
-
-
-def test_source_ini_refuses_unknown_keys(tmp_path):
-    path = tmp_path / 'hoover4.ini'
-    path.write_text(SERENA.read_text().replace('[main_services]', '[main_services]\nworker_count = 3'))
-    with pytest.raises(config.SiteError, match=r'\[main_services\] worker_count is not a known key'):
-        config.read_source_ini(path, check_paths=False)
-
-
-def source_tree(tmp_path, inside=False):
-    volumes = tmp_path / 'volumes'
-    for name in ('clickhouse_data', 'manticore_data_v14', 'garage_meta', 'garage_data', 'temporal_cassandra',
-                 'temporal_elasticsearch'):
-        (volumes / name).mkdir(parents=True)
-    data = volumes / 'testdata' if inside else tmp_path / 'testdata'
-    data.mkdir()
-    (tmp_path / 'uploads').mkdir()
-    text = (SERENA.read_text().replace('/srv/hoover4-volumes', str(volumes))
-            .replace('/srv/hoover4-testdata', str(data)).replace('/srv/hoover4-uploads', str(tmp_path / 'uploads')))
-    path = tmp_path / 'hoover4.ini'
-    path.write_text(text)
-    return path, volumes
-
-
-def test_source_ini_paths_are_checked_before_any_copy(tmp_path):
-    path, volumes = source_tree(tmp_path)
-    before = sorted(os.walk(tmp_path))
-    source = config.read_source_ini(path)
-    assert source.volumes_path == str(volumes)
-    assert sorted(os.walk(tmp_path)) == before
-    (volumes / 'temporal_cassandra').rmdir()
-    with pytest.raises(config.SiteError, match='temporal_cassandra does not exist'):
-        config.read_source_ini(path)
-
-
-def test_source_ini_refuses_a_dataset_inside_the_volumes_folder(tmp_path):
-    path, _ = source_tree(tmp_path, inside=True)
-    with pytest.raises(config.SiteError, match='host_path is inside volumes_path'):
-        config.read_source_ini(path)
-
-
-def test_source_ini_refuses_missing_dataset_folder(tmp_path):
-    path, _ = source_tree(tmp_path)
-    (tmp_path / 'uploads').rmdir()
-    with pytest.raises(config.SiteError, match='uploads'):
-        config.read_source_ini(path)
-
-
 def test_fixture_folder_is_tracked_with_both_sites():
     assert (FIXTURES / 'single-node.yml').exists() and (FIXTURES / 'remote.yml').exists()
 

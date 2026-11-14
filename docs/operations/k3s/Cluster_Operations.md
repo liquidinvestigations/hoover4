@@ -47,7 +47,7 @@ The record of a run pins the commit, the uncommitted changes of the checkout, th
 A resume refuses a change of these inputs. A second `up` of the same commit changes no object.
 A waiting or failed step stops every step that depends on it.
 
-One site operation runs at a time. The driver, the settings Apply, the zone operations, the migration and the zone and platform backups share one lock.
+One site operation runs at a time. The driver, the settings Apply, the zone operations, the Compose import and the zone and platform backups share one lock.
 
 ## Return to an earlier release
 

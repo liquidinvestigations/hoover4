@@ -68,53 +68,57 @@ A history that does not replay shows a change of a workflow that needs a Tempora
 
 ## Move a Compose installation
 
-The migration copies the stopped Compose stores into the claims of a Hoover installation of the site.
-The source keeps its data folders, and nothing deletes them.
+`k3s/deploy-k3s import-compose` imports the stopped Compose stores into a new zone of the site.
+The zone gets the storage names of its zone id, and the import renames the databases, tables and buckets.
+The source keeps its data folders, and nothing deletes them. The import runs once per zone.
 
-The migration needs full root on the source host and on the operator host.
-`migrate.py` and `root_copy.py` run their root commands with `sudo -n` and pass folder paths to them.
-The scoped root rules of the site cover only the site root scripts, so they do not cover the migration.
-Give the operator user unrestricted `sudo -n` on both hosts for the migration.
+The import needs `sudo -n` on the source node and on the home node.
+It sends `probe.py` and `root_copy.py` to Python as root on the source node, and imports the store images with `k3s ctr` on the home node.
 
-The steps below read their target from the earlier site file key `hoovers`, which the site file no longer accepts. They have no target until the Compose import command replaces them.
-
-1. The target installation names `source_ini`, the `hoover4.ini` of the Compose installation.
-2. Show the plan. The command changes nothing.
+1. Put the Compose volume folder below the `data_root` of the source node, for example with a bind mount.
+   Do the same for each dataset folder that the import copies.
+2. Put the `hoover4.ini` of the Compose installation into the folder of the site file.
+3. Show the plan. The command changes nothing.
 
    ```sh
-   python3 k3s/migration/migrate.py plan <name> --dry-run
+   k3s/deploy-k3s import-compose <zone> <folder> --home <node> --ini <file> --dataset uploads=<folder> --dry-run
    ```
 
-3. Run the steps in order. A finished step does not run again, and a later step with changed inputs stops.
+4. Run the import. A finished step does not run again, so the same command continues an interrupted import.
+   A later step with changed inputs stops.
 
    ```sh
-   for step in plan freeze record stop images copy secrets stores temporal workers resume; do
-     python3 k3s/migration/migrate.py "$step" <name> || break
-   done
+   k3s/deploy-k3s import-compose <zone> <folder> --home <node> --ini <file> --dataset uploads=<folder>
    ```
 
-4. Give each owner of chats and boards a zone user:
+5. Give each owner of chats and boards a zone user:
 
    ```sh
-   python3 k3s/migration/migrate.py users <name>
+   k3s/deploy-k3s import-compose <zone> --users
    ```
 
 | Step | Result |
 |---|---|
+| `plan` | Checks the folders, the images, the claims and the free capacity, and saves the ini values as settings of the zone. |
 | `freeze` | Stops the website, the sign-in proxy, the MCP and agent servers, then the workers with their grace period. |
 | `record` | Records the Temporal namespaces, the open workflows with their histories, and the store contents. |
 | `stop` | Stops Temporal and the stores of the source. |
+| `zone` | Creates the zone with the Compose store layout. No Hoover service starts. |
 | `copy` | Copies each folder into its claim with the mapped owners, and checks the SHA-256 of every file. |
-| `stores`, `temporal` | Start only the stores and Temporal, and compare them with the record. |
+| `stores` | Starts only the stores and Temporal, and compares them with the record. |
+| `renames` | Renames the databases, tables and bucket aliases, the bucket names in the stored object paths and the dataset paths. |
+| `temporal` | Compares Temporal with the record. |
 | `workers`, `resume` | Start the workers, and wait until each open workflow of the record continues or closes. |
 
-`--engine docker|podman` names the container runtime of the source, and `--source-host` the SSH host of the source.
+`--engine docker|podman` names the container runtime of the source, and `--source-node` the node of the source.
+[The cluster deployment reference](../../../k3s/Readme.md#move-a-compose-installation-into-the-cluster) lists every option.
 
 ### Retry and return
 
 An interrupted `copy` empties the claim and copies it again. A claim with another volume identity than the record stops the step.
-Before the target takes new work, delete the claims of the target installation and start Compose again with `./deploy`.
-After the target takes new work, a return to Compose loses that work.
+Before the zone takes new work, delete the zone in the operator portal and start Compose again with `./deploy`.
+After the zone takes new work, a return to Compose loses that work.
+A second import of the same zone id needs the removal of `operator/import/<zone>/` of the state folder after the zone delete.
 
 ## Retire a local single-node site
 

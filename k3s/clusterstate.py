@@ -10,8 +10,8 @@ hoover.dev/state=secret. The annotation hoover.dev/state-path names the path of 
               frontend/local-ca.crt (the root certificate of the internal CA of the frontend)
   Secrets     zones/ (the zone secrets, the openDesk values and the master passwords)
 
-operator/deploy/ (the records of deploy-k3s), operator/migration/, lock files and files whose name starts with a dot
-stay local. A log file larger than LOG_LIMIT keeps its last LOG_LIMIT bytes in the cluster.
+operator/deploy/ (the records of deploy-k3s), operator/import/ (the records of the Compose import), operator/migration/
+(the records of the earlier migration tool), lock files and files whose name starts with a dot stay local. A log file larger than LOG_LIMIT keeps its last LOG_LIMIT bytes in the cluster.
 
 A folder that uses the cluster copy, for example the state folder of the workstation or the state folder of the
 operator pod, keeps a manifest of the last synchronization: the digest of each local file and the resourceVersion of
@@ -46,7 +46,8 @@ KINDS = {
                   '.cluster-state.json', '.cluster-state.lock'),
     'secret': ('secret', (), ('zones',), 'zones/.cluster-state.json', 'zones/.cluster-state.lock'),
 }
-EXCLUDED_FOLDERS = ('operator/deploy/', 'operator/migration/')
+# operator/migration/ holds the records of the earlier migration tool in older state folders.
+EXCLUDED_FOLDERS = ('operator/deploy/', 'operator/import/', 'operator/migration/')
 
 
 class Conflict(RuntimeError):

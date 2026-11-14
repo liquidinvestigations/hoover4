@@ -9,8 +9,9 @@ Usage:
   deploy-k3s down      --target NODE... [--steps STEP...]
   deploy-k3s down      --resume RECORD
   deploy-k3s status    [RECORD]                                          print the records
+  deploy-k3s import-compose <zone> <folder> --home NODE --ini FILE [...] import a stopped Compose install into a new zone
 
---target names nodes of the site file, or `all`. Every command except status needs it.
+--target names nodes of the site file, or `all`. Every command except status and import-compose needs it.
 --site names the site file, a YAML Ansible inventory (config.py). Without it, $HOOVER4_SITE names it. Every command
 needs one of them. The state folder of the site is beside the site file and has the name of the file without its
 extension. Each command first prints the site id, the site file and the state folder.
@@ -24,6 +25,8 @@ down stops the ingress, the applications and workers, Temporal, the stores, and 
 The cluster holds the zone state, the zone secrets and the operator state (clusterstate.py). Each command reads the
 cluster copy into the state folder first, and up and down write the changes back after each step.
 A failed or stopped run keeps its record. `up --resume RECORD` continues at the first unfinished step.
+import-compose runs import_compose/import_compose.py with the commit of HEAD. `deploy-k3s import-compose --help` names
+its arguments and steps. It runs once per zone.
 
 The command runs in the operator image (images/operator/). This file builds the image with podman, else docker, when
 its inputs changed, and runs one container with --rm. The container mounts this checkout read-only, the folder of
@@ -180,6 +183,15 @@ def main(argv):
     import config
     import deploy
     import records
+
+    if argv and argv[0] == 'import-compose':
+        # The import names the images of the commit of HEAD, as the steps of up do.
+        try:
+            env = dict(os.environ, HOOVER4_REVISION=deploy.resolve_revision(HERE.parent, 'HEAD'))
+        except deploy.StepFailed as error:
+            raise SystemExit(f'deploy-k3s: {error}')
+        return subprocess.run([sys.executable, str(HERE / 'import_compose' / 'import_compose.py'), *argv[1:]],
+                              env=env).returncode
 
     parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)

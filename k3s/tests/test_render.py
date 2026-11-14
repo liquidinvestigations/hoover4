@@ -19,18 +19,10 @@ COMPOSE_SECRETS = ('hoover4-garage-blob-secret-key-0', 'cbc5a1dbd1c832a3bdcb0abf
                    'hoover4-garage-admin-token')
 
 
-# The Compose ini of an imported install. The single fixture renders the zone of the single-node site with it.
-SOURCE_INI = REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini'
-
-
-def target(site_name, zone, tmp_path, overrides=None, source_text=None):
-    """The Target of a zone of a site fixture. source_text is the Compose ini of an imported install."""
+def target(site_name, zone, tmp_path, overrides=None):
+    """The Target of a zone of a site fixture."""
     path = write_site(tmp_path, site_name)
     t = manifests.target_from_site(path, zone, revision=REVISION, state=tmp_path / 'no-state', nfs=NFS)
-    if source_text is not None:
-        source = tmp_path / 'source.ini'
-        source.write_text(source_text)
-        t.source = config.read_source_ini(source, check_paths=False)
     if overrides:
         t.values.update(overrides)
     return t
@@ -61,10 +53,10 @@ def workloads(items):
 
 @pytest.fixture
 def single(tmp_path):
-    return items_of(target('single-node.yml', 'zone-a', tmp_path, source_text=SOURCE_INI.read_text()))
+    return items_of(target('single-node.yml', 'zone-a', tmp_path))
 
 
-# The single-node imported installation -----------------------------------------------------------------------------
+# The single-node installation with the local store layout -----------------------------------------------------------------------------
 
 def test_a_zone_derives_its_storage_names_from_its_id(single):
     workers = get(single, 'StatefulSet', 'hoover-workers')
@@ -153,37 +145,27 @@ def test_temporal_on_cassandra_and_elasticsearch(single):
     assert job and '--retention 168h' in containers(job[0])[0]['command'][-1]
 
 
-def test_migrated_install_keeps_its_shard_count(tmp_path):
-    source = SOURCE_INI.read_text().replace('[main_services]', '[main_services]\ntemporal_history_shards = 64')
-    items = items_of(target('single-node.yml', 'zone-a', tmp_path, source_text=source))
+def test_the_history_shard_count_follows_the_operator_setting(tmp_path):
+    items = items_of(target('single-node.yml', 'zone-a', tmp_path, {'main_services.temporal_history_shards': '64'}))
     assert env(containers(get(items, 'Deployment', 'temporal'))[0])['NUM_HISTORY_SHARDS'] == '64'
 
 
-def test_dataset_mounts_keep_their_container_paths(single):
+def test_dataset_mounts_are_claims_below_data(single):
     worker = containers(get(single, 'StatefulSet', 'hoover-workers'))[0]
     mounts = json.loads(env(worker)['HOOVER4_DATASET_MOUNTS'])
-    assert mounts == [{'name': 'testdata', 'path': '/testdata', 'writable': False},
-                      {'name': 'uploads', 'path': '/uploads', 'writable': True}]
+    assert mounts == [{'name': 'testdata', 'path': '/data/testdata', 'writable': False},
+                      {'name': 'uploads', 'path': '/data/uploads', 'writable': True}]
     volumes = {v['name']: v for v in get(single, 'StatefulSet', 'hoover-workers')['spec']['template']['spec']['volumes']}
-    assert volumes['data-testdata']['persistentVolumeClaim'] == {'claimName': 'host-dataset-testdata', 'readOnly': True}
     assert volumes['data-uploads']['persistentVolumeClaim'] == {'claimName': 'dataset-uploads'}
     get(single, 'PersistentVolumeClaim', 'dataset-uploads')
     assert 'chat-control' not in volumes
 
 
-def test_host_folders_are_volumes_of_the_admin_render(single):
-    """The pod policy refuses a hostPath volume in a zone namespace, so a host folder is a PersistentVolume."""
+def test_no_pod_of_the_render_mounts_a_host_folder(single):
+    """The pod policy refuses a hostPath volume in a zone namespace."""
     for item in single:
         if item['kind'] in ('Deployment', 'StatefulSet', 'Job'):
             assert not [v for v in item['spec']['template']['spec'].get('volumes', []) if 'hostPath' in v], item['metadata']['name']
-    for claim_name, path in (('host-dataset-testdata', '/srv/hoover4-testdata'),):
-        pv = get(single, 'PersistentVolume', f'hoover-zone-a-{claim_name}')
-        assert pv['spec']['hostPath'] == {'path': path, 'type': 'Directory'}
-        assert pv['spec']['accessModes'] == ['ReadOnlyMany']
-        assert pv['spec']['claimRef'] == {'namespace': 'hoover-zone-a', 'name': claim_name}
-        assert pv['spec']['persistentVolumeReclaimPolicy'] == 'Retain'
-        pvc = get(single, 'PersistentVolumeClaim', claim_name)
-        assert pvc['spec']['volumeName'] == pv['metadata']['name'] and pvc['spec']['storageClassName'] == ''
 
 
 def test_operations_worker_mounts_backups_and_stores(single):

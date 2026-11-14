@@ -43,7 +43,7 @@ The zone job closes intake first: it scales the applications of the zone and of 
 suspends their CronJobs, and records the earlier replicas and suspensions in the state file. The stores keep running,
 because the dumps and the Block copies need them. After the copy the job restores the recorded values. A runner that
 finds a recorded closure without a running job restores it.
-The zone and platform jobs hold the site operation lock (../../oplock.py), so no deployment, Apply or migration
+The zone and platform jobs hold the site operation lock (../../oplock.py), so no deployment, Apply or Compose import
 changes the site during the copy.
 restore-zone restores a complete zone copy into an installed zone: the Secrets, the claims and the database dumps of
 the zone namespace and of its Hoover installation, with the applications and the other stores stopped. --from names

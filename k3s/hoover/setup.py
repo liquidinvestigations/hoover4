@@ -187,7 +187,7 @@ def runtime_secrets():
 
 # The store credentials of the local store layout (manifests.py LOCAL_CREDENTIALS). The stores of that layout start
 # with the Compose values: ClickHouse creates its user from the environment, the Manticore seed file holds its user,
-# and garage-init imports the key. A migrated install keeps them, because its copied stores hold them.
+# and garage-init imports the key. An install of the Compose import keeps them, because its copied stores hold them.
 COMPOSE_STORE_VALUES = {
     'clickhouse-user': 'hoover4', 'clickhouse-password': 'hoover4', 'manticore-user': 'manticore',
     'manticore-password': 'manticore', 's3-access-key': 'hoover4-blobs-rw', 's3-secret-key': 'hoover4-garage-blob-secret-key-0',

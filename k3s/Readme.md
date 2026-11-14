@@ -20,7 +20,7 @@ The images of the cluster come from commits of this repository.
 | [hosts/](hosts) | Holds manual host tools: the SSH key login, the NVMe volume group and the runsc build with GPU support. |
 | [cluster/](cluster) | Installs the cluster services that every zone uses: RuntimeClasses, cert-manager and TopoLVM. |
 | [images/](images) | Builds the images and pushes them to the cluster registry. |
-| [migration/](migration) | Moves a stopped Compose installation into a Hoover installation of the cluster ([migrate.py](migration/migrate.py)). |
+| [import_compose/](import_compose) | Imports a stopped Compose installation into a new zone, once per zone ([import_compose.py](import_compose/import_compose.py)). |
 | [platform/mcp-relay/](platform/mcp-relay) | Serves the MCP servers, the interfaces and the stores of one installation on the loopback ports of the home node. |
 | [platform/gpu/](platform/gpu) | Runs the GPU services on the GPU nodes of a site, behind an authenticated gateway. |
 | [platform/backups/](platform/backups) | Runs the optional backups and restores a copy into an isolated target. |
@@ -212,7 +212,7 @@ k3s/deploy-k3s status --site <file>
 - Each run has a record in `<operator state>/deploy/records/`. A failed or stopped run keeps its finished steps.
   The record pins the commit, the SHA-256 of the site file, the saved settings revision and the UID of `kube-system`.
   `deploy-k3s up --resume <record>` continues at the first unfinished step with these inputs, and refuses a changed site file, another commit or another cluster.
-- The driver holds the site operation lock ([oplock.py](oplock.py)) while it runs. The settings Apply, the zone operations, the migration steps and the openDesk and platform backups take the same lock.
+- The driver holds the site operation lock ([oplock.py](oplock.py)) while it runs. The settings Apply, the zone operations, the Compose import and the openDesk and platform backups take the same lock.
   When the cluster answers, the lock is the Lease `site-operation` of the namespace `operator-portal`, so the workstation and the runner in the cluster exclude each other. A holder renews it every 20 seconds, and a Lease without a renewal for 90 seconds is free. Before the cluster exists, the lock is a file lock of the operator state folder.
   A settings save takes no lock, so a save during a run waits as a later revision.
 - A failed step ends the run. A failed play names the nodes of its failed tasks, and the log of the record holds the output of each task.
@@ -348,33 +348,37 @@ Set `BROWSER_CONTAINER=hoover4-harness-browser`, pass `--target https://<zone>-h
 
 ## Move a Compose installation into the cluster.
 
-The migration steps of [migration/migrate.py](migration/migrate.py) need a rewrite: the site file names no zone and no Compose install, so the steps below have no target until the Compose import command replaces them.
-The steps read the target and its `source_ini` from the earlier site file key `hoovers`.
-Each step records its result in `<operator state>/migration/<name>-<run>/`, and a finished step does not run again.
+`deploy-k3s import-compose` imports a stopped Compose installation into a new zone ([import_compose/import_compose.py](import_compose/import_compose.py)).
+The site file, the zone state, the operator portal and the host roles have no Compose key. Every Compose input is an argument of this command.
+The command runs once per zone. A zone that exists stops it, and so does a finished import of the same zone.
 
 ```sh
-python3 k3s/migration/migrate.py plan <name> --dry-run   # the folders, the claims, the owners, the images and the space
-for step in plan freeze record stop images copy secrets stores temporal workers resume; do
-  python3 k3s/migration/migrate.py "$step" <name> || break
-done
-python3 k3s/migration/migrate.py users <name>             # a zone user for each owner of chats and boards
-python3 k3s/platform/mcp-relay/install-relay.py <name> apply --ports compose
+k3s/deploy-k3s import-compose <zone> <folder> --home <node> --ini <file> --dataset uploads=<folder> --dry-run
+k3s/deploy-k3s import-compose <zone> <folder> --home <node> --ini <file> --dataset uploads=<folder>
+k3s/deploy-k3s import-compose <zone> --users       # a zone user for each owner of chats and boards
+k3s/deploy-k3s import-compose <zone> --status
+python3 k3s/platform/mcp-relay/install-relay.py <zone> apply --ports compose
 ```
 
-- `freeze` stops the website, its sign-in proxy and the MCP and agent servers, and then the workers with their grace period.
-- `record` keeps the Temporal namespaces, search attributes, counts and open workflows, the histories of the open workflows and the store contents.
-- `stop` stops Temporal and then the stores. The source data folders stay unchanged, and nothing deletes them.
-- `images` imports the store and Temporal images of the source into k3s, and checks their content ids.
-- `--engine docker|podman` names the runtime of the source, and `--source-host` the SSH host of the source. A rootful Docker keeps the host owners, and rootless Podman maps them through its user namespace.
-- `plan` writes `inputs.json`: the commit, the settings revision, the site file SHA-256, the engine, the source host, the images and the storage identity. A later step with another input stops.
-- `copy` copies each folder into its claim with the mapped owners, and verifies a SHA-256 of every file before any target service starts.
-  A home node on this host gets the copy through a mount of the volume. Another home node gets a tar stream into a pod that mounts the claim, and the check runs in that pod. The record keeps the UID and volume of each claim.
-- `stores` starts only the stores and Temporal, and compares the store contents with the record. A table with a TTL clause can hold fewer rows, because ClickHouse removes expired rows at start.
-- `temporal` compares the Temporal namespaces, search attributes, counts and open workflows with the record. The workers start only after it passes.
-- `resume` waits until every open workflow of the record has new events or has closed.
+- `<folder>` is the Compose volume folder, relative to the `data_root` of the source node. A bind mount can put the folder there. An absolute path, `..` and a symbolic link out of the data root are refused.
+- `--ini` names the `hoover4.ini` of the Compose installation, relative to the folder of the site file. Its explicit values become operator settings of `hoover:<zone>`, with the Temporal history shard count of the source.
+- `--dataset <name>=<folder>` copies the folder of a dataset mount of the ini into the claim `dataset-<name>`. Each writable mount needs it or `--without-dataset <name>`. A site with data nodes keeps its dataset folders on NFS, so the plan refuses a dataset there.
+- `--source-node` names the node that runs Compose. The default is the home node. The command connects with `ssh` and runs its root commands with `sudo -n` on that node and on the home node.
+- `--engine docker|podman` names the runtime of the source. A rootful Docker keeps the host owners, and rootless Podman maps them through its user namespace.
+- The command runs every unfinished step in order. `--until <step>` stops after a step. The records are in `<state folder>/operator/import/<zone>/`, which stays on the workstation.
 
-To return to Compose before the target takes new work, delete the claims of the target installation and run `./deploy`.
-After the target takes new work, a return to Compose loses that work.
+| Step | Result |
+|---|---|
+| `plan` | Checks the folders on the source node, the images, the claims and the free capacity, and pins the inputs. It saves `app.hoover = false` for the zone. |
+| `freeze`, `record`, `stop` | Stop the intake and the workers, record Temporal and the store contents, then stop Temporal and the stores. |
+| `zone` | Runs `zone.py apply` with `stores = local` and `temporal_backend = cassandra`. The Hoover objects have zero replicas. |
+| `images`, `copy`, `secrets` | Import the source store images. Copy each folder into its claim with the mapped owners and a SHA-256 of every file. Write the Compose store credentials. |
+| `stores` | Starts the stores and Temporal, and compares them with the record. |
+| `renames` | Gives the databases, the Manticore tables and the Garage bucket aliases the names of the zone. Changes the bucket names of the `*s3_path` columns and the container paths of the dataset rows. |
+| `temporal`, `workers`, `resume` | Compare Temporal with the record, start every service, and wait until each open workflow continues or closes. |
+
+The source folders stay unchanged. To return to Compose before the zone takes new work, delete the zone and run `./deploy`.
+After the zone takes new work, a return to Compose loses that work.
 
 ## Run the GPU services on GPU nodes.
 
@@ -482,7 +486,7 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 
 ```sh
 k3s/tests/run.sh             # render, state (with the portal routes) and driver (with the host scripts)
-k3s/tests/run.sh migration backup
+k3s/tests/run.sh import backup
 k3s/tests/run.sh replay      # the workflow replay suite in the worker image
 ```
 

@@ -3131,8 +3131,9 @@
     {
       "id": "F-admin-52",
       "source": [
-        "k3s/migration/migrate.py",
-        "k3s/migration/root_copy.py"
+        "k3s/import_compose/import_compose.py",
+        "k3s/import_compose/renames.py",
+        "k3s/import_compose/root_copy.py"
       ],
       "docs": [
         "docs/technical-specification/Features.md",

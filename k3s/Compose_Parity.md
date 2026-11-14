@@ -84,8 +84,7 @@ The operator settings `volume.<claim>` hold the claim sizes.
 
 | Compose mount | Cluster form |
 |---|---|
-| `[dataset_mount.<name>]` of a migrated install | Read-only folders stay host folders of the home node. Each is a PersistentVolume with the claim `host-dataset-<name>`, which the pods mount read-only, because the pod policy refuses a host path in a pod. Writable folders are claims `dataset-<name>`. The container paths stay the same. |
-| Dataset folders of a new install | NFS folders of the data node below `/data` |
+| `[dataset_mount.<name>]` | `/data/<name>`: the claims `dataset-testdata` and `dataset-uploads` on a single-node site, else NFS folders of the data node. The Compose import copies a dataset folder into its claim and moves the dataset rows from the Compose container path to `/data/<name>`. |
 | `chat_control_dir` at `/control` | Left out. A cluster installation has no chat control folder. |
 | Key files below `/run/secrets` | Items of the Secret `hoover-runtime` |
 | Source folders of a built service | Left out. The image of the same commit holds them. |

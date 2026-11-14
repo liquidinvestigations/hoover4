@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Run the test suites of the cluster deployment code in containers. Usage: k3s/tests/run.sh [suite ...]
 # Without a suite it runs render, state and driver.
-#   render   the site file, the source ini reader and the Hoover render (test_config.py, test_render.py)
+#   render   the site file and the Hoover render (test_config.py, test_render.py)
 #   state    the operator settings registry, revisions, apply operations, portal routes, the cluster copy of the state
 #            and the site lock Lease (test_state.py, test_portal.py, test_clusterstate.py)
 #   driver   the deployment driver with fake ssh, sudo, kubectl and ansible-playbook, and the host roles (test_driver.py, test_hosts.py)
-#   migration the offline copy, its hashes and owner mapping, interruption and the plan rules (test_migration.py)
+#   import   the Compose import: the ini reader, the folder checks, the renames, the refusal of a second import, and
+#            the offline copy with its hashes and owner mapping (test_import_compose.py)
 #   backup   the backup schedule, eligibility, retention and restore manifests with controlled time (test_backup.py)
 #   replay   the workflow replay suite of the pipeline, in the worker image with the processing folder mounted read-only.
 #            REPLAY_IMAGE names the image. The default is the image of the Compose worker of this workstation.
@@ -18,12 +19,12 @@ suites=("$@")
 [ ${#suites[@]} -eq 0 ] && suites=(render state driver)
 
 declare -A files=([render]="test_config.py test_render.py" [state]="test_state.py test_portal.py test_clusterstate.py" [driver]="test_driver.py test_hosts.py"
-                 [migration]="test_migration.py" [backup]="test_backup.py")
+                 [import]="test_import_compose.py" [backup]="test_backup.py")
 built=""
 status=0
 for suite in "${suites[@]}"; do
     case "$suite" in
-        render|state|driver|migration|backup)
+        render|state|driver|import|backup)
             if [ -z "$built" ]; then
                 docker build --quiet --tag hoover4-k3s-tests "$tests_dir" >/dev/null
                 built=1
@@ -45,7 +46,7 @@ for suite in "${suites[@]}"; do
                 -c '/opt/pysetup/.venv/bin/python -m pytest tests/replay -q -p no:cacheprovider' || status=1
             ;;
         *)
-            echo "unknown suite $suite. The suites are render, state, driver, migration, backup and replay." >&2
+            echo "unknown suite $suite. The suites are render, state, driver, import, backup and replay." >&2
             status=1
             ;;
     esac

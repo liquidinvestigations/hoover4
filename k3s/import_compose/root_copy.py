@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Copy one stopped Compose volume folder into one mounted target volume, and verify the copy. Run it as root.
 
-migrate.py runs this script with sudo for each folder of the migration plan, while every source container is stopped
-and no pod uses the target volume.
+import_compose.py runs this script as root for each folder of the import plan, while every source container is stopped
+and no pod uses the target volume: pack on the source node, and clear and verify in a pod that mounts the claim.
 
 copy   Copies every file, folder and symbolic link of the source into the empty target. Each entry keeps its mode and
        its modification time. Its owner changes from the host id of the source runtime to the id inside the
@@ -13,7 +13,7 @@ copy   Copies every file, folder and symbolic link of the source into the empty 
 verify Reads every file of the target again and compares its size, hash, owner and mode with the manifest. It prints
        the number of entries and of differences, and exits with 1 on a difference or on a target entry that the
        manifest does not name.
-clear  Removes every entry of the target folder. migrate.py uses it before a new copy of an interrupted folder.
+clear  Removes every entry of the target folder. import_compose.py uses it before a new copy of an interrupted folder.
 pack   Writes the same entries as copy, with the same owner mapping and manifest rows, as a tar stream on standard
        output, for a target on another host. The manifest is the last member, .hoover4-copy-manifest.jsonl. The
        maps are the texts of the map files. The script needs no other file, so it can run from standard input.

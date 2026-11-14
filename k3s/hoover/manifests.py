@@ -12,8 +12,8 @@ name stops the render with an error that names the service and its file.
 Store layouts (the value stores of the zone state):
 - local: the stores of the Compose files run in the Hoover namespace on file system claims of the home node:
   ClickHouse, both Manticore daemons, Garage with its init job, and ZooKeeper, which the ClickHouse configuration
-  names. The operations worker mounts the store claims as in Compose, so store backup and restore work. A migrated
-  install keeps the claims of its copied store folders.
+  names. The operations worker mounts the store claims as in Compose, so store backup and restore work. The Compose
+  import (../import_compose/) fills these claims with the copied store folders.
 - zone: ClickHouse, both Manticore daemons and Garage run in Kata on block volumes in the zone namespace
   (stores/hoover.py), and ExternalName Services keep the Compose names. setup.py creates the Garage buckets.
 Temporal backends (the value temporal_backend of the zone state):
@@ -26,9 +26,9 @@ Placement and runtimes:
   because they parse untrusted files.
 - hoover-workers has budget.worker_pods replicas. With more than one pod, each pod polls its own host queues
   (HOOVER4_HOST_QUEUE is the pod name). One pod polls the shared queues only, as the Compose worker does, so every
-  stage of a plan reaches the one folder of its files, and the open work of a migrated install keeps its queues.
+  stage of a plan reaches the one folder of its files, and the open work of an imported install keeps its queues.
   In the local layout it is a StatefulSet on the home node: a pod keeps its name after a restart and keeps its
-  plan files on its own claim worker-temp-files-hoover-workers-<n>. A migrated install fills the claim of pod 0 with
+  plan files on its own claim worker-temp-files-hoover-workers-<n>. The Compose import fills the claim of pod 0 with
   the plan files of its Compose worker. In the zone layout it is a Deployment spread over the nodes, with the plan
   files in an emptyDir: a new pod has a new name, so the plans of a lost pod claim another host.
   The index planner, the email graph and the chat worker are single writers and run in the one pod of
@@ -212,9 +212,6 @@ class Target:
     values: dict
     revision: str
     nfs: dict = field(default_factory=dict)
-    # The Compose ini of an imported install (config.read_source_ini()). The zone state names none, so only a caller
-    # that imports a Compose install gives it.
-    source: object = None
     tree: Path = site_config.REPO
     # The zone setting app.hoover. A disabled installation renders zero replicas and keeps its claims and Secrets.
     enabled: bool = True
@@ -431,24 +428,11 @@ def probe(service_def, name=None):
 def dataset_mounts(target):
     """The dataset mounts: name, container path, writable flag and the pod volume.
 
-    A migrated install keeps the container paths of its source ini, because the dataset rows store them. Its
-    read-only folders stay in place as host folders of the home node (host_folder()). Its writable folders are claims,
-    which the migration fills. A new install of a single-node site has the claims dataset-testdata and dataset-uploads below
-    /data, because its pods share the one node and need no NFS server. Another install has the NFS folders of
-    ../platform/hoover-data/hoover_data.py below /data.
+    Every mount is below /data. An install of a single-node site has the claims dataset-testdata and dataset-uploads,
+    because its pods share the one node and need no NFS server. Another install has the NFS folders of
+    ../platform/hoover-data/hoover_data.py. The Compose import (../import_compose/) moves the dataset rows of a Compose
+    install to these paths.
     """
-    if target.source:
-        out = []
-        for m in target.source.dataset_mounts:
-            short = m['name'].replace('_', '-')
-            row = {'name': m['name'], 'path': m['container_path'], 'writable': m['writable']}
-            if m['writable']:
-                row['volume'] = {'persistentVolumeClaim': {'claimName': f'dataset-{short}'}}
-            else:
-                row['volume'] = host_volume(f'host-dataset-{short}')
-                row['host_path'] = m['host_path']
-            out.append(row)
-        return out
     if target.site.single:
         return [{'name': n, 'path': f'/data/{n}', 'writable': w,
                  'volume': {'persistentVolumeClaim': {'claimName': f'dataset-{n}'}}}
@@ -470,30 +454,6 @@ def dataset_mounts(target):
         out.append({'name': name, 'path': f'/data/{name}', 'writable': False,
                     'volume': {'nfs': {'server': extra_server, 'path': f'/extra/{target.zone}/{name}', 'readOnly': True}}})
     return out
-
-
-def host_volume(claim_name):
-    return {'persistentVolumeClaim': {'claimName': claim_name, 'readOnly': True}}
-
-
-def host_folder(target, claim_name, path):
-    """A read-only host folder of the home node as a PersistentVolume and its claim in the Hoover namespace.
-
-    The pod policy hoover-pod-limits (../zones/manifests/zone-pods.yaml) refuses a hostPath volume in a pod of a zone
-    namespace. A PersistentVolume is a cluster object, so only the admin render of this file can name a host folder, and
-    the zone runner cannot. The claimRef binds the volume to its one claim, and every pod mounts the claim read-only.
-    """
-    volume = f'{target.ns}-{claim_name}'
-    pv = {'apiVersion': 'v1', 'kind': 'PersistentVolume', 'metadata': {'name': volume, 'labels': {PART: claim_name}},
-          'spec': {'capacity': {'storage': '1Gi'}, 'accessModes': ['ReadOnlyMany'], 'persistentVolumeReclaimPolicy': 'Retain',
-                   'storageClassName': '', 'hostPath': {'path': path, 'type': 'Directory'},
-                   'claimRef': {'namespace': target.ns, 'name': claim_name},
-                   'nodeAffinity': {'required': {'nodeSelectorTerms': [{'matchExpressions': [
-                       {'key': 'kubernetes.io/hostname', 'operator': 'In', 'values': [target.hoover.home_node]}]}]}}}}
-    pvc = {'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': claim_name, 'namespace': target.ns},
-           'spec': {'accessModes': ['ReadOnlyMany'], 'storageClassName': '', 'volumeName': volume,
-                    'resources': {'requests': {'storage': '1Gi'}}}}
-    return [pv, pvc]
 
 
 def volumes(target, name, service_def, mounts):
@@ -1029,9 +989,6 @@ def zone_ini_text(target, mounts=None):
     # Garage declares the size of its data volume as its capacity.
     size = target.values['volume.garage-data']
     values[('storage', 'garage_capacity')] = re.sub(r'([KMGT])i$', r'\1', size)
-    if target.source:
-        # A migrated install keeps the history shard count of its Temporal stores.
-        values[('main_services', 'temporal_history_shards')] = target.source.values['main_services']['temporal_history_shards']
     return zone_ini.render(values, mounts, bool(target.site.gpu_pool), admin_base_url=f'https://{target.host}/',
                            title=f'the Hoover installation {target.hoover.name}')
 
@@ -1058,9 +1015,7 @@ def objects(target):
     else:
         claims = [claim(target, c) for c in sorted(ZONE_CLAIMS) if c != 'worker-temp-files']
     for m in mounts:
-        if m.get('host_path'):
-            claims += host_folder(target, m['volume']['persistentVolumeClaim']['claimName'], m['host_path'])
-        elif 'persistentVolumeClaim' in m['volume']:
+        if 'persistentVolumeClaim' in m['volume']:
             name = m['volume']['persistentVolumeClaim']['claimName']
             claims.append({'apiVersion': 'v1', 'kind': 'PersistentVolumeClaim', 'metadata': {'name': name, 'namespace': target.ns},
                            'spec': claim_spec(target, 'upload-tmp', target.values['volume.upload-tmp'])})

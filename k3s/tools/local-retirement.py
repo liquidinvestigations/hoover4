@@ -35,10 +35,12 @@ K3S = HERE.parent
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
 sys.path.insert(0, str(K3S / 'platform' / 'backups'))
+sys.path.insert(0, str(K3S / 'import_compose'))
 import config  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 # The completeness check of a tar file of the backups: every member and the end-of-archive marker after the last one.
 from backups import tar_complete  # noqa: E402
+import source as compose_source  # noqa: E402
 
 UNITS = ('k3s.service', 'hoover4-address.service', 'hoover4-dns.service', 'hoover4-frontend.service')
 USER_UNITS = (f'hoover4-operator-runner-{k3s_settings.SITE.id}.service' if k3s_settings.SITE else
@@ -120,12 +122,12 @@ def inventory(dest):
     source_inis = [str(p) for p in (k3s_settings.HOOVER4 / 'hoover4.ini',) if p.exists()]
     for ini in source_inis:
         try:
-            found = config.read_source_ini(ini, check_paths=False)
+            found = compose_source.read_ini(ini)
             out['protected'][found.volumes_path] = 'the stopped Compose volumes'
             for mount in found.dataset_mounts:
                 out['protected'][mount['host_path']] = 'a dataset folder of the Compose install'
-        except config.SiteError as error:
-            out['protected'][ini] = f'unreadable source ini: {error}'
+        except compose_source.SourceError as error:
+            out['protected'][ini] = f'unreadable Compose ini: {error}'
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     (dest / 'inventory.json').write_text(json.dumps(out, indent=1, sort_keys=True) + '\n')

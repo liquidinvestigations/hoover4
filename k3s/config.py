@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read and check the site file of a cluster installation, and the Compose ini of an earlier install.
+"""Read and check the site file of a cluster installation.
 
 The site file is a YAML Ansible inventory with one group, hoover4. The group variables (hoover4.vars) are the site
 values, and each host of the group (hoover4.hosts) is one node with its values as host variables. The file names the
@@ -33,17 +33,14 @@ zone, and hoovers() gives the Hoover installation of each zone. The storage name
 zone id (Hoover). The GPU services share one generated key, which the cluster keeps in a Secret (../hoover/gpu.py).
 
 parse() refuses an unknown group, an unknown key, a missing resource and an incompatible role combination, and names
-every problem in one message. It changes nothing on any host. read_source_ini() reads the hoover4.ini of a Compose
-install. It accepts the settings that deploy.py removed, reports them, and checks every path before any copy.
+every problem in one message. It changes nothing on any host. The import of a Compose install is a separate command
+(import_compose/), and the site file has no key for it.
 A YAML site file needs PyYAML. A site file in JSON form needs only the standard library.
 
 Usage: config.py check <site file>           checks the file and prints its summary as JSON
        config.py project <site file> <node>  prints the part of the site that one node receives
-       config.py source <hoover4.ini>        checks the Compose ini of an earlier install
        config.py ansible <site file>         prints the variables that the driver gives to the host plays as JSON
 """
-import configparser
-import importlib.util
 import ipaddress
 import json
 import os
@@ -135,7 +132,7 @@ IDENTITY = {'clickhouse_database_prefix': 'clickhouse_database_prefix', 'mantico
 
 
 class SiteError(ValueError):
-    """The site file or a source ini has problems. The message names each problem."""
+    """The site file or the zone state has problems. The message names each problem."""
 
 
 @dataclass
@@ -1260,120 +1257,6 @@ def ansible_variables(site, private):
             'hoover4_domain': site.domain, 'hoover4_nodes': nodes}
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# The hoover4.ini of an earlier Compose install
-# ----------------------------------------------------------------------------------------------------------------------
-
-@dataclass
-class SourceInstall:
-    """The resources that an earlier Compose install names, after their checks."""
-    path: str
-    values: dict
-    explicit: list
-    dropped: list
-    volumes_path: str
-    volumes: dict
-    dataset_mounts: list
-    ops_backup_dir: str
-    chat_control_dir: str
-
-
-def deploy_module():
-    spec = importlib.util.spec_from_file_location('hoover_deploy_source', REPO / 'deploy.py')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def read_source_ini(path, check_paths=True):
-    """Read the hoover4.ini of a Compose install for a migration or a one-time settings seed.
-
-    The reader accepts each setting that deploy.py lists as removed, such as the Serena settings, and leaves it out.
-    It refuses an unknown section or key and every other problem that `./deploy --check` refuses. With check_paths it
-    also refuses a missing volumes folder, a missing store folder, a missing dataset folder and a host folder that two
-    mounts share. It reads files only. It writes nothing.
-    """
-    deploy = deploy_module()
-    parser = configparser.ConfigParser(inline_comment_prefixes=None, default_section='\n')
-    try:
-        with open(path, encoding='utf-8') as handle:
-            parser.read_file(handle)
-    except (OSError, configparser.Error) as error:
-        raise SiteError(f'the source ini {path} cannot be read: {error}') from None
-    cfg = deploy.Config(None)
-    problems, dropped = [], []
-    for section in parser.sections():
-        if (section, None) in deploy.REMOVED_SETTINGS:
-            dropped.append(f'[{section}]')
-            continue
-        problem = deploy.Config._section_problem(section)
-        if problem:
-            problems.append(problem)
-            continue
-        cfg.values.setdefault(section, {})
-        for key in parser.options(section):
-            if (section, key) in deploy.REMOVED_SETTINGS:
-                dropped.append(f'[{section}] {key}')
-                continue
-            problem = deploy.Config._key_problem(section, key)
-            if problem:
-                problems.append(problem)
-                continue
-            raw = parser.get(section, key, raw=True)
-            if deploy.INLINE_COMMENT.search(raw):
-                problems.append(f'[{section}] {key} has a comment after its value.')
-                continue
-            try:
-                cfg.values[section][key] = parser.get(section, key).strip()
-            except configparser.InterpolationError:
-                problems.append(f'[{section}] {key} has a % sign that is not written as %%.')
-                continue
-            cfg.explicit.add((section, key))
-    if problems:
-        raise SiteError(f'the source ini {path} has {len(problems)} problem{"s" if len(problems) != 1 else ""}:\n    '
-                        + '\n    '.join(problems))
-    problem = deploy.volumes_path_problem(cfg)
-    if problem:
-        raise SiteError(f'the source ini {path}: {problem}')
-    try:
-        mounts = deploy.dataset_mounts(cfg)
-    except deploy.DeployError as error:
-        raise SiteError(f'the source ini {path}: {error}') from None
-    root = cfg.get('storage', 'volumes_path').strip()
-    volumes = {row.name: os.path.join(root, row.name) for row in deploy.VOLUMES if row.side == 'main'}
-    backup = cfg.get('main_services', 'ops_backup_dir').strip() or volumes['ops_backups']
-    control = cfg.get('main_services', 'chat_control_dir').strip()
-    if check_paths:
-        problems = []
-        if not os.path.isdir(root):
-            problems.append(f'[storage] volumes_path = {root} is not an existing folder.')
-        for name in ('clickhouse_data', 'manticore_data_v14', 'garage_meta', 'garage_data', 'temporal_cassandra',
-                     'temporal_elasticsearch'):
-            if not os.path.isdir(volumes[name]):
-                problems.append(f'the store folder {volumes[name]} does not exist.')
-        problems += deploy.dataset_mount_refusals(cfg)
-        if control and not os.path.isdir(control):
-            problems.append(f'[main_services] chat_control_dir = {control} is not an existing folder.')
-        real = {}
-        for mount in mounts:
-            resolved = os.path.realpath(mount.host_path)
-            for other, name in real.items():
-                if resolved == other or resolved.startswith(other + '/') or other.startswith(resolved + '/'):
-                    problems.append(f'[dataset_mount.{mount.name}] and [dataset_mount.{name}] share the host folder {resolved}.')
-            real[resolved] = mount.name
-        for mount in mounts:
-            if os.path.realpath(mount.host_path).startswith(os.path.realpath(root) + '/'):
-                problems.append(f'[dataset_mount.{mount.name}] host_path is inside volumes_path, so the copy is ambiguous.')
-        if problems:
-            raise SiteError(f'the source ini {path} names paths that cannot be copied:\n    ' + '\n    '.join(problems))
-    values = {s: dict(k) for s, k in cfg.values.items()}
-    return SourceInstall(path=str(path), values=values, explicit=sorted(f'{s}.{k}' for s, k in cfg.explicit),
-                         dropped=dropped, volumes_path=root, volumes=volumes,
-                         dataset_mounts=[{'name': m.name, 'host_path': m.host_path, 'container_path': m.container_path,
-                                          'writable': m.writable} for m in mounts],
-                         ops_backup_dir=backup, chat_control_dir=control)
-
-
 def main(argv):
     if len(argv) >= 2 and argv[0] == 'check':
         site = read(argv[1], check_files=True)
@@ -1390,8 +1273,6 @@ def main(argv):
     elif len(argv) == 2 and argv[0] == 'ansible':
         site = read(argv[1])
         print(json.dumps(ansible_variables(site, site.state_folder()), indent=1))
-    elif len(argv) == 2 and argv[0] == 'source':
-        print(json.dumps(asdict(read_source_ini(argv[1])), indent=1))
     else:
         raise SystemExit(__doc__)
 
