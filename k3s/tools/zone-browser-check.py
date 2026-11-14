@@ -11,7 +11,7 @@ button when they show one.
 - Pad is CryptPad. It has its own accounts and no single sign-on, so its row shows that the start page answers.
   The row has "contract": "availability" and does not show a sign-in.
 - Meet checks the join page of a room only.
-The passwords come from <state folder>/fixture-user-passwords.json and from the Secret ums-nubus-credentials.
+The passwords come from <state folder>/zones/fixture-user-passwords.json and from the Secret ums-nubus-credentials.
 The script prints one JSON line for each check and no password. It exits with 1 when a check fails.
 The screenshots and the page texts go to <state folder>/checks/zone-browser/, which Git ignores.
 Usage: <state folder>/browser-venv/bin/python zone-browser-check.py <zone> [user ...]
@@ -75,7 +75,7 @@ LISTEN = """window.hooverOffice = []; window.addEventListener('message', e => { 
 
 
 def passwords():
-    out = json.loads((settings.PRIVATE / 'fixture-user-passwords.json').read_text())
+    out = json.loads((settings.ZONE_USER_PASSWORDS).read_text())
     data = json.loads(subprocess.check_output(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', ZONE, 'get', 'secret',
                                                'ums-nubus-credentials', '-o', 'json']))['data']
     out['Administrator'] = base64.b64decode(data['administrator_password']).decode()

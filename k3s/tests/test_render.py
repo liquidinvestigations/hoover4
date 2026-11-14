@@ -176,9 +176,17 @@ def test_operations_worker_mounts_backups_and_stores(single):
             ('/stores/garage/data', 'garage-data', True), ('/stores/garage/meta', 'garage-meta', True)} <= mounts
     clickhouse = containers(get(single, 'StatefulSet', 'clickhouse'))[-1]
     assert {'name': 'ops-backups', 'mountPath': '/var/lib/clickhouse/backups'} in clickhouse['volumeMounts']
-    # The claims are local volumes, so every pod that shares one runs on the home node.
-    for name, kind in (('hoover-operations', 'Deployment'), ('clickhouse', 'StatefulSet')):
-        assert get(single, kind, name)['spec']['template']['spec']['nodeSelector'] == {'kubernetes.io/hostname': 'dev'}
+    # The claims are local volumes that more than one pod mounts, so the pods with a claim share one node through a
+    # required pod affinity to the label of LOCAL_GROUP. No pod names a node.
+    affinity = {'podAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': [
+        {'labelSelector': {'matchLabels': manifests.LOCAL_GROUP}, 'topologyKey': 'kubernetes.io/hostname'}]}}
+    for name, kind in (('hoover-operations', 'Deployment'), ('clickhouse', 'StatefulSet'), ('hoover-workers', 'StatefulSet')):
+        template = get(single, kind, name)['spec']['template']
+        assert template['spec']['affinity'] == affinity and 'nodeSelector' not in template['spec'], name
+        assert template['metadata']['labels']['hoover.dev/volumes'] == 'local', name
+    # Temporal has no claim. It follows the pods with a claim, and its own pod does not start the group.
+    temporal = get(single, 'Deployment', 'temporal')['spec']['template']
+    assert temporal['spec']['affinity'] == affinity and 'hoover.dev/volumes' not in temporal['metadata']['labels']
 
 
 def test_store_owners_follow_deploy_py(single):
@@ -266,7 +274,12 @@ def test_service_commands_and_limits_follow_compose(tmp_path, single):
     assert clickhouse['resources']['limits']['memory'] == manifests.quantity(services['clickhouse']['mem_limit'], '')
     assert clickhouse['securityContext']['capabilities']['add'] == sorted(services['clickhouse']['cap_add'])
     workers = containers(get(single, 'StatefulSet', 'hoover-workers'))[0]
-    assert workers['resources']['limits'] == {'memory': '6144Mi', 'cpu': '4'}
+    assert workers['resources']['limits'] == {'memory': '13696Mi', 'cpu': '4'}
+    assert workers['resources']['requests'] == {'cpu': '50m', 'memory': '1856Mi'}
+    # Elasticsearch of the cassandra backend gets the heap and the limit of its measured use, not the Compose values.
+    elastic = containers(get(single, 'StatefulSet', 'temporal-elasticsearch'))[-1]
+    assert elastic['resources']['limits']['memory'] == '3584Mi'
+    assert env(elastic)['ES_JAVA_OPTS'] == '-Xms1536m -Xmx1536m'
 
 
 def test_network_policy_keeps_internet_services_away_from_stores(single):
@@ -320,6 +333,34 @@ def test_existing_remote_zone_keeps_postgresql_and_zone_stores(tmp_path):
     assert clamav['nodeSelector'] == {'kubernetes.io/hostname': 'edge'}
 
 
+def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
+    items = items_of(target('remote.yml', 'zone-a', tmp_path))
+    assert get(items, 'Namespace', 'hoover-zone-a')['metadata']['labels'] == {'hoover.dev/zone': 'true'}
+    for item in workloads(items):
+        spec = item['spec']['template']['spec']
+        # Only the internet services name the public node. The zone layout has no shared claims and no affinity.
+        if item['metadata']['name'] not in manifests.INTERNET:
+            assert 'nodeSelector' not in spec and 'affinity' not in spec, item['metadata']['name']
+        for c in containers(item):
+            requested = manifests.mebibytes(c['resources']['requests']['memory'])
+            assert requested <= manifests.mebibytes(c['resources']['limits']['memory']), (item['metadata']['name'], c['name'])
+    web = containers(get(items, 'Deployment', 'hoover-website'))[0]['resources']
+    assert web['requests']['memory'] == '320Mi' and web['limits']['memory'] == '2048Mi'
+    clamav = containers(get(items, 'Deployment', 'hoover4-clamav'))[0]['resources']
+    assert clamav['requests']['memory'] == '448Mi' and clamav['limits']['memory'] == '3456Mi'
+    import zone_ini
+    assert zone_ini.derive(zone_ini.BUDGET)[('main_services', 'mcp_browser_mem_limit')] == '10240M'
+    tika = containers(get(items, 'Deployment', 'hoover4-tika'))[0]['resources']
+    assert tika['limits']['memory'] == '4096Mi'
+    # A service without a Compose limit gets the measured value of UNLIMITED_IN_COMPOSE, and a request never exceeds
+    # the limit.
+    assert manifests.limits({}, manifests.UNLIMITED_IN_COMPOSE['hoover4-full-research-agent']) == ('2560Mi', None)
+    assert manifests.request('hoover4-full-research-agent', '2560Mi') == '640Mi'
+    assert manifests.request('hoover-workers', '1Gi') == '1Gi'
+    temporal = containers(get(items, 'Deployment', 'temporal'))[0]['resources']
+    assert temporal['requests']['memory'] == '448Mi' and temporal['limits']['memory'] == '3328Mi'
+
+
 def test_a_local_store_zone_of_a_remote_site_has_its_own_names_and_nfs_data(tmp_path):
     items = items_of(target('remote.yml', 'zone-c', tmp_path))
     e = env(containers(get(items, 'StatefulSet', 'hoover-workers'))[0])
@@ -327,7 +368,9 @@ def test_a_local_store_zone_of_a_remote_site_has_its_own_names_and_nfs_data(tmp_
     assert e['S3_SYSTEM_BUCKET'] == 'zone-c-system'
     volumes = {v['name']: v for v in get(items, 'StatefulSet', 'hoover-workers')['spec']['template']['spec']['volumes']}
     assert volumes['data-uploads']['nfs'] == {'server': '10.43.0.10', 'path': '/zone-c/uploads', 'readOnly': False}
-    assert get(items, 'PersistentVolumeClaim', 'clickhouse-data')['spec']['storageClassName'] == 'hdd-ext4'
+    # A fast claim takes the first fast tier of the site. The node edge has nvme.
+    assert get(items, 'PersistentVolumeClaim', 'clickhouse-data')['spec']['storageClassName'] == 'nvme-ext4'
+    assert get(items, 'PersistentVolumeClaim', 'ops-backups')['spec']['storageClassName'] == 'hdd-ext4'
     get(items, 'StatefulSet', 'temporal-cassandra')
 
 

@@ -885,13 +885,13 @@ def check_sign_in(ctx, hoover, timeout=300):
         raise StepFailed(f'the sign-in check of {ns} ended in phase {phase or "unknown"}: {(logs or events)[-500:]}')
 
 
-def step_zone(zone, home):
+def step_zone(zone):
     def run(ctx):
         # As the runner does for create-zone: the zone state gets the zone first. The frontend serves every zone host
         # with the certificate of *.<domain>, so a zone needs no frontend change.
-        ctx.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import zone; zone.register(sys.argv[2], sys.argv[3])',
-                 SOURCE / 'zones', zone, home])
-        ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone, '--home', home])
+        ctx.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import zone; zone.register(sys.argv[2])',
+                 SOURCE / 'zones', zone])
+        ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone])
         hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)
@@ -952,7 +952,7 @@ def cluster_steps(ctx):
         del steps['hoover-data']
     zones = ctx.hoovers()
     for hoover in zones.values():
-        steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone, hoover.home_node)
+        steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone)
     if ctx.site.single and zones:
         # The development relay of a single-node site serves the loopback ports of one Hoover installation, the first
         # zone of the zone state. install-relay.py keeps the port mode that the operator chose.

@@ -27,7 +27,7 @@ ROOTLESS_UIDS = '         0       1001          1\n         1     165536      65
 SMALL_UIDS = '0 1001 1\n1 20000 30000\n'
 SCRIPT = K3S / 'import_compose' / 'root_copy.py'
 SERENA = REPO / 'scripts/deploy.py_tests/fixtures/source-ini/compose-with-serena.ini'
-ZONE_A = config.Hoover(zone='zone-a', home_node='dev', stores='local', temporal_backend='cassandra')
+ZONE_A = config.Hoover(zone='zone-a', stores='local', temporal_backend='cassandra')
 
 
 def importer():

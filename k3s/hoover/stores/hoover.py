@@ -2,12 +2,16 @@
 """Build and apply the Hoover stores of a zone in Kata: ClickHouse, the two Manticore daemons and Garage.
 
 Each store gets a ConfigMap from config/<store>/ where it has one, a Service, and a one-replica StatefulSet in the zone
-namespace. Its data is a raw TopoLVM block volume of the store tier on the home node of the zone (../../zones/zonestate.py).
+namespace. Its data is a raw TopoLVM block volume of the store tier of the site (../../zones/zonestate.py). The
+scheduler places the store pod by its requests, and the pod then stays on the node of its volume.
 The block mount wrapper of podspec.py makes the file system and mounts it inside the guest.
 Credentials come from the hoover-stores Secret (creds.py). The ClickHouse users file has a user for each Hoover service
 (service_users.py), and each password comes from that Secret. The memory limits come from ../../zones/memory-limits.json.
 The StatefulSets use the OnDelete update strategy. zone.py replaces outdated pods after applying their templates.
 A direct run of this tool keeps existing pods until an operator deletes them.
+The memory requests (REQUESTS) are the measured working sets, so the scheduler balances the nodes by real use.
+The claim template of an existing StatefulSet cannot change. An apply keeps the template of the cluster and grows the
+claim of the pod to the size of SIZES when that is larger. The block mount wrapper grows the file system online.
 Usage: hoover.py apply|show <clickhouse|manticore|manticore-vectors|garage> <zone>
 """
 import json, subprocess, sys
@@ -17,7 +21,11 @@ import zonestate  # noqa: E402  (common puts ../../zones on the path)
 SECRET = 'hoover-stores'
 CONFIG = common.LAB / 'config'
 LIMITS = json.loads((common.SOURCE / 'zones' / 'memory-limits.json').read_text())['hoover']
-SIZES = {'clickhouse': '20Gi', 'manticore': '10Gi', 'manticore-vectors': '10Gi', 'garage': '20Gi'}
+# The Manticore text claim holds at least the 14.1 GiB of Manticore text data of the 64 GB reference site.
+SIZES = {'clickhouse': '20Gi', 'manticore': '16Gi', 'manticore-vectors': '10Gi', 'garage': '20Gi'}
+# The memory request of each store: the current request plus 0.33 times the distance to the largest working set (anon
+# memory) of the 64 GB reference site, rounded up to 64 MiB.
+REQUESTS = {'clickhouse': '640Mi', 'manticore': '448Mi', 'manticore-vectors': '704Mi', 'garage': '128Mi'}
 IMAGES = {
     'clickhouse': 'docker.io/clickhouse/clickhouse-server:25.8',
     'manticore': 'docker.io/manticoresearch/manticore:29.9.0',
@@ -31,7 +39,7 @@ MANTICORE_ENV = {'TELEMETRY': '0', 'searchd_auth': '1', 'searchd_rt_flush_period
 
 
 def resources(store):
-    return {'requests': {'cpu': '50m', 'memory': '64Mi'}, 'limits': {'cpu': '2', 'memory': LIMITS[store]}}
+    return {'requests': {'cpu': '50m', 'memory': REQUESTS[store]}, 'limits': {'cpu': '2', 'memory': LIMITS[store]}}
 
 
 def secret_env(name, key):
@@ -60,7 +68,7 @@ def statefulset(store, zone, container, entrypoint, directory, user=None, extra_
     spec = {'runtimeClassName': 'kata', 'terminationGracePeriodSeconds': 60, 'enableServiceLinks': False,
             'containers': [container], 'volumes': list(extra_volumes)}
     spec = podspec.blockmount(spec, container['name'], entrypoint, [('data', None, directory)], user)
-    tier = zonestate.tier(zone, store, zonestate.node_tiers(zonestate.home(zone), common.settings.KUBECONFIG))
+    tier = zonestate.tier(zone, store, zonestate.site_tiers(common.settings.KUBECONFIG))
     labels = {'app.kubernetes.io/name': store, common.LABEL: 'store', 'hoover.dev/store': store}
     claim = {'metadata': {'name': 'data'}, 'spec': {'accessModes': ['ReadWriteOnce'], 'volumeMode': 'Block',
              'storageClassName': f'{tier}-block', 'resources': {'requests': {'storage': SIZES[store]}}}}
@@ -123,6 +131,27 @@ def garage(zone):
 BUILDERS = {'clickhouse': clickhouse, 'manticore': manticore, 'manticore-vectors': lambda z: manticore(z, 'manticore-vectors'), 'garage': garage}
 
 
+def grow_claim(store, zone, current):
+    """Keep the claim template of an existing StatefulSet, and grow the claim of its pod to the size of SIZES."""
+    found_template = current['spec']['volumeClaimTemplates'][0]
+    template = {'metadata': {'name': found_template['metadata']['name']}, 'spec': found_template['spec']}
+    claim = f"{template['metadata']['name']}-{store}-kata-0"
+    found = common.kubectl('-n', zone, 'get', 'pvc', claim, '--ignore-not-found', '-o', 'json').strip()
+    if not found:
+        return template
+    size = json.loads(found)['spec']['resources']['requests']['storage']
+    if gibibytes(SIZES[store]) > gibibytes(size):
+        common.kubectl('-n', zone, 'patch', 'pvc', claim, '--type', 'merge', '-p',
+                       json.dumps({'spec': {'resources': {'requests': {'storage': SIZES[store]}}}}))
+        common.log('stores.jsonl', step='claim-grown', claim=claim, zone=zone, size=SIZES[store])
+    return template
+
+
+def gibibytes(text):
+    units = {'Ki': 2 ** -20, 'Mi': 2 ** -10, 'Gi': 1, 'Ti': 2 ** 10}
+    return float(text[:-2]) * units[text[-2:]] if text[-2:] in units else float(text) / 2 ** 30
+
+
 def main():
     if len(sys.argv) != 4 or sys.argv[1] not in ('apply', 'show') or sys.argv[2] not in BUILDERS:
         sys.exit(__doc__)
@@ -137,6 +166,8 @@ def main():
             current = common.kubectl('-n', zone, 'get', 'statefulset', o['metadata']['name'], '--ignore-not-found', '-o', 'json').strip()
             if current and o['spec']['replicas']:
                 o['spec']['replicas'] = json.loads(current)['spec'].get('replicas', 1)
+            if current:
+                o['spec']['volumeClaimTemplates'] = [grow_claim(store, zone, json.loads(current))]
         # kubectl apply reports some unchanged StatefulSets as configured, so only a difference in kubectl diff applies.
         diff = subprocess.run(common.K + ['diff', '-f', '-'], input=json.dumps(o), capture_output=True, text=True)
         if diff.returncode == 0:

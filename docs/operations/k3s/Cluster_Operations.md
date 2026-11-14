@@ -176,7 +176,7 @@ An etcd snapshot holds no volume data, so a complete recovery also restores the 
 
 ## Reach an installation from a workstation
 
-The relay of an installation serves its MCP servers, interfaces and stores on the loopback address of its home node.
+The relay of an installation serves its MCP servers, interfaces and stores on the loopback address of the control-plane node.
 Development tools reach them through an SSH tunnel. No port opens to the network.
 
 1. Start the relay with the ports of the Compose installation:
@@ -185,7 +185,7 @@ Development tools reach them through an SSH tunnel. No port opens to the network
    python3 k3s/platform/mcp-relay/install-relay.py <installation> apply --ports compose
    ```
 
-2. Start an SSH tunnel from the workstation to the home node, with one `-L 127.0.0.1:<port>:127.0.0.1:<port>` for each port that the client uses.
+2. Start an SSH tunnel from the workstation to the control-plane node, with one `-L 127.0.0.1:<port>:127.0.0.1:<port>` for each port that the client uses.
 3. Check the MCP servers through the tunnel. The check fails on a tool error, a wrong server name, or a call without the token that is not refused.
 
    ```sh

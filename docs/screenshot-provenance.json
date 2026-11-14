@@ -563,9 +563,9 @@
     {
       "image": "docs/operations/k3s/img/operator-zones.png",
       "scenario": "k3s/tools/operator-portal-shots.py",
-      "revision": "36e73c1c292ee4dbe082630594ce1f7a45f33632",
-      "captured_at": "2026-11-12T23:00:37+00:00",
-      "sha256": "17d983951ec991f48f72548630136a5329285db85498cfaab1afe76417cafd1b"
+      "revision": "3d72706d64291bbe2afe9c62d2c7be0734b154aa",
+      "captured_at": "2026-11-14T11:10:40+00:00",
+      "sha256": "a4592d7d1aef5aa30c1d8a873d460b23f0d1ddff461434108247b2f5b20f0c4a"
     },
     {
       "image": "docs/operations/k3s/img/operator-operations.png",

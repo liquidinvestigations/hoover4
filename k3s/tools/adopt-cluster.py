@@ -82,9 +82,6 @@ def inventory(site):
                 for key, value in identity.items():
                     if key in wanted and wanted[key] != value:
                         out['differences'].append(f'{ns} runs {key} = {value}, and the zone {hoover.zone} derives {wanted.get(key)}')
-        home = nodes.get(hoover.home_node)
-        if home is None:
-            out['differences'].append(f'the home node {hoover.home_node} of the zone {hoover.zone} is not a node')
     control = nodes.get(site.control_plane, {})
     out['etcd_role'] = control.get('labels', {}).get('node-role.kubernetes.io/etcd') == 'true'
     for name in site.nodes:

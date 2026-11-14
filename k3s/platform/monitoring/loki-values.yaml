@@ -21,7 +21,6 @@ loki:
     delete_request_store: filesystem
 singleBinary:
   replicas: 1
-  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
   persistence:
     enabled: true
     size: 10Gi
@@ -43,8 +42,7 @@ lokiCanary:
 test:
   enabled: false
 gateway:
-  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
-  # The chart requires one gateway on each node. On one node the old pod must stop before the new one starts.
+  # The chart allows at most one gateway on each node. On a one-node site the old pod must stop before the new one starts.
   deploymentStrategy: {type: RollingUpdate, rollingUpdate: {maxSurge: 0, maxUnavailable: 1}}
   resources:
     requests: {cpu: 25m, memory: 32Mi}

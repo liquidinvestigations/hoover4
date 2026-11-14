@@ -122,7 +122,7 @@ def logins():
                                                  'ums-nubus-credentials', '-o', 'json']))['data']
     users = [('Administrator', base64.b64decode(secret['administrator_password']).decode()),
              ('test.user', (settings.PRIVATE / 'zones' / ZONE / 'test-user-password').read_text().strip())]
-    fixture = json.loads((settings.PRIVATE / 'fixture-user-passwords.json').read_text())
+    fixture = json.loads((settings.ZONE_USER_PASSWORDS).read_text())
     names = [u['username'] for u in json.loads((settings.SOURCE / 'zones/zone-users.json').read_text())['users']]
     return users + [(name, fixture[name]) for name in names]
 

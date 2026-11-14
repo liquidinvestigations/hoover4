@@ -19,10 +19,9 @@
 <p id="onboarding" aria-live="polite"></p>
 <h3>Create a zone</h3>
 <form id="create"><label>Zone name <input name="zone" required pattern="zone-[a-z0-9]{1,12}" placeholder="zone-c"></label>
-<label>Home node <select name="home" id="home" required></select></label>
 
 <button>Create the zone</button></form>
-<p><small>A create takes about 30 minutes. All pods and volumes of a zone stay on its home node. A create, upgrade or delete restarts the shared call services, so calls that run at that time end.</small></p>
+<p><small>A create takes about 30 minutes. The cluster places the pods and volumes of the zone on the nodes with free memory, CPU and storage. A create, upgrade or delete restarts the shared call services, so calls that run at that time end.</small></p>
 <h3>Operations</h3>
 <p id="operations-status" aria-live="polite"></p>
 <table><thead><tr><th>Time</th><th>Operator</th><th>Operation</th><th>State</th><th>Output</th></tr></thead><tbody id="operations"></tbody></table>
@@ -100,8 +99,6 @@ async function updateZones() {
    row.append(cell(link, document.createElement('br'), zone.phase === 'Active' ? '' : zone.phase), cell(use), cell(login, ' ', upgrade, ' ', remove));
    return row;
   }));
-  const home = document.getElementById('home');
-  if (!home.options.length) home.replaceChildren(...data.nodes.map(node => new Option(node, node)));
   status.textContent = `The cluster has ${data.zones.length} zones.`;
   document.getElementById('operations').replaceChildren(...data.operations.map(op => {
    const row = document.createElement('tr');
@@ -118,7 +115,7 @@ async function updateZones() {
 }
 document.getElementById('create').onsubmit = event => {
  event.preventDefault(); const form = new FormData(event.target);
- act('/operations', {kind: 'create-zone', zone: form.get('zone'), home: form.get('home')}, `The create of ${form.get('zone')} is queued.`);
+ act('/operations', {kind: 'create-zone', zone: form.get('zone')}, `The create of ${form.get('zone')} is queued.`);
 };
 document.getElementById('gpu-show').onclick = async () => {
  const out = document.getElementById('gpu-key'); const copy = document.getElementById('gpu-copy');

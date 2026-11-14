@@ -15,12 +15,12 @@ Each kind has its own procedure. Do not use the procedure of one kind for anothe
 
 ## Adopt an earlier cluster
 
-The site keeps the zone names, the home nodes, the claims, the database prefixes, the buckets and the service users of the earlier cluster.
+The site keeps the zone names, the claims, the database prefixes, the buckets and the service users of the earlier cluster.
 The existing zones keep the zone store layout (`stores = zone`) and the PostgreSQL Temporal backend.
 The storage names of a zone come from its zone name, so an existing zone keeps them only when the earlier cluster used the same names.
 No step converts the Temporal backend.
 
-1. Write the site file with the nodes, and write the zone state `zone-state.json` of the state folder with one entry for each zone and its home node.
+1. Write the site file with the nodes, and write the zone state `zone-state.json` of the state folder with one entry for each zone.
 2. Compare the cluster with the site file. The command changes nothing.
 
    ```sh
@@ -72,8 +72,9 @@ A history that does not replay shows a change of a workflow that needs a Tempora
 The zone gets the storage names of its zone id, and the import renames the databases, tables and buckets.
 The source keeps its data folders, and nothing deletes them. The import runs once per zone.
 
-The import needs `sudo -n` on the source node and on the home node.
-It sends `probe.py` and `root_copy.py` to Python as root on the source node, and imports the store images with `k3s ctr` on the home node.
+The import needs `sudo -n` on the source node and on the node that `--home` names.
+It sends `probe.py` and `root_copy.py` to Python as root on the source node, and imports the store images with `k3s ctr` on the `--home` node.
+The copy binds the store volumes on that node, and the pods that share the volumes follow them. The zone has no home node after the import.
 
 1. Put the Compose volume folder below the `data_root` of the source node, for example with a bind mount.
    Do the same for each dataset folder that the import copies.

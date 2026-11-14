@@ -9,7 +9,7 @@ The render has two store layouts and two Temporal backends.
 The site file sets both for each Hoover installation.
 See [the k3s Readme](Readme.md) for the site file.
 
-- The local layout runs the Compose stores in the Hoover namespace on claims of the home node.
+- The local layout runs the Compose stores in the Hoover namespace on claims of one node.
 - The zone layout runs ClickHouse, Manticore and Garage in Kata on block volumes in the zone namespace.
 - The `cassandra` backend runs Temporal, Cassandra and Elasticsearch as Compose runs them.
 - The `postgresql` backend runs Temporal on the PostgreSQL of the zone. Existing remote zones use it.
@@ -19,7 +19,7 @@ See [the k3s Readme](Readme.md) for the site file.
 | Service | Role | Compose file | Local layout | Zone layout | Notes |
 |---|---|---|---|---|---|
 | `hoover4-website` | app | `docker-compose.yaml`, `website-release.yaml` | Deployment `hoover-website` | Deployment `hoover-website` | Release image, `/app/server`. oauth2-proxy sends the browser requests with the proxy secret. The workers, the collections server and the research agents call the agent API at `AGENT_API_BASE_URL`, which the render sets to `http://hoover-website:8080`. Upload space on the claim `upload-tmp`. |
-| `hoover4-worker` | app | `docker-compose.yaml` | StatefulSet `hoover-workers` on the home node, and Deployment `hoover-singletons` | Deployment `hoover-workers` spread over the nodes, and Deployment `hoover-singletons` | Plan files on one claim for each worker pod in the local layout. `hoover-singletons` runs the migrations, the index planner, the email graph and the chat worker once. |
+| `hoover4-worker` | app | `docker-compose.yaml` | StatefulSet `hoover-workers` on the node of the store claims, and Deployment `hoover-singletons` | Deployment `hoover-workers` spread over the nodes, and Deployment `hoover-singletons` | Plan files on one claim for each worker pod in the local layout. `hoover-singletons` runs the migrations, the index planner, the email graph and the chat worker once. |
 | `hoover4-ops` | app | `docker-compose.yaml` | Deployment `hoover-operations` with `/backups` and the store claims | Deployment `hoover-operations` with `/backups` | The zone layout has no `/stores` mounts, so store backup and Manticore restore need the local layout. |
 | `hoover4-pdf-search` | app | `docker-compose.yaml` | Deployment and Service on port 13500 | Same | |
 | `hoover4-tika` | app | `tika.yaml` | Deployment, ConfigMap `tika-config` | Same | The tika configuration comes from deploy.py. |

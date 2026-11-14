@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """The Hoover data directories: an NFS server on each data node, and the dataset mounts of each zone.
 
-The databases of a zone stay on local volumes of its home node. Only the data directories, which Hoover scans and
-where uploads arrive, use NFS. Hoover pods on any node then read the same files.
+The databases of a zone stay on local volumes, on the nodes where the scheduler bound them. Only the data directories,
+which Hoover scans and where uploads arrive, use NFS. Hoover pods on any node then read the same files.
 hoover_data in <state folder>/settings.json holds the site values:
   roots  the data root of each node, for example {"node-a": "/srv/hoover-data"}. A node without a root gets
          DEFAULT_ROOT. The root has one folder for each zone, with testdata and uploads.
-  zones  the data node of each zone. The default is the home node of the zone when it has the role data, else the
-         first node with the role data, as the Hoover render chooses it (../../hoover/manifests.py).
+  zones  the data node of each zone. The default is the first node with the role data, or for a zone entry of an
+         earlier version its home node when that has the role data, as the Hoover render chooses it
+         (../../config.py Hoover.data_node()).
   extra  read-only host directories of a zone, for example
          {"zone-b": [{"name": "archive", "node": "node-b", "path": "/srv/archive"}]}
 Each data node runs the Deployment nfs-<node> in the namespace hoover-data with the Service nfs-<node>.
@@ -42,7 +43,7 @@ def data_node(zone):
     configured = CONFIG.get('zones', {}).get(zone)
     if configured:
         return configured
-    home = zonestate.home(zone)
+    home = (zonestate.load()['zones'].get(zone) or {}).get('home', '')
     data_nodes = [n.name for n in settings.SITE.with_role('data')] if settings.SITE else []
     return home if home in data_nodes or not data_nodes else data_nodes[0]
 

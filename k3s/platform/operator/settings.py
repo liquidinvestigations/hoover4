@@ -279,13 +279,13 @@ def _ini_settings(deploy):
 WORKER_PODS = ('hoover-workers',)
 CLUSTER_HOOVER = [
     Setting('budget.worker_pods', 'hoover', 'int', '1', WORKER_PODS, 'restart', 'budget', minimum=1, maximum=64),
-    Setting('budget.worker_memory_mib', 'hoover', 'int', '6144', WORKER_PODS, 'restart', 'budget', minimum=3072),
+    Setting('budget.worker_memory_mib', 'hoover', 'int', '13696', WORKER_PODS, 'restart', 'budget', minimum=3072),
     Setting('budget.worker_cpus', 'hoover', 'int', '4', WORKER_PODS, 'restart', 'budget', minimum=1, maximum=256),
     Setting('budget.tika_cpus', 'hoover', 'int', '2', ('hoover4-tika', 'hoover-workers'), 'restart', 'budget', minimum=1),
     Setting('budget.tesseract_cpus', 'hoover', 'int', '2', ('hoover4-tesseract-cpu', 'hoover-workers'), 'restart', 'budget', minimum=1),
     Setting('budget.ocr_pdf_slots', 'hoover', 'int', '1', ('hoover4-ocr-pdf', 'hoover-workers'), 'restart', 'budget', minimum=1),
     Setting('budget.browser_contexts', 'hoover', 'int', '4', ('hoover4-mcp-browser',), 'restart', 'budget', minimum=1),
-    Setting('budget.clamav_memory_mib', 'hoover', 'int', '3072', ('hoover4-clamav',), 'restart', 'budget', minimum=1024),
+    Setting('budget.clamav_memory_mib', 'hoover', 'int', '3456', ('hoover4-clamav',), 'restart', 'budget', minimum=1024),
     Setting('workers.parser_sandbox', 'hoover', 'choice', 'off', WORKER_PODS + ('hoover-singletons',), 'restart', 'switch',
             env='HOOVER4_PARSER_SANDBOX', choices=('off', 'bwrap')),
     Setting('workers.slot_tuner', 'hoover', 'choice', 'fixed', WORKER_PODS, 'restart', 'switch',
@@ -300,7 +300,7 @@ CLUSTER_HOOVER = [
 # The volume claims of a Hoover installation and their first sizes. The local store layout uses every claim. The zone
 # store layout uses the upload, backup and worker claims.
 VOLUMES = {
-    'clickhouse-data': '20Gi', 'manticore-data': '10Gi', 'manticore-vectors-data': '10Gi', 'garage-meta': '1Gi',
+    'clickhouse-data': '20Gi', 'manticore-data': '16Gi', 'manticore-vectors-data': '10Gi', 'garage-meta': '1Gi',
     'garage-data': '20Gi', 'temporal-cassandra': '20Gi', 'temporal-elasticsearch': '10Gi', 'ops-backups': '50Gi',
     'upload-tmp': '20Gi', 'worker-temp-files': '20Gi', 'clickhouse-monitoring': '1Gi',
 }

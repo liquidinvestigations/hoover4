@@ -10,10 +10,13 @@ The Hoover budget of an installation is a group of operator settings (BUDGET nam
 suggested values of other keys, by the rules of the configuration reference:
 - Memory sets the number of common processes in a worker pod, and CPU sets their slots. The processes times the slots
   are at most 1.5 times the CPUs of the pod, and the processes need PROCESS_MIB and SLOT_MIB each.
-- Tika has one parser process for each of its CPUs, a heap of 1 GiB each, and a limit of the heaps plus 1 GiB.
+- Tika has one parser process for each of its CPUs, a heap of 1 GiB each, and a limit of the heaps plus 1 GiB, at
+  least TIKA_MIN_MIB.
 - Tesseract has one slot for each of its CPUs, and 4096 MiB plus 1024 MiB for each slot. OCR PDF has the larger of
   8000 MiB and 2048 MiB for each slot, with at most 5 slots for each Tesseract slot.
-- The browser has 500 MiB for each context and 1 GiB for the template.
+- The browser has 500 MiB for each context and 1 GiB for the template, at least BROWSER_MIN_MIB.
+The defaults of BUDGET and the two minimums are the k3s minimum values: the earlier value plus 0.33 times the
+distance to the Compose limit of the 64 GB reference site, rounded up to 128 MiB.
 An explicit operator value of a key replaces its derived value.
 The ini points every GPU service and the LLM at the forwarder gpu in the Hoover namespace (gpu.py), and names the
 placeholder volumes folder, which manifests.py maps to volumes.
@@ -29,14 +32,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # The budget keys and their defaults. The operator settings hold them as hoover.budget.<key>.
 BUDGET = {
     'worker_pods': 1,          # worker replicas of the installation, spread over the nodes
-    'worker_memory_mib': 6144,  # memory of one worker pod
+    'worker_memory_mib': 13696,  # memory of one worker pod
     'worker_cpus': 4,          # CPUs of one worker pod
     'tika_cpus': 2,
     'tesseract_cpus': 2,
     'ocr_pdf_slots': 1,
     'browser_contexts': 4,
-    'clamav_memory_mib': 3072,
+    'clamav_memory_mib': 3456,
 }
+TIKA_MIN_MIB = 4096
+BROWSER_MIN_MIB = 10240
 # The Temporal history shards of a new installation. A migrated installation keeps its count.
 SHARDS = 128
 # The peak of one common process and of one more slot, with the parser tools that it starts. These are estimates until
@@ -77,12 +82,12 @@ def derive(b):
         (m, 'indexing_workers'): '1', (m, 'indexing_concurrency'): '1',
         (m, 'worker_mem_limit'): f"{b['worker_memory_mib']}M",
         (m, 'tika_parse_processes'): str(tika), (m, 'tika_parse_heap'): '1g', (m, 'tika_concurrency'): str(tika),
-        (m, 'tika_mem_limit'): f'{tika * 1024 + 1024}M',
+        (m, 'tika_mem_limit'): f'{max(TIKA_MIN_MIB, tika * 1024 + 1024)}M',
         (m, 'tesseract_cpu_concurrency'): str(tesseract), (m, 'tesseract_cpu_cpus'): str(tesseract),
         (m, 'tesseract_cpu_mem_limit'): f'{4096 + 1024 * tesseract}M',
         (m, 'ocr_pdf_concurrency'): str(ocr_pdf), (m, 'ocr_pdf_mem_limit'): f'{max(8000, 2048 * ocr_pdf)}M',
         (m, 'browser_max_contexts'): str(b['browser_contexts']),
-        (m, 'mcp_browser_mem_limit'): f"{500 * b['browser_contexts'] + 1024}M",
+        (m, 'mcp_browser_mem_limit'): f"{max(BROWSER_MIN_MIB, 500 * b['browser_contexts'] + 1024)}M",
         (m, 'clamav_mem_limit'): f"{b['clamav_memory_mib']}M",
     }
 

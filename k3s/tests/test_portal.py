@@ -114,19 +114,19 @@ def test_zone_operations_accept_names_only(monkeypatch):
     spec = importlib.util.spec_from_file_location('portal_server_names', OPERATOR / 'portal-server.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    monkeypatch.setattr(module, 'zones', lambda: {'nodes': ['node-a']})
     monkeypatch.setattr(module, 'operations', lambda: [])
     created = []
     monkeypatch.setattr(module, 'api', lambda method, path, body=None, content=None: created.append(body) or {})
     for zone in ('/etc', 'zone-../x', 'zone-a/b', '../zone-a', 'zone-A', 'zone-' + 'a' * 13):
         with pytest.raises(module.Refused):
-            module.create_operation('admin', {'kind': 'create-zone', 'zone': zone, 'home': 'node-a'})
-    with pytest.raises(module.Refused):
-        module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-a', 'home': '/srv'})
+            module.create_operation('admin', {'kind': 'create-zone', 'zone': zone})
     with pytest.raises(module.Refused):
         module.onboarding('zone-a/../../secrets')
-    assert module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-a', 'home': 'node-a'})
-    assert created[0]['data']['zone'] == 'zone-a'
+    # A create names no home node. A home value of an earlier client has no effect and does not reach the operation.
+    assert module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-a'})
+    assert module.create_operation('admin', {'kind': 'create-zone', 'zone': 'zone-b', 'home': '/srv'})
+    assert [c['data']['zone'] for c in created] == ['zone-a', 'zone-b']
+    assert all('home' not in c['data'] for c in created)
 
 
 def test_the_gpu_key_needs_the_operator_and_reads_only_its_secret(portal, monkeypatch):

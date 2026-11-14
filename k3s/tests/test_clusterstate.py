@@ -134,19 +134,43 @@ def test_a_large_log_keeps_its_last_lines_in_the_cluster(tmp_path):
 
 
 def test_the_zone_user_passwords_are_secrets_that_reach_the_next_runner(tmp_path):
-    # The runner writes the passwords of the zone users at a create. A restart of its pod must not lose them.
+    # The runner writes the passwords of the zone users at a create. A restart of its pod must not lose them. The files
+    # are in zones/, which only the runner container mounts.
     store = Store()
     runner, portal, workstation = tmp_path / 'runner', tmp_path / 'portal', tmp_path / 'workstation'
-    write(runner, 'fixture-user-passwords.json', '{"user": "pw"}')
-    write(runner, 'passwords.md', '| user | pw |')
+    write(runner, 'zones/fixture-user-passwords.json', '{"user": "pw"}')
+    write(runner, 'zones/passwords.md', '| user | pw |')
     changes = clusterstate.push(runner, store=store)
-    assert changes == {'fixture-user-passwords.json': 'written', 'passwords.md': 'written'}
-    assert set(store.list('secret')) == {'fixture-user-passwords.json', 'passwords.md'} and not store.list('configmap')
+    assert changes == {'zones/fixture-user-passwords.json': 'written', 'zones/passwords.md': 'written'}
+    assert set(store.list('secret')) == {'zones/fixture-user-passwords.json', 'zones/passwords.md'}
+    assert not store.list('configmap')
     clusterstate.pull(portal, ('configmap',), store=store)
-    assert not (portal / 'fixture-user-passwords.json').exists()
+    assert not (portal / 'zones').exists()
     clusterstate.pull(workstation, store=store)
-    assert (workstation / 'fixture-user-passwords.json').read_text() == '{"user": "pw"}'
-    assert (workstation / 'fixture-user-passwords.json').stat().st_mode & 0o077 == 0
+    assert (workstation / 'zones/fixture-user-passwords.json').read_text() == '{"user": "pw"}'
+    assert (workstation / 'zones/fixture-user-passwords.json').stat().st_mode & 0o077 == 0
+
+
+def test_the_password_files_of_an_earlier_version_move_into_zones(tmp_path):
+    # An earlier version kept both files at the top of the state folder, which the portal container shares.
+    store = Store()
+    old, runner = tmp_path / 'old', tmp_path / 'runner'
+    write(old, 'fixture-user-passwords.json', '{"user": "cluster"}')
+    write(old, 'passwords.md', '| user | cluster |')
+    for path in clusterstate.MOVED:
+        store.put('secret', path, (old / path).read_bytes())
+    write(old, 'fixture-user-passwords.json', '{"user": "stale"}')
+    # A runner of the new version pulls: the objects move to zones/, and no file appears at the top of its folder.
+    clusterstate.pull(runner, store=store)
+    assert set(store.list('secret')) == set(clusterstate.MOVED.values())
+    assert (runner / 'zones/fixture-user-passwords.json').read_text() == '{"user": "cluster"}'
+    assert not (runner / 'fixture-user-passwords.json').exists() and not (runner / 'passwords.md').exists()
+    # A workstation folder of the earlier version moves its files. The cluster copy wins over its older file.
+    clusterstate.pull(old, store=store)
+    assert not (old / 'fixture-user-passwords.json').exists() and not (old / 'passwords.md').exists()
+    assert (old / 'zones/fixture-user-passwords.json').read_text() == '{"user": "cluster"}'
+    assert clusterstate.push(old, store=store) == {}
+    assert set(store.list('secret')) == set(clusterstate.MOVED.values())
 
 
 def test_the_objects_name_their_path_and_keep_secrets_out_of_configmaps():

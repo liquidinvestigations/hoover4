@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install monitoring, logs and dashboards: kube-prometheus-stack, Loki, Alloy, Headlamp, the disk dashboard and the
-# alarms of alarms.yaml. The services with data run on the control-plane node of the site file.
+# alarms of alarms.yaml. No service names a node. A service with data stays on the node of its volume.
 # KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig. HELM names the helm command.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -9,8 +9,7 @@ private=$(python3 "$source_dir/settings.py" private)
 export KUBECONFIG=${KUBECONFIG:-$private/kubeconfig}
 helm=${HELM:-$private/bin/helm}
 suffix=$(python3 "$source_dir/settings.py" suffix)
-node=$(python3 "$source_dir/settings.py" hosts | python3 -c 'import json,sys;print(json.load(sys.stdin)["server"])')
-values() { sed -e "s/hoover\.test/$suffix/g" -e "s/MONITOR_NODE/$node/g" "$1"; }
+values() { sed -e "s/hoover\.test/$suffix/g" "$1"; }
 for repo in prometheus-community=https://prometheus-community.github.io/helm-charts grafana=https://grafana.github.io/helm-charts \
   grafana-community=https://grafana-community.github.io/helm-charts headlamp=https://kubernetes-sigs.github.io/headlamp/; do
   "$helm" repo add --force-update "${repo%%=*}" "${repo#*=}" >/dev/null

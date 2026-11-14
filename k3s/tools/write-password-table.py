@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Write every deployment login and password in clear text into <state folder>/passwords.md, which Git ignores.
+"""Write every deployment login and password in clear text into <state folder>/zones/passwords.md, which Git ignores.
 
 The hoover4 inventory keeps no credential values, so the table stays in the private folder of the site.
 
 The script reads the live cluster Secrets, so the table shows the values that the services use.
 It replaces the block between the two marker lines and prints only the row count.
 Above that block it writes the users of ../zones/zone-users.json with their passwords from
-<state folder>/fixture-user-passwords.json, which zone-users.py makes.
+<state folder>/zones/fixture-user-passwords.json, which zone-users.py makes. Both files are in zones/, which only the
+runner container of the operator pod mounts (../settings.py).
 """
 import base64,json,os,pathlib,subprocess,sys
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'zones'));import zonestate
 root=pathlib.Path(__file__).resolve().parent;settings.use_kubeconfig()
-INVENTORY=settings.PRIVATE/'passwords.md'
+INVENTORY=settings.PASSWORD_TABLE;INVENTORY.parent.mkdir(parents=True,exist_ok=True)
 BEGIN='<!-- lab passwords begin: write-password-table.py writes this block -->';END='<!-- lab passwords end -->'
 # A site without zones yet has no zone state file.
 ZONES=list(zonestate.load()['zones']) if zonestate.PATH.exists() else []
@@ -51,7 +52,7 @@ for zone in ZONES:
    (f'{zone} Hoover Garage admin API',f'garage.{zone}.svc:3903','-',stores.get('garage-admin-token','(missing)'),'A bearer token, in the cluster only.')]
 USERS_BEGIN='<!-- fixture users begin: write-password-table.py writes this block -->';USERS_END='<!-- fixture users end -->'
 fixture=json.loads((root.parent/'zones/zone-users.json').read_text())['users']
-password_file=settings.PRIVATE/'fixture-user-passwords.json'
+password_file=settings.ZONE_USER_PASSWORDS
 passwords=json.loads(password_file.read_text()) if password_file.exists() else {}
 def place(text,block,begin,end):
  """Replace the marked block in text, or put it below the title line when the text has no such block."""

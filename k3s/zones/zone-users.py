@@ -5,7 +5,7 @@ The openDesk bootstrap creates Administrator with every application flag off, so
 The script turns on each application flag and each application admin flag of Administrator.
 It creates test.user with the application flags and without admin flags when the user is missing.
 It creates each user of zone-users.json in the same way. A user has the same password in every zone and on
-every host, from <state folder>/fixture-user-passwords.json. The script makes a password for a user that has none
+every host, from <state folder>/zones/fixture-user-passwords.json. The script makes a password for a user that has none
 in the file.
 For an existing test.user it turns on the application flags that are off. --refresh turns the test.user flags off
 and on again, so Nubus computes the group membership again.
@@ -75,9 +75,9 @@ def run(zone):
  finally:pass
 REFRESH='--refresh' in sys.argv
 FIXTURE=json.loads((lab/'zone-users.json').read_text())['users']
-PASSWORD_FILE=settings.PRIVATE/'fixture-user-passwords.json'
+PASSWORD_FILE=settings.ZONE_USER_PASSWORDS
 PASSWORDS=json.loads(PASSWORD_FILE.read_text()) if PASSWORD_FILE.exists() else {}
-def save_passwords():PASSWORD_FILE.write_text(json.dumps(PASSWORDS,indent=1)+'\n');PASSWORD_FILE.chmod(0o600)
+def save_passwords():PASSWORD_FILE.parent.mkdir(parents=True,exist_ok=True);PASSWORD_FILE.write_text(json.dumps(PASSWORDS,indent=1)+'\n');PASSWORD_FILE.chmod(0o600)
 if any(e['username'] not in PASSWORDS for e in FIXTURE):
  PASSWORDS.update({e['username']:password() for e in FIXTURE if e['username'] not in PASSWORDS});save_passwords()
 import zonestate

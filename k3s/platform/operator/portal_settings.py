@@ -59,13 +59,15 @@ def state(s):
 
 
 def suggestions(s, nodes):
-    """Hardware suggestions for each Hoover installation, from the allocatable CPU and memory of its home node."""
+    """Hardware suggestions for each Hoover installation, from the allocatable CPU and memory of the largest worker node
+    of the site. A zone has no home node, so the scheduler can put a worker pod on that node."""
     out = {}
+    workers = [nodes[n.name] for n in s.nodes.values() if n.has('worker') and n.name in nodes]
+    if not workers:
+        return out
+    largest = max(workers, key=lambda n: (n['memory_mib'], n['cpus']))
     for hoover in config.hoovers(s).values():
-        node = nodes.get(hoover.home_node)
-        if not node:
-            continue
-        cpus, memory_mib = node['cpus'], node['memory_mib']
+        cpus, memory_mib = largest['cpus'], largest['memory_mib']
         out[f'hoover:{hoover.name}'] = {
             'budget.worker_cpus': str(max(2, cpus // 3)),
             'budget.worker_memory_mib': str(max(3072, min(32768, memory_mib // 4 // 512 * 512))),

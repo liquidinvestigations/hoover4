@@ -1,4 +1,5 @@
-# install-dashboards.sh replaces MONITOR_NODE with the server node of hosts.json and hoover.test with the suffix.
+# install-dashboards.sh replaces hoover.test with the suffix. No service names a node: the scheduler places each pod by
+# its requests, and a pod with a claim stays on the node of its volume.
 # The alarms fire in Prometheus. Alertmanager is off, so no alarm leaves the cluster.
 alertmanager:
   enabled: false
@@ -20,7 +21,6 @@ prometheus:
     externalUrl: https://operator.hoover.test/prometheus/
     routePrefix: /
     retention: 2d
-    nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
     # The PodMonitor of the TopoLVM volume groups and the alarm rules come from install-dashboards.sh without Helm labels.
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
@@ -36,7 +36,6 @@ prometheus:
             requests:
               storage: 8Gi
 prometheusOperator:
-  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {cpu: '1', memory: 512Mi}
@@ -46,7 +45,6 @@ prometheusOperator:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 500m, memory: 128Mi}
 grafana:
-  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
   persistence:
     enabled: true
     size: 2Gi
@@ -81,7 +79,6 @@ grafana:
       reporting_enabled: false
       check_for_updates: false
 kube-state-metrics:
-  nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
   resources:
     requests: {cpu: 50m, memory: 64Mi}
     limits: {cpu: 500m, memory: 256Mi}

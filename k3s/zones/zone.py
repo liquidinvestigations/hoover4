@@ -2,17 +2,18 @@
 """Create, upgrade or delete one zone: openDesk, its stores and its Hoover. This is the one installer command of a zone.
 
 Usage:
-  zone.py apply <zone> [--home <node>] [--stores zone|local] [--temporal-backend postgresql|cassandra]
+  zone.py apply <zone> [--stores zone|local] [--temporal-backend postgresql|cassandra]
                 [--dataset name:node:/path ...]
-                                          create the zone, or bring it to the source state. --home is required for a
-                                          new zone. The other options set the values of a new zone (zonestate.py),
-                                          and each option must match for an existing zone.
+                                          create the zone, or bring it to the source state. The options set the
+                                          values of a new zone (zonestate.py), and each option must match for an
+                                          existing zone. --home <node> of an earlier version is accepted and has no
+                                          effect, because the scheduler places the pods of a zone.
   zone.py delete <zone>                   delete the zone namespaces with their volumes, and the zone entry.
 The zone state of the state folder holds the zones. The site file names no zone.
 Apply reads the current state before each step. Verify unchanged output with ../tools/zone-snapshot.py after an upgrade.
 An apply of a disabled zone saves a private render without applying objects or running hooks.
 The steps of apply, in order:
-  1. The zone state (zonestate.py) gets the zone with its home node and the values of its Hoover installation.
+  1. The zone state (zonestate.py) gets the zone with the values of its Hoover installation.
      zones.py writes the openDesk values.
   2. The step checks that the registry has the images of the revision. deploy-k3s up builds them (step images).
   3. The cluster gets the zone pod policy (manifests/zone-pods.yaml) and the XWiki extension repository. The zone
@@ -99,11 +100,12 @@ def apply_manifest(text, namespace=None):
             print(line, flush=True)
 
 
-def register(zone, home, values=None):
-    """Add a new zone to the zone state, or check that an existing zone has the given home node and values.
+def register(zone, home=None, values=None):
+    """Add a new zone to the zone state, or check that an existing zone has the given values.
 
     values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A value that is not given
-    keeps its default.
+    keeps its default. home is the home node argument of an earlier version. It has no effect, and a new entry does not
+    record it.
     """
     import config
     values = {k: v for k, v in (values or {}).items() if v not in (None, '', [], ())}
@@ -115,25 +117,19 @@ def register(zone, home, values=None):
         state = {'schemaVersion': zonestate.SCHEMA, 'zones': {}}
     entry = state['zones'].get(zone)
     if entry is None:
-        if not home:
-            raise SystemExit(f'{zone} is a new zone, so it needs --home <node>')
         # bootstrapped turns true after the first complete openDesk install (opendesk()).
-        entry = {'enabled': True, 'home': home, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, **values}
+        entry = {'enabled': True, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, **values}
         problems = config.zone_problems(zone, entry, settings.SITE)
         if problems:
             raise SystemExit('; '.join(problems))
-        kubectl('get', 'node', home)
         state['zones'][zone] = entry
         zonestate.save(state)
-        step('zone-state', zone=zone, home=home, change='added')
-        return zonestate.home(zone)
-    if home and entry.get('home') != home:
-        raise SystemExit(f'{zone} has the home node {entry.get("home")}. A move to another node is not supported.')
+        step('zone-state', zone=zone, change='added')
+        return
     for key, value in values.items():
         default = config.ZONE_VALUES.get(key, ('',))[0]
         if entry.get(key, default) != value:
             raise SystemExit(f'{zone} has {key} = {entry.get(key, default)}. A change of an existing zone is not supported.')
-    return zonestate.home(zone)
 
 
 def images():
@@ -165,10 +161,11 @@ def cluster():
     apply_manifest((HERE / 'manifests/xwiki-extensions.yaml').read_text().replace('IMAGE_TAG', zones.XWIKI_EXTENSIONS_TAG))
 
 
-def namespaces(zone, home):
+def namespaces(zone):
     for name in (zone, f'hoover-{zone}'):
+        # The label hoover.dev/zone selects the namespaces of the zone pod policy (manifests/zone-pods.yaml).
         apply_manifest(json.dumps({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': name, 'labels': {
-            'hoover.dev/zone': 'true', 'hoover.dev/home-node': home}}}))
+            'hoover.dev/zone': 'true'}}}))
         # The zone runner of the operator portal has its rights in a zone namespace through this binding
         # (../platform/operator/runner-rights.yaml).
         apply_manifest(json.dumps({'apiVersion': 'rbac.authorization.k8s.io/v1', 'kind': 'RoleBinding',
@@ -410,12 +407,12 @@ def hoover(zone):
     run(sys.executable, SOURCE / 'hoover' / 'manifests.py', zone, 'apply')
 
 
-def apply(zone, home, values=None):
-    home = register(zone, home, values)
+def apply(zone, home=None, values=None):
+    register(zone, home, values)
     run(sys.executable, HERE / 'zones.py', quiet=True)
     # The zone secrets exist before the first object that uses them, so the cluster copy gets them now.
     clusterstate.checkpoint(PRIVATE)
-    step('values', zone=zone, home=home)
+    step('values', zone=zone)
     if not zonestate.enabled(zone):
         rendered = helmfile(zone, 'template')
         destination = PRIVATE / 'render' / f'{zone}-disabled.yaml'
@@ -428,7 +425,7 @@ def apply(zone, home, values=None):
     images()
     step('images', zone=zone)
     cluster()
-    namespaces(zone, home)
+    namespaces(zone)
     step('namespaces', zone=zone)
     opendesk(zone)
     step('opendesk', zone=zone)
@@ -471,7 +468,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', choices=('apply', 'delete'))
     parser.add_argument('zone')
-    parser.add_argument('--home')
+    parser.add_argument('--home', help='accepted for an earlier version, without effect')
     parser.add_argument('--stores')
     parser.add_argument('--temporal-backend')
     parser.add_argument('--dataset', action='append', default=[], help='name:node:/path of a read-only dataset folder')

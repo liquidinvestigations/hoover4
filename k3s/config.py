@@ -201,10 +201,18 @@ class Hoover:
     bucket prefix zone-x-c-.
     """
     zone: str
-    home_node: str
     stores: str = 'zone'
     temporal_backend: str = 'postgresql'
     extra_datasets: tuple = ()
+    # The value home of a zone entry of an earlier version. Only data_node() reads it, so the data folder of such a zone
+    # stays on its node. No pod and no volume of the zone uses it.
+    legacy_home: str = ''
+
+    def data_node(self, site):
+        """The data node of the NFS data folders of the zone: the legacy home node when it has the role data, else the
+        first node with the role data. ../platform/hoover-data/hoover_data.py chooses the same node."""
+        data_nodes = [n.name for n in site.with_role('data')]
+        return self.legacy_home if self.legacy_home in data_nodes else data_nodes[0]
 
     @property
     def name(self):
@@ -297,7 +305,8 @@ def zone_domain(zone, domain):
 
 def zone_problems(zone, entry, site=None):
     """The problems of the Hoover values of one zone entry of the zone state, as messages. With a site, the check
-    also needs a home node with the role worker and a data node for each extra dataset."""
+    also needs a data node for each extra dataset. A zone has no home node: the scheduler places its pods, and an old
+    value home has no effect on the placement."""
     label = f'the zone {zone}'
     problems = []
     if not ZONE.fullmatch(zone):
@@ -308,11 +317,6 @@ def zone_problems(zone, entry, site=None):
     datasets = _value(f'{label} extra_datasets', 'datasets', _raw(entry.get('extra_datasets') or ''), problems) or ()
     if site is None:
         return problems
-    home = site.nodes.get(entry.get('home') or '')
-    if home is None:
-        problems.append(f'{label} has the home node {entry.get("home")}, which is not a node of the site.')
-    elif not home.has('worker'):
-        problems.append(f'{label} has the home node {home.name}, which does not have the role worker.')
     for name, node_name, _ in datasets:
         if node_name not in site.nodes or not site.nodes[node_name].has('data'):
             problems.append(f'{label} extra_datasets names {node_name}, which is not a node with the role data.')
@@ -330,7 +334,7 @@ def zone_hoover(zone, entry, site=None):
         raise SiteError(f'the zone state has {len(problems)} problem{"s" if len(problems) != 1 else ""}:\n    '
                         + '\n    '.join(problems))
     datasets = _value('extra_datasets', 'datasets', _raw(entry.get('extra_datasets') or ''), []) or ()
-    return Hoover(zone=zone, home_node=entry.get('home', ''), extra_datasets=datasets,
+    return Hoover(zone=zone, legacy_home=entry.get('home', ''), extra_datasets=datasets,
                   **{k: entry.get(k, choices[0]) for k, choices in ZONE_VALUES.items()})
 
 

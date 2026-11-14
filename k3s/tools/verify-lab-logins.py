@@ -115,7 +115,7 @@ if platform:
  check('operator portal',operator)
  check('Grafana local admin',grafana)
 FIXTURE=json.loads((root.parent/'zones/zone-users.json').read_text())['users']
-PASSWORDS=json.loads((settings.PRIVATE/'fixture-user-passwords.json').read_text())
+PASSWORDS=json.loads((settings.ZONE_USER_PASSWORDS).read_text())
 for zone in args or list(zonestate.load()['zones']):
  users=[('Administrator',secret(zone,'ums-nubus-credentials','administrator_password'))]
  test_user=settings.PRIVATE/f'zones/{zone}/test-user-password'

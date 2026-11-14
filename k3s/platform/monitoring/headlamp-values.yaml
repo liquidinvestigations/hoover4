@@ -8,7 +8,6 @@ serviceAccount:
   name: cluster-viewer
 clusterRoleBinding:
   create: false
-nodeSelector: {kubernetes.io/hostname: MONITOR_NODE}
 resources:
   requests: {cpu: 50m, memory: 128Mi}
   limits: {cpu: '1', memory: 512Mi}

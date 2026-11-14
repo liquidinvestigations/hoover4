@@ -3,7 +3,7 @@
 
 The zone pages list each zone with its resource use and operations. POST /gpu/key returns the GPU key of the installation,
 which a GPU host outside the cluster needs. A create, upgrade or delete request becomes an
-operation ConfigMap, which runner.py runs. A create names the home node of the zone.
+operation ConfigMap, which runner.py runs. A create names only the zone: the scheduler places its pods.
 The settings page (settings.html) reads and saves the operator settings and starts Apply operations through
 portal_settings.py. The runner container of the operator pod (runner.py) runs the operations. A step can end with a
 warning, which the zone page shows.
@@ -84,19 +84,17 @@ def zones():
   if not ZONE_NAME.fullmatch(name):continue
   result.append({'name':name,'phase':space['status'].get('phase'),'portal':f'https://{name}-portal.{SUFFIX}/',
    **{k:v.get(name) for k,v in usage.items()}})
- nodes=[n['metadata']['name'] for n in api('GET','/api/v1/nodes?labelSelector=storage.hoover%2Fenrolled%3Dtrue')['items']]
- return {'zones':result,'nodes':nodes,'operations':operations(),'usage_available':bool(usage)}
+ return {'zones':result,'operations':operations(),'usage_available':bool(usage)}
 def create_operation(actor,body):
- kind=body.get('kind');zone=str(body.get('zone',''));home=str(body.get('home',''))
+ kind=body.get('kind');zone=str(body.get('zone',''))
  if kind not in ('create-zone','upgrade-zone','delete-zone'):raise Refused('The operation kind is create-zone, upgrade-zone or delete-zone.')
  if not ZONE_NAME.fullmatch(zone):raise Refused('A zone name is zone- followed by 1 to 12 lower-case letters or digits.')
- if kind=='create-zone' and home not in zones()['nodes']:raise Refused('Select the home node of the zone.')
  if kind=='delete-zone' and body.get('confirm')!=zone:raise Refused('Type the zone name to confirm the delete.')
  if any(o['zone']==zone and o['state'] in ('queued','running') for o in operations()):raise Refused(f'An operation for {zone} is not finished.')
  name=f'op-{int(time.time())}-{kind}-{zone}'
  api('POST',f'/api/v1/namespaces/{NS}/configmaps',{'apiVersion':'v1','kind':'ConfigMap',
   'metadata':{'name':name,'namespace':NS,'labels':{LABEL:'true'}},
-  'data':{'kind':kind,'zone':zone,'home':home if kind=='create-zone' else '','actor':actor,'state':'queued','created':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}})
+  'data':{'kind':kind,'zone':zone,'actor':actor,'state':'queued','created':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}})
  return {'operation':name}
 def retry(name):
  item=api('GET',f'/api/v1/namespaces/{NS}/configmaps/{urllib.parse.quote(name)}')

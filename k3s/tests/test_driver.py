@@ -505,7 +505,7 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     monkeypatch.setattr(deploy, 'check_sign_in', lambda ctx, hoover: checked.append(hoover.namespace))
     ran = []
     monkeypatch.setattr(ctx, 'run', lambda argv, **kw: ran.append(([str(a) for a in argv], ctx.env())) or (0, ''))
-    steps = {'zone:zone-a': deploy.step_zone('zone-a', 'dev')}
+    steps = {'zone:zone-a': deploy.step_zone('zone-a')}
     record = ctx.records.new('up', ['dev'], rev, list(steps), complete=False, inputs=deploy.pinned_inputs(ctx))
     assert deploy.execute(ctx, record, steps) == 0
     assert waited == ['zone-a', 'hoover-zone-a']
@@ -514,7 +514,9 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     # The cluster scope needs every zone and the GPU pool, so a scoped run leaves it pending.
     assert state.applied_revision('cluster') == 0 and state.applied()['revision'] == 0
     # The zone is registered before zone.py applies it. The frontend serves every zone host, so no frontend step runs.
-    assert 'zone.register' in ran[0][0][2] and ran[0][0][4:] == ['zone-a', 'dev']
+    # A zone has no home node, so neither call names one.
+    assert 'zone.register' in ran[0][0][2] and ran[0][0][4:] == ['zone-a']
+    assert ran[-1][0][2:] == ['apply', 'zone-a']
     assert not any('frontend' in arg for command, _ in ran for arg in command)
     # zone.py and its nested renders get the pinned settings revision.
     assert ran[-1][0][1].endswith('zones/zone.py') and ran[-1][1]['HOOVER4_SETTINGS_REVISION'] == '1'

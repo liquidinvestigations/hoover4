@@ -12,7 +12,7 @@ The runner uses the token of the ServiceAccount zone-runner (runner-rights.yaml)
 the shared call services, the operation ConfigMaps and the cluster copy of the state only.
 It also runs the settings Apply operations of the operator state (apply.py), one at a time.
 The operations and their steps:
-  create-zone   register (zone state with the home node), frontend, install (zone.py apply), calls
+  create-zone   register (zone state), frontend, install (zone.py apply), calls
   upgrade-zone  frontend, install, calls
   delete-zone   delete (zone.py delete), calls
 The HTTPS frontend runs outside the cluster and serves every zone host <zone>-<app>.<suffix> with the certificate of
@@ -51,7 +51,8 @@ def now():return time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
 class Operation:
  def __init__(self,op):
   self.op=op;self.name=op['metadata']['name'];d=op['data']
-  self.kind=d.get('kind');self.zone=d.get('zone','');self.home=d.get('home','')
+  # An operation of an earlier version can name a home node. It has no effect.
+  self.kind=d.get('kind');self.zone=d.get('zone','')
   LOGS.mkdir(parents=True,exist_ok=True);self.log=LOGS/f'{self.name}.log'
  def run(self,*command,data=None):
   """Run a command, append its output to the operation log, and copy the last lines to the ConfigMap every 10 s."""
@@ -94,9 +95,9 @@ class Operation:
    try:sync('push')
    except Exception as sync_error:print(json.dumps({'state_error':str(sync_error)[:300]}),flush=True)
  def step_register(self):
-  # zone.py register checks the home node and adds the zone to the zone state, so the frontend can serve its names
-  # before the install. The zones need their names during the install.
-  self.run(sys.executable,'-c','import sys;sys.path.insert(0,"zones");import zone;zone.register(sys.argv[1],sys.argv[2])',self.zone,self.home)
+  # zone.py register adds the zone to the zone state, so the frontend can serve its names before the install. The
+  # zones need their names during the install.
+  self.run(sys.executable,'-c','import sys;sys.path.insert(0,"zones");import zone;zone.register(sys.argv[1])',self.zone)
  def step_frontend(self):
   # The frontend runs on the public node outside the cluster, and the runner has no access there. The install needs
   # the zone hosts, so a create or upgrade checks that the frontend serves them. A delete operation of an earlier

@@ -10,10 +10,12 @@ Arguments:
                     stops every later run of the same zone.
   <folder>          the Compose volume folder ([storage] volumes_path of the Compose ini), relative to the data root of
                     the source node (data_root of the site file). A bind mount can put it there.
-  --home NODE       the home node of the new zone.
+  --home NODE       the node of the imported store volumes and store images, with the role worker. The copy pod binds
+                    the claims there, and the pods of the local layout that share the claims follow them
+                    (../hoover/manifests.py). The zone has no home node, so the zone state does not keep this value.
   --ini FILE        the hoover4.ini of the Compose install, relative to the folder of the site file. Its explicit values
                     become operator settings of the Hoover installation of the zone, and it names the dataset mounts.
-  --source-node N   the node that runs the Compose install. The default is the home node. The import connects to it
+  --source-node N   the node that runs the Compose install. The default is the --home node. The import connects to it
                     with ssh and runs its root commands with sudo -n.
   --engine E        docker (rootful, the owners of the host stay) or podman (rootless, the owners map through the uid and
                     gid maps of the user namespace). The default is docker.
@@ -29,7 +31,7 @@ The dataset rows of the Compose install name the container path of their mount. 
 
 The steps run in this order. A finished step does not run again, so the command continues an interrupted import.
   plan      Reads the ini, checks the folders on the source node (probe.py), the owner maps of the source runtime, the
-            content id of each store and Temporal image, the claim of each folder and the free capacity of the home
+            content id of each store and Temporal image, the claim of each folder and the free capacity of the --home
             node. Saves the explicit ini values and the history shard count as operator settings of hoover:<zone>, and
             app.hoover = false for zone:<zone>, so that the zone step starts no Hoover service.
   freeze    Stops the Compose services that accept new work, then the workers with their Compose grace period.
@@ -39,8 +41,8 @@ The steps run in this order. A finished step does not run again, so the command 
   zone      zone.py apply creates the zone with stores = local and temporal_backend = cassandra: openDesk, and the Hoover
             objects with zero replicas. The step removes the garage-init Jobs, so no bucket of the zone exists before
             the renames.
-  images    Saves each store and Temporal image on the source node and imports it into the containerd of the home node.
-  copy      Copies each folder into its claim through a pod of the home node (root_copy.py pack and verify): owners
+  images    Saves each store and Temporal image on the source node and imports it into the containerd of the --home node.
+  copy      Copies each folder into its claim through a pod of the --home node (root_copy.py pack and verify): owners
             mapped, one hash per file. An interrupted folder is cleared and copied again.
   secrets   Writes the Secret hoover-runtime with the Compose store credentials and the shared secrets of the key files
             of the ini.
@@ -213,7 +215,12 @@ class Run:
     @property
     def hoover(self):
         inputs = self.inputs
-        return site_config.Hoover(zone=self.zone, home_node=inputs['home'], **ZONE_VALUES)
+        return site_config.Hoover(zone=self.zone, **ZONE_VALUES)
+
+    @property
+    def node(self):
+        """The node of the imported store volumes and images (--home)."""
+        return self.inputs['home']
 
 
 def refusal(r, zones):
@@ -345,7 +352,7 @@ def probe(r, inputs, source, datasets):
 
 
 def home_capacity(r, node_name):
-    """The largest free TopoLVM capacity of the home node."""
+    """The largest free TopoLVM capacity of the --home node."""
     annotations = json.loads(kubectl('get', 'node', node_name, '-o', 'jsonpath={.metadata.annotations}') or '{}')
     values = [int(v) for k, v in annotations.items() if k.startswith('capacity.topolvm.io/') and v.isdigit()]
     if not values:
@@ -378,7 +385,9 @@ def plan(r, args, zones, dry_run=False):
     for name, label in ((args.home, '--home'), (args.source_node or args.home, '--source-node')):
         if name not in r.site.nodes:
             raise StepFailed(f'{label} {name} is not a node of the site. The nodes are: {", ".join(r.site.nodes)}.')
-    problems = site_config.zone_problems(r.zone, {'home': args.home, **ZONE_VALUES}, r.site)
+    problems = site_config.zone_problems(r.zone, dict(ZONE_VALUES), r.site)
+    if not r.site.nodes[args.home].has('worker'):
+        problems.append(f'--home {args.home} does not have the role worker.')
     if problems:
         raise StepFailed('; '.join(problems))
     inputs = {'folder': compose_source.relative_folder(args.folder), 'home': args.home, 'ini': str(Path(args.ini)),
@@ -409,8 +418,14 @@ def plan(r, args, zones, dry_run=False):
     sizes[WORKER_CLAIM] = target.values['volume.worker-temp-files']
     needed = sum(parse_size(s) for s in sizes.values())
     import manifests
-    rendered = {i['metadata']['name'] for i in json.loads(manifests.render(target))['items']
-                if i['kind'] == 'PersistentVolumeClaim'}
+    rendered_claims = [i for i in json.loads(manifests.render(target))['items'] if i['kind'] == 'PersistentVolumeClaim']
+    rendered = {i['metadata']['name'] for i in rendered_claims}
+    # A claim takes the first preferred tier of the site, and the copy pod binds it on the --home node.
+    for item in rendered_claims:
+        tier_name = item['spec']['storageClassName'].rsplit('-', 1)[0]
+        if item['metadata']['name'] in set(claims.values()) and tier_name not in r.site.nodes[args.home].tiers:
+            problems.append(f"the claim {item['metadata']['name']} uses the tier {tier_name}, which the node {args.home} "
+                            'does not have. Give a --home node with that tier.')
     for claim in sorted(set(claims.values()) - rendered - {WORKER_CLAIM}):
         # A site with data nodes keeps the dataset folders on NFS (../platform/hoover-data), not in claims.
         problems.append(f'the zone has no claim {claim}. Copy that folder into the data folder of the zone by hand, and '
@@ -613,7 +628,7 @@ def remove_garage_init(ns):
 
 def create_zone(r):
     inputs = r.inputs
-    argv = [sys.executable, K3S / 'zones' / 'zone.py', 'apply', r.zone, '--home', inputs['home'],
+    argv = [sys.executable, K3S / 'zones' / 'zone.py', 'apply', r.zone,
             '--stores', ZONE_VALUES['stores'], '--temporal-backend', ZONE_VALUES['temporal_backend']]
     result = subprocess.run([str(a) for a in argv])
     if result.returncode:
@@ -626,8 +641,8 @@ def create_zone(r):
 
 
 def home_root(r, script, timeout=3600):
-    """Run a root shell script on the home node with sudo -n. The operator user needs sudo without a password there."""
-    node = r.site.nodes[r.hoover.home_node]
+    """Run a root shell script on the --home node with sudo -n. The operator user needs sudo without a password there."""
+    node = r.site.nodes[r.node]
     return run(node_argv(node, ['sudo', '-n', 'sh', '-c', script]), timeout=timeout)
 
 
@@ -640,8 +655,8 @@ def cluster_image_id(r, reference):
 
 
 def import_image(r, image_id, full):
-    """Save a source image and import it into the containerd of the home node under the reference of the render."""
-    node = r.site.nodes[r.hoover.home_node]
+    """Save a source image and import it into the containerd of the --home node under the reference of the render."""
+    node = r.site.nodes[r.node]
     path = f'/tmp/hoover4-image-{image_id[:12]}.tar'
     save = subprocess.Popen(Source.argv(engine('save', image_id)), stdout=subprocess.PIPE)
     receive = subprocess.run(node_argv(node, ['sh', '-c', f'umask 077 && cat > {path}']), stdin=save.stdout,
@@ -699,10 +714,10 @@ def claim_identity(ns, claim):
 
 
 def copy_pod(r, claim):
-    """A short root pod on the home node that mounts one target claim at /target."""
+    """A short root pod on the --home node that mounts one target claim at /target. It binds the claim there."""
     return {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': 'import-copy', 'namespace': r.hoover.namespace},
             'spec': {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
-                     'nodeSelector': {'kubernetes.io/hostname': r.hoover.home_node},
+                     'nodeSelector': {'kubernetes.io/hostname': r.node},
                      'containers': [{'name': 'copy', 'image': BIND_IMAGE, 'command': ['sleep', '86400'],
                                      'securityContext': {'runAsUser': 0},
                                      'resources': {'limits': {'memory': '512Mi'}},
@@ -715,7 +730,7 @@ EXTRACT = ("import sys, tarfile; tarfile.open(fileobj=sys.stdin.buffer, mode='r|
 
 
 def copy(r, revision):
-    """Copy each folder into its claim through a pod of the home node. A copied claim is not copied again."""
+    """Copy each folder into its claim through a pod of the --home node. A copied claim is not copied again."""
     plan_data = r.read('plan.json')
     if any(running(n) for n in STORE_CONTAINERS + WRITERS):
         raise StepFailed('a source store or writer runs. Run the stop step first.')

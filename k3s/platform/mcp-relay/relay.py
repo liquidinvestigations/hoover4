@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Forward TCP connections from host loopback ports to Services of a Hoover installation.
 
-The relay pod runs with runc in the host network of the home node (install-relay.py). It reads the routes from the file
+The relay pod runs with runc in the host network of the control-plane node (install-relay.py). It reads the routes from the file
 that RELAY_ROUTES names: a JSON list of {"name", "listen", "target"}, where listen is <address>:<port> and target is
 <service host>:<port>. Each accepted connection gets one connection to its target, and the relay copies the bytes in
 both directions until one side closes. The relay reads no request content, so the MCP servers keep their own

@@ -381,10 +381,12 @@ DEFAULTS = {
         # memory and about 3 GB of native memory more. render_main_env refuses a limit
         # below that sum. An empty heap_new means 100M for each CPU of cassandra_cpus.
         # An empty malloc_arenas leaves MALLOC_ARENA_MAX unset, and the image then
-        # uses 4.
-        "cassandra_mem_limit": "16000M",
+        # uses 4. Two production hosts used 3.1 and 4.1 GiB of an 8G heap, so the heap is
+        # about 1.5 times the larger value. The limit is the heap, the direct memory, the
+        # native memory and 2 GB of page cache.
+        "cassandra_mem_limit": "13312M",
         "cassandra_cpus": "8",
-        "cassandra_heap": "8G",
+        "cassandra_heap": "6G",
         "cassandra_heap_new": "",
         "cassandra_direct_memory": "2G",
         "cassandra_malloc_arenas": "",

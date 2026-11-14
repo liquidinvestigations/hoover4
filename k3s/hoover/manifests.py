@@ -10,7 +10,7 @@ command, environment, memory and CPU limits, health check, user and capabilities
 name stops the render with an error that names the service and its file.
 
 Store layouts (the value stores of the zone state):
-- local: the stores of the Compose files run in the Hoover namespace on file system claims of the home node:
+- local: the stores of the Compose files run in the Hoover namespace on file system claims of one node:
   ClickHouse, both Manticore daemons, Garage with its init job, and ZooKeeper, which the ClickHouse configuration
   names. The operations worker mounts the store claims as in Compose, so store backup and restore work. The Compose
   import (../import_compose/) fills these claims with the copied store folders.
@@ -27,14 +27,21 @@ Placement and runtimes:
 - hoover-workers has budget.worker_pods replicas. With more than one pod, each pod polls its own host queues
   (HOOVER4_HOST_QUEUE is the pod name). One pod polls the shared queues only, as the Compose worker does, so every
   stage of a plan reaches the one folder of its files, and the open work of an imported install keeps its queues.
-  In the local layout it is a StatefulSet on the home node: a pod keeps its name after a restart and keeps its
+  In the local layout it is a StatefulSet on the node of the store claims: a pod keeps its name after a restart and keeps its
   plan files on its own claim worker-temp-files-hoover-workers-<n>. The Compose import fills the claim of pod 0 with
   the plan files of its Compose worker. In the zone layout it is a Deployment spread over the nodes, with the plan
   files in an emptyDir: a new pod has a new name, so the plans of a lost pod claim another host.
   The index planner, the email graph and the chat worker are single writers and run in the one pod of
   hoover-singletons, which also runs the database migrations first.
 - The services that reach the internet (INTERNET) run on a public node, so their traffic leaves from its address.
-- Every pod with a claim of the local layout runs on the home node, because the claims are local volumes there.
+- An installation has no home node. The scheduler places each pod by its requests (REQUESTS), and the zone pod policy
+  (../zones/manifests/zone-pods.yaml) spreads the pods of the namespace over the nodes. A claim uses the first preferred
+  tier that a node of the site has (tier()), and its pod stays on the node where the scheduler bound the claim.
+- The claims of the local layout are shared by more than one pod, for example the store claims of the operations
+  worker, and a local volume serves only its own node. Each pod with a claim therefore carries the label of LOCAL_GROUP
+  and a required pod affinity to that label, so these pods share one node: the node of the first bound claim. The
+  stores, Temporal and garage-init without a claim have the same affinity without the label, so they wait for a pod
+  with a claim and follow it. The Compose import binds the claims on its target node first.
 The GPU services and the LLM are behind the forwarder gpu (gpu.py). A site without vars.gpu_pool has no GPU services, so
 its installations get no forwarder and use the CPU path. The network policies are in network().
 The ingress sends every request to oauth2-proxy. It removes client identity headers, adds the verified claims and the
@@ -181,6 +188,24 @@ CONFIG_DIRS = {'/etc/temporal/config/dynamicconfig': 'temporal-dynamicconfig',
 SOURCE_BINDS = {'/app', '/app/frontend', '/app/common', '/app/backend', '/app/Cargo.toml', '/app/Cargo.lock', '/app/main.py'}
 # The memory limits that ../zones/memory-limits.json measured for the zone layout. Other limits come from Compose.
 MEASURED = {'hoover4-website': 'hoover-website', 'hoover4-ops': 'hoover-operations'}
+# The memory limit of a service that has none in Compose. The default is 512Mi. The values are 1.5 times the peak of
+# the 64 GB reference site, rounded up to 128 MiB.
+UNLIMITED_IN_COMPOSE = {'hoover4-full-research-agent': '2560Mi', 'hoover4-mcp-collections': '768Mi'}
+# The memory request of each container, by container name, so the scheduler places a pod by its measured use. The value
+# is the current request plus 0.33 times the distance to the largest working set (anon memory) of the 64 GB reference site,
+# rounded up to 64 MiB. A container without an entry requests DEFAULT_REQUEST. A request never exceeds the limit.
+REQUESTS = {'hoover-website': '320Mi', 'hoover-workers': '1856Mi', 'temporal': '448Mi', 'hoover4-mcp-browser': '512Mi',
+            'hoover4-clamav': '448Mi', 'hoover4-tika': '256Mi', 'hoover4-tesseract-cpu': '192Mi',
+            'hoover4-regex-entity-scanner': '192Mi', 'hoover4-full-research-agent': '640Mi',
+            'clickhouse': '640Mi', 'manticore': '448Mi', 'manticore-vectors': '704Mi',
+            'temporal-cassandra': '3264Mi', 'temporal-elasticsearch': '1024Mi'}
+DEFAULT_REQUEST = '128Mi'
+# Elasticsearch of the cassandra backend. Two production debug reports measured 0.28 to 0.9 GiB of heap in use, so
+# the heap is 1.5 times the larger value, and the limit is twice the heap plus 512 MiB. Compose keeps its own values.
+ELASTICSEARCH_HEAP = '1536m'
+ELASTICSEARCH_LIMIT = '3584Mi'
+# The label of the pods of the local layout that mount a claim (see the module docstring).
+LOCAL_GROUP = {'hoover.dev/volumes': 'local'}
 # The worker processes of the worker pods and of the singleton pod (main.py worker, HOOVER4_WORKERS).
 WORKERS = 'tika,clamav,ocr,nlp,embed,indexing,common'
 SINGLETONS = 'index-planner,email-graph,chat'
@@ -311,13 +336,14 @@ def renamed_hosts(text):
 
 
 def tier(target, claim):
-    """The storage tier of a claim on the home node: the first preferred tier that the node has."""
-    tiers = target.site.nodes[target.hoover.home_node].tiers
+    """The storage tier of a claim: the first preferred tier that a node of the site has. The scheduler binds the claim
+    on a node with that tier and enough free capacity (TopoLVM)."""
+    tiers = {t for node in target.site.nodes.values() for t in node.tiers}
     preferred = ('nvme', 'ssd', 'hdd') if claim in FAST else ('hdd', 'ssd', 'nvme')
     for name in preferred:
         if name in tiers:
             return name
-    raise RenderError(f'the home node {target.hoover.home_node} has no storage tier for the claim {claim}.')
+    raise RenderError(f'no node of the site has a storage tier for the claim {claim}.')
 
 
 def claim_spec(target, claim, size=None):
@@ -330,11 +356,23 @@ def claim(target, name):
             'spec': claim_spec(target, name)}
 
 
-def home_selector(target):
-    return {'kubernetes.io/hostname': target.hoover.home_node}
+def local_group(target, role, pod_volumes, claims=()):
+    """The place of a pod of the local layout in LOCAL_GROUP: 'member' for a pod with a claim, 'follower' for a store,
+    Temporal or garage-init without a claim, else None. The zone layout has no group."""
+    if not target.local:
+        return None
+    if claims or any('persistentVolumeClaim' in v for v in pod_volumes):
+        return 'member'
+    if role in ('store', 'store-init', 'temporal-store', 'temporal'):
+        return 'follower'
+    return None
 
 
-def pod_spec(target, containers, pod_volumes=(), runtime=None, grace=30, init=(), node=None, security=None):
+def group_labels(group):
+    return dict(LOCAL_GROUP) if group == 'member' else {}
+
+
+def pod_spec(target, containers, pod_volumes=(), runtime=None, grace=30, init=(), node=None, security=None, group=None):
     spec = {'enableServiceLinks': False, 'automountServiceAccountToken': False, 'terminationGracePeriodSeconds': grace,
             'containers': containers}
     if runtime:
@@ -345,6 +383,9 @@ def pod_spec(target, containers, pod_volumes=(), runtime=None, grace=30, init=()
         spec['initContainers'] = list(init)
     if node:
         spec['nodeSelector'] = node
+    if group:
+        spec['affinity'] = {'podAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': [
+            {'labelSelector': {'matchLabels': LOCAL_GROUP}, 'topologyKey': 'kubernetes.io/hostname'}]}}
     if security:
         spec['securityContext'] = security
     return spec
@@ -438,7 +479,7 @@ def dataset_mounts(target):
                  'volume': {'persistentVolumeClaim': {'claimName': f'dataset-{n}'}}}
                 for n, w in (('testdata', False), ('uploads', True))]
     data_nodes = [n.name for n in target.site.with_role('data')]
-    node = target.hoover.home_node if target.hoover.home_node in data_nodes else data_nodes[0]
+    node = target.hoover.data_node(target.site)
     server = target.nfs.get(node)
     if not server:
         raise RenderError(f'the NFS Service address of the data node {node} is unknown. Run '
@@ -567,13 +608,29 @@ def store_secrets(target, service_key, wanted):
     return env
 
 
+def mebibytes(text):
+    """A Kubernetes memory quantity in MiB, for example 6Gi is 6144."""
+    m = re.fullmatch(r'(\d+(?:\.\d+)?)(Ki|Mi|Gi|Ti|k|K|M|G|T)?', str(text).strip())
+    if not m:
+        raise RenderError(f'{text} is not a memory quantity such as 512Mi.')
+    factor = {'Ki': 2 ** 10, 'Mi': 2 ** 20, 'Gi': 2 ** 30, 'Ti': 2 ** 40, 'k': 10 ** 3, 'K': 10 ** 3, 'M': 10 ** 6,
+              'G': 10 ** 9, 'T': 10 ** 12, None: 1}[m.group(2)]
+    return float(m.group(1)) * factor / 2 ** 20
+
+
+def request(name, memory):
+    """The memory request of a container: REQUESTS, else DEFAULT_REQUEST, at most the limit."""
+    wanted = REQUESTS.get(name, DEFAULT_REQUEST)
+    return memory if mebibytes(wanted) > mebibytes(memory) else wanted
+
+
 def container(name, service_def, image, env, memory, mounted, cpu=None, command=None, extra_env=()):
     # A Secret value in extra_env replaces the Compose value of the same name.
     secret = {e['name'] for e in extra_env}
     c = {'name': name, 'image': image, 'imagePullPolicy': 'IfNotPresent',
          'env': [value(k, str(v)) for k, v in sorted(env.items()) if k not in secret and k not in STORE_CREDENTIALS] + list(extra_env),
          'ports': [{'name': f'p{p}', 'containerPort': p} for p in ports(name, service_def)],
-         'resources': {'requests': {'cpu': '50m', 'memory': '128Mi'},
+         'resources': {'requests': {'cpu': '50m', 'memory': request(name, memory)},
                        'limits': {'memory': memory, **({'cpu': str(cpu)} if cpu else {})}},
          'volumeMounts': mounted}
     if command is not None:
@@ -607,9 +664,9 @@ def container(name, service_def, image, env, memory, mounted, cpu=None, command=
     return c
 
 
-def limits(service_def):
+def limits(service_def, default='512Mi'):
     deploy_limits = ((service_def.get('deploy') or {}).get('resources') or {}).get('limits') or {}
-    memory = quantity(service_def.get('mem_limit') or deploy_limits.get('memory'), '512Mi')
+    memory = quantity(service_def.get('mem_limit') or deploy_limits.get('memory'), default)
     cpus = service_def.get('cpus') or deploy_limits.get('cpus')
     return memory, (cpus if str(cpus or '0') not in ('0', '0.0', '') else None)
 
@@ -695,14 +752,16 @@ def translated(target, services, mounts, deploy):
             env.setdefault('AGENT_API_BASE_URL', AGENT_API_BASE_URL)
         pod_volumes, mounted, claims = volumes(target, name, svc, mounts if role == 'app' else [])
         configs |= {v['configMap']['name'] for v in pod_volumes if 'configMap' in v}
-        memory, cpu = limits(svc)
+        memory, cpu = limits(svc, UNLIMITED_IN_COMPOSE.get(name, '512Mi'))
         if name in MEASURED and not target.local:
             memory = memory_table[MEASURED[name]]
+        if name == 'temporal-elasticsearch':
+            env['ES_JAVA_OPTS'] = f'-Xms{ELASTICSEARCH_HEAP} -Xmx{ELASTICSEARCH_HEAP}'
+            memory = ELASTICSEARCH_LIMIT
         img = image_of(target, name, svc)
         key = name.removeprefix('hoover4-')
         credentials = store_secrets(target, key, set(svc.get('environment', {})) | (set(STORE_CREDENTIALS[:6]) if role == 'app' else set()))
-        node = home_selector(target) if target.local and (role in ('store', 'store-init', 'temporal-store') or
-                                                          any('persistentVolumeClaim' in v for v in pod_volumes) or claims) else None
+        group = local_group(target, role, pod_volumes, claims)
         if name == 'hoover4-website':
             env.update({'IP': '0.0.0.0', 'PORT': '8080', 'HOOVER4_SITE_URL': f'https://{target.host}',
                         'HOOVER4_ADMIN_GROUPS': target.values['website.admin_groups']})
@@ -711,7 +770,8 @@ def translated(target, services, mounts, deploy):
                             extra_env=[*credentials, from_secret('HOOVER4_PROXY_SECRET', 'proxy-secret')])
             web['workingDir'] = '/app'
             web['readinessProbe'] = {'tcpSocket': {'port': 8080}, 'periodSeconds': 2, 'failureThreshold': 3}
-            items += [workload(target, 'Deployment', 'hoover-website', pod_spec(target, [web], pod_volumes, node=node)),
+            items += [workload(target, 'Deployment', 'hoover-website', pod_spec(target, [web], pod_volumes, group=group),
+                               labels=group_labels(group)),
                       service(target, 'hoover-website', [8080])]
             continue
         if name == 'hoover4-worker':
@@ -745,11 +805,13 @@ def translated(target, services, mounts, deploy):
             singles['workingDir'] = '/app'
             sandbox_env = [value('HOOVER4_PARSER_SANDBOX', sandbox)] if sandbox != 'off' else []
             singles['env'] += sandbox_env
+            single_group = local_group(target, role, single_volumes)
             items += [workload(target, 'Deployment', 'hoover-singletons',
-                               pod_spec(target, [singles], single_volumes, runtime='kata', grace=grace, init=[migrate], node=node)),
+                               pod_spec(target, [singles], single_volumes, runtime='kata', grace=grace, init=[migrate],
+                                        group=single_group), labels=group_labels(single_group)),
                       workload(target, 'StatefulSet' if target.local else 'Deployment', 'hoover-workers',
-                               pod_spec(target, [workers], pod_volumes, runtime='kata', grace=grace, node=node),
-                               replicas=target.budget['worker_pods'], labels={'hoover.dev/placement': 'any'}, spread=node is None,
+                               pod_spec(target, [workers], pod_volumes, runtime='kata', grace=grace, group=group),
+                               replicas=target.budget['worker_pods'], labels=group_labels(group), spread=group is None,
                                claims=claims)]
             if target.local:
                 # The headless Service gives the StatefulSet its pod names.
@@ -762,12 +824,13 @@ def translated(target, services, mounts, deploy):
                             extra_env=credentials)
             ops['workingDir'] = '/app'
             items.append(workload(target, 'Deployment', 'hoover-operations',
-                                  pod_spec(target, [ops], pod_volumes, runtime='kata', grace=grace, node=node)))
+                                  pod_spec(target, [ops], pod_volumes, runtime='kata', grace=grace, group=group),
+                                  labels=group_labels(group)))
             continue
         if name == 'garage-init':
             job = container(name, svc, img, env, memory, mounted, extra_env=credentials)
             job.pop('readinessProbe', None)
-            spec = pod_spec(target, [job], pod_volumes, node=node)
+            spec = pod_spec(target, [job], pod_volumes, group=group)
             spec['restartPolicy'] = 'OnFailure'
             # The template of a Job cannot change, and a setting such as volume.garage-data changes its environment, so
             # the name holds a hash of the pod spec. A new value starts a new Job, which sets the new layout.
@@ -775,11 +838,14 @@ def translated(target, services, mounts, deploy):
             items.append({'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': {'name': f'garage-init-{image_tag(target.revision)[:12]}-{digest}', 'namespace': target.ns,
                                                                               'labels': {'app.kubernetes.io/name': 'garage-init', PART: 'garage-init'}},
                           'spec': {'backoffLimit': 6, 'ttlSecondsAfterFinished': 86400,
-                                   'template': {'metadata': {'labels': {'app.kubernetes.io/name': 'garage-init'}}, 'spec': spec}}})
+                                   'template': {'metadata': {'labels': {'app.kubernetes.io/name': 'garage-init', **group_labels(group)}},
+                                                'spec': spec}}})
             continue
         labels = {'hoover.dev/egress': 'internet'} if name in INTERNET else None
         if role in ('store', 'temporal-store'):
             labels = {'hoover.dev/store': name}
+        if group == 'member':
+            labels = {**(labels or {}), **LOCAL_GROUP}
         c = container(name, svc, img, env, memory, mounted, cpu=cpu, extra_env=credentials)
         init = []
         if role in ('store', 'temporal-store'):
@@ -791,10 +857,8 @@ def translated(target, services, mounts, deploy):
                         init.append(found)
             if any(i['volumeMounts'][-1]['name'] == 'manticore-seed' for i in init):
                 pod_volumes.append({'name': 'manticore-seed', 'configMap': {'name': 'manticore-seed'}})
-        selector = node if role in ('store', 'temporal-store') or node else None
-        if name in INTERNET:
-            selector = {'kubernetes.io/hostname': public}
-        spec = pod_spec(target, [c], pod_volumes, node=selector, init=init)
+        selector = {'kubernetes.io/hostname': public} if name in INTERNET else None
+        spec = pod_spec(target, [c], pod_volumes, node=selector, init=init, group=group)
         kind = 'StatefulSet' if role in ('store', 'temporal-store') else 'Deployment'
         items.append(workload(target, kind, kube_name(name), spec, labels=labels,
                               annotations={'hoover.dev/config': config_hash(target, svc)} if name == 'temporal' else None))
@@ -856,7 +920,8 @@ def temporal_pg(target, shards):
            value('DEFAULT_NAMESPACE', 'default'), value('DEFAULT_NAMESPACE_RETENTION', target.values['main_services.temporal_retention']),
            value('BIND_ON_IP', '0.0.0.0'), value('TEMPORAL_BROADCAST_ADDRESS', '127.0.0.1')]
     c = {'name': 'temporal', 'image': TEMPORAL_PG, 'env': env, 'ports': [{'name': 'grpc', 'containerPort': 7233}, {'name': 'http', 'containerPort': 7243}],
-         'resources': {'requests': {'cpu': '50m', 'memory': '128Mi'}, 'limits': {'memory': target.values['memory.hoover.temporal'], 'cpu': '2'}},
+         'resources': {'requests': {'cpu': '50m', 'memory': request('temporal', target.values['memory.hoover.temporal'])},
+                       'limits': {'memory': target.values['memory.hoover.temporal'], 'cpu': '2'}},
          'readinessProbe': {'tcpSocket': {'port': 7233}, 'periodSeconds': 2, 'failureThreshold': 3}}
     return [workload(target, 'Deployment', 'temporal', pod_spec(target, [c])), service(target, 'temporal', [7233, 7243])]
 
@@ -1006,8 +1071,8 @@ def objects(target):
             if type(error).__name__ == 'DeployError':
                 raise RenderError(f'the settings of {target.hoover.name} give an ini that deploy.py refuses: {error}') from None
             raise
-    namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': target.ns, 'labels': {
-        'hoover.dev/zone': 'true', 'hoover.dev/home-node': target.hoover.home_node}}}
+    # The label hoover.dev/zone selects the namespace for the zone pod policy (../zones/manifests/zone-pods.yaml).
+    namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': target.ns, 'labels': {'hoover.dev/zone': 'true'}}}
     claims = []
     if target.local:
         claims = [claim(target, c) for c in operator_settings.VOLUMES if c != 'worker-temp-files'

@@ -3,7 +3,7 @@
 
 HOOVER_USER names the account, test.user by default. The password of test.user comes from
 <state folder>/zones/<zone>/test-user-password, and the password of a zone user from
-<state folder>/fixture-user-passwords.json.
+<state folder>/zones/fixture-user-passwords.json.
 With LAB_INVENTORY it comes from the zone row of that login table instead. The script never prints it.
 It opens the Hoover address, which redirects to the zone Keycloak, signs in, and waits for the Hoover page.
 With a search word it also types the word into the search box and records the result text.
@@ -41,7 +41,7 @@ def password():
     if not __import__('os').environ.get('LAB_INVENTORY'):
         if USER == 'test.user':
             return (settings.PRIVATE / 'zones' / ZONE / 'test-user-password').read_text().strip()
-        return json.loads((settings.PRIVATE / 'fixture-user-passwords.json').read_text())[USER]
+        return json.loads((settings.ZONE_USER_PASSWORDS).read_text())[USER]
     for line in Path(__import__('os').environ['LAB_INVENTORY']).read_text().splitlines():
         cells = [c.strip().strip('`') for c in line.split('|')]
         # The inventory holds the tables of several hosts, so the address must name the zone of this suffix.

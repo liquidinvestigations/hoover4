@@ -37,11 +37,13 @@ Select **Sign out** at the end of the page to end the session.
 ## Create a zone
 
 1. In **Create a zone**, type the zone name. A zone name is `zone-` followed by 1 to 12 lower-case letters or digits.
-2. Select the home node. All pods and volumes of the zone stay on this node.
-3. Select **Create the zone**.
-4. Follow the operation in **Operations**. The table shows the steps and the last output lines. A create takes about 30 minutes.
+2. Select **Create the zone**.
+3. Follow the operation in **Operations**. The table shows the steps and the last output lines. A create takes about 30 minutes.
 
 <a href="img/operator-zones.png"><img src="img/operator-zones.png" alt="The zone list with its actions and the form to create a zone" width="100%"></a>
+
+The cluster places the pods of the zone on the nodes by their memory and CPU requests and spreads them over the nodes.
+A pod with a volume stays on the node of its volume.
 
 A create, upgrade or delete restarts the shared call services. Calls that run at that time end.
 
@@ -52,7 +54,7 @@ A create stops at the step `frontend` with an error when the frontend does not a
 2. Select **Run again**. The operation continues with the install.
 
 The zone state in the cluster holds the zone. The site file names no zone. The storage names of the Hoover installation come from the zone name.
-The operator workstation can create a zone with `python3 k3s/zones/zone.py apply <zone> --home <node>`. [The cluster deployment reference](../../../k3s/Readme.md#create-and-delete-zones) gives the options.
+The operator workstation can create a zone with `python3 k3s/zones/zone.py apply <zone>`. [The cluster deployment reference](../../../k3s/Readme.md#create-and-delete-zones) gives the options.
 
 ## Give the zone to its administrator
 

@@ -317,10 +317,10 @@ def test_settings_defaults():
     env = _env("settings-defaults.ini")
 
     assert env["NUM_HISTORY_SHARDS"] == "128"
-    assert env["CASSANDRA_MEM_LIMIT"] == "16000M"
+    assert env["CASSANDRA_MEM_LIMIT"] == "13312M"
     assert env["CASSANDRA_MEM_RESERVATION"] == "5000M"
     assert env["CASSANDRA_CPUS"] == "8"
-    assert env["CASSANDRA_HEAP"] == "8G"
+    assert env["CASSANDRA_HEAP"] == "6G"
     assert env["CASSANDRA_HEAP_NEW"] == "800M"
     assert env["CASSANDRA_JVM_EXTRA_OPTS"] == "-XX:MaxDirectMemorySize=2G"
     assert env["CASSANDRA_CHUNK_CACHE_MB"] == "512"

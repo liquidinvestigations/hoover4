@@ -109,7 +109,7 @@ def zone_values(zone,data,storage_class):
   # (../platform/frontend/install-local-frontend.sh), because the pods reach the zone names through that frontend.
   'trust':{'create':True,'secret':{'mount':True,'name':'hoover-ca-bundle'},**local_ca()},
   'cluster':{'networking':{'ipFamilies':'IPv4'},'service':{'type':'ClusterIP'}},
-  # The file system volumes of the apps use the default tier of the zone on its home node.
+  # The file system volumes of the apps use the default tier of the zone, on the node where the scheduler binds them.
   'persistence':{'storageClassNames':{'RWO':storage_class}},
   'resources':reduced_resources(),
   # The MVP has no MFA and no email, so the zone login asks only for the user name and password.
@@ -202,8 +202,7 @@ def ai_values():
  return {'endpoint':ai['endpoint'],'apiKey':{'value':pathlib.Path(ai['api_key_file']).read_text().strip()},'model':ai['model'],'allowUserSettings':False}
 def default_class(zone):
  """Return the StorageClass of the file system volumes of a zone."""
- home=zonestate.home(zone)
- return zonestate.tier(zone,'default',zonestate.node_tiers(home,settings.KUBECONFIG))+'-ext4'
+ return zonestate.tier(zone,'default',zonestate.site_tiers(settings.KUBECONFIG))+'-ext4'
 def main():
  data=load_secrets()
  # The zone Jitsi keeps web, Prosody and Jicofo. The shared JVB in the namespace calls joins each zone Prosody.

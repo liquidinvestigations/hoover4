@@ -510,9 +510,9 @@ is `128`.
 
 | key | default | what it sets |
 |---|---|---|
-| `cassandra_mem_limit` | `16000M` | the memory limit of `temporal-cassandra` |
+| `cassandra_mem_limit` | `13312M` | the memory limit of `temporal-cassandra` |
 | `cassandra_cpus` | `8` | its CPU limit |
-| `cassandra_heap` | `8G` | `MAX_HEAP_SIZE` |
+| `cassandra_heap` | `6G` | `MAX_HEAP_SIZE` |
 | `cassandra_heap_new` | empty | `HEAP_NEWSIZE`. Empty is 100M for each CPU of `cassandra_cpus` |
 | `cassandra_direct_memory` | `2G` | `-XX:MaxDirectMemorySize`, through `JVM_EXTRA_OPTS` |
 | `cassandra_malloc_arenas` | empty | `MALLOC_ARENA_MAX`. Empty keeps the image default of 4 |
@@ -526,9 +526,10 @@ is `128`.
 | `temporal_matching_persistence_qps` | empty | `matching.persistenceMaxQPS` |
 
 [deploy.py](../../deploy.py) refuses a `cassandra_mem_limit` smaller than `cassandra_heap` plus
-`cassandra_direct_memory` plus 3G, and names the three values. It refuses a `cassandra_cpus`
-or a `temporal_cpus` above the CPU count of the host, because Docker then refuses to start
-the container. The message names the key, its value and the CPU count. The container reservation is
+`cassandra_direct_memory` plus 3G, and names the three values. Two production installs used 3.1 and 4.1 GiB of
+an 8G heap, so the default heap is about 1.5 times the larger value, and the default limit adds 2G of page cache to the
+sum. It refuses a `cassandra_cpus` or a `temporal_cpus` above the CPU count of the host, because Docker then refuses to
+start the container. The message names the key, its value and the CPU count. The container reservation is
 5000M, or the limit when the limit is smaller.
 
 The server sets `temporal_retention` only when it creates the namespace. After each

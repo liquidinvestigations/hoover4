@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Install the development relay of one Hoover installation on the loopback ports of its home node.
+"""Install the development relay of one Hoover installation on the loopback ports of the control-plane node.
 
-kubectl port-forward does not reach a pod in gVisor, so a developer on the home node reaches the MCP servers, the
-operator interfaces and the stores of an installation through this relay (decision D11). The Deployment mcp-relay in
-the namespace mcp-relay runs relay.py with runc in the host network of the home node. It listens on 127.0.0.1 only,
+kubectl port-forward does not reach a pod in gVisor, so a developer on the control-plane node reaches the MCP servers,
+the operator interfaces and the stores of an installation through this relay (decision D11). The Deployment mcp-relay
+in the namespace mcp-relay runs relay.py with runc in the host network of the control-plane node of the site file. On a
+single-node site that is the one node. It listens on 127.0.0.1 only,
 and it connects to the Services of the Hoover namespace. The relay passes bytes and reads no request content, so the
 MCP servers keep their own authentication.
 
@@ -78,7 +79,7 @@ def routes(hoover, mode, services=None):
             for name, _, service, port in ROUTES if services is None or service in services]
 
 
-def objects(hoover, route_list):
+def objects(hoover, route_list, node):
     code = (HERE / 'relay.py').read_text()
     data = {'relay.py': code, 'routes.json': json.dumps(route_list, indent=1)}
     # The pod template names a hash of the routes, so a changed route list restarts the relay.
@@ -89,7 +90,7 @@ def objects(hoover, route_list):
                  'securityContext': {'allowPrivilegeEscalation': False, 'readOnlyRootFilesystem': True, 'capabilities': {'drop': ['ALL']}},
                  'volumeMounts': [{'name': 'relay', 'mountPath': '/etc/relay', 'readOnly': True}]}
     spec = {'hostNetwork': True, 'dnsPolicy': 'ClusterFirstWithHostNet', 'automountServiceAccountToken': False,
-            'enableServiceLinks': False, 'nodeSelector': {'kubernetes.io/hostname': hoover.home_node},
+            'enableServiceLinks': False, 'nodeSelector': {'kubernetes.io/hostname': node},
             'securityContext': {'runAsNonRoot': True, 'runAsUser': 65534, 'runAsGroup': 65534, 'seccompProfile': {'type': 'RuntimeDefault'}},
             'containers': [container], 'volumes': [{'name': 'relay', 'configMap': {'name': 'mcp-relay'}}]}
     labels = {'app.kubernetes.io/name': 'mcp-relay', 'hoover.dev/runtime': 'runc'}
@@ -137,7 +138,7 @@ def main(argv):
         found = kubectl('-n', hoover.namespace, 'get', 'services', '-o', 'json')
         services = {i['metadata']['name'] for i in json.loads(found.stdout)['items']}
     route_list = routes(hoover, mode, services)
-    items = objects(hoover, route_list)
+    items = objects(hoover, route_list, site.control_plane)
     if args.command == 'show':
         print(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': items}, indent=1))
         return

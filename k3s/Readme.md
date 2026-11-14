@@ -21,7 +21,7 @@ The images of the cluster come from commits of this repository.
 | [cluster/](cluster) | Installs the cluster services that every zone uses: RuntimeClasses, cert-manager and TopoLVM. |
 | [images/](images) | Builds the images and pushes them to the cluster registry. |
 | [import_compose/](import_compose) | Imports a stopped Compose installation into a new zone, once per zone ([import_compose.py](import_compose/import_compose.py)). |
-| [platform/mcp-relay/](platform/mcp-relay) | Serves the MCP servers, the interfaces and the stores of one installation on the loopback ports of the home node. |
+| [platform/mcp-relay/](platform/mcp-relay) | Serves the MCP servers, the interfaces and the stores of one installation on the loopback ports of the control-plane node. |
 | [platform/gpu/](platform/gpu) | Runs the GPU services on the GPU nodes of a site, behind an authenticated gateway. |
 | [platform/backups/](platform/backups) | Runs the optional backups and restores a copy into an isolated target. |
 | [tools/](tools) | Holds checks and operator tools. |
@@ -150,11 +150,18 @@ The site file names no zone. The zone state `zone-state.json` holds the zones, a
 The cluster holds the authoritative zone state (see [the cluster copy of the state](#keep-the-state-in-the-cluster)). `zone.py` takes the site operation lock, reads the cluster copy into the state folder and writes its changes back.
 
 ```sh
-python3 k3s/zones/zone.py apply zone-x --home <node> [--stores zone|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
+python3 k3s/zones/zone.py apply zone-x [--stores zone|local] [--temporal-backend postgresql|cassandra] [--dataset name:node:/path]
 python3 k3s/zones/zone.py delete zone-x
 ```
 
-- The home node needs the role `worker`. Every pod and volume of the zone stays on it.
+- A zone has no home node. The scheduler places each pod by its memory request, which follows the measured use
+  ([zones/memory-limits.json](zones/memory-limits.json) `requests`, [hoover/manifests.py](hoover/manifests.py) `REQUESTS`).
+  The zone pod policy ([zones/manifests/zone-pods.yaml](zones/manifests/zone-pods.yaml)) spreads the pods of each zone
+  namespace over the nodes with a soft topology spread constraint, and keeps the runtime rule.
+- A claim takes the first tier of its tier list that a node of the site has ([zones/zonestate.py](zones/zonestate.py)). The
+  scheduler binds it on a node with that tier and free capacity, and its pod then stays on that node (TopoLVM).
+- `--home` of an earlier version is accepted and has no effect. A zone entry with a `home` value keeps that node only as
+  the NFS data node of the zone, when the node has the role `data`.
 - `stores` and `temporal_backend` have the defaults `zone` and `postgresql`. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
 - The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
 - `deploy-k3s up` applies each zone of the zone state again, after the platform steps.
@@ -190,6 +197,8 @@ k3s/deploy-k3s status --site <file>
   It runs with the UID of the user and the network of the host. `HOME` is `/tmp/home` of the container, so no tool writes into the checkout. Inside it, `HOOVER4_OPERATOR_IMAGE=1` makes `deploy-k3s` run the driver ([driver/deploy.py](driver/deploy.py)).
 - `up` runs the host steps, then the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator pod (the portal and the zone runner), the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
+- Monitoring ([platform/monitoring/](platform/monitoring)) names no node. Prometheus, Grafana and Loki stay on the nodes of their claims.
+  Alloy runs on each node and reads the log files of the pods of its node from `/var/log/pods` with the labels `namespace`, `pod` and `container`. No log stream passes through the API server.
 - The host steps are one Ansible run each on all target nodes. The site file is the inventory.
   The driver gives the values that it derives from the site file as the extra variable `hoover4_nodes`.
   [ansible/playbooks/group_vars/hoover4.yml](ansible/playbooks/group_vars/hoover4.yml) gives each value to its node as a `hoover4_*` variable.
@@ -241,7 +250,7 @@ The local node connects to `localhost` over SSH unless it has `ssh_host`, so the
 The admin kubeconfig is `kubeconfig` of the state folder. k3s writes it as `/etc/rancher/k3s/hoover4-admin.yaml`, because `/etc/rancher/k3s/k3s.yaml` can belong to another k3s user of the host.
 A new Hoover installation of a single-node site keeps its dataset folders `testdata` and `uploads` on claims, so it needs no NFS server.
 The frontend step adds the local CA to the trust store of the host and to the NSS stores of the operator user, so a browser of the host trusts the site.
-`tools/write-password-table.py` writes the logins of the site into `passwords.md` of the state folder.
+`tools/write-password-table.py` writes the logins of the site into `zones/passwords.md` of the state folder.
 `tools/local-site-check.py [--restart]` checks the storage, a registry pull and a restart of the host services of a single-node site.
 `tools/zone-data-check.py <zone> write|read` writes one item into each openDesk application of a zone and reads it back.
 
@@ -270,7 +279,7 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 
 | Zone state value | Value | Result |
 |---|---|---|
-| `stores` | `local` | The Compose stores run in the Hoover namespace on claims of the home node. The operations worker mounts them, so store backup and restore work. |
+| `stores` | `local` | The Compose stores run in the Hoover namespace on claims of one node. The operations worker mounts them, so store backup and restore work. The pods with a claim share the node of the first bound claim through a required pod affinity. |
 | `stores` | `zone` | ClickHouse, Manticore and Garage run in Kata on block volumes in the zone namespace, with a user for each service. Existing remote zones use this layout. |
 | `temporal_backend` | `cassandra` | Temporal, Cassandra and Elasticsearch run as in Compose, with the dynamic configuration of deploy.py. |
 | `temporal_backend` | `postgresql` | Temporal uses the PostgreSQL of the zone. Existing remote zones use this backend. No conversion between the backends exists. |
@@ -293,9 +302,12 @@ The cluster holds the authoritative zone state, zone secrets and operator state.
 | Files of the state folder | Objects |
 |---|---|
 | `zone-state.json`, `operator/` (settings, revisions, Apply operations and their logs, backup and relay state), `operations/` (the logs of the zone operations), `facts/`, `frontend/local-ca.crt` | ConfigMaps with the label `hoover.dev/state=file` |
-| `zones/` (the zone secrets, the openDesk values and the master passwords), `fixture-user-passwords.json` and `passwords.md` (the zone user logins) | Secrets with the label `hoover.dev/state=secret` |
+| `zones/` (the zone secrets, the openDesk values, the master passwords, and the zone user logins `fixture-user-passwords.json` and `passwords.md`) | Secrets with the label `hoover.dev/state=secret` |
 
 - The annotation `hoover.dev/state-path` of each object names its file. A log keeps its last 256 KiB in the cluster.
+- Only the runner container of the operator pod mounts `zones/`, so the portal container reads no zone secret and no
+  zone user password. A state folder of an earlier version keeps the two password files at its top. The next pull or
+  push moves them and their Secrets into `zones/`.
 - `operator/deploy/` (the records of `deploy-k3s`), the tokens, the kubeconfig and the downloaded tools stay only in the state folder, because the workstation needs them before a cluster exists.
 - `deploy-k3s` reads the cluster copy into the state folder after it takes the site lock, and before `render` and `check`. After each step it writes the changed files back. The state folder keeps an export copy for inspection.
 - A folder keeps the digest of each file and the `resourceVersion` of its object from the last synchronization. A write of a file that another writer changed fails with a conflict, and the next run reads the newer copy first.
@@ -332,7 +344,7 @@ They also hold the openDesk applications and memory limits of each zone, and the
 
 ## Reach an installation from the workstation.
 
-`platform/mcp-relay/install-relay.py <installation> apply` runs the Deployment `mcp-relay` with runc in the host network of the home node.
+`platform/mcp-relay/install-relay.py <installation> apply` runs the Deployment `mcp-relay` with runc in the host network of the control-plane node.
 It listens on 127.0.0.1 only and forwards each port to a Service of the installation: the five MCP servers, the Temporal, ClickHouse and Manticore interfaces, the stores and the research agents.
 `kubectl port-forward` does not reach a pod in gVisor, so the relay replaces it.
 
@@ -364,7 +376,8 @@ python3 k3s/platform/mcp-relay/install-relay.py <zone> apply --ports compose
 - `<folder>` is the Compose volume folder, relative to the `data_root` of the source node. A bind mount can put the folder there. An absolute path, `..` and a symbolic link out of the data root are refused.
 - `--ini` names the `hoover4.ini` of the Compose installation, relative to the folder of the site file. Its explicit values become operator settings of `hoover:<zone>`, with the Temporal history shard count of the source.
 - `--dataset <name>=<folder>` copies the folder of a dataset mount of the ini into the claim `dataset-<name>`. Each writable mount needs it or `--without-dataset <name>`. A site with data nodes keeps its dataset folders on NFS, so the plan refuses a dataset there.
-- `--source-node` names the node that runs Compose. The default is the home node. The command connects with `ssh` and runs its root commands with `sudo -n` on that node and on the home node.
+- `--home` names the node with the role `worker` that receives the store volumes and the store images. The copy pod binds the claims there, and the pods of the local layout that share the claims follow them. The zone state does not keep this value.
+- `--source-node` names the node that runs Compose. The default is the `--home` node. The command connects with `ssh` and runs its root commands with `sudo -n` on that node and on the `--home` node.
 - `--engine docker|podman` names the runtime of the source. A rootful Docker keeps the host owners, and rootless Podman maps them through its user namespace.
 - The command runs every unfinished step in order. `--until <step>` stops after a step. The records are in `<state folder>/operator/import/<zone>/`, which stays on the workstation.
 

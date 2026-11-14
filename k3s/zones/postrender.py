@@ -3,14 +3,16 @@
 
 Helm runs this file for each release of the zone, so an upgrade keeps every change. The same input gives the same
 output, so a second install finds no difference. Helm does not pass hook objects through a post-renderer.
-manifests/zone-pods.yaml therefore puts every pod of the zone on its home node and in gVisor at admission.
+manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admission, and spreads the pods of a
+namespace over the nodes.
 
 - Stores: the chart StatefulSets and Deployments of STORES run in Kata. Their volumes become raw TopoLVM block volumes
-  of the store tier on the home node (zonestate.py), and the block mount wrapper of ../hoover/stores/podspec.py
+  of the store tier of the site (zonestate.py), and the block mount wrapper of ../hoover/stores/podspec.py
   mounts them inside the guest. The chart Services select the same pods as before.
 - Storage: every other volume claim uses the default tier of the zone.
 - Resources: cpu_policy.py sets the CPU request and limit of each controller and CronJob. memory-limits.json sets the
-  memory limits. Jobs keep the chart values, because a Job template cannot change after its creation.
+  memory limits, and the memory requests of the larger workloads from their measured use, so the scheduler places
+  each pod by its real load. Jobs keep the chart values, because a Job template cannot change after its creation.
 - Patches: Synapse loads synapse/hoover_e2ee.py, the user verification service logs at warn, Jitsi web uses the UDP
   TURN server for the bridge connection, the OpenProject worker loads openproject/zz-hoover-cron.rb, and the Element
   media cleanup has no starting deadline. The docstrings of the functions below give the reasons.
@@ -40,7 +42,8 @@ import podspec  # noqa: E402
 import settings  # noqa: E402
 import zonestate  # noqa: E402
 
-MEMORY = json.loads((HERE / 'memory-limits.json').read_text())['zone']
+MEMORY_FILE = json.loads((HERE / 'memory-limits.json').read_text())
+MEMORY, REQUESTS = MEMORY_FILE['zone'], MEMORY_FILE['requests']
 # The workloads of each openDesk application, by name pattern. A disabled application (operator setting app.<name>)
 # renders zero replicas and keeps its claims, so an enable restores it with its data.
 APP_WORKLOADS = {
@@ -109,7 +112,7 @@ EXCEPTIONS = {
     # directory change signal (dnotify) on the listener folder, and it writes to slapd over the ldapi socket. Neither
     # crosses two gVisor sandboxes: the notifier stayed at transaction 0 while slapd reached 1017, so no directory change
     # reached the provisioning consumers. After a restart it failed with "ldap_sasl_interactive_bind_s(): Can't contact
-    # LDAP server". Both pods therefore run with runc on the home node.
+    # LDAP server". Both pods therefore run with runc. They share volumes, so they run on the node of those volumes.
     'statefulset/ums-ldap-server-primary': 'runc',
     'statefulset/ums-ldap-notifier': 'runc',
 }
@@ -133,14 +136,14 @@ def kubectl_json(*args):
 
 
 class Zone:
-    """The zone of a namespace with its home node, its tiers and its switch state."""
+    """The zone of a namespace with the storage tiers of the site and its switch state."""
 
     def __init__(self, namespace):
         self.namespace = namespace
         self.state = zonestate.load()
         self.name = zonestate.zone_of(namespace, self.state)
         self.disabled = not zonestate.namespace_enabled(namespace, self.state)
-        self.tiers = zonestate.node_tiers(zonestate.home(self.name, self.state), settings.KUBECONFIG)
+        self.tiers = zonestate.site_tiers(settings.KUBECONFIG)
 
     def storage_class(self, store, mode):
         return f"{zonestate.tier(self.name, store, self.tiers, self.state)}-{mode}"
@@ -207,6 +210,15 @@ def memory(doc):
         requested = (resources.get('requests') or {}).get('memory')
         if requested and mebibytes(requested) > mebibytes(limit):
             resources['requests']['memory'] = limit
+    for name, wanted in REQUESTS.get(ref(doc), {}).items():
+        resources = container(pod_spec(doc), name).setdefault('resources', {})
+        requested = (resources.get('requests') or {}).get('memory')
+        limit = (resources.get('limits') or {}).get('memory')
+        # The measured use raises a lower chart request. A request above the limit is not valid.
+        if limit and mebibytes(wanted) > mebibytes(limit):
+            wanted = limit
+        if not requested or mebibytes(wanted) > mebibytes(requested):
+            resources.setdefault('requests', {})['memory'] = wanted
 
 
 def synapse(doc, extra, zone):

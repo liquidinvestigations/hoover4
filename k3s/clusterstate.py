@@ -8,8 +8,12 @@ hoover.dev/state=secret. The annotation hoover.dev/state-path names the path of 
   ConfigMaps  zone-state.json, operator/ (the operator settings, the apply operations and their logs, the backup and
               relay state), operations/ (the logs of the zone operations of the runner), facts/ (the host facts) and
               frontend/local-ca.crt (the root certificate of the internal CA of the frontend)
-  Secrets     zones/ (the zone secrets, the openDesk values and the master passwords), fixture-user-passwords.json
-              (the passwords of the zone users of zones/zone-users.py) and passwords.md (the login table)
+  Secrets     zones/ (the zone secrets, the openDesk values, the master passwords, fixture-user-passwords.json with
+              the passwords of the zone users of zones/zone-users.py, and passwords.md with the login table)
+
+Only the runner container of the operator pod mounts zones/, so the portal container never reads a zone secret.
+An earlier version kept fixture-user-passwords.json and passwords.md at the top of the state folder. pull() and push()
+move such a file and its object to zones/ once (MOVED).
 
 operator/deploy/ (the records of deploy-k3s), operator/import/ (the records of the Compose import), operator/migration/
 (the records of the earlier migration tool), lock files and files whose name starts with a dot stay local. A log file larger than LOG_LIMIT keeps its last LOG_LIMIT bytes in the cluster.
@@ -45,9 +49,10 @@ LOG_LIMIT = 256 * 1024
 KINDS = {
     'configmap': ('file', ('zone-state.json', 'frontend/local-ca.crt'), ('operator', 'operations', 'facts'),
                   '.cluster-state.json', '.cluster-state.lock'),
-    'secret': ('secret', ('fixture-user-passwords.json', 'passwords.md'), ('zones',), 'zones/.cluster-state.json',
-               'zones/.cluster-state.lock'),
+    'secret': ('secret', (), ('zones',), 'zones/.cluster-state.json', 'zones/.cluster-state.lock'),
 }
+# The secret files of an earlier version at the top of the state folder, and their paths in zones/.
+MOVED = {'fixture-user-passwords.json': 'zones/fixture-user-passwords.json', 'passwords.md': 'zones/passwords.md'}
 # operator/migration/ holds the records of the earlier migration tool in older state folders.
 EXCLUDED_FOLDERS = ('operator/deploy/', 'operator/import/', 'operator/migration/')
 
@@ -200,12 +205,41 @@ def write_file(folder, path, data, kind):
     os.replace(tmp, target)
 
 
+def move_earlier_paths(folder, store):
+    """Move the files and objects of MOVED from the top of the state folder to zones/. The caller holds the secret lock.
+
+    A file that exists at both paths keeps the copy in zones/. An object of the old path becomes an object of the new
+    path when the new path has none, and the object of the old path goes.
+    """
+    folder = Path(folder)
+    remote = None
+    manifest = read_manifest(folder, 'secret')
+    for old, new in MOVED.items():
+        if (folder / old).is_file():
+            if (folder / new).exists():
+                (folder / old).unlink()
+            else:
+                (folder / new).parent.mkdir(parents=True, exist_ok=True)
+                os.replace(folder / old, folder / new)
+        if remote is None:
+            remote = store.list('secret')
+        if old in remote:
+            if new not in remote:
+                store.put('secret', new, remote[old]['data'])
+            store.delete('secret', old)
+        manifest.pop(old, None)
+    if (folder / KINDS['secret'][3]).parent.is_dir():
+        write_manifest(folder, 'secret', manifest)
+
+
 def pull(folder, kinds=('configmap', 'secret'), store=None):
     """Write the cluster changes into the folder. Return {path: action} of the changed files."""
     store = store or Kubectl()
     changes = {}
     for kind in kinds:
         with locked(folder, kind):
+            if kind == 'secret':
+                move_earlier_paths(folder, store)
             remote = store.list(kind)
             local = {p: digest(d) for p, d in local_files(folder, kind).items()}
             manifest = read_manifest(folder, kind)
@@ -240,6 +274,8 @@ def push(folder, kinds=('configmap', 'secret'), store=None):
     changes = {}
     for kind in kinds:
         with locked(folder, kind):
+            if kind == 'secret':
+                move_earlier_paths(folder, store)
             local = local_files(folder, kind)
             manifest = read_manifest(folder, kind)
             for path in sorted(set(local) | set(manifest)):

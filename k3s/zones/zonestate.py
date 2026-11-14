@@ -1,7 +1,7 @@
-"""Read the persistent zone state: the zones, their home nodes, their storage tiers and their on and off switch.
+"""Read the persistent zone state: the zones, their storage tiers and their on and off switch.
 
 zone-state.json of the state folder of the site (../settings.py PRIVATE) is the list of the zones of the site. The site
-file names no zone. Each entry names whether the zone is enabled, its home node, the namespaces that it owns, and
+file names no zone. Each entry names whether the zone is enabled, the namespaces that it owns, and
 whether its first openDesk install completed (bootstrapped, which zone.py writes for a new zone). The values stores
 (zone or local) and temporal_backend (postgresql or cassandra) of the Hoover installation of the zone have the defaults
 zone and postgresql. extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
@@ -12,10 +12,13 @@ A disabled zone keeps its manifests, credentials, databases and volumes, but no 
 A file that is missing or invalid raises ZoneStateError. Callers must then treat every zone as disabled.
 A namespace that no zone owns, such as calls or monitoring, is outside zone control.
 
-Every pod of a zone runs on its home node. Each volume of the zone uses one storage tier of that node.
-TIERS gives the tier list of each store. A zone entry can replace a list with its own "tiers" table.
-The first tier of the list that the home node has wins, because TopoLVM does not fall back between device classes.
-"*" stands for any tier of the node, in the order of TIER_ORDER. A node has a tier when it has the label
+A zone has no home node. The scheduler places each pod of a zone by its requests, and a pod with a local volume stays
+on the node of its volume (TopoLVM). An entry of an earlier version can keep the value home: only the data node choice
+of ../config.py Hoover.data_node() reads it.
+Each volume of the zone uses one storage tier. TIERS gives the tier list of each store. A zone entry can replace a list
+with its own "tiers" table. The first tier of the list that a node of the site has wins, because TopoLVM does not fall
+back between device classes. The scheduler then binds the volume on a node with that tier and free capacity.
+"*" stands for any tier of the site, in the order of TIER_ORDER. A node has a tier when it has the label
 storage.tier/<tier>=true.
 """
 import json
@@ -94,31 +97,23 @@ def disabled_namespaces(data=None):
     return sorted(ns for zone, entry in data['zones'].items() if not entry['enabled'] for ns in entry['namespaces'])
 
 
-def home(zone, data=None):
-    """Return the home node of a zone."""
-    data = load() if data is None else data
-    entry = data['zones'].get(zone) or {}
-    if not entry.get('home'):
-        raise ZoneStateError(f'the zone {zone} has no home node')
-    return entry['home']
-
-
-def node_tiers(node, kubeconfig):
-    """Return the storage tiers of a node from its storage.tier/<tier> labels."""
-    labels = json.loads(subprocess.run(['kubectl', '--kubeconfig', str(kubeconfig), 'get', 'node', node, '-o', 'json'],
-                                       check=True, capture_output=True, text=True).stdout)['metadata']['labels']
-    return [k.split('/', 1)[1] for k, v in labels.items() if k.startswith('storage.tier/') and v == 'true']
+def site_tiers(kubeconfig):
+    """Return the storage tiers of the site: every tier that a node has as a storage.tier/<tier>=true label."""
+    nodes = json.loads(subprocess.run(['kubectl', '--kubeconfig', str(kubeconfig), 'get', 'nodes', '-o', 'json'],
+                                      check=True, capture_output=True, text=True).stdout)['items']
+    return sorted({k.split('/', 1)[1] for n in nodes for k, v in n['metadata'].get('labels', {}).items()
+                   if k.startswith('storage.tier/') and v == 'true'})
 
 
 def tier(zone, store, available, data=None):
-    """Return the tier of a store of a zone, from the tier list and the tiers that the home node has."""
+    """Return the tier of a store of a zone, from the tier list and the tiers of the site."""
     data = load() if data is None else data
     tiers = {**TIERS, **(data['zones'].get(zone, {}).get('tiers') or {})}
     for wanted in tiers.get(store, tiers['default']):
         for name in ([t for t in TIER_ORDER if t in available] + sorted(set(available) - set(TIER_ORDER))) if wanted == '*' else [wanted]:
             if name in available:
                 return name
-    raise ZoneStateError(f'the home node of {zone} has none of the tiers {tiers.get(store, tiers["default"])} for {store}')
+    raise ZoneStateError(f'the site has none of the tiers {tiers.get(store, tiers["default"])} for {store} of {zone}')
 
 
 def save(data, path=PATH):
