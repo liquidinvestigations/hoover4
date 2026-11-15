@@ -109,6 +109,31 @@ pub struct CollectionsListResponse {
 // ---------------------------------------------------------------------------------
 
 /// `field` is `relevance`, `date`, `file_size` or `name`. `direction` is `asc` or `desc`.
+/// Every facet the search page's filter modal lists, with the term dictionary field that
+/// the modal passes to `search_string_facet` to turn a term id into text. Every facet
+/// except `collection_dataset` filters by integer term id. The `search/results` route
+/// accepts these names, and `crate::links` converts a search address with them.
+pub const SEARCH_FACETS: &[(&str, Option<&str>)] = &[
+    ("collection_dataset", None),
+    ("file_types", Some("filetype")),
+    ("file_paths", Some("vfs_node")),
+    ("email_from", Some("email_address")),
+    ("email_to", Some("email_address")),
+    ("struct_flags", None),
+    ("ner_per", Some("ner")),
+    ("ner_org", Some("ner")),
+    ("ner_loc", Some("ner")),
+    ("ner_misc", Some("ner")),
+    ("re_email", Some("regex_email")),
+    ("language", Some("language")),
+    ("red_flags", Some("red_flags")),
+    ("re_phone", Some("regex_phone")),
+    ("re_bank_account", Some("regex_bank_account")),
+    ("re_company_id", Some("regex_company_id")),
+    ("re_money", Some("regex_money")),
+    ("re_crypto_wallet", Some("regex_crypto_wallet")),
+];
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentSort {
     pub field: String,
@@ -1295,3 +1320,35 @@ pub struct SearchSuggestionsRequest {
 }
 
 fn default_suggestion_kind() -> String { "pages".to_string() }
+
+// ---------------------------------------------------------------------------------
+// links/parse
+// ---------------------------------------------------------------------------------
+
+/// Hoover links, as a model copied them from a message or a page.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LinksParseRequest {
+    pub urls: Vec<String>,
+    /// The collections of the run, from the collection server's caller ACL. A dataset
+    /// item outside them is not readable. It only narrows the permission of the caller, and
+    /// an empty list makes every dataset item unreadable.
+    #[serde(default)]
+    pub collections: Option<Vec<String>>,
+}
+
+/// One link of [`LinksParseRequest`]: the reference without a handle, or the reason that
+/// the link is not one.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentLink {
+    pub url: String,
+    #[serde(default)]
+    pub reference: Option<crate::links::ChatReference>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// The links in request order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinksParseResponse {
+    pub links: Vec<AgentLink>,
+}

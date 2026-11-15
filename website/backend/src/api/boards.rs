@@ -56,6 +56,7 @@ use common::board_types::{
     EXPLORE_LIMIT, MAX_GOALS,
 };
 use common::current_user::CurrentUser;
+use common::links::RichText;
 use time::OffsetDateTime;
 
 use crate::auth::{guard, item_access};
@@ -123,6 +124,9 @@ struct EventRow {
     payload_json: String,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
     created_at: OffsetDateTime,
+    /// The JSON array of the references of the text that a person wrote in this event.
+    #[serde(default)]
+    references_json: String,
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
@@ -141,6 +145,9 @@ struct FactRow {
     created_at: OffsetDateTime,
     /// The command that wrote the fact, empty for a fact without a command.
     request_id: String,
+    /// The JSON array of the references of a goal, the background or a correction.
+    #[serde(default)]
+    references_json: String,
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
@@ -264,6 +271,19 @@ fn clip(text: &str) -> String {
     text.trim().chars().take(MAX_TEXT).collect()
 }
 
+/// A person's text, clipped to `MAX_TEXT`, with its references resolved again for `user`
+/// and numbered from `[R1]` (`api::links::resolve_rich_text`).
+async fn person_text(user: &CurrentUser, text: &RichText) -> anyhow::Result<RichText> {
+    let clipped = RichText { text: clip(&text.text), references: text.references.clone() };
+    crate::api::links::resolve_rich_text(user, &clipped).await
+}
+
+/// The JSON of a person's text in a command body: `{"text", "references"}`. The command
+/// writer numbers the references for the whole board.
+fn rich_json(text: &RichText) -> serde_json::Value {
+    serde_json::json!({"text": text.text, "references": text.references})
+}
+
 /// The board when it exists and is not dropped, and the access of `user` to it.
 async fn live_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<Option<(BoardRow, item_access::ItemAccess)>> {
     let rows = get_global_client()
@@ -283,6 +303,11 @@ async fn readable_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<(B
         Some((row, access)) if access.read => Ok((row, access)),
         _ => anyhow::bail!("board {}", guard::NOT_FOUND),
     }
+}
+
+/// The title of a board that `user` can read. Not-found otherwise.
+pub async fn readable_board_title(user: &CurrentUser, board_id: &str) -> anyhow::Result<String> {
+    Ok(readable_board(user, board_id).await?.0.title)
 }
 
 /// The stored request id of a person action, or an error for an id that a page cannot send.
@@ -673,7 +698,29 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
     }
     let stored_request = person_request(&request_id)?;
     let title = clip(&request.title);
-    let goals: Vec<String> = request.goals.iter().map(|g| clip(g)).filter(|g| !g.is_empty()).collect();
+    // The goals, the background context and the hints number their references in one
+    // sequence, so a marker of the stored context names the reference of the origin fact.
+    let mut numbered = 0;
+    let mut goals: Vec<RichText> = Vec::new();
+    for goal in &request.goals {
+        let goal = person_text(user, goal).await?;
+        if !goal.is_blank() {
+            let goal = goal.shifted(numbered);
+            numbered += goal.references.len();
+            goals.push(goal);
+        }
+    }
+    let context = person_text(user, &request.context).await?.shifted(numbered);
+    numbered += context.references.len();
+    let mut hints: Vec<RichText> = Vec::new();
+    for hint in &request.hints {
+        let hint = person_text(user, hint).await?;
+        if !hint.is_blank() {
+            let hint = hint.shifted(numbered);
+            numbered += hint.references.len();
+            hints.push(hint);
+        }
+    }
     if title.is_empty() || goals.is_empty() {
         anyhow::bail!("a board needs a title and a goal");
     }
@@ -708,8 +755,8 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
                 board_id: board_id.clone(),
                 owner: user.username.clone(),
                 title,
-                goal: goals[0].clone(),
-                context: clip(&request.context),
+                goal: goals[0].text.clone(),
+                context: context.text.clone(),
                 collections: collections.clone(),
                 llm_model: String::new(),
                 max_explores: BASE_EXPLORES,
@@ -725,10 +772,11 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
             insert_row("boards", &row).await?;
         }
     }
-    let origin = origin_text(&collections, &request.context);
-    let hints: Vec<String> = request.hints.iter().map(|h| clip(h)).filter(|h| !h.is_empty()).collect();
+    let origin = RichText { text: origin_text(&collections, &context.text), references: context.references };
     submit(user, &board_id, &request_id, "create_board", serde_json::json!({
-        "goals": goals, "origin": origin, "hints": hints,
+        "goals": goals.iter().map(rich_json).collect::<Vec<_>>(),
+        "origin": rich_json(&origin),
+        "hints": hints.iter().map(rich_json).collect::<Vec<_>>(),
     }))
     .await?;
     Ok(board_id)
@@ -808,37 +856,44 @@ pub async fn board_command(user: &CurrentUser, board_id: String, request_id: Str
     let (board, _) = readable_board(user, &board_id).await?;
     let (kind, body) = match action {
         BoardAction::AddHint { text } => {
-            let text = clip(&text);
-            if text.is_empty() {
+            let text = person_text(user, &text).await?;
+            if text.is_blank() {
                 anyhow::bail!("The hint is empty.");
             }
-            ("add_hint", serde_json::json!({"text": text}))
+            ("add_hint", serde_json::json!({"text": rich_json(&text)}))
         }
         BoardAction::RejectFact { fact_id, reason } => {
-            ("reject_fact", serde_json::json!({"fact_id": fact_id, "reason": clip(&reason)}))
+            let reason = person_text(user, &reason).await?;
+            ("reject_fact", serde_json::json!({"fact_id": fact_id, "reason": rich_json(&reason)}))
         }
         BoardAction::SetPaused { paused } => ("set_paused", serde_json::json!({"paused": paused})),
         BoardAction::SetInternetTools { on } => return set_internet_tools(user, board, &request_id, on).await,
-        BoardAction::Review { review_id, accept, correction, seen_seq, seen_unreviewed } => ("review_decision", serde_json::json!({
-            "review_id": review_id, "accept": accept, "correction": clip(&correction),
-            "seen_seq": seen_seq, "seen_unreviewed": seen_unreviewed,
-        })),
-        BoardAction::Answer { goal, proposal_id, accept, correction, seen_seq, seen_unreviewed } => ("answer_decision", serde_json::json!({
-            "goal": goal, "proposal_id": proposal_id, "accept": accept, "correction": clip(&correction),
-            "seen_seq": seen_seq, "seen_unreviewed": seen_unreviewed,
-        })),
+        BoardAction::Review { review_id, accept, correction, seen_seq, seen_unreviewed } => {
+            let correction = person_text(user, &correction).await?;
+            ("review_decision", serde_json::json!({
+                "review_id": review_id, "accept": accept, "correction": rich_json(&correction),
+                "seen_seq": seen_seq, "seen_unreviewed": seen_unreviewed,
+            }))
+        }
+        BoardAction::Answer { goal, proposal_id, accept, correction, seen_seq, seen_unreviewed } => {
+            let correction = person_text(user, &correction).await?;
+            ("answer_decision", serde_json::json!({
+                "goal": goal, "proposal_id": proposal_id, "accept": accept, "correction": rich_json(&correction),
+                "seen_seq": seen_seq, "seen_unreviewed": seen_unreviewed,
+            }))
+        }
         BoardAction::AddGoal { text } => {
-            let text = clip(&text);
-            if text.is_empty() {
+            let text = person_text(user, &text).await?;
+            if text.is_blank() {
                 anyhow::bail!("The goal is empty.");
             }
-            ("add_goal", serde_json::json!({"text": text}))
+            ("add_goal", serde_json::json!({"text": rich_json(&text)}))
         }
         BoardAction::ExploreQuestion { fact_id, index, question } => {
-            let question = clip(&question);
-            match (index, question.is_empty()) {
+            let question = person_text(user, &question).await?;
+            match (index, question.is_blank()) {
                 (Some(index), true) => ("explore_question", serde_json::json!({"fact_id": fact_id, "index": index})),
-                (None, false) => ("explore_question", serde_json::json!({"fact_id": fact_id, "question": question})),
+                (None, false) => ("explore_question", serde_json::json!({"fact_id": fact_id, "question": rich_json(&question)})),
                 _ => anyhow::bail!("Name an open question or write a question."),
             }
         }
@@ -1018,6 +1073,20 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value,
     }
 }
 
+/// The references of the visible facts and of the events of a board, once each, in
+/// handle order. The command writer numbers them for the whole board.
+fn board_references(facts: &[FactRow], events: &[EventRow]) -> Vec<common::links::ChatReference> {
+    let mut out: Vec<common::links::ChatReference> = Vec::new();
+    let stored = facts.iter().map(|f| &f.references_json).chain(events.iter().map(|e| &e.references_json));
+    for reference in stored.flat_map(|json| common::links::references_from_json(json)) {
+        if !out.iter().any(|r| r.handle == reference.handle) {
+            out.push(reference);
+        }
+    }
+    out.sort_by_key(|r| common::links::marker_number(&r.handle));
+    out
+}
+
 /// The whole board.
 pub async fn board_snapshot(user: &CurrentUser, board_id: String) -> anyhow::Result<BoardSnapshot> {
     let (board, access) = readable_board(user, &board_id).await?;
@@ -1063,6 +1132,7 @@ async fn read_snapshot(board: BoardRow, can_delete: bool) -> anyhow::Result<Boar
         .fetch_all::<IntentRow>()
         .await?;
     let marks = event_facts(&events);
+    let references = board_references(&facts, &events);
     let labels = read_labels(std::slice::from_ref(&board_id)).await?;
     let label = |node: &str| labels.get(&(board_id.clone(), node.to_string()));
     let summary: serde_json::Value = state
@@ -1132,6 +1202,7 @@ async fn read_snapshot(board: BoardRow, can_delete: bool) -> anyhow::Result<Boar
         not_answered: strings(&summary["not_answered"]),
         unreviewed: strings(&summary["unreviewed"]),
         snapshot_seq: summary["snapshot_seq"].as_u64().unwrap_or(0),
+        references,
         limit_reached,
         reopen_grant,
         final_running,
@@ -1349,6 +1420,7 @@ mod tests {
             subject: subject.into(),
             payload_json: payload.to_string(),
             created_at: OffsetDateTime::from_unix_timestamp(second).unwrap(),
+            references_json: String::new(),
         }
     }
 
@@ -1496,10 +1568,24 @@ mod tests {
             board_id: "b".into(), fact_id: "fact-x".into(), kind: "sourced".into(), text: String::new(),
             intent_id: String::new(), session_id: String::new(), answer_seq: 0, open_questions: vec![],
             problems: vec![], created_by: String::new(), created_at: OffsetDateTime::UNIX_EPOCH,
-            request_id: request.into(),
+            request_id: request.into(), references_json: String::new(),
         };
         assert!(is_visible(&fact(""), &seen) && is_visible(&fact("web:a"), &seen));
         assert!(!is_visible(&fact("explore_end:intent-x:1"), &seen), "a fact before its event is hidden");
+    }
+
+    #[test]
+    fn the_references_of_a_board_are_listed_once_in_handle_order() {
+        let reference = |n: usize| serde_json::json!({
+            "handle": format!("[R{n}]"), "link": {"kind": "chat", "session_id": "s"}, "label": "c",
+            "kind": "chat", "tool": "read_chat", "arguments": {"session_id": "s"}, "url": "/ai_chat/c/s/a/b",
+        });
+        let mut hint = event("hint_added", "", serde_json::json!({"text": "[R3] and [R1]"}), 2);
+        hint.references_json = serde_json::json!([reference(3), reference(1)]).to_string();
+        let mut again = event("hint_added", "", serde_json::json!({}), 3);
+        again.references_json = serde_json::json!([reference(1)]).to_string();
+        let handles: Vec<String> = board_references(&[], &[hint, again]).into_iter().map(|r| r.handle).collect();
+        assert_eq!(handles, vec!["[R1]", "[R3]"]);
     }
 
     #[test]

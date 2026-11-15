@@ -10,6 +10,7 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 
 - [A chat belongs to a group.](#a-chat-belongs-to-a-group)
 - [Internet access stays fixed for a conversation.](#internet-access-stays-fixed-for-a-conversation)
+- [A pasted Hoover link becomes a reference.](#a-pasted-hoover-link-becomes-a-reference)
 - [Reaching the agents](#reaching-the-agents)
 - [Run sources](#run-sources)
 - [Citations, and why they are not the search cards](#citations)
@@ -82,6 +83,67 @@ The first message stores `use_internet_tools` and locks the session options.
 The composer then shows the stored option above the transcript.
 The internet option defaults to on.
 
+## A pasted Hoover link becomes a reference.
+
+A reference is a Hoover link that a person pasted into a text that goes to a model
+([CONTEXT.md](../../CONTEXT.md)). The chat composer and every text input of the boards
+([Boards.md](Boards.md#references-in-board-texts)) take references.
+
+- One parser reads every address that names an item
+  ([common/src/links.rs](../../website/common/src/links.rs), `parse_link`). The items are a
+  search, a document, the file browser pages, a folder, an email graph, a chat and a board.
+  The parser reads only the segments that name the item and skips the viewer segments. A test
+  in [routes.rs](../../website/frontend/src/routes.rs) builds each `Route` and parses it.
+  `UrlParam`, the CBOR and base64 form of a typed segment, is in `common`.
+- `HooverLink::tool_call` gives the tool and the arguments that read the item. The facet
+  values of a search address are term ids. `search_collections` accepts a term id as a
+  decimal string. The `note` of the reference names a facet or a range that the tool cannot
+  express.
+
+The table gives the tool of each item.
+
+| Item | Tool |
+|---|---|
+| Search | `search_collections` |
+| Document | `read_documents` |
+| Folder | `folder_list` |
+| Collection page | `folder_overview` |
+| Storage page | `list_collections` |
+| Email graph | `doc_email` |
+| Chat | `read_chat` |
+| Board | `read_board` |
+
+- The input (`ReferenceInput`,
+  [reference_input.rs](../../website/frontend/src/components/chat_components/reference_input.rs)
+  and `assets/reference-input.js`) is a `contenteditable` element. A paste puts the text at
+  the caret. A link of this origin or a path that starts with `/` waits as a link part. The
+  server function `resolve_references` then checks it. A link that the person can read becomes
+  a chip with its number, its label and an X that removes it. Other links stay text.
+- The label is the search text, the file name, the folder path, the collection name, or the
+  title of the chat or the board. The read rule is the rule of the page that the link opens.
+  A chat and a board use the group rule of `auth::item_access`.
+- The value is a `RichText`, the text with `[R1]` or `[R2]` at each chip and the references
+  (`ChatReference`). The send resolves every reference again from its `url`
+  ([api/links.rs](../../website/backend/src/api/links.rs), `resolve_rich_text`). A request
+  body therefore cannot set a label or a tool call. An old body that sends a string decodes
+  as a text without references.
+- The user row stores the references in `chat_messages.references_json` (migration `00056`).
+  The transcript shows each stored reference as a chip that opens the link.
+- `open_run` gives the model the text and one `References:` block
+  ([P_agent/link_references.py](../../main_services/processing/tasks/P_agent/link_references.py)).
+  The block has one JSON line for each reference that the text names, with its handle, kind,
+  label, tool and arguments. The board prompts use the same formatter. The system prompt
+  says in one sentence what a marker means.
+- A marker is not a citation handle. The citation checks read `[Dn]` and `[Wn]` only.
+
+The agent tool `parse_link(urls)` reads a Hoover link that the model finds in a message or
+a page. It is in the pack `hoover`, which no source removes. The collection server serves it
+through the website route `POST /api/agent/v1/links/parse`. The route applies the parser and
+the read rule of the input, limited to the collections of the run. A run without collections
+reads no dataset item, and it still reads chats and boards by the group rule. The route reads
+a link of any host by its path, because the website has no record of the address that the
+person used.
+
 ## Reaching the agents
 
 The worker selects the agent from the stored internet option.
@@ -113,6 +175,11 @@ A run has a set of sources, and the sources decide which tool packs bind
 |---|---|---|
 | `documents` | The ACL of the run holds at least one collection. | `collections` |
 | `web` | The agent of the run lists `web_search`. Only the full research agent connects the web servers. | `web`, `browser` |
+
+The other packs need no source. The `hoover` pack (`parse_link`) binds in every run of the
+configured packs, also a run without collections. Both agent services connect to the
+collection server for every run, with or without internet tools (`MCP_SERVERS`,
+`FULL_RESEARCH_MCP_SERVERS` in `deploy.py`), so the tool is present.
 
 `_create_context` ([research_agent/agent.py](../../main_services/agents/research_agent/research_agent/agent.py)) computes the sources and binds `run_tools`.
 These are the configured packs less the packs of each absent source. An empty ACL means no

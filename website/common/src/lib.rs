@@ -25,6 +25,7 @@ pub mod entity_stoplist;
 pub mod failure_types;
 pub mod item_groups;
 pub mod language;
+pub mod links;
 pub mod ocr_detection;
 pub mod feedback_types;
 pub mod file_type_icons;
@@ -44,6 +45,7 @@ pub mod table_cell_preview;
 pub mod text_highlight;
 pub mod upload_pages;
 pub mod uploads;
+pub mod url_param;
 pub mod vfs;
 
 pub mod signals;

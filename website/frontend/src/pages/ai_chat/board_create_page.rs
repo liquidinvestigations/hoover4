@@ -1,6 +1,10 @@
 //! `/ai_chat/boards/new`, the form that creates an investigation board. Send opens the new
 //! board.
 //!
+//! Each goal, the background context and each hint is a `ReferenceInput`, where a pasted
+//! Hoover link becomes a reference chip. Each goal and each hint has its own input, with "Add
+//! a goal" and "Add hint" buttons and a remove button when the list has more than one entry.
+//!
 //! The form has no model, explore count or step budget. The worker starts every board at the
 //! same budget and grows it with the person's corrections and hints.
 //!
@@ -19,6 +23,7 @@
 //! popup shows the language read-only.
 
 use common::board_types::{BoardCreateRequest, MAX_GOALS};
+use common::links::RichText;
 use dioxus::prelude::*;
 use dioxus_free_icons::{icons::md_navigation_icons::MdArrowBack, Icon};
 
@@ -27,12 +32,15 @@ use common::item_groups::GroupChoice;
 use crate::api::board_api::{board_command_status, create_board_command, new_request_id};
 use crate::api::error_util::user_facing_message;
 use crate::components::chat_components::agent_language::AgentLanguageControl;
-use crate::components::chat_components::GroupPicker;
+use crate::components::chat_components::{GroupPicker, ReferenceInput};
 use crate::components::admin_components::{ErrorBar, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT, LABEL, LINK, SUBHEADING};
 use crate::routes::Route;
 use crate::tr;
 
-const TEXTAREA: &str = "border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-body); color: var(--x-ink-strong); background: white; width: 100%; box-sizing: border-box; font-family: inherit;";
+const TEXTAREA: &str = "border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-body); font-weight: 400; color: var(--x-ink-strong); background: white; width: 100%; box-sizing: border-box; font-family: inherit;";
+/// The height of a goal input, three lines, and of the background and a hint, two lines.
+const THREE_LINES: &str = "min-height: calc(3 * var(--x-line-body) + 12px);";
+const TWO_LINES: &str = "min-height: calc(2 * var(--x-line-body) + 12px);";
 /// The visible label of a field, above the field.
 const FIELD_LABEL: &str = "display: flex; flex-direction: column; gap: 4px; font-size: var(--x-text-body); font-weight: 600; color: var(--x-ink-strong);";
 const SOURCE_ERROR: &str = "margin: 0; color: var(--x-danger); font-size: var(--x-text-detail);";
@@ -82,14 +90,22 @@ pub fn group_collections(choices: Option<&[GroupChoice]>, group: &str) -> Option
     choices?.iter().find(|c| c.name == group).map(|c| c.collections.clone())
 }
 
+/// The texts of a list of inputs that hold text, with white space removed at both ends.
+pub fn filled(entries: &[(u64, RichText)]) -> Vec<RichText> {
+    entries.iter().map(|(_, text)| text.trimmed()).filter(|text| !text.is_blank()).collect()
+}
+
 #[component]
 pub fn AiBoardCreatePage() -> Element {
     let group = use_signal(String::new);
     let group_choices = use_signal(|| None::<Vec<GroupChoice>>);
     let mut title = use_signal(String::new);
-    let mut goals = use_signal(|| vec![String::new()]);
-    let mut context = use_signal(String::new);
-    let mut hints = use_signal(String::new);
+    // Each goal and each hint has a key that stays when another entry is removed, so its
+    // input keeps its text and its chips.
+    let mut next_key = use_signal(|| 2_u64);
+    let mut goals = use_signal(|| vec![(0_u64, RichText::default())]);
+    let mut context = use_signal(RichText::default);
+    let mut hints = use_signal(|| vec![(1_u64, RichText::default())]);
     // `None` until the groups arrive and while no group is selected. Then every collection of
     // the group is selected.
     let mut chosen = use_signal(|| None::<Vec<String>>);
@@ -165,6 +181,9 @@ pub fn AiBoardCreatePage() -> Element {
         None => rsx! { span { style: HELP_TEXT, {tr!("chat-board-create-loading-collections-u")} } },
     };
     let goal_count = goals.read().len();
+    let hint_count = hints.read().len();
+    let goal_rows = goals.read().clone();
+    let hint_rows = hints.read().clone();
     // No error while the collections load, because every collection is selected when they arrive.
     let missing_source = chosen.read().as_ref().and_then(|list| {
         source_error(list.len(), internet_tools(), internet_tools_enabled)
@@ -200,21 +219,25 @@ pub fn AiBoardCreatePage() -> Element {
                             value: "{title}", oninput: move |e| title.set(e.value()),
                         }
                     }
-                    for index in 0..goal_count {
-                        label { key: "{index}", style: FIELD_LABEL,
+                    for (index, (key, text)) in goal_rows.into_iter().enumerate() {
+                        label { key: "{key}", style: FIELD_LABEL,
                             if goal_count == 1 { {tr!("chat-board-create-goal")} } else { {tr!("chat-board-create-goal-2", index_1: (index + 1).to_string())} }
                             div { style: "display: flex; gap: 6px; align-items: flex-start; font-weight: 400;",
-                                textarea {
-                                    class: "x-board-goal",
-                                    style: TEXTAREA, rows: "3",
-                                    value: "{goals.read()[index]}",
-                                    oninput: move |e| { goals.write()[index] = e.value(); },
+                                ReferenceInput {
+                                    class: "x-board-goal".to_string(),
+                                    style: "{TEXTAREA} {THREE_LINES}",
+                                    value: text,
+                                    on_change: move |value: RichText| {
+                                        if let Some(entry) = goals.write().iter_mut().find(|(k, _)| *k == key) {
+                                            entry.1 = value;
+                                        }
+                                    },
                                 }
                                 if goal_count > 1 {
                                     button {
                                         style: BTN_SMALL,
                                         title: tr!("chat-board-create-remove-this-goal"),
-                                        onclick: move |_| { goals.write().remove(index); },
+                                        onclick: move |_| goals.write().retain(|(k, _)| *k != key),
                                         {tr!("chat-board-create-remove")}
                                     }
                                 }
@@ -226,25 +249,59 @@ pub fn AiBoardCreatePage() -> Element {
                             button {
                                 class: "x-board-add-goal",
                                 style: BTN_SMALL,
-                                onclick: move |_| goals.write().push(String::new()),
+                                onclick: move |_| {
+                                    let key = next_key();
+                                    next_key.set(key + 1);
+                                    goals.write().push((key, RichText::default()));
+                                },
                                 {tr!("chat-board-create-add-a-goal")}
                             }
                         }
                     }
                     label { style: FIELD_LABEL,
                         {tr!("chat-board-create-context-optional")}
-                        textarea {
-                            style: "{TEXTAREA} font-weight: 400;", rows: "2",
-                            class: "x-board-context",
-                            value: "{context}", oninput: move |e| context.set(e.value()),
+                        ReferenceInput {
+                            class: "x-board-context".to_string(),
+                            style: "{TEXTAREA} {TWO_LINES}",
+                            value: context(),
+                            on_change: move |value| context.set(value),
                         }
                     }
-                    label { style: FIELD_LABEL,
-                        {tr!("chat-board-create-hints-one-per-line-optional")}
-                        textarea {
-                            style: "{TEXTAREA} font-weight: 400;", rows: "2",
-                            class: "x-board-hints",
-                            value: "{hints}", oninput: move |e| hints.set(e.value()),
+                    for (index, (key, text)) in hint_rows.into_iter().enumerate() {
+                        label { key: "{key}", style: FIELD_LABEL,
+                            if hint_count == 1 { {tr!("chat-board-create-hint-optional")} } else { {tr!("chat-board-create-hint-n-optional", index_1: (index + 1).to_string())} }
+                            div { style: "display: flex; gap: 6px; align-items: flex-start; font-weight: 400;",
+                                ReferenceInput {
+                                    class: "x-board-hint".to_string(),
+                                    style: "{TEXTAREA} {TWO_LINES}",
+                                    value: text,
+                                    on_change: move |value: RichText| {
+                                        if let Some(entry) = hints.write().iter_mut().find(|(k, _)| *k == key) {
+                                            entry.1 = value;
+                                        }
+                                    },
+                                }
+                                if hint_count > 1 {
+                                    button {
+                                        style: BTN_SMALL,
+                                        title: tr!("chat-board-create-remove-this-hint"),
+                                        onclick: move |_| hints.write().retain(|(k, _)| *k != key),
+                                        {tr!("chat-board-create-remove")}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div {
+                        button {
+                            class: "x-board-add-hint",
+                            style: BTN_SMALL,
+                            onclick: move |_| {
+                                let key = next_key();
+                                next_key.set(key + 1);
+                                hints.write().push((key, RichText::default()));
+                            },
+                            {tr!("chat-board-create-add-hint")}
                         }
                     }
                     div { class: "x-board-group",
@@ -278,11 +335,11 @@ pub fn AiBoardCreatePage() -> Element {
                                 busy.set(true);
                                 let request = BoardCreateRequest {
                                     title: title.read().clone(),
-                                    goals: goals.read().iter().map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).collect(),
-                                    context: context.read().clone(),
+                                    goals: filled(&goals.read()),
+                                    context: context.read().trimmed(),
                                     collections: chosen.read().clone().unwrap_or_default(),
                                     internet_tools: internet_tools_enabled && internet_tools(),
-                                    hints: hints.read().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect(),
+                                    hints: filled(&hints.read()),
                                     group: group.read().clone(),
                                 };
                                 spawn(async move {
@@ -362,6 +419,12 @@ mod tests {
         assert_eq!(group_collections(Some(&choices), "team-a"), Some(names(&["enron"])));
         assert_eq!(group_collections(Some(&choices), ""), None);
         assert_eq!(group_collections(None, "team-a"), None);
+    }
+
+    #[test]
+    fn only_the_filled_entries_are_sent() {
+        let entries = vec![(0, RichText::plain("  First hint ")), (1, RichText::plain("   ")), (2, RichText::plain("Second"))];
+        assert_eq!(filled(&entries), vec![RichText::plain("First hint"), RichText::plain("Second")]);
     }
 
     #[test]

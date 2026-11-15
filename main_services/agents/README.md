@@ -165,6 +165,11 @@ See the [search prompt tests](collection_search_server/tests/test_prompts.py) an
 empty means "render the templates". `SYSTEM_PROMPT` changes only the words: the profile
 name still decides which tools are bound.
 
+The system prompt says in one sentence what a reference marker such as `[R1]` means. The
+worker gives the model a `References:` block after a message with references
+([Chat_And_Agents.md](../../docs/architecture/Chat_And_Agents.md#a-pasted-hoover-link-becomes-a-reference)).
+The description of `parse_link` says it too.
+
 **Keep the agent prompts short.** Qwen3.5-2B follows a long numbered prompt by doing all
 of it forever. An earlier five-step draft made it search, search again, then re-run a
 query it had already run until the request died. Detail belongs in tool descriptions,

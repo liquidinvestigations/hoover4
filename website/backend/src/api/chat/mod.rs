@@ -374,7 +374,7 @@ pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<
 pub async fn send_message(
     user: &CurrentUser,
     session_id: String,
-    message: String,
+    message: common::links::RichText,
     requested_options: ChatOptions,
     accept_language: Option<&str>,
 ) -> anyhow::Result<ChatSendResult> {
@@ -396,17 +396,18 @@ pub async fn send_message(
     // Read before the turn writes a row, so a failed read leaves no turn without a run.
     let language = crate::api::settings::language_settings(user, accept_language).await?.agent;
 
-    let message = message.trim().to_string();
-    if message.is_empty() {
+    if message.is_blank() {
         anyhow::bail!("message is empty");
     }
-    if message.chars().count() > MAX_MESSAGE_CHARS {
+    if message.text.trim().chars().count() > MAX_MESSAGE_CHARS {
         anyhow::bail!("message is too long (max {MAX_MESSAGE_CHARS} characters)");
     }
 
     // Every member of the group continues the chat. The rows of the turn keep the creator
     // as their storage key, see the module documentation.
     let session = readable_session(user, &session_id).await?;
+    // The references of the sender, resolved again with the sender's read permission.
+    let message = crate::api::links::resolve_rich_text(user, &message).await?;
     let username = session.username.as_str();
 
     // Resolve the model before allocating a seq, so a deployment without a model refuses
@@ -449,9 +450,10 @@ pub async fn send_message(
         &session_id,
         user_seq,
         ChatRole::User,
-        &message,
+        &message.text,
         AppendMessageExtras {
             message_uuid: turn_uuid.clone(),
+            references_json: message.references_json(),
             ..Default::default()
         },
     )
@@ -463,7 +465,7 @@ pub async fn send_message(
     // Provisional title from the first user turn; the summariser replaces it at the end
     // of the turn, and it stays as the fallback when the summariser produces nothing.
     if is_first_turn {
-        let provisional_title = title_from_message(&message);
+        let provisional_title = title_from_message(&message.display_text());
         db_chat::touch_session(username, &session_id, Some(&provisional_title), None).await?;
     } else {
         db_chat::touch_session(username, &session_id, None, None).await?;

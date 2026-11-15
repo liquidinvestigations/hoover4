@@ -1805,7 +1805,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
 if __name__ == "__main__":
     import sys
     sys.modules["collection_search_server.server"] = sys.modules[__name__]
-from collection_search_server import paging, tools_document, tools_folder, tools_search, tools_table  # noqa: E402,F401
+from collection_search_server import paging, tools_document, tools_folder, tools_hoover, tools_search, tools_table  # noqa: E402,F401
 
 
 @mcp.custom_route("/health", methods=["GET"])

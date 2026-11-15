@@ -1353,6 +1353,37 @@
       "no_screenshot_reason": "The screenshot of a report and the workspace pane needs a finished agent turn with files. The chat walkthrough records it as browser evidence."
     },
     {
+      "id": "F-chat-36",
+      "source": [
+        "website/common/src/links.rs",
+        "website/backend/src/api/links.rs",
+        "website/frontend/src/components/chat_components/reference_input.rs",
+        "website/frontend/assets/reference-input.js",
+        "main_services/processing/tasks/P_agent/link_references.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#paste-a-hoover-link",
+        "docs/architecture/Chat_And_Agents.md#a-pasted-hoover-link-becomes-a-reference",
+        "docs/architecture/Boards.md#references-in-board-texts"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "A chip appears only after a paste of a link, and no screenshot scenario pastes a link."
+    },
+    {
+      "id": "F-chat-37",
+      "source": [
+        "main_services/agents/collection_search_server/collection_search_server/tools_hoover.py",
+        "website/backend/src/api/agent/links.rs",
+        "main_services/agents/agent_common/agent_common/tool_packs.py"
+      ],
+      "docs": [
+        "docs/architecture/Chat_And_Agents.md#a-pasted-hoover-link-becomes-a-reference",
+        "main_services/agents/collection_search_server/README.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature is an agent tool. It has no page of its own."
+    },
+    {
       "id": "F-chat-08",
       "source": [
         "website/frontend/src/components/chat_components",

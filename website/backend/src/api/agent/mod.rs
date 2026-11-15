@@ -16,12 +16,14 @@ mod diff;
 mod documents;
 mod folders;
 mod images;
+mod links;
 mod search;
 mod tables;
 
 use documents::*;
 use folders::*;
 use images::*;
+use links::*;
 use search::*;
 use tables::*;
 
@@ -599,4 +601,5 @@ pub fn router() -> axum::Router {
         .route("/api/agent/v1/folders/search", axum::routing::post(folders_search))
         .route("/api/agent/v1/images/document", axum::routing::post(images_document))
         .route("/api/agent/v1/images/capture", axum::routing::post(images_capture))
+        .route("/api/agent/v1/links/parse", axum::routing::post(links_parse))
 }

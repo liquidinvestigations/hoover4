@@ -801,6 +801,17 @@ Name the collection, people, dates, and result you need.
 For example, ask for dated Enron emails about California electricity prices and request source citations.
 For a comparison, state which claims and sources the assistant must compare.
 
+### Paste a Hoover link.
+
+Copy the address of a Hoover page and paste it in the message.
+The page can be a search, a document, a folder, a file browser page, an email graph, a chat or a board.
+The link becomes a chip with a number and the name of the item, for example the file name or the search text.
+The assistant reads the item with the tool that the chip names.
+Select the **×** on a chip to remove it.
+A link to another site, a link that is incomplete, and a link to an item that you cannot read stay as text.
+In a sent message, select a chip to open the item.
+The board inputs take links in the same way.
+
 The Internet tools option stays fixed after the first message.
 Start another conversation to change it.
 Your deployment can hide this option when internet tools are unavailable.
@@ -984,7 +995,7 @@ Select a card to open the board.
 3. Enter background context that defines known facts, constraints, and the required result.
 4. Check the **Group** of the board. **Show groups of all users** adds the groups that every user has.
 5. Select the collections to search. The list shows the collections that both you and the group can read. **Collections** selects or clears every collection. A board without collections searches the web only and needs **Internet tools**.
-6. Enter initial hints when you have useful leads.
+6. Enter a hint when you have a useful lead. Select **Add hint** for each further hint. A hint or a goal can hold pasted Hoover links, as a chat message can.
 7. Set **Internet tools** when the investigation must compare documents with online sources.
 8. Check the agent language beside **Create board**. The board writes its findings, titles, summaries and assessments in this language. To change it, select the flag. Your language settings open in a new tab.
 9. Select **Create board**.

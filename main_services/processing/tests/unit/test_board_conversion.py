@@ -501,7 +501,8 @@ def opening(board, monkeypatch):
     monkeypatch.setattr(activities, "_existing_user_seq", lambda owner, session, uuid: None)
     monkeypatch.setattr(activities, "_next_seq", lambda owner, session: 3)
     monkeypatch.setattr(activities, "_write_turn_rows",
-                        lambda owner, session, seq, text, uuid, usage="": state["rows"].append((text, usage)))
+                        lambda owner, session, seq, text, uuid, usage="", references="":
+                        state["rows"].append((text, usage)) or state.setdefault("references", []).append(references))
     return state
 
 
@@ -653,3 +654,17 @@ def test_explore_brief_separates_rejected_claim_and_correction_reason():
     correction = text.split("<rejected>")[1].split("</rejected>")[0]
     assert "Wrong meeting date" in correction and "The correct date is 4 May." in correction
     assert "[D2]" not in correction
+
+
+def test_an_explore_row_stores_the_references_that_its_brief_names(board, opening, monkeypatch):
+    _set_board(board, monkeypatch, ["enron"], 0, True)
+    reference = {"handle": "[R1]", "kind": "board", "label": "Earlier board", "tool": "read_board",
+                 "arguments": {"board_id": "b0"}, "url": "/ai_chat/boards/b0", "link": {"kind": "board"}}
+    board.submit("b1", "hint:1", cmd.ADD_HINT, OWNER,
+                 {"text": {"text": "Start from [R1].", "references": [reference]}})
+    board.run_commands("b1")
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert opened.skip_kind == ""
+    text, _usage = opening["rows"][0]
+    assert "Start from [R1]." in text
+    assert [r["handle"] for r in json.loads(opening["references"][0])] == ["[R1]"]

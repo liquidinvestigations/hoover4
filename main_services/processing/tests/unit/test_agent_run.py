@@ -1113,3 +1113,20 @@ def test_open_run_keeps_the_structured_task_of_the_user_row(store, monkeypatch):
     monkeypatch.setattr(activities, "_user_row", lambda *a: ("Find the lease.", {}))
     ActivityEnvironment().run(activities.open_run, inp)
     assert store["messages"][0].usage_json == ""
+
+
+def test_open_run_gives_the_model_the_references_of_the_user_row(store, monkeypatch):
+    store["messages"] = []
+    store["row"] = None
+    monkeypatch.setattr(agent_runs, "create_run", lambda row: store.__setitem__("row", row))
+    monkeypatch.setattr(agent_runs, "turn_is_stopped", lambda *a: False)
+    reference = {"handle": "[R1]", "kind": "board", "label": "Lease review", "tool": "read_board",
+                 "arguments": {"board_id": "b1"}, "url": "/ai_chat/boards/b1", "link": {"kind": "board"}}
+    monkeypatch.setattr(activities, "_user_row",
+                        lambda *a: ("Summarise [R1].", {"references": [reference]}))
+    inp = activities.AgentRunInput(run_id=RUN_ID, username="u", session_id="s", turn_seq=4, start_seq=5)
+    ActivityEnvironment().run(activities.open_run, inp)
+    [opening] = store["messages"]
+    assert opening.content.startswith("Summarise [R1].\n\nReferences:\n")
+    assert '"tool": "read_board"' in opening.content and '"link"' not in opening.content
+    assert opening.usage_json == ""

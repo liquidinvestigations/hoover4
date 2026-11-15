@@ -8,10 +8,18 @@ its source paths listed after it.
 **Facts are data.** A fact holds text that a model wrote after reading documents, and a
 document can plant instructions in it. The prompts put facts inside a delimited block and
 say that the block is data.
+
+**References.** A goal, the background, a hint, a correction, a rejection reason and a
+question of a person can hold reference markers such as `[R1]`, the links that the person
+pasted. The board numbers them in one sequence (`commands`), so `board_references` gives
+every reference of the board, and the reason prompt ends with one `References:` block of
+the references that it names (`tasks.P_agent.link_references`). The explore brief keeps the
+markers, and its user row stores the references, so the chat turn adds the block.
 """
 
 import re
 
+from tasks.P_agent import link_references
 from tasks.P_board import model as m
 
 LABEL_PATTERN = re.compile(r"\s*\[(?:D|W)\d+\](?:\s*,)?")
@@ -192,12 +200,23 @@ def open_question_keys(folded, facts) -> list[tuple[str, str]]:
     return out[:PROMPT_QUESTIONS]
 
 
+def board_references(events, facts) -> list[dict]:
+    """Every reference of the facts and the events of a board (`references_json`)."""
+    out: list[dict] = []
+    for row in list(facts) + list(events):
+        out.extend(link_references.parse(getattr(row, "references_json", "")))
+    return out
+
+
 def render_reason(board, folded, facts, citations, stalled: bool, final: bool = False,
-                  internet: bool = False, language: str = "en") -> str:
+                  internet: bool = False, language: str = "en",
+                  references: list | None = None) -> str:
     """The prompt of one reason call. A final call asks for answers only. `internet` is the
     effective web setting of the board, as `render_brief` receives it. `language` is the
     board language (`activities.board_language`): the reply writes its objectives, briefs,
-    slugs and statements in it, and keeps the JSON keys and the node ids as they are."""
+    slugs and statements in it, and keeps the JSON keys and the node ids as they are.
+    `references` is `board_references` of the board. The prompt ends with the block of the
+    references that it names."""
     from tasks.P_agent.language import english_name
 
     name = english_name(language)
@@ -290,7 +309,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "\"objective\": \"Find who led the delegation in the 2001 meeting minutes\", "
             "\"brief\": \"Search the minutes of 2001 for the delegation and its leader\", "
             "\"slug\": \"leader in minutes\", \"correction\": \"correction-minutes\"}.\n")
-    return (
+    prompt = (
         task +
         f"- Write objectives, briefs, questions and answer statements in {name}, also when the "
         "goals or the facts are in another language. The JSON keys stay in English.\n"
@@ -312,6 +331,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
         "- A fact of kind correction is an instruction of the investigator. Each answer statement "
         "applies every correction that concerns its facts, or an intent establishes what the "
         "correction asks for.\n"
+
         f"{stall_text}\n"
         f"Goals:\n{goal_lines(facts, folded)}\n"
         f"Context: {board.context or 'none'}\n"
@@ -333,6 +353,11 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
         f"Facts that can support an answer: {answer_ids}\n"
         f"Other facts: {other_ids}\n"
     )
+    found = link_references.block([prompt], references or [])
+    if not found:
+        return prompt
+    return (f"{prompt}\nA marker such as [R1] names a link that the investigator pasted. Keep the "
+            f"marker in an objective or a brief that uses the link.\n{found}\n")
 
 
 #: What the next reason reads about an earlier result without a reply that the checks read.

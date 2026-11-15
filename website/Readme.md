@@ -44,7 +44,7 @@ Every path under `/api/agent/v1/` is a stable read route for a tool-calling agen
 beside the ordinary Dioxus server functions and covered by the same session middleware. Each
 route is `POST` with a JSON body and a JSON response, defined in `common::agent_api` and
 implemented in `backend::api::agent`, one module for each route group (search, documents,
-tables, folders).
+tables, folders, images, links).
 
 An agent route refuses `X-Forwarded-User` and session cookies with `403`.
 A request identifies itself with `X-Hoover4-User`,

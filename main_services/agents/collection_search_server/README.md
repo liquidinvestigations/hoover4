@@ -99,6 +99,12 @@ a `504` whose body is the route's own `timed_out` answer.
 | `folder_overview` | return storage counts for a collection or dataset |
 | `folder_list` | return a folder breadcrumb, children, and files |
 | `folder_search` | find folders and files by name |
+| `parse_link` | give the kind, the name and the reading tool call of each Hoover link, in the pack `hoover` |
+
+`parse_link` (`tools_hoover.py`) needs no document source, so a run without collections
+binds it too. It posts the links to the agent route `links/parse` with the collections of the
+caller ACL. The route reads no dataset item outside them, and it reads chats and boards by
+the group rule of the website.
 
 ## Collection arguments and facet results
 

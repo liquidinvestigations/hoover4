@@ -33,7 +33,7 @@ const HOMEPAGE_CARD_LIMIT: usize = 6;
 pub fn AiChatPage() -> Element {
     let sessions_res = use_resource(|| chat_list_sessions(false));
     let configured_res = use_resource(chat_llm_configured);
-    let mut draft = use_signal(String::new);
+    let mut draft = use_signal(common::links::RichText::default);
     let mut options = use_signal(ChatOptions::default);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
@@ -50,8 +50,8 @@ pub fn AiChatPage() -> Element {
     let gate_open = gate == Some(ChatGate::Open);
 
     let on_submit = move |_| {
-        let text = draft.read().trim().to_string();
-        if text.is_empty() || *sending.read() {
+        let text = draft.read().trimmed();
+        if text.is_blank() || *sending.read() {
             return;
         }
         let live_gate = match configured_res.read().as_ref() {
@@ -67,7 +67,7 @@ pub fn AiChatPage() -> Element {
             return;
         }
         let opts = *options.read();
-        draft.set(String::new());
+        draft.set(common::links::RichText::default());
         sending.set(true);
         error.set(None);
         retry_after.set(None);

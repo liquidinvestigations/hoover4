@@ -7,12 +7,10 @@ serde = "1"
 serde_json = "1"
 # The hash of a non-ASCII node id in a board session id (`board_types::node_key`).
 sha2 = "0.10"
+# `UrlParam`, the CBOR and base64 encoding of a typed route segment (`url_param.rs`).
+base64 = "0.22.1"
+ciborium = "0.2.2"
 
-[dev-dependencies]
-# The URL round-trip test decodes a CBOR blob in the legacy three-field shape: the
-# bookmark-compatibility guarantee is only meaningful against the real encoder the
-# frontend's `UrlParam` uses.
-ciborium = "0.2"
 
 
 

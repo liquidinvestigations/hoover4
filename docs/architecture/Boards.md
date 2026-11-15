@@ -37,6 +37,7 @@ then the saved interface language, then English (`activities.board_language`).
 - [Assessment](#assessment)
 - [Explore](#explore)
 - [Person actions](#person-actions)
+- [References in board texts](#references-in-board-texts)
 - [The graph](#the-graph)
 - [Limits and settings](#limits-and-settings)
 - [Changing the board workflows](#changing-the-board-workflows)
@@ -98,6 +99,8 @@ Migration `00046_board_assessments.sql` adds `board_assessments`.
 Migration `00047_board_commands.sql` adds `board_command_inputs`, `board_command_receipts` and
 the `request_id` column of `board_facts`.
 Migration `00055_item_groups.sql` adds the `owner_group` column of `boards`.
+Migration `00056_references.sql` adds the `references_json` column of `board_facts` and
+`board_events` ([References in board texts](#references-in-board-texts)).
 
 | Table | Content | Writer |
 |---|---|---|
@@ -576,7 +579,7 @@ writer decides it. A refused command shows its reason above the board.
 
 | Action | Command and effect |
 |---|---|
-| Create | `create_board`. The website writes the definition with the agent language of the owner (`boards.language`), which the form shows beside Create board and the settings popup shows read-only, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. The form selects the first explicit group of the person and every collection that the group and the person can both read, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
+| Create | `create_board`. The form has one input for each goal and one for each hint, with "Add a goal" and "Add hint". The website writes the definition with the agent language of the owner (`boards.language`), which the form shows beside Create board and the settings popup shows read-only, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. The form selects the first explicit group of the person and every collection that the group and the person can both read, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
 | Settings | `set_internet_tools`. The website writes a new version of the `boards` row, and the command writes `settings_changed`. Explores that run keep the setting they started with. The website refuses to turn off the internet tools of a board without collections, and it then writes no row and no command. |
 | Add hint | `add_hint` writes `hint_added`. The next assessment reads it. It also opens intents that asked a question. |
 | Add goal | `add_goal` writes the goal fact in the first free slot and `goal_added`, at any status but dropped, up to 6 goals. The next assessment reads the goal. A board in review or complete becomes active. |
@@ -593,6 +596,33 @@ writer decides it. A refused command shows its reason above the board.
 
 A page loaded before the commands calls the earlier server functions. They refuse with a
 reload message.
+
+## References in board texts
+
+Every text that a person writes on a board takes references, as the chat composer does
+([Chat_And_Agents.md](Chat_And_Agents.md#a-pasted-hoover-link-becomes-a-reference)). The
+create form has the goals, the background context and the hints. The board page has the new
+goal, the hint, the correction, the question, the rejection reason and the answer correction.
+
+- Each action carries the text as a `RichText`. The website resolves each reference again for
+  the person and puts `{"text", "references"}` in the command body. The create command numbers
+  the references of its goals, background and hints in one sequence. A body that holds a
+  string, from a page or a receipt before references, is a text without references.
+- The command writer raises the marker numbers of a command above the highest handle of the
+  board ([commands.py](../../main_services/processing/tasks/P_board/commands.py), `_rich`). The
+  references of all the texts of a board therefore have one sequence. A marker without a
+  reference stays as the person wrote it.
+- The fact or the event that stores the text stores its references in `references_json`. The
+  goal, background and correction facts hold theirs, and the events `hint_added`,
+  `goal_added`, `fact_rejected`, `review_rejected`, `goal_answer_rejected` and
+  `question_explored` hold theirs.
+- The snapshot lists every reference of the board (`BoardSnapshot::references`). The page
+  shows each marker as a chip that opens the link. This applies to goals, the background,
+  event quotes, questions, objectives and fact texts.
+- The assessment prompt ends with one `References:` block of the references that it names,
+  after a sentence that says what a marker means. The explore brief keeps the markers. Its user
+  row stores the references that it names, and the chat turn adds the block
+  ([link_references.py](../../main_services/processing/tasks/P_agent/link_references.py)).
 
 ## The graph
 

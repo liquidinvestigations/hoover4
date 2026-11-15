@@ -22,6 +22,8 @@
 | Delivered file | Open one delivered file version of the turn in the workspace pane. | The Files line under an answer lists each file of the turn when the turn delivered two or more. A stopped, failed or cancelled turn lists its files too. |
 | Close the workspace | Close the workspace pane. | The conversation stays open. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
+| Pasted Hoover link | Turn the link into a reference chip with its number and the name of the item. | A link of another host, an incomplete link and a link of an item that the person cannot read stay text. The X of a chip removes it. |
+| Reference chip | Open the item of a reference in a sent message. | The chip shows the number of its marker and the name of the item. |
 | Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
 | Agent language | Open the language settings page in a new tab. | The composer shows the flag and the code of the agent language. When the page gets the focus again, it reads the settings again. A change applies to the next message. |
 | Open the board | Open the board of a board explore chat, with the chat's intent selected. | A board explore chat has no composer. In its place, the page shows "Board explore chats are read-only." and this link. |

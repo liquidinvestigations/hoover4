@@ -488,11 +488,18 @@ async def type_css(tab, selector: str, text: str) -> None:
     Assigning `.value` directly is invisible to the framework: React and Dioxus both read
     through the prototype's setter and listen for a bubbling `input` event. Setting the
     property without the setter updates the DOM and not the signal, which looks exactly
-    like a page that ignored you.
+    like a page that ignored you. A `contenteditable` input, such as the chat composer
+    (`reference_input.rs`), takes the text as its content and the same `input` event.
     """
     result = await js(tab, """
 const el = document.querySelector(%s);
 if (!el) return {ok: false};
+if (el.isContentEditable) {
+    el.focus();
+    el.textContent = %s;
+    el.dispatchEvent(new Event('input', {bubbles: true}));
+    return {ok: true, value: el.textContent};
+}
 const setter = Object.getOwnPropertyDescriptor(
     el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype
                               : window.HTMLInputElement.prototype, 'value').set;
@@ -501,14 +508,15 @@ setter.call(el, %s);
 el.dispatchEvent(new Event('input', {bubbles: true}));
 el.dispatchEvent(new Event('change', {bubbles: true}));
 return {ok: true, value: el.value};
-""" % (json.dumps(selector), json.dumps(text)))
+""" % (json.dumps(selector), json.dumps(text), json.dumps(text)))
     if not result.get("ok"):
         raise RuntimeError(f"no input matching {selector!r}")
 
 
 async def press_enter(tab) -> None:
-    """A real key event. The home box submits on `onkeypress`, which a synthetic
-    `KeyboardEvent` from JS does not trigger in the same way. CDP is the correct route."""
+    """A real key event. The chat composer submits on a `keydown` of Enter
+    (`reference-input.js`). A synthetic `KeyboardEvent` from JS is not a trusted event, so CDP
+    sends the key."""
     import nodriver.cdp.input_ as input_cdp
 
     for kind in ("keyDown", "char", "keyUp"):

@@ -17,6 +17,10 @@ Use {{ tool('read_more') }} when a page contains a continuation. You can also us
 {{ tool('table_overview') }}, {{ tool('table_page') }}, {{ tool('table_cell') }}, {{ tool('table_column_values') }},
 {{ tool('table_search_cells') }}, {{ tool('folder_overview') }}, {{ tool('folder_list') }},
 and {{ tool('folder_search') }} for their named collection reads.
+{% if has('parse_link') %}
+
+{{ tool('parse_link') }} gives the item and the reading tool call of a Hoover link in a message or a page.
+{% endif %}
 
 {% include '_blocks/match_syntax.md.j2' %}
 

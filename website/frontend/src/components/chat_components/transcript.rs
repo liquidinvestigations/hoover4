@@ -24,7 +24,7 @@ use crate::i18n::SharedText;
 #[component]
 pub fn ChatTranscript(
     messages: Vec<ChatMessageItem>,
-    draft: Signal<String>,
+    draft: Signal<common::links::RichText>,
     find_query: Signal<String>,
     match_index: Signal<usize>,
     match_count: Signal<usize>,
@@ -478,7 +478,7 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
 /// One to three suggestion cards fill and focus the composer when selected. The cards keep
 /// the three columns of the grid, so fewer cards leave the remaining columns empty.
 #[component]
-fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Element {
+fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<common::links::RichText>) -> Element {
     rsx! {
         if !prompts.is_empty() {
             div {
@@ -502,7 +502,7 @@ fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Eleme
                             r#type: "button",
                             class: "x-chat-follow-up",
                             onclick: move |_| {
-                                draft.set(prompt.clone());
+                                draft.set(common::links::RichText::plain(prompt.clone()));
                                 document::eval("document.querySelector('[data-chat-composer]')?.focus();");
                             },
                             "{prompt}"
@@ -1053,7 +1053,8 @@ fn answer_replaced(messages: &[ChatMessageItem], index: usize) -> bool {
             .any(|m| m.role == ChatRole::Assistant && !m.content.trim().is_empty())
 }
 
-/// A user message: at most 3 lines, cut with an ellipsis by CSS, and a "Show" toggle in its
+/// A user message, with its references as chips that open the link (`ReferenceText`): at
+/// most 3 lines, cut with an ellipsis by CSS, and a "Show" toggle in its
 /// top-right corner that shows the whole message. The toggle says "Hide" while the message is
 /// whole, and a click cuts it to 3 lines again. The toggle shows only when the cut text is
 /// longer than 3 lines.
@@ -1064,7 +1065,7 @@ fn answer_replaced(messages: &[ChatMessageItem], index: usize) -> bool {
 /// so an open message keeps its toggle. A message that holds the active find match shows open,
 /// without a write to a signal during the render, and is measured as cut when it first mounts.
 #[component]
-fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Element {
+fn UserMessage(seq: u32, content: String, references: Vec<common::links::ChatReference>, highlight: bool, ring: String) -> Element {
     let mut expanded = use_signal(|| false);
     let mut overflows = use_signal(|| false);
     let mut mounted = use_signal(|| None::<std::rc::Rc<MountedData>>);
@@ -1101,7 +1102,7 @@ fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Elem
                     measure(!open);
                 },
                 onresize: move |_| measure(!open),
-                "{content}"
+                crate::components::chat_components::ReferenceText { text: content.clone(), references: references.clone() }
             }
             if long {
                 button {
@@ -1119,7 +1120,7 @@ fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Elem
 fn MessageEntry(
     message: ChatMessageItem,
     highlight: bool,
-    draft: Signal<String>,
+    draft: Signal<common::links::RichText>,
     /// The documents rendered at citation positions in this answer.
     #[props(default)]
     sources: Vec<ChatDocRef>,
@@ -1167,7 +1168,7 @@ fn MessageEntry(
 
     match message.role {
         ChatRole::User => rsx! {
-            UserMessage { seq: message.seq, content: message.content.clone(), highlight, ring: ring.to_string() }
+            UserMessage { seq: message.seq, content: message.content.clone(), references: message.references.clone(), highlight, ring: ring.to_string() }
         },
         ChatRole::Assistant => {
             let retries = message.parsed_retry_errors();
@@ -1721,6 +1722,7 @@ mod tests {
             context_window: 0,
             streaming: false,
             usage_json: String::new(),
+            references: Vec::new(),
         }
     }
 

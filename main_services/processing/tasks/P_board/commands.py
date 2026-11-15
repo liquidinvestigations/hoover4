@@ -41,6 +41,13 @@ stores a new finding for the intent of an existing finding, under a new id from
 event. The writer refuses it when the old finding does not exist, is not the finding of its
 intent, or is rejected or replaced already. The old node keeps its row.
 
+**References.** A text of a person in a command body is a string, or an object with `text`
+and `references` (`link_references.rich`). The website numbers the references of one command
+from `[R1]`. The writer raises the numbers above the highest handle of the board, so the
+references of all the texts of a board have one sequence, and one `References:` block serves
+a prompt that holds several of them. The fact or the event that stores the text stores its
+references in `references_json`.
+
 **Revision allowances.** A rejection records `revision_allowance_version` and the goals
 that its correction may revise. An intent that names a correction keeps it only when the
 correction is available, not named by an earlier intent of the reply, in the scope of the
@@ -53,6 +60,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from tasks.P_agent import link_references
 from tasks.P_board import model as m
 from tasks.P_board import node_words
 from tasks.P_board.contracts import STOP_WORDS, is_duplicate, same_objective, slug_words
@@ -236,18 +244,20 @@ class Allocator:
 
 
 def _event(ctx: Context, prepared: Prepared, event_type: str, subject: str, payload: dict,
-           event_id: str, actor: str = "") -> None:
+           event_id: str, actor: str = "", references: list | None = None) -> None:
     prepared.events.append({"event_id": event_id, "event_type": event_type,
-                            "actor": actor or ctx.actor, "subject": subject, "payload": dict(payload)})
+                            "actor": actor or ctx.actor, "subject": subject, "payload": dict(payload),
+                            "references": list(references or [])})
 
 
 def _fact(ctx: Context, prepared: Prepared, fact_id: str, kind: str, text: str, created_by: str,
           intent_id: str = "", session_id: str = "", answer_seq: int = 0,
-          open_questions: list | None = None, problems: list | None = None) -> None:
+          open_questions: list | None = None, problems: list | None = None,
+          references: list | None = None) -> None:
     prepared.facts.append({"fact_id": fact_id, "kind": kind, "text": text, "intent_id": intent_id,
                            "session_id": session_id, "answer_seq": int(answer_seq),
                            "open_questions": list(open_questions or []), "problems": list(problems or []),
-                           "created_by": created_by})
+                           "created_by": created_by, "references": list(references or [])})
 
 
 def _label(alloc: Allocator, prepared: Prepared, node_id: str, kind: str) -> None:
@@ -268,7 +278,22 @@ def _not_at_limit(ctx: Context) -> None:
 
 
 def _text(body: dict, key: str) -> str:
-    return str(body.get(key) or "").strip()[:4000]
+    return link_references.rich(body.get(key))[0].strip()[:4000]
+
+
+def reference_base(ctx: Context) -> int:
+    """The highest reference handle of the board, 0 for none."""
+    stored = [getattr(row, "references_json", "") for row in list(ctx.all_facts) + list(ctx.events)]
+    return link_references.highest(r for value in stored for r in link_references.parse(value))
+
+
+def _rich(ctx: Context, value) -> tuple[str, list[dict]]:
+    """The text of a person in a command body, cut to 4,000 characters, and the references
+    that its markers name, numbered above the highest handle of the board."""
+    text, references = link_references.rich(value)
+    text = text.strip()[:4000]
+    text, references = link_references.shifted(text, references, reference_base(ctx))
+    return text, link_references.used([text], references)
 
 
 def _correction_id(ctx: Context, alloc: Allocator, text: str) -> str:
@@ -300,30 +325,35 @@ def _coverage(f: Folded, body: dict, goal: str = "") -> dict:
 def _create_board(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
     if ctx.events:
         raise Rejected("The board exists already.")
-    goals = [str(g).strip()[:4000] for g in body.get("goals") or [] if str(g).strip()]
+    # The website numbers the references of the goals, the background and the hints in one
+    # sequence, and a new board has no earlier reference.
+    goals = [g for g in (_rich(ctx, value) for value in body.get("goals") or []) if g[0]]
     if not goals or len(goals) > m.MAX_GOALS:
         raise Rejected(f"A board needs 1 to {m.MAX_GOALS} goals.")
     origin = m.BACKGROUND_ID if alloc.slugs else m.ORIGIN
     alloc.take(f"background:{ctx.request_id}", origin)
-    _fact(ctx, prepared, origin, m.ORIGIN, _text(body, "origin"), ctx.actor)
+    origin_text, origin_refs = _rich(ctx, body.get("origin"))
+    _fact(ctx, prepared, origin, m.ORIGIN, origin_text, ctx.actor, references=origin_refs)
     goal_ids = []
-    for slot, text in enumerate(goals, start=1):
+    for slot, (text, references) in enumerate(goals, start=1):
         goal_id = m.goal_slot_id(slot) if alloc.slugs else m.goal_id_for(slot)
         goal_ids.append(alloc.take(f"goal:{ctx.request_id}:{slot}", goal_id))
-        _fact(ctx, prepared, goal_id, m.GOAL, text, ctx.actor)
+        _fact(ctx, prepared, goal_id, m.GOAL, text, ctx.actor, references=references)
     _event(ctx, prepared, m.BOARD_CREATED, "", {"goals": goal_ids}, f"{m.BOARD_CREATED}:{ctx.request_id}")
-    for index, hint in enumerate(str(h).strip()[:4000] for h in body.get("hints") or []):
+    for index, (hint, references) in enumerate(_rich(ctx, value) for value in body.get("hints") or []):
         if hint:
-            _event(ctx, prepared, m.HINT_ADDED, "", {"text": hint}, f"{m.HINT_ADDED}:{ctx.request_id}:{index}")
+            _event(ctx, prepared, m.HINT_ADDED, "", {"text": hint}, f"{m.HINT_ADDED}:{ctx.request_id}:{index}",
+                   references=references)
 
 
 def _add_hint(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
     _live(ctx)
     _not_at_limit(ctx)
-    text = _text(body, "text")
+    text, references = _rich(ctx, body.get("text"))
     if not text:
         raise Rejected("The hint is empty.")
-    _event(ctx, prepared, m.HINT_ADDED, "", {"text": text}, f"{m.HINT_ADDED}:{ctx.request_id}")
+    _event(ctx, prepared, m.HINT_ADDED, "", {"text": text}, f"{m.HINT_ADDED}:{ctx.request_id}",
+           references=references)
 
 
 def _reject_fact(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
@@ -336,8 +366,9 @@ def _reject_fact(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared)
         raise Rejected("The background context and the goals cannot be rejected.")
     if fact_id in ctx.folded.rejected:
         raise Rejected("The fact is rejected already.")
-    _event(ctx, prepared, m.FACT_REJECTED, fact_id, {"reason": _text(body, "reason")},
-           f"{m.FACT_REJECTED}:{ctx.request_id}")
+    reason, references = _rich(ctx, body.get("reason"))
+    _event(ctx, prepared, m.FACT_REJECTED, fact_id, {"reason": reason},
+           f"{m.FACT_REJECTED}:{ctx.request_id}", references=references)
 
 
 def _set_paused(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
@@ -370,18 +401,18 @@ def _review_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
                                                       **_coverage(f, body)},
                f"{m.REVIEW_ACCEPTED}:{ctx.request_id}")
         return
-    correction = _text(body, "correction")
+    correction, references = _rich(ctx, body.get("correction"))
     if not correction:
         raise Rejected("A rejected review needs a correction.")
     corrected = list(dict.fromkeys(fid for a in f.proposed.values() for fid in a["from"]))
     fact_id = _correction_id(ctx, alloc, correction)
-    _fact(ctx, prepared, fact_id, m.CORRECTION, correction, ctx.actor)
+    _fact(ctx, prepared, fact_id, m.CORRECTION, correction, ctx.actor, references=references)
     _label(alloc, prepared, fact_id, "correction")
     _event(ctx, prepared, m.REVIEW_REJECTED, fact_id,
            {"correction": correction, "from": corrected, "review_id": review_id,
             "revision_allowance_version": m.REVISION_ALLOWANCE_VERSION,
             "allowance_goals": [g for g in f.goal_ids if g in f.proposed]},
-           f"{m.REVIEW_REJECTED}:{ctx.request_id}")
+           f"{m.REVIEW_REJECTED}:{ctx.request_id}", references=references)
 
 
 def _answer_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
@@ -400,23 +431,23 @@ def _answer_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
         _event(ctx, prepared, m.GOAL_ANSWER_ACCEPTED, goal, {**decided, **_coverage(f, body, goal)},
                f"{m.GOAL_ANSWER_ACCEPTED}:{ctx.request_id}")
         return
-    correction = _text(body, "correction")
+    correction, references = _rich(ctx, body.get("correction"))
     if not correction:
         raise Rejected("A rejected answer needs a correction.")
     fact_id = _correction_id(ctx, alloc, correction)
-    _fact(ctx, prepared, fact_id, m.CORRECTION, correction, ctx.actor)
+    _fact(ctx, prepared, fact_id, m.CORRECTION, correction, ctx.actor, references=references)
     _label(alloc, prepared, fact_id, "correction")
     _event(ctx, prepared, m.GOAL_ANSWER_REJECTED, fact_id,
            {"goal": goal, "proposal_id": proposal_id, "reason_no": answer["reason_no"],
             "from": answer["from"], "correction": correction,
             "revision_allowance_version": m.REVISION_ALLOWANCE_VERSION},
-           f"{m.GOAL_ANSWER_REJECTED}:{ctx.request_id}")
+           f"{m.GOAL_ANSWER_REJECTED}:{ctx.request_id}", references=references)
 
 
 def _add_goal(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
     _live(ctx)
     _not_at_limit(ctx)
-    text = _text(body, "text")
+    text, references = _rich(ctx, body.get("text"))
     if not text:
         raise Rejected("The goal is empty.")
     goals = [f for f in ctx.all_facts if f.kind == m.GOAL]
@@ -425,8 +456,9 @@ def _add_goal(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) ->
     used = {m.goal_slot(g.fact_id) for g in goals}
     slot = next(n for n in range(1, m.MAX_GOALS + 1) if n not in used)
     goal_id = alloc.take(f"goal:{ctx.request_id}", m.goal_slot_id(slot) if alloc.slugs else m.goal_id_for(slot))
-    _fact(ctx, prepared, goal_id, m.GOAL, text, ctx.actor)
-    _event(ctx, prepared, m.GOAL_ADDED, goal_id, {"text": text}, f"{m.GOAL_ADDED}:{ctx.request_id}")
+    _fact(ctx, prepared, goal_id, m.GOAL, text, ctx.actor, references=references)
+    _event(ctx, prepared, m.GOAL_ADDED, goal_id, {"text": text}, f"{m.GOAL_ADDED}:{ctx.request_id}",
+           references=references)
 
 
 def _explore_question(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:
@@ -440,7 +472,8 @@ def _explore_question(ctx: Context, body: dict, alloc: Allocator, prepared: Prep
     if fact_id in f.rejected:
         raise Rejected("The fact of this question is rejected.")
     has_index = body.get("index") is not None
-    own_text = _text(body, "question")
+    own_text, own_refs = _rich(ctx, body.get("question"))
+    references: list = []
     if has_index == bool(own_text):
         raise Rejected("Name an open question or write a question, not both.")
     payload = {"fact_id": fact_id, "origin": m.ORIGIN_PERSON_QUESTION}
@@ -460,6 +493,7 @@ def _explore_question(ctx: Context, body: dict, alloc: Allocator, prepared: Prep
         if fact.kind not in m.EXPLORE_KINDS + (m.ORIGIN,):
             raise Rejected("A question can follow an explore fact or the background context.")
         question = own_text
+        references = own_refs
         payload.update(own=True, question=question)
     key = f"question:{ctx.request_id}"
     if alloc.slugs:
@@ -469,7 +503,8 @@ def _explore_question(ctx: Context, body: dict, alloc: Allocator, prepared: Prep
         intent_id = alloc.take(key, f"{m.QUESTION_INTENT_PREFIX}{max(numbers, default=0) + 1}")
     payload["intent_id"] = intent_id
     _label(alloc, prepared, intent_id, "intent")
-    _event(ctx, prepared, m.QUESTION_EXPLORED, intent_id, payload, f"{m.QUESTION_EXPLORED}:{ctx.request_id}")
+    _event(ctx, prepared, m.QUESTION_EXPLORED, intent_id, payload, f"{m.QUESTION_EXPLORED}:{ctx.request_id}",
+           references=references)
     prepared.result["intent_id"] = intent_id
 
 
@@ -809,7 +844,8 @@ def apply(board_id: str, prepared: dict) -> None:
 
     facts = [boards.FactRow(board_id, f["fact_id"], f["kind"], f["text"], f["intent_id"], f["session_id"],
                             int(f["answer_seq"]), list(f["open_questions"]), list(f["problems"]),
-                            f["created_by"], _parse_time(f["created_at"]), f["request_id"])
+                            f["created_by"], _parse_time(f["created_at"]), f["request_id"],
+                            link_references.dumps(f.get("references") or []))
              for f in prepared.get("facts") or []]
     citations = [boards.CitationRow(board_id, c["fact_id"], c["label"], c.get("collection_dataset", ""),
                                     c.get("collectionname", ""), c.get("file_hash", ""), c.get("path", ""),
@@ -825,7 +861,8 @@ def apply(board_id: str, prepared: dict) -> None:
     if labels:
         boards.write_labels(labels)
     events = [boards.EventRow(board_id, e["event_id"], e["event_type"], e["actor"], e["subject"],
-                              e["payload"], _parse_time(e["created_at"]))
+                              e["payload"], _parse_time(e["created_at"]),
+                              link_references.dumps(e.get("references") or []))
               for e in prepared.get("events") or []]
     if events:
         boards.write_events(events)

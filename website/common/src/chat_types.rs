@@ -391,6 +391,10 @@ pub struct ChatMessageItem {
     /// JSON metadata for citation status and available tools.
     #[serde(default)]
     pub usage_json: String,
+    /// The references of a user row: the links that the person pasted, one for each
+    /// `[Rn]` marker of `content` (`crate::links`).
+    #[serde(default)]
+    pub references: Vec<crate::links::ChatReference>,
 }
 
 /// A token count at a glance: `857`, `1.2k`, `23k`, `1.3M`.
@@ -1545,6 +1549,7 @@ mod tests {
             context_window: window,
             streaming: false,
             usage_json: String::new(),
+            references: Vec::new(),
         }
     }
 

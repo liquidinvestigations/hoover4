@@ -6,6 +6,7 @@ pub mod boards;
 pub mod chat;
 pub mod documents;
 pub mod feedback;
+pub mod links;
 pub mod list_datasets;
 pub mod rate_limit;
 pub mod search;

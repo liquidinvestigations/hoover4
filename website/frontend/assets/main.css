@@ -945,3 +945,74 @@ a.x-board-fact-summary:hover {
 @media (max-width: 800px) {
     .x-ocr-facets { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* The text input of `reference_input.rs`. A pasted Hoover link becomes a chip with its
+   number, its label and an X. */
+.x-ref-input {
+    outline: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    cursor: text;
+}
+.x-ref-input:empty::before {
+    content: attr(data-placeholder);
+    color: var(--x-ink-faint);
+    pointer-events: none;
+}
+.x-ref-input[contenteditable="false"] {
+    cursor: default;
+    color: var(--x-ink-muted);
+}
+.x-ref-input:focus-visible {
+    box-shadow: 0 0 0 2px var(--x-selected);
+}
+.x-ref-pending {
+    color: var(--x-ink-muted);
+}
+.x-ref-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--x-space-1);
+    max-width: 100%;
+    margin: 0 2px;
+    padding: 0 6px;
+    border: 1px solid;
+    border-color: var(--x-link);
+    border-radius: 10px;
+    background-color: white;
+    color: var(--x-link);
+    font-size: var(--x-text-detail);
+    line-height: var(--x-line-detail);
+    vertical-align: baseline;
+    white-space: nowrap;
+    user-select: none;
+}
+.x-ref-chip-number {
+    font-weight: 600;
+}
+.x-ref-chip-label {
+    min-width: 0;
+    max-width: 28ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.x-ref-chip-remove {
+    padding: 0 2px;
+    border: none;
+    background: none;
+    color: var(--x-ink-muted);
+    font: inherit;
+    cursor: pointer;
+}
+.x-ref-chip-remove:hover {
+    color: var(--x-danger);
+}
+.x-ref-input[contenteditable="false"] .x-ref-chip-remove {
+    display: none;
+}
+a.x-ref-chip-link {
+    text-decoration: none;
+}
+a.x-ref-chip-link:hover {
+    background-color: var(--x-surface-muted);
+}

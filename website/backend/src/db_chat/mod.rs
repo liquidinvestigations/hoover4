@@ -112,6 +112,9 @@ pub struct ChatMessageRow {
     pub context_window: u32,
     #[serde(default)]
     pub usage_json: String,
+    /// The JSON array of the references of a user row (`common::links::ChatReference`).
+    #[serde(default)]
+    pub references_json: String,
 }
 
 /// One version of an in-flight row in `chat_message_stream`.
@@ -143,7 +146,7 @@ const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, colle
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
      retry_errors, model, reasoning, message_uuid, context_tokens, peak_context_tokens, \
-     context_window, usage_json FROM chat_messages FINAL";
+     context_window, usage_json, references_json FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -330,6 +333,7 @@ pub async fn list_messages(
             context_window: r.context_window,
             streaming: false,
             usage_json: r.usage_json,
+            references: common::links::references_from_json(&r.references_json),
         })
         .collect())
 }
@@ -372,6 +376,7 @@ pub async fn list_messages_after(
             context_window: r.context_window,
             streaming: false,
             usage_json: r.usage_json,
+            references: common::links::references_from_json(&r.references_json),
         })
         .collect())
 }
@@ -520,6 +525,8 @@ pub struct AppendMessageExtras {
     pub peak_context_tokens: u32,
     pub context_window: u32,
     pub usage_json: String,
+    /// The JSON array of the references of a user row, empty for other rows.
+    pub references_json: String,
 }
 
 pub async fn append_message(
@@ -553,6 +560,7 @@ pub async fn append_message(
         peak_context_tokens: extras.peak_context_tokens,
         context_window: extras.context_window,
         usage_json: extras.usage_json,
+        references_json: extras.references_json,
     };
     insert_row("chat_messages", &row).await
 }

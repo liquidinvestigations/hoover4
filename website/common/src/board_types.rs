@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::links::RichText;
+
 /// The chat session id prefix of every explore turn.
 ///
 /// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`SESSION_PREFIX`). The
@@ -163,13 +165,13 @@ pub struct BoardListItem {
 pub struct BoardCreateRequest {
     pub title: String,
     /// One or more goals, at most `MAX_GOALS`. Empty entries are dropped.
-    pub goals: Vec<String>,
-    pub context: String,
+    pub goals: Vec<RichText>,
+    pub context: RichText,
     pub collections: Vec<String>,
     /// Whether the explores may use the internet tools. The owner can change it later.
     pub internet_tools: bool,
     /// First hints, one per entry. Empty entries are dropped.
-    pub hints: Vec<String>,
+    pub hints: Vec<RichText>,
     /// The group of the board. The creator must be a member, and the collections must be
     /// readable by the group.
     #[serde(default)]
@@ -459,6 +461,11 @@ pub struct BoardSnapshot {
     /// was written before this field.
     #[serde(default)]
     pub snapshot_seq: u64,
+    /// The references of the texts that people wrote on the board: goals, the background,
+    /// hints, corrections, rejection reasons and questions. The command writer numbers them
+    /// for the whole board, so each marker `[Rn]` of a board text names one of them.
+    #[serde(default)]
+    pub references: Vec<crate::links::ChatReference>,
 }
 
 impl BoardSnapshot {
@@ -551,11 +558,13 @@ impl BoardSnapshot {
 
 /// One action of a person on a board. Each is one command of the board's command writer
 /// (`main_services/processing/tasks/P_board/commands.py`). The website maps each to its
-/// command kind, so no action can name a command of the worker.
+/// command kind, so no action can name a command of the worker. Each text that a person
+/// writes is a [`RichText`], with the references of its pasted links. A body from a page that
+/// sends a plain string decodes as a text without references.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BoardAction {
-    AddHint { text: String },
-    RejectFact { fact_id: String, reason: String },
+    AddHint { text: RichText },
+    RejectFact { fact_id: String, reason: RichText },
     SetPaused { paused: bool },
     SetInternetTools { on: bool },
     /// Finish the review `review_id`, or continue it with a correction. `seen_seq` and
@@ -565,7 +574,7 @@ pub enum BoardAction {
     Review {
         review_id: String,
         accept: bool,
-        correction: String,
+        correction: RichText,
         #[serde(default)]
         seen_seq: Option<u64>,
         #[serde(default)]
@@ -577,16 +586,16 @@ pub enum BoardAction {
         goal: String,
         proposal_id: String,
         accept: bool,
-        correction: String,
+        correction: RichText,
         #[serde(default)]
         seen_seq: Option<u64>,
         #[serde(default)]
         seen_unreviewed: Vec<String>,
     },
-    AddGoal { text: String },
+    AddGoal { text: RichText },
     /// Explore open question `index` of a fact, or the person's own `question` about it.
     /// Exactly one of the two is set.
-    ExploreQuestion { fact_id: String, index: Option<u32>, question: String },
+    ExploreQuestion { fact_id: String, index: Option<u32>, question: RichText },
     /// Reopen the board in review or completion `expected_id`.
     Reopen { expected_id: String },
 }
@@ -659,7 +668,7 @@ mod tests {
             facts: vec![fact("f1.1", "fact-raptor"), fact("f1.2", "f1.1")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
-            not_answered: vec![], unreviewed: vec![], snapshot_seq: 0,
+            not_answered: vec![], unreviewed: vec![], snapshot_seq: 0, references: vec![],
         }
     }
 

@@ -336,7 +336,7 @@ fn ChatConversationPanel(
     mut messages: Signal<Vec<ChatMessageItem>>,
     gate: Memo<Option<ChatGate>>,
 ) -> Element {
-    let mut draft = use_signal(String::new);
+    let mut draft = use_signal(common::links::RichText::default);
     let mut options = use_signal(ChatOptions::default);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
@@ -538,7 +538,7 @@ fn ChatConversationPanel(
         interrupted.set(false);
         queued_for.set(String::new());
         poll_resumed.set(false);
-        draft.set(String::new());
+        draft.set(common::links::RichText::default());
         error.set(None);
         retry_after.set(None);
         find_query.set(String::new());
@@ -547,8 +547,8 @@ fn ChatConversationPanel(
     });
 
     let on_submit = move |_| {
-        let text = draft.read().trim().to_string();
-        if text.is_empty() || *sending.read() {
+        let text = draft.read().trimmed();
+        if text.is_blank() || *sending.read() {
             return;
         }
         if *gate.read() != Some(ChatGate::Open) {
@@ -556,7 +556,7 @@ fn ChatConversationPanel(
         }
         let opts = *options.read();
         let id = session_id.read().clone();
-        draft.set(String::new());
+        draft.set(common::links::RichText::default());
         poll_resumed.set(true);
         sending.set(true);
         error.set(None);

@@ -382,6 +382,7 @@ const AGENT_FUNCTIONS: &[(&str, &str)] = &[
     ("/api/agent/v1/folders/overview", "agent_folders_overview"),
     ("/api/agent/v1/folders/list", "agent_folders_list"),
     ("/api/agent/v1/folders/search", "agent_folders_search"),
+    ("/api/agent/v1/links/parse", "agent_links_parse"),
 ];
 
 pub fn classify_path(path: &str) -> (RouteClass, Option<&'static str>) {

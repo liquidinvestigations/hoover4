@@ -1,4 +1,5 @@
-//! Chat composer: textarea, Internet tools checkbox, agent language, submit arrow.
+//! Chat composer: the message input (`ReferenceInput`, where a pasted Hoover link becomes a
+//! reference chip), Internet tools checkbox, agent language, submit arrow.
 //!
 //! Deliberately has **no** file-attachment / paperclip control. Documents enter through
 //! the processing pipeline, not the chat UI.
@@ -10,16 +11,18 @@
 //! control that silently does nothing would be worse than removing it.
 
 use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};
+use common::links::RichText;
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::{md_av_icons::MdStop, md_navigation_icons::MdArrowUpward}};
 
 use crate::components::chat_components::agent_language::AgentLanguageControl;
+use crate::components::chat_components::reference_input::ReferenceInput;
 use crate::components::search_components::search_result_list_controls::NavigationButton;
 use crate::tr;
 
 #[component]
 pub fn ChatComposer(
-    draft: Signal<String>,
+    draft: Signal<RichText>,
     options: Signal<ChatOptions>,
     sending: Signal<bool>,
     retry_after_seconds: Signal<Option<u64>>,
@@ -36,7 +39,7 @@ pub fn ChatComposer(
     let disabled = retry_after_seconds.read().is_some() || blocked;
     let locked = options.read().locked;
     let send_disabled = use_memo(use_reactive!(|blocked| {
-        retry_after_seconds.read().is_some() || blocked || draft.read().trim().is_empty()
+        retry_after_seconds.read().is_some() || blocked || draft.read().is_blank()
     }));
 
     rsx! {
@@ -44,27 +47,23 @@ pub fn ChatComposer(
             style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: 16px; \
                     padding: 11px 15px; display: flex; flex-direction: column; gap: 8px; \
                     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);",
-            textarea {
-                "data-chat-composer": "true",
-                style: "width: 100%; resize: none; border: none; outline: none; \
-                        font-size: var(--x-text-body); font-family: inherit; min-height: 56px; \
-                        line-height: var(--x-line-body); color: var(--x-ink-strong); background: transparent;",
-                rows: 2,
-                maxlength: MAX_MESSAGE_CHARS as i64,
+            ReferenceInput {
+                composer: true,
+                class: "x-chat-composer-input".to_string(),
+                style: "width: 100%; font-size: var(--x-text-body); min-height: 56px; max-height: 40vh; \
+                        overflow-y: auto; line-height: var(--x-line-body); color: var(--x-ink-strong);".to_string(),
+                max_chars: MAX_MESSAGE_CHARS,
                 placeholder: tr!("chat-composer-ask-the-bot"),
-                value: "{draft}",
+                label: tr!("chat-composer-ask-the-bot"),
+                value: draft(),
                 disabled: disabled,
-                oninput: move |e| draft.set(e.value()),
-                onkeypress: move |e| {
-                    if e.key() == Key::Enter && !e.modifiers().shift() {
-                        e.prevent_default();
-                        // `sending` too, not just `disabled`: typing stays enabled while
-                        // a turn streams so the next message can be drafted, and without
-                        // this an Enter on that draft would be a second send the server
-                        // then refuses.
-                        if !disabled && !*sending.read() {
-                            on_submit.call(());
-                        }
+                on_change: move |value| draft.set(value),
+                // `sending` too, not just `disabled`: typing stays enabled while a turn
+                // streams so the next message can be drafted, and without this an Enter on
+                // that draft would be a second send the server then refuses.
+                on_enter: move |_| {
+                    if !disabled && !*sending.peek() {
+                        on_submit.call(());
                     }
                 },
             }

@@ -871,3 +871,53 @@ def test_a_replaced_finding_is_not_in_the_rejected_block_of_a_brief_or_an_assess
     assert "placeholder" not in brief.split("<rejected>")[1].split("</rejected>")[0]
     prompt = render_reason(board, f, facts, [], False)
     assert "Rejected because" not in prompt
+
+
+# --------------------------------------------------------------------------- references
+
+
+def ref(n, label="lease.pdf"):
+    return {"handle": f"[R{n}]", "kind": "document", "label": label, "tool": "read_documents",
+            "arguments": {"collection": "enron", "file_hash": ["h"]}, "url": "/view_document/a/b/c",
+            "link": {"kind": "document"}}
+
+
+def test_the_references_of_a_board_have_one_sequence(store):
+    import json as _json
+
+    from tasks.P_board.prompts import board_references, render_reason
+
+    slugs(store)
+    store.add_board("b1", owner=OWNER, max_parallel=2)
+    store.submit("b1", "create:b1", cmd.CREATE_BOARD, OWNER, {
+        "goals": [{"text": "Who signed [R1]?", "references": [ref(1)]}, "Plain goal?"],
+        "origin": {"text": "The investigation searches enron. See [R2].", "references": [ref(2, "memo")]},
+        "hints": [{"text": "Compare with [R3].", "references": [ref(3, "board")]}],
+    })
+    store.run_commands("b1")
+    facts = {f.fact_id: f for f in store.read_facts("b1")}
+    assert [r["handle"] for r in _json.loads(facts["goal-01"].references_json)] == ["[R1]"]
+    assert facts["goal-02"].references_json == ""
+    assert [r["handle"] for r in _json.loads(facts["background"].references_json)] == ["[R2]"]
+    # A later hint numbers its references above the highest handle of the board.
+    store.submit("b1", "hint:1", cmd.ADD_HINT, OWNER, {"text": {"text": "Read [R1] and [R2].",
+                                                                 "references": [ref(1, "a"), ref(2, "b")]}})
+    store.run_commands("b1")
+    hint = next(e for e in store.read_events("b1") if e.event_id == f"{m.HINT_ADDED}:hint:1")
+    assert hint.payload["text"] == "Read [R4] and [R5]."
+    assert [r["handle"] for r in _json.loads(hint.references_json)] == ["[R4]", "[R5]"]
+    # A body without references keeps its text.
+    store.submit("b1", "hint:2", cmd.ADD_HINT, OWNER, {"text": "A plain hint [R9]."})
+    store.run_commands("b1")
+    plain = next(e for e in store.read_events("b1") if e.event_id == f"{m.HINT_ADDED}:hint:2")
+    assert plain.payload["text"] == "A plain hint [R9]." and plain.references_json == ""
+    # The reason prompt ends with the block of the references that it names.
+    events, rows = store.read_events("b1"), store.read_facts("b1")
+    references = board_references(events, rows)
+    prompt = render_reason(store.read_board("b1"), folded(store), rows, [], stalled=False,
+                           references=references)
+    tail = prompt.split("References:\n")[1].splitlines()
+    assert [_json.loads(line)["handle"] for line in tail] == ["[R1]", "[R2]", "[R3]", "[R4]", "[R5]"]
+    assert "A marker such as [R1] names a link" in prompt
+    no_refs = render_reason(store.read_board("b1"), folded(store), rows, [], stalled=False)
+    assert "References:" not in no_refs

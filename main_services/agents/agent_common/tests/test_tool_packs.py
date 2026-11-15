@@ -101,9 +101,18 @@ def test_a_run_with_both_sources_keeps_its_configured_packs_and_one_with_neither
         assert run_packs(kind, ALL, both) == packs_for(kind, ALL)
         assert run_tools(kind, ALL, both) == allowed_tools(kind, ALL)
     assert run_packs("chat", ALL, frozenset()) == frozenset(
-        {"catalogue", "skills", "conversation", "workspace"})
+        {"catalogue", "skills", "conversation", "workspace", "hoover"})
     # A source adds no pack that the setting leaves out.
     assert run_packs("chat", "collections", both) == frozenset({"collections", "skills", "workspace"})
+
+
+def test_the_hoover_pack_binds_for_every_run_kind_and_without_a_source():
+    assert "hoover" not in {pack for packs in SOURCE_PACKS.values() for pack in packs}
+    for kind in RUN_KINDS:
+        for sources in (frozenset(), frozenset({"web"}), frozenset({"documents"})):
+            assert "parse_link" in run_tools(kind, ALL, sources)
+    assert pack_of("parse_link") == "hoover"
+    assert "parse_link" in run_tools("chat", "collections,hoover", frozenset())
 
 
 def _present_server():

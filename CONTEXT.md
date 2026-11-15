@@ -64,6 +64,13 @@ one side, both sides or neither, in the search area. A test passes or fails, in 
 area. A sub-agent pass is this repository's unit of estimation, in the planning area. Passing
 a value is handing an argument to a function, in ordinary code.
 
+**Reference**:
+In AI Chat and investigation boards, a reference is a Hoover link that a person pasted into a
+text for a model. The link names a search, a document, a folder, a storage page, an email
+graph, a chat or a board. The input shows each reference as a numbered chip, and the text
+holds the marker `[R1]` or `[R2]` at its place. A citation is different. The agent writes it,
+as `[D1]` for a document or `[W1]` for a web page, and the citation tools give its handle.
+
 **Table**:
 In storage documentation, a table is a ClickHouse or Manticore relation, such as a shard table
 or the operations table. In document reading, a table is a spreadsheet or delimited-text

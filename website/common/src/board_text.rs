@@ -13,7 +13,8 @@
 //! space or a punctuation mark is beside it.
 //!
 //! The parser leaves these spans as text: fenced code blocks, inline code, Markdown links,
-//! URLs, and citation handles such as `[D1]` or `[W2]`.
+//! URLs, citation handles such as `[D1]` or `[W2]`, and reference markers such as `[R1]`
+//! (`crate::links`).
 
 /// A node that text can name.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -205,10 +206,11 @@ mod tests {
     #[test]
     fn code_links_urls_and_handles_stay_text() {
         for literal in ["`goal-01`", "```\ngoal-01\n```", "[goal-01](https://x.org/goal-01)",
-                        "https://x.org/f1.1", "www.f1.1.org", "[D1]"] {
+                        "https://x.org/f1.1", "www.f1.1.org", "[D1]", "[R1]", "[R12]"] {
             assert_eq!(link_nodes(literal, &nodes()), vec![text(literal)], "{literal}");
         }
         assert_eq!(link_nodes("[D12] supports f1.1", &nodes()), vec![text("[D12] supports "), node("f1.1", 0)]);
+        assert_eq!(link_nodes("[R2] names f1.1", &nodes()), vec![text("[R2] names "), node("f1.1", 0)]);
     }
 
     #[test]

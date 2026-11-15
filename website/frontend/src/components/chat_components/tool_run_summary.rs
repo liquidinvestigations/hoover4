@@ -224,6 +224,7 @@ mod tests {
             context_window: 0,
             streaming: false,
             usage_json: String::new(),
+            references: Vec::new(),
         }
     }
 

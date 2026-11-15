@@ -182,6 +182,12 @@ class CollectionsListRequest(AgentRequest):
     pass
 
 
+class LinksParseRequest(AgentRequest):
+    urls: list[str]
+    #: The collections of the caller ACL. The route reads no dataset item outside them.
+    collections: list[str] | None = None
+
+
 class SearchResultsRequest(AgentRequest):
     expected_source: str | None = None
     collectionname: list[str] = Field(default_factory=list)

@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from temporalio import activity
 
 from tasks.heartbeat import with_heartbeat
+from tasks.P_agent import link_references
 from tasks.P_agent.activities import AgentRunInput, effective_internet_tools
 from tasks.P_board import model as m
 from tasks.P_board import commands as cmd
@@ -47,6 +48,7 @@ from tasks.P_board.fold import (
     visible_facts,
 )
 from tasks.P_board.prompts import (
+    board_references,
     goal_texts,
     open_question_keys,
     render_brief,
@@ -509,13 +511,14 @@ def board_reason(task: ReasonTask) -> str:
         return "skipped"
     if _reason_submitted(board.board_id, task.reason_no):
         return "reused"
-    _events, facts, folded = _read(board)
+    events, facts, folded = _read(board)
     citations = boards.read_citations(board.board_id)
     if folded.status != m.ACTIVE and not task.final:
         return "skipped"
     prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final,
                            internet=effective_internet_tools(bool(board.internet_tools)),
-                           language=board_language(board))
+                           language=board_language(board),
+                           references=board_references(events, facts))
     # The first request keeps the reasoning phase, which a new board needs
     # to declare its first intents. On a board with history the model can reason until the
     # cap, so a cut or empty reply goes to a second request without reasoning.
@@ -693,7 +696,7 @@ def explore_task(intent, facts, folded, collections: list[str], web: bool) -> di
 
 
 def _write_turn_rows(owner: str, session_id: str, seq: int, text: str, turn_uuid: str,
-                     usage_json: str = "") -> None:
+                     usage_json: str = "", references_json: str = "") -> None:
     from database import boards
     from database.clickhouse import get_global_client, insert_durable
 
@@ -701,10 +704,10 @@ def _write_turn_rows(owner: str, session_id: str, seq: int, text: str, turn_uuid
     with get_global_client() as client:
         insert_durable(client, "chat_messages",
                        [[session_id, owner, seq, "user", text, now.replace(microsecond=0),
-                         now.replace(microsecond=0), now, turn_uuid, usage_json]],
+                         now.replace(microsecond=0), now, turn_uuid, usage_json, references_json]],
                        column_names=["session_id", "username", "seq", "role", "content",
                                      "created_at", "updated_at", "created_ms", "message_uuid",
-                                     "usage_json"])
+                                     "usage_json", "references_json"])
         insert_durable(client, "chat_message_stream",
                        [[session_id, owner, seq + 1, "assistant", "", 0, now, turn_uuid]],
                        column_names=["session_id", "username", "seq", "role", "content",
@@ -721,7 +724,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     board = boards.read_board(req.board_id)
     if board is None or board.is_deleted:
         return OpenedTurn(skip_kind=m.EXPLORE_CANCELLED, skip_reason="the board was dropped")
-    _events, facts, folded = _read(board)
+    events, facts, folded = _read(board)
     intent = folded.intents.get(req.intent_id)
     if not may_explore(folded, req.intent_id) or intent is None:
         return OpenedTurn(skip_kind=m.EXPLORE_CANCELLED, skip_reason=f"the board is {folded.status}")
@@ -749,8 +752,12 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
                             folded.replaced)
         task = explore_task(intent, facts, folded, collections, web)
         language = explore_language(board)
+        # The brief keeps the reference markers of the board texts, and the row stores the
+        # references that they name, so the chat turn gives the model their block.
+        references = link_references.used([text], board_references(events, facts))
         _write_turn_rows(board.owner, session_id, seq, text, turn_uuid,
-                         json.dumps({"task": task, "language": language}, ensure_ascii=False))
+                         json.dumps({"task": task, "language": language}, ensure_ascii=False),
+                         link_references.dumps(references))
     else:
         language = _opening_language(board, session_id, seq, turn_uuid)
     steps = folded.explore_steps

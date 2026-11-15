@@ -463,13 +463,17 @@ def _insert_chat_row(username: str, session_id: str, seq: int, role: str, **fiel
 
 
 def _user_row(username: str, session_id: str, seq: int) -> tuple[str, dict]:
-    """The text and the metadata of the user row at `seq`, the opening message of a turn."""
+    """The text and the metadata of the user row at `seq`, the opening message of a turn.
+    The metadata holds the references of the row under `references`
+    (`link_references.parse`)."""
     from database.clickhouse import get_global_client
+    from tasks.P_agent import link_references
 
     with get_global_client() as client:
         rows = client.query(
-            "SELECT content, usage_json FROM chat_messages FINAL WHERE username = {u:String} "
-            "AND session_id = {s:String} AND seq = {q:UInt32} AND role = 'user'",
+            "SELECT content, usage_json, references_json FROM chat_messages FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} AND seq = {q:UInt32} "
+            "AND role = 'user'",
             parameters={"u": username, "s": session_id, "q": seq},
         ).result_rows
     if not rows:
@@ -478,12 +482,20 @@ def _user_row(username: str, session_id: str, seq: int) -> tuple[str, dict]:
         usage = json.loads(rows[0][1] or "{}")
     except ValueError:
         usage = {}
-    return str(rows[0][0]), usage if isinstance(usage, dict) else {}
+    usage = usage if isinstance(usage, dict) else {}
+    references = link_references.parse(rows[0][2])
+    if references:
+        usage["references"] = references
+    return str(rows[0][0]), usage
 
 
 def _user_row_text(username: str, session_id: str, seq: int) -> str:
-    """The text of the user row at `seq`, the opening message of a chat lead."""
-    return _user_row(username, session_id, seq)[0]
+    """The text of the user row at `seq`, the opening message of a chat lead, with the label
+    of each reference in place of its marker (`link_references.display_text`)."""
+    from tasks.P_agent import link_references
+
+    text, usage = _user_row(username, session_id, seq)
+    return link_references.display_text(text, usage.get("references") or [])
 
 
 def _earlier_user_rows(username: str, session_id: str, turn_seq: int) -> int:
@@ -516,7 +528,9 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
 
     1. When the row does not exist, write the opening message at `idx` 0 and then the row.
        Both keys come from the run id, so a retry writes the same rows. The opening message
-       keeps the structured task of the user row (`task`), when the row has one.
+       keeps the structured task of the user row (`task`), when the row has one. It holds
+       the text of the user row and the `References:` block of its references
+       (`link_references.with_references`).
     2. A terminal row returns `closed`.
     3. When the turn has a stop row, write the `cancelled` ending and return `closed`, so a
        workflow that starts after a stop never calls the agent.
@@ -527,7 +541,10 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
 
     row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
     if row is None:
+        from tasks.P_agent import link_references
+
         text, row_usage = _user_row(inp.username, inp.session_id, inp.turn_seq)
+        text = link_references.with_references(text, row_usage.get("references") or [])
         # The structured task of a board explore turn (`P_board.activities.explore_task`).
         task = row_usage.get("task") if isinstance(row_usage.get("task"), dict) else None
         agent_runs.write_message(

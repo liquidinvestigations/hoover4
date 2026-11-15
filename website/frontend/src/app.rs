@@ -63,6 +63,7 @@ pub fn App() -> Element {
         PdfViewerJsScriptTag {  }
         document::Script { src: HTML_TO_IMAGE_JS }
         document::Script { src: FEEDBACK_JS }
+        crate::components::chat_components::reference_input::ReferenceInputScript {}
 
         GlobalErrorBoundary {
             boundary_name: "App".to_string(),

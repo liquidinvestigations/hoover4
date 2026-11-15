@@ -7,8 +7,9 @@
 | Control | Behavior | Constraint |
 |---|---|---|
 | AI Chat | Go back to the AI Chat homepage. | The link has the back arrow icon. |
-| Title, Goal, Context (optional), Hints, one per line (optional) | Give the title, the goals, the background context and the first hints. | A board has one to 6 goals. |
+| Title, Goal, Context (optional), Hint (optional) | Give the title, the goals, the background context and the first hints. | A board has one to 6 goals. A goal, the context and a hint take pasted Hoover links as reference chips. |
 | Add a goal / Remove | Add a goal field, or remove one. | Add a goal shows below 6 goals. Remove shows with two or more goals. |
+| Add hint / Remove | Add a hint field, or remove one. | Remove shows with two or more hints. An empty hint is not sent. |
 | Collections | Select every listed collection, or clear them all. | It is checked when every collection is selected, indeterminate when some are, and clear when none are. A click on a checked box clears every collection. A click on a clear or indeterminate box selects every collection. |
 | Collection checkbox | Select or clear one collection. | Every readable collection is selected at first. The boxes stay active when none is selected. |
 | Internet tools | Let the explores search the web and read web pages. | It shows only when `internet_tools_enabled` is true, and it is on at first. |
@@ -38,6 +39,7 @@
 | Show details | Open the popup of an assessment with its prompt and its response. | The address holds the assessment number. An assessment that ran before the prompts were stored shows its stored reply only. |
 | Open | Open the explore chat of an event's intent or finding in a new tab. | It shows in the links column of an event with a chat. |
 | Node link | Select the node that an event names. | It shows in the links column of an event without a chat that names a node. |
+| Reference chip | Open the item of a link that a person pasted into a board text. | It shows its number and the name of the item. Every text input of the board page turns a pasted Hoover link into a chip with an X that removes it. |
 
 ## States
 

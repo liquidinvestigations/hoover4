@@ -59,6 +59,7 @@ SERVER_TOOLS: Tuple[str, ...] = (
     "folder_overview",
     "folder_list",
     "folder_search",
+    "parse_link",
 )
 
 

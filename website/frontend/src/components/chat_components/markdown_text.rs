@@ -397,6 +397,9 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             "{text}"
                         }
                     },
+                    Span::Chip { number, reference } => rsx! {
+                        crate::components::chat_components::reference_input::ReferenceChip { key: "{i}", number, reference: *reference }
+                    },
                     Span::Link { text, href } => rsx! {
                         a {
                             key: "{i}",
@@ -416,23 +419,45 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
 }
 
 /// The board nodes of `MarkdownishText::node_links`: `hrefs[i]` selects `nodes[i]`.
+/// `references` are the references of the board (`BoardSnapshot::references`), and each
+/// marker `[Rn]` of a text that has one shows as its chip.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeLinks {
     pub nodes: Vec<LinkNode>,
     pub hrefs: Vec<String>,
+    pub references: Vec<common::links::ChatReference>,
+}
+
+/// The text and reference chip spans of `text`. A marker without a reference stays text.
+fn reference_spans(text: String, references: &[common::links::ChatReference]) -> Vec<Span> {
+    if references.is_empty() {
+        return vec![Span::Text(text)];
+    }
+    common::links::marked_parts(&text)
+        .into_iter()
+        .map(|part| match part {
+            common::links::MarkedPart::Text(t) => Span::Text(t),
+            common::links::MarkedPart::Reference(n) => {
+                match references.iter().find(|r| r.handle == common::links::marker(n)) {
+                    Some(reference) => Span::Chip { number: n, reference: Box::new(reference.clone()) },
+                    None => Span::Text(common::links::marker(n)),
+                }
+            }
+        })
+        .collect()
 }
 
 /// The text spans of a block with each node name as a `Span::Node`.
 fn link_block_nodes(block: Block, links: &NodeLinks) -> Block {
     fn inline(spans: Vec<Span>, links: &NodeLinks) -> Vec<Span> {
         spans.into_iter().flat_map(|span| match span {
-            Span::Text(text) => link_nodes(&text, &links.nodes).into_iter().map(|part| match part {
-                TextPart::Text(t) => Span::Text(t),
-                TextPart::Node { name, node } => Span::Node {
+            Span::Text(text) => link_nodes(&text, &links.nodes).into_iter().flat_map(|part| match part {
+                TextPart::Text(t) => reference_spans(t, &links.references),
+                TextPart::Node { name, node } => vec![Span::Node {
                     text: links.nodes[node].label().to_string(),
                     name,
                     href: links.hrefs.get(node).cloned().unwrap_or_default(),
-                },
+                }],
             }).collect::<Vec<_>>(),
             Span::Styled { bold, spans } => vec![Span::Styled { bold, spans: inline(spans, links) }],
             other => vec![other],
@@ -472,6 +497,8 @@ pub enum Span {
     ConflictingHandle(String),
     /// A board node that the text names (`name`), shown as a link with the node title.
     Node { text: String, name: String, href: String },
+    /// A reference marker `[Rn]` of a person's board text, shown as its chip.
+    Chip { number: usize, reference: Box<common::links::ChatReference> },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -76,6 +76,9 @@ class EventRow:
     subject: str = ""
     payload: dict = field(default_factory=dict)
     created_at: datetime | None = None
+    #: The JSON array of the references of the person's text in this event
+    #: (`tasks.P_agent.link_references`). Empty for none.
+    references_json: str = ""
 
 
 @dataclass
@@ -93,6 +96,9 @@ class FactRow:
     created_at: datetime | None = None
     #: The command that wrote the fact. Readers show it once an event carries this id.
     request_id: str = ""
+    #: The JSON array of the references of a goal, the background or a correction
+    #: (`tasks.P_agent.link_references`). Empty for none.
+    references_json: str = ""
 
 
 @dataclass
@@ -130,7 +136,8 @@ BOARD_COLUMNS = ["board_id", "owner", "title", "goal", "context", "collections",
                  "max_explores", "max_parallel", "explore_step_budget", "internet_tools",
                  "language", "created_at", "is_deleted", "owner_group"]
 FACT_COLUMNS = ["board_id", "fact_id", "kind", "text", "intent_id", "session_id", "answer_seq",
-                "open_questions", "problems", "created_by", "created_at", "request_id"]
+                "open_questions", "problems", "created_by", "created_at", "request_id",
+                "references_json"]
 CITATION_COLUMNS = ["board_id", "fact_id", "label", "collection_dataset", "collectionname",
                     "file_hash", "path", "page_id", "quote", "quote_verified"]
 INTENT_COLUMNS = ["board_id", "intent_id", "from_facts", "objective", "brief", "state",
@@ -180,26 +187,28 @@ def read_events(board_id: str) -> list[EventRow]:
     """Every event of a board, oldest first. The event id breaks a tie of write time."""
     with _client() as client:
         result = client.query(
-            "SELECT board_id, event_id, event_type, actor, subject, payload_json, created_at "
-            "FROM board_events FINAL WHERE board_id = {b:String} ORDER BY created_at, event_id",
+            "SELECT board_id, event_id, event_type, actor, subject, payload_json, created_at, "
+            "references_json FROM board_events FINAL WHERE board_id = {b:String} "
+            "ORDER BY created_at, event_id",
             parameters={"b": board_id},
         )
     events = []
-    for board, event_id, event_type, actor, subject, payload, created_at in result.result_rows:
+    for board, event_id, event_type, actor, subject, payload, created_at, references in result.result_rows:
         try:
             data = json.loads(payload or "{}")
         except ValueError:
             data = {"raw": payload}
-        events.append(EventRow(board, event_id, event_type, actor, subject, data, created_at))
+        events.append(EventRow(board, event_id, event_type, actor, subject, data, created_at, references or ""))
     return events
 
 
 def write_events(events: list[EventRow]) -> None:
     """Write events. The same event id replaces the earlier row, so a retry is harmless."""
     rows = [[e.board_id, e.event_id, e.event_type, e.actor, e.subject,
-             json.dumps(e.payload, ensure_ascii=False), e.created_at or now()] for e in events]
+             json.dumps(e.payload, ensure_ascii=False), e.created_at or now(), e.references_json]
+            for e in events]
     _insert("board_events", rows, ["board_id", "event_id", "event_type", "actor", "subject",
-                                   "payload_json", "created_at"])
+                                   "payload_json", "created_at", "references_json"])
 
 
 def write_event(event: EventRow) -> None:
@@ -250,7 +259,7 @@ def write_fact(fact: FactRow, citations: list[CitationRow]) -> bool:
     _insert("board_facts",
             [[fact.board_id, fact.fact_id, fact.kind, fact.text, fact.intent_id,
               fact.session_id, fact.answer_seq, fact.open_questions, fact.problems,
-              fact.created_by, created, fact.request_id]],
+              fact.created_by, created, fact.request_id, fact.references_json]],
             FACT_COLUMNS)
     return True
 
@@ -266,7 +275,8 @@ def publish_facts(facts: list[FactRow], citations: list[CitationRow]) -> None:
             CITATION_COLUMNS + ["created_at"])
     _insert("board_facts",
             [[f.board_id, f.fact_id, f.kind, f.text, f.intent_id, f.session_id, f.answer_seq,
-              f.open_questions, f.problems, f.created_by, stamp[f.fact_id], f.request_id]
+              f.open_questions, f.problems, f.created_by, stamp[f.fact_id], f.request_id,
+              f.references_json]
              for f in facts],
             FACT_COLUMNS)
 

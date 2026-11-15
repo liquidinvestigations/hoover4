@@ -399,7 +399,7 @@ A Tor container health response verifies listeners.
 Live source requests must verify circuit availability separately.
 
 `agent_packs_chat` selects chat tool packs as a comma-separated list or `all`.
-The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
+The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, `browser`, and `hoover`.
 Every chat receives the `skills` pack.
 [deploy.py](../../deploy.py) refuses the removed research configuration keys.
 The agent service sends all

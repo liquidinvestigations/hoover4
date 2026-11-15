@@ -116,7 +116,7 @@ pub async fn chat_set_collections(
 #[server]
 pub async fn chat_send_message(
     session_id: String,
-    message: String,
+    message: common::links::RichText,
     options: ChatOptions,
 ) -> Result<ChatSendResult, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
@@ -189,6 +189,18 @@ pub async fn chat_dismiss_interrupted(session_id: String) -> Result<(), ServerFn
 pub async fn chat_artifact_detail(artifact_id: String) -> Result<String, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::chat::get_chat_artifact_detail(&user, artifact_id)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The reference of each pasted Hoover link, or the reason that it is not one, in request
+/// order. The server checks that the user can read each item (`backend::api::links`).
+#[server]
+pub async fn resolve_references(
+    urls: Vec<String>,
+) -> Result<Vec<Result<common::links::ChatReference, String>>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::links::resolve_references(&user, urls)
         .await
         .map_err(to_server_fn_error)
 }

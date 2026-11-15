@@ -51,13 +51,15 @@ use dioxus_free_icons::icons::md_navigation_icons::MdArrowDownward;
 use dioxus_free_icons::Icon;
 
 use crate::components::admin_components::{
-    ErrorBar, BTN, BTN_PRIMARY, BTN_SMALL, BTN_SMALL_DANGER, HELP_TEXT, INPUT, LINK, SUBHEADING, TABLE, TD, TH,
+    ErrorBar, BTN, BTN_PRIMARY, BTN_SMALL, BTN_SMALL_DANGER, HELP_TEXT, LINK, SUBHEADING, TABLE, TD, TH,
 };
 use crate::components::board_graph::{
     build_graph, corners, edge_hover_dimmed, related_nodes, render_edge, render_node, settle, ArrowMarker, NodeKind, NodePosition,
 };
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::markdown_text::{MarkdownishText, NodeLinks};
+use crate::components::chat_components::{ReferenceInput, ReferenceText};
+use common::links::RichText;
 use crate::components::chat_components::transcript::{session_citation_sources, SessionSources};
 use crate::components::chat_components::web_page::ChatWebOpen;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -74,6 +76,8 @@ const LIVE_POLL_SECONDS: u64 = 3;
 const IDLE_POLL_SECONDS: u64 = 15;
 
 const TEXTAREA: &str = "border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-body); color: var(--x-ink-strong); background: white; width: 100%; box-sizing: border-box; font-family: inherit;";
+/// The height of a text input of two lines.
+const TWO_LINES: &str = "min-height: calc(2 * var(--x-line-body) + 12px);";
 const PANEL: &str = "border: 1px solid; border-color: var(--x-border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: white;";
 const PRE: &str = "white-space: pre-wrap; font-size: var(--x-text-detail); background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px; max-height: 260px; overflow: auto;";
 
@@ -714,9 +718,9 @@ fn BoardOverview(
     snapshot: Signal<Option<BoardSnapshot>>,
     error: Signal<Option<String>>,
 ) -> Element {
-    let mut hint = use_signal(String::new);
-    let mut correction = use_signal(String::new);
-    let mut goal = use_signal(String::new);
+    let mut hint = use_signal(RichText::default);
+    let mut correction = use_signal(RichText::default);
+    let mut goal = use_signal(RichText::default);
     let mut busy = use_signal(|| false);
     let mut show_all_events = use_signal(|| false);
     let board_id = snap.board.board_id.clone();
@@ -730,13 +734,13 @@ fn BoardOverview(
     // Run one action from this pane. Every button of the pane is disabled while it runs.
     let run = {
         let board_id = board_id.clone();
-        move |action: BoardAction, mut clear: Option<Signal<String>>| {
+        move |action: BoardAction, mut clear: Option<Signal<RichText>>| {
             let board_id = board_id.clone();
             busy.set(true);
             spawn(async move {
                 if act(board_id, action, snapshot, error).await.is_some() {
                     if let Some(field) = clear.as_mut() {
-                        field.set(String::new());
+                        field.set(RichText::default());
                     }
                 }
                 busy.set(false);
@@ -778,7 +782,7 @@ fn BoardOverview(
             for goal in goals.iter() {
                 div { key: "{goal.fact_id}", style: "margin: 4px 0;",
                     span { style: "font-family: monospace; color: var(--x-ink-muted); margin-right: 6px;", "{goal.slug}" }
-                    "{goal.text}"
+                    NodeText { text: goal.text.clone(), links: links.clone() }
                     {
                         let answer = goal_answer(&snap, &goal.fact_id);
                         let from: Vec<String> = answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default();
@@ -806,18 +810,20 @@ fn BoardOverview(
                 div { class: "x-board-goal-form", style: "margin-top: 10px;",
                     div { style: SUBHEADING, {tr!("ai-chat-board-add-new-goal")} }
                     div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
-                        textarea {
-                            class: "x-board-goal",
-                            style: "{TEXTAREA} flex: 1 1 220px; min-width: 0;", rows: "2",
+                        ReferenceInput {
+                            class: "x-board-goal".to_string(),
+                            style: "{TEXTAREA} {TWO_LINES} flex: 1 1 220px; min-width: 0;",
                             placeholder: tr!("ai-chat-board-a-new-goal"),
-                            value: "{goal}", oninput: move |e| goal.set(e.value()),
+                            label: tr!("ai-chat-board-a-new-goal"),
+                            value: goal(),
+                            on_change: move |value| goal.set(value),
                         }
                         button {
                             style: BTN,
-                            disabled: busy() || goal.read().trim().is_empty(),
+                            disabled: busy() || goal.read().is_blank(),
                             onclick: {
                                 let mut run = run.clone();
-                                move |_| run(BoardAction::AddGoal { text: goal.read().clone() }, Some(goal))
+                                move |_| run(BoardAction::AddGoal { text: goal.read().trimmed() }, Some(goal))
                             },
                             {tr!("ai-chat-board-add-goal")}
                         }
@@ -828,22 +834,25 @@ fn BoardOverview(
             }
             if !snap.board.context.is_empty() {
                 div { style: SUBHEADING, {tr!("ai-chat-board-background-context")} }
-                p { style: "margin: 4px 0;", "{snap.board.context}" }
+                p { style: "margin: 4px 0;", NodeText { text: snap.board.context.clone(), links: links.clone() } }
             }
         }
         if snap.status == "review" {
             div { class: "x-board-correction", style: PANEL,
                 div { style: SECTION, {tr!("ai-chat-board-continue-with-a-correction")} }
-                textarea {
-                    style: "{TEXTAREA} margin-top: 8px;", rows: "2",
+                ReferenceInput {
+                    class: "x-board-review-correction".to_string(),
+                    style: "{TEXTAREA} {TWO_LINES} margin-top: 8px;",
                     placeholder: tr!("ai-chat-board-correction-what-is-wrong-or"),
-                    value: "{correction}", oninput: move |e| correction.set(e.value()),
+                    label: tr!("ai-chat-board-correction-what-is-wrong-or"),
+                    value: correction(),
+                    on_change: move |value| correction.set(value),
                 }
                 button {
                     style: "{BTN} margin-top: 6px;",
-                    disabled: busy() || correction.read().trim().is_empty(),
+                    disabled: busy() || correction.read().is_blank(),
                     onclick: move |_| continue_with(BoardAction::Review {
-                        review_id: correction_id.clone(), accept: false, correction: correction.read().clone(),
+                        review_id: correction_id.clone(), accept: false, correction: correction.read().trimmed(),
                         seen_seq: Some(seen_seq), seen_unreviewed: Vec::new(),
                     }, Some(correction)),
                     {tr!("ai-chat-board-continue-with-a-correction")}
@@ -879,7 +888,7 @@ fn BoardOverview(
                         style: if budget_review && reopen.is_some() { BTN } else { BTN_PRIMARY },
                         disabled: busy(),
                         onclick: move |_| finish(BoardAction::Review {
-                            review_id: finish_id.clone(), accept: true, correction: String::new(),
+                            review_id: finish_id.clone(), accept: true, correction: RichText::default(),
                             seen_seq: Some(seen_seq), seen_unreviewed: finish_seen.clone(),
                         }, None),
                         {tr!("ai-chat-board-close-the-board")}
@@ -906,17 +915,19 @@ fn BoardOverview(
             div { style: PANEL,
                 div { style: SECTION, {tr!("ai-chat-board-add-a-hint")} }
                 p { style: HELP_TEXT, {tr!("ai-chat-board-the-next-assessment-reads-every")} }
-                textarea {
-                    class: "x-board-hint",
-                    style: TEXTAREA, rows: "2",
-                    value: "{hint}", oninput: move |e| hint.set(e.value()),
+                ReferenceInput {
+                    class: "x-board-hint".to_string(),
+                    style: "{TEXTAREA} {TWO_LINES}",
+                    label: tr!("ai-chat-board-add-a-hint"),
+                    value: hint(),
+                    on_change: move |value| hint.set(value),
                 }
                 button {
                     style: "{BTN} margin-top: 6px;",
-                    disabled: busy() || hint.read().trim().is_empty(),
+                    disabled: busy() || hint.read().is_blank(),
                     onclick: {
                         let mut run = run.clone();
-                        move |_| run(BoardAction::AddHint { text: hint.read().clone() }, Some(hint))
+                        move |_| run(BoardAction::AddHint { text: hint.read().trimmed() }, Some(hint))
                     },
                     {tr!("ai-chat-board-add-hint")}
                 }
@@ -1214,21 +1225,21 @@ fn FactDetail(
     snapshot: Signal<Option<BoardSnapshot>>,
     error: Signal<Option<String>>,
 ) -> Element {
-    let mut reason = use_signal(String::new);
-    let mut own_question = use_signal(String::new);
+    let mut reason = use_signal(RichText::default);
+    let mut own_question = use_signal(RichText::default);
     let mut busy = use_signal(|| false);
     let board_id = snap.board.board_id.clone();
     let dropped = snap.status == "dropped";
     let links = node_links(&snap, &zoom);
     let run = {
         let board_id = board_id.clone();
-        move |action: BoardAction, mut clear: Option<Signal<String>>| {
+        move |action: BoardAction, mut clear: Option<Signal<RichText>>| {
             let board_id = board_id.clone();
             busy.set(true);
             spawn(async move {
                 if act(board_id, action, snapshot, error).await.is_some() {
                     if let Some(field) = clear.as_mut() {
-                        field.set(String::new());
+                        field.set(RichText::default());
                     }
                 }
                 busy.set(false);
@@ -1343,7 +1354,9 @@ fn FactDetail(
                     if fact.rejected_reason.is_empty() {
                         div { style: HELP_TEXT, {tr!("ai-chat-board-no-reason-was-given")} }
                     } else {
-                        div { style: "white-space: pre-wrap;", {tr!("ai-chat-board-reason", fact_rejected_reason: fact.rejected_reason.to_string())} }
+                        div { style: "white-space: pre-wrap;",
+                            NodeText { text: tr!("ai-chat-board-reason", fact_rejected_reason: fact.rejected_reason.to_string()), links: links.clone() }
+                        }
                     }
                 }
             }
@@ -1388,7 +1401,7 @@ fn FactDetail(
                                     let mut run = run.clone();
                                     let fact_id = fact.fact_id.clone();
                                     move |_| run(BoardAction::ExploreQuestion {
-                                        fact_id: fact_id.clone(), index: Some(index), question: String::new(),
+                                        fact_id: fact_id.clone(), index: Some(index), question: RichText::default(),
                                     }, None)
                                 },
                                 {tr!("ai-chat-board-explore-this-question")}
@@ -1401,7 +1414,7 @@ fn FactDetail(
                 div { style: SUBHEADING, {tr!("ai-chat-board-your-questions")} }
                 for (i, (text, intent)) in own.into_iter().enumerate() {
                     div { key: "{i}", class: "x-board-fact-question x-board-own-question",
-                        div { class: "x-board-fact-question-text", "{text}" }
+                        div { class: "x-board-fact-question-text", NodeText { text: text.clone(), links: links.clone() } }
                         span { class: "x-board-question-corner x-board-question-followed",
                             {tr!("ai-chat-board-explored-in")}
                             Link { to: link(intent.clone()), style: "{LINK} font-family: monospace;", "{intent}" }
@@ -1413,21 +1426,23 @@ fn FactDetail(
                 div { class: "x-board-follow-up", style: "margin-top: 10px;",
                     div { style: SUBHEADING, if fact.kind == "origin" { {tr!("ai-chat-board-ask-about-the-background-context")} } else { {tr!("ai-chat-board-ask-about-this-finding")} } }
                     div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
-                        textarea {
-                            class: "x-board-own-question-text",
-                            style: "{TEXTAREA} flex: 1 1 220px; min-width: 0;", rows: "2",
+                        ReferenceInput {
+                            class: "x-board-own-question-text".to_string(),
+                            style: "{TEXTAREA} {TWO_LINES} flex: 1 1 220px; min-width: 0;",
                             placeholder: tr!("ai-chat-board-a-follow-up-question-about"),
-                            value: "{own_question}", oninput: move |e| own_question.set(e.value()),
+                            label: tr!("ai-chat-board-a-follow-up-question-about"),
+                            value: own_question(),
+                            on_change: move |value| own_question.set(value),
                         }
                         button {
                             class: "x-board-ask",
                             style: BTN,
-                            disabled: busy() || own_question.read().trim().is_empty(),
+                            disabled: busy() || own_question.read().is_blank(),
                             onclick: {
                                 let mut run = run.clone();
                                 let fact_id = fact.fact_id.clone();
                                 move |_| run(BoardAction::ExploreQuestion {
-                                    fact_id: fact_id.clone(), index: None, question: own_question.read().clone(),
+                                    fact_id: fact_id.clone(), index: None, question: own_question.read().trimmed(),
                                 }, Some(own_question))
                             },
                             {tr!("ai-chat-board-ask")}
@@ -1448,10 +1463,13 @@ fn FactDetail(
                     if fact.kind == "correction" { {tr!("ai-chat-board-reject-this-correction")} } else { {tr!("ai-chat-board-reject-this-finding")} }
                 }
                 div { style: "display: flex; gap: 8px; align-items: center;",
-                    input {
-                        class: "x-board-reject-reason",
-                        style: "{INPUT} flex: 1;", placeholder: "{placeholder}",
-                        value: "{reason}", oninput: move |e| reason.set(e.value()),
+                    ReferenceInput {
+                        class: "x-board-reject-reason".to_string(),
+                        style: "{TEXTAREA} flex: 1; min-width: 0;",
+                        placeholder: placeholder.clone(),
+                        label: placeholder.clone(),
+                        value: reason(),
+                        on_change: move |value| reason.set(value),
                     }
                     button {
                         style: BTN_SMALL_DANGER,
@@ -1459,7 +1477,7 @@ fn FactDetail(
                         onclick: {
                             let mut run = run.clone();
                             let fact_id = fact.fact_id.clone();
-                            move |_| run(BoardAction::RejectFact { fact_id: fact_id.clone(), reason: reason.read().clone() }, Some(reason))
+                            move |_| run(BoardAction::RejectFact { fact_id: fact_id.clone(), reason: reason.read().trimmed() }, Some(reason))
                         },
                         "{reject_label}"
                     }
@@ -1512,7 +1530,7 @@ fn GoalAnswer(
     snapshot: Signal<Option<BoardSnapshot>>,
     error: Signal<Option<String>>,
 ) -> Element {
-    let mut correction = use_signal(String::new);
+    let mut correction = use_signal(RichText::default);
     let mut busy = use_signal(|| false);
     let Some((answer, accepted)) = answer else {
         if not_answered {
@@ -1538,7 +1556,7 @@ fn GoalAnswer(
     let (goal, proposal_id) = (answer.goal.clone(), answer.proposal_id.clone());
     let decide = move |accept: bool| {
         let (board_id, goal, proposal_id) = (board_id.clone(), goal.clone(), proposal_id.clone());
-        let text = correction.read().clone();
+        let text = correction.read().trimmed();
         let seen_unreviewed = if accept { seen_unreviewed.clone() } else { Vec::new() };
         busy.set(true);
         spawn(async move {
@@ -1546,7 +1564,7 @@ fn GoalAnswer(
                 goal, proposal_id, accept, correction: text, seen_seq: Some(seen_seq), seen_unreviewed,
             };
             if act(board_id, action, snapshot, error).await.is_some() {
-                correction.set(String::new());
+                correction.set(RichText::default());
             }
             busy.set(false);
         });
@@ -1621,12 +1639,13 @@ fn GoalAnswer(
                     {tr!("ai-chat-board-accept-answer")}
                 }
                 div { style: "display: flex; gap: 8px; align-items: center; margin-top: 6px;",
-                    input {
-                        class: "x-board-answer-correction",
-                        style: "{INPUT} flex: 1;",
+                    ReferenceInput {
+                        class: "x-board-answer-correction".to_string(),
+                        style: "{TEXTAREA} flex: 1; min-width: 0;",
                         placeholder: tr!("ai-chat-board-why-the-answer-is-wrong"),
-                        value: "{correction}",
-                        oninput: move |e| correction.set(e.value()),
+                        label: tr!("ai-chat-board-why-the-answer-is-wrong"),
+                        value: correction(),
+                        on_change: move |value| correction.set(value),
                     }
                     button {
                         class: "x-board-reject-answer",
@@ -1731,18 +1750,18 @@ fn node_links(snap: &BoardSnapshot, zoom: &str) -> NodeLinks {
             .to_string()
         })
         .collect();
-    NodeLinks { nodes, hrefs }
+    NodeLinks { nodes, hrefs, references: snap.references.clone() }
 }
 
 /// A plain text with each node name as a link with the node title
-/// (`common::board_text::link_nodes`).
+/// (`common::board_text::link_nodes`), and each reference marker as its chip.
 #[component]
 fn NodeText(text: String, links: NodeLinks) -> Element {
     let parts = link_nodes(&text, &links.nodes);
     rsx! {
         for (i, part) in parts.into_iter().enumerate() {
             match part {
-                TextPart::Text(t) => rsx! { span { key: "{i}", "{t}" } },
+                TextPart::Text(t) => rsx! { ReferenceText { key: "{i}", text: t, references: links.references.clone() } },
                 TextPart::Node { name, node } => {
                     let label = links.nodes[node].label().to_string();
                     let href = links.hrefs.get(node).cloned().unwrap_or_default();
@@ -1953,7 +1972,7 @@ mod tests {
             facts: vec![fact("f1.1", "sourced", "board-b-i1.1"), fact("c1", "correction", "")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
-            not_answered: vec![], unreviewed: vec![], snapshot_seq: 0,
+            not_answered: vec![], unreviewed: vec![], snapshot_seq: 0, references: vec![],
         };
         assert_eq!(event_link(&snap, &event("reason_result", "4")), EventLink::Assessment(4));
         assert_eq!(event_link(&snap, &event("fact_rejected", "f1.1")), EventLink::Chat("board-b-i1.1".into()));

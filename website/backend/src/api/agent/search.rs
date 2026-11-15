@@ -24,30 +24,6 @@ fn sort_spec_from_agent(sort: Option<&AgentSort>) -> Result<SortSpec, AgentError
     Ok(SortSpec { key, desc })
 }
 
-/// Every facet the search page's filter modal lists, with the term dictionary field that
-/// the modal passes to `search_string_facet` to turn a term id into text. Every facet
-/// except `collection_dataset` filters by integer term id.
-const SEARCH_FACETS: &[(&str, Option<&str>)] = &[
-    ("collection_dataset", None),
-    ("file_types", Some("filetype")),
-    ("file_paths", Some("vfs_node")),
-    ("email_from", Some("email_address")),
-    ("email_to", Some("email_address")),
-    ("struct_flags", None),
-    ("ner_per", Some("ner")),
-    ("ner_org", Some("ner")),
-    ("ner_loc", Some("ner")),
-    ("ner_misc", Some("ner")),
-    ("re_email", Some("regex_email")),
-    ("language", Some("language")),
-    ("red_flags", Some("red_flags")),
-    ("re_phone", Some("regex_phone")),
-    ("re_bank_account", Some("regex_bank_account")),
-    ("re_company_id", Some("regex_company_id")),
-    ("re_money", Some("regex_money")),
-    ("re_crypto_wallet", Some("regex_crypto_wallet")),
-];
-
 /// The search result pages that exist: the website shows at most
 /// `MAX_PAGINATION_DOCUMENT_LIMIT` results, `PAGE_SIZE` a page.
 const MAX_SEARCH_PAGES: u64 =

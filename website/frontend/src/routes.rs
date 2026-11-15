@@ -279,3 +279,94 @@ impl Route {
         }
     }
 }
+
+#[cfg(test)]
+mod link_tests {
+    //! Every `Route` that names an item parses with `common::links::parse_link`, the parser
+    //! of pasted links. A route change that the parser does not follow fails here.
+
+    use super::*;
+    use common::links::{parse_link, HooverLink, LinkError, LinkHost};
+    use common::search_result::FacetOriginalValue;
+
+    fn doc() -> DocumentIdentifier {
+        DocumentIdentifier { collection_dataset: "enron_mail".into(), file_hash: "ab12cd".into() }
+    }
+
+    fn parse(route: Route) -> Result<HooverLink, LinkError> {
+        let path = route.to_string();
+        parse_link(&path, LinkHost::Any).and_then(|link| {
+            parse_link(&format!("https://hoover.example.org{path}"), LinkHost::Own("https://hoover.example.org"))
+                .map(|full| {
+                    assert_eq!(full, link, "{path}");
+                    link
+                })
+        })
+    }
+
+    #[test]
+    fn every_item_route_parses_with_the_link_parser() {
+        let mut query = SearchQuery { query_string: "raptor \"hedge\" & co".into(), ..Default::default() };
+        query.facet_filters.insert("file_types".into(), [FacetOriginalValue::Int(4)].into());
+        let viewer = Some(DocViewerState::for_entity("Andrew Fastow".into()));
+        assert_eq!(
+            parse(Route::SearchPage {
+                query: UrlParam(query.clone()),
+                current_search_result_page: 3,
+                selected_result_hash: UrlParam(Some(doc())),
+                doc_viewer_state: UrlParam(viewer.clone()),
+            }),
+            Ok(HooverLink::Search { query, selected: Some(doc()) })
+        );
+        assert_eq!(parse(Route::entity_card(doc(), "Kaminski".into())), Ok(HooverLink::Document { document: doc() }));
+        assert_eq!(
+            parse(Route::FileBrowserCollectionsPage { q: "memo 2001".into(), page: 2 }),
+            Ok(HooverLink::Storage { q: "memo 2001".into() })
+        );
+        assert_eq!(
+            parse(Route::storage_collection("enron files".into())),
+            Ok(HooverLink::Collection { collectionname: "enron files".into(), q: String::new() })
+        );
+        let path = PathDescriptor { container_hash: "ff00".into(), path: "/Inbox/année 2001".into() };
+        assert_eq!(
+            parse(Route::file_browser_page("enron_mail".into(), path.clone(), Some(doc()))),
+            Ok(HooverLink::Folder { collection_dataset: "enron_mail".into(), path, selected: Some(doc()) })
+        );
+        assert_eq!(
+            parse(Route::EmailGraphPage {
+                centre: UrlParam(doc()),
+                selected: UrlParam(None),
+                doc_viewer_state: UrlParam(viewer.clone()),
+            }),
+            Ok(HooverLink::EmailGraph { centre: doc() })
+        );
+        assert_eq!(
+            parse(Route::ai_chat_session("0f3c-chat".into(), Some(doc()), viewer)),
+            Ok(HooverLink::Chat { session_id: "0f3c-chat".into() })
+        );
+        assert_eq!(
+            parse(Route::AiBoardPage {
+                board_id: "b1".into(),
+                selected: "intent-année".into(),
+                zoom: "80".into(),
+                assessment: "2".into(),
+            }),
+            Ok(HooverLink::Board { board_id: "b1".into(), node: "intent-année".into() })
+        );
+        assert_eq!(parse(Route::ai_board("b1".into(), String::new())), Ok(HooverLink::Board { board_id: "b1".into(), node: String::new() }));
+    }
+
+    #[test]
+    fn a_route_without_an_item_is_no_link() {
+        for route in [
+            Route::HomePage {},
+            Route::AiChatPage {},
+            Route::AiChatHistoryPage {},
+            Route::AiBoardCreatePage {},
+            Route::AdminUsersPage {},
+            Route::UploadsPage { collection: "enron".into() },
+        ] {
+            assert_eq!(parse(route.clone()), Err(LinkError::UnknownAddress), "{route}");
+        }
+    }
+}
