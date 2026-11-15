@@ -8,7 +8,8 @@ with its name in brackets. records.py keeps the state of each run in the operato
 Host steps. Each one is one Ansible run on all target nodes in parallel (class Ansible):
   hosts:prepare  playbooks/hoover4-hosts.yml: the facts of each node, its packages, kernel modules, sysctl,
                  NetworkManager, SELinux, the local node of a single-node site, the backup folder, the optional public
-                 firewall and the WireGuard peers. The facts go to facts/<node>.json of the state folder.
+                 firewall and the WireGuard peers. The facts go to facts/<node>.json of the state folder. A node
+                 without a stored speed is measured once before k3s starts on it (speed/<node>.json, measure_speed()).
   hosts:k3s      playbooks/hoover4-k3s.yml: gVisor, Kata Containers, the GPU runtime, the tokens, the k3s configuration
                  and the registry mirror, then k3s on the server and on the agents. The server play converts a SQLite
                  datastore to etcd after a verified copy, verifies etcd and writes the admin kubeconfig into the state
@@ -345,6 +346,11 @@ class Ansible:
     def run(self, playbook, targets, extra=None, tags=()):
         """Run a playbook. Raise StepFailed with the recap when a task failed or a node was unreachable."""
         (self.ctx.private / 'facts').mkdir(parents=True, exist_ok=True)
+        if 'speed' in tags or not tags:
+            # The play of the role hoover4_speed writes speed/<node>.json.
+            (self.ctx.private / 'speed').mkdir(parents=True, exist_ok=True)
+        # The facts play of this version writes no cpu_speed, so the value of an earlier version moves to speed/ first.
+        config.adopt_facts_speed(self.ctx.private)
         code, out = self.ctx.run(self.argv(playbook, targets, extra, tags), env=self.env(), check=False)
         if code:
             failed = [name.split(' -> ')[0] for name in re.findall(r'(?m)^\s*fatal: \[([^\]]+)\]', out)]
@@ -1432,6 +1438,16 @@ def render(ctx, targets, revision, manifests=False):
     return out
 
 
+def measure_speed(ctx, targets):
+    """Measure the CPU speed and the disk speeds of the targets again (role hoover4_speed with hoover4_speed_force).
+
+    The play refuses a node where k3s or a container runs, or whose load is above 5, and names the reason. Return the
+    stored speeds of the targets.
+    """
+    Ansible(ctx).run('hoover4-hosts.yml', targets, extra={'hoover4_speed_force': True}, tags=['speed'])
+    return {name: config.speed_report(ctx.site, ctx.private)[name] for name in targets}
+
+
 def check(ctx, targets):
     """The problems of the selected targets, as messages, and their state, as a dict.
 
@@ -1459,10 +1475,13 @@ def check(ctx, targets):
         Ansible(ctx).run('hoover4-hosts.yml', targets, tags=['facts'])
     except StepFailed as error:
         problems.append(str(error))
+    speeds = config.speed_report(ctx.site, ctx.private)
     for name in targets:
         facts = ctx.private / 'facts' / f'{name}.json'
         state[name] = json.loads(facts.read_text()) if facts.exists() else {'reachable': False}
         state[name]['ready'] = node_ready(ctx, name)
+        # The stored CPU and disk speeds (role hoover4_speed). note says how to measure a node without a value.
+        state[name]['speed'] = speeds[name]
     if ctx.site.control_plane in targets:
         missing = [str(p) for p in tool_paths(ctx) if not p.exists()]
         if missing:

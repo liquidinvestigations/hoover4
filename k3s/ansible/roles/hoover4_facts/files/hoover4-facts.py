@@ -9,19 +9,14 @@ volume_groups {name: {size_bytes, free_bytes, k3s_volumes_bytes}} from vgs and l
               the logical volumes rancher and kubelet of the group, the k3s data volumes of k3s_volume_group. It needs
               root, so the play runs it with become.
 addresses     {IPv4 address: interface} of every global address of the host
-cpu_speed     the work that one thread of the node does in one CPU second while every thread works, the geometric mean
-              of a zlib compression and a Python integer loop, each run for PROBE_SECONDS on all threads at once. The
-              hashing extensions of a CPU do not change it. ../../../../config.py compares it between the nodes.
+The CPU speed and the disk speeds are no facts: the role hoover4_speed measures them once, on a node at rest.
 The script runs with Python 3.9, the version of RHEL 9.
 """
 import json
-import multiprocessing
 import os
 import platform
 import shutil
 import subprocess
-import time
-import zlib
 
 # The k3s data volumes that the role hoover4_host creates in k3s_volume_group.
 K3S_VOLUMES = ('rancher', 'kubelet')
@@ -78,47 +73,6 @@ def volume_groups():
     return groups
 
 
-# The seconds of each probe of cpu_speed(). The two probes take about one second.
-PROBE_SECONDS = 0.5
-PROBE_DATA = bytes((i * 7919 + (i >> 3)) % 251 for i in range(65536))
-
-
-def probe_work(kind):
-    if kind == 'zlib':
-        zlib.compress(PROBE_DATA, 6)
-        return
-    x = 0
-    for i in range(2000):
-        x = (x * 31 + i) % 1000003
-
-
-def probe_worker(kind, queue):
-    count, end = 0, time.monotonic() + PROBE_SECONDS
-    start = time.process_time()
-    while time.monotonic() < end:
-        probe_work(kind)
-        count += 1
-    queue.put(count / max(time.process_time() - start, 1e-3))
-
-
-def probe_rate(kind):
-    """The mean work per CPU second of one thread while every thread of the node runs the probe."""
-    # fork starts the workers without a new import of this file, which Ansible runs from a temporary path.
-    context = multiprocessing.get_context('fork')
-    queue = context.Queue()
-    workers = [context.Process(target=probe_worker, args=(kind, queue)) for _ in range(os.cpu_count() or 1)]
-    for w in workers:
-        w.start()
-    rates = [queue.get() for _ in workers]
-    for w in workers:
-        w.join()
-    return sum(rates) / len(rates)
-
-
-def cpu_speed():
-    return round((probe_rate('zlib') * probe_rate('loop')) ** 0.5)
-
-
 def addresses():
     code, out = run(['ip', '-o', '-4', 'addr', 'show', 'scope', 'global'])
     found = {}
@@ -132,5 +86,5 @@ def addresses():
 if __name__ == '__main__':
     print(json.dumps({'architecture': platform.machine(), 'avx2': avx2(), 'gpus': gpus(),
                       'nvidia_container_runtime': bool(shutil.which('nvidia-container-runtime')),
-                      'volume_groups': volume_groups(), 'addresses': addresses(), 'root': os.geteuid() == 0,
-                      'cpu_speed': cpu_speed()}, sort_keys=True))
+                      'volume_groups': volume_groups(), 'addresses': addresses(), 'root': os.geteuid() == 0},
+                     sort_keys=True))

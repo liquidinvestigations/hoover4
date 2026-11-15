@@ -9,6 +9,7 @@ Usage:
   deploy-k3s down      --target NODE... [--steps STEP...]
   deploy-k3s down      --resume RECORD
   deploy-k3s status    [RECORD]                                          print the records
+  deploy-k3s measure-speed --target NODE...                              measure the CPU and disk speeds again
   deploy-k3s import-compose <zone> <folder> --home NODE --ini FILE [...] import a stopped Compose install into a new zone
 
 --target names nodes of the site file, or `all`. Every command except status and import-compose needs it.
@@ -25,6 +26,10 @@ down stops the ingress, the applications and workers, Temporal, the stores, and 
 The cluster holds the zone state, the zone secrets and the operator state (clusterstate.py). Each command reads the
 cluster copy into the state folder first, and up and down write the changes back after each step.
 A failed or stopped run keeps its record. `up --resume RECORD` continues at the first unfinished step.
+measure-speed measures the CPU speed and the write speed of each storage tier of the nodes, and keeps them in speed/
+of the state folder. up measures a new node once before k3s starts, and then uses the stored values. Stop k3s and every
+container of a node before its measure-speed: it refuses a node where k3s or a container runs, or whose 1-minute load
+is above 5. The next up gives the new speed factor to k3s.
 import-compose runs import_compose/import_compose.py with the commit of HEAD. `deploy-k3s import-compose --help` names
 its arguments and steps. It runs once per zone.
 
@@ -171,6 +176,26 @@ def run_in_image(argv):
         shutil.rmtree(work, ignore_errors=True)
 
 
+def measure_speed(ctx, targets, deploy, records):
+    """deploy-k3s measure-speed: the speed play under the site lock, and the new values in the cluster copy when the
+    cluster answers. A node of the targets is usually stopped, so the cluster can be unavailable."""
+    import json
+    try:
+        ctx.records.lock('measure-speed', 'measure-speed')
+    except records.Busy as error:
+        raise SystemExit(f'deploy-k3s: {error}')
+    try:
+        deploy.sync_state(ctx, 'pull')
+        speeds = deploy.measure_speed(ctx, targets)
+        deploy.sync_state(ctx, 'push')
+    except deploy.StepFailed as error:
+        raise SystemExit(f'deploy-k3s: {error}')
+    finally:
+        ctx.records.unlock()
+    print(json.dumps({'speed': speeds}, indent=1))
+    return 0
+
+
 def main(argv):
     argv = bootstrap_checkout(argv)
     if os.environ.get(IN_IMAGE) != '1':
@@ -195,7 +220,7 @@ def main(argv):
 
     parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'status'))
+    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'status', 'measure-speed'))
     parser.add_argument('record', nargs='?')
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'), required=not os.environ.get('HOOVER4_SITE'))
     parser.add_argument('--target', nargs='+', default=[])
@@ -247,6 +272,8 @@ def main(argv):
         if args.command in ('render', 'check'):
             # render and check read the cluster copy of the zone state and the operator state.
             deploy.sync_state(ctx, 'pull')
+        if args.command == 'measure-speed':
+            return measure_speed(ctx, targets, deploy, records)
         if args.command == 'render':
             print(json.dumps(deploy.render(ctx, targets, revision, args.manifests), indent=1, default=list))
             return 0

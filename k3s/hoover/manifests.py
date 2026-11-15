@@ -512,9 +512,35 @@ def ports(name, service_def):
     return sorted(set(found or PORTS.get(name, [])) | set(INTERNAL_PORTS.get(name, [])))
 
 
+# An exec probe starts one runsc command at each period (../zones/cpu_requests.py runtime_cost()), and the kubelet makes
+# an HTTP probe itself. A Compose check that only fetches one local URL becomes an HTTP probe of that URL. Both fail on
+# a refused connection, a timeout and a status of 400 or more.
+LOCAL_FETCH = re.compile(r"^(?:python3?\s+-c\s+\S*\s*import urllib\.request[^']*urlopen\('|wget\s+(?:--no-verbose\s+|-q\s+|--tries=1\s+)*"
+                         r"|curl\s+(?:--silent\s+|-f\s+|--fail\s+|-s\s+)*)http://(?:127\.0\.0\.1|localhost):(\d+)(/[^'\s\"]*)")
+# A binary whose own check fetches one local path (its source names it): service: (path, port).
+HEALTH_PATHS = {'regex-entity-scanner': ('/health', 19705)}
+
+
+def http_probe(command, name=None):
+    """{path, port} of a check command that only fetches one local URL, else None."""
+    if name in HEALTH_PATHS and command and command[-1] == '--health-check':
+        path, port = HEALTH_PATHS[name]
+        return {'path': path, 'port': port}
+    text = ' '.join(command[2:] if command[:2] == ['sh', '-c'] else command)
+    m = LOCAL_FETCH.match(text.replace('"', ''))
+    if not m:
+        return None
+    rest = text.replace('"', '')[m.end():]
+    # A check with a second command or a second URL tests more than the URL.
+    if 'http' in rest or any(op in rest for op in ('&&', ';', '|| exit 1 ||')):
+        return None
+    return {'path': m.group(2), 'port': int(m.group(1))}
+
+
 def probe(service_def, name=None):
     """The readiness probe of a Compose healthcheck.
 
+    A check that only fetches one local URL becomes an HTTP probe (http_probe()). Another check stays an exec probe.
     A Compose check can name its own service, which resolves to the container itself. In the cluster that name is the
     Service address, which routes only to ready pods, so the check of a pod that is not ready could never pass. A shell
     check names the pod address instead.
@@ -526,9 +552,13 @@ def probe(service_def, name=None):
         command = ['sh', '-c', test]
     else:
         command = ['sh', '-c', test[1]] if test[0] == 'CMD-SHELL' else list(test[1:])
+    timing = {'periodSeconds': 15, 'timeoutSeconds': 13, 'failureThreshold': 6}
+    http = http_probe(command, name and name.removeprefix('hoover4-'))
+    if http:
+        return {'httpGet': http, **timing}
     if name and command[:2] == ['sh', '-c'] and re.search(rf'(?<![\w.-]){re.escape(name)}:\d', command[2]):
         command = ['sh', '-c', re.sub(rf'(?<![\w.-]){re.escape(name)}:(\d)', r'$(hostname -i):\1', command[2])]
-    return {'exec': {'command': command}, 'periodSeconds': 15, 'timeoutSeconds': 13, 'failureThreshold': 6}
+    return {'exec': {'command': command}, **timing}
 
 
 # ----------------------------------------------------------------------------------------------------------------------

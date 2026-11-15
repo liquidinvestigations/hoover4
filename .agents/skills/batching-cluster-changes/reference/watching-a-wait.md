@@ -39,7 +39,7 @@ The Claude Code harness wakes the agent in two ways.
    python3 k3s/tools/watch-record.py <state> --stall 300 --deadline 3600
    ```
 
-   It prints each step change and exits with 0 (complete), 1 (error), 2 (stall), 3 (a step over its limit) or 4
+   It prints each step change and exits with 0 (status `done`), 1 (error or another end status), 2 (stall), 3 (a step over its limit) or 4
    (deadline). For pods, `sweep.py <namespace>... --wait 600` exits at all ready, at a state that waiting does not
    repair (including a pod that the scheduler cannot place for 2 minutes), or at the deadline.
 

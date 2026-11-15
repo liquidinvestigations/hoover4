@@ -10,6 +10,11 @@ namespace hoover-stores, ../hoover/stores/shared.py and temporal.py), the number
 The scheduler (the k3s scheduler configuration of ../ansible/roles/hoover4_k3s) places each new pod on the node with the
 lowest requested CPU per thread, so the request is the load that the scheduler sees.
 
+runtimeOverhead holds the steady CPU of k3s and the runtime outside the pod cgroups. pod_fixed() gives the part that
+is the same for each pod of a RuntimeClass (its overhead.podFixed, ../cluster/runtimeclasses.yaml), and runtime_cost()
+the part that depends on the containers and exec probes of one pod. apply() adds runtime_cost() to the request of the
+main container and names it in the annotation hoover.dev/cpu-runtime.
+
 apply() writes the request into a workload of a render, and the annotations hoover.dev/cpu-start-peak,
 hoover.dev/cpu-baseline and hoover.dev/cpu-request-basis into its pod template. The pod CPU request is the table value:
 the main container (the container of the memory table, else the first) gets the table value minus the requests of
@@ -48,6 +53,11 @@ PROMETHEUS = '/api/v1/namespaces/monitoring/services/monitor-kube-prometheus-st-
 START_PEAK = 'hoover.dev/cpu-start-peak'
 BASELINE = 'hoover.dev/cpu-baseline'
 BASIS = 'hoover.dev/cpu-request-basis'
+RUNTIME = 'hoover.dev/cpu-runtime'
+# The RuntimeClass of a pod without runtimeClassName in each part. The zone namespaces get gVisor from the admission
+# policy of ../zones/manifests/zone-pods.yaml, unless the pod has the label hoover.dev/runtime=runc.
+DEFAULT_RUNTIME = {'zone': 'gvisor', 'hoover': 'gvisor', 'site': 'runc'}
+PROBES = ('livenessProbe', 'readinessProbe')
 
 
 def load():
@@ -83,10 +93,70 @@ def template_metadata(doc):
     return template['metadata']
 
 
-def apply(doc, key, part, main=None, table=None):
-    """Write the table request and the annotations into a workload. key is <kind>/<name>, part zone, hoover or site.
+def pod_fixed(runtime, table=None):
+    """Millicores of the RuntimeClass overhead: the kubelet and the shim of one pod, and for gVisor the statistics call
+    of its sandbox. Rounded up to 1m."""
+    o = (table or TABLE)['runtimeOverhead']
+    value = o['kubeletPerPod'] + o['shimPerPod']
+    if runtime == 'gvisor':
+        value += o['runscStatsCpuSeconds'] * 1000 / o['statsPeriodSeconds']
+    return int(math.ceil(value - 1e-9))
 
-    main names the main container. Return True when the table has the workload.
+
+def runtime(doc, part):
+    """The RuntimeClass of the pods of a workload: runtimeClassName, else the default of the part."""
+    spec = pod_spec(doc)
+    if spec.get('runtimeClassName'):
+        return spec['runtimeClassName']
+    labels = template_metadata(doc).get('labels') or {}
+    return 'runc' if labels.get('hoover.dev/runtime') == 'runc' else DEFAULT_RUNTIME[part]
+
+
+def runtime_cost(spec, runtime_class, table=None):
+    """Millicores that one pod causes outside its cgroup beyond pod_fixed(): the statistics call of each gVisor
+    container, and each liveness and readiness exec probe at its period. A startup probe ends at the start, so it does
+    not count. Rounded up to 1m."""
+    o = (table or TABLE)['runtimeOverhead']
+    containers = list(spec.get('containers') or []) + [c for c in spec.get('initContainers') or []
+                                                       if c.get('restartPolicy') == 'Always']
+    value = 0.0
+    if runtime_class == 'gvisor':
+        value += len(containers) * o['runscStatsCpuSeconds'] * 1000 / o['statsPeriodSeconds']
+    for c in containers:
+        for kind in PROBES:
+            probe = c.get(kind) or {}
+            if 'exec' in probe:
+                value += o['execCpuSeconds'] * 1000 / max(1, probe.get('periodSeconds', 10))
+    return int(math.ceil(value - 1e-9))
+
+
+def main_container(containers, main):
+    return next((c for c in containers if c['name'] == main), containers[0])
+
+
+def requests_of(c):
+    if not c.get('resources'):
+        c['resources'] = {}
+    if not c['resources'].get('requests'):
+        c['resources']['requests'] = {}
+    return c['resources']['requests']
+
+
+def cap(c):
+    """Keep the CPU request of a container at most its CPU limit."""
+    resources = c['resources']
+    limit = (resources.get('limits') or {}).get('cpu')
+    if limit and millicores(limit) < millicores(resources['requests']['cpu']):
+        resources['requests']['cpu'] = limit
+
+
+def apply(doc, key, part, main=None, table=None):
+    """Write the table request, the runtime cost and the annotations into a workload. key is <kind>/<name>, part zone,
+    hoover or site.
+
+    main names the main container. The runtime cost (runtime_cost()) goes on top of the request of the main container,
+    also for a workload without a measurement. A second call gives the same result. Return True when the table has the
+    workload.
     """
     table = table or TABLE
     entry = table.get(part, {}).get(key)
@@ -94,30 +164,35 @@ def apply(doc, key, part, main=None, table=None):
     if not metadata.get('annotations'):
         metadata['annotations'] = {}
     annotations = metadata['annotations']
+    containers = pod_spec(doc).get('containers', [])
+    costed = 'runtimeOverhead' in table
+    extra = runtime_cost(pod_spec(doc), runtime(doc, part), table) if costed else 0
     if not entry:
         annotations[BASIS] = 'no measurement: the request of the CPU policy'
         for name in (START_PEAK, BASELINE):
             annotations.pop(name, None)
+        if containers:
+            chosen = main_container(containers, main)
+            requests = requests_of(chosen)
+            before = millicores(annotations.get(RUNTIME, '0m'))
+            requests['cpu'] = quantity(max(10, millicores(requests.get('cpu', 0)) - before + extra))
+            cap(chosen)
+        if costed:
+            annotations[RUNTIME] = quantity(extra)
         return False
     annotations[START_PEAK] = entry['startPeak']
     annotations[BASELINE] = entry['baseline']
     annotations[BASIS] = f"baseline + {table['factor']} x (start peak - baseline), {table.get(RECORDS[part], {}).get('source', 'measured')}"
-    containers = pod_spec(doc).get('containers', [])
+    if costed:
+        annotations[RUNTIME] = quantity(extra)
     if not containers:
         return True
-    chosen = next((c for c in containers if c['name'] == main), containers[0])
+    chosen = main_container(containers, main)
     others = sum(millicores(((c.get('resources') or {}).get('requests') or {}).get('cpu', 0))
                  for c in containers if c is not chosen)
     wanted = millicores(entry['request'])
-    if not chosen.get('resources'):
-        chosen['resources'] = {}
-    resources = chosen['resources']
-    if not resources.get('requests'):
-        resources['requests'] = {}
-    resources['requests']['cpu'] = quantity(max(10, wanted - others))
-    limit = (resources.get('limits') or {}).get('cpu')
-    if limit and millicores(limit) < millicores(resources['requests']['cpu']):
-        resources['requests']['cpu'] = limit
+    requests_of(chosen)['cpu'] = quantity(max(10, wanted - others) + extra)
+    cap(chosen)
     return True
 
 

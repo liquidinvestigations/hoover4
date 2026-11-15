@@ -337,8 +337,9 @@ def temporal(plan, public_jwks, tree=common.SOURCE.parent):
         'volumeMounts': [{'name': 'config', 'mountPath': '/etc/temporal/config/config_template.yaml',
                           'subPath': 'config_template.yaml', 'readOnly': True},
                          {'name': 'dynamic', 'mountPath': '/etc/temporal/config/dynamicconfig', 'readOnly': True}],
+        # The exec probe starts one runsc command at each period (../../zones/cpu_requests.py runtime_cost()).
         'readinessProbe': {'exec': {'command': ['temporal', 'operator', 'cluster', 'health', '--address', INTERNAL]},
-                           'periodSeconds': 5, 'timeoutSeconds': 5, 'failureThreshold': 3},
+                           'periodSeconds': 15, 'timeoutSeconds': 5, 'failureThreshold': 3},
         'resources': resources(REQUESTS['temporal'], hoover.LIMITS['temporal'])}
     # A sidecar that starts before Temporal: Temporal reads the public key once at its start and stops without it.
     keys = {'name': 'jwks', 'image': NGINX, 'restartPolicy': 'Always',

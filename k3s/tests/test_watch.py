@@ -38,7 +38,7 @@ def record(tmp_path, steps, complete=False):
     deploy = tmp_path / 'operator' / 'deploy'
     (deploy / 'records').mkdir(parents=True)
     (deploy / 'logs').mkdir()
-    (deploy / 'records' / 'r1.json').write_text(json.dumps({'complete': complete, 'error': '', 'steps': steps}))
+    (deploy / 'records' / 'r1.json').write_text(json.dumps({'complete': True, 'status': 'done' if complete else 'running', 'error': '', 'steps': steps}))
     (deploy / 'logs' / 'r1.log').write_text('')
 
 
@@ -50,7 +50,7 @@ def watch(tmp_path, *args):
 def test_watch_record_exits_at_completion(tmp_path):
     record(tmp_path, [{'name': 'stores', 'state': 'done'}], complete=True)
     out = watch(tmp_path)
-    assert out.returncode == 0 and 'complete ok' in out.stdout
+    assert out.returncode == 0 and 'done ok' in out.stdout
 
 
 def test_watch_record_exits_at_a_step_error(tmp_path):

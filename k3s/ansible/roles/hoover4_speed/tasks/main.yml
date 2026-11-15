@@ -1,0 +1,40 @@
+---
+# Measure the CPU speed and the write speed of each storage tier of the node (files/hoover4-speed.py), and write them
+# into speed/<node>.json of the state folder. The host step measures a node only when the state folder has no value
+# for it. Then the node is new, and k3s does not run yet. deploy-k3s measure-speed sets hoover4_speed_force and
+# measures again. The script refuses while k3s or a container runs, or while the load is above 5. A forced
+# measurement then fails with the reason. The host step then continues without a value, and deploy-k3s check names
+# the node.
+- name: Measure the speed of the node
+  ansible.builtin.script:
+    cmd: "hoover4-speed.py {{ hoover4_storage | to_json | quote }}"
+    executable: python3
+  become: true
+  register: hoover4_speed_script
+  changed_when: false
+  check_mode: false
+
+- name: Set the measured speed
+  ansible.builtin.set_fact:
+    hoover4_speed: "{{ hoover4_speed_script.stdout | from_json }}"
+
+- name: Refuse a measurement of a node that is not at rest
+  ansible.builtin.fail:
+    msg: "{{ inventory_hostname }} was not measured: {{ hoover4_speed.refused }}"
+  when: hoover4_speed.refused is defined and hoover4_speed_force | bool
+
+- name: Report a node that the host step did not measure
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} has no speed value: {{ hoover4_speed.refused }} The node counts as a node of the fastest
+      speed. Measure it with deploy-k3s measure-speed --target {{ inventory_hostname }}.
+  when: hoover4_speed.refused is defined and not hoover4_speed_force | bool
+
+- name: Write the speed of the node into the state folder
+  ansible.builtin.copy:
+    content: "{{ hoover4_speed | to_nice_json }}\n"
+    dest: "{{ hoover4_speed_dir }}/{{ inventory_hostname }}.json"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when: hoover4_speed.refused is not defined

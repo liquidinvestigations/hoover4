@@ -1,3 +1,8 @@
+# containerd collects the CPU statistics of every container and sandbox at this period. For each gVisor container one
+# collection starts one runsc command (about 7 ms of CPU). The default period of 1 s cost about 0.3 threads on a node
+# with 40 gVisor pods. 10 s is the housekeeping period of the kubelet.
+[plugins.'io.containerd.cri.v1.runtime']
+  stats_collect_period = "10s"
 # gVisor for the openDesk and Hoover web applications.
 [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
   runtime_type = "io.containerd.runsc.v1"

@@ -65,7 +65,9 @@ The check prints the switches of each node and the WireGuard peer table. Prepare
 3. A site without a WireGuard network connects its nodes at their LAN addresses. Give each node `lan` and declare the LAN in `vars.lans`.
 4. The cidr of each network, and of each LAN that states one, reaches the admin routes of the HTTPS frontend.
 
-The facts play reads the architecture, AVX2, the GPUs, the volume group sizes and the CPU speed of each node. Do not write them in the site file.
+The facts play reads the architecture, AVX2, the GPUs and the volume group sizes of each node. Do not write them in the site file.
+The first `up` measures the CPU speed and the write speed of each storage tier of each node before k3s starts, and keeps them.
+To measure a node again, follow [Measure the node speed](../../../k3s/Readme.md#measure-the-node-speed).
 
 ## Choose the node roles
 

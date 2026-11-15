@@ -7,9 +7,10 @@ metadata:
 handler: runsc
 overhead:
   podFixed:
-    # The measured cost of a gVisor pod outside its pod cgroup: kubelet, containerd, the shim and the runsc commands of
-    # its probes and statistics (runtimeOverhead of ../zones/cpu-requests.json). The scheduler adds it to each pod.
-    cpu: 10m
+    # The steady cost of one gVisor pod outside its pod cgroup: its part of the kubelet, containerd and the shim, and
+    # the statistics call of its sandbox (pod_fixed() of ../zones/cpu_requests.py, runtimeOverhead of
+    # ../zones/cpu-requests.json). The cost of its containers and exec probes is in its request (runtime_cost()).
+    cpu: 6m
     # The shim and the runsc process of a pod use about 14 MiB outside the pod cgroup (shimMemory of
     # ../zones/cpu-requests.json). The sentry runs in the pod cgroup, so the memory request covers it. The overhead
     # also raises the memory limit of the pod cgroup by this value.
@@ -26,9 +27,9 @@ overhead:
     # container limits, and Cloud Hypervisor used 212 to 328 MiB on the public host. With a smaller overhead a guest
     # that fills its memory, for example with the page cache of a store, exceeds the cgroup, and the kernel kills the VM.
     memory: 1Gi
-    # The measured cost of a Kata pod outside its pod cgroup: the shim and virtiofsd (runtimeOverhead of
-    # ../zones/cpu-requests.json). The VM runs in the pod cgroup, so the CPU request of the pod covers it.
-    cpu: 10m
+    # The steady cost of one Kata pod outside its pod cgroup: its part of the kubelet, containerd and the shim
+    # (pod_fixed() of ../zones/cpu_requests.py). The VM runs in the pod cgroup, so the CPU request of the pod covers it.
+    cpu: 5m
 ---
 # gVisor with nvproxy for the GPU services on the GPU nodes (../ansible/roles/hoover4_k3s registers runsc-nvproxy there).
 # The GPU nodes carry the taint hoover.dev/gpu=true:NoSchedule, so only a pod of this class or the nvidia class with

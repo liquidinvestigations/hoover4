@@ -1,6 +1,6 @@
 # The Kubernetes descheduler moves running stateless pods off nodes with a high requested share, for example after a
-# node joins. setup.sh applies this file. The scheduler then places each evicted pod by its requested CPU per thread
-# (the scheduler configuration of ../ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2).
+# node joins. setup.sh applies this file. The scheduler then places each evicted pod by the requested CPU and memory
+# shares of the nodes (the scheduler configuration of ../ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2).
 # LowNodeUtilization compares the requests of each node with the mean of all nodes (useDeviationThresholds):
 # - A node is underused when its requested CPU and its requested memory are both more than 15 points below the mean.
 # - A node is overused when its requested CPU or its requested memory is more than 15 points above the mean.

@@ -9,7 +9,7 @@ flannel-backend: {{ 'host-gw' if hoover4_single_local | bool else 'vxlan' }}
 token-file: /etc/rancher/k3s/token
 agent-token-file: /etc/rancher/k3s/agent-token
 write-kubeconfig-mode: "0600"
-# The scheduler scores the nodes by their requested CPU per thread (scheduler-config.yaml.j2).
+# The scheduler scores the nodes by their requested CPU and memory shares (scheduler-config.yaml.j2).
 kube-scheduler-arg:
   - config=/etc/rancher/k3s/scheduler-config.yaml
 # The public host runs the frontend. TopoLVM replaces the local-path volumes.
@@ -29,8 +29,9 @@ kubelet-arg:
   - max-pods=250
   # The pods must not use the memory of the system and k3s, because memory is not overcommitted.
 {% if hoover4_kubelet_reserved %}
-  # The value reserved of the site file, and the CPU that a slow node cannot use. The allocatable CPU of a node counts
-  # threads of the fastest node of the site (the speed factor of ../../../../config.py kubelet_reserved()).
+  # The memory of the value reserved of the site file, the CPU of k3s without pods, and the CPU that a slow node cannot
+  # use. The allocatable CPU of a node counts threads of the fastest node of the site (../../../../config.py
+  # kubelet_reserved()).
   - system-reserved={{ hoover4_kubelet_reserved }}
 {% endif %}
   - eviction-hard=memory.available<500Mi,nodefs.available<5%,imagefs.available<5%

@@ -24,8 +24,9 @@ secret is a reference to a private file on the node that reads it.
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
                          public_firewall, the TLS mode of a public node and its secret files
 
-The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the CPU speed, the GPUs and the volume
-groups into facts/<node>.json of the state folder. The site file does not state them.
+The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the GPUs and the volume groups
+into facts/<node>.json of the state folder. The role hoover4_speed measures the CPU speed and the disk speeds of a node
+once, while k3s does not run, into speed/<node>.json (node_speed()). The site file does not state them.
 The state folder of a site is beside the site file and has the name of the file without its extension
 (state_folder()). The site id is the domain with each . replaced by - (Site.id).
 The driver connects to a node with `ssh <node name>` and the SSH configuration of the current user. ssh_host names
@@ -1369,35 +1370,116 @@ def _cpus(text):
     return float(text[:-1]) / 1000 if text.endswith('m') else float(text)
 
 
-# The step of the speed factor of a node. A probe of the facts play varies by a few percent between runs, so the
-# rounded factor, and with it the k3s configuration, stays the same.
+# The step of the speed factor of a node. Each node is measured once at rest, so the factor stays the same until an
+# operator measures the node again (deploy-k3s measure-speed).
 SPEED_STEP = 0.05
+# The CPU table of the workloads. runtimeOverhead.node holds the measured base CPU of k3s on a node.
+CPU_TABLE = HERE / 'zones' / 'cpu-requests.json'
 
 
-def speed_factors(site, facts=None):
-    """{node: factor}: the cpu_speed of each node (its facts) divided by the highest cpu_speed of the site.
+def node_speed(folder, name):
+    """The stored speed of a node: speed/<node>.json of the state folder folder, or an empty dict.
+
+    The role hoover4_speed writes {measured, threads, load, cpu_speed, disks}. A value that adopt_facts_speed() took
+    from the facts of an earlier version has source facts.
+    """
+    try:
+        return json.loads((Path(folder) / 'speed' / f'{name}.json').read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def adopt_facts_speed(folder):
+    """Keep the cpu_speed of the facts of an earlier version as the stored speed of a node without one.
+
+    An earlier version measured cpu_speed in the facts play at each run, also under load. This version measures a
+    node only at rest, so a running site keeps its last facts value until an operator measures the node. Return the
+    adopted nodes.
+    """
+    folder = Path(folder)
+    adopted = []
+    for path in sorted((folder / 'facts').glob('*.json')):
+        try:
+            facts = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        target = folder / 'speed' / path.name
+        if facts.get('cpu_speed') and not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps({'cpu_speed': facts['cpu_speed'], 'source': 'facts'}, indent=1) + '\n')
+            target.chmod(0o600)
+            adopted.append(path.stem)
+    return adopted
+
+
+def speed_factors(site, folder=None):
+    """{node: factor}: the stored cpu_speed of each node divided by the highest cpu_speed of the site.
 
     One thread of a node with the factor 0.5 does half the work of one thread of the fastest node. A node without the
-    value has the factor 1. facts is {node: facts}, else the facts files of the state folder.
+    value has the factor 1. folder is the state folder, else the state folder of the site file.
     """
-    speeds = {n: ((facts or {}).get(n) if facts is not None else node_facts(site, n)) or {} for n in site.nodes}
-    speeds = {n: f.get('cpu_speed') for n, f in speeds.items() if f.get('cpu_speed')}
+    folder = folder or (site.state_folder() if site.path else None)
+    speeds = {n: node_speed(folder, n).get('cpu_speed') if folder else None for n in site.nodes}
+    speeds = {n: v for n, v in speeds.items() if v}
     fastest = max(speeds.values(), default=0)
     return {n: max(SPEED_STEP, round(speeds[n] / fastest / SPEED_STEP) * SPEED_STEP) if n in speeds else 1.0
             for n in site.nodes}
 
 
-def kubelet_reserved(node, factor, threads):
-    """The system-reserved value of the kubelet of a node: the site value reserved, and CPU for a slow node.
+def speed_report(site, folder=None):
+    """{node: {cpu_speed, factor, threads, measured, disks, note}} for deploy-k3s check. note says how to measure a
+    node without a value measured at rest."""
+    folder = folder or site.state_folder()
+    factors = speed_factors(site, folder)
+    out = {}
+    for name in site.nodes:
+        stored = node_speed(folder, name)
+        entry = {'cpu_speed': stored.get('cpu_speed'), 'factor': factors[name], 'threads': stored.get('threads'),
+                 'measured': stored.get('measured'), 'disks': stored.get('disks', {})}
+        how = (f'Stop k3s and every container on {name}, run deploy-k3s measure-speed --target {name}, and start k3s '
+               'again. Then run deploy-k3s up.')
+        if not stored:
+            entry['note'] = f'{name} has no speed value and counts as a node of the fastest speed. {how}'
+        elif stored.get('source') == 'facts':
+            entry['note'] = f'{name} keeps the speed of an earlier facts probe, which ran under load. {how}'
+        out[name] = entry
+    return out
 
-    The allocatable CPU of the node becomes factor x (threads - the CPU of reserved), in threads of the fastest node, so
-    the scheduler compares the requests of all nodes in one unit. The CPU reserve is rounded up to 100m.
+
+def base_cpu(table=None):
+    """{'agent': millicores, 'server': millicores}: the measured CPU of k3s on a node without pods, in threads of the
+    fastest node (runtimeOverhead.node of the CPU table). server holds the kubelet and the control plane."""
+    node = (table or json.loads(CPU_TABLE.read_text()))['runtimeOverhead']['node']
+    return {k: _cpus(node[k]) * 1000 for k in ('agent', 'server')}
+
+
+def node_threads(folder, name):
+    """The threads of a node: the stored value of its speed measurement, else the facts value cpus. The facts value
+    counts two threads for each core, also for the cores without Hyper-Threading of a hybrid CPU."""
+    stored = node_speed(folder, name).get('threads')
+    if stored:
+        return stored
+    try:
+        return json.loads((Path(folder) / 'facts' / f'{name}.json').read_text()).get('cpus', 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def kubelet_reserved(node, factor, threads, server=False, base=None):
+    """The system-reserved value of the kubelet of a node: the memory of the site value reserved, and the CPU reserve.
+
+    The allocatable CPU of the node counts threads of the fastest node: factor x threads - base, where base is the
+    measured CPU of k3s without pods (base_cpu(), the server value on the control plane). k3s needs base / factor
+    threads of a slower node. So the reserve in threads of the node is threads x (1 - factor) + base, rounded up to
+    100m. A site value reserved with cpu= replaces base, in threads of the node: threads - factor x (threads - cpu).
     """
     parts = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
-    own = _cpus(parts['cpu']) if 'cpu' in parts else 0.0
-    if factor < 1 and threads:
-        reserve = threads - factor * (threads - own)
-        parts['cpu'] = f'{int(math.ceil(reserve * 10 - 1e-9)) * 100}m'
+    if 'cpu' in parts:
+        own = _cpus(parts['cpu'])
+        reserve = threads - factor * (threads - own) if factor < 1 and threads else own
+    else:
+        reserve = (threads * (1 - factor) if threads else 0) + (base or base_cpu())['server' if server else 'agent'] / 1000
+    parts['cpu'] = f'{int(math.ceil(reserve * 10 - 1e-9)) * 100}m'
     return ','.join(f'{k}={v}' for k, v in parts.items())
 
 
@@ -1413,7 +1495,8 @@ def ansible_variables(site, private):
     registry = site.with_role('registry')
     media = calls_node(site) if site.with_role('public') else None
     nodes = {}
-    factors = speed_factors(site)
+    factors = speed_factors(site, private)
+    base = base_cpu()
     for node in site.nodes.values():
         reserved = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
         single_local = site.single and node.local
@@ -1426,8 +1509,11 @@ def ansible_variables(site, private):
             'gpu': node.has('gpu'),
             'single_local': single_local,
             'reserved': node.reserved,
-            # The kubelet value system-reserved, with the CPU of the speed factor (kubelet_reserved()).
-            'kubelet_reserved': kubelet_reserved(node, factors[node.name], node_facts(site, node.name).get('cpus', 0)),
+            # The kubelet value system-reserved, with the CPU reserve of the speed factor and of k3s (kubelet_reserved()).
+            'kubelet_reserved': kubelet_reserved(node, factors[node.name], node_threads(private, node.name),
+                                                 node.name == site.control_plane, base),
+            # The host step measures the speed of a node without a stored value (role hoover4_speed).
+            'speed_stored': bool(node_speed(private, node.name)),
             'reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),
             'reserved_cpus': _cpus(reserved.get('cpu', '2')),
             'storage': dict(node.storage),
@@ -1446,6 +1532,7 @@ def ansible_variables(site, private):
     # The delegated tasks write into the state folder from the operator container, whose home folder is read-only.
     return {'hoover4_state_dir': str(private), 'hoover4_tokens_dir': str(private / 'staging' / 'tokens'),
             'hoover4_kubeconfig': str(private / 'kubeconfig'), 'hoover4_facts_dir': str(private / 'facts'),
+            'hoover4_speed_dir': str(private / 'speed'),
             'hoover4_domain': site.domain, 'hoover4_nodes': nodes}
 
 

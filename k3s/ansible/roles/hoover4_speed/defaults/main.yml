@@ -1,0 +1,3 @@
+---
+# deploy-k3s measure-speed sets it, so a node with a stored value is measured again, and a refusal fails the play.
+hoover4_speed_force: false

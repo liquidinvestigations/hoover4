@@ -11,9 +11,10 @@ import cpu_requests  # noqa: E402
 import temporal  # noqa: E402
 
 
-def site_request(key):
-    """The measured CPU request of a shared store workload (part site of cpu-requests.json)."""
-    return cpu_requests.TABLE['site'][key]['request']
+def site_request(key, extra=1):
+    """The measured CPU request of a shared store workload (part site of cpu-requests.json), with the runtime cost of
+    its pod (cpu_requests.runtime_cost()): 1m for one gVisor container without an exec probe."""
+    return f"{int(cpu_requests.millicores(cpu_requests.TABLE['site'][key]['request'])) + extra}m"
 
 
 def objects(stores='{nodes: [server-a, worker-b]}', zones=2):

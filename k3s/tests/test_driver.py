@@ -302,6 +302,17 @@ def test_a_failed_step_lets_the_running_steps_finish_and_starts_no_later_step(en
     assert ctx.records.load(record['id'])['error'] == 'ingress: ingress broke'
 
 
+def test_measure_speed_runs_only_the_forced_speed_play(env):
+    ctx = env.make('remote.yml')
+    deploy.measure_speed(ctx, ['worker-b'])
+    playbooks = [c for c in env.commands() if c[0] == 'ansible-playbook']
+    assert len(playbooks) == 1 and playbooks[0][-2:] == ['--tags', 'speed']
+    assert playbooks[0][playbooks[0].index('--limit') + 1] == 'worker-b'
+    extras = [json.loads(playbooks[0][i + 1]) for i, a in enumerate(playbooks[0]) if a == '-e']
+    assert extras[-1] == {'hoover4_speed_force': True}
+    assert (env.private / 'speed').is_dir()
+
+
 def test_the_independent_steps_act_on_different_nodes():
     assert not deploy.independent('hosts:k3s', 'hosts:prepare')
     assert not deploy.independent('cluster', 'hosts:verify')
@@ -326,7 +337,10 @@ def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(
     assert playbooks[0][1:3] == ['-i', str(ctx.site_path)]
     assert json.loads(playbooks[0][playbooks[0].index('-e') + 1])['hoover4_nodes']['worker-b']['ssh_host'] == 'worker-b'
     assert not [c for c in env.commands() if c[0] in ('sudo', 'ssh')]
-    assert state['worker-b']['os_family'] == 'RedHat' and state['server-a'] == {'reachable': False, 'ready': False}
+    assert state['worker-b']['os_family'] == 'RedHat'
+    assert {k: v for k, v in state['server-a'].items() if k != 'speed'} == {'reachable': False, 'ready': False}
+    # The check names the stored speed of each node, and how to measure a node without one.
+    assert 'deploy-k3s measure-speed --target server-a' in state['server-a']['speed']['note']
     assert any('the operator tools are missing' in p for p in problems)
     assert any(f'the admin kubeconfig {ctx.kubeconfig} is missing' in p for p in problems)
     # zone-b of the fixture is a zone of the earlier store layout, and the site has three store nodes.

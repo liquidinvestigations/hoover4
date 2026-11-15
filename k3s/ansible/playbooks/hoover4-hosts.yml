@@ -20,6 +20,18 @@
     - role: hoover4_public_firewall
       when: hoover4_public_firewall | bool
 
+# The speed of a node without a stored value, before the step hosts:k3s starts k3s on it (role hoover4_speed).
+# deploy-k3s measure-speed runs only this play, with hoover4_speed_force.
+- name: Measure the speed of each new node
+  hosts: hoover4
+  gather_facts: false
+  become: false
+  strategy: free
+  tags: [speed]
+  roles:
+    - role: hoover4_speed
+      when: hoover4_speed_force | default(false) | bool or not hoover4_speed_stored | bool
+
 # The hubs first: a new peer works when both of its nodes have it.
 - name: Add the WireGuard peers of each node that the installer configures
   hosts: hoover4

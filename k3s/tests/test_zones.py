@@ -166,11 +166,91 @@ def test_the_shared_stores_carry_their_measured_request():
     assert items[0]['spec']['template']['spec']['containers'][0]['resources']['requests']['cpu'] == '720m'
 
 
-def test_the_runtime_classes_carry_the_measured_overhead():
+def test_the_runtime_classes_carry_the_overhead_of_the_formula():
     classes = {d['metadata']['name']: d for d in yaml.safe_load_all((K3S / 'cluster/runtimeclasses.yaml').read_text()) if d}
     measured = cpu_requests.load()['runtimeOverhead']
     for name in ('gvisor', 'kata'):
         entry = measured[name]
-        idle, start = (cpu_requests.millicores(entry[k]) for k in ('idle', 'start'))
-        assert cpu_requests.millicores(entry['overhead']) == cpu_requests.request_of(start, idle, cpu_requests.load()['factor'])
+        assert cpu_requests.millicores(entry['overhead']) == cpu_requests.pod_fixed(name)
         assert classes[name]['overhead']['podFixed'] == {'cpu': entry['overhead'], 'memory': entry['memoryOverhead']}
+
+
+OVERHEAD = {'runtimeOverhead': {'kubeletPerPod': 3.3, 'shimPerPod': 1.7, 'statsPeriodSeconds': 10,
+                                'runscStatsCpuSeconds': 0.007, 'execCpuSeconds': 0.045}}
+
+
+def test_the_fixed_overhead_is_the_kubelet_the_shim_and_the_statistics_of_the_sandbox():
+    # 3.3 + 1.7 + 7 ms / 10 s = 5.7m, rounded up. Kata and runc have no runsc statistics call.
+    assert cpu_requests.pod_fixed('gvisor', OVERHEAD) == 6
+    assert cpu_requests.pod_fixed('kata', OVERHEAD) == 5
+
+
+def test_the_runtime_cost_counts_the_containers_and_the_exec_probes_at_their_period():
+    spec = {'containers': [
+        {'name': 'a', 'readinessProbe': {'exec': {'command': ['true']}, 'periodSeconds': 10},
+         'livenessProbe': {'exec': {'command': ['true']}, 'periodSeconds': 30},
+         'startupProbe': {'exec': {'command': ['true']}, 'periodSeconds': 1}},
+        {'name': 'b', 'readinessProbe': {'httpGet': {'path': '/', 'port': 80}, 'periodSeconds': 1}}],
+        'initContainers': [{'name': 'side', 'restartPolicy': 'Always'}, {'name': 'once'}]}
+    # 3 gVisor containers x 0.7m + 45 ms / 10 s + 45 ms / 30 s = 2.1 + 4.5 + 1.5 = 8.1m, rounded up. The startup probe
+    # and the HTTP probe do not count.
+    assert cpu_requests.runtime_cost(spec, 'gvisor', OVERHEAD) == 9
+    # Kata collects the statistics in its shim, so only the exec probes count.
+    assert cpu_requests.runtime_cost(spec, 'kata', OVERHEAD) == 6
+    assert cpu_requests.runtime_cost({'containers': [{'name': 'a'}]}, 'runc', OVERHEAD) == 0
+
+
+def test_the_render_adds_the_runtime_cost_once_to_the_main_container():
+    table = dict(TABLE, **OVERHEAD)
+    probe = {'exec': {'command': ['true']}, 'periodSeconds': 10}
+    doc = workload('xwiki', [{'name': 'xwiki', 'readinessProbe': probe, 'resources': {'requests': {'cpu': '25m'}}}])
+    assert cpu_requests.apply(doc, 'statefulset/xwiki', 'zone', table=table)
+    # 2230m of the table, and 0.7m + 4.5m of the runtime, rounded up to 6m.
+    assert doc['spec']['template']['spec']['containers'][0]['resources']['requests']['cpu'] == '2236m'
+    assert doc['spec']['template']['metadata']['annotations']['hoover.dev/cpu-runtime'] == '6m'
+    other = workload('other', [{'name': 'main', 'readinessProbe': probe, 'resources': {'requests': {'cpu': '25m'}}}])
+    for _ in range(2):
+        assert not cpu_requests.apply(other, 'statefulset/other', 'zone', table=table)
+        assert other['spec']['template']['spec']['containers'][0]['resources']['requests']['cpu'] == '31m'
+    # A store of the site without runtimeClassName runs with runc.
+    runc = workload('other', [{'name': 'main', 'resources': {'requests': {'cpu': '25m'}}}])
+    cpu_requests.apply(runc, 'statefulset/other', 'site', table=table)
+    assert runc['spec']['template']['spec']['containers'][0]['resources']['requests']['cpu'] == '25m'
+    # A zone pod with the runc label has no runsc statistics call.
+    labelled = workload('other', [{'name': 'main', 'resources': {'requests': {'cpu': '25m'}}}])
+    labelled['spec']['template']['metadata']['labels'] = {'hoover.dev/runtime': 'runc'}
+    assert cpu_requests.runtime(labelled, 'zone') == 'runc'
+    assert cpu_requests.runtime(workload('x', []), 'hoover') == 'gvisor'
+
+
+def test_the_runtime_cost_stays_below_the_cpu_limit():
+    table = dict(TABLE, **OVERHEAD)
+    probe = {'exec': {'command': ['true']}, 'periodSeconds': 1}
+    doc = workload('other', [{'name': 'main', 'readinessProbe': probe,
+                              'resources': {'requests': {'cpu': '25m'}, 'limits': {'cpu': '50m'}}}])
+    cpu_requests.apply(doc, 'statefulset/other', 'zone', table=table)
+    assert doc['spec']['template']['spec']['containers'][0]['resources']['requests']['cpu'] == '50m'
+
+
+def test_the_post_renderer_removes_no_op_probes_and_lengthens_short_periods():
+    sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
+    import postrender
+    exit0 = {'exec': {'command': ['sh', '-c', 'exit 0\n']}, 'periodSeconds': 20}
+    doc = {'kind': 'StatefulSet', 'metadata': {'name': 'ums-provisioning-prefill'}, 'spec': {'template': {'spec': {
+        'containers': [{'name': 'main', 'livenessProbe': dict(exit0), 'readinessProbe': dict(exit0),
+                        'startupProbe': {'exec': {'command': ['/bin/bash', '-c', 'exit 0\n']}}}],
+        'initContainers': None}}}}
+    postrender.probes(doc, 'statefulset/ums-provisioning-prefill')
+    assert doc['spec']['template']['spec']['containers'][0] == {'name': 'main'}
+    redis = {'kind': 'StatefulSet', 'metadata': {'name': 'redis-master'}, 'spec': {'template': {'spec': {'containers': [
+        {'name': 'redis', 'readinessProbe': {'exec': {'command': ['/bin/bash', '-ec', 'x']}, 'periodSeconds': 1},
+         'livenessProbe': {'exec': {'command': ['/bin/bash', '-ec', 'y']}, 'periodSeconds': 5}}]}}}}
+    postrender.probes(redis, 'statefulset/redis-master')
+    c = redis['spec']['template']['spec']['containers'][0]
+    assert c['readinessProbe']['periodSeconds'] == 10 and c['livenessProbe']['periodSeconds'] == 10
+    assert c['readinessProbe']['exec'] == {'command': ['/bin/bash', '-ec', 'x']}
+    memcached = {'kind': 'Deployment', 'metadata': {'name': 'memcached'}, 'spec': {'template': {'spec': {'containers': [
+        {'name': 'memcached', 'livenessProbe': {'exec': {'command': ['pgrep', 'memcached']}, 'periodSeconds': 10}}]}}}}
+    postrender.probes(memcached, 'deployment/memcached')
+    assert memcached['spec']['template']['spec']['containers'][0]['livenessProbe'] == \
+        {'tcpSocket': {'port': 11211}, 'periodSeconds': 10}

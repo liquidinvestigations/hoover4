@@ -1,5 +1,5 @@
 # Every pod of a zone runs in gVisor unless it names another runtime. A zone has no home node: the scheduler places
-# each pod on the node with the lowest requested CPU per thread (the k3s scheduler configuration of
+# each pod by the requested CPU and memory shares of the nodes (the k3s scheduler configuration of
 # ../../ansible/roles/hoover4_k3s), and a pod with a local volume stays on the node of its volume (TopoLVM). A pod that names a node, such as a service that reaches the internet from the public
 # node, keeps its nodeSelector.
 # The policy covers Helm hook Jobs too, because Helm does not pass hooks through the post-renderer.

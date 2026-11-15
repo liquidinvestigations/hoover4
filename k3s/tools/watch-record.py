@@ -5,8 +5,8 @@ It prints one line when a step starts, ends or fails, so it can feed a monitor t
 It reads only the record and its log in the state folder of the site, so it needs no cluster access.
 
 Exit codes:
-  0  the record is complete without an error
-  1  the record or a step has an error
+  0  the record ended with the status done and without an error
+  1  the record or a step has an error, or the record ended with another status
   2  stall: no step changed and the log did not grow for --stall seconds
   3  a running step is older than its limit (STEP_LIMITS, or --limit NAME=SECONDS)
   4  the --deadline passed
@@ -101,9 +101,10 @@ def main():
                     error = f" error={step['error'][:300]}" if step.get('error') else ''
                     print(f"step {step['name']} {step.get('state')}{error}", flush=True)
         failed = [s['name'] for s in data.get('steps', []) if s.get('error')]
-        if data.get('complete'):
-            ok = not data.get('error') and not failed
-            print(f"record {record.stem} complete {'ok' if ok else 'with errors: ' + ', '.join(failed)}", flush=True)
+        # The key complete of a record marks an up of all nodes. The status says whether the run ended.
+        if data.get('status', 'running') != 'running':
+            ok = data['status'] == 'done' and not data.get('error') and not failed
+            print(f"record {record.stem} {data['status']} {'ok' if ok else 'with errors: ' + ', '.join(failed)}", flush=True)
             return 0 if ok else 1
         if failed:
             print(f"record {record.stem} failed steps: {', '.join(failed)}", flush=True)

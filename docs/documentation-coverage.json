@@ -3354,6 +3354,25 @@
       "no_screenshot_reason": "The capability changes the node of the store pods, the pod priority and the site file. No page of the portal or of a zone application changes."
     },
     {
+      "id": "F-admin-62",
+      "source": [
+        "k3s/driver/deploy.py",
+        "k3s/deploy-k3s",
+        "k3s/ansible/roles/hoover4_speed/files/hoover4-speed.py",
+        "k3s/config.py",
+        "k3s/zones/cpu_requests.py",
+        "k3s/cluster/runtimeclasses.yaml",
+        "k3s/zones/postrender.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#measure-the-node-speed",
+        "docs/operations/k3s/Cluster_Installation.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability changes the host steps, the kubelet reserve, the pod requests and the probes. No page of the portal or of a zone application changes."
+    },
+    {
       "id": "F-docs-01",
       "source": [
         "website/backend/src/api/manual.rs",

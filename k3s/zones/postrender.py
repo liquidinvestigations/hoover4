@@ -23,6 +23,9 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
 - A suspended CronJob stays suspended, so an update does not resume a CronJob that an operator suspended.
 - A Job that the chart names by the release revision gets a name from a hash of its content (REVISION_JOBS).
 - The runtime exceptions of EXCEPTIONS run in Kata or with runc instead of gVisor.
+- Probes: each exec probe starts one runtime command at each period (cpu_requests.py runtime_cost()). probes()
+  removes the exec probes that always pass, replaces an exec probe with its equal TCP probe, and lengthens the
+  periods of PROBE_PERIODS.
 Usage: postrender.py <zone namespace>
 The system Python runs this file, because the post-renderer needs PyYAML.
 """
@@ -63,6 +66,25 @@ APP_WORKLOADS = {
 }
 
 
+def probes(doc, key):
+    """Remove the exec probes of NO_OP_COMMANDS, use the TCP probes of TCP_PROBES and the periods of PROBE_PERIODS."""
+    for c in (pod_spec(doc).get('containers') or []) + (pod_spec(doc).get('initContainers') or []):
+        for kind in ('livenessProbe', 'readinessProbe', 'startupProbe'):
+            probe = c.get(kind)
+            if not probe:
+                continue
+            command = (probe.get('exec') or {}).get('command')
+            # The chart commands end with a line break.
+            if command and [part.strip() for part in command] in [list(n) for n in NO_OP_COMMANDS]:
+                del c[kind]
+                continue
+            if command and (key, c['name']) in TCP_PROBES:
+                del probe['exec']
+                probe['tcpSocket'] = {'port': TCP_PROBES[(key, c['name'])]}
+            if (key, c['name'], kind) in PROBE_PERIODS:
+                probe['periodSeconds'] = PROBE_PERIODS[(key, c['name'], kind)]
+
+
 def operator_values(zone):
     """The effective operator settings of a zone: the saved revision in HOOVER4_SETTINGS_REVISION, else the newest.
     An installation without operator state gets the defaults of the registry."""
@@ -84,6 +106,21 @@ def disabled_app(name, values):
         if values.get(f'app.{app}') == 'false' and any(fnmatch.fnmatchcase(name, p) for p in patterns):
             return app
     return None
+# The probes whose period is shorter than needed: (key, container, probe): seconds. The probe of a pod at rest
+# repeats at this period. A start waits for the first passed readiness probe, at most one period after the start.
+PROBE_PERIODS = {
+    # A Nextcloud status request every 3 s.
+    ('deployment/opendesk-nextcloud-aio', 'aio', 'readinessProbe'): 10,
+    # Redis pings every 1 s and every 5 s in Kata.
+    ('statefulset/redis-master', 'redis', 'readinessProbe'): 10,
+    ('statefulset/redis-master', 'redis', 'livenessProbe'): 10,
+}
+# The exec probes that have an equal TCP probe: (key, container): port. pgrep of memcached finds the process, and the
+# TCP probe finds the listening port of the same process.
+TCP_PROBES = {('deployment/memcached', 'memcached'): 11211}
+# An exec probe with one of these commands always passes. Kubernetes counts a container without such a probe as
+# alive and ready, so the probe has no effect apart from its cost.
+NO_OP_COMMANDS = (['sh', '-c', 'exit 0'], ['/bin/sh', '-c', 'exit 0'], ['/bin/bash', '-c', 'exit 0'])
 CONTROLLERS = {'Deployment': 'deployment', 'StatefulSet': 'statefulset', 'DaemonSet': 'daemonset', 'CronJob': 'cronjob'}
 # The chart stores that run in Kata. volumes: the volume or claim template name and its mount directory in the store
 # container. user: uid:gid of the store process, which also owns a new file system. The command of the container,
@@ -362,6 +399,7 @@ def overlay(documents, namespace):
                 hashlib.sha256(JITSI_TURN.encode()).hexdigest()[:16]
         doc['metadata'].setdefault('namespace', namespace)
         node_bound(doc)
+        probes(doc, key)
         cpu_policy.apply(doc)
         memory(doc)
         main = next(iter(REQUESTS.get(key) or MEMORY.get(key) or {}), None)

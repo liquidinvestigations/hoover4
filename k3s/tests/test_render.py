@@ -882,3 +882,23 @@ def test_the_probe_reports_an_open_and_a_refused_port_as_open():
     server.close()
     out = subprocess.run([sys.executable, '-c', turn_peers.PROBE, '127.0.0.1', str(port)], capture_output=True, text=True)
     assert out.stdout.strip() == 'open'
+
+
+def test_a_compose_check_that_fetches_one_local_url_becomes_an_http_probe(tmp_path):
+    def check(test, name='x'):
+        return manifests.probe({'healthcheck': {'test': test}}, name)
+    fetch = ['CMD-SHELL', "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=5)\""]
+    assert check(fetch)['httpGet'] == {'path': '/health', 'port': 8085}
+    clamav = ['CMD', 'python3', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen("
+              "'http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+    assert check(clamav)['httpGet'] == {'path': '/health', 'port': 8000}
+    assert check('wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1')['httpGet'] == {'path': '/ping', 'port': 8123}
+    scanner = ['CMD', '/usr/local/bin/regex-entity-scanner', '--health-check']
+    assert check(scanner, 'hoover4-regex-entity-scanner')['httpGet'] == {'path': '/health', 'port': 19705}
+    # A check that does more than one fetch stays an exec probe.
+    assert 'exec' in check(['CMD', 'redis-cli', 'ping'])
+    assert 'exec' in check(['CMD-SHELL', 'wget -q http://127.0.0.1:1/a && wget -q http://127.0.0.1:2/b'])
+    rendered = items_of(target('single-node.yml', 'zone-a', tmp_path))
+    probes = {i['metadata']['name']: c.get('readinessProbe') for i in rendered if i['kind'] in ('Deployment', 'StatefulSet')
+              for c in i['spec']['template']['spec']['containers']}
+    assert 'httpGet' in probes['hoover4-clamav'] and 'httpGet' in probes['hoover4-tesseract-cpu']

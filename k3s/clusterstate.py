@@ -6,8 +6,9 @@ hoover.dev/state=secret. The annotation hoover.dev/state-path names the path of 
 `content` holds the file.
 
   ConfigMaps  zone-state.json, operator/ (the operator settings, the apply operations and their logs, the backup and
-              relay state), operations/ (the logs of the zone operations of the runner), facts/ (the host facts) and
-              frontend/local-ca.crt (the root certificate of the internal CA of the frontend)
+              relay state), operations/ (the logs of the zone operations of the runner), facts/ (the host facts),
+              speed/ (the measured CPU and disk speeds of the nodes) and frontend/local-ca.crt (the root certificate of
+              the internal CA of the frontend)
   Secrets     zones/ (the zone secrets, the openDesk values, the master passwords, fixture-user-passwords.json with
               the passwords of the zone users of zones/zone-users.py, and passwords.md with the login table)
 
@@ -47,7 +48,7 @@ ENV = 'HOOVER4_CLUSTER_STATE'
 LOG_LIMIT = 256 * 1024
 # kind: (label value, files, folders, manifest, lock). The paths are relative to the state folder.
 KINDS = {
-    'configmap': ('file', ('zone-state.json', 'frontend/local-ca.crt'), ('operator', 'operations', 'facts'),
+    'configmap': ('file', ('zone-state.json', 'frontend/local-ca.crt'), ('operator', 'operations', 'facts', 'speed'),
                   '.cluster-state.json', '.cluster-state.lock'),
     'secret': ('secret', (), ('zones',), 'zones/.cluster-state.json', 'zones/.cluster-state.lock'),
 }

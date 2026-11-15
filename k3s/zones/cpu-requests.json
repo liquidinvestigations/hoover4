@@ -1,5 +1,5 @@
 {
- "about": "CPU requests of the zone and site workloads from telemetry, by <kind>/<name>: part zone (openDesk, postrender.py), part hoover (../hoover/manifests.py) and part site (the shared stores of hoover-stores, ../hoover/stores). startPeak is the highest CPU rate (1 min) of a pod from its start until Ready plus 120 s, in a measured zone create (zone, hoover) or store start (site). baseline is the median CPU rate of the pods in an idle period after it. request = baseline + factor x (startPeak - baseline), rounded up to 10m. cpu_requests.py measure rebuilds the table from Prometheus. measured (zone, hoover) and measuredSite (site) name the measured period and the idle period in Unix seconds. The pod gets the request and the annotations of its basis. A workload without an entry keeps the request of cpu-policy.json or of its installer.",
+ "about": "CPU requests of the zone and site workloads from telemetry, by <kind>/<name>: part zone (openDesk, postrender.py), part hoover (../hoover/manifests.py) and part site (the shared stores of hoover-stores, ../hoover/stores). startPeak is the highest CPU rate (1 min) of a pod from its start until Ready plus 120 s, in a measured zone create (zone, hoover) or store start (site). baseline is the median CPU rate of the pods in an idle period after it. request = baseline + factor x (startPeak - baseline), rounded up to 10m. cpu_requests.py measure rebuilds the table from Prometheus. measured (zone, hoover) and measuredSite (site) name the measured period and the idle period in Unix seconds. The pod gets the request and the annotations of its basis. A workload without an entry keeps the request of cpu-policy.json or of its installer. Each pod request also gets the runtime cost of its containers and exec probes (runtimeOverhead).",
  "factor": 0.2,
  "measured": {
   "source": "zone create of 2026-11-14",
@@ -405,19 +405,24 @@
   }
  },
  "runtimeOverhead": {
-  "about": "The CPU of a pod outside its pod cgroup, in threads of the fastest node: kubelet, containerd, the shim and the runsc or Kata commands of its probes and statistics, measured from system.slice of each node against its count of gVisor sandboxes and Kata VMs. The idle value is a zone at rest. The start value is the 10 minutes after a zone create. overhead = idle + factor x (start - idle), rounded up to 10m, the rule of the requests. ../cluster/runtimeclasses.yaml holds the values as overhead.podFixed. shimMemory is the memory of the shim and the runsc process of one gVisor pod outside its pod cgroup (proportional set size, about 13.5 MiB on each node). The gVisor memoryOverhead is about twice that value. The Kata memoryOverhead covers the guest memory and the VMM (../cluster/runtimeclasses.yaml).",
-  "measured": "2026-11-15, site of three nodes, one and two zones",
+  "about": "The steady CPU that k3s and the runtime spend for a node and for each pod outside the pod cgroups, in threads of the fastest node. node: the k3s process of a node without pods (agent: the kubelet; server: the kubelet and the control plane). The kubelet grows by kubeletPerPod and the containerd shim and containerd by shimPerPod for each pod (millicores). containerd collects the statistics of each gVisor container and sandbox every statsPeriodSeconds with one runsc command of runscStatsCpuSeconds. An exec probe starts one command of execCpuSeconds at each period. cpu_requests.py turns the values into the RuntimeClass overhead (pod_fixed(), ../cluster/runtimeclasses.yaml) and into the part of each pod request that depends on its containers and exec probes (runtime_cost()). The values are steady costs, so the start-peak factor does not apply. shimMemory is the memory of the shim and the runsc process of one gVisor pod outside its pod cgroup (proportional set size, about 13.5 MiB on each node). The gVisor memoryOverhead is about twice that value. The Kata memoryOverhead covers the guest memory and the VMM (../cluster/runtimeclasses.yaml).",
+  "measured": "2026-11-15, site of three nodes with two zones: CPU of the k3s service cgroup by process over 3 x 60 s, the count of runsc commands, and 40 timed runsc statistics calls on each node",
+  "node": {
+   "agent": "130m",
+   "server": "270m"
+  },
+  "kubeletPerPod": 3.3,
+  "shimPerPod": 1.7,
+  "statsPeriodSeconds": 10,
+  "runscStatsCpuSeconds": 0.007,
+  "execCpuSeconds": 0.045,
   "gvisor": {
-   "idle": "5m",
-   "start": "21m",
-   "overhead": "10m",
+   "overhead": "6m",
    "shimMemory": "14Mi",
    "memoryOverhead": "32Mi"
   },
   "kata": {
-   "idle": "5m",
-   "start": "5m",
-   "overhead": "10m",
+   "overhead": "5m",
    "memoryOverhead": "1Gi"
   }
  }

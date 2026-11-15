@@ -130,8 +130,39 @@ The cidr of each network, and of each LAN that states one, reaches the admin rou
 
 ### Read the host facts.
 
-The facts play (role `hoover4_facts`) reads each node and writes `facts/<node>.json` of the state folder: the architecture (`uname -m`), AVX2 (`/proc/cpuinfo`), the name and memory of each GPU (`nvidia-smi`), the size of each volume group and of its k3s data volumes, the interface of each address, and `cpu_speed` (the work of one thread in one CPU second while all threads run a one-second probe).
+The facts play (role `hoover4_facts`) reads each node and writes `facts/<node>.json` of the state folder: the architecture (`uname -m`), AVX2 (`/proc/cpuinfo`), the name and memory of each GPU (`nvidia-smi`), the size of each volume group and of its k3s data volumes, and the interface of each address.
 `deploy-k3s check` and the step `hosts:prepare` run it. The site file has no `architecture` and no `avx2`.
+
+### Measure the node speed.
+
+The role `hoover4_speed` measures each node once, while k3s does not run on it, and writes `speed/<node>.json` of the state folder:
+
+- `threads`: the threads of the node.
+- `cpu_speed`: the work of one thread in one CPU second while all threads run a zlib and a Python probe for 0.5 s each.
+- `disks`: the write speed of each storage tier of the node in MiB/s. The role writes 1 GiB with direct I/O into a new logical volume of the volume group of the tier, and then deletes the volume.
+
+The step `hosts:prepare` measures a node without a stored value, before the step `hosts:k3s` starts k3s on it.
+Then `up` uses the stored values and does not measure again. The cluster copy of the state keeps `speed/`.
+`deploy-k3s check` prints the values of each node. The disk speeds do not change the placement.
+
+Measure a node again, for example after a change of its CPU or of a frequency setting:
+
+```sh
+ssh <node> sudo systemctl stop k3s-agent        # the unit k3s on the control plane
+ssh <node> 'echo 1 | sudo tee /sys/fs/cgroup/kubepods.slice/cgroup.kill'
+ssh <node> 'echo 1 | sudo tee /sys/fs/cgroup/system.slice/k3s-agent.service/cgroup.kill'
+ssh <node> sudo /usr/local/bin/k3s-killall.sh
+k3s/deploy-k3s measure-speed --site k3s/private/<site>.yml --target <node>
+ssh <node> sudo systemctl start k3s-agent
+k3s/deploy-k3s up --site k3s/private/<site>.yml --target all
+```
+
+`measure-speed` refuses a node where k3s or a container runs, or whose 1-minute load is above 5, and names the reason.
+The node keeps its earlier value. `k3s-killall.sh` stops only the runc containers of k3s. The gVisor and Kata sandboxes
+run in `kubepods.slice`, and their shims stay in the cgroup of the k3s unit after the stop, so the two `cgroup.kill`
+writes stop them. The pods of the node start again with k3s. Their data stays on their volumes.
+The next `up` gives the new factor to k3s, which restarts k3s on each node whose reserve changes.
+A site of an earlier version measured `cpu_speed` in the facts play at every run, also under load. Its nodes keep the last facts value as their stored value. `deploy-k3s check` names each such node and the commands above.
 The cluster step labels the nodes from the facts: `cpu.hoover/avx2=true`, `gpu.hoover/count` and `gpu.hoover/memory-mib` (the memory of the smallest GPU of the node). A node without the fact loses the label.
 The cluster step and the image steps stop with the name of a node that has no facts.
 
@@ -156,24 +187,42 @@ python3 k3s/zones/zone.py apply zone-x [--stores site|local] [--dataset name:nod
 python3 k3s/zones/zone.py delete zone-x
 ```
 
-- A zone has no home node. The scheduler places each new pod on the node with the lowest requested CPU per thread
-  (requested CPU divided by allocatable CPU). The k3s scheduler configuration of the server
+- A zone has no home node. The k3s scheduler configuration of the server
   ([ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2](ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2))
-  scores the nodes with `NodeResourcesFit` `LeastAllocated`, CPU weight 3, memory weight 1, plugin weight 10. A node that
-  joins has no requests, so it takes the new pods first, without a deployment step.
-- The allocatable CPU of a node counts threads of the fastest node of the site. The facts play measures `cpu_speed`:
-  the work of one thread in one CPU second while all threads run a zlib and a Python probe for 0.5 s each. The speed
-  factor of a node is its `cpu_speed` divided by the highest one, in steps of 0.05 (`config.py` `speed_factors()`). The
-  k3s role gives the kubelet `system-reserved` CPU of `threads - factor x (threads - reserved CPU)`, so a node with half
-  the speed offers half its threads. The node value `reserved` with `cpu=` holds the CPU of k3s and containerd at rest.
-  A node that joins gets its factor from its own facts. Run `deploy-k3s up --target all` when the new node is faster
-  than the others, so their factors follow.
-- Each pod also requests the measured cost of its runtime outside its pod cgroup: kubelet, containerd, the shim and the
-  runsc commands of its probes and statistics. The RuntimeClasses ([cluster/runtimeclasses.yaml](cluster/runtimeclasses.yaml))
-  add it as `overhead.podFixed`, 10m CPU for gVisor and for Kata, 32 MiB memory for gVisor (the shim and its runsc
-  process use about 14 MiB) and 1 GiB for Kata (the guest and the VMM). `runtimeOverhead` of
-  [zones/cpu-requests.json](zones/cpu-requests.json) records the measurement. A node with many small pods therefore
-  takes fewer of them.
+  scores the nodes with two plugins of weight 10. `NodeResourcesFit` `LeastAllocated` prefers the node with the lowest
+  requested share of its allocatable CPU and memory (weight 1 each). `NodeResourcesBalancedAllocation` prefers the node
+  whose requested CPU share and memory share are nearest after the pod (weight 1 each). So a pod with much memory and
+  little CPU prefers a node with free memory and little free CPU, and the reverse. A node that joins has no requests,
+  so it takes the new pods first, without a deployment step.
+- The allocatable CPU of a node counts threads of the fastest node of the site. The speed factor of a node is its
+  stored `cpu_speed` divided by the highest one, in steps of 0.05 (`config.py` `speed_factors()`). A node without a
+  stored value has the factor 1. The k3s role gives the kubelet the `system-reserved` CPU
+  `threads x (1 - factor) + base` (`config.py` `kubelet_reserved()`), so the allocatable CPU is
+  `factor x threads - base`. `base` is the measured CPU of k3s on a node without pods, in threads of the fastest node:
+  130m for an agent (the kubelet) and 270m for the server (the kubelet and the control plane), `runtimeOverhead.node` of
+  [zones/cpu-requests.json](zones/cpu-requests.json). k3s needs `base / factor` threads of a slower node. The node value
+  `reserved` with `cpu=` replaces `base`, in threads of the node. A site needs it only when another service of the host
+  uses CPU. The memory of `reserved` stays the memory reserve.
+- Each pod also requests the steady CPU that it causes outside its pod cgroup (`runtimeOverhead` of
+  [zones/cpu-requests.json](zones/cpu-requests.json), [zones/cpu_requests.py](zones/cpu_requests.py)):
+  - The RuntimeClasses ([cluster/runtimeclasses.yaml](cluster/runtimeclasses.yaml)) add the part that is the same for
+    each pod as `overhead.podFixed` (`pod_fixed()`): 3.3m of the kubelet, 1.7m of containerd and the shim, and for
+    gVisor 0.7m of the statistics call of the sandbox. That gives 6m for gVisor and 5m for Kata.
+  - The render adds the part of the containers and the exec probes of the pod to the request of its main container
+    (`runtime_cost()`), and names it in the annotation `hoover.dev/cpu-runtime`. containerd collects the statistics of
+    each gVisor container every 10 s with one runsc command of about 7 ms (0.7m). Each liveness and readiness exec
+    probe starts one command of about 45 ms at each period (4.5m at 10 s).
+  - The memory overhead is 32 MiB for gVisor (the shim and its runsc process use about 14 MiB) and 1 GiB for Kata
+    (the guest and the VMM).
+  - The values are steady costs, so the start-peak factor of the requests does not apply to them. A runc pod outside
+    the renders, for example a platform DaemonSet, has no RuntimeClass, and its cost stays in the free CPU of the node.
+- The renders keep the runtime cost low. containerd collects the CPU statistics every 10 s
+  (`stats_collect_period` of [ansible/roles/hoover4_k3s/templates/runtimes.toml.j2](ansible/roles/hoover4_k3s/templates/runtimes.toml.j2)).
+  The default of 1 s started one runsc command per gVisor container every second. A Compose check that only fetches
+  one local URL becomes an HTTP probe, which the kubelet makes itself ([hoover/manifests.py](hoover/manifests.py)
+  `http_probe()`). The post-renderer removes the openDesk exec probes that always pass (`exit 0`), uses a TCP probe
+  for memcached, and lengthens the Nextcloud and Redis probe periods to 10 s (`probes()` of
+  [zones/postrender.py](zones/postrender.py)). The Temporal readiness probe of the site runs every 15 s.
 - The memory request of a pod follows its measured use ([zones/memory-limits.json](zones/memory-limits.json) `requests`,
   [hoover/manifests.py](hoover/manifests.py) `REQUESTS`). The CPU request of a measured workload is
   `baseline + 0.2 x (start peak - baseline)`, rounded up to 10m, from [zones/cpu-requests.json](zones/cpu-requests.json).
@@ -239,6 +288,7 @@ k3s/deploy-k3s up --site <file> --target all [--ask-become-pass]
 k3s/deploy-k3s down --site <file> --target all
 k3s/deploy-k3s up --site <file> --target all --start
 k3s/deploy-k3s status --site <file>
+k3s/deploy-k3s measure-speed --site <file> --target <node>   # see "Measure the node speed"
 ```
 
 - `deploy-k3s` computes a digest of the inputs of [images/operator/](images/operator) and of [ansible/requirements.yml](ansible/requirements.yml), and builds the image `localhost/hoover4-operator:<digest>` when it is missing.
@@ -251,7 +301,7 @@ k3s/deploy-k3s status --site <file>
 - The host steps are one Ansible run each on all target nodes. The site file is the inventory.
   The driver gives the values that it derives from the site file as the extra variable `hoover4_nodes`.
   [ansible/playbooks/group_vars/hoover4.yml](ansible/playbooks/group_vars/hoover4.yml) gives each value to its node as a `hoover4_*` variable.
-  `hosts:prepare` runs [ansible/playbooks/hoover4-hosts.yml](ansible/playbooks/hoover4-hosts.yml): the facts of each node into `facts/<node>.json` of the state folder, the packages of the node in one task, Docker (`stop_docker`), the kernel modules, sysctl, NetworkManager, SELinux, the k3s data volumes (`k3s_volume_group`), the local node of a single-node site, the backup folder, the public firewall (`public_firewall`), and the WireGuard interfaces of the managed networks.
+  `hosts:prepare` runs [ansible/playbooks/hoover4-hosts.yml](ansible/playbooks/hoover4-hosts.yml): the facts of each node into `facts/<node>.json` of the state folder, the speed of a node without a stored value into `speed/<node>.json` (see [Measure the node speed](#measure-the-node-speed)), the packages of the node in one task, Docker (`stop_docker`), the kernel modules, sysctl, NetworkManager, SELinux, the k3s data volumes (`k3s_volume_group`), the local node of a single-node site, the backup folder, the public firewall (`public_firewall`), and the WireGuard interfaces of the managed networks.
   `hosts:k3s` runs [ansible/playbooks/hoover4-k3s.yml](ansible/playbooks/hoover4-k3s.yml): gVisor, Kata Containers and the GPU runtime, the tokens, the k3s configuration and the registry mirror, then k3s on the server and on the agents.
   Each node downloads k3s, its install script, gVisor and Kata Containers itself and verifies the pinned digests of [ansible/roles/hoover4_k3s/defaults/main.yml](ansible/roles/hoover4_k3s/defaults/main.yml).
   A node restarts k3s only when an input file, the binary or a token file changed, or when the unit is not active.

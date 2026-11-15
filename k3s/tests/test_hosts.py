@@ -84,7 +84,7 @@ flannel-backend: vxlan
 token-file: /etc/rancher/k3s/token
 agent-token-file: /etc/rancher/k3s/agent-token
 write-kubeconfig-mode: "0600"
-# The scheduler scores the nodes by their requested CPU per thread (scheduler-config.yaml.j2).
+# The scheduler scores the nodes by their requested CPU and memory shares (scheduler-config.yaml.j2).
 kube-scheduler-arg:
   - config=/etc/rancher/k3s/scheduler-config.yaml
 # The public host runs the frontend. TopoLVM replaces the local-path volumes.
@@ -101,20 +101,6 @@ kubelet-arg:
   # The pods must not use the memory of the system and k3s, because memory is not overcommitted.
   - eviction-hard=memory.available<500Mi,nodefs.available<5%,imagefs.available<5%
 """
-
-
-def test_the_scheduler_spreads_requested_cpu_per_thread_above_the_other_scores():
-    import yaml
-    config = yaml.safe_load(render('scheduler-config.yaml.j2', {}))
-    profile = config['profiles'][0]
-    assert profile['plugins']['score']['enabled'] == [{'name': 'NodeResourcesFit', 'weight': 10}]
-    strategy = profile['pluginConfig'][0]['args']['scoringStrategy']
-    assert strategy['type'] == 'LeastAllocated'
-    weights = {r['name']: r['weight'] for r in strategy['resources']}
-    assert weights['cpu'] > weights['memory']
-    assert config['clientConnection']['kubeconfig'].endswith('/scheduler.kubeconfig')
-    # Agents get no scheduler argument.
-    assert 'kube-scheduler-arg' not in render('config.yaml.j2', host_vars(site_text('remote.yml'), 'worker-b'))
 
 
 def test_a_gpu_node_keeps_its_own_vpn_interface_and_gets_the_gpu_handler():
@@ -353,37 +339,123 @@ def test_the_removal_script_needs_an_archive_and_keeps_the_protected_resources(t
 
 
 
-def test_a_slow_node_reserves_the_cpu_that_it_lacks_against_the_fastest_node(tmp_path):
-    import json
+def store_speeds(folder, speeds):
+    (folder / 'speed').mkdir(parents=True, exist_ok=True)
+    for name, (threads, speed) in speeds.items():
+        (folder / 'speed' / f'{name}.json').write_text(json.dumps({'threads': threads, 'cpu_speed': speed}))
+
+
+BASE = {'agent': 130.0, 'server': 270.0}
+
+
+def test_the_reserve_covers_the_base_cost_of_k3s_and_the_threads_that_a_slow_node_lacks(tmp_path):
     site = config.parse(site_text('remote.yml'))
     site.path = tmp_path / 'site.yml'
-    facts = site.state_folder() / 'facts'
-    facts.mkdir(parents=True)
-    speeds = {'server-a': (12, 4078), 'worker-b': (4, 2018)}
-    for name, (cpus, speed) in speeds.items():
-        (facts / f'{name}.json').write_text(json.dumps({'cpus': cpus, 'cpu_speed': speed}))
+    store_speeds(site.state_folder(), {'server-a': (12, 4078), 'worker-b': (4, 2018)})
     factors = config.speed_factors(site)
     assert factors['server-a'] == 1.0 and factors['worker-b'] == 0.5
     # A node without the value counts as fast.
     assert factors['edge'] == 1.0
-    nodes = config.ansible_variables(site, tmp_path)['hoover4_nodes']
-    # 4 threads at half speed are 2 threads of the fastest node, so the kubelet reserves the other 2.
-    assert nodes['worker-b']['kubelet_reserved'] == 'cpu=2000m'
-    # The fastest node keeps the value of the site file.
-    assert nodes['server-a']['kubelet_reserved'] == site.nodes['server-a'].reserved == 'memory=6Gi,cpu=2'
     node = site.nodes['worker-b']
+    # 4 threads at half speed are 2 threads of the fastest node. k3s needs 130m of them, which are 260m of the node:
+    # the reserve is 4 x (1 - 0.5) + 0.13 = 2.13, rounded up to 100m, and the allocatable CPU is 1.8.
+    assert config.kubelet_reserved(node, 0.5, 4, base=BASE) == 'cpu=2200m'
+    # The fastest node reserves the base cost, and the server node also its control plane.
+    assert config.kubelet_reserved(node, 1.0, 12, base=BASE) == 'cpu=200m'
+    assert config.kubelet_reserved(node, 1.0, 12, server=True, base=BASE) == 'cpu=300m'
+    # A site value with cpu= replaces the base cost, in threads of the node: 4 - 0.5 x (4 - 0.7) = 2.35.
     node.reserved = 'memory=4Gi,cpu=700m'
-    # The site reserve stays in threads of the node: 4 - 0.5 x (4 - 0.7) = 2.35, rounded up to 100m.
-    assert config.kubelet_reserved(node, 0.5, 4) == 'memory=4Gi,cpu=2400m'
-    assert config.kubelet_reserved(node, 1.0, 4) == 'memory=4Gi,cpu=700m'
-    values = host_vars(site_text('remote.yml'), 'worker-b') | {'hoover4_kubelet_reserved': 'cpu=2000m'}
-    assert '  - system-reserved=cpu=2000m\n' in render('config.yaml.j2', values)
+    assert config.kubelet_reserved(node, 0.5, 4, base=BASE) == 'memory=4Gi,cpu=2400m'
+    assert config.kubelet_reserved(node, 1.0, 4, base=BASE) == 'memory=4Gi,cpu=700m'
+    # The memory of a site value stays, and the formula gives the CPU.
+    node.reserved = 'memory=4Gi'
+    assert config.kubelet_reserved(node, 1.0, 4, base=BASE) == 'memory=4Gi,cpu=200m'
+    values = host_vars(site_text('remote.yml'), 'worker-b') | {'hoover4_kubelet_reserved': 'cpu=2200m'}
+    assert '  - system-reserved=cpu=2200m\n' in render('config.yaml.j2', values)
 
 
-def test_the_facts_probe_measures_a_positive_cpu_speed():
-    import importlib.util
-    spec = importlib.util.spec_from_file_location('hoover4_facts', ROLES / 'hoover4_facts/files/hoover4-facts.py')
-    facts = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(facts)
-    facts.PROBE_SECONDS = 0.05
-    assert facts.cpu_speed() > 0
+def test_the_base_cost_comes_from_the_cpu_table():
+    import json as json_module
+    table = json_module.loads(config.CPU_TABLE.read_text())
+    assert config.base_cpu(table) == {k: config._cpus(table['runtimeOverhead']['node'][k]) * 1000
+                                      for k in ('agent', 'server')}
+    assert 0 < config.base_cpu()['agent'] < config.base_cpu()['server']
+
+
+def test_up_uses_the_stored_speed_and_measures_only_a_node_without_one(tmp_path):
+    site = config.parse(site_text('remote.yml'))
+    store_speeds(tmp_path, {'server-a': (12, 4078), 'worker-b': (4, 2018)})
+    nodes = config.ansible_variables(site, tmp_path)['hoover4_nodes']
+    assert nodes['server-a']['speed_stored'] and nodes['worker-b']['speed_stored'] and not nodes['edge']['speed_stored']
+    base = config.base_cpu()
+    assert nodes['worker-b']['kubelet_reserved'] == config.kubelet_reserved(site.nodes['worker-b'], 0.5, 4, base=base)
+    assert config.ansible_variables(site, tmp_path)['hoover4_speed_dir'] == str(tmp_path / 'speed')
+    # The facts play no longer measures the speed, so a new facts file does not change the factors.
+    (tmp_path / 'facts').mkdir()
+    (tmp_path / 'facts' / 'worker-b.json').write_text(json.dumps({'cpus': 4, 'cpu_speed': 900}))
+    assert config.speed_factors(site, tmp_path)['worker-b'] == 0.5
+    play = yaml.safe_load((K3S / 'ansible/playbooks/hoover4-hosts.yml').read_text())
+    speed = next(p for p in play if 'speed' in p.get('tags', []))
+    assert speed['roles'][0]['when'] == 'hoover4_speed_force | default(false) | bool or not hoover4_speed_stored | bool'
+    assert 'facts' not in speed['tags']
+
+
+def test_a_node_without_a_stored_speed_keeps_its_facts_value_and_the_check_names_the_command(tmp_path):
+    site = config.parse(site_text('remote.yml'))
+    (tmp_path / 'facts').mkdir()
+    (tmp_path / 'facts' / 'worker-b.json').write_text(json.dumps({'cpus': 4, 'cpu_speed': 2018}))
+    (tmp_path / 'facts' / 'server-a.json').write_text(json.dumps({'cpus': 12, 'cpu_speed': 4078}))
+    assert config.adopt_facts_speed(tmp_path) == ['server-a', 'worker-b']
+    # A second call keeps the adopted value, also after the facts play wrote a file without cpu_speed.
+    (tmp_path / 'facts' / 'worker-b.json').write_text(json.dumps({'cpus': 4}))
+    assert config.adopt_facts_speed(tmp_path) == []
+    assert config.node_speed(tmp_path, 'worker-b') == {'cpu_speed': 2018, 'source': 'facts'}
+    report = config.speed_report(site, tmp_path)
+    assert report['worker-b']['factor'] == 0.5
+    assert 'earlier facts probe' in report['worker-b']['note']
+    assert 'deploy-k3s measure-speed --target worker-b' in report['worker-b']['note']
+    assert 'no speed value' in report['edge']['note'] and report['edge']['factor'] == 1.0
+    store_speeds(tmp_path, {'worker-b': (4, 2018)})
+    assert 'note' not in config.speed_report(site, tmp_path)['worker-b']
+
+
+def speed_script():
+    return load(ROLES / 'hoover4_speed/files/hoover4-speed.py', 'hoover4_speed')
+
+
+def test_the_speed_measurement_refuses_a_node_that_is_not_at_rest():
+    speed = speed_script()
+    assert speed.refusal(names=['bash'], units=[], load_now=0.5) == ''
+    assert speed.refusal(names=[], units=['k3s-agent'], load_now=0.1).startswith('k3s runs (k3s-agent)')
+    assert speed.refusal(names=['k3s-server'], units=[], load_now=0.1).startswith('k3s runs')
+    assert 'a container runs (containerd-shim' in speed.refusal(names=['containerd-shim'], units=[], load_now=0.1)
+    assert 'conmon' in speed.refusal(names=['conmon'], units=[], load_now=0.1)
+    assert speed.refusal(names=[], units=[], load_now=5.5) == 'the 1-minute load is 5.50, above 5. Wait until the node is at rest.'
+    assert speed.refusal(names=[], units=[], load_now=5.0) == ''
+
+
+def test_the_speed_probe_measures_a_positive_cpu_speed():
+    speed = speed_script()
+    speed.PROBE_SECONDS = 0.05
+    assert speed.cpu_speed() > 0
+    facts = load(ROLES / 'hoover4_facts/files/hoover4-facts.py', 'hoover4_facts')
+    assert not hasattr(facts, 'cpu_speed')
+
+
+def test_the_containerd_statistics_period_is_ten_seconds():
+    values = host_vars(site_text('remote.yml'), 'worker-b')
+    text = render('runtimes.toml.j2', values | {'hoover4_kata': True})
+    assert "[plugins.'io.containerd.cri.v1.runtime']\n  stats_collect_period = \"10s\"\n" in text
+
+
+def test_the_scheduler_scores_the_fit_and_the_balance_of_cpu_and_memory():
+    text = (ROLES / 'hoover4_k3s/templates/scheduler-config.yaml.j2').read_text()
+    profile = yaml.safe_load(text)['profiles'][0]
+    assert {p['name']: p['weight'] for p in profile['plugins']['score']['enabled']} == \
+        {'NodeResourcesFit': 10, 'NodeResourcesBalancedAllocation': 10}
+    args = {c['name']: c['args'] for c in profile['pluginConfig']}
+    assert args['NodeResourcesFit']['scoringStrategy']['resources'] == [{'name': 'cpu', 'weight': 1}, {'name': 'memory', 'weight': 1}]
+    assert args['NodeResourcesBalancedAllocation']['resources'] == [{'name': 'cpu', 'weight': 1}, {'name': 'memory', 'weight': 1}]
+    assert yaml.safe_load(text)['clientConnection']['kubeconfig'].endswith('/scheduler.kubeconfig')
+    # Agents get no scheduler argument.
+    assert 'kube-scheduler-arg' not in render('config.yaml.j2', host_vars(site_text('remote.yml'), 'worker-b'))
