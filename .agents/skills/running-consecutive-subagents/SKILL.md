@@ -10,6 +10,13 @@ Delegate a bounded task that benefits from a separate context. Do not delegate w
 Run one subagent at a time in the shared checkout. Wait for it before launching the next.
 Do not edit its owned paths while it runs.
 
+While a subagent runs a cluster or deployment job, check its progress every 3 to 5 minutes.
+Read the deploy records, the process ages, and the pods that are not ready.
+Compare them with [expected durations](../batching-cluster-changes/reference/expected-durations.md).
+Start a watch on the subagent's deploy record as [watching a wait](../batching-cluster-changes/reference/watching-a-wait.md) says.
+When a job makes no progress, find the cause and send the subagent a correction.
+A notification that the subagent waits on background work is not evidence of progress.
+
 Give the agent its role, requested outcome, relevant decisions, owned paths, checks, and report destination.
 Link existing design and evidence. Do not require the agent to repeat settled research.
 Use the [package template](reference/work-package-template.md) when the assignment needs a file.

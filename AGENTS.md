@@ -42,6 +42,7 @@ Record unrelated findings without implementing them. Stop adding work when the a
 - Delegate only when authorized. Run subagents one at a time in the shared checkout and do not edit their owned paths.
 - Select `organizer`, `executor-light`, `executor-heavy`, or `reviewer` by responsibility and risk. The harness supplies model and effort settings.
 - Use explicit user budgets and actual session limits. Historical measurements do not impose task quotas or default call budgets.
+- Give every long wait a deadline from measured durations. Check its progress every few minutes and diagnose a stall at once.
 
 ## How to write
 

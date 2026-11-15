@@ -14,15 +14,19 @@ error context. Then grep the file. **Never judge a build from `tail -50`**: the 
 failure is usually thousands of lines above the end, and reading only the tail has cost a
 full rebuild cycle to recover.
 
-## Background it and keep working
+## Background it and check its progress
 
-Start it detached and let the harness notify you when it exits, rather than writing an
-`until … grep … done` loop or re-tailing an output file every thirty seconds. Polling by hand
-costs attention continuously and answers nothing that the exit notification does not.
+Start it detached and let the harness notify you when it exits. Do not write an
+`until … grep … done` loop that blocks the turn.
 
-If you do want a monitor, **make it emit only on failure signatures**, and then check that
-its filter would actually fire on a crash. A monitor whose pattern cannot match a crash makes
-silence indistinguishable from success, which is worse than no monitor.
+The exit notification alone is not enough. A job that stops making progress sends no
+notification until its own timeout, which can be an hour. Check the job every 3 to 5 minutes
+against [expected durations](../../batching-cluster-changes/reference/expected-durations.md),
+and diagnose at once when a step runs past its value or its log stops growing.
+
+A monitor emits failure signatures and one line for each stage it reaches. Check that its
+filter would fire on a crash. A monitor whose pattern cannot match a crash or a stall makes
+silence indistinguishable from success.
 
 ## Do not disturb something already running
 

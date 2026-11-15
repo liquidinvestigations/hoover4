@@ -3,9 +3,10 @@
 
 One call shows all failures of a batch, so one fix round can correct all of them.
 --wait SECONDS repeats the sweep every 3 s. It stops when all pods are ready (exit 0), when a pod reaches a state
-that waiting does not repair (exit 2), or at the deadline (exit 1). The final sweep is always printed.
+that waiting does not repair (exit 2), including a pod that the scheduler cannot place for 2 minutes, or at the deadline (exit 1). The final sweep is always printed.
 Usage: sweep.py <namespace>... [--wait SECONDS]
 """
+import calendar
 import json
 import subprocess
 import sys
@@ -23,6 +24,19 @@ FATAL = {'CrashLoopBackOff', 'ErrImageNeverPull', 'ErrImagePull', 'ImagePullBack
 def get(namespace, kind):
     r = subprocess.run(K + ['-n', namespace, 'get', kind, '-o', 'json'], capture_output=True, text=True)
     return json.loads(r.stdout)['items'] if r.returncode == 0 else []
+
+
+# The seconds after which an unschedulable pod counts as a failure. The scheduler retries a pod when the cluster
+# changes, so a short wait covers a pod that waits for another pod of the same batch to end.
+UNSCHEDULABLE_SECONDS = 120
+
+
+def age(condition):
+    """The seconds since the last transition of a pod condition."""
+    stamp = condition.get('lastTransitionTime')
+    if not stamp:
+        return 0
+    return time.time() - calendar.timegm(time.strptime(stamp, '%Y-%m-%dT%H:%M:%SZ'))
 
 
 def pod_rows(pod):
@@ -53,6 +67,9 @@ def pod_rows(pod):
         for c in pod['status'].get('conditions', []):
             if c.get('status') != 'True' and c.get('message'):
                 parts.append(f"{c['type']}: {c['message'][:160]}")
+            # The scheduler found no node for the pod. It stays Pending until the capacity or the request changes.
+            if c.get('type') == 'PodScheduled' and c.get('reason') == 'Unschedulable' and age(c) >= UNSCHEDULABLE_SECONDS:
+                fatal = True
     return False, fatal, f"{pod['metadata']['namespace']}/{name} phase={pod['status'].get('phase')} " + '; '.join(parts)
 
 

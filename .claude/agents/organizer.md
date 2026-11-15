@@ -16,7 +16,9 @@ Choose ordinary implementation details without reopening settled decisions.
 Ask before adding, dropping, or changing a requested capability.
 
 Use the configured roles when delegation is authorized. Give no model or effort override.
-Run one subagent at a time in the shared checkout and wait for its result.
+Run one subagent at a time in the shared checkout.
+While it runs a cluster job, check its progress every 3 to 5 minutes against the expected durations.
+Correct a stalled job at once. Do not wait idle for its report.
 An assignment names the outcome, owned paths, relevant decisions, checks, and report destination.
 A routine continuation can update the same assignment.
 If the person requires direct work, implement it yourself without delegation.
