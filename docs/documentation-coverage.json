@@ -2964,6 +2964,19 @@
       "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
     },
     {
+      "id": "F-auth-09",
+      "source": [
+        "website/backend/src/auth/item_access.rs",
+        "main_services/processing/tasks/P_board/activities.py"
+      ],
+      "docs": [
+        "docs/architecture/Chat_And_Agents.md#a-chat-belongs-to-a-group",
+        "docs/architecture/Boards.md#groups-of-boards"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "Stored membership and permission tests verify group access. Screenshots cannot establish which reads the server permits."
+    },
+    {
       "id": "F-qa-10",
       "source": [
         "scripts/chat_review"

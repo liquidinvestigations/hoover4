@@ -123,6 +123,7 @@ The table gives the tool of each item.
   the caret. A link of this origin or a path that starts with `/` waits as a link part. The
   server function `resolve_references` then checks it. A link that the person can read becomes
   a chip with its number, its label and an X that removes it. Other links stay text.
+  Edits reach the form while resolution waits. Submission uses the current draft, with unresolved links as text.
 - The label is the search text, the file name, the folder path, the collection name, or the
   title of the chat or the board. The read rule is the rule of the page that the link opens.
   A chat and a board use the group rule of `auth::item_access`.

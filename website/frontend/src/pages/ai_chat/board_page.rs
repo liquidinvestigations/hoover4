@@ -1708,7 +1708,7 @@ fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: 
             }
             if !intent.last_error.is_empty() {
                 div { style: SUBHEADING, {tr!("ai-chat-board-last-error")} }
-                p { style: "margin: 4px 0; color: var(--x-danger);", "{intent.last_error}" }
+                p { style: "margin: 4px 0; color: var(--x-danger);", {crate::i18n::tr_shared(&intent.last_error)} }
             }
             if !intent.brief.is_empty() {
                 div { style: SUBHEADING, {tr!("ai-chat-board-brief")} }

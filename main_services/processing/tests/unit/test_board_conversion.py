@@ -130,7 +130,7 @@ def test_a_chat_or_board_handle_gives_no_board_citation_row():
 def board(monkeypatch):
     fake = FakeBoardStore().install(monkeypatch)
     fake.settings[cmd.IDENTITY_SETTING] = str(cmd.SLUG_IDENTITY)
-    fake.add_board("b1", owner=OWNER, max_parallel=2)
+    fake.add_board("b1", owner=OWNER, owner_group="team-a", max_parallel=2)
     fake.submit("b1", "create:b1", cmd.CREATE_BOARD, OWNER,
                 {"goals": ["Who approved the hedges?"], "origin": "The Enron emails."})
     fake.submit("b1", "reason_started:1", cmd.START_REASON, "dispatcher", {"reason_no": 1, "stalled": False})
@@ -496,12 +496,12 @@ def test_an_explore_session_belongs_to_the_group_of_its_board(monkeypatch):
 @pytest.fixture
 def opening(board, monkeypatch):
     """The writers of `open_explore_turn`, with the collections that exist."""
-    from database import clickhouse
-
-    from database import user_settings
+    from database import boards, clickhouse, user_settings
 
     state = {"sessions": [], "rows": [], "existing": ["enron"], "settings": {}}
     monkeypatch.setattr(clickhouse, "list_collections", lambda: list(state["existing"]))
+    monkeypatch.setattr(boards, "group_collections",
+                        lambda group: list(state["existing"]))
     monkeypatch.setattr(user_settings, "read_user_settings", lambda owner: dict(state["settings"]))
     monkeypatch.setattr(activities, "_ensure_session",
                         lambda b, session, title, collections: state["sessions"].append(collections))
@@ -551,6 +551,26 @@ def test_a_board_whose_collections_are_gone_fails_and_does_not_become_web_only(
     _set_board(board, monkeypatch, ["enron", "epstein"], 0, True)
     opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
     assert opened.run_input.allowed_collections == ["enron"] and opened.run_input.internet_tools is False
+
+
+@pytest.mark.parametrize("readable,expected", [([], None), (["public"], ["public"])])
+def test_an_explore_excludes_collections_revoked_from_its_group(
+        board, opening, monkeypatch, readable, expected):
+    from database import boards
+
+    _set_board(board, monkeypatch, ["enron", "public"], 1, True)
+    opening["existing"] = ["enron", "public"]
+    groups = []
+    monkeypatch.setattr(boards, "group_collections", lambda group: groups.append(group) or readable)
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert groups == ["team-a"]
+    if expected is None:
+        assert opened.skip_kind == m.EXPLORE_FAILED
+        assert opened.skip_reason == "The group cannot read one of the selected collections."
+        assert opening["sessions"] == [] and opening["rows"] == []
+    else:
+        assert opened.run_input.allowed_collections == expected
+        assert opening["sessions"] == [expected]
 
 
 @pytest.mark.parametrize("settings,stored,expected", [

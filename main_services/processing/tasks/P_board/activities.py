@@ -737,6 +737,13 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     collections = [c for c in board.collections if c in existing]
     if board.collections and not collections:
         return OpenedTurn(skip_kind=m.EXPLORE_FAILED, skip_reason="none of the board collections exists")
+    if collections:
+        # A stored collection selection cannot retain a grant that the group has lost.
+        permitted = set(boards.group_collections(board.owner_group))
+        collections = [c for c in collections if c in permitted]
+        if not collections:
+            return OpenedTurn(skip_kind=m.EXPLORE_FAILED,
+                              skip_reason="The group cannot read one of the selected collections.")
     if not collections and not web:
         return OpenedTurn(skip_kind=m.EXPLORE_FAILED,
                           skip_reason="the board has no collections and the internet tools are off")

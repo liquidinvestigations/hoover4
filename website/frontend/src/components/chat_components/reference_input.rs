@@ -199,14 +199,18 @@ pub fn ReferenceInput(
                             continue;
                         }
                         let urls = links.iter().map(|(_, link)| link.clone()).collect();
-                        let results = crate::api::chat_api::resolve_references(urls).await;
-                        for (index, (key, _)) in links.iter().enumerate() {
-                            let resolved = results.as_ref().ok().and_then(|list| list.get(index)).and_then(|r| r.as_ref().ok());
-                            send(match resolved {
-                                Some(reference) => serde_json::json!({"kind": "resolve", "key": key, "reference": reference}),
-                                None => serde_json::json!({"kind": "unwrap", "key": key}),
-                            });
-                        }
+                        // Keep receiving edits while the lookup waits, so submission uses
+                        // the current draft. Deleted pending spans ignore later results.
+                        spawn(async move {
+                            let results = crate::api::chat_api::resolve_references(urls).await;
+                            for (index, (key, _)) in links.iter().enumerate() {
+                                let resolved = results.as_ref().ok().and_then(|list| list.get(index)).and_then(|r| r.as_ref().ok());
+                                send(match resolved {
+                                    Some(reference) => serde_json::json!({"kind": "resolve", "key": key, "reference": reference}),
+                                    None => serde_json::json!({"kind": "unwrap", "key": key}),
+                                });
+                            }
+                        });
                     }
                 }
             }

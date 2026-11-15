@@ -152,6 +152,25 @@ STATE_COLUMNS = ["board_id", "status", "explores_used", "reasons_done", "stall_c
 # ------------------------------------------------------------------------------ boards
 
 
+def group_collections(group: str) -> list[str]:
+    """Read the current collections of a board group, including public collections.
+
+    This query mirrors `backend::auth::item_access::group_collections`.
+    A deleted grant or collection grants no access. An empty group reads nothing.
+    """
+    if not group:
+        return []
+    with _client() as client:
+        rows = client.query(
+            "SELECT DISTINCT collectionname FROM collections FINAL WHERE is_deleted = 0 "
+            "AND (is_public = 1 OR collectionname IN "
+            "(SELECT collectionname FROM collection_group_permissions FINAL "
+            "WHERE groupname = {g:String} AND is_deleted = 0)) ORDER BY collectionname",
+            parameters={"g": group},
+        ).result_rows
+    return [row[0] for row in rows]
+
+
 def read_live_boards() -> list[BoardRow]:
     """Every board that is not dropped."""
     with _client() as client:

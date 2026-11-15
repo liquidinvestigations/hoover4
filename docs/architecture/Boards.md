@@ -84,8 +84,8 @@ same rule as for chats.
   person is not a member. It also refuses a collection outside that set.
 - The explores run as chat turns of the creator. Their sessions have the creator as `username`
   and the group of the board as `owner_group`, so every member reads them. The agent of an
-  explore runs with the identity of the creator. Its collections are the stored board
-  collections.
+  explore runs with the identity of the creator. Each new explore checks the current group grants and public collections.
+  It excludes stored collections that the group cannot read.
 
 Migration `00055_item_groups.sql` deleted every board from before the groups, with the rows of
 every board table and its explore chats.
@@ -512,8 +512,11 @@ not write follow-up suggestions or a session title.
 
 A board turn has the tool packs of a chat turn, with the workspace tools. It loses the packs
 of its absent sources ([Run sources](Chat_And_Agents.md#run-sources)). The run gets the board
-collections that exist. When none of the stored collections exists, the explore fails with
-"none of the board collections exists". A board without collections needs effective internet
+collections that exist and that its group can currently read.
+When none of the stored collections exists, the explore fails with "none of the board collections exists".
+When the group cannot read any remaining collection, the explore fails.
+The message is "The group cannot read one of the selected collections."
+A board without collections needs effective internet
 tools. Without them, the explore fails with "the board has no collections and the internet
 tools are off". The intent pane shows the reason.
 
