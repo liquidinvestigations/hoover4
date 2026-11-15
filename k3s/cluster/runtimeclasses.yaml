@@ -9,9 +9,11 @@ overhead:
   podFixed:
     # The measured cost of a gVisor pod outside its pod cgroup: kubelet, containerd, the shim and the runsc commands of
     # its probes and statistics (runtimeOverhead of ../zones/cpu-requests.json). The scheduler adds it to each pod.
-    cpu: 20m
-    # The shim of a pod uses about 8 MiB. The sentry runs in the pod cgroup, so the memory request covers it.
-    memory: 64Mi
+    cpu: 10m
+    # The shim and the runsc process of a pod use about 14 MiB outside the pod cgroup (shimMemory of
+    # ../zones/cpu-requests.json). The sentry runs in the pod cgroup, so the memory request covers it. The overhead
+    # also raises the memory limit of the pod cgroup by this value.
+    memory: 32Mi
 ---
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass

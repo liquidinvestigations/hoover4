@@ -97,8 +97,9 @@ def workload(name, containers):
             'spec': {'template': {'metadata': {}, 'spec': {'containers': containers}}}}
 
 
-def test_the_request_is_halfway_between_the_baseline_and_the_start_peak():
+def test_the_request_lies_at_the_factor_between_the_baseline_and_the_start_peak():
     assert cpu_requests.request_of(4408, 41, 0.5) == 2230
+    assert cpu_requests.request_of(4408, 41, 0.25) == 1140
     assert cpu_requests.request_of(100, 100, 0.5) == 100
     assert cpu_requests.request_of(3, 1, 0.5) == 10
     assert cpu_requests.request_of(1001, 1, 0.5) == 510
@@ -135,7 +136,7 @@ def test_an_unmeasured_workload_keeps_its_request_and_names_its_basis():
 
 def test_the_table_of_the_source_is_consistent():
     table = cpu_requests.load()
-    assert table['factor'] == 0.5
+    assert table['factor'] == 0.2
     for part in ('zone', 'hoover', 'site'):
         assert table.get(part), part
         for key, entry in table[part].items():

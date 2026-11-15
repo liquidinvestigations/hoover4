@@ -1,5 +1,5 @@
 {
- "about": "Memory limits of the zone workloads, by <kind>/<name> and container. postrender.py writes them into each Helm render, and the Hoover tools read the Hoover part. The rule: the larger of 1.5 times the peak of the browser load test with 16 tabs of eight users and the peak plus 256 MiB, rounded up to 128 MiB. The peak is the host cgroup of the pod, with its sandbox. A workload with no measured peak keeps the chart value. Collabora keeps 2048Mi, because it sizes its threads by the visible CPUs and needs more than 1 GiB on a node with 32 CPUs. Jicofo keeps 768Mi for its Java heap of 512 MiB. A Kata VM reserves its limit, so the store limits stay small. The hoover part holds the k3s minimum values of the Hoover workloads: the earlier value plus 0.33 times the distance to the Compose limit of the 64 GB reference site, rounded up to 128 MiB. hoover-website is the exception: its peak on the 64 GB reference site of 8.8 GiB is the release build that the Compose container runs at its start, and the server process peaked at 0.76 GiB, so the limit is 1.5 times that peak plus 1 GiB of page cache. The requests part holds the memory request of each larger workload: its measured working set in an idle zone, rounded up to 64 MiB. postrender.py raises a lower chart request to it, and caps it at the limit.",
+ "about": "Memory limits of the zone workloads, by <kind>/<name> and container. postrender.py writes them into each Helm render, and the Hoover tools read the Hoover part. The rule: the larger of 1.5 times the peak of the browser load test with 16 tabs of eight users and the peak plus 256 MiB, rounded up to 128 MiB. The peak is the host cgroup of the pod, with its sandbox. A workload with no measured peak keeps the chart value. Collabora keeps 2048Mi, because it sizes its threads by the visible CPUs and needs more than 1 GiB on a node with 32 CPUs. Jicofo keeps 768Mi for its Java heap of 512 MiB. A Kata VM reserves its limit, so the store limits stay small. The hoover part holds the k3s minimum values of the Hoover workloads: the earlier value plus 0.33 times the distance to the Compose limit of the 64 GB reference site, rounded up to 128 MiB. hoover-website is the exception: its peak on the 64 GB reference site of 8.8 GiB is the release build that the Compose container runs at its start, and the server process peaked at 0.76 GiB, so the limit is 1.5 times that peak plus 1 GiB of page cache. Intercom keeps 192Mi, because its pod used 151 MiB with the gVisor sentry, and its chart limit of 128Mi leaves only the 32 MiB of the RuntimeClass overhead above that. The requests part holds the memory request of each larger workload: its measured working set in an idle zone, rounded up to 64 MiB. postrender.py raises a lower chart request to it, and caps it at the limit. The working set is the pod cgroup of the host, with the sandbox. The container value of a gVisor pod can be wrong: the UDM listener showed 4209 MiB there and 143 MiB in its pod cgroup, so it keeps its chart request of 256Mi. Collabora used at most 1322 MiB in three days with zone creates and ingests.",
  "zone": {
   "statefulset/xwiki": {"xwiki": "2816Mi"},
   "deployment/openproject-web": {"openproject": "4224Mi"},
@@ -19,7 +19,8 @@
   "deployment/memcached": {"memcached": "256Mi"},
   "statefulset/ums-provisioning-nats": {"main": "384Mi"},
   "statefulset/postgresql": {"postgresql": "1Gi"},
-  "deployment/seaweedfs-all-in-one": {"seaweedfs": "1Gi"}
+  "deployment/seaweedfs-all-in-one": {"seaweedfs": "1Gi"},
+  "deployment/intercom-service": {"intercom-service": "192Mi"}
  },
  "hoover": {
   "hoover-website": "2048Mi",
@@ -35,10 +36,9 @@
  "requests": {
   "statefulset/xwiki": {"xwiki": "2048Mi"},
   "deployment/openproject-web": {"openproject": "2176Mi"},
-  "deployment/collabora": {"collabora-online": "1600Mi"},
+  "deployment/collabora": {"collabora-online": "1472Mi"},
   "deployment/impress-backend": {"impress-backend": "1024Mi"},
   "statefulset/ums-keycloak": {"main": "960Mi"},
-  "statefulset/ums-provisioning-udm-listener": {"main": "1Gi"},
   "statefulset/ums-ldap-server-primary": {"main": "832Mi"},
   "deployment/openproject-worker-default": {"openproject": "768Mi"},
   "deployment/impress-backend-worker": {"impress-backend-worker": "704Mi"},

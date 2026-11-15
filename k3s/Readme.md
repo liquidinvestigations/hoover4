@@ -169,12 +169,13 @@ python3 k3s/zones/zone.py delete zone-x
   than the others, so their factors follow.
 - Each pod also requests the measured cost of its runtime outside its pod cgroup: kubelet, containerd, the shim and the
   runsc commands of its probes and statistics. The RuntimeClasses ([cluster/runtimeclasses.yaml](cluster/runtimeclasses.yaml))
-  add it as `overhead.podFixed`, 20m CPU for gVisor and 10m for Kata. `runtimeOverhead` of
+  add it as `overhead.podFixed`, 10m CPU for gVisor and for Kata, 32 MiB memory for gVisor (the shim and its runsc
+  process use about 14 MiB) and 1 GiB for Kata (the guest and the VMM). `runtimeOverhead` of
   [zones/cpu-requests.json](zones/cpu-requests.json) records the measurement. A node with many small pods therefore
   takes fewer of them.
 - The memory request of a pod follows its measured use ([zones/memory-limits.json](zones/memory-limits.json) `requests`,
   [hoover/manifests.py](hoover/manifests.py) `REQUESTS`). The CPU request of a measured workload is
-  `baseline + 0.5 x (start peak - baseline)`, rounded up to 10m, from [zones/cpu-requests.json](zones/cpu-requests.json).
+  `baseline + 0.2 x (start peak - baseline)`, rounded up to 10m, from [zones/cpu-requests.json](zones/cpu-requests.json).
   The start peak is the highest CPU rate (1 min) from the pod start until Ready plus 120 s, and the baseline is the
   median CPU rate in an idle period. Each pod names them in the annotations `hoover.dev/cpu-start-peak`,
   `hoover.dev/cpu-baseline` and `hoover.dev/cpu-request-basis`. A workload without a measurement keeps the request of
@@ -379,7 +380,7 @@ One Temporal serves every zone of a site, in the namespace `hoover-stores` ([hoo
 - The signing key is in the Secret `temporal-auth` of `hoover-stores`. A sidecar of each Temporal pod publishes its public key on 127.0.0.1. A key has no expiry. To replace every key, delete the Secret `temporal-auth`, run `deploy-k3s up --steps stores`, then apply each zone again.
 - Cassandra runs one pod on each of its `cassandra.nodes` nodes, and OpenSearch one pod on each of its `opensearch.nodes` nodes, in gVisor on file system volumes. The keyspace `temporal` has the replication factor 1, so the Cassandra nodes share the token ranges, and Temporal reads and writes with the consistency `LOCAL_ONE`. The visibility index has one primary shard for each OpenSearch node of its creation and no replica shard. Temporal runs `temporal.pods` pods with every Temporal service, preferably on different nodes. Temporal holds no data.
 - `history_shards` sets the history shard count of a new Temporal. Temporal keeps it from its creation, so `deploy-k3s check` and the stores step refuse a change.
-- Sizes: the Cassandra heap is 2 GiB plus 0.4 GiB for each GiB of live data (`cassandra.data_gib`), at least 2 GiB and at most 8 GiB. The default of 2 GiB of data gives a 2880 MiB heap. The Cassandra memory request is the heap plus 1 GiB, which covers the measured use outside the heap. The limit adds 1 GiB and the live data for the page cache. OpenSearch has a 1.5 GiB heap, a request of 2176 MiB and a limit of 3584 MiB. Each Temporal pod requests 448 MiB. The claims hold 20 GiB (Cassandra) and 10 GiB (OpenSearch) for each zone with `stores = site`, at least one zone.
+- Sizes: the Cassandra heap is 1.5 GiB plus 0.4 GiB for each GiB of live data (`cassandra.data_gib`), at least 1.5 GiB and at most 8 GiB. The default of 2 GiB of data gives a 2368 MiB heap. The Cassandra memory request is the heap plus 1 GiB, which covers the measured use outside the heap. The limit adds 1 GiB and the live data for the page cache. OpenSearch has a 1280 MiB heap, a request of 1920 MiB and a limit of 3584 MiB. Each Temporal pod requests 448 MiB. The claims hold 20 GiB (Cassandra) and 10 GiB (OpenSearch) for each zone with `stores = site`, at least one zone.
 - Network: only namespaces with the label `hoover.dev/hoover` reach the frontend on 7233 (gRPC) and 7243 (HTTP). The internal frontend on 7236, which checks no key, and the other Temporal ports take only the Temporal pods. Cassandra and OpenSearch take only the Temporal pods and the schema Job.
 - [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) also checks that a zone cannot describe, list, start, signal, cancel or terminate a workflow in the namespace of another zone.
 - A zone created before the Temporal of the site has `temporal = zone` and ran its Temporal on the PostgreSQL of the zone. Delete it and create it again. Its workflow history does not move.

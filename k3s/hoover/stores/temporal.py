@@ -27,9 +27,9 @@ loses its part until it returns, and the backups are the recovery path (k3s/Read
 - history_shards is the history shard count. Temporal keeps the count of its creation, and apply refuses a change.
 The Services of Temporal and OpenSearch select every ready pod.
 Sizes: the Cassandra heap follows the live data (cassandra_values()). The Cassandra request is the heap plus the
-measured memory outside the heap, and its limit adds a margin for the page cache of the live data. OpenSearch has the
-heap of the Elasticsearch of the local layout (../manifests.py) and a request of its measured use. Temporal has the
-limit of ../../zones/memory-limits.json. The claims hold the first size of the Compose import
+measured memory outside the heap, and its limit adds a margin for the page cache of the live data. OpenSearch has a
+heap from its measured live data and a request of its measured use. Temporal has the limit of
+../../zones/memory-limits.json. The claims hold the first size of the Compose import
 (../../platform/operator/settings.py VOLUMES) times the zone count, at least one zone.
 The CPU requests are the measured values of ../../zones/cpu-requests.json (part site, hoover.site_cpu()).
 Cassandra, OpenSearch and Temporal run in gVisor. Cassandra and OpenSearch use file system volumes of TopoLVM.
@@ -64,11 +64,12 @@ INDEX = 'temporal_visibility_v1'
 # membership port of each service.
 CLIENT_PORTS = (7233, 7243)
 INTERNAL = '127.0.0.1:7236'
-# The memory request of Temporal (../manifests.py REQUESTS). The OpenSearch heap and limit of the Elasticsearch of the
-# local layout: 1.5 times the largest measured heap use, and twice the heap plus 512 MiB. The OpenSearch request is
-# its measured use with that heap.
-REQUESTS = {'temporal': '448Mi', 'temporal-opensearch': '2176Mi'}
-OPENSEARCH_HEAP = '1536m'
+# The memory request of Temporal (../manifests.py REQUESTS). After a collection, the OpenSearch old generation held
+# 115 MB on a site with one zone. The young generation fills the rest of the heap. The OpenSearch request is its
+# measured use with the heap plus a margin. The pod used 2012 MiB with a 1536 MiB heap. The limit keeps the value of
+# the Elasticsearch of the local layout (../manifests.py) as a margin for the page cache.
+REQUESTS = {'temporal': '448Mi', 'temporal-opensearch': '1920Mi'}
+OPENSEARCH_HEAP = '1280m'
 OPENSEARCH_LIMIT = '3584Mi'
 # Cassandra: the memory outside the heap in a running pod (direct buffers, metaspace, threads, the gVisor sandbox),
 # the direct memory cap, and the CPU limit, which sets the new generation (100 MiB for each CPU).
@@ -83,11 +84,13 @@ SEARCH_ATTRIBUTES = {'CollectionDataset': 'Keyword'}
 def cassandra_values(data_gib):
     """Heap, new generation, direct memory, memory request and limit and chunk cache of a Cassandra node.
 
-    The heap is 2 GiB plus 0.4 GiB for each GiB of live data, at least 2 GiB and at most 8 GiB, rounded up to 64 MiB.
+    The heap is 1.5 GiB plus 0.4 GiB for each GiB of live data, at least 1.5 GiB and at most 8 GiB, rounded up to 64 MiB.
+    A site with one zone used a 2880 MiB heap. Its old generation stayed below 1.5 GB in 11 hours at rest. The full
+    collection after the start left 37 MB.
     The request is the heap plus CASSANDRA_OFF_HEAP_MIB. The limit adds 1 GiB and the live data, because the page
     cache of the data files is memory of the gVisor sandbox. The chunk cache is the Compose default.
     """
-    heap = math.ceil(min(8192, max(2048, 2048 + 0.4 * 1024 * data_gib)) / 64) * 64
+    heap = math.ceil(min(8192, max(1536, 1536 + 0.4 * 1024 * data_gib)) / 64) * 64
     request = heap + CASSANDRA_OFF_HEAP_MIB
     chunk_cache = compose.deploy_module().DEFAULTS['main_services']['cassandra_chunk_cache_mb']
     return {'heap': f'{heap}M', 'heap_new': f'{100 * CASSANDRA_CPUS}M', 'direct': CASSANDRA_DIRECT,

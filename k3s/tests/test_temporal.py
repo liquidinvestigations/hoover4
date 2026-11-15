@@ -48,9 +48,9 @@ def test_the_stores_of_temporal_shard_one_copy_over_their_nodes():
         'requests': {'storage': '40Gi'}}
     search = by(items, 'StatefulSet', 'temporal-opensearch')['spec']['template']['spec']['containers'][0]
     env = {e['name']: e.get('value') for e in search['env']}
-    assert env['OPENSEARCH_JAVA_OPTS'] == '-Xms1536m -Xmx1536m' and env['DISABLE_SECURITY_PLUGIN'] == 'true'
+    assert env['OPENSEARCH_JAVA_OPTS'] == '-Xms1280m -Xmx1280m' and env['DISABLE_SECURITY_PLUGIN'] == 'true'
     assert env['cluster.initial_cluster_manager_nodes'] == 'temporal-opensearch-0,temporal-opensearch-1'
-    assert search['resources'] == {'requests': {'cpu': site_request('statefulset/temporal-opensearch'), 'memory': '2176Mi'},
+    assert search['resources'] == {'requests': {'cpu': site_request('statefulset/temporal-opensearch'), 'memory': '1920Mi'},
                                    'limits': {'cpu': '2', 'memory': '3584Mi'}}
     assert by(items, 'Service', 'temporal-opensearch')['spec']['selector'] == {'app.kubernetes.io/name': 'temporal-opensearch'}
     assert by(items, 'Deployment', 'temporal')['spec']['replicas'] == 2
@@ -69,16 +69,16 @@ def test_the_cassandra_heap_follows_the_live_data():
         workload = by(objects(stores), 'StatefulSet', 'temporal-cassandra')
         c = workload['spec']['template']['spec']['containers'][0]
         return {e['name']: e.get('value') for e in c['env']}, c['resources']
-    # 2 GiB of data by default: 2 GiB + 0.4 x 2 GiB = 2.8 GiB, rounded up to 64 MiB.
+    # 2 GiB of data by default: 1.5 GiB + 0.4 x 2 GiB = 2.3 GiB, rounded up to 64 MiB.
     env, resources = container('{nodes: [server-a]}')
-    assert env['MAX_HEAP_SIZE'] == '2880M' and env['HEAP_NEWSIZE'] == '200M'
+    assert env['MAX_HEAP_SIZE'] == '2368M' and env['HEAP_NEWSIZE'] == '200M'
     assert env['JVM_EXTRA_OPTS'] == '-XX:MaxDirectMemorySize=1G'
-    assert resources == {'requests': {'cpu': site_request('statefulset/temporal-cassandra'), 'memory': '3904Mi'},
-                         'limits': {'cpu': '2', 'memory': '6976Mi'}}
+    assert resources == {'requests': {'cpu': site_request('statefulset/temporal-cassandra'), 'memory': '3392Mi'},
+                         'limits': {'cpu': '2', 'memory': '6464Mi'}}
     # The heap stops at 8 GiB.
     env, resources = container('{nodes: [server-a], cassandra: {data_gib: 40}}')
     assert env['MAX_HEAP_SIZE'] == '8192M' and resources['requests']['memory'] == '9216Mi'
-    assert temporal.cassandra_values(1)['heap'] == '2496M'
+    assert temporal.cassandra_values(1)['heap'] == '1984M'
 
 
 def test_the_schema_job_keeps_one_copy_and_temporal_reads_one_node():

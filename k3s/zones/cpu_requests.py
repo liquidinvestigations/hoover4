@@ -51,7 +51,7 @@ BASIS = 'hoover.dev/cpu-request-basis'
 
 
 def load():
-    return json.loads(TABLE_PATH.read_text()) if TABLE_PATH.exists() else {'factor': 0.5, 'zone': {}, 'hoover': {}, 'site': {}}
+    return json.loads(TABLE_PATH.read_text()) if TABLE_PATH.exists() else {'factor': 0.2, 'zone': {}, 'hoover': {}, 'site': {}}
 
 
 def millicores(value):

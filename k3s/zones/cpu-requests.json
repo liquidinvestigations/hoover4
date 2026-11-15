@@ -1,6 +1,6 @@
 {
  "about": "CPU requests of the zone and site workloads from telemetry, by <kind>/<name>: part zone (openDesk, postrender.py), part hoover (../hoover/manifests.py) and part site (the shared stores of hoover-stores, ../hoover/stores). startPeak is the highest CPU rate (1 min) of a pod from its start until Ready plus 120 s, in a measured zone create (zone, hoover) or store start (site). baseline is the median CPU rate of the pods in an idle period after it. request = baseline + factor x (startPeak - baseline), rounded up to 10m. cpu_requests.py measure rebuilds the table from Prometheus. measured (zone, hoover) and measuredSite (site) name the measured period and the idle period in Unix seconds. The pod gets the request and the annotations of its basis. A workload without an entry keeps the request of cpu-policy.json or of its installer.",
- "factor": 0.5,
+ "factor": 0.2,
  "measured": {
   "source": "zone create of 2026-11-14",
   "createSeconds": [
@@ -47,7 +47,7 @@
   "deployment/element-matrix-authentication-service": {
    "startPeak": "28m",
    "baseline": "13m",
-   "request": "30m"
+   "request": "20m"
   },
   "deployment/element-matrix-rtc-authorisation-service": {
    "startPeak": "2m",
@@ -62,12 +62,12 @@
   "deployment/impress-backend": {
    "startPeak": "317m",
    "baseline": "34m",
-   "request": "180m"
+   "request": "100m"
   },
   "deployment/impress-backend-worker": {
    "startPeak": "392m",
    "baseline": "144m",
-   "request": "270m"
+   "request": "200m"
   },
   "deployment/impress-docspec": {
    "startPeak": "18m",
@@ -82,7 +82,7 @@
   "deployment/impress-y-provider": {
    "startPeak": "194m",
    "baseline": "4m",
-   "request": "100m"
+   "request": "50m"
   },
   "deployment/intercom-service": {
    "startPeak": "5m",
@@ -92,7 +92,7 @@
   "deployment/jitsi-jicofo": {
    "startPeak": "32m",
    "baseline": "14m",
-   "request": "30m"
+   "request": "20m"
   },
   "deployment/jitsi-jitsi-keycloak-adapter": {
    "startPeak": "3m",
@@ -137,7 +137,7 @@
   "deployment/opendesk-nextcloud-aio": {
    "startPeak": "118m",
    "baseline": "24m",
-   "request": "80m"
+   "request": "50m"
   },
   "deployment/opendesk-nextcloud-exporter": {
    "startPeak": "3m",
@@ -152,7 +152,7 @@
   "deployment/opendesk-provisioning-synapse": {
    "startPeak": "48m",
    "baseline": "6m",
-   "request": "30m"
+   "request": "20m"
   },
   "deployment/opendesk-static-files": {
    "startPeak": "5m",
@@ -167,12 +167,12 @@
   "deployment/openproject-web": {
    "startPeak": "1305m",
    "baseline": "7m",
-   "request": "660m"
+   "request": "270m"
   },
   "deployment/openproject-worker-default": {
    "startPeak": "1264m",
    "baseline": "6m",
-   "request": "640m"
+   "request": "260m"
   },
   "deployment/seaweedfs-all-in-one": {
    "startPeak": "26m",
@@ -182,7 +182,7 @@
   "deployment/ums-keycloak-extensions-handler": {
    "startPeak": "32m",
    "baseline": "11m",
-   "request": "30m"
+   "request": "20m"
   },
   "deployment/ums-keycloak-extensions-proxy": {
    "startPeak": "3m",
@@ -212,27 +212,27 @@
   "deployment/ums-provisioning-prefill": {
    "startPeak": "44m",
    "baseline": "3m",
-   "request": "30m"
+   "request": "20m"
   },
   "deployment/ums-provisioning-udm-transformer": {
    "startPeak": "61m",
    "baseline": "3m",
-   "request": "40m"
+   "request": "20m"
   },
   "deployment/ums-selfservice-listener": {
    "startPeak": "27m",
    "baseline": "3m",
-   "request": "20m"
+   "request": "10m"
   },
   "deployment/ums-udm-rest-api": {
    "startPeak": "1280m",
    "baseline": "24m",
-   "request": "660m"
+   "request": "280m"
   },
   "deployment/ums-umc-gateway": {
    "startPeak": "45m",
    "baseline": "6m",
-   "request": "30m"
+   "request": "20m"
   },
   "deployment/ums-umc-server": {
    "startPeak": "3m",
@@ -242,12 +242,12 @@
   "statefulset/element-synapse-main": {
    "startPeak": "203m",
    "baseline": "23m",
-   "request": "120m"
+   "request": "60m"
   },
   "statefulset/element-synapse-media-repo": {
    "startPeak": "483m",
    "baseline": "19m",
-   "request": "260m"
+   "request": "120m"
   },
   "statefulset/jitsi-prosody": {
    "startPeak": "2m",
@@ -267,7 +267,7 @@
   "statefulset/postgresql": {
    "startPeak": "369m",
    "baseline": "49m",
-   "request": "210m"
+   "request": "120m"
   },
   "statefulset/redis-master": {
    "startPeak": "108m",
@@ -277,7 +277,7 @@
   "statefulset/ums-keycloak": {
    "startPeak": "1679m",
    "baseline": "47m",
-   "request": "870m"
+   "request": "380m"
   },
   "statefulset/ums-ldap-notifier": {
    "startPeak": "3m",
@@ -287,12 +287,12 @@
   "statefulset/ums-ldap-server-primary": {
    "startPeak": "132m",
    "baseline": "27m",
-   "request": "80m"
+   "request": "50m"
   },
   "statefulset/ums-portal-consumer": {
    "startPeak": "60m",
    "baseline": "3m",
-   "request": "40m"
+   "request": "20m"
   },
   "statefulset/ums-provisioning-nats": {
    "startPeak": "24m",
@@ -307,24 +307,24 @@
   "statefulset/ums-umc-server": {
    "startPeak": "157m",
    "baseline": "5m",
-   "request": "90m"
+   "request": "40m"
   },
   "statefulset/xwiki": {
    "startPeak": "3869m",
    "baseline": "38m",
-   "request": "1960m"
+   "request": "810m"
   }
  },
  "hoover": {
   "deployment/hoover-operations": {
    "startPeak": "189m",
    "baseline": "10m",
-   "request": "100m"
+   "request": "50m"
   },
   "deployment/hoover-singletons": {
    "startPeak": "294m",
    "baseline": "16m",
-   "request": "160m"
+   "request": "80m"
   },
   "deployment/hoover-website": {
    "startPeak": "11m",
@@ -334,22 +334,22 @@
   "deployment/hoover-workers": {
    "startPeak": "683m",
    "baseline": "15m",
-   "request": "350m"
+   "request": "150m"
   },
   "deployment/hoover4-mcp-collections": {
    "startPeak": "222m",
    "baseline": "82m",
-   "request": "160m"
+   "request": "110m"
   },
   "deployment/hoover4-mcp-todo": {
    "startPeak": "209m",
    "baseline": "79m",
-   "request": "150m"
+   "request": "110m"
   },
   "deployment/hoover4-ocr-pdf": {
    "startPeak": "80m",
    "baseline": "22m",
-   "request": "60m"
+   "request": "40m"
   },
   "deployment/hoover4-pdf-search": {
    "startPeak": "9m",
@@ -364,12 +364,12 @@
   "deployment/hoover4-tesseract-cpu": {
    "startPeak": "87m",
    "baseline": "23m",
-   "request": "60m"
+   "request": "40m"
   },
   "deployment/hoover4-tika": {
    "startPeak": "410m",
    "baseline": "10m",
-   "request": "210m"
+   "request": "90m"
   },
   "deployment/oauth2-proxy": {
    "startPeak": "3m",
@@ -386,33 +386,33 @@
   "statefulset/clickhouse": {
    "startPeak": "111m",
    "baseline": "68m",
-   "request": "90m"
+   "request": "80m"
   },
   "statefulset/garage": {
    "startPeak": "50m",
    "baseline": "8m",
-   "request": "30m"
+   "request": "20m"
   },
   "statefulset/temporal-cassandra": {
    "startPeak": "1132m",
    "baseline": "301m",
-   "request": "720m"
+   "request": "470m"
   },
   "statefulset/temporal-opensearch": {
    "startPeak": "206m",
    "baseline": "31m",
-   "request": "120m"
+   "request": "70m"
   }
  },
  "runtimeOverhead": {
-  "about": "The CPU of a pod outside its pod cgroup, in threads of the fastest node: kubelet, containerd, the shim and the runsc or Kata commands of its probes and statistics, measured from system.slice of each node against its count of gVisor sandboxes and Kata VMs. The idle value is a zone at rest. The start value is the 10 minutes after a zone create. overhead = idle + factor x (start - idle), rounded up to 10m, the rule of the requests. ../cluster/runtimeclasses.yaml holds the values as overhead.podFixed.",
+  "about": "The CPU of a pod outside its pod cgroup, in threads of the fastest node: kubelet, containerd, the shim and the runsc or Kata commands of its probes and statistics, measured from system.slice of each node against its count of gVisor sandboxes and Kata VMs. The idle value is a zone at rest. The start value is the 10 minutes after a zone create. overhead = idle + factor x (start - idle), rounded up to 10m, the rule of the requests. ../cluster/runtimeclasses.yaml holds the values as overhead.podFixed. shimMemory is the memory of the shim and the runsc process of one gVisor pod outside its pod cgroup (proportional set size, about 13.5 MiB on each node). The gVisor memoryOverhead is about twice that value. The Kata memoryOverhead covers the guest memory and the VMM (../cluster/runtimeclasses.yaml).",
   "measured": "2026-11-15, site of three nodes, one and two zones",
   "gvisor": {
    "idle": "5m",
    "start": "21m",
-   "overhead": "20m",
-   "shimMemory": "8Mi",
-   "memoryOverhead": "64Mi"
+   "overhead": "10m",
+   "shimMemory": "14Mi",
+   "memoryOverhead": "32Mi"
   },
   "kata": {
    "idle": "5m",
