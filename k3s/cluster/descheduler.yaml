@@ -12,6 +12,8 @@
 # - a pod with a claim (PodsWithPVC). TopoLVM claims are local volumes on one node, and the store pods have claims.
 # - a pod with the label hoover.dev/store (the stores of the zones and of the site), or a pod of a Job
 #   (batch.kubernetes.io/job-name).
+# - a pod of the PriorityClass hoover-node-bound or a higher priority (priorityThreshold). These pods can run on one
+#   node only (priorityclasses.yaml).
 # - a pod without a controller, a DaemonSet pod and a system-critical pod (the default protections).
 # - a pod that is younger than 15 minutes, so a pod that starts in a zone create stays where it started.
 # - a pod in the excluded namespaces: the platform, the operator pod, the shared stores and the calls services, whose
@@ -88,6 +90,8 @@ data:
           - name: DefaultEvictor
             args:
               nodeFit: true
+              priorityThreshold:
+                name: hoover-node-bound
               minPodAge: 15m
               podProtections:
                 defaultDisabled: [PodsWithLocalStorage]

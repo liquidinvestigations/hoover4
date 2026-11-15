@@ -73,6 +73,7 @@ hoover4:
 | `hoover4.vars.gpu_pool` | `nodes` or `address` |
 | `hoover4.vars.backup` | `node` and `path` of the backup destination |
 | `hoover4.vars.deploy` | optional `parallel_zones`: the zone steps that `deploy-k3s up` runs at the same time (default 2) |
+| `hoover4.vars.replicas` | optional pod count of each stateless processing service of every zone: `tika`, `tesseract-cpu`, `ocr-pdf`, `pdf-search`, `regex-entity-scanner`, `clamav` (default 1 each, see [Scale the stateless services](#scale-the-stateless-services)) |
 
 The site id is the domain with each `.` replaced by `-`, for example `k8-example-org`. Each command prints it with the site file and the state folder.
 A list value is a YAML list or a text with commas. Ansible reserves the variable name `roles`, so the node roles have the key `node_roles`.
@@ -184,11 +185,19 @@ python3 k3s/zones/zone.py delete zone-x
   Measure a zone create again and write the table with
   `python3 k3s/zones/cpu_requests.py measure --zone zone-x --start T --end T --idle-start T --idle-end T --write`, and
   the stores with `measure --site` and the times of their start.
+- A pod that can run on one node only has the PriorityClass `hoover-node-bound`
+  ([cluster/priorityclasses.yaml](cluster/priorityclasses.yaml)): the store pods of `hoover-stores`, a zone pod with a
+  claim, and a zone pod that names a node, for example ClamAV and the other services that reach the internet from the
+  public node. When its node is full, the scheduler preempts pods of the default priority on that node, and their
+  Deployments start them again on another node. A pod of the default priority preempts no pod, and two pods of the class
+  do not preempt each other, so preemption does not repeat. The Hoover render, the post-renderer of openDesk
+  ([zones/postrender.py](zones/postrender.py)) and the store installers set the class. A chart value stays.
 - The descheduler ([cluster/descheduler.yaml](cluster/descheduler.yaml)) moves running stateless pods every 10 minutes
   with `LowNodeUtilization` on the requests: from a node more than 15 points above the mean requested CPU or memory to
   a node more than 15 points below the mean in both. It never moves a pod with a claim, a store pod, a Job pod, a pod
-  without a controller, a pod younger than 15 minutes, or a pod of the platform namespaces. The band of 30 points
-  around the mean keeps a moved pod from moving back.
+  without a controller, a pod of the class `hoover-node-bound`, a pod younger than 15 minutes, or a pod of the platform
+  namespaces. The band of 30 points around the mean keeps a moved pod from moving back. The PodDisruptionBudgets of
+  openDesk apply to its evictions. The scheduler respects them in a preemption when another victim is possible.
 - The zone pod policy ([zones/manifests/zone-pods.yaml](zones/manifests/zone-pods.yaml)) keeps the runtime rule. It adds
   no topology spread.
 - A claim takes the first tier of its tier list that a node of the site has ([zones/zonestate.py](zones/zonestate.py)). The
@@ -343,6 +352,7 @@ hoover4:
       cassandra: {nodes: 1, data_gib: 2}  # default: 1 node and 2 GiB of live data
       opensearch: {nodes: 1}            # default: 1
       temporal: {pods: 1}               # default: 1
+      zones: 2                          # default: the zones of the zone state, at least 1
 ```
 
 Each store keeps one copy of each part of its data. No store has replication or failover.
@@ -352,10 +362,46 @@ Each store keeps one copy of each part of its data. No store has replication or 
 - Garage runs one pod on each of its `garage.nodes` nodes, with the replication factor 1. The layout gives each node a part of the objects. The client Service selects every ready Garage pod, and each pod forwards a request to the node that holds the object.
 - A store node count cannot become smaller than at the last apply, because each node holds a part of the data. `deploy-k3s check` and the stores step refuse it. A larger count adds nodes, and the store moves a part of the data to them.
 - Each pod of a store needs a storage tier on its own node. The step takes the first preferred tier that enough nodes have.
+- The stores step chooses the node of each store pod before its volume exists. See [Place the store pods](#place-the-store-pods).
 - A claim holds the size of one zone store for each zone with `stores = site`, at least one zone: 20 GiB for ClickHouse and for each Garage pod, 16 GiB for Manticore text and 10 GiB for Manticore vectors. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace.
 - Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
 - The zone copy of the backups does not hold the ClickHouse databases, Manticore tables and Garage buckets of a zone with `stores = site`. The collection exports hold the ClickHouse and Garage data. `main.py reindex-collection` builds the Manticore tables of a collection again from ClickHouse.
+
+### Place the store pods.
+
+A store pod with a local volume stays on the node of its first start, because TopoLVM binds its volume there. These are
+ClickHouse, both Manticore daemons, each Garage, Cassandra and OpenSearch pod. The stores step therefore computes a
+plan for them before it creates them ([hoover/stores/placement.py](hoover/stores/placement.py)), and writes the nodes
+of the plan into the node affinity of each StatefulSet. A sharded store gets a set of nodes and a required pod
+anti-affinity, so each pod takes one node of the set. The default scheduler places all other pods.
+
+| Input | Source |
+|---|---|
+| Node capacity | The allocatable memory and CPU of each schedulable node without the role `gpu`. The CPU already counts the speed factor of the node. |
+| Bound pods | The requests of the pods that stay on their node: the platform pods, the zone pods with a claim, and the zone pods that name a node. |
+| Store pods | The requests of each store pod, with the overhead of its RuntimeClass, and the storage tier of the store. |
+| Zone load | The requests of the running zones, and of the zones that `vars.stores zones` plans beyond them, with the `vars.replicas` count of each stateless service. A planned zone has the mean requests of the running zones, or `ZONE_ESTIMATE` when no zone runs. |
+
+The plan keeps three rules. Each new store pod fits the free memory and CPU of its node, each pod of a sharded store has
+its own node, and each pod has the storage tier of its store. Among the plans that keep them, the search compares these
+goals in order:
+
+1. The highest share of requested memory on a node, after the zone pods fill the nodes from the lowest share up.
+2. ClickHouse and each Manticore daemon on different nodes.
+3. Three goals for equal plans: the CPU share in the form of goal 1, then the highest memory share and CPU share of a
+   node without the zone pods.
+
+The search tries every choice of nodes and drops a partial plan that cannot be better than the best plan found. It
+places 12 store pods on 10 nodes in less than one second.
+When no plan fits a new store pod, the stores step stops with the free capacity of each node and the need of each store.
+
+- A store pod with a claim keeps the node of its claim. The step never moves data. When a plan without the claims has a
+  better result in goal 1 or 2, the plan lists the stores that it would place on other nodes under `changes`, and the step does not
+  apply it.
+- `deploy-k3s check` prints the plan in `store_placement` of its state, and the stores step logs it. The ConfigMap
+  `shared-stores` records the applied nodes under `placement`.
+- `python3 k3s/hoover/stores/shared.py plan` prints the plan and the problems of `vars.replicas` as JSON.
 
 ### Isolate the zones in Manticore.
 
@@ -392,6 +438,32 @@ A store pod keeps its data on the volume of its node. When a node stops, the par
 3. When the volume of a store is lost, its part of the data is lost. Restore the collections of each zone from their collection exports. The backups hold no copy of the Temporal history.
 
 The stores of an earlier version kept several copies (`vars.stores replicas` and `failover`). The stores step and `deploy-k3s check` refuse them. Delete every zone, delete the namespace `hoover-stores` (`kubectl delete namespace hoover-stores`, which deletes its claims), run `deploy-k3s up --steps stores`, and create the zones again. The data of the zones does not move.
+
+## Scale the stateless services.
+
+`vars.replicas` of the site file sets the pod count of each stateless processing service in every zone. The Service of
+the service spreads the connections over its ready pods. A count above 1 adds the requests of the extra pods to the
+zone load of the [store plan](#place-the-store-pods). `deploy-k3s check` refuses the counts when the zones and stores
+then request more memory or CPU than the nodes have, or when the ClamAV pods do not fit the public node.
+
+```yaml
+hoover4:
+  vars:
+    replicas: {tika: 2, tesseract-cpu: 2}
+```
+
+| Service | Key | Scales |
+|---|---|---|
+| Tika, Tesseract, the searchable-PDF builder, the PDF search, the regex scanner | `tika`, `tesseract-cpu`, `ocr-pdf`, `pdf-search`, `regex-entity-scanner` | Yes. Each request is complete in one pod. |
+| ClamAV | `clamav` | Yes, on the public node, because it loads its signatures from the internet. Each pod loads its own signatures. With signature updates on, two pods can report other database versions for a short time. |
+| Workers | `budget.worker_pods` (operator setting) | Yes, by their own setting. |
+| Singletons, operations worker | none | No. They are single writers. |
+| Website | none | No. It keeps the open chat streams and polls of its users in its memory. |
+
+The concurrency settings of the workers (for example `tika_concurrency`) stay operator settings. A larger count gives the
+service more capacity, and these settings decide how much of it the workers use.
+The memory request of ClamAV, Tika and Tesseract is the largest working set of their pods, measured in zone creates and
+ingests: 2048, 640 and 512 MiB ([hoover/manifests.py](hoover/manifests.py) `REQUESTS`).
 
 ## Share Temporal in a site.
 

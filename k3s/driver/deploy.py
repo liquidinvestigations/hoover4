@@ -1482,4 +1482,13 @@ def check(ctx, targets):
             except (ValueError, KeyError):
                 before = None
             problems += config.store_change_problems(before, config.store_plan(ctx.site))
+            # The placement plan of the store pods and the fit of vars.replicas (../hoover/stores/placement.py). The
+            # last line of the command is its JSON answer.
+            code, text = ctx.run([sys.executable, SOURCE / 'hoover/stores/shared.py', 'plan'], capture=True, check=False)
+            try:
+                answer = json.loads(text.strip().splitlines()[-1])
+                state['store_placement'] = answer['placement']
+                problems += answer['problems']
+            except (ValueError, IndexError, KeyError):
+                problems.append(f'the placement plan of the stores failed with code {code}: {text.strip()[-400:]}')
     return problems, state

@@ -49,6 +49,10 @@ Placement and runtimes:
   ../zones/cpu-requests.json (part hoover), and its pod template names the basis in annotations
   (../zones/cpu_requests.py). The worker replicas spread over the nodes (spread). A claim uses the first preferred
   tier that a node of the site has (tier()), and its pod stays on the node where the scheduler bound the claim.
+- A pod that can run on one node only (a pod with a claim, a pod that names a node, and a pod of the local layout that
+  follows the claims) has the PriorityClass NODE_BOUND. When its node is full, it preempts a pod of the default
+  priority, and the scheduler places that pod on another node.
+- The stateless processing services of SCALABLE run the vars.replicas count of the site file behind their Service.
 - The claims of the local layout are shared by more than one pod, for example the store claims of the operations
   worker, and a local volume serves only its own node. Each pod with a claim therefore carries the label of LOCAL_GROUP
   and a required pod affinity to that label, so these pods share one node: the node of the first bound claim. The
@@ -155,6 +159,18 @@ SERVICES = {
     'hoover4-development-auth-backdoor': {'role': 'excluded',
                                           'reason': 'oauth2-proxy with Keycloak signs in every user (D12).'},
 }
+# The stateless processing services that run vars.replicas pods of the site file behind their Service, by the key of
+# each service (../config.py REPLICA_SERVICES). Each request of a caller is complete in one pod: Tika, Tesseract, the
+# searchable-PDF builder, the PDF search and the regex scanner keep no state between requests. Each ClamAV pod loads its
+# own signatures, and with signature updates on, two pods can report other database versions for a short time. The
+# other services do not scale this way: the workers scale by budget.worker_pods, the singletons and the operations
+# worker are single writers, the website keeps the open chat streams and polls of its users in its memory, and the
+# schema proxy, oauth2-proxy and the agent services are not processing services.
+SCALABLE = {f'hoover4-{key}': key for key in site_config.REPLICA_SERVICES}
+# The PriorityClass of the pods that can run on one node only: a pod with a claim, which stays on the node of its local
+# volume, and a pod that names a node (../cluster/priorityclasses.yaml). Such a pod preempts a pod of the default
+# priority when its node is full, and the scheduler places the preempted pod on another node.
+NODE_BOUND = 'hoover-node-bound'
 # The services that reach the internet. ClamAV loads its signatures from the internet.
 INTERNET = {'hoover4-mcp-whois', 'hoover4-mcp-metasearch', 'hoover4-mcp-browser', 'hoover4-web-tor', 'hoover4-clamav'}
 # Container ports of the services that publish none in Compose.
@@ -205,9 +221,11 @@ MEASURED = {'hoover4-website': 'hoover-website', 'hoover4-ops': 'hoover-operatio
 UNLIMITED_IN_COMPOSE = {'hoover4-full-research-agent': '2560Mi', 'hoover4-mcp-collections': '768Mi'}
 # The memory request of each container, by container name, so the scheduler places a pod by its measured use. The value
 # is the current request plus 0.33 times the distance to the largest working set (anon memory) of the 64 GB reference site,
-# rounded up to 64 MiB. A container without an entry requests DEFAULT_REQUEST. A request never exceeds the limit.
+# rounded up to 64 MiB. ClamAV, Tika and Tesseract request the largest working set of their pod cgroup in three days of
+# zone creates and ingests on a three-node site (2039, 626 and 464 MiB), rounded up to 64 MiB, because the earlier
+# values were below their use. A container without an entry requests DEFAULT_REQUEST. A request never exceeds the limit.
 REQUESTS = {'hoover-website': '320Mi', 'hoover-workers': '1856Mi', 'temporal': '448Mi', 'hoover4-mcp-browser': '512Mi',
-            'hoover4-clamav': '448Mi', 'hoover4-tika': '256Mi', 'hoover4-tesseract-cpu': '192Mi',
+            'hoover4-clamav': '2048Mi', 'hoover4-tika': '640Mi', 'hoover4-tesseract-cpu': '512Mi',
             'hoover4-regex-entity-scanner': '192Mi', 'hoover4-full-research-agent': '640Mi',
             'clickhouse': '640Mi', 'manticore': '448Mi', 'manticore-vectors': '704Mi',
             'temporal-cassandra': '3264Mi', 'temporal-elasticsearch': '1024Mi'}
@@ -426,12 +444,28 @@ def workload(target, kind, name, spec, replicas=1, labels=None, spread=False, cl
         body['podManagementPolicy'] = 'Parallel'
         if claims:
             body['volumeClaimTemplates'] = [{'metadata': {'name': c}, 'spec': claim_spec(target, c)} for c in claims]
+    if claims or spec.get('nodeSelector') or spec.get('affinity') or any('persistentVolumeClaim' in v for v in spec.get('volumes', [])):
+        spec['priorityClassName'] = NODE_BOUND
     item = {'apiVersion': 'apps/v1', 'kind': kind, 'metadata': {'name': name, 'namespace': target.ns,
                                                                 'labels': {'app.kubernetes.io/name': name, PART: name}},
             'spec': body}
     # The measured CPU request and its basis (../zones/cpu_requests.py, part hoover of cpu-requests.json).
     cpu_requests().apply(item, f'{kind.lower()}/{name}', 'hoover')
     return item
+
+
+def scaled_pods():
+    """{name: (MiB, millicores, public)} of one pod of each service of SCALABLE: its memory request, its CPU request of
+    ../zones/cpu-requests.json and the overhead of gVisor. public is True for a service on the public node."""
+    import placement
+    overhead = placement.runtime_overhead()['gvisor']
+    table = cpu_requests().load().get('hoover', {})
+    out = {}
+    for name in SCALABLE:
+        cpu = table.get(f'deployment/{name}', {}).get('request', '50m')
+        out[name] = (placement.mem_mi(REQUESTS.get(name, DEFAULT_REQUEST)) + overhead['memory'],
+                     placement.cpu_m(cpu) + overhead['cpu'], name in INTERNET)
+    return out
 
 
 def cpu_requests():
@@ -902,6 +936,7 @@ def translated(target, services, mounts, deploy):
         spec = pod_spec(target, [c], pod_volumes, node=selector, init=init, group=group)
         kind = 'StatefulSet' if role in ('store', 'temporal-store') else 'Deployment'
         items.append(workload(target, kind, kube_name(name), spec, labels=labels,
+                              replicas=target.site.replicas.get(SCALABLE[name], 1) if name in SCALABLE else 1,
                               annotations={'hoover.dev/config': config_hash(target, svc)} if name == 'temporal' else None))
         if ports(name, svc):
             items.append(service(target, kube_name(name), ports(name, svc)))

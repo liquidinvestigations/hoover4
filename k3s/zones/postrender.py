@@ -9,6 +9,8 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
   of the store tier of the site (zonestate.py), and the block mount wrapper of ../hoover/stores/podspec.py
   mounts them inside the guest. The chart Services select the same pods as before.
 - Storage: every other volume claim uses the default tier of the zone.
+- Priority: a Deployment or StatefulSet with a claim, or with pods that name a node, gets the PriorityClass
+  hoover-node-bound (node_bound()). Its pods preempt pods of the default priority on a full node.
 - Resources: cpu_policy.py sets the CPU request and limit of each controller and CronJob. cpu_requests.py then
   raises the CPU request of each measured workload to the value of cpu-requests.json, from its start peak and its idle
   baseline, and writes the annotations of that basis into its pod template. memory-limits.json sets the memory
@@ -97,6 +99,8 @@ STORES = {
     'deployment/memcached': {'store': 'memcached', 'container': 'memcached', 'volumes': {}},
 }
 STORE_LABEL = 'hoover.dev/store'
+# The PriorityClass of the pods that can run on one node only (../cluster/priorityclasses.yaml).
+NODE_BOUND = 'hoover-node-bound'
 # Workloads that do not run in gVisor, with the runtime that they get and the observed failure. The zone pod policy
 # (manifests/zone-pods.yaml) keeps a RuntimeClass that a pod names.
 EXCEPTIONS = {
@@ -202,6 +206,17 @@ def kata_store(doc, rule, zone, claims):
     # network stack, and NATS listens on ports above 1024.
     spec.get('securityContext', {}).pop('sysctls', None)
     doc['spec']['template']['metadata'].setdefault('labels', {})[STORE_LABEL] = store
+
+
+def node_bound(doc):
+    """Give the PriorityClass NODE_BOUND to a Deployment or StatefulSet whose pods can run on one node only: a pod with a
+    claim, which stays on the node of its local volume, or a pod that names a node. A chart value stays."""
+    spec = pod_spec(doc)
+    if doc['kind'] not in ('Deployment', 'StatefulSet'):
+        return
+    if (doc['spec'].get('volumeClaimTemplates') or (spec.get('nodeSelector') or {}).get('kubernetes.io/hostname')
+            or any('persistentVolumeClaim' in v for v in spec.get('volumes') or [])):
+        spec.setdefault('priorityClassName', NODE_BOUND)
 
 
 def memory(doc):
@@ -346,6 +361,7 @@ def overlay(documents, namespace):
             doc['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/jitsi-turn'] = \
                 hashlib.sha256(JITSI_TURN.encode()).hexdigest()[:16]
         doc['metadata'].setdefault('namespace', namespace)
+        node_bound(doc)
         cpu_policy.apply(doc)
         memory(doc)
         main = next(iter(REQUESTS.get(key) or MEMORY.get(key) or {}), None)

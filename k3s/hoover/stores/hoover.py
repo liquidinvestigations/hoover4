@@ -17,6 +17,8 @@ import json, subprocess
 import common, podspec
 
 SECRET = 'hoover-stores'
+# The PriorityClass of the pods that can run on one node only (../../cluster/priorityclasses.yaml).
+NODE_BOUND = 'hoover-node-bound'
 LIMITS = json.loads((common.SOURCE / 'zones' / 'memory-limits.json').read_text())['hoover']
 # The claim of each store, for one zone. The Manticore text claim holds at least the 14.1 GiB of Manticore text data of
 # the 64 GB reference site. The shared stores multiply their size by the zone count (shared.py size()).
@@ -78,6 +80,8 @@ def statefulset(name, store, namespace, container, entrypoint, directory, tier, 
             'containers': [container], 'volumes': list(extra_volumes)}
     if affinity:
         spec['affinity'] = affinity
+    # The pod stays on the node of its volume, so it preempts a stateless pod when that node is full.
+    spec['priorityClassName'] = NODE_BOUND
     spec = podspec.blockmount(spec, container['name'], entrypoint, [('data', None, directory)], user)
     labels = {'app.kubernetes.io/name': store, common.LABEL: 'store', 'hoover.dev/store': store}
     claim = {'metadata': {'name': 'data'}, 'spec': {'accessModes': ['ReadWriteOnce'], 'volumeMode': 'Block',

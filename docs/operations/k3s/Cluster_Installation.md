@@ -47,6 +47,8 @@ The site file is a YAML Ansible inventory with one group, `hoover4`.
 | `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool. |
 | `hoover4.vars.backup` | The backup node and the backup folder on that node. |
 | `hoover4.vars.deploy` | The count of zone steps that `deploy-k3s up` runs at the same time (`parallel_zones`, default 2). |
+| `hoover4.vars.stores` | The nodes and node counts of the shared stores, and the zone count (`zones`) that the store placement reserves memory and CPU for. |
+| `hoover4.vars.replicas` | The pod count of each stateless processing service of every zone, for example `tika: 2` (default 1). |
 
 Check the file before each change:
 
@@ -138,6 +140,7 @@ The host play removes `/usr/local/libexec/hoover4`, the sudo rule `/etc/sudoers.
    The steps `hosts:prepare` and `hosts:k3s` run one Ansible play each on all target nodes in parallel.
    The k3s play writes the admin kubeconfig into the state folder, with the node address of the server. `hosts:verify` reads every node through it.
    The driver then installs the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU services, each zone and the call services.
+   Before the step `stores` creates a store pod with a volume, it chooses the node of that pod. `k3s/deploy-k3s check` prints the plan in `store_placement` and refuses `vars.replicas` counts that the nodes cannot hold. See [the store placement](../../../k3s/Readme.md#place-the-store-pods).
    A step starts when the steps that it needs are done, so independent steps run at the same time. For example, the ingress, the frontend, monitoring and the images run together after the registry. The step `prepull` pulls the zone images on every eligible node while the zones apply. `vars.deploy.parallel_zones` of the site file limits the zone steps that run at the same time (default 2). The output lines of a step start with the step name in brackets.
 4. When a step fails, read its error, correct the cause, and continue with the same inputs:
 

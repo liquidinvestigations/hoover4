@@ -427,7 +427,7 @@ def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
     web = containers(get(items, 'Deployment', 'hoover-website'))[0]['resources']
     assert web['requests']['memory'] == '320Mi' and web['limits']['memory'] == '2048Mi'
     clamav = containers(get(items, 'Deployment', 'hoover4-clamav'))[0]['resources']
-    assert clamav['requests']['memory'] == '448Mi' and clamav['limits']['memory'] == '3456Mi'
+    assert clamav['requests']['memory'] == '2048Mi' and clamav['limits']['memory'] == '3456Mi'
     import zone_ini
     assert zone_ini.derive(zone_ini.BUDGET)[('main_services', 'mcp_browser_mem_limit')] == '10240M'
     tika = containers(get(items, 'Deployment', 'hoover4-tika'))[0]['resources']

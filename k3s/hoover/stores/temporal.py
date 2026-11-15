@@ -18,7 +18,8 @@ reach that port (network()), and the commands of this script use it inside a Tem
 
 Plan (vars.stores, ../../config.py store_plan()). Each store keeps one copy of each part of its data. A lost node
 loses its part until it returns, and the backups are the recovery path (k3s/Readme.md).
-- Cassandra runs one pod on each of its nodes (cassandra), and the nodes share the token ranges. The keyspace temporal
+- Cassandra runs one pod on each of its nodes (cassandra), and the nodes share the token ranges. The placement plan of
+  shared.py (placement.py) chooses the nodes of the Cassandra and OpenSearch pods. The keyspace temporal
   has the replication factor 1 (SimpleStrategy), and Temporal reads and writes with the consistency LOCAL_ONE.
 - OpenSearch runs one pod on each of its nodes (opensearch), and every pod can be the cluster manager. The visibility
   index has one primary shard for each node of its creation and no replica shard.
@@ -233,7 +234,7 @@ def anti_affinity(store, required):
 def store_statefulset(store, container, tier, claim_size, replicas, nodes, security=None, init=()):
     """A gVisor StatefulSet with one file system claim data for each pod, one pod per node of nodes."""
     spec = {'runtimeClassName': 'gvisor', 'terminationGracePeriodSeconds': 120, 'enableServiceLinks': False,
-            'containers': [container], 'initContainers': list(init), 'volumes': [],
+            'priorityClassName': hoover.NODE_BOUND, 'containers': [container], 'initContainers': list(init), 'volumes': [],
             'affinity': {'nodeAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': {'nodeSelectorTerms': [{'matchExpressions': [
                 {'key': 'kubernetes.io/hostname', 'operator': 'In', 'values': list(nodes)}]}]}},
                 'podAntiAffinity': anti_affinity(store, True)}}
@@ -253,7 +254,7 @@ def resources(request, limit, cpu='2'):
     return {'requests': {'cpu': '50m', 'memory': request}, 'limits': {'cpu': cpu, 'memory': limit}}
 
 
-def cassandra(s, plan, zones):
+def cassandra(s, plan, zones, placed=None):
     import shared
     values = cassandra_values(plan['cassandra_data_gib'])
     seeds = ','.join(peers('temporal-cassandra', plan['cassandra'])[:2])
@@ -272,6 +273,7 @@ def cassandra(s, plan, zones):
         'readinessProbe': {'tcpSocket': {'port': 9042}, 'periodSeconds': 5, 'failureThreshold': 3},
         'resources': resources(values['request'], values['limit'], str(CASSANDRA_CPUS))}
     tier, nodes = shared.tier(s, plan['nodes'], 'temporal-cassandra', plan['cassandra'])
+    nodes = (placed or {}).get('temporal-cassandra', nodes)
     entrypoint = (common.SOURCE.parent / 'main_services/ops/docker/cassandra-entrypoint.sh').read_text()
     workload = store_statefulset('temporal-cassandra', container, tier, size('temporal-cassandra', zones), plan['cassandra'], nodes)
     workload['spec']['template']['spec']['volumes'].append({'name': 'entrypoint', 'configMap': {'name': 'temporal-cassandra-entrypoint'}})
@@ -279,7 +281,7 @@ def cassandra(s, plan, zones):
             headless('temporal-cassandra', [('cql', 9042), ('gossip', 7000)]), workload]
 
 
-def opensearch(s, plan, zones):
+def opensearch(s, plan, zones, placed=None):
     import shared
     names = [f'temporal-opensearch-{i}' for i in range(plan['opensearch'])]
     env = {'cluster.name': 'hoover-temporal', 'network.host': '0.0.0.0', 'DISABLE_SECURITY_PLUGIN': 'true',
@@ -302,6 +304,7 @@ def opensearch(s, plan, zones):
         'readinessProbe': {'httpGet': {'path': '/_cluster/health?local=true', 'port': 9200}, 'periodSeconds': 5, 'failureThreshold': 3},
         'resources': resources(REQUESTS['temporal-opensearch'], OPENSEARCH_LIMIT)}
     tier, nodes = shared.tier(s, plan['nodes'], 'temporal-opensearch', plan['opensearch'])
+    nodes = (placed or {}).get('temporal-opensearch', nodes)
     workload = store_statefulset('temporal-opensearch', container, tier, size('temporal-opensearch', zones), plan['opensearch'], nodes,
                                  security={'fsGroup': 1000})
     # The nodes find each other before they are ready, so the StatefulSet starts its pods together.
@@ -389,8 +392,9 @@ def network():
     ]
 
 
-def objects(s, plan, zones, public_jwks):
-    return hoover.site_cpu([*network(), *cassandra(s, plan, zones), *opensearch(s, plan, zones), schema_job(plan),
+def objects(s, plan, zones, public_jwks, placed=None):
+    """The objects of Temporal and its stores. placed: {store: nodes} of the placement plan (placement.py)."""
+    return hoover.site_cpu([*network(), *cassandra(s, plan, zones, placed), *opensearch(s, plan, zones, placed), schema_job(plan),
                             *temporal(plan, public_jwks)])
 
 
@@ -483,11 +487,12 @@ def wait_deployment(name, timeout=900):
         time.sleep(5)
 
 
-def apply(s, plan, zones):
-    """Create or update the Temporal of the site and wait until it serves. shared.py apply calls it."""
+def apply(s, plan, zones, placed=None):
+    """Create or update the Temporal of the site and wait until it serves. shared.py apply calls it with the placement
+    plan of the store pods."""
     import shared
     public_jwks = ensure_signing_key()
-    items = objects(s, plan, zones, public_jwks)
+    items = objects(s, plan, zones, public_jwks, placed)
     job = next(o for o in items if o['kind'] == 'Job')
     present = common.kubectl('-n', NS, 'get', 'job', job['metadata']['name'], '--ignore-not-found', '-o', 'name').strip()
     hoover.apply([o for o in items if o['kind'] not in ('Job', 'Deployment')], keep_replicas=False)

@@ -26,11 +26,12 @@ def test_the_plan_defaults_come_from_the_worker_nodes():
     plan = config.store_plan(remote())
     # The worker nodes with a storage tier, in the order of the site file. The calls and GPU nodes hold no store.
     assert plan == {'nodes': ('server-a', 'worker-b', 'edge'), 'history_shards': 128, 'garage': 3, 'cassandra': 1,
-                    'cassandra_data_gib': 2, 'opensearch': 1, 'temporal': 1}
+                    'cassandra_data_gib': 2, 'opensearch': 1, 'temporal': 1, 'zones': 0}
     stores = ('{nodes: [server-a, worker-b], history_shards: 512, garage: {nodes: 1}, cassandra: {nodes: 2, data_gib: 5}, '
-              'opensearch: {nodes: 2}, temporal: {pods: 3}}')
+              'opensearch: {nodes: 2}, temporal: {pods: 3}, zones: 2}')
     assert config.store_plan(remote(stores)) == {'nodes': ('server-a', 'worker-b'), 'history_shards': 512, 'garage': 1,
-                                                 'cassandra': 2, 'cassandra_data_gib': 5, 'opensearch': 2, 'temporal': 3}
+                                                 'cassandra': 2, 'cassandra_data_gib': 5, 'opensearch': 2, 'temporal': 3,
+                                                 'zones': 2}
 
 
 def test_the_site_file_refuses_impossible_store_plans():

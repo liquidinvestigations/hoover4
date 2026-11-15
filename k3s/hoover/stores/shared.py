@@ -15,6 +15,9 @@ other stores, ready and grow include it, and remove deletes the Temporal namespa
 
 The site file gives the plan (vars.stores, ../../config.py store_plan()): the nodes that can run a store pod and the
 Garage node count. Each store keeps one copy of its data, and the Service of each store selects every ready pod.
+apply chooses the node of each store pod with a local volume before its first start (placement.py) and writes it into
+the node affinity of its StatefulSet. A pod with a claim keeps the node of its claim. The ConfigMap shared-stores
+records the plan, and plan prints it. Each store pod has the PriorityClass hoover-node-bound.
 - ClickHouse runs one pod.
 - Manticore runs one pod for text (manticore) and one for vectors (manticore-vectors). Hoover refuses one host for
   both. Each daemon listens on 9306 (MySQL) and 9308 (HTTP), and on the read-only listeners 9307 (MySQL) and 9309
@@ -35,7 +38,7 @@ which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
 ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
 the admin port takes none.
-The ConfigMap shared-stores records the applied plan, the Garage node ids, the node counts of Cassandra and OpenSearch
+The ConfigMap shared-stores records the applied plan, the nodes of the store pods, the Garage node ids, the node counts of Cassandra and OpenSearch
 and the Temporal history shard count. The deploy check reads it (problems()). The stores of an earlier version kept
 several copies, and apply and the deploy check refuse them with the steps to create the stores again.
 The Secret hoover-stores of the namespace holds the ClickHouse admin password, the Manticore admin password and seed,
@@ -47,6 +50,7 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py grow              make the claims large enough for the zones of the zone state
        shared.py ready             exit 1 when a store or Temporal has no ready pod
        shared.py check             print the problems of the plan against the cluster as JSON
+       shared.py plan              print the placement plan of the store pods and the problems of vars.replicas as JSON
        shared.py remove <zone>     delete the ClickHouse databases, users and profile, the Manticore tables and users, the
                                    Garage buckets and keys and the Temporal namespace of a zone.
                                    The operations pod of the zone empties the buckets. Without it, a non-empty bucket
@@ -139,7 +143,7 @@ def garage_toml(peers):
             .replace('BOOTSTRAP_PEERS', '[' + ', '.join(names) + ']'))
 
 
-def clickhouse(s, plan, zones):
+def clickhouse(s, plan, zones, placed=None):
     files = {p.name: p.read_text() for p in sorted((common.LAB / 'config' / 'clickhouse').iterdir()) if p.is_file()}
     container = {
         'name': 'clickhouse', 'image': hoover.IMAGES['clickhouse'], 'env': [hoover.secret_env('CH_ADMIN_PASSWORD', 'clickhouse-admin')],
@@ -149,6 +153,7 @@ def clickhouse(s, plan, zones):
         'readinessProbe': {'httpGet': {'path': '/ping', 'port': 8123}, 'periodSeconds': 2, 'failureThreshold': 3},
         'resources': hoover.resources('clickhouse')}
     name, nodes = tier(s, plan['nodes'], 'clickhouse')
+    nodes = (placed or {}).get('clickhouse', nodes)
     return [configmap('clickhouse-config', files),
             hoover.service('clickhouse', NS, [('http', 8123), ('native', 9000)], {'app.kubernetes.io/name': 'clickhouse'}),
             hoover.statefulset('clickhouse', 'clickhouse', NS, container, ['/entrypoint.sh'], '/var/lib/clickhouse',
@@ -156,7 +161,7 @@ def clickhouse(s, plan, zones):
                                extra_volumes=[{'name': 'config', 'configMap': {'name': 'clickhouse-config'}}])]
 
 
-def garage(s, plan, zones, peers):
+def garage(s, plan, zones, peers, placed=None):
     container = {
         'name': 'garage', 'image': hoover.IMAGES['garage'],
         'env': [hoover.secret_env('GARAGE_RPC_SECRET', 'garage-rpc-secret'), hoover.secret_env('GARAGE_ADMIN_TOKEN', 'garage-admin-token')],
@@ -165,6 +170,7 @@ def garage(s, plan, zones, peers):
         'readinessProbe': {'tcpSocket': {'port': 3900}, 'periodSeconds': 2, 'failureThreshold': 3},
         'resources': hoover.resources('garage')}
     name, nodes = tier(s, plan['nodes'], 'garage', plan['garage'])
+    nodes = (placed or {}).get('garage', nodes)
     return [configmap('garage-config', {'garage.toml': garage_toml(peers)}),
             hoover.service('garage', NS, [('s3', 3900)], {'app.kubernetes.io/name': 'garage'}),
             hoover.service(PEERS, NS, [('rpc', 3901)], {'app.kubernetes.io/name': 'garage'}, headless=True),
@@ -174,7 +180,7 @@ def garage(s, plan, zones, peers):
                                extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])]
 
 
-def manticore(s, plan, zones, name):
+def manticore(s, plan, zones, name, placed=None):
     """One Manticore daemon of the site, with the admin of the seed and the read-only listeners."""
     container = {
         'name': 'manticore', 'image': hoover.IMAGES['manticore'],
@@ -192,6 +198,7 @@ def manticore(s, plan, zones, name):
              'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach')
     seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
     tier_name, nodes = tier(s, plan['nodes'], name)
+    nodes = (placed or {}).get(name, nodes)
     return [hoover.service(name, NS, MANTICORE_PORTS, {'app.kubernetes.io/name': name}),
             hoover.statefulset(name, name, NS, container, ['sh', '-c', start], '/var/lib/manticore', tier_name,
                                size(name, zones), user='999:999', affinity=affinity(nodes, name, False), extra_volumes=[seed])]
@@ -220,11 +227,61 @@ def network():
     ]
 
 
-def objects(s, plan, zones, peers):
+def objects(s, plan, zones, peers, placed=None):
+    """The objects of the stores. placed: {store: nodes} of the placement plan. Without it, each store may use every
+    store node with its tier."""
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}
-    return hoover.site_cpu([namespace, *network(), *clickhouse(s, plan, zones),
-                            *[o for name in MANTICORE for o in manticore(s, plan, zones, name)],
-                            *garage(s, plan, zones, peers)])
+    return hoover.site_cpu([namespace, *network(), *clickhouse(s, plan, zones, placed),
+                            *[o for name in MANTICORE for o in manticore(s, plan, zones, name, placed)],
+                            *garage(s, plan, zones, peers, placed)])
+
+
+def store_counts(plan):
+    """{store: pod count} of the stores that keep a local volume (placement.VOLUME_STORES)."""
+    return {'clickhouse': 1, 'manticore': 1, 'manticore-vectors': 1, 'garage': plan['garage'],
+            'temporal-cassandra': plan['cassandra'], 'temporal-opensearch': plan['opensearch']}
+
+
+def placement_report(s, plan):
+    """The placement plan of the store pods (placement.py) for the cluster and the site file, as a dict. Raise
+    placement.NoFit when a new store pod fits no node."""
+    import manifests, placement
+    zones = len(site_zones())
+    rendered = objects(s, plan, zones, {}) + temporal.objects(s, plan, zones, '{"keys": []}')
+    requests = placement.store_requests(rendered, placement.runtime_overhead())
+    stores_found = common.kubectl('get', 'namespace', NS, '--ignore-not-found', '-o', 'name').strip()
+    claims = common.kubectl_json('-n', NS, 'get', 'pvc') if stores_found else {'items': []}
+    planned = max(plan['zones'], zones, 1)
+    replicas = {f'hoover4-{k}': v for k, v in s.replicas.items()}
+    nodes, fixed, zone_memory, zone_cpu, details = placement.inputs(
+        s, common.kubectl_json('get', 'nodes'), common.kubectl_json('get', 'pods', '-A'), claims, planned, replicas,
+        manifests.scaled_pods(), s.with_role('public')[0].name)
+    stores = [placement.Store(store, count, *requests[store], candidates=tier(s, plan['nodes'], store, count)[1],
+                              fixed=fixed.get(store, ())) for store, count in store_counts(plan).items()]
+    out = placement.report(nodes, stores, zone_memory, zone_cpu)
+    out['inputs'] = dict(details, store_requests={k: {'memory': round(v[0]), 'cpu': round(v[1])} for k, v in requests.items()},
+                         claims={k: list(v) for k, v in fixed.items()})
+    return out
+
+
+def placement_problems(s, out):
+    """The problems of the replica counts of vars.replicas against a placement report, as messages."""
+    scaled = {k: v for k, v in s.replicas.items() if v > 1}
+    if not scaled:
+        return []
+    asked = ', '.join(f'{k} {v}' for k, v in sorted(scaled.items()))
+    problems = []
+    if not out['zones_fit']:
+        share = out['requested_share']
+        problems.append(f'vars.replicas ({asked}) does not fit: the zones and stores request {share["memory"]:.0%} of the '
+                        f'memory and {share["cpu"]:.0%} of the CPU of the nodes. Lower the counts or add a node.')
+    public = s.with_role('public')[0].name
+    node = out['nodes'].get(public)
+    if 'clamav' in scaled and node and any(node['base_and_stores'][k] > node['capacity'][k] for k in ('memory', 'cpu')):
+        problems.append(f'vars.replicas clamav {scaled["clamav"]} does not fit the public node {public}: its pods, the '
+                        f'stores and the pods bound to it request {node["base_and_stores"]["memory"]}Mi and '
+                        f'{node["base_and_stores"]["cpu"]}m of {node["capacity"]["memory"]}Mi and {node["capacity"]["cpu"]}m.')
+    return problems
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -380,7 +437,11 @@ def apply():
         raise SystemExit('; '.join(refused))
     zones = len(site_zones())
     peers = (before or {}).get('garage_nodes', {})
-    items = objects(s, plan, zones, peers)
+    report = placement_report(s, plan)
+    placed = report['stores']
+    common.log('stores.jsonl', step='placement', stores=placed, score=report['score'], changes=report['changes'],
+               zones_fit=report['zones_fit'])
+    items = objects(s, plan, zones, peers, placed)
     common.apply(items[0])
     credentials()
     hoover.apply(items[1:], keep_replicas=False)
@@ -388,9 +449,9 @@ def apply():
         wait_current(store)
     ids = join_garage(plan, size('garage', zones))
     if ids != peers:
-        hoover.apply([o for o in garage(s, plan, zones, ids) if o['kind'] == 'ConfigMap'])
-    temporal.apply(s, plan, zones)
-    record = {'nodes': list(plan['nodes']), 'garage_replication_factor': 1, 'garage_nodes': ids,
+        hoover.apply([o for o in garage(s, plan, zones, ids, placed) if o['kind'] == 'ConfigMap'])
+    temporal.apply(s, plan, zones, placed)
+    record = {'nodes': list(plan['nodes']), 'placement': placed, 'garage_replication_factor': 1, 'garage_nodes': ids,
               'cassandra_nodes': plan['cassandra'], 'opensearch_nodes': plan['opensearch'], 'temporal_pods': plan['temporal'],
               'temporal_history_shards': (before or {}).get('temporal_history_shards', plan['history_shards'])}
     common.apply(configmap(STATE, {'plan': json.dumps(record, sort_keys=True)}))
@@ -473,7 +534,7 @@ def remove(zone):
 
 
 def main(argv):
-    if not argv or argv[0] not in ('apply', 'show', 'grow', 'ready', 'check', 'remove') or (argv[0] == 'remove') != (len(argv) == 2):
+    if not argv or argv[0] not in ('apply', 'show', 'grow', 'ready', 'check', 'plan', 'remove') or (argv[0] == 'remove') != (len(argv) == 2):
         sys.exit(__doc__)
     if argv[0] == 'show':
         s = site()
@@ -489,6 +550,15 @@ def main(argv):
         found = problems()
         print(json.dumps({'problems': found}))
         sys.exit(1 if found else 0)
+    elif argv[0] == 'plan':
+        import placement
+        s = site()
+        try:
+            out = placement_report(s, config.store_plan(s))
+            found = placement_problems(s, out)
+        except placement.NoFit as error:
+            out, found = {}, [str(error)]
+        print(json.dumps({'placement': out, 'problems': found}, sort_keys=True))
     else:
         remove(argv[1])
 

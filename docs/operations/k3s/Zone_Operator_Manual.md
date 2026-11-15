@@ -44,6 +44,7 @@ Select **Sign out** at the end of the page to end the session.
 
 The cluster places each pod of the zone on the node with the lowest requested CPU per thread.
 A pod with a volume stays on the node of its volume.
+When that node is full, the pod takes the place of a pod without a volume, and that pod starts again on another node.
 
 A create, upgrade or delete restarts the shared call services. Calls that run at that time end.
 

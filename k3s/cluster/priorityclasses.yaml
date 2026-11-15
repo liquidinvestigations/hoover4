@@ -1,0 +1,16 @@
+# The PriorityClass of the pods that can run on one node only: the store pods of hoover-stores, the zone pods with a
+# claim, which stay on the node of their local volume (TopoLVM), and the zone pods that name a node, for example the
+# services that reach the internet from the public node. setup.sh applies this file.
+# When the node of such a pod is full, the scheduler preempts pods of the default priority (0) on that node. A preempted
+# pod of a Deployment returns as a new pod, and the scheduler places it on another node. A pod of the default priority
+# never preempts another pod, and two pods of this class do not preempt each other, so preemption cannot repeat.
+# The descheduler (descheduler.yaml) evicts no pod of this class. The value stays below the PriorityClass of TopoLVM
+# (1000000), so the volume pods of a node keep their place.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: hoover-node-bound
+value: 10000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: A pod that can run on one node only. It preempts a pod of the default priority on that node.

@@ -9,14 +9,16 @@ secret value. Tunings, application switches and schedules are operator settings 
 secret is a reference to a private file on the node that reads it.
 
   hoover4:
-    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool, backup and stores
+    vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool, backup, stores,
+                         deploy and replicas
       networks:          one entry per WireGuard network: interface, cidr, hubs, port and managed (NETWORK_KEYS)
       lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
       backup:            one node and one host folder that receive the backups
       stores:            the nodes of the shared Hoover stores, the node count of each store that shards its data, the
-                         Temporal pods, the Cassandra data size and the history shard count of the site Temporal
-                         (STORES_KEYS, STORE_PARTS)
+                         Temporal pods, the Cassandra data size, the history shard count of the site Temporal and the
+                         planned zone count (STORES_KEYS, STORE_PARTS)
+      replicas:          the pod count of each stateless processing service of the zones (REPLICA_KEYS)
     hosts:
       <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
@@ -92,7 +94,7 @@ STORAGE_RESERVE = 0.05
 # secret (the absolute path of a private file), alias (an SSH host alias).
 SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name')}
 # The mappings of hoover4.vars beside the site values.
-SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores', 'deploy')
+SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores', 'deploy', 'replicas')
 # A WireGuard network: vars.networks.<name>. hubs names the nodes that every other node of the network peers with.
 # Without hubs, every node peers with every other node. managed: the installer writes and starts the interface on each
 # node of the network and adds its peers. Without it, the installer reads the interface and changes nothing on it.
@@ -129,6 +131,8 @@ PARALLEL_ZONES = 2
 #   nodes     the nodes that can run a store pod. Default: every node with the role worker and a storage tier.
 #   history_shards  the history shard count of the Temporal of the site. Default: HISTORY_SHARDS. Temporal keeps the
 #             count of its creation, so a change is refused (deploy check).
+#   zones     the zone count that the placement of the store pods reserves memory and CPU for
+#             (../hoover/stores/placement.py). Default: the zones of the zone state, at least 1.
 #   garage.nodes      the Garage node count. Default: the store node count, at most 3.
 #   cassandra.nodes   the Cassandra node count. Default: 1.
 #   cassandra.data_gib  the live data of Cassandra in GiB, which sets its heap (../hoover/stores/temporal.py). Default: 2.
@@ -136,9 +140,15 @@ PARALLEL_ZONES = 2
 #   temporal.pods     the Temporal pod count. Temporal holds no data. Default: 1.
 # A store node count cannot become smaller than the count of the last apply, because the removed nodes hold a part of
 # the data (deploy check).
-STORES_KEYS = {'nodes': (False, 'names'), 'history_shards': (False, 'count')}
+STORES_KEYS = {'nodes': (False, 'names'), 'history_shards': (False, 'count'), 'zones': (False, 'count')}
 STORE_PARTS = {'garage': {'nodes': (False, 'count')}, 'cassandra': {'nodes': (False, 'count'), 'data_gib': (False, 'count')},
                'opensearch': {'nodes': (False, 'count')}, 'temporal': {'pods': (False, 'count')}}
+# The replica count of each stateless processing service of every zone: vars.replicas.<service>. Default: 1. Each
+# service runs its pods behind its Service, which spreads the connections over the ready pods. The deploy check refuses
+# counts whose requests do not fit the nodes (../hoover/stores/shared.py plan). The other services of a zone run one
+# pod, or scale by their own setting (budget.worker_pods of the workers), see ../hoover/manifests.py SCALABLE.
+REPLICA_SERVICES = ('tika', 'tesseract-cpu', 'ocr-pdf', 'pdf-search', 'regex-entity-scanner', 'clamav')
+REPLICA_KEYS = {k: (False, 'count') for k in REPLICA_SERVICES}
 # The history shard count of a new site Temporal. The Compose default (deploy.py temporal_history_shards) is the same.
 HISTORY_SHARDS = 128
 # The values of a zone entry of the zone state that the Hoover installation of the zone reads (zone_hoover()):
@@ -300,6 +310,8 @@ class Site:
     stores: dict = field(default_factory=dict)
     # vars.deploy as given in the site file.
     deploy: dict = field(default_factory=dict)
+    # vars.replicas as given in the site file: {service: count}. A missing service has 1 pod.
+    replicas: dict = field(default_factory=dict)
     # The site file that read() parsed, or empty for parse().
     path: str = ''
 
@@ -674,6 +686,7 @@ def parse(text, check_files=False):
     if variables.get('backup') is not None:
         backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
     deploy = _section('vars.deploy', _mapping(variables.get('deploy'), 'vars.deploy', problems), DEPLOY_KEYS, {}, problems)
+    replicas = _section('vars.replicas', _mapping(variables.get('replicas'), 'vars.replicas', problems), REPLICA_KEYS, {}, problems)
     raw_stores = _mapping(variables.get('stores'), 'vars.stores', problems)
     stores = _section('vars.stores', {k: v for k, v in raw_stores.items() if k not in STORE_PARTS},
                       dict(STORES_KEYS, **{k: (False, 'mapping') for k in STORE_PARTS}), {}, problems)
@@ -720,7 +733,7 @@ def parse(text, check_files=False):
             nodes[name] = Node(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
-    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, deploy=deploy, **site_values)
+    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, deploy=deploy, replicas=replicas, **site_values)
     problems = check(site, check_files=check_files)
     if problems:
         raise SiteError(_message(problems))
@@ -834,14 +847,14 @@ def parallel_zones(site):
 
 def store_plan(site):
     """The shared Hoover stores of a site with the defaults of STORES_KEYS and STORE_PARTS: {'nodes', 'history_shards',
-    'garage', 'cassandra', 'cassandra_data_gib', 'opensearch', 'temporal'}. garage, cassandra and opensearch are node
-    counts, and temporal is the Temporal pod count.
+    'garage', 'cassandra', 'cassandra_data_gib', 'opensearch', 'temporal', 'zones'}. garage, cassandra and opensearch are
+    node counts, temporal is the Temporal pod count, and zones is the planned zone count (0 without the key).
 
     The default nodes are the nodes with the role worker and a storage tier, in the order of the site file.
     """
     s = site.stores
     nodes = tuple(s.get('nodes') or (n.name for n in site.nodes.values() if n.has('worker') and n.storage))
-    return {'nodes': nodes, 'history_shards': s.get('history_shards', HISTORY_SHARDS),
+    return {'nodes': nodes, 'history_shards': s.get('history_shards', HISTORY_SHARDS), 'zones': s.get('zones', 0),
             'garage': s.get('garage', {}).get('nodes', max(1, min(len(nodes), 3))),
             'cassandra': s.get('cassandra', {}).get('nodes', 1), 'cassandra_data_gib': s.get('cassandra', {}).get('data_gib', 2),
             'opensearch': s.get('opensearch', {}).get('nodes', 1), 'temporal': s.get('temporal', {}).get('pods', 1)}
@@ -968,7 +981,8 @@ def document(site):
     if site.lans:
         variables['lans'] = {name: ({'cidr': cidr} if cidr else {}) for name, cidr in site.lans.items()}
     for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS),
-                                ('stores', site.stores, STORES_KEYS), ('deploy', site.deploy, DEPLOY_KEYS)):
+                                ('stores', site.stores, STORES_KEYS), ('deploy', site.deploy, DEPLOY_KEYS),
+                                ('replicas', site.replicas, REPLICA_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
     for part, keys in STORE_PARTS.items():
