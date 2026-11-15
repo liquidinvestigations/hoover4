@@ -1,5 +1,5 @@
 {
- "about": "CPU policy of the cluster workloads. cpu_policy.py applies it. Memory requests and limits stay unchanged. The slow-start workloads get a higher limit, because they load many classes or caches at start.",
+ "about": "CPU policy of the cluster workloads. cpu_policy.py applies it. Memory requests and limits stay unchanged. The slow-start workloads get a higher limit, because they load many classes or caches at start. The operator pod gets it because its zone runner runs up to ten helmfile processes at the same time. cpu_requests.py raises the request of a measured zone workload to the value of cpu-requests.json.",
  "oversubscription": 6,
  "allocation": "150m",
  "limit": "3",
@@ -19,7 +19,8 @@
    "*/statefulset/ums-umc-server",
    "*/deployment/impress-backend",
    "*/deployment/jitsi-jicofo",
-   "calls/deployment/jvb"
+   "calls/deployment/jvb",
+   "operator-portal/deployment/portal"
   ]
  },
  "continuous": {

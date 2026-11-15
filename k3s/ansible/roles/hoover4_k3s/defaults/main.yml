@@ -17,4 +17,5 @@ hoover4_kata_sha256: 66b35b06f6b41b56f8606ddf3ed3e5660b0971d1e309d903457c4056a0b
 hoover4_convert_sqlite: false
 hoover4_registry_endpoint: ""
 hoover4_reserved: ""
+hoover4_kubelet_reserved: ""
 hoover4_k3s_volume_group: ""

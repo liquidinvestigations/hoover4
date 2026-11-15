@@ -21,14 +21,18 @@ The steps of apply, in order:
      of the source.
   4. The zone namespaces get their labels, the RoleBinding of the zone runner, the network policy and the Hoover and
      gate client Secrets.
-  5. helmfile applies openDesk with postrender.py as the Helm post-renderer. A new zone has no 2fa-browser flow, and the
-     openDesk Keycloak bootstrap Job needs it. zone-login-no-mfa.sh creates the flow as soon as the realm exists, while
-     helmfile runs. Nextcloud restarts once when its pod started before the management Job stored the complete
-     configuration. When the first pass still fails, helmfile runs once more. Before it, a zone whose first install
-     has not completed loses the Nextcloud user OpenProject that a failed OpenProject bootstrap left behind. The zone
-     state records the completion (bootstrapped), so an existing zone keeps its OpenProject integration.
-     Each release that Helm lists as failed is synced again, because helmfile apply skips a release without a diff.
-     The installer replaces outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
+  5. helmfile installs openDesk wave by wave (OPENDESK_WAVES), with postrender.py as the Helm post-renderer. The
+     entries of one wave (the sub-helmfiles of the release) run at the same time, each in its own helmfile process with
+     its own chart cache. An entry without an installed release, or with a release that is not deployed, uses
+     helmfile sync, and an entry with only deployed releases uses helmfile apply with a server-side diff. A release
+     list that differs from the waves stops the install. A failed entry runs once more on its own after the repair of
+     its known cause, and the log names the cause: a new zone has no 2fa-browser flow, which the openDesk Keycloak
+     bootstrap Job needs, so zone-login-no-mfa.sh creates it (nubus). Nextcloud restarts when its pod started before
+     the management Job stored the complete configuration (nextcloud). A zone whose first install has not completed
+     loses the Nextcloud user OpenProject that a failed OpenProject bootstrap left behind (opendesk-openproject-bootstrap).
+     The zone state records the completion (bootstrapped), so an existing zone keeps its OpenProject integration.
+     While the waves run, a helper sets the login flow as soon as zone-login-no-mfa.sh succeeds, checks Nextcloud, and replaces
+     outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      gate.py adds the sign-in service of the zone gate.
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
@@ -40,6 +44,7 @@ The steps of apply, in order:
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
 and profile, its Garage buckets and keys, and its Temporal namespace. The operations pod of the zone empties the
 buckets. A disabled zone has no such pod, so its non-empty buckets and its Garage keys stay, and the log names them.
+The two namespaces of the zone are then deleted at the same time.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -52,8 +57,10 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -68,6 +75,8 @@ PRIVATE = settings.PRIVATE
 OPENDESK = PRIVATE / 'downloads/opendesk-v1.19.1/src'
 TOOLS = PRIVATE / 'bin/opendesk'
 STORES = SOURCE / 'hoover' / 'stores'
+# The helmfile processes of a wave print their output one at a time.
+PRINT = threading.Lock()
 
 
 def step(name, **fields):
@@ -188,14 +197,85 @@ def namespaces(zone):
     apply_manifest((PRIVATE / 'zones' / zone / 'hoover-oidc-secret.json').read_text())
 
 
-def helmfile_env(zone):
-    return dict(os.environ, PWD=str(OPENDESK), PATH=f"{TOOLS}:{os.environ['PATH']}", HELM_PLUGINS=str(TOOLS / 'plugins'),
-                HELM_CONFIG_HOME=str(TOOLS / 'config'), HELM_CACHE_HOME=str(TOOLS / 'cache'), HELM_DATA_HOME=str(TOOLS / 'data'),
-                KUBECONFIG=str(settings.KUBECONFIG), MASTER_PASSWORD=(PRIVATE / 'zones' / zone / 'master-password').read_text().strip(),
-                DOMAIN=settings.SUFFIX, MAIL_DOMAIN=settings.zone_domain(zone), MATRIX_DOMAIN=settings.zone_domain(zone))
+# The sub-helmfiles of openDesk (the entries of helmfile-defaults.yaml.gotmpl of the release) in waves. helmfile runs
+# the entries one after another. The entries of one wave here depend only on the earlier waves, so they run at the same
+# time, each in its own helmfile process. The applications depend on the services and on Nubus (the identity), and
+# not on each other. check_waves() refuses a release whose entry list differs from these waves, so an openDesk upgrade
+# with a new entry stops before it installs anything.
+OPENDESK_WAVES = (
+    ('opendesk-migrations-pre',),
+    ('opendesk-services', 'services-external'),
+    ('nubus',),
+    ('open-xchange', 'nextcloud', 'collabora', 'cryptpad', 'jitsi', 'element', 'neoboard', 'openproject', 'xwiki', 'notes'),
+    ('opendesk-openproject-bootstrap',),
+    ('opendesk-migrations-post',),
+)
+ENTRY = re.compile(r'^\s*-\s*path:\s*"helmfile/apps/([^/"]+)/helmfile-defaults\.yaml\.gotmpl"', re.M)
+RELEASE = re.compile(r'^  - name: "?([^"\n{}]+)"?\s*$', re.M)
+# The wrapper of one entry: the environments of the root helmfile.yaml.gotmpl and the one entry with the values.
+WRAPPER = """bases:
+  - "{{ requiredEnv "PWD" }}/helmfile/bases/environments.yaml.gotmpl"
+---
+helmfiles:
+  - path: "PATH"
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+"""
 
 
-def helmfile(zone, command, *extra, check=True):
+def upstream_entries(text):
+    """The entry names of helmfile-defaults.yaml.gotmpl, in their order."""
+    return ENTRY.findall(text)
+
+
+def wave_problems(entries, waves=OPENDESK_WAVES):
+    """The differences between the entries of the release and the waves, as messages."""
+    listed = [e for wave in waves for e in wave]
+    problems = [f'the openDesk release has the sub-helmfile {e}, which no wave of zone.py OPENDESK_WAVES names'
+                for e in entries if e not in listed]
+    problems += [f'zone.py OPENDESK_WAVES names {e}, which the openDesk release does not have' for e in listed if e not in entries]
+    problems += [f'zone.py OPENDESK_WAVES names {e} more than once' for e in sorted({e for e in listed if listed.count(e) > 1})]
+    wave_of = {e: i for i, wave in enumerate(waves) for e in wave}
+    known = [e for e in entries if e in wave_of]
+    for before, after in zip(known, known[1:]):
+        if wave_of[after] < wave_of[before]:
+            problems.append(f'the openDesk release runs {before} before {after}, and zone.py OPENDESK_WAVES runs it later')
+    return problems
+
+
+def check_waves():
+    problems = wave_problems(upstream_entries((OPENDESK / 'helmfile-defaults.yaml.gotmpl').read_text()))
+    if problems:
+        raise SystemExit('; '.join(problems) + '. Update OPENDESK_WAVES for this openDesk release.')
+
+
+def entry_releases(entry):
+    """The release names of one entry, from its helmfile files. Release names that a template builds are left out:
+    openDesk builds only the names of legacy releases, which are not installed."""
+    names = []
+    for path in sorted((OPENDESK / 'helmfile/apps' / entry).glob('helmfile*.gotmpl')):
+        text = path.read_text()
+        if '\nreleases:' not in text:
+            continue
+        section = re.split(r'\n[A-Za-z]', text.split('\nreleases:', 1)[1], maxsplit=1)[0]
+        names += [n for n in RELEASE.findall(section) if n not in names]
+    return names
+
+
+def helmfile_env(zone, home=None):
+    """The environment of a helmfile process. home gives the process its own Helm and helmfile cache and Helm
+    configuration, so processes that run at the same time do not share a chart cache."""
+    env = dict(os.environ, PWD=str(OPENDESK), PATH=f"{TOOLS}:{os.environ['PATH']}", HELM_PLUGINS=str(TOOLS / 'plugins'),
+               HELM_CONFIG_HOME=str(TOOLS / 'config'), HELM_CACHE_HOME=str(TOOLS / 'cache'), HELM_DATA_HOME=str(TOOLS / 'data'),
+               KUBECONFIG=str(settings.KUBECONFIG), MASTER_PASSWORD=(PRIVATE / 'zones' / zone / 'master-password').read_text().strip(),
+               DOMAIN=settings.SUFFIX, MAIL_DOMAIN=settings.zone_domain(zone), MATRIX_DOMAIN=settings.zone_domain(zone))
+    if home:
+        env.update(HELM_CACHE_HOME=str(home / 'helm-cache'), HELM_CONFIG_HOME=str(home / 'helm-config'),
+                   HELMFILE_CACHE_HOME=str(home / 'helmfile-cache'), XDG_CACHE_HOME=str(home / 'cache'))
+    return env
+
+
+def helmfile_args(zone, command, *extra):
     # helmfile resolves its relative includes from PWD, so PWD must name the source directory.
     args = ['helmfile', command, '-e', 'dev', '-n', zone, '--state-values-file', PRIVATE / 'zones' / zone / 'values.yaml',
             '--post-renderer', HERE / 'postrender.py', '--post-renderer-args', zone, *extra]
@@ -203,7 +283,57 @@ def helmfile(zone, command, *extra, check=True):
         # The diff renders with cluster access, so a chart that keeps a generated password through lookup, such as
         # SeaweedFS, renders the stored value and shows no difference.
         args += ['--suppress-diff', '--diff-args', '--dry-run=server']
-    return run(*args, env=helmfile_env(zone), cwd=OPENDESK, check=check, quiet=command == 'template')
+    return args
+
+
+def helmfile(zone, command, *extra, check=True):
+    return run(*helmfile_args(zone, command, *extra), env=helmfile_env(zone), cwd=OPENDESK, check=check,
+               quiet=command == 'template')
+
+
+def helm_releases(zone):
+    """{release: status} of the Helm releases of the zone namespace, in every status."""
+    out = run('helm', 'list', '-n', zone, '-a', '-o', 'json', env=helmfile_env(zone), quiet=True).stdout
+    return {r['name']: r['status'] for r in json.loads(out or '[]')}
+
+
+def entry_command(entry, releases):
+    """sync for an entry with no installed release, or with a release that is not deployed, else apply.
+
+    apply renders and diffs each release on the server first. A new release has nothing to diff, and helmfile apply
+    skips a failed release without a difference, so both use sync.
+    """
+    present = [n for n in entry_releases(entry) if n in releases]
+    if not present or any(releases[n] != 'deployed' for n in present):
+        return 'sync'
+    return 'apply'
+
+
+def run_entry(zone, entry, command):
+    """Run one entry in its own helmfile process. Return (exit code, output). The output is printed in one piece."""
+    import shutil
+    import tempfile
+    home = Path(tempfile.mkdtemp(prefix=f'helmfile-{entry}-'))
+    try:
+        if (TOOLS / 'config').exists():
+            shutil.copytree(TOOLS / 'config', home / 'helm-config')
+        wrapper = home / 'helmfile.yaml.gotmpl'
+        wrapper.write_text(WRAPPER.replace('PATH', str(OPENDESK / 'helmfile/apps' / entry / 'helmfile-defaults.yaml.gotmpl')))
+        started = time.monotonic()
+        result = subprocess.run([str(a) for a in helmfile_args(zone, command, '-f', wrapper)], env=helmfile_env(zone, home),
+                                cwd=OPENDESK, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        with PRINT:
+            print(f'--- helmfile {command} {entry} ({int(time.monotonic() - started)} s, exit {result.returncode})', flush=True)
+            print(result.stdout, flush=True)
+        return result.returncode, result.stdout
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+def failure_cause(output):
+    """The last error lines of a helmfile output, for the log of a retry."""
+    lines = [line.strip() for line in output.splitlines() if 'Error' in line or 'error' in line or 'timed out' in line]
+    return ' | '.join(lines[-3:])[-600:]
 
 
 def stale_pods(controller, pods):
@@ -303,10 +433,6 @@ def nextcloud_config(zone, wait=True):
     return True
 
 
-def failed_releases(zone):
-    return run('helm', 'list', '-n', zone, '--failed', '-q', env=helmfile_env(zone), quiet=True).stdout.split()
-
-
 def first_bootstrap(zone):
     """True for a zone whose first openDesk install has not completed: its zone state entry has bootstrapped = false.
 
@@ -348,30 +474,69 @@ def openproject_reset(zone):
     step('openproject-reset', zone=zone, reason='a failed bootstrap left the Nextcloud user OpenProject')
 
 
+def repair(zone, entry, releases):
+    """The repair of a known cause before an entry runs again. releases is {release: status} after the failure.
+
+    nubus: the Keycloak bootstrap Job needs the 2fa-browser flow, which zone-login-no-mfa.sh creates once Keycloak
+    has the openDesk configuration. nextcloud: Nextcloud restarts when it runs without the configuration of its management Job
+    (nextcloud_config()). opendesk-openproject-bootstrap: the same Nextcloud check, and the removal of the Nextcloud user
+    OpenProject that a failed bootstrap left behind (openproject_reset()).
+    """
+    if entry == 'nubus' and kubectl('-n', zone, 'get', 'secret', 'keycloak-admin-password', '--ignore-not-found', '-o', 'name').strip():
+        run('bash', HERE / 'zone-login-no-mfa.sh', zone, check=False)
+    if entry in ('nextcloud', 'opendesk-openproject-bootstrap'):
+        nextcloud_config(zone)
+    if entry == 'opendesk-openproject-bootstrap' and releases.get('opendesk-openproject-bootstrap') == 'failed':
+        openproject_reset(zone)
+
+
+def install_entry(zone, entry):
+    """Run one entry, and once more after its repair when it fails. The log names the cause of each retry."""
+    for attempt in (1, 2):
+        command = entry_command(entry, helm_releases(zone))
+        step('helmfile', zone=zone, entry=entry, command=command, attempt=attempt)
+        code, output = run_entry(zone, entry, command)
+        if code == 0:
+            return
+        releases = helm_releases(zone)
+        failed = [n for n in entry_releases(entry) if releases.get(n, 'deployed') != 'deployed']
+        if attempt == 2:
+            raise SystemExit(f'helmfile {command} of the openDesk part {entry} failed twice: {failure_cause(output)}')
+        step('helmfile-retry', zone=zone, entry=entry, releases=failed, cause=failure_cause(output))
+        repair(zone, entry, releases)
+
+
 def opendesk(zone):
-    import threading
+    """Install or update openDesk wave by wave (OPENDESK_WAVES). The entries of a wave run at the same time.
+
+    A failed entry runs again on its own after its repair (install_entry()), and a failed wave stops the install.
+    The helper thread login_flow() sets the login flow and checks Nextcloud while the waves run.
+    """
+    check_waves()
     stop = threading.Event()
     errors = []
     refresh_statefulsets(zone)
     helper = threading.Thread(target=login_flow, args=(zone, stop, errors), daemon=True)
     helper.start()
     try:
-        first = helmfile(zone, 'apply', check=False)
-        if first.returncode:
-            if not kubectl('-n', zone, 'get', 'secret', 'keycloak-admin-password', '--ignore-not-found', '-o', 'name').strip():
-                raise SystemExit('helmfile failed before Keycloak exists')
-            step('helmfile', zone=zone, result='first pass failed, the login flow follows')
-            run('bash', HERE / 'zone-login-no-mfa.sh', zone)
-            nextcloud_config(zone)
-            if 'opendesk-openproject-bootstrap' in failed_releases(zone):
-                openproject_reset(zone)
-            helmfile(zone, 'apply')
+        for wave in OPENDESK_WAVES:
+            started = time.monotonic()
+            failures = []
+
+            def one(entry):
+                try:
+                    install_entry(zone, entry)
+                except (SystemExit, Exception) as error:  # noqa: BLE001 - the wave reports the failure of each entry
+                    failures.append(f'{entry}: {error}')
+            threads = [threading.Thread(target=one, args=(entry,)) for entry in wave]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            if failures:
+                raise SystemExit('; '.join(failures))
+            step('opendesk-wave', zone=zone, entries=list(wave), seconds=int(time.monotonic() - started))
         nextcloud_config(zone)
-        for release in failed_releases(zone):
-            step('helmfile-sync', zone=zone, release=release)
-            if release == 'opendesk-openproject-bootstrap':
-                openproject_reset(zone)
-            helmfile(zone, 'sync', '-l', f'name={release}')
     finally:
         stop.set()
         helper.join()
@@ -470,9 +635,13 @@ def delete(zone):
         # empty the zone buckets.
         run(sys.executable, STORES / 'shared.py', 'remove', zone)
         step('shared-stores', zone=zone, change='tenant removed')
-    for namespace in state['zones'][zone]['namespaces']:
-        # TopoLVM removes the logical volume of each claim when the namespace goes.
-        kubectl('delete', 'namespace', namespace, '--ignore-not-found', '--wait=true', '--timeout=900s')
+    # The namespaces go at the same time. TopoLVM removes the logical volume of each claim when its namespace goes.
+    namespaces = state['zones'][zone]['namespaces']
+    kubectl('delete', 'namespace', *namespaces, '--ignore-not-found', '--wait=false')
+    kubectl('wait', '--for=delete', *[f'namespace/{n}' for n in namespaces], '--timeout=900s', check=False)
+    for namespace in namespaces:
+        if kubectl('get', 'namespace', namespace, '--ignore-not-found', '-o', 'name').strip():
+            raise SystemExit(f'the namespace {namespace} still exists 900 s after its delete')
         step('namespace-deleted', zone=zone, namespace=namespace)
     del state['zones'][zone]
     zonestate.save(state)

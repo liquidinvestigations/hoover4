@@ -65,13 +65,14 @@ hoover4:
 
 | Place | Keys |
 |---|---|
-| `hoover4.vars` | `domain`, `control_plane`, and optional `networks`, `lans`, `gpu_pool`, `backup` |
+| `hoover4.vars` | `domain`, `control_plane`, and optional `networks`, `lans`, `gpu_pool`, `backup`, `stores`, `deploy` |
 | `hoover4.vars.networks.<name>` | `cidr`, and optional `interface` (default `wg0`), `hubs`, `port` (default 51820), `managed` (default true) |
 | `hoover4.vars.lans.<name>` | optional `cidr` |
 | `hoover4.hosts.<name>` | `node_roles`, and optional `local`, `ssh_host`, `networks`, `lan`, `public_address`, `storage`, `k3s_volume_group`, `stop_docker`, `public_firewall`, `reserved`, `data_root`, `tls_mode`, `tls_dns_credentials_file`, `tls_certificate_file`, `tls_key_file` |
 | `hoover4.hosts.<name>.networks.<network>` | an address, or `address` and optional `public_key`, `interface`, `port`, `managed`, which replace the values of the network for this node |
 | `hoover4.vars.gpu_pool` | `nodes` or `address` |
 | `hoover4.vars.backup` | `node` and `path` of the backup destination |
+| `hoover4.vars.deploy` | optional `parallel_zones`: the zone steps that `deploy-k3s up` runs at the same time (default 2) |
 
 The site id is the domain with each `.` replaced by `-`, for example `k8-example-org`. Each command prints it with the site file and the state folder.
 A list value is a YAML list or a text with commas. Ansible reserves the variable name `roles`, so the node roles have the key `node_roles`.
@@ -128,7 +129,7 @@ The cidr of each network, and of each LAN that states one, reaches the admin rou
 
 ### Read the host facts.
 
-The facts play (role `hoover4_facts`) reads each node and writes `facts/<node>.json` of the state folder: the architecture (`uname -m`), AVX2 (`/proc/cpuinfo`), the name and memory of each GPU (`nvidia-smi`), the size of each volume group and of its k3s data volumes, and the interface of each address.
+The facts play (role `hoover4_facts`) reads each node and writes `facts/<node>.json` of the state folder: the architecture (`uname -m`), AVX2 (`/proc/cpuinfo`), the name and memory of each GPU (`nvidia-smi`), the size of each volume group and of its k3s data volumes, the interface of each address, and `cpu_speed` (the work of one thread in one CPU second while all threads run a one-second probe).
 `deploy-k3s check` and the step `hosts:prepare` run it. The site file has no `architecture` and no `avx2`.
 The cluster step labels the nodes from the facts: `cpu.hoover/avx2=true`, `gpu.hoover/count` and `gpu.hoover/memory-mib` (the memory of the smallest GPU of the node). A node without the fact loses the label.
 The cluster step and the image steps stop with the name of a node that has no facts.
@@ -154,10 +155,41 @@ python3 k3s/zones/zone.py apply zone-x [--stores site|local] [--dataset name:nod
 python3 k3s/zones/zone.py delete zone-x
 ```
 
-- A zone has no home node. The scheduler places each pod by its memory request, which follows the measured use
-  ([zones/memory-limits.json](zones/memory-limits.json) `requests`, [hoover/manifests.py](hoover/manifests.py) `REQUESTS`).
-  The zone pod policy ([zones/manifests/zone-pods.yaml](zones/manifests/zone-pods.yaml)) spreads the pods of each zone
-  namespace over the nodes with a soft topology spread constraint, and keeps the runtime rule.
+- A zone has no home node. The scheduler places each new pod on the node with the lowest requested CPU per thread
+  (requested CPU divided by allocatable CPU). The k3s scheduler configuration of the server
+  ([ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2](ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2))
+  scores the nodes with `NodeResourcesFit` `LeastAllocated`, CPU weight 3, memory weight 1, plugin weight 10. A node that
+  joins has no requests, so it takes the new pods first, without a deployment step.
+- The allocatable CPU of a node counts threads of the fastest node of the site. The facts play measures `cpu_speed`:
+  the work of one thread in one CPU second while all threads run a zlib and a Python probe for 0.5 s each. The speed
+  factor of a node is its `cpu_speed` divided by the highest one, in steps of 0.05 (`config.py` `speed_factors()`). The
+  k3s role gives the kubelet `system-reserved` CPU of `threads - factor x (threads - reserved CPU)`, so a node with half
+  the speed offers half its threads. The node value `reserved` with `cpu=` holds the CPU of k3s and containerd at rest.
+  A node that joins gets its factor from its own facts. Run `deploy-k3s up --target all` when the new node is faster
+  than the others, so their factors follow.
+- Each pod also requests the measured cost of its runtime outside its pod cgroup: kubelet, containerd, the shim and the
+  runsc commands of its probes and statistics. The RuntimeClasses ([cluster/runtimeclasses.yaml](cluster/runtimeclasses.yaml))
+  add it as `overhead.podFixed`, 20m CPU for gVisor and 10m for Kata. `runtimeOverhead` of
+  [zones/cpu-requests.json](zones/cpu-requests.json) records the measurement. A node with many small pods therefore
+  takes fewer of them.
+- The memory request of a pod follows its measured use ([zones/memory-limits.json](zones/memory-limits.json) `requests`,
+  [hoover/manifests.py](hoover/manifests.py) `REQUESTS`). The CPU request of a measured workload is
+  `baseline + 0.5 x (start peak - baseline)`, rounded up to 10m, from [zones/cpu-requests.json](zones/cpu-requests.json).
+  The start peak is the highest CPU rate (1 min) from the pod start until Ready plus 120 s, and the baseline is the
+  median CPU rate in an idle period. Each pod names them in the annotations `hoover.dev/cpu-start-peak`,
+  `hoover.dev/cpu-baseline` and `hoover.dev/cpu-request-basis`. A workload without a measurement keeps the request of
+  [zones/cpu-policy.json](zones/cpu-policy.json) or of its installer. The shared stores of `hoover-stores` (ClickHouse,
+  Garage, Temporal, Cassandra, OpenSearch) have the part `site` of the table, measured from a start of the stores.
+  Measure a zone create again and write the table with
+  `python3 k3s/zones/cpu_requests.py measure --zone zone-x --start T --end T --idle-start T --idle-end T --write`, and
+  the stores with `measure --site` and the times of their start.
+- The descheduler ([cluster/descheduler.yaml](cluster/descheduler.yaml)) moves running stateless pods every 10 minutes
+  with `LowNodeUtilization` on the requests: from a node more than 15 points above the mean requested CPU or memory to
+  a node more than 15 points below the mean in both. It never moves a pod with a claim, a store pod, a Job pod, a pod
+  without a controller, a pod younger than 15 minutes, or a pod of the platform namespaces. The band of 30 points
+  around the mean keeps a moved pod from moving back.
+- The zone pod policy ([zones/manifests/zone-pods.yaml](zones/manifests/zone-pods.yaml)) keeps the runtime rule. It adds
+  no topology spread.
 - A claim takes the first tier of its tier list that a node of the site has ([zones/zonestate.py](zones/zonestate.py)). The
   scheduler binds it on a node with that tier and free capacity, and its pod then stays on that node (TopoLVM).
 - `--home` of an earlier version is accepted and has no effect. A zone entry with a `home` value keeps that node only as
@@ -165,7 +197,13 @@ python3 k3s/zones/zone.py delete zone-x
 - A new zone gets `stores = site` and `temporal = site` unless `--stores local` is given. `--dataset` adds a read-only dataset folder of a data node. These values apply to a new zone, and a change of an existing zone is refused.
 - A zone with `stores = site` adds its tenant to the [shared stores](#share-the-hoover-stores-of-a-site) and its namespace to the [Temporal of the site](#share-temporal-in-a-site) at create, and `zone.py delete` removes both before it deletes the namespaces.
 - The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
-- `deploy-k3s up` applies each zone of the zone state again, after the platform steps.
+- `zone.py apply` installs openDesk in waves of its sub-helmfiles (`OPENDESK_WAVES`): the migrations, then the services,
+  then Nubus, then the ten applications at the same time, then the OpenProject bootstrap and the last migrations.
+  An entry without an installed release uses `helmfile sync`, so a new zone has no diff pass. A failed entry runs once
+  more on its own, and the log names the cause (`helmfile-retry`). An openDesk release with another entry list stops
+  the install until `OPENDESK_WAVES` names its entries.
+- `deploy-k3s up` applies each zone of the zone state again, after the platform steps. It runs at most
+  `vars.deploy.parallel_zones` zone steps at the same time (default 2).
 
 ### Name the zone hosts.
 

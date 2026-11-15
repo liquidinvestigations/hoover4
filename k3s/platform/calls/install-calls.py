@@ -159,10 +159,12 @@ def jvb():
  spec.pop('serviceAccountName',None);spec.pop('serviceAccount',None);spec['automountServiceAccountToken']=False
  labels={'app.kubernetes.io/name':'jvb'}
  return [secret('jvb',{'password':calls['jvb_password']}),
-  # A new bridge starts before the old one stops. The old bridge keeps its calls for up to the chart grace period of
-  # 7200 s, and Jicofo sends new conferences to the new bridge. A forced delete leaves the old container running.
+  # The bridge publishes host port 10000 on the media node, so a second bridge pod cannot start on that node while the
+  # old one runs. The Deployment therefore replaces the bridge with Recreate: the old bridge stops first. Its
+  # shutdown waits for its calls for up to the chart grace period of 7200 s, so an update during a call waits for that
+  # call, and the rollout check below fails after 300 s. A forced delete leaves the old container running.
   {'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'jvb','namespace':NS},
-   'spec':{'replicas':1,'strategy':{'type':'RollingUpdate','rollingUpdate':{'maxSurge':1,'maxUnavailable':0}},'selector':{'matchLabels':labels},
+   'spec':{'replicas':1,'strategy':{'type':'Recreate'},'selector':{'matchLabels':labels},
     'template':{'metadata':{'labels':labels},'spec':spec}}}]
 if subprocess.run(['kubectl','get','namespace',NS],capture_output=True).returncode:
  apply([{'apiVersion':'v1','kind':'Namespace','metadata':{'name':NS}}])

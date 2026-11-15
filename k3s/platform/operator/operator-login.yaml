@@ -304,9 +304,10 @@ spec:
             - {name: HOOVER4_SITE, value: /site/site.json}
             - {name: HOOVER4_REVISION, value: OPERATOR_REVISION}
             - {name: HOME, value: /tmp/home}
+          # A zone install runs up to ten helmfile processes at the same time (../../zones/zone.py OPENDESK_WAVES).
           resources:
             requests: {cpu: 50m, memory: 256Mi}
-            limits: {cpu: '2', memory: 2Gi}
+            limits: {cpu: '2', memory: 4Gi}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           volumeMounts:
             - {name: site, mountPath: /site/site.json, subPath: site.json, readOnly: true}

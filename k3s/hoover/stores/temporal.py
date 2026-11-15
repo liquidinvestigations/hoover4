@@ -31,6 +31,7 @@ measured memory outside the heap, and its limit adds a margin for the page cache
 heap of the Elasticsearch of the local layout (../manifests.py) and a request of its measured use. Temporal has the
 limit of ../../zones/memory-limits.json. The claims hold the first size of the Compose import
 (../../platform/operator/settings.py VOLUMES) times the zone count, at least one zone.
+The CPU requests are the measured values of ../../zones/cpu-requests.json (part site, hoover.site_cpu()).
 Cassandra, OpenSearch and Temporal run in gVisor. Cassandra and OpenSearch use file system volumes of TopoLVM.
 The schema Job creates the keyspace, the tables, the index template and the index, and sets the replica shards. Each
 of its commands keeps present data, so the Job can run again.
@@ -386,7 +387,8 @@ def network():
 
 
 def objects(s, plan, zones, public_jwks):
-    return [*network(), *cassandra(s, plan, zones), *opensearch(s, plan, zones), schema_job(plan), *temporal(plan, public_jwks)]
+    return hoover.site_cpu([*network(), *cassandra(s, plan, zones), *opensearch(s, plan, zones), schema_job(plan),
+                            *temporal(plan, public_jwks)])
 
 
 # ----------------------------------------------------------------------------------------------------------------------

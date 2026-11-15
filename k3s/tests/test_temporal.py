@@ -7,7 +7,13 @@ import pytest
 from test_shared_stores import by, remote
 
 import config  # noqa: E402
+import cpu_requests  # noqa: E402
 import temporal  # noqa: E402
+
+
+def site_request(key):
+    """The measured CPU request of a shared store workload (part site of cpu-requests.json)."""
+    return cpu_requests.TABLE['site'][key]['request']
 
 
 def objects(stores='{nodes: [server-a, worker-b]}', zones=2):
@@ -44,7 +50,8 @@ def test_the_stores_of_temporal_shard_one_copy_over_their_nodes():
     env = {e['name']: e.get('value') for e in search['env']}
     assert env['OPENSEARCH_JAVA_OPTS'] == '-Xms1536m -Xmx1536m' and env['DISABLE_SECURITY_PLUGIN'] == 'true'
     assert env['cluster.initial_cluster_manager_nodes'] == 'temporal-opensearch-0,temporal-opensearch-1'
-    assert search['resources'] == {'requests': {'cpu': '50m', 'memory': '2176Mi'}, 'limits': {'cpu': '2', 'memory': '3584Mi'}}
+    assert search['resources'] == {'requests': {'cpu': site_request('statefulset/temporal-opensearch'), 'memory': '2176Mi'},
+                                   'limits': {'cpu': '2', 'memory': '3584Mi'}}
     assert by(items, 'Service', 'temporal-opensearch')['spec']['selector'] == {'app.kubernetes.io/name': 'temporal-opensearch'}
     assert by(items, 'Deployment', 'temporal')['spec']['replicas'] == 2
     template = by(items, 'ConfigMap', 'temporal-config')['data']['config_template.yaml']
@@ -66,7 +73,8 @@ def test_the_cassandra_heap_follows_the_live_data():
     env, resources = container('{nodes: [server-a]}')
     assert env['MAX_HEAP_SIZE'] == '2880M' and env['HEAP_NEWSIZE'] == '200M'
     assert env['JVM_EXTRA_OPTS'] == '-XX:MaxDirectMemorySize=1G'
-    assert resources == {'requests': {'cpu': '50m', 'memory': '3904Mi'}, 'limits': {'cpu': '2', 'memory': '6976Mi'}}
+    assert resources == {'requests': {'cpu': site_request('statefulset/temporal-cassandra'), 'memory': '3904Mi'},
+                         'limits': {'cpu': '2', 'memory': '6976Mi'}}
     # The heap stops at 8 GiB.
     env, resources = container('{nodes: [server-a], cassandra: {data_gib: 40}}')
     assert env['MAX_HEAP_SIZE'] == '8192M' and resources['requests']['memory'] == '9216Mi'

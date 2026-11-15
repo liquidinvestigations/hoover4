@@ -22,7 +22,7 @@ secret is a reference to a private file on the node that reads it.
                          public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
                          public_firewall, the TLS mode of a public node and its secret files
 
-The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the GPUs and the volume
+The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the CPU speed, the GPUs and the volume
 groups into facts/<node>.json of the state folder. The site file does not state them.
 The state folder of a site is beside the site file and has the name of the file without its extension
 (state_folder()). The site id is the domain with each . replaced by - (Site.id).
@@ -46,6 +46,7 @@ Usage: config.py check <site file>           checks the file and prints its summ
 """
 import ipaddress
 import json
+import math
 import os
 import re
 import sys
@@ -91,7 +92,7 @@ STORAGE_RESERVE = 0.05
 # secret (the absolute path of a private file), alias (an SSH host alias).
 SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name')}
 # The mappings of hoover4.vars beside the site values.
-SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores')
+SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores', 'deploy')
 # A WireGuard network: vars.networks.<name>. hubs names the nodes that every other node of the network peers with.
 # Without hubs, every node peers with every other node. managed: the installer writes and starts the interface on each
 # node of the network and adds its peers. Without it, the installer reads the interface and changes nothing on it.
@@ -117,6 +118,10 @@ NODE_KEYS = {
 # The GPU pool names nodes or an address. Its key is a generated Secret of the cluster, so the site file names no key.
 GPU_POOL_KEYS = {'nodes': (False, 'names'), 'address': (False, 'address')}
 BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
+# The deployment driver (driver/deploy.py): vars.deploy.
+#   parallel_zones  the count of zone steps that deploy-k3s up runs at the same time. Default: PARALLEL_ZONES.
+DEPLOY_KEYS = {'parallel_zones': (False, 'count')}
+PARALLEL_ZONES = 2
 # The shared Hoover stores of the site (../hoover/stores/shared.py, ../hoover/stores/temporal.py): vars.stores. Each
 # store keeps one copy of each part of its data. ClickHouse runs one pod. Garage, Cassandra and OpenSearch can shard
 # their data over several nodes, one pod on each node. A lost node loses its part until it returns, and the backups are
@@ -288,6 +293,8 @@ class Site:
     backup: dict = field(default_factory=dict)
     # vars.stores as given in the site file. store_plan() adds the defaults.
     stores: dict = field(default_factory=dict)
+    # vars.deploy as given in the site file.
+    deploy: dict = field(default_factory=dict)
     # The site file that read() parsed, or empty for parse().
     path: str = ''
 
@@ -661,6 +668,7 @@ def parse(text, check_files=False):
     backup = {}
     if variables.get('backup') is not None:
         backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
+    deploy = _section('vars.deploy', _mapping(variables.get('deploy'), 'vars.deploy', problems), DEPLOY_KEYS, {}, problems)
     raw_stores = _mapping(variables.get('stores'), 'vars.stores', problems)
     stores = _section('vars.stores', {k: v for k, v in raw_stores.items() if k not in STORE_PARTS},
                       dict(STORES_KEYS, **{k: (False, 'mapping') for k in STORE_PARTS}), {}, problems)
@@ -707,7 +715,7 @@ def parse(text, check_files=False):
             nodes[name] = Node(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
-    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, **site_values)
+    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, deploy=deploy, **site_values)
     problems = check(site, check_files=check_files)
     if problems:
         raise SiteError(_message(problems))
@@ -812,6 +820,11 @@ def check(site, check_files=False):
     if check_files:
         problems += missing_files(site)
     return problems
+
+
+def parallel_zones(site):
+    """The count of zone steps that deploy-k3s up runs at the same time."""
+    return site.deploy.get('parallel_zones') or PARALLEL_ZONES
 
 
 def store_plan(site):
@@ -950,7 +963,7 @@ def document(site):
     if site.lans:
         variables['lans'] = {name: ({'cidr': cidr} if cidr else {}) for name, cidr in site.lans.items()}
     for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS),
-                                ('stores', site.stores, STORES_KEYS)):
+                                ('stores', site.stores, STORES_KEYS), ('deploy', site.deploy, DEPLOY_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
     for part, keys in STORE_PARTS.items():
@@ -1332,6 +1345,43 @@ def _memory_gib(text):
     return float(text) / 2 ** 30
 
 
+def _cpus(text):
+    """CPUs of a Kubernetes quantity such as 2 or 700m."""
+    return float(text[:-1]) / 1000 if text.endswith('m') else float(text)
+
+
+# The step of the speed factor of a node. A probe of the facts play varies by a few percent between runs, so the
+# rounded factor, and with it the k3s configuration, stays the same.
+SPEED_STEP = 0.05
+
+
+def speed_factors(site, facts=None):
+    """{node: factor}: the cpu_speed of each node (its facts) divided by the highest cpu_speed of the site.
+
+    One thread of a node with the factor 0.5 does half the work of one thread of the fastest node. A node without the
+    value has the factor 1. facts is {node: facts}, else the facts files of the state folder.
+    """
+    speeds = {n: ((facts or {}).get(n) if facts is not None else node_facts(site, n)) or {} for n in site.nodes}
+    speeds = {n: f.get('cpu_speed') for n, f in speeds.items() if f.get('cpu_speed')}
+    fastest = max(speeds.values(), default=0)
+    return {n: max(SPEED_STEP, round(speeds[n] / fastest / SPEED_STEP) * SPEED_STEP) if n in speeds else 1.0
+            for n in site.nodes}
+
+
+def kubelet_reserved(node, factor, threads):
+    """The system-reserved value of the kubelet of a node: the site value reserved, and CPU for a slow node.
+
+    The allocatable CPU of the node becomes factor x (threads - the CPU of reserved), in threads of the fastest node, so
+    the scheduler compares the requests of all nodes in one unit. The CPU reserve is rounded up to 100m.
+    """
+    parts = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
+    own = _cpus(parts['cpu']) if 'cpu' in parts else 0.0
+    if factor < 1 and threads:
+        reserve = threads - factor * (threads - own)
+        parts['cpu'] = f'{int(math.ceil(reserve * 10 - 1e-9)) * 100}m'
+    return ','.join(f'{k}={v}' for k, v in parts.items())
+
+
 def ansible_variables(site, private):
     """The extra variables of the host plays, as a dict. private is the state folder.
 
@@ -1344,6 +1394,7 @@ def ansible_variables(site, private):
     registry = site.with_role('registry')
     media = calls_node(site) if site.with_role('public') else None
     nodes = {}
+    factors = speed_factors(site)
     for node in site.nodes.values():
         reserved = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
         single_local = site.single and node.local
@@ -1356,8 +1407,10 @@ def ansible_variables(site, private):
             'gpu': node.has('gpu'),
             'single_local': single_local,
             'reserved': node.reserved,
+            # The kubelet value system-reserved, with the CPU of the speed factor (kubelet_reserved()).
+            'kubelet_reserved': kubelet_reserved(node, factors[node.name], node_facts(site, node.name).get('cpus', 0)),
             'reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),
-            'reserved_cpus': float(reserved.get('cpu', '2')),
+            'reserved_cpus': _cpus(reserved.get('cpu', '2')),
             'storage': dict(node.storage),
             'k3s_volume_group': node.k3s_volume_group,
             'stop_docker': node.stop_docker,

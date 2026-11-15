@@ -1,8 +1,9 @@
 """The deployment driver of ../deploy-k3s. Standard library only. It runs in the operator image (../images/operator).
 
 The driver reads the site file (../config.py) and runs the Ansible playbooks of ../ansible for the hosts, the cluster
-scripts of ../cluster/ and ../platform/, and the zone installer of ../zones/ in their order. records.py keeps the
-state of each run in the operator state of the site.
+scripts of ../cluster/ and ../platform/, and the zone installer of ../zones/. A step of up starts when the steps that
+it needs are done (PREREQUISITES), so independent steps run at the same time, and the output lines of each step start
+with its name in brackets. records.py keeps the state of each run in the operator state of the site.
 
 Host steps. Each one is one Ansible run on all target nodes in parallel (class Ansible):
   hosts:prepare  playbooks/hoover4-hosts.yml: the facts of each node, its packages, kernel modules, sysctl,
@@ -16,7 +17,8 @@ Host steps. Each one is one Ansible run on all target nodes in parallel (class A
                  cluster-init and the etcd role of the server. A missing kubeconfig fails with its path.
 The nodes connect with SSH as the user of the workstation. become uses sudo without a password, or the password that
 --ask-become-pass reads once. down and up --start run playbooks/hoover4-service.yml on one node at a time.
-A failed step ends the run. render and check change no host and no cluster.
+A failed step ends the run after the steps that run at the same time finish. An interrupt waits for the running steps
+to end, and their state stays running, so a resume runs them again. render and check change no host and no cluster.
 
 Pinned inputs. The record of an up or a down keeps the commit of HEAD of the checkout, `git status --porcelain` of the
 checkout, the SHA-256 of the site file, the settings revision of the operator state and the identity of the cluster
@@ -40,6 +42,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -78,24 +81,35 @@ class StepWaiting(RuntimeError):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class Shell:
-    """Runs commands, prints each command, and appends the output to the log of the deployment."""
+    """Runs commands, prints each command, and appends the output to the log of the deployment.
+
+    Steps can run at the same time (execute()). Each line of a command of a step then starts with the step name in
+    brackets, so the lines of the steps stay apart in the output and in the log.
+    """
+    step = threading.local()
+    _lock = threading.Lock()
 
     def __init__(self, log=None, env=None):
         self.log = Path(log) if log else None
         self.env = dict(os.environ, **(env or {}))
 
+    def _label(self, text):
+        name = getattr(Shell.step, 'name', None)
+        return f'[{name}] {text}' if name else text
+
     def _write(self, text):
         if self.log:
-            self.log.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.log, 'a') as f:
-                f.write(text)
+            with Shell._lock:
+                self.log.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.log, 'a') as f:
+                    f.write(self._label(text))
 
     def run(self, argv, sudo=False, cwd=None, env=None, check=True, capture=False, input=None):
         argv = [str(a) for a in argv]
         if sudo:
             argv = ['sudo', '-n', *argv]
         line = '$ ' + ' '.join(shlex.quote(a) for a in argv)
-        print(line, flush=True)
+        print(self._label(line), flush=True)
         self._write(line + '\n')
         proc = subprocess.Popen(argv, cwd=cwd, env=dict(self.env, **(env or {})), text=True,
                                 stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
@@ -108,7 +122,7 @@ class Shell:
             lines.append(out)
             self._write(out)
             if not capture:
-                print('  ' + out, end='', flush=True)
+                print(self._label('  ' + out), end='', flush=True)
         code = proc.wait()
         text = ''.join(lines)
         if check and code:
@@ -146,6 +160,8 @@ class Context:
         self.record = None
         self.shell = Shell()
         self.become_password_file = ''
+        # Steps that run at the same time hold it while they write the cluster copy or the operator state.
+        self.state_lock = threading.RLock()
 
     def ask_become_pass(self):
         """Ask once for the sudo password of the nodes and keep it in a private file of this process for Ansible."""
@@ -622,16 +638,26 @@ def registry_references(site, names, architecture=None):
 
 def step_images(ctx):
     """Build and push the images of the revision and the image of the operator pod. The registry step runs before, so
-    the push has a target. The zone runner only checks that the registry has these images."""
+    the push has a target. The zone runner only checks that the registry has these images.
+
+    The three zone images and build-hoover.py build at the same time, and build-hoover.py builds its images in parallel
+    up to the CPU count of this host.
+    """
+    from concurrent.futures import ThreadPoolExecutor
     sys.path.insert(0, str(SOURCE / 'zones'))
     import zones
-    for directory, image in (('blockmount', 'hoover/blockmount:8'),
-                             ('nextcloud-ai', f'hoover/nextcloud-ai:{zones.NEXTCLOUD_IMAGE_TAG}'),
-                             ('xwiki-extensions', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}')):
-        ctx.run(['bash', SOURCE / 'images/build-image.sh', SOURCE / 'images' / directory, image])
-    ctx.run([sys.executable, SOURCE / 'images/build-hoover.py', '--revision', ctx.revision])
+    builds = [['bash', SOURCE / 'images/build-image.sh', SOURCE / 'images' / directory, image]
+              for directory, image in (('blockmount', 'hoover/blockmount:8'),
+                                       ('nextcloud-ai', f'hoover/nextcloud-ai:{zones.NEXTCLOUD_IMAGE_TAG}'),
+                                       ('xwiki-extensions', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}'))]
+    builds.append([sys.executable, SOURCE / 'images/build-hoover.py', '--revision', ctx.revision])
+    with ThreadPoolExecutor(max_workers=len(builds)) as pool:
+        for future in [pool.submit(ctx.run, argv) for argv in builds]:
+            future.result()
     arch = node_architecture(ctx, ctx.site.control_plane)
-    ctx.record['images'] = image_references(ctx, architecture=arch)
+    references = image_references(ctx, architecture=arch)
+    with ctx.records.guard:
+        ctx.record.setdefault('images', {}).update(references)
     operator = step_operator_image(ctx)
     return {'images': len(ctx.record['images']), 'architecture': arch, 'operator_image': operator}
 
@@ -715,9 +741,10 @@ def step_operator_image(ctx):
     except StepFailed:
         build_operator_image(ctx, files, name, base, arch)
         references = registry_references(ctx.site, [name], architecture=arch)
-    ctx.record.setdefault('images', {}).update(references)
-    ctx.record['operator_image'] = f'registry.hoover.internal/{name}'
-    ctx.records.save(ctx.record)
+    with ctx.records.guard:
+        ctx.record.setdefault('images', {}).update(references)
+        ctx.record['operator_image'] = f'registry.hoover.internal/{name}'
+        ctx.records.save(ctx.record)
     return ctx.record['operator_image']
 
 
@@ -758,7 +785,8 @@ def step_gpu_images(ctx):
         argv += ['--builder', builder]
     ctx.run(argv)
     references = image_references(ctx, gpu_image_names(ctx), architecture=arch)
-    ctx.record.setdefault('images', {}).update(references)
+    with ctx.records.guard:
+        ctx.record.setdefault('images', {}).update(references)
     return {'gpu_images': len(references), 'architecture': arch, 'builder': builder or 'this host'}
 
 
@@ -812,7 +840,8 @@ def record_settings(ctx, scopes):
     state = ctx.operator_state()
     if state is None or ctx.settings_revision is None:
         return []
-    state.record_scopes(scopes, ctx.settings_revision, f'deploy:{ctx.record["id"]}', ctx.revision)
+    with ctx.state_lock:
+        state.record_scopes(scopes, ctx.settings_revision, f'deploy:{ctx.record["id"]}', ctx.revision)
     return scopes
 
 
@@ -955,6 +984,9 @@ def cluster_steps(ctx):
     # The shared ClickHouse and Garage of the site (../hoover/stores/shared.py). Each zone of the store layout site
     # adds its tenant to them.
     steps['stores'] = step_script(sys.executable, '@hoover/stores/shared.py', 'apply')
+    # The scheduler can place a zone pod on any node, so every eligible node pulls the zone images while the zones
+    # apply (../images/prepull.py).
+    steps['prepull'] = step_prepull
     zones = ctx.hoovers()
     for hoover in zones.values():
         steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone)
@@ -966,6 +998,13 @@ def cluster_steps(ctx):
     # The call services join the Jitsi of every zone, so they follow the zones.
     steps['calls'] = step_calls
     return steps
+
+
+def step_prepull(ctx):
+    """Pull the Hoover images of the revision and the images of the zone pods on every eligible node."""
+    names = [f'registry.hoover.internal/{n}' for n in image_names(ctx)]
+    code, out = ctx.run([sys.executable, SOURCE / 'images/prepull.py', *names], capture=True)
+    return json.loads(out.strip().splitlines()[-1])
 
 
 def step_calls(ctx):
@@ -1163,12 +1202,60 @@ def independent(step, other):
     return False
 
 
-def execute(ctx, record, steps):
-    """Run the unfinished steps of a record in order. Return the exit code.
+# The prerequisites of the cluster steps of up, by step name. A step starts when the named steps of the plan are done.
+# The images of the revision come before every step that starts them, and the operator pod reads the monitoring
+# Services. A zone needs every platform step except prepull, which pulls the zone images on the nodes while the zones
+# apply. The call services join the Jitsi of every zone, and the relay serves a zone, so both follow the zones.
+# A step that this table does not name, for example a host step or a step of down, waits for every earlier step that
+# is not independent() of it.
+PLATFORM = ('ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'stores', 'gpu-images', 'gpu-pool', 'gpu-proxy')
+PREREQUISITES = {
+    'images': ('registry',),
+    'gpu-images': ('registry',),
+    'ingress': ('registry',),
+    'frontend': ('registry',),
+    'monitoring': ('registry',),
+    'hoover-data': ('registry',),
+    'operator': ('images', 'monitoring'),
+    'stores': ('images',),
+    'prepull': ('images',),
+    'gpu-pool': ('gpu-images', 'images'),
+    'gpu-proxy': ('gpu-pool', 'images'),
+    'zone:': ('registry', 'images') + PLATFORM,
+    'mcp-relay': ('zone:',) + PLATFORM,
+    'calls': ('zone:',) + PLATFORM,
+}
+# The steps before the registry form a chain: each one waits for every earlier step.
+CHAIN = ('hosts:', 'tools', 'cluster', 'registry')
 
-    A failed step ends the run. A waiting step blocks every later step that depends on it, and the run continues with
-    the independent steps, for example the start of the other nodes.
+
+def prerequisites(names):
+    """{step: [earlier steps that it waits for]} for the steps of a plan in their order."""
+    out = {}
+    for index, name in enumerate(names):
+        earlier = names[:index]
+        rule = PREREQUISITES.get('zone:' if name.startswith('zone:') else name)
+        if rule is None or name.startswith(CHAIN):
+            out[name] = [e for e in earlier if not independent(name, e)]
+            continue
+        wanted = [e for e in earlier if any(e == r or (r.endswith(':') and e.startswith(r)) for r in rule)]
+        # The chain steps before the registry stay before every later step.
+        wanted += [e for e in earlier if e.startswith(CHAIN) and e not in wanted]
+        out[name] = wanted
+    return out
+
+
+def execute(ctx, record, steps):
+    """Run the unfinished steps of a record, each step when its prerequisites are done. Return the exit code.
+
+    Steps without a dependency between them run at the same time, each in its own thread, and at most
+    config.parallel_zones() zone steps at once. The record keeps the state of each step. A failed step stops the start
+    of further steps, the running steps finish, and the run ends with the failure. A waiting step blocks every later
+    step that depends on it, and the run continues with the independent steps, for example the start of the other
+    nodes. An interrupt marks the record interrupted. A resume runs every step that is not done.
     """
+    import threading
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait as wait_futures
     ctx.record = record
     ctx.revision = record['revision']
     ctx.settings_revision = (record.get('inputs') or {}).get('settings_revision')
@@ -1182,43 +1269,80 @@ def execute(ctx, record, steps):
     record['status'] = 'running'
     record['error'] = ''
     ctx.records.save(record)
+    names = [entry['name'] for entry in record['steps']]
+    needs = prerequisites(names)
+    done = {entry['name'] for entry in record['steps'] if entry['state'] == 'done'}
+    todo = [n for n in names if n not in done]
+    zone_limit = config.parallel_zones(ctx.site) if getattr(ctx, 'site', None) is not None else 1
+    pool = ThreadPoolExecutor(max_workers=max(1, len(todo)))
+    running = {}
+    failure = None
+
+    def run_step(name):
+        Shell.step.name = name
+        try:
+            fields = steps[name](ctx) or {}
+            with ctx.state_lock:
+                sync_state(ctx, 'push')
+            return fields
+        finally:
+            Shell.step.name = None
+
     try:
         verify_inputs(ctx, record)
-        for entry in record['steps']:
-            name = entry['name']
-            if entry['state'] == 'done':
-                continue
-            holding = [w for w in waiting + blocked if not independent(name, w)]
-            if holding:
-                blocked.append(name)
-                ctx.records.mark(record, name, 'pending', blocked_by=holding[0])
-                continue
-            ctx.records.mark(record, name, 'running')
-            print(json.dumps({'at': time.strftime('%H:%M:%S'), 'record': record['id'], 'step': name}), flush=True)
+        while todo or running:
+            for name in list(todo):
+                if failure:
+                    break
+                holding = [w for w in needs[name] if w in waiting or w in blocked]
+                if holding:
+                    todo.remove(name)
+                    blocked.append(name)
+                    ctx.records.mark(record, name, 'pending', blocked_by=holding[0])
+                    continue
+                if any(w not in done for w in needs[name]):
+                    continue
+                if name.startswith('zone:') and sum(r.startswith('zone:') for r in running.values()) >= zone_limit:
+                    continue
+                todo.remove(name)
+                ctx.records.mark(record, name, 'running')
+                print(json.dumps({'at': time.strftime('%H:%M:%S'), 'record': record['id'], 'step': name}), flush=True)
+                running[pool.submit(run_step, name)] = name
+            if not running:
+                break
+            finished, _ = wait_futures(list(running), return_when=FIRST_COMPLETED)
+            for future in finished:
+                name = running.pop(future)
+                error = future.exception()
+                if error is None:
+                    record['steps'][names.index(name)].pop('blocked_by', None)
+                    ctx.records.mark(record, name, 'done', **future.result())
+                    done.add(name)
+                elif isinstance(error, KeyboardInterrupt):
+                    raise KeyboardInterrupt
+                elif isinstance(error, StepWaiting):
+                    ctx.records.mark(record, name, 'waiting', message=str(error))
+                    waiting.append(name)
+                    record.setdefault('messages', {})[name] = str(error)
+                elif isinstance(error, (StepFailed, config.SiteError, subprocess.SubprocessError, OSError)):
+                    ctx.records.mark(record, name, 'failed', error=str(error))
+                    print(f'deploy-k3s: step {name} failed: {error}', file=sys.stderr)
+                    failure = failure or (name, error)
+                else:
+                    raise error
+        if failure:
+            name, error = failure
+            record['status'] = 'failed'
+            record['error'] = f'{name}: {error}'
+            ctx.records.save(record)
             try:
-                fields = steps[name](ctx) or {}
                 sync_state(ctx, 'push')
-            except StepWaiting as wait:
-                ctx.records.mark(record, name, 'waiting', message=str(wait))
-                waiting.append(name)
-                record.setdefault('messages', {})[name] = str(wait)
-                continue
-            except (StepFailed, config.SiteError, subprocess.SubprocessError, OSError) as error:
-                ctx.records.mark(record, name, 'failed', error=str(error))
-                record['status'] = 'failed'
-                record['error'] = f'{name}: {error}'
-                ctx.records.save(record)
-                try:
-                    sync_state(ctx, 'push')
-                except StepFailed as sync_error:
-                    print(f'deploy-k3s: {sync_error}', file=sys.stderr)
-                print(f'deploy-k3s: step {name} failed: {error}', file=sys.stderr)
-                print(f'deploy-k3s: the record {record["id"]} keeps the finished steps and the revision '
-                      f'{record["revision"][:12]}. Fix the cause, then run: deploy-k3s {record["command"]} '
-                      f'--resume {record["id"]}', file=sys.stderr)
-                return 2
-            entry.pop('blocked_by', None)
-            ctx.records.mark(record, name, 'done', **fields)
+            except StepFailed as sync_error:
+                print(f'deploy-k3s: {sync_error}', file=sys.stderr)
+            print(f'deploy-k3s: the record {record["id"]} keeps the finished steps and the revision '
+                  f'{record["revision"][:12]}. Fix the cause, then run: deploy-k3s {record["command"]} '
+                  f'--resume {record["id"]}', file=sys.stderr)
+            return 2
     except StepFailed as error:
         record['status'] = 'failed'
         record['error'] = str(error)
@@ -1233,6 +1357,8 @@ def execute(ctx, record, steps):
               file=sys.stderr)
         return 130
     finally:
+        # A running step ends with its command. Its state stays running in the record, so a resume runs it again.
+        pool.shutdown(wait=False, cancel_futures=True)
         signal.signal(signal.SIGTERM, previous)
     if waiting:
         messages = [record['messages'][w] for w in waiting]

@@ -42,7 +42,7 @@ Select **Sign out** at the end of the page to end the session.
 
 <a href="img/operator-zones.png"><img src="img/operator-zones.png" alt="The zone list with its actions and the form to create a zone" width="100%"></a>
 
-The cluster places the pods of the zone on the nodes by their memory and CPU requests and spreads them over the nodes.
+The cluster places each pod of the zone on the node with the lowest requested CPU per thread.
 A pod with a volume stays on the node of its volume.
 
 A create, upgrade or delete restarts the shared call services. Calls that run at that time end.

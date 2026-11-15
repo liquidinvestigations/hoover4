@@ -47,6 +47,19 @@ def resources(store):
     return {'requests': {'cpu': '50m', 'memory': REQUESTS[store]}, 'limits': {'cpu': '2', 'memory': LIMITS[store]}}
 
 
+def site_cpu(items):
+    """Write the measured CPU request and its basis into each shared store workload of the site.
+
+    The values are the part site of ../../zones/cpu-requests.json (../../zones/cpu_requests.py). A workload without a
+    measurement keeps the request of resources().
+    """
+    import cpu_requests
+    for o in items:
+        if o['kind'] in ('Deployment', 'StatefulSet'):
+            cpu_requests.apply(o, f"{o['kind'].lower()}/{o['metadata']['name']}", 'site')
+    return items
+
+
 def secret_env(name, key):
     return {'name': name, 'valueFrom': {'secretKeyRef': {'name': SECRET, 'key': key}}}
 
@@ -101,9 +114,12 @@ def manticore(zone, name='manticore'):
              'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach')
     seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
     tier = zonestate.tier(zone, name, zonestate.site_tiers(common.settings.KUBECONFIG))
-    return [service(name, zone, [('sql', 9306), ('http', 9308)]),
-            statefulset(f'{name}-kata', name, zone, container, ['sh', '-c', start], '/var/lib/manticore', tier, SIZES[name],
-                        replicas=1 if common.namespace_enabled(zone) else 0, user='999:999', extra_volumes=[seed])]
+    daemon = statefulset(f'{name}-kata', name, zone, container, ['sh', '-c', start], '/var/lib/manticore', tier, SIZES[name],
+                         replicas=1 if common.namespace_enabled(zone) else 0, user='999:999', extra_volumes=[seed])
+    # The measured CPU request and its basis (../../zones/cpu_requests.py).
+    import cpu_requests
+    cpu_requests.apply(daemon, f'statefulset/{name}-kata', 'zone', main='manticore')
+    return [service(name, zone, [('sql', 9306), ('http', 9308)]), daemon]
 
 
 BUILDERS = {'manticore': manticore, 'manticore-vectors': lambda z: manticore(z, 'manticore-vectors')}

@@ -377,3 +377,10 @@ def test_no_command_has_a_default_site_file():
     clean = {k: v for k, v in os.environ.items() if k not in ('HOOVER4_SITE', 'HOOVER4_OPERATOR_IMAGE')}
     out = subprocess.run([sys.executable, str(REPO / 'k3s/deploy-k3s'), 'status'], capture_output=True, text=True, env=clean)
     assert out.returncode != 0 and 'give the site file with --site FILE, or set HOOVER4_SITE' in out.stderr
+
+
+def test_a_node_reserves_cpu_in_millicores_or_whole_cpus():
+    site = config.parse(LAN.replace('    a:\n', '    a:\n      reserved: cpu=700m\n').replace('    b:\n', '    b:\n      reserved: memory=4Gi,cpu=2\n'))
+    nodes = config.ansible_variables(site, '/s')['hoover4_nodes']
+    assert nodes['a']['reserved'] == 'cpu=700m' and nodes['a']['reserved_cpus'] == 0.7
+    assert nodes['b']['reserved_cpus'] == 2.0 and nodes['b']['reserved_memory_gib'] == 4.0

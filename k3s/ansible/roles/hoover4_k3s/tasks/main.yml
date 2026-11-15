@@ -63,6 +63,14 @@
   ansible.builtin.include_tasks: sqlite.yml
   when: hoover4_server | bool
 
+- name: Write the scheduler configuration
+  ansible.builtin.template:
+    src: scheduler-config.yaml.j2
+    dest: /etc/rancher/k3s/scheduler-config.yaml
+    mode: "0644"
+  register: hoover4_scheduler_config
+  when: hoover4_server | bool
+
 - name: Write the k3s configuration
   ansible.builtin.template:
     src: config.yaml.j2

@@ -19,7 +19,8 @@ Garage node count. Each store keeps one copy of its data, and the Service of eac
 Each store pod runs in Kata on a TopoLVM block volume (hoover.py statefulset()). The claim of a store holds the size of
 one zone (hoover.SIZES) times the number of site zones, at least one. apply and grow make the claims larger when a
 zone is added. A claim never becomes smaller. A store pod sees a grown claim at its next start. The memory limits and requests are those of one zone store
-(memory-limits.json and hoover.REQUESTS), the R6 minimums. Each zone user of ClickHouse has the profile of its zone,
+(memory-limits.json and hoover.REQUESTS), the R6 minimums. The CPU request of each store workload is its measured
+value (part site of ../../zones/cpu-requests.json, hoover.site_cpu()). Each zone user of ClickHouse has the profile of its zone,
 which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
 ClickHouse (8123, 9000) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
@@ -179,7 +180,7 @@ def network():
 
 def objects(s, plan, zones, peers):
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}
-    return [namespace, *network(), *clickhouse(s, plan, zones), *garage(s, plan, zones, peers)]
+    return hoover.site_cpu([namespace, *network(), *clickhouse(s, plan, zones), *garage(s, plan, zones, peers)])
 
 
 # ----------------------------------------------------------------------------------------------------------------------

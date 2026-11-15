@@ -80,7 +80,7 @@ def objects(zone):
         pod['volumes'].append({'name': 'local-ca', 'configMap': {'name': 'local-ca'}})
         extra.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'local-ca', 'namespace': zone},
                       'data': {'local-ca.crt': ca}})
-    return {'apiVersion': 'v1', 'kind': 'List', 'items': extra + [
+    objects = {'apiVersion': 'v1', 'kind': 'List', 'items': extra + [
         {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
          'spec': {'replicas': 1, 'selector': {'matchLabels': LABELS}, 'template': {'metadata': {'labels': LABELS}, 'spec': pod}}},
         {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
@@ -88,6 +88,12 @@ def objects(zone):
         {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
          'spec': {'ingressClassName': 'haproxy', 'rules': [{'host': auth, 'http': {'paths': [{
              'path': '/', 'pathType': 'Prefix', 'backend': {'service': {'name': 'gate', 'port': {'number': 4180}}}}]}}]}}]}
+    # The measured CPU request and its basis (cpu_requests.py).
+    import cpu_requests
+    for item in objects['items']:
+        if item['kind'] == 'Deployment':
+            cpu_requests.apply(item, f"deployment/{item['metadata']['name']}", 'zone')
+    return objects
 
 
 if __name__ == '__main__':

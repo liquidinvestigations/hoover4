@@ -1,5 +1,5 @@
 #!/bin/bash
-# Set up the cluster on the k3s nodes: node labels, RuntimeClasses, cert-manager and TopoLVM.
+# Set up the cluster on the k3s nodes: node labels, RuntimeClasses, cert-manager, TopoLVM and the descheduler.
 # Run it on a host with kubectl, helm, python3 and the admin kubeconfig. A second run changes nothing.
 # KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 # The site file (settings.py) gives the storage tiers of each node. The facts of each node in facts/<node>.json of the
@@ -93,6 +93,13 @@ helm_install cert-manager cert-manager jetstack/cert-manager "$CERT_MANAGER_VERS
 kubectl create namespace topolvm-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl label namespace kube-system topolvm-system topolvm.io/webhook=ignore --overwrite
 helm_install topolvm topolvm-system topolvm/topolvm "$TOPOLVM_CHART_VERSION" "$values"
+
+# The descheduler moves stateless pods to a node with a lower requested share (descheduler.yaml). The annotation
+# holds the hash of the file, so a changed policy restarts it.
+descheduler=$(mktemp --suffix=.yaml)
+sed "s/SOURCE_HASH/$(sha256sum descheduler.yaml | cut -c1-16)/" descheduler.yaml > "$descheduler"
+kubectl apply -f "$descheduler"
+rm -f "$descheduler"
 
 kubectl get nodes -L storage.hoover/enrolled,storage.hoover/lvmd,cpu.hoover/avx2,gpu.hoover/count,gpu.hoover/memory-mib
 kubectl get runtimeclass,storageclass

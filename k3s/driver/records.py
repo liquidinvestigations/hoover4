@@ -17,6 +17,7 @@ A record with a step that is not done is not a finished deployment.
 """
 import json
 import os
+import threading
 import time
 import sys
 import uuid
@@ -34,7 +35,7 @@ Busy = oplock.Busy
 def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.tmp')
     with open(tmp, 'w') as f:
         json.dump(value, f, indent=1, sort_keys=True)
         f.write('\n')
@@ -56,6 +57,8 @@ class Records:
     def __init__(self, folder):
         self.folder = Path(folder)
         self._lock = None
+        # A step that changes the record, for example the image references, holds it too.
+        self.guard = threading.RLock()
 
     def lock(self, kind='deploy', operation_id=None):
         """Hold the site operation lock. Raise Busy while another operation holds it."""
@@ -86,8 +89,10 @@ class Records:
         return json.loads(path.read_text())
 
     def save(self, record):
-        record['updated'] = now()
-        write_json(self.path(record['id']), record)
+        # The steps of a run can finish at the same time (deploy.execute()), so one save at a time writes the record.
+        with self.guard:
+            record['updated'] = now()
+            write_json(self.path(record['id']), record)
 
     def list(self):
         folder = self.folder / 'records'
@@ -101,11 +106,12 @@ class Records:
 
     def mark(self, record, name, state, **fields):
         assert state in STATES
-        entry = self.step(record, name)
-        entry['state'] = state
-        entry[{'running': 'started'}.get(state, 'finished')] = now()
-        entry.update(fields)
-        self.save(record)
+        with self.guard:
+            entry = self.step(record, name)
+            entry['state'] = state
+            entry[{'running': 'started'}.get(state, 'finished')] = now()
+            entry.update(fields)
+            self.save(record)
 
     def applied(self):
         path = self.folder / 'applied.json'

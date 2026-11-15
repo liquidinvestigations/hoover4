@@ -1,13 +1,11 @@
-# Every pod of a zone runs in gVisor unless it names another runtime, and the pods of a zone namespace spread over the
-# nodes. A zone has no home node: the scheduler places each pod by its requests, and a pod with a local volume stays on
-# the node of its volume (TopoLVM). A pod that names a node, such as a service that reaches the internet from the public
+# Every pod of a zone runs in gVisor unless it names another runtime. A zone has no home node: the scheduler places
+# each pod on the node with the lowest requested CPU per thread (the k3s scheduler configuration of
+# ../../ansible/roles/hoover4_k3s), and a pod with a local volume stays on the node of its volume (TopoLVM). A pod that names a node, such as a service that reaches the internet from the public
 # node, keeps its nodeSelector.
 # The policy covers Helm hook Jobs too, because Helm does not pass hooks through the post-renderer.
 # zone.py and the Hoover render label each zone namespace with hoover.dev/zone=true. A pod that names a RuntimeClass
 # keeps it, for example a Kata store. A pod with the label hoover.dev/runtime=runc keeps the default runtime: this is
 # the record of a runtime exception.
-# A pod without a topology spread constraint gets a soft one: at most one pod of difference between the nodes for the
-# pods of its namespace, with ScheduleAnyway, so a full node still takes a pod. A pod with its own constraints keeps them.
 # The ValidatingAdmissionPolicy hoover-pod-limits refuses host access in the zone namespaces and in the namespaces calls
 # and extensions, where the zone runner can create workloads. It matches the namespace by its name, so a label change
 # does not remove it. It refuses a host path, the host PID and IPC namespaces, a privileged container, and a
@@ -39,10 +37,6 @@ spec:
               || (has(object.metadata.labels) && object.metadata.labels.exists(k, k == "hoover.dev/runtime")
                   && object.metadata.labels["hoover.dev/runtime"] == "runc")
             ? [] : [JSONPatch{op: "add", path: "/spec/runtimeClassName", value: "gvisor"}])
-          + (has(object.spec.topologySpreadConstraints) ? []
-            : [JSONPatch{op: "add", path: "/spec/topologySpreadConstraints", value: [
-                Object.spec.topologySpreadConstraints{maxSkew: 1, topologyKey: "kubernetes.io/hostname",
-                  whenUnsatisfiable: "ScheduleAnyway", labelSelector: Object.spec.topologySpreadConstraints.labelSelector{}}]}])
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingAdmissionPolicyBinding

@@ -46,6 +46,7 @@ The site file is a YAML Ansible inventory with one group, `hoover4`.
 | `hoover4.hosts.<name>` | One node: its roles (`node_roles`), its address in each network and LAN, its public address, the volume group of each storage tier (`storage`), the switches of its host changes, and the TLS mode of a public node. |
 | `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool. |
 | `hoover4.vars.backup` | The backup node and the backup folder on that node. |
+| `hoover4.vars.deploy` | The count of zone steps that `deploy-k3s up` runs at the same time (`parallel_zones`, default 2). |
 
 Check the file before each change:
 
@@ -62,7 +63,7 @@ The check prints the switches of each node and the WireGuard peer table. Prepare
 3. A site without a WireGuard network connects its nodes at their LAN addresses. Give each node `lan` and declare the LAN in `vars.lans`.
 4. The cidr of each network, and of each LAN that states one, reaches the admin routes of the HTTPS frontend.
 
-The facts play reads the architecture, AVX2, the GPUs and the volume group sizes of each node. Do not write them in the site file.
+The facts play reads the architecture, AVX2, the GPUs, the volume group sizes and the CPU speed of each node. Do not write them in the site file.
 
 ## Choose the node roles
 
@@ -137,6 +138,7 @@ The host play removes `/usr/local/libexec/hoover4`, the sudo rule `/etc/sudoers.
    The steps `hosts:prepare` and `hosts:k3s` run one Ansible play each on all target nodes in parallel.
    The k3s play writes the admin kubeconfig into the state folder, with the node address of the server. `hosts:verify` reads every node through it.
    The driver then installs the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator portal and runner, the GPU services, each zone and the call services.
+   A step starts when the steps that it needs are done, so independent steps run at the same time. For example, the ingress, the frontend, monitoring and the images run together after the registry. The step `prepull` pulls the zone images on every eligible node while the zones apply. `vars.deploy.parallel_zones` of the site file limits the zone steps that run at the same time (default 2). The output lines of a step start with the step name in brackets.
 4. When a step fails, read its error, correct the cause, and continue with the same inputs:
 
    ```sh

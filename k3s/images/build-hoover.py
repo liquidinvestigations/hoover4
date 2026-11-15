@@ -6,6 +6,7 @@ local changes of the checkout stay out of the images, and removes the folder aft
 first 12 characters of the commit.
 ../hoover/manifests.py names the images with the same tag (image_tag()).
 The website image is the release Dockerfile. The processing image starts the installed interpreter.
+The builds run at the same time, up to the CPU count of this host. The output of each build follows its end.
 Usage: build-hoover.py [--revision REV] [name ...]    Without names it builds every image of compose.IMAGES.
                                                       The default revision is HEAD.
        build-hoover.py --gpu [--revision REV] [--builder NODE] [name ...]
@@ -23,6 +24,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -86,16 +88,33 @@ def build(args, sha, tree):
         env['PLATFORM'] = f'linux/{architectures.pop()}'
         deploy = compose.deploy_module(tree)
         base = deploy.QWEN_FLASH_BASE_IMAGE
-    for name in args.names or list(images):
+    def one(name):
         dockerfile, context = images[name]
         step_env = dict(env)
         if args.gpu and name == 'vllm' and base:
             step_env['BUILD_ARGS'] = f'BASE_IMAGE={base}'
         if args.builder:
             remote_build(settings.SITE.nodes[args.builder], tree, sha, name, context, dockerfile, step_env)
-        subprocess.run(['bash', str(HERE / 'build-image.sh'), str(tree / context), f'hoover/hoover-{name}:{sha[:12]}',
-                        str(tree / dockerfile)], check=True, env=step_env)
+        result = subprocess.run(['bash', str(HERE / 'build-image.sh'), str(tree / context), f'hoover/hoover-{name}:{sha[:12]}',
+                                 str(tree / dockerfile)], env=step_env, capture_output=True, text=True)
+        # The output of each build comes in one piece, so the builds that run at the same time stay apart.
+        sys.stdout.write(result.stdout + result.stderr)
+        sys.stdout.flush()
+        if result.returncode:
+            raise SystemExit(f'the build of {name} failed with exit code {result.returncode}')
 
+    names = args.names or list(images)
+    # A build over SSH (--builder) runs one image at a time on its node. A local build runs up to one image per CPU.
+    workers = 1 if args.builder else max(1, min(len(names), os.cpu_count() or 1))
+    failures = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for future in [pool.submit(one, n) for n in names]:
+            try:
+                future.result()
+            except SystemExit as error:
+                failures.append(str(error))
+    if failures:
+        raise SystemExit('; '.join(failures))
 
 def remote_build(node, tree, sha, name, context, dockerfile, env):
     """Build one image on a node over SSH and load it into the local Podman store, unless the registry has it.

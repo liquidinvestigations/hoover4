@@ -14,6 +14,17 @@ out=settings.PRIVATE/'zones'
 OPENDESK=settings.PRIVATE/'downloads/opendesk-v1.19.1/src'
 ZONE_NAME=re.compile(r'zone-[a-z0-9]{1,12}')
 
+def put(path,text):
+ """Write a private file only when its text changes, through a renamed temporary file, so a helmfile process of
+ another zone that reads it at the same time reads the old or the new text."""
+ import os
+ path=pathlib.Path(path)
+ if path.exists() and path.read_text()==text:return
+ tmp=path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+ fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+ with os.fdopen(fd,'w') as f:f.write(text)
+ os.replace(tmp,path)
+
 def local_ca():
  """The local CA of the frontend for the trust bundle of a zone, when the frontend uses the TLS mode internal."""
  import config
@@ -76,7 +87,7 @@ def load_secrets():
   z.setdefault('hoover_oidc_secret',secrets.token_hex(24))
   # The Keycloak client of the zone gate and its oauth2-proxy share this secret (gate_oidc). The cookie secret has 32 bytes.
   z.setdefault('gate_oidc_secret',secrets.token_hex(24));z.setdefault('gate_cookie_secret',secrets.token_hex(16))
- out.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(data,indent=1));path.chmod(0o600)
+ out.mkdir(parents=True,exist_ok=True);put(path,json.dumps(data,indent=1));path.chmod(0o600)
  return data
 def reduced_resources():
  """Lower the requests to 40 % of the openDesk defaults. Limits stay at the openDesk defaults."""
@@ -112,6 +123,11 @@ def zone_values(zone,data,storage_class):
   # The file system volumes of the apps use the default tier of the zone, on the node where the scheduler binds them.
   'persistence':{'storageClassNames':{'RWO':storage_class}},
   'resources':reduced_resources(),
+  # Helm waits this many seconds for each of these releases. The openDesk values of 300 s and 600 s ran out during a
+  # zone create while other zones started on the same nodes: the Synapse account bootstrap of the meetings bot, the
+  # Nextcloud management Job, the OpenProject bootstrap and XWiki. A timeout made the whole install run again.
+  'deployment':{'timeouts':{'releases':{'matrixNeodatefixBotBootstrap':900,'opendeskMatrixUserVerificationServiceBootstrap':900,
+    'opendeskNextcloudManagement':1200,'opendeskOpenprojectBootstrap':900,'openproject':1200,'xwiki':1200}}},
   # The MVP has no MFA and no email, so the zone login asks only for the user name and password.
   'functional':{'authentication':{'twoFactor':{'groups':[]},'newDeviceLoginNotification':{'enabled':False},
     'oidc':oidc_clients(zone)},
@@ -206,14 +222,14 @@ def default_class(zone):
 def main():
  data=load_secrets()
  # The zone Jitsi keeps web, Prosody and Jicofo. The shared JVB in the namespace calls joins each zone Prosody.
- (out/'calls-jitsi.yaml').write_text(yaml.safe_dump({'jitsi':{'jvb':{'replicaCount':0,'service':{'enabled':False}},
+ put(out/'calls-jitsi.yaml',yaml.safe_dump({'jitsi':{'jvb':{'replicaCount':0,'service':{'enabled':False}},
   'jicofo':{'extraEnvs':{'JICOFO_MAX_MEMORY':'512m'}},'prosody':{'extraEnvs':{'LOG_LEVEL':'warn'}}}},sort_keys=False))
  # The Nubus chart syncs JetStream every 10 ms. Idle, that gave about 960 writes per second on each zone volume.
  # The chart blocks URL previews only for some private ranges. Pod, Service and loopback addresses stay reachable,
  # so a chat user could make Synapse fetch internal URLs. This list is the Synapse sample list for private ranges.
  ranges=['127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','100.64.0.0/10','192.0.0.0/24','169.254.0.0/16','192.88.99.0/24',
   '198.18.0.0/15','192.0.2.0/24','198.51.100.0/24','203.0.113.0/24','224.0.0.0/4','::1/128','fe80::/10','fc00::/7','2001:db8::/32','ff00::/8','fec0::/10']
- (out/'synapse-url-preview.yaml').write_text('synapse:\n  additional:\n    9-hooverUrlPreview:\n      config: |\n        url_preview_ip_range_blacklist:\n'+''.join(f"          - '{r}'\n" for r in ranges))
+ put(out/'synapse-url-preview.yaml','synapse:\n  additional:\n    9-hooverUrlPreview:\n      config: |\n        url_preview_ip_range_blacklist:\n'+''.join(f"          - '{r}'\n" for r in ranges))
  # XWiki imports LDAP groups, and with them the admin group, only in two scheduler jobs at night.
  # Each job runs every minute instead, so a group change reaches XWiki within a minute.
  # The jobs run as XWiki.superadmin, which needs no login.
@@ -222,18 +238,18 @@ def main():
  job='property:xwiki:LDAPUserImport.{}^XWiki.SchedulerJobClass.cron'
  # XWiki installs extensions only from the repository in manifests/xwiki-extensions.yaml.
  # The openDesk templates set German window titles for XWiki and OpenProject, independent of the default language.
- (out/'xwiki-title.yaml').write_text('properties:\n  "property:xwiki:XWiki.XWikiPreferences^XWiki.XWikiPreferences.title": "Knowledge - $!tdoc.displayTitle - openDesk"\n')
- (out/'openproject-title.yaml').write_text('environment:\n  OPENPROJECT_APP__TITLE: "Projects - openDesk"\n')
- (out/'xwiki-group-sync.yaml').write_text('properties:\n'+f'  "{job.format("LDAPGroupImportJob")}": "0 * * * * ?"\n'+f'  "{job.format("MappedGroupsDailyUpdater")}": "30 * * * * ?"\n'
+ put(out/'xwiki-title.yaml','properties:\n  "property:xwiki:XWiki.XWikiPreferences^XWiki.XWikiPreferences.title": "Knowledge - $!tdoc.displayTitle - openDesk"\n')
+ put(out/'openproject-title.yaml','environment:\n  OPENPROJECT_APP__TITLE: "Projects - openDesk"\n')
+ put(out/'xwiki-group-sync.yaml','properties:\n'+f'  "{job.format("LDAPGroupImportJob")}": "0 * * * * ?"\n'+f'  "{job.format("MappedGroupsDailyUpdater")}": "30 * * * * ?"\n'
   +'customConfigs:\n  xwiki.cfg:\n    xwiki.authentication.ldap.groupcache_expiration: 60\n  xwiki.properties:\n    extension.repositories: "hoover:maven:http://xwiki-extensions.extensions.svc.cluster.local/repo/"\n')
- (out/'nats-sync.yaml').write_text('# A sync each second limits a host crash to one second of provisioning events.\nnubusProvisioning:\n  nats:\n    config:\n      jetstream:\n        fileStore:\n          sync_interval: 1s\n')
- (out/'nats-probes.yaml').write_text('nubusProvisioning:\n  nats:\n    startupProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 1\n      failureThreshold: 120\n      timeoutSeconds: 5\n    readinessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 2\n      failureThreshold: 3\n      timeoutSeconds: 5\n    livenessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 10\n      failureThreshold: 3\n      timeoutSeconds: 5\n')
- (out/'redis-probes.yaml').write_text('master:\n  readinessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_readiness_local.sh 1"]}\n    initialDelaySeconds: 0\n    periodSeconds: 1\n    failureThreshold: 5\n    timeoutSeconds: 2\n  livenessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_liveness_local.sh 5"]}\n    initialDelaySeconds: 5\n    periodSeconds: 5\n    failureThreshold: 5\n    timeoutSeconds: 6\n')
- (out/'two-factor-off.yaml').write_text('# The MVP has no MFA.\nnubusKeycloakBootstrap:\n  bootstrap:\n    twoFactorAuthentication:\n      enabled: false\n')
+ put(out/'nats-sync.yaml','# A sync each second limits a host crash to one second of provisioning events.\nnubusProvisioning:\n  nats:\n    config:\n      jetstream:\n        fileStore:\n          sync_interval: 1s\n')
+ put(out/'nats-probes.yaml','nubusProvisioning:\n  nats:\n    startupProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 1\n      failureThreshold: 120\n      timeoutSeconds: 5\n    readinessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 2\n      failureThreshold: 3\n      timeoutSeconds: 5\n    livenessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 10\n      failureThreshold: 3\n      timeoutSeconds: 5\n')
+ put(out/'redis-probes.yaml','master:\n  readinessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_readiness_local.sh 1"]}\n    initialDelaySeconds: 0\n    periodSeconds: 1\n    failureThreshold: 5\n    timeoutSeconds: 2\n  livenessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_liveness_local.sh 5"]}\n    initialDelaySeconds: 5\n    periodSeconds: 5\n    failureThreshold: 5\n    timeoutSeconds: 6\n')
+ put(out/'two-factor-off.yaml','# The MVP has no MFA.\nnubusKeycloakBootstrap:\n  bootstrap:\n    twoFactorAuthentication:\n      enabled: false\n')
  for zone in ZONES:
   folder=out/zone;folder.mkdir(exist_ok=True)
-  (folder/'values.yaml').write_text(yaml.safe_dump(zone_values(zone,data,default_class(zone)),sort_keys=False));(folder/'values.yaml').chmod(0o600)
-  (folder/'master-password').write_text(data[zone]['master_password']);(folder/'master-password').chmod(0o600)
+  put(folder/'values.yaml',yaml.safe_dump(zone_values(zone,data,default_class(zone)),sort_keys=False));(folder/'values.yaml').chmod(0o600)
+  put(folder/'master-password',data[zone]['master_password']);(folder/'master-password').chmod(0o600)
   # The Keycloak bootstrap reads the Hoover and gate client secrets from these Secrets. zone.py applies them before Helm.
   # data, not stringData: kubectl apply reports a stringData Secret as changed on each run.
   def b64(value):return base64.b64encode(value.encode()).decode()
@@ -243,15 +259,15 @@ def main():
    # The gate client of Keycloak and the gate oauth2-proxy read this Secret.
    {'apiVersion':'v1','kind':'Secret','metadata':{'name':'gate-oidc','namespace':zone},'type':'Opaque',
     'data':{'client-secret':b64(data[zone]['gate_oidc_secret']),'cookie-secret':b64(data[zone]['gate_cookie_secret'])}}]}
-  (folder/'hoover-oidc-secret.json').write_text(json.dumps(oidc));(folder/'hoover-oidc-secret.json').chmod(0o600)
+  put(folder/'hoover-oidc-secret.json',json.dumps(oidc));(folder/'hoover-oidc-secret.json').chmod(0o600)
   # The intercom service answers the cross-origin requests of the pages of its own zone only. The openDesk value is
   # global.domain, which matches the pages of every zone of the site. Its chart builds the Keycloak and portal URLs
   # from the fixed host names id and portal, so the zone gives them in full.
-  (folder/'intercom.yaml').write_text(yaml.safe_dump({'ics':{'originRegex':origin_regex(zone),
+  put(folder/'intercom.yaml',yaml.safe_dump({'ics':{'originRegex':origin_regex(zone),
    'keycloak':{'url':f"https://{settings.zone_host(zone,'id')}"},'portal':{'url':f"https://{settings.zone_host(zone,'portal')}"}}}))
   # lk-jwt of each zone signs tokens with the zone key for the shared LiveKit. Without its own SFU, the chart does not
   # set LIVEKIT_URL. lk-jwt polls the SFU for gone participants, because the shared SFU sends no webhooks.
-  (folder/'calls-matrix.yaml').write_text(yaml.safe_dump({'matrixRTC':{'sfu':{'enabled':False},'livekitAuth':{'key':zone},
+  put(folder/'calls-matrix.yaml',yaml.safe_dump({'matrixRTC':{'sfu':{'enabled':False},'livekitAuth':{'key':zone},
    'extraEnv':[{'name':'LIVEKIT_URL','value':f"wss://{settings.zone_host(zone,'sfu')}"},{'name':'LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS','value':'10'},
     # lk-jwt logs each health probe at info, so the level is warn to keep the log writes low.
     {'name':'LIVEKIT_LOG_LEVEL','value':'warn'}],
@@ -259,6 +275,13 @@ def main():
    'extraVolumes':[{'name':'trusted-cert-secret-volume','secret':{'secretName':'hoover-ca-bundle','items':[{'key':'ca.crt','path':'ca-certificates.crt'}]}}],
    'extraVolumeMounts':[{'name':'trusted-cert-secret-volume','mountPath':'/etc/ssl/certs/ca-certificates.crt','subPath':'ca-certificates.crt'}]}},sort_keys=False))
  # install-server-names.sh writes these names into /etc/hosts of the workstation.
- (out/'frontend.env').write_text(f"zones=({' '.join(ZONES)})\nsuffix={SUFFIX}\nhosts=({' '.join(HOSTS)})\nextra_hosts=(operator.{SUFFIX})\nbind_extra=({' '.join(settings.FRONTEND_BIND)})\n")
+ put(out/'frontend.env',f"zones=({' '.join(ZONES)})\nsuffix={SUFFIX}\nhosts=({' '.join(HOSTS)})\nextra_hosts=(operator.{SUFFIX})\nbind_extra=({' '.join(settings.FRONTEND_BIND)})\n")
  print(json.dumps({'zones':ZONES,'output':str(out)}))
-if __name__=='__main__':main()
+if __name__=='__main__':
+ # The zone steps of deploy-k3s up can run at the same time, and each one runs this file. One run at a time writes the
+ # secrets and the values.
+ import fcntl
+ out.mkdir(parents=True,exist_ok=True)
+ with open(out/'.zones.lock','w') as lock:
+  fcntl.flock(lock,fcntl.LOCK_EX)
+  main()

@@ -7,6 +7,7 @@ import shlex
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -236,6 +237,69 @@ def test_a_partial_up_is_not_an_applied_deployment(env):
     record = ctx.records.new('up', ['dev'], rev, ['a'], complete=False)
     assert deploy.execute(ctx, record, fake_steps(['a'], [])) == 0
     assert ctx.records.applied() is None
+
+
+def test_the_up_steps_wait_only_for_their_prerequisites():
+    names = ['hosts:prepare', 'hosts:k3s', 'hosts:verify', 'tools', 'cluster', 'registry', 'images', 'ingress', 'frontend',
+             'monitoring', 'operator', 'hoover-data', 'stores', 'prepull', 'zone:zone-a', 'zone:zone-b', 'calls']
+    needs = deploy.prerequisites(names)
+    assert needs['registry'] == names[:5]
+    for name in ('images', 'ingress', 'frontend', 'monitoring', 'hoover-data'):
+        assert set(needs[name]) == set(names[:6]), name
+    assert set(needs['operator']) == set(names[:6]) | {'images', 'monitoring'}
+    assert set(needs['stores']) == set(needs['prepull']) == set(names[:6]) | {'images'}
+    platform = {'images', 'ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'stores'}
+    assert set(needs['zone:zone-a']) == set(needs['zone:zone-b']) == set(names[:6]) | platform
+    assert set(needs['calls']) == set(names[:6]) | (platform - {'images'}) | {'zone:zone-a', 'zone:zone-b'}
+    # A step that the table does not name waits for every earlier step, except a step on another node.
+    assert deploy.prerequisites(['a', 'b', 'c'])['c'] == ['a', 'b']
+    assert deploy.prerequisites(['start:k3s:a', 'start:k3s:b', 'start:stores'])['start:k3s:b'] == []
+
+
+def test_independent_steps_run_at_the_same_time_and_zones_up_to_the_site_limit(env):
+    import threading
+    ctx = env.make()
+    rev = deploy.resolve_revision(env.repo, 'HEAD')
+    names = ['registry', 'ingress', 'frontend', 'zone:zone-a', 'zone:zone-b', 'zone:zone-c', 'calls']
+    lock, active, peak, order = threading.Lock(), set(), {}, []
+
+    def make(name):
+        def run(ctx):
+            with lock:
+                active.add(name)
+                order.append(name)
+                peak['all'] = max(peak.get('all', 0), len(active))
+                peak['zones'] = max(peak.get('zones', 0), sum(a.startswith('zone:') for a in active))
+            time.sleep(0.3)
+            with lock:
+                active.discard(name)
+            return {}
+        return run
+    record = ctx.records.new('up', ['dev'], rev, names, complete=False)
+    assert deploy.execute(ctx, record, {n: make(n) for n in names}) == 0
+    assert config.parallel_zones(ctx.site) == 2
+    assert peak['zones'] == 2 and peak['all'] >= 2
+    assert order[0] == 'registry' and order[-1] == 'calls'
+    assert {s['state'] for s in ctx.records.load(record['id'])['steps']} == {'done'}
+
+
+def test_a_failed_step_lets_the_running_steps_finish_and_starts_no_later_step(env):
+    ctx = env.make()
+    rev = deploy.resolve_revision(env.repo, 'HEAD')
+    names = ['registry', 'ingress', 'frontend', 'zone:zone-a']
+
+    def ingress(ctx):
+        raise deploy.StepFailed('ingress broke')
+
+    def frontend(ctx):
+        time.sleep(0.3)
+        return {}
+    steps = {'registry': lambda ctx: {}, 'ingress': ingress, 'frontend': frontend, 'zone:zone-a': lambda ctx: {}}
+    record = ctx.records.new('up', ['dev'], rev, names, complete=True)
+    assert deploy.execute(ctx, record, steps) == 2
+    states = {s['name']: s['state'] for s in ctx.records.load(record['id'])['steps']}
+    assert states == {'registry': 'done', 'ingress': 'failed', 'frontend': 'done', 'zone:zone-a': 'pending'}
+    assert ctx.records.load(record['id'])['error'] == 'ingress: ingress broke'
 
 
 def test_the_independent_steps_act_on_different_nodes():

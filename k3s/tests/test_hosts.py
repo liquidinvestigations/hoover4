@@ -69,11 +69,11 @@ def test_every_server_initializes_etcd_and_no_agent_does():
     assert 'node-ip: 10.0.0.3\nflannel-iface: wg0\n' in agent
 
 
-def test_the_configuration_of_a_lan_server_keeps_the_bytes_of_the_earlier_installer():
-    # The earlier root script wrote this file on a LAN server. The same bytes keep k3s running without a restart.
+def test_the_configuration_of_a_lan_server_names_the_scheduler_configuration():
     text = site_text('remote.yml')
     values = host_vars(text, 'server-a') | {'hoover4_node_address': '192.0.2.25', 'hoover4_flannel_iface': 'enp3s0',
-                                            'inventory_hostname': 'lan-3', 'hoover4_reserved': ''}
+                                            'inventory_hostname': 'lan-3', 'hoover4_reserved': '',
+                                            'hoover4_kubelet_reserved': ''}
     assert render('config.yaml.j2', values) == """# The server keeps its datastore in embedded etcd, also on a site with one node. etcd gives the snapshots of
 # the platform backup. One server is not highly available.
 cluster-init: true
@@ -84,6 +84,9 @@ flannel-backend: vxlan
 token-file: /etc/rancher/k3s/token
 agent-token-file: /etc/rancher/k3s/agent-token
 write-kubeconfig-mode: "0600"
+# The scheduler scores the nodes by their requested CPU per thread (scheduler-config.yaml.j2).
+kube-scheduler-arg:
+  - config=/etc/rancher/k3s/scheduler-config.yaml
 # The public host runs the frontend. TopoLVM replaces the local-path volumes.
 disable:
   - traefik
@@ -98,6 +101,20 @@ kubelet-arg:
   # The pods must not use the memory of the system and k3s, because memory is not overcommitted.
   - eviction-hard=memory.available<500Mi,nodefs.available<5%,imagefs.available<5%
 """
+
+
+def test_the_scheduler_spreads_requested_cpu_per_thread_above_the_other_scores():
+    import yaml
+    config = yaml.safe_load(render('scheduler-config.yaml.j2', {}))
+    profile = config['profiles'][0]
+    assert profile['plugins']['score']['enabled'] == [{'name': 'NodeResourcesFit', 'weight': 10}]
+    strategy = profile['pluginConfig'][0]['args']['scoringStrategy']
+    assert strategy['type'] == 'LeastAllocated'
+    weights = {r['name']: r['weight'] for r in strategy['resources']}
+    assert weights['cpu'] > weights['memory']
+    assert config['clientConnection']['kubeconfig'].endswith('/scheduler.kubeconfig')
+    # Agents get no scheduler argument.
+    assert 'kube-scheduler-arg' not in render('config.yaml.j2', host_vars(site_text('remote.yml'), 'worker-b'))
 
 
 def test_a_gpu_node_keeps_its_own_vpn_interface_and_gets_the_gpu_handler():
@@ -334,3 +351,39 @@ def test_the_removal_script_needs_an_archive_and_keeps_the_protected_resources(t
     assert lr.verify(tmp_path)['differences'] == ['claims/a.tar']
 
 
+
+
+def test_a_slow_node_reserves_the_cpu_that_it_lacks_against_the_fastest_node(tmp_path):
+    import json
+    site = config.parse(site_text('remote.yml'))
+    site.path = tmp_path / 'site.yml'
+    facts = site.state_folder() / 'facts'
+    facts.mkdir(parents=True)
+    speeds = {'server-a': (12, 4078), 'worker-b': (4, 2018)}
+    for name, (cpus, speed) in speeds.items():
+        (facts / f'{name}.json').write_text(json.dumps({'cpus': cpus, 'cpu_speed': speed}))
+    factors = config.speed_factors(site)
+    assert factors['server-a'] == 1.0 and factors['worker-b'] == 0.5
+    # A node without the value counts as fast.
+    assert factors['edge'] == 1.0
+    nodes = config.ansible_variables(site, tmp_path)['hoover4_nodes']
+    # 4 threads at half speed are 2 threads of the fastest node, so the kubelet reserves the other 2.
+    assert nodes['worker-b']['kubelet_reserved'] == 'cpu=2000m'
+    # The fastest node keeps the value of the site file.
+    assert nodes['server-a']['kubelet_reserved'] == site.nodes['server-a'].reserved == 'memory=6Gi,cpu=2'
+    node = site.nodes['worker-b']
+    node.reserved = 'memory=4Gi,cpu=700m'
+    # The site reserve stays in threads of the node: 4 - 0.5 x (4 - 0.7) = 2.35, rounded up to 100m.
+    assert config.kubelet_reserved(node, 0.5, 4) == 'memory=4Gi,cpu=2400m'
+    assert config.kubelet_reserved(node, 1.0, 4) == 'memory=4Gi,cpu=700m'
+    values = host_vars(site_text('remote.yml'), 'worker-b') | {'hoover4_kubelet_reserved': 'cpu=2000m'}
+    assert '  - system-reserved=cpu=2000m\n' in render('config.yaml.j2', values)
+
+
+def test_the_facts_probe_measures_a_positive_cpu_speed():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('hoover4_facts', ROLES / 'hoover4_facts/files/hoover4-facts.py')
+    facts = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(facts)
+    facts.PROBE_SECONDS = 0.05
+    assert facts.cpu_speed() > 0

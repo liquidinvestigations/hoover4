@@ -19,6 +19,10 @@ except urllib.error.HTTPError as e:print(json.dumps({'status':e.code,'headers':d
 '''
 
 
+# The answer of the UDM REST API with a broken login cache entry (client()).
+STALE_LOGIN = 'cannot unpack non-iterable bool object'
+
+
 class CallError(Exception):
     def __init__(self, code, body):
         super().__init__(f'{code} {body[:300]}')
@@ -44,13 +48,29 @@ def client(zone):
             raise CallError(answer['status'], answer['body'])
         return answer['status'], answer['headers'], json.loads(answer['body'] or '{}')
 
-    for _ in range(30):
+    restarted = False
+    for _ in range(60):
         try:
             call('GET', 'users/user/?filter=uid%3DAdministrator')
             break
-        except (CallError, ConnectionError):
+        except CallError as error:
+            # The UDM REST API keeps a broken entry of its shared login cache after its LDAP server restarted during
+            # the install (Univention bug 59702). It then answers each request with 500 and this message until its
+            # pod restarts. The client restarts the pod once.
+            if error.code == 500 and STALE_LOGIN in error.body and not restarted:
+                restart(zone)
+                restarted = True
+            time.sleep(2)
+        except ConnectionError:
             time.sleep(2)
     return call
+
+
+def restart(zone):
+    print(json.dumps({'zone': zone, 'udm-rest-api': 'restarted', 'reason': STALE_LOGIN}), flush=True)
+    subprocess.run(['kubectl', '-n', zone, 'rollout', 'restart', 'deployment/ums-udm-rest-api'], check=True, capture_output=True)
+    subprocess.run(['kubectl', '-n', zone, 'rollout', 'status', 'deployment/ums-udm-rest-api', '--timeout=300s'], check=True,
+                   capture_output=True)
 
 
 def user(call, uid):

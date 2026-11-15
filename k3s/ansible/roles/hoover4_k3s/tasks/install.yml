@@ -23,6 +23,7 @@
   ansible.builtin.set_fact:
     hoover4_k3s_install: >-
       {{ hoover4_k3s_binary.changed or hoover4_k3s_config.changed or (hoover4_k3s_registries.changed | default(false))
+         or (hoover4_scheduler_config.changed | default(false))
          or hoover4_runtimes_changed | bool or hoover4_tokens_changed | default(false) | bool
          or not hoover4_unit_file.stat.exists or hoover4_unit_active.stdout != 'active' }}
 

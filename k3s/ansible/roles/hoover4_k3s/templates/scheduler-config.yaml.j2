@@ -1,0 +1,27 @@
+# The configuration of the kube-scheduler of the k3s server. The score plugin NodeResourcesFit with the strategy
+# LeastAllocated gives the highest score to the node with the lowest requested share of its allocatable resources.
+# CPU weighs three times memory, so a new pod goes to the node with the lowest requested CPU per thread. The plugin
+# weight 10 is above the weights of the other score plugins (at most 3), so the requests decide the node, and a node
+# that joins with no requests takes the new pods first. The other plugins keep their defaults.
+# The descheduler (../../../../cluster/descheduler.yaml) moves running stateless pods with the same measure.
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+clientConnection:
+  kubeconfig: /var/lib/rancher/k3s/server/cred/scheduler.kubeconfig
+profiles:
+  - schedulerName: default-scheduler
+    plugins:
+      score:
+        enabled:
+          - name: NodeResourcesFit
+            weight: 10
+    pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: LeastAllocated
+            resources:
+              - name: cpu
+                weight: 3
+              - name: memory
+                weight: 1

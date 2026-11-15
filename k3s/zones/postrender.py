@@ -3,16 +3,17 @@
 
 Helm runs this file for each release of the zone, so an upgrade keeps every change. The same input gives the same
 output, so a second install finds no difference. Helm does not pass hook objects through a post-renderer.
-manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admission, and spreads the pods of a
-namespace over the nodes.
+manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admission.
 
 - Stores: the chart StatefulSets and Deployments of STORES run in Kata. Their volumes become raw TopoLVM block volumes
   of the store tier of the site (zonestate.py), and the block mount wrapper of ../hoover/stores/podspec.py
   mounts them inside the guest. The chart Services select the same pods as before.
 - Storage: every other volume claim uses the default tier of the zone.
-- Resources: cpu_policy.py sets the CPU request and limit of each controller and CronJob. memory-limits.json sets the
-  memory limits, and the memory requests of the larger workloads from their measured use, so the scheduler places
-  each pod by its real load. Jobs keep the chart values, because a Job template cannot change after its creation.
+- Resources: cpu_policy.py sets the CPU request and limit of each controller and CronJob. cpu_requests.py then
+  raises the CPU request of each measured workload to the value of cpu-requests.json, from its start peak and its idle
+  baseline, and writes the annotations of that basis into its pod template. memory-limits.json sets the memory
+  limits, and the memory requests of the larger workloads from their measured use, so the scheduler places each pod
+  by its real load. Jobs keep the chart values, because a Job template cannot change after its creation.
 - Patches: Synapse loads synapse/hoover_e2ee.py, the user verification service logs at warn, Jitsi web uses the UDP
   TURN server for the bridge connection, the OpenProject worker loads openproject/zz-hoover-cron.rb, and the Element
   media cleanup has no starting deadline. The docstrings of the functions below give the reasons.
@@ -38,6 +39,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent / 'hoover' / 'stores'))
 import cpu_policy  # noqa: E402
+import cpu_requests  # noqa: E402
 import podspec  # noqa: E402
 import settings  # noqa: E402
 import zonestate  # noqa: E402
@@ -346,6 +348,8 @@ def overlay(documents, namespace):
         doc['metadata'].setdefault('namespace', namespace)
         cpu_policy.apply(doc)
         memory(doc)
+        main = next(iter(REQUESTS.get(key) or MEMORY.get(key) or {}), None)
+        cpu_requests.apply(doc, key, 'zone', main=main)
         if zone.disabled and kind != 'CronJob':
             doc['spec']['replicas'] = 0
         elif kind in ('Deployment', 'StatefulSet') and disabled_app(name, values):

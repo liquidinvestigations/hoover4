@@ -39,8 +39,10 @@ Placement and runtimes:
   The index planner, the email graph and the chat worker are single writers and run in the one pod of
   hoover-singletons, which also runs the database migrations first.
 - The services that reach the internet (INTERNET) run on a public node, so their traffic leaves from its address.
-- An installation has no home node. The scheduler places each pod by its requests (REQUESTS), and the zone pod policy
-  (../zones/manifests/zone-pods.yaml) spreads the pods of the namespace over the nodes. A claim uses the first preferred
+- An installation has no home node. The scheduler places each pod on the node with the lowest requested CPU per
+  thread, by its memory requests (REQUESTS) and its CPU requests. A measured workload requests the CPU of
+  ../zones/cpu-requests.json (part hoover), and its pod template names the basis in annotations
+  (../zones/cpu_requests.py). The worker replicas spread over the nodes (spread). A claim uses the first preferred
   tier that a node of the site has (tier()), and its pod stays on the node where the scheduler bound the claim.
 - The claims of the local layout are shared by more than one pod, for example the store claims of the operations
   worker, and a local volume serves only its own node. Each pod with a claim therefore carries the label of LOCAL_GROUP
@@ -414,9 +416,21 @@ def workload(target, kind, name, spec, replicas=1, labels=None, spread=False, cl
         body['podManagementPolicy'] = 'Parallel'
         if claims:
             body['volumeClaimTemplates'] = [{'metadata': {'name': c}, 'spec': claim_spec(target, c)} for c in claims]
-    return {'apiVersion': 'apps/v1', 'kind': kind, 'metadata': {'name': name, 'namespace': target.ns,
+    item = {'apiVersion': 'apps/v1', 'kind': kind, 'metadata': {'name': name, 'namespace': target.ns,
                                                                 'labels': {'app.kubernetes.io/name': name, PART: name}},
             'spec': body}
+    # The measured CPU request and its basis (../zones/cpu_requests.py, part hoover of cpu-requests.json).
+    cpu_requests().apply(item, f'{kind.lower()}/{name}', 'hoover')
+    return item
+
+
+def cpu_requests():
+    if 'cpu_requests' not in sys.modules:
+        spec = importlib.util.spec_from_file_location('cpu_requests', K3S / 'zones' / 'cpu_requests.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sys.modules['cpu_requests'] = module
+    return sys.modules['cpu_requests']
 
 
 # The stores and Temporal answer at their name before they are ready, as a Compose name does. Garage reaches its own
