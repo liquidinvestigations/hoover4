@@ -36,13 +36,14 @@ The steps of apply, in order:
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      gate.py adds the sign-in service of the zone gate.
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
-     stores = site (every new zone, with temporal = site) gets a tenant in the shared ClickHouse, Garage and Temporal
-     of the site, which deploy-k3s up creates (step stores, ../hoover/stores/shared.py and temporal.py), and its own
-     Manticore daemons. A zone with stores = local in the zone state gets its Secrets from setup.py local-secrets and
-     its objects from manifests.py, with the Compose Temporal in its Hoover namespace. A zone with stores = zone, or
-     with stores = site and temporal = zone, is from an earlier version and is refused: delete it and create it again.
+     stores = site (every new zone, with temporal = site and manticore = site) gets a tenant in the shared ClickHouse,
+     Garage, Manticore and Temporal of the site, which deploy-k3s up creates (step stores, ../hoover/stores/shared.py
+     and temporal.py). A zone with stores = local in the zone state gets its Secrets from setup.py local-secrets and
+     its objects from manifests.py, with the Compose stores and Temporal in its Hoover namespace. A zone with
+     stores = zone, or with stores = site and temporal = zone or manticore = zone, is from an earlier version and is
+     refused: delete it and create it again.
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
-and profile, its Garage buckets and keys, and its Temporal namespace. The operations pod of the zone empties the
+and profile, its Garage buckets and keys, its Manticore tables and users, and its Temporal namespace. The operations pod of the zone empties the
 buckets. A disabled zone has no such pod, so its non-empty buckets and its Garage keys stay, and the log names them.
 The two namespaces of the zone are then deleted at the same time.
   8. write-password-table.py writes the logins into the inventory.
@@ -120,8 +121,8 @@ def register(zone, home=None, values=None):
     """Add a new zone to the zone state, or check that an existing zone has the given values.
 
     values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A new zone gets the store
-    layout site unless values names local. A new zone of the layout site gets the Temporal of the site (temporal =
-    site). home is the home node argument of an earlier version. It has no effect, and a new entry does not record it.
+    layout site unless values names local. A new zone of the layout site gets the Temporal and the Manticore of the
+    site (temporal = site, manticore = site). home is the home node argument of an earlier version. It has no effect, and a new entry does not record it.
     """
     import config
     values = {k: v for k, v in (values or {}).items() if v not in (None, '', [], ())}
@@ -139,6 +140,7 @@ def register(zone, home=None, values=None):
         entry = {'enabled': True, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, 'stores': 'site', **values}
         if entry['stores'] == 'site':
             entry['temporal'] = 'site'
+            entry['manticore'] = 'site'
         problems = config.zone_problems(zone, entry, settings.SITE)
         if problems:
             raise SystemExit('; '.join(problems))
@@ -563,30 +565,14 @@ def hoover(zone):
     if installation.temporal == 'zone':
         raise SystemExit(f'{zone} runs its own Temporal on the PostgreSQL of the zone, from an earlier version. Its workflow '
                          'history does not move to the Temporal of the site. Delete the zone and create it again.')
-    # ClickHouse, Garage and Temporal are shared by the site (../hoover/stores/shared.py). Their claims grow with the
-    # zone count. The Manticore daemons run in the zone namespace.
+    if installation.manticore == 'zone':
+        raise SystemExit(f'{zone} runs its own Manticore daemons in the zone namespace, from an earlier version. Its search '
+                         'tables do not move to the Manticore of the site. Delete the zone and create it again.')
+    # ClickHouse, Garage, Manticore and Temporal are shared by the site (../hoover/stores/shared.py). Their claims grow
+    # with the zone count.
     run(sys.executable, STORES / 'shared.py', 'ready')
     run(sys.executable, STORES / 'shared.py', 'grow')
     run(sys.executable, STORES / 'creds.py', zone)
-    for store in ('manticore', 'manticore-vectors'):
-        run(sys.executable, STORES / 'hoover.py', 'apply', store, zone)
-    deadline = time.monotonic() + 600
-    while True:
-        refresh_statefulsets(zone)
-        ready = True
-        for store in ('manticore', 'manticore-vectors'):
-            controller = json.loads(kubectl('-n', zone, 'get', 'statefulset', f'{store}-kata', '-o', 'json'))
-            status = controller.get('status', {})
-            pods = json.loads(kubectl('-n', zone, 'get', 'pods', '-l', f'hoover.dev/store={store}', '-o', 'json'))['items']
-            ready &= (status.get('observedGeneration', 0) >= controller['metadata']['generation']
-                      and len(pods) == 1 and not pods[0]['metadata'].get('deletionTimestamp')
-                      and pods[0]['metadata']['labels'].get('controller-revision-hash') == status.get('updateRevision')
-                      and any(c['type'] == 'Ready' and c['status'] == 'True' for c in pods[0].get('status', {}).get('conditions', [])))
-        if ready:
-            break
-        if time.monotonic() >= deadline:
-            raise SystemExit('the Manticore daemons of the zone did not become ready with their current templates')
-        time.sleep(3)
     run(sys.executable, SOURCE / 'hoover' / 'setup.py', zone)
     run(sys.executable, SOURCE / 'hoover' / 'manifests.py', zone, 'apply')
 

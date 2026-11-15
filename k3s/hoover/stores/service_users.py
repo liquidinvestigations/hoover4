@@ -1,19 +1,22 @@
 """The store users of the Hoover services of a zone.
 
-Each service that uses a store has its own ClickHouse user and Manticore user with its own random password. A user
-name is the zone prefix and the service, for example zone_a_mcp_browser. creds.py writes the passwords into the
-Secret hoover-stores of the zone namespace. ../setup.py creates the users in the shared ClickHouse and in the Manticore
-daemons of the zone, and copies the passwords into the Secret hoover-runtime of the Hoover namespace.
+Each service that uses ClickHouse has its own ClickHouse user with its own random password. A user name is the zone
+prefix and the service, for example zone_a_mcp_browser. Manticore has three users for each zone (MANTICORE_ROLES):
+<prefix>_read, <prefix>_write and <prefix>_schema. A service uses the read or the write user. Only the schema proxy of
+the zone holds the schema user. creds.py writes the passwords into the Secret hoover-stores of the zone namespace.
+../setup.py creates the users in the shared ClickHouse and in the shared Manticore daemons, and copies the passwords
+into the Secrets hoover-runtime and manticore-schema of the Hoover namespace.
 Garage has no grant on a bucket that is created later, and the processing code creates a bucket for each new
 collection. The services that use the collection buckets therefore share the zone key, which can create buckets.
 Each other Garage user has its own key with access to the system bucket only.
 """
 
 # The Compose name of each service without the hoover4- prefix, and its stores. clickhouse names the grants: zone
-# gives the grants of the zone user, browser gives only the tables of the page citations. garage is collections for
-# the zone key, or system for an own key on the system bucket.
+# gives the grants of the zone user, browser gives only the tables of the page citations. manticore names the
+# Manticore user of the zone: read for a service that only searches, write for a service that also writes rows and
+# calls the schema proxy. garage is collections for the zone key, or system for an own key on the system bucket.
 SERVICES = {
-    'website': {'clickhouse': 'zone', 'manticore': 'write', 'garage': 'collections'},
+    'website': {'clickhouse': 'zone', 'manticore': 'read', 'garage': 'collections'},
     'worker': {'clickhouse': 'zone', 'manticore': 'write', 'garage': 'collections'},
     'ops': {'clickhouse': 'zone', 'manticore': 'write', 'garage': 'collections'},
     'ocr-pdf': {'garage': 'collections'},
@@ -24,7 +27,12 @@ SERVICES = {
     'full-research-agent': {'clickhouse': 'zone'},
     'mcp-browser': {'clickhouse': 'browser', 'garage': 'system'},
 }
-MANTICORE_GRANTS = {'write': ('read', 'write', 'schema'), 'read': ('read',)}
+# The Manticore rights of each user of a zone, on the tables <prefix>_*. Manticore 29.9 gives the right write the
+# statements INSERT, REPLACE, UPDATE, DELETE, TRUNCATE, OPTIMIZE, FLUSH RAMCHUNK and FREEZE, and the right schema the
+# statements CREATE, ALTER and DROP TABLE. read and write cannot create a table, so they cannot create a distributed
+# table that names a table of another zone.
+MANTICORE_GRANTS = {'read': ('read',), 'write': ('read', 'write'), 'schema': ('read', 'write', 'schema')}
+MANTICORE_ROLES = tuple(MANTICORE_GRANTS)
 
 
 def prefix(zone):
@@ -34,6 +42,11 @@ def prefix(zone):
 def user(zone, service):
     """The ClickHouse and Manticore user name of a service."""
     return f"{prefix(zone)}_{service.replace('-', '_')}"
+
+
+def manticore_user(zone, role):
+    """The Manticore user of a zone for a role of MANTICORE_ROLES, for example zone_a_read."""
+    return f'{prefix(zone)}_{role}'
 
 
 def env_name(service):

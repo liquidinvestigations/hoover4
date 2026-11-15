@@ -321,14 +321,16 @@ After each start of the server, the installer verifies etcd with a snapshot. A h
 | Zone state value | Value | Result |
 |---|---|---|
 | `stores` | `local` | The Compose stores run in the Hoover namespace on claims of one node. The operations worker mounts them, so store backup and restore work. The pods with a claim share the node of the first bound claim through a required pod affinity. |
-| `stores` | `site` | ClickHouse, Garage and Temporal are shared by the site. The two Manticore daemons run in Kata on block volumes in the zone namespace. Every new zone uses this layout. |
+| `stores` | `site` | ClickHouse, Garage, the two Manticore daemons and Temporal are shared by the site. Every new zone uses this layout. |
 | `stores` | `zone` | ClickHouse, Manticore and Garage run in the zone namespace. A zone entry without `stores` is a zone of this earlier layout. The installer and `deploy-k3s check` refuse it. Delete the zone and create it again: its data does not move. |
 | `temporal` | `site` | The zone uses its namespace in the Temporal of the site. Every new zone with `stores = site` gets this value. |
 | `temporal` | `zone` | With `stores = local`, Temporal, Cassandra and Elasticsearch run in the Hoover namespace as in Compose. With `stores = site`, the zone is from an earlier version whose Temporal ran on the PostgreSQL of the zone. The installer and `deploy-k3s check` refuse it. Delete the zone and create it again: its workflow history does not move. |
+| `manticore` | `site` | The zone uses three users of the Manticore daemons of the site and its own schema proxy. Every new zone with `stores = site` gets this value. |
+| `manticore` | `zone` | With `stores = site`, the zone is from an earlier version whose Manticore daemons ran in the zone namespace. The installer and `deploy-k3s check` refuse it. Delete the zone and create it again: its search tables do not move. |
 
 ## Share the Hoover stores of a site.
 
-One ClickHouse and one Garage serve every zone of a site, in the namespace `hoover-stores` ([hoover/stores/shared.py](hoover/stores/shared.py)). The step `stores` of `deploy-k3s up` creates them, and each zone with `stores = site` is a tenant.
+One ClickHouse, one Garage and two Manticore daemons (text and vectors) serve every zone of a site, in the namespace `hoover-stores` ([hoover/stores/shared.py](hoover/stores/shared.py)). The step `stores` of `deploy-k3s up` creates them, and each zone with `stores = site` is a tenant.
 The site file sets their nodes and node counts in `vars.stores`, with the history shard count and the sizes of the [Temporal of the site](#share-temporal-in-a-site):
 
 ```yaml
@@ -346,21 +348,41 @@ hoover4:
 Each store keeps one copy of each part of its data. No store has replication or failover.
 
 - ClickHouse runs one pod.
+- Manticore runs one pod for text and one pod for vectors. Each pod runs on one node, without replication or failover.
 - Garage runs one pod on each of its `garage.nodes` nodes, with the replication factor 1. The layout gives each node a part of the objects. The client Service selects every ready Garage pod, and each pod forwards a request to the node that holds the object.
 - A store node count cannot become smaller than at the last apply, because each node holds a part of the data. `deploy-k3s check` and the stores step refuse it. A larger count adds nodes, and the store moves a part of the data to them.
 - Each pod of a store needs a storage tier on its own node. The step takes the first preferred tier that enough nodes have.
-- A claim holds 20 GiB for each zone with `stores = site`, at least one zone, for ClickHouse and for each Garage pod. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
+- A claim holds the size of one zone store for each zone with `stores = site`, at least one zone: 20 GiB for ClickHouse and for each Garage pod, 16 GiB for Manticore text and 10 GiB for Manticore vectors. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace.
-- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
-- Manticore stays in each zone. A Manticore 29.9 user with the right `schema` on its own tables can read the table of another user through a distributed table, so a shared Manticore cannot isolate the zones.
-- [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) `<zone> <other zone>` checks the isolation from the operations pod of the zone.
-- The zone copy of the backups does not hold the ClickHouse databases and Garage buckets of a zone with `stores = site`. The collection exports hold them.
+- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
+- The zone copy of the backups does not hold the ClickHouse databases, Manticore tables and Garage buckets of a zone with `stores = site`. The collection exports hold the ClickHouse and Garage data. `main.py reindex-collection` builds the Manticore tables of a collection again from ClickHouse.
+
+### Isolate the zones in Manticore.
+
+Each zone has three Manticore users in both daemons, with rights on the tables `<prefix>_*` only ([hoover/stores/service_users.py](hoover/stores/service_users.py) `MANTICORE_GRANTS`):
+
+| User | Rights | Holder |
+|---|---|---|
+| `<prefix>_read` | `read` | The website and the collections server. They connect to the read-only HTTP listener 9309, which refuses every change and `SET ro=0`. |
+| `<prefix>_write` | `read`, `write` | The workers, the singletons and the operations worker. The user inserts, replaces, updates and deletes rows, and optimizes and flushes tables. It cannot create, alter or drop a table. |
+| `<prefix>_schema` | `read`, `write`, `schema` | Only the schema proxy of the zone, from the Secret `manticore-schema` of the Hoover namespace. |
+
+A Manticore 29.9 user with the right `schema` can create a distributed table that names a table of another user, and then read that table. No zone service holds that user.
+The schema proxy `manticore-schema` runs in the Hoover namespace of each zone with the processing image of the zone ([main_services/processing/database/manticore_schema.py](../main_services/processing/database/manticore_schema.py)).
+The services with the write user send each table change to it with an operation name, its arguments and the proxy credential `manticore-proxy-token`. No SQL passes the proxy.
+The proxy builds every table name from the table prefix of the zone, refuses a table of another zone, and has no operation that creates a distributed table.
+The migrations of Hoover run at the proxy (operation `migrate`). Only the workers, the singletons and the operations worker reach the proxy port.
+
+Manticore 29.9 stops `searchd` on a `GRANT` to an unknown user and on a `DROP USER` of an unknown user. The setup and the zone delete therefore read the users first.
+A zone create adds the users, and a zone delete drops the tables `<prefix>_*` and the three users.
+[tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) `<zone> <other zone>` checks the isolation of ClickHouse, Garage, Manticore and Temporal from the pods of the zone. Both zones need the collection `demo` with its Manticore tables.
 
 ### Lost store nodes
 
 A store pod keeps its data on the volume of its node. When a node stops, the parts of the data on that node are out of reach until the node returns:
 
 - ClickHouse: every zone loses access to its ClickHouse data.
+- Manticore: every zone loses its search (text daemon) or its vector search (vectors daemon). When the volume is lost, `main.py reindex-collection` builds the tables of each collection again from ClickHouse.
 - Garage: a read or write of an object in the part of that node fails.
 - Cassandra: Temporal fails for the workflows whose rows are in the token ranges of that node.
 - OpenSearch: the visibility queries fail when the node holds a primary shard of the visibility index. OpenSearch on several nodes stops when less than a majority of its nodes runs.

@@ -7,6 +7,11 @@ are created on demand by the indexing planner
 (``tasks/P6_index_data/shard_planner.py``); this module only owns the DDL and the
 lifecycle helpers.
 
+Every create, alter and drop runs as a named operation of
+:mod:`database.manticore_schema` (:func:`schema_operation`). With
+``MANTICORE_SCHEMA_URL`` the schema proxy of the zone runs it, because the Manticore user
+of a zone service cannot change a table. Without it the process runs it itself.
+
 **The metadata is duplicated per page on purpose, and a per-document table joined at
 query time is not an option.** Manticore's ``LEFT JOIN`` is a nested-loop lookup per left
 row evaluated before any predicate, so it costs the same for a query matching one
@@ -235,6 +240,44 @@ def _execute_ddl(sql, endpoint: str = TEXT):
         cur.execute(sql)
         cnx.commit()
         log.info("SQL Executed OK.")
+
+
+def schema_operation(operation: str, **arguments):
+    """Run one schema operation of :mod:`database.manticore_schema`.
+
+    With ``MANTICORE_SCHEMA_URL`` the schema proxy of the zone runs it, and the request
+    carries ``MANTICORE_SCHEMA_TOKEN``. The Manticore user of this process then cannot
+    create, alter or drop a table. Without it (Compose) this process runs it with its own
+    Manticore user.
+    """
+    url = os.getenv("MANTICORE_SCHEMA_URL", "")
+    if not url:
+        from database import manticore_schema
+        return manticore_schema.run(operation, arguments)
+    import json
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        url.rstrip("/") + "/operation",
+        data=json.dumps({"operation": operation, "arguments": arguments}).encode(),
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {os.getenv('MANTICORE_SCHEMA_TOKEN', '')}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=SCHEMA_PROXY_TIMEOUT) as response:
+            return json.loads(response.read())["result"]
+    except urllib.error.HTTPError as error:
+        try:
+            message = json.loads(error.read()).get("error", "")
+        except ValueError:
+            message = ""
+        raise RuntimeError(f"The Manticore schema proxy refused {operation} with status {error.code}: {message}") from None
+
+
+#: Seconds that one schema proxy request may take. A migration of a large site creates
+#: many tables in one request.
+SCHEMA_PROXY_TIMEOUT = 600
 
 
 def table_prefix() -> str:
@@ -574,16 +617,14 @@ def entities_table_ddl(table_name: str) -> str:
 
 def create_entities_table(collectionname: str) -> str:
     """Create a collection's facet-term search table if it does not exist. Idempotent."""
-    table = entities_table_name(collectionname)
-    _execute_ddl(entities_table_ddl(table))
-    return table
+    entities_table_name(collectionname)
+    return schema_operation("create_entities_table", collection=collectionname)
 
 
 def create_vfs_table(collectionname: str) -> str:
     """Create a collection's structure-index table if it does not exist. Idempotent."""
-    table = vfs_table_name(collectionname)
-    _execute_ddl(vfs_table_ddl(table))
-    return table
+    vfs_table_name(collectionname)
+    return schema_operation("create_vfs_table", collection=collectionname)
 
 
 def vectors_table_ddl(table_name: str, dims: int) -> str:
@@ -680,16 +721,14 @@ def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int 
     drops and rebuilds it. ``None`` creates no vectors table (embeddings not probed
     yet); the P6 vector indexer refuses loudly if it then finds vectors to write.
     """
-    pages_table = shard_table_name(collectionname, shard_index)
-    _execute_ddl(pages_table_ddl(pages_table))
-    return pages_table
+    shard_table_name(collectionname, shard_index)
+    return schema_operation("create_pages_table", collection=collectionname, shard=shard_index)
 
 
 def create_vectors_table(collectionname: str, shard_index: int, dims: int) -> str:
     """Create one shard's disposable vector table on the vectors endpoint."""
-    table = vectors_table_name(collectionname, shard_index)
-    _execute_ddl(vectors_table_ddl(table, dims), VECTORS)
-    return table
+    vectors_table_name(collectionname, shard_index)
+    return schema_operation("create_vectors_table", collection=collectionname, shard=shard_index, dims=dims)
 
 
 def _list_all_tables(endpoint: str = TEXT) -> list[str]:
@@ -731,25 +770,19 @@ def list_collection_tables(collectionname: str) -> list[str]:
 
 def drop_collection_tables(collectionname: str) -> list[str]:
     """Drop every Manticore table of a collection. Returns the dropped table names."""
-    dropped = []
-    for table in list_collection_tables(collectionname):
-        _execute_ddl(f"drop table if exists {table}", endpoint_for_table(table))
-        dropped.append(table)
-    if dropped:
-        log.warning("Dropped Manticore tables for collection %s: %s", collectionname, dropped)
-    return dropped
+    return schema_operation("drop_collection_tables", collection=collectionname)
 
 
 def drop_collection_vector_tables(collectionname: str) -> list[str]:
     """Drop a collection's disposable vectors tables from the vectors endpoint."""
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
-    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(table_prefix() + collectionname)))
-    tables = sorted(table for table in _list_all_tables(VECTORS)
-                    if pattern.match(table) and table.endswith(f"_{VECTORS_TABLE_SUFFIX}"))
-    for table in tables:
-        _execute_ddl(f"drop table if exists {table}", VECTORS)
-    return tables
+    return schema_operation("drop_collection_vector_tables", collection=collectionname)
+
+
+def add_pages_column(table: str, column: str) -> dict:
+    """Add a missing column of the pages DDL to a shard pages table, with the DDL type."""
+    return schema_operation("add_pages_column", table=table, column=column)
 
 
 def probed_embedding_dims() -> int | None:
@@ -787,32 +820,18 @@ def manticore_migrate():
         log.warning("Manticore vectors endpoint is unavailable during migrate: %s", exc)
     log.info("Starting ManticoreSearch migration....")
     from database.clickhouse import get_collection_client, list_collections
+    collections = {}
     for collectionname in list_collections():
-        # The structure index and the facet-term index have no ledger to recover from
-        # (each is one table per collection, rebuilt from ClickHouse by P6), so they are
-        # healed here unconditionally rather than per recorded shard.
-        create_vfs_table(collectionname)
-        create_entities_table(collectionname)
         with get_collection_client(collectionname) as client:
             rows = client.query(
                 "SELECT shard_index FROM manticore_shards FINAL ORDER BY shard_index"
             ).result_rows
-        for (shard_index,) in rows:
-            create_shard_tables(collectionname, int(shard_index))
-        if rows:
-            log.info(
-                "Collection %s: ensured %d shard tables exist",
-                collectionname, len(rows),
-            )
-    # Another installation can share the daemon under another prefix, so only the
-    # tables of this prefix are dropped.
-    prefix = table_prefix()
-    for table in _list_all_tables(TEXT):
-        if not table.endswith(f"_{VECTORS_TABLE_SUFFIX}") or not table.startswith(prefix):
-            continue
-        _execute_ddl(f"drop table if exists {table}", TEXT)
-        log.warning("Dropped old vectors table %s. Run reindex-collection with --vectors-only.", table)
-    log.info("ManticoreSearch migration OK.")
+        collections[collectionname] = [int(shard_index) for (shard_index,) in rows]
+    # The schema operation `migrate` creates the structure index and the facet-term
+    # index of each collection, because they have no ledger to recover from, the
+    # recorded shard tables, and drops the earlier vectors tables of the text daemon.
+    result = schema_operation("migrate", collections=collections)
+    log.info("ManticoreSearch migration OK: %s", result)
 
 
 if __name__ == "__main__":

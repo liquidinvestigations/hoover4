@@ -1449,6 +1449,10 @@ def check(ctx, targets):
                      'The installer refuses to apply it. Delete the zone and create it again: its workflow history does '
                      'not move to the Temporal of the site.'
                      for h in ctx.hoovers().values() if h.stores == 'site' and h.temporal == 'zone']
+        problems += [f'the zone {h.zone} runs its own Manticore daemons in the zone namespace, from an earlier version. '
+                     'The installer refuses to apply it. Delete the zone and create it again: its search tables do not '
+                     'move to the Manticore of the site.'
+                     for h in ctx.hoovers().values() if h.stores == 'site' and h.manticore == 'zone']
     except (ValueError, config.SiteError, StepFailed) as error:
         problems.append(str(error))
     try:

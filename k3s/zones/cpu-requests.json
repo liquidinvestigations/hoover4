@@ -254,16 +254,6 @@
    "baseline": "3m",
    "request": "10m"
   },
-  "statefulset/manticore-kata": {
-   "startPeak": "29m",
-   "baseline": "28m",
-   "request": "30m"
-  },
-  "statefulset/manticore-vectors-kata": {
-   "startPeak": "35m",
-   "baseline": "30m",
-   "request": "40m"
-  },
   "statefulset/postgresql": {
    "startPeak": "369m",
    "baseline": "49m",
@@ -392,6 +382,16 @@
    "startPeak": "50m",
    "baseline": "8m",
    "request": "20m"
+  },
+  "statefulset/manticore": {
+   "startPeak": "29m",
+   "baseline": "28m",
+   "request": "30m"
+  },
+  "statefulset/manticore-vectors": {
+   "startPeak": "35m",
+   "baseline": "30m",
+   "request": "40m"
   },
   "statefulset/temporal-cassandra": {
    "startPeak": "1132m",

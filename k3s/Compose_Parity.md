@@ -36,8 +36,8 @@ See [the k3s Readme](Readme.md) for the zone state.
 | `hoover4-internal-search-agent` | app | `research-agents.yaml` | Deployment when the model server is on | Same | |
 | `hoover4-full-research-agent` | app | `research-agents.yaml` | Deployment when the model server is on | Same | |
 | `clickhouse` | store | `docker-compose.yaml` | StatefulSet on the claim `clickhouse-data`, with `ops-backups` | ExternalName to the zone store | The users override and the rendered server override are a ConfigMap. |
-| `manticore` | store | `docker-compose.yaml` | StatefulSet on the claim `manticore-data` | ExternalName to the zone store | An init container seeds `auth.json` as deploy.py does. |
-| `manticore-vectors` | store | `docker-compose.yaml` | StatefulSet on the claim `manticore-vectors-data` | ExternalName to the zone store | Same as above. |
+| `manticore` | store | `docker-compose.yaml` | StatefulSet on the claim `manticore-data` | ExternalName to the Manticore of the site, with a read, a write and a schema user for each zone and the schema proxy `manticore-schema` | An init container seeds `auth.json` as deploy.py does. |
+| `manticore-vectors` | store | `docker-compose.yaml` | StatefulSet on the claim `manticore-vectors-data` | ExternalName to the Manticore vectors daemon of the site | Same as above. |
 | `garage` | store | `docker-compose.yaml` | StatefulSet on the claims `garage-meta` and `garage-data` | ExternalName to the Garage of the site, which keeps one copy of each object | `garage.toml` is a ConfigMap. |
 | `zookeeper` | store | `docker-compose.yaml` | StatefulSet without a claim | Not rendered | The ClickHouse override names it. The zone ClickHouse has its own configuration. |
 | `garage-init` | store-init | `docker-compose.yaml` | Job for each source revision | setup.py creates the buckets and keys | The capacity follows the size of the claim `garage-data`. |

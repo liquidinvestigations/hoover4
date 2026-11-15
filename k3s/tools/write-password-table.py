@@ -48,11 +48,12 @@ for zone in ZONES:
  stores=secret(zone,'hoover-stores')
  if stores:
   rows+=[(f'{zone} Hoover ClickHouse zone user','clickhouse.hoover-stores.svc:8123',zone.replace('-','_'),stores.get('clickhouse-zone','(missing)'),'In the cluster only. It reaches only the databases of the zone.'),
-   (f'{zone} Hoover Manticore admin',f'manticore.{zone}.svc:9306 and manticore-vectors','hoover_admin',stores.get('manticore-admin','(missing)'),'In the cluster only.')]
+   (f'{zone} Hoover Manticore read user','manticore.hoover-stores.svc:9309 and manticore-vectors',zone.replace('-','_')+'_read',stores.get('manticore-read','(missing)'),'In the cluster only. It reads only the tables of the zone.')]
 # The shared stores of the site (../hoover/stores/shared.py).
 shared=secret('hoover-stores','hoover-stores')
 if shared:
  rows+=[('Shared ClickHouse admin','clickhouse.hoover-stores.svc:8123','hoover_admin',shared.get('clickhouse-admin','(missing)'),'In the cluster only. It reaches every zone.'),
+  ('Shared Manticore admin','manticore.hoover-stores.svc:9306 and manticore-vectors','hoover_admin',shared.get('manticore-admin','(missing)'),'In the cluster only. It reaches every zone.'),
   ('Shared Garage admin API','garage-0.garage-peers.hoover-stores.svc:3903','-',shared.get('garage-admin-token','(missing)'),'A bearer token. Only the store pods reach the port.')]
 USERS_BEGIN='<!-- fixture users begin: write-password-table.py writes this block -->';USERS_END='<!-- fixture users end -->'
 fixture=json.loads((root.parent/'zones/zone-users.json').read_text())['users']

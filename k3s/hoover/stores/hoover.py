@@ -1,29 +1,22 @@
 #!/usr/bin/env python3
-"""Build and apply the Manticore daemons of a zone in Kata, and the pod parts that the shared stores reuse.
+"""The pod parts of the Kata stores of a site, which shared.py and temporal.py use.
 
-The two Manticore daemons of a zone (text and vectors) run in the zone namespace. ClickHouse and Garage are the shared
-stores of the site (shared.py). Manticore stays in the zone, because a Manticore user with the right schema on its own
-tables can read the tables of another user through a distributed table.
-Each daemon gets a Service and a one-replica StatefulSet in the zone namespace. Its data is a raw TopoLVM block volume
-of the store tier of the site (../../zones/zonestate.py). The scheduler places the store pod by its requests, and the
-pod then stays on the node of its volume.
-The block mount wrapper of podspec.py makes the file system and mounts it inside the guest.
-Credentials come from the hoover-stores Secret of the zone (creds.py). The memory limits come from
-../../zones/memory-limits.json.
-The StatefulSets use the OnDelete update strategy. zone.py replaces outdated pods after applying their templates.
-A direct run of this tool keeps existing pods until an operator deletes them.
-The memory requests (REQUESTS) are the measured working sets, so the scheduler balances the nodes by real use.
+The shared stores of the site (ClickHouse, Garage, both Manticore daemons and the Temporal stores) run in the namespace
+hoover-stores (shared.py, temporal.py). Each store gets a Service and a StatefulSet. Its data is a raw TopoLVM block
+volume of the store tier of the site (../../zones/zonestate.py). The scheduler places the store pod by its requests,
+and the pod then stays on the node of its volume. The block mount wrapper of podspec.py makes the file system and
+mounts it inside the guest.
+The memory limits come from ../../zones/memory-limits.json. The memory requests (REQUESTS) are the measured working
+sets, so the scheduler balances the nodes by real use.
+The StatefulSets use the OnDelete update strategy. shared.py replaces outdated pods after applying their templates.
 The claim template of an existing StatefulSet cannot change. An apply keeps the template of the cluster and grows the
 claim of each pod to the wanted size when that is larger. A grown volume reaches the Kata guest at the next pod
 start, and the block mount wrapper then grows the file system.
-Usage: hoover.py apply|show <manticore|manticore-vectors> <zone>
 """
-import json, subprocess, sys
+import json, subprocess
 import common, podspec
-import zonestate  # noqa: E402  (common puts ../../zones on the path)
 
 SECRET = 'hoover-stores'
-CONFIG = common.LAB / 'config'
 LIMITS = json.loads((common.SOURCE / 'zones' / 'memory-limits.json').read_text())['hoover']
 # The claim of each store, for one zone. The Manticore text claim holds at least the 14.1 GiB of Manticore text data of
 # the 64 GB reference site. The shared stores multiply their size by the zone count (shared.py size()).
@@ -96,35 +89,6 @@ def statefulset(name, store, namespace, container, entrypoint, directory, tier, 
                      'template': {'metadata': {'labels': labels}, 'spec': spec}, 'volumeClaimTemplates': [claim]}}
 
 
-def manticore(zone, name='manticore'):
-    """A Manticore daemon. Hoover refuses one host for text and vectors, so a zone has two of them."""
-    container = {
-        'name': 'manticore', 'image': IMAGES['manticore'],
-        'env': [{'name': k, 'value': v} for k, v in MANTICORE_ENV.items()] + [
-            secret_env('MT_ADMIN_PASSWORD', 'manticore-admin'), secret_env('MT_ZONE_PASSWORD', 'manticore-zone')],
-        'ports': [{'name': 'sql', 'containerPort': 9306}, {'name': 'http', 'containerPort': 9308}],
-        'readinessProbe': {'tcpSocket': {'port': 9306}, 'periodSeconds': 2, 'failureThreshold': 3},
-        'resources': resources(name)}
-    container['volumeMounts'] = [{'name': 'seed', 'mountPath': '/seed', 'readOnly': True}]
-    # With authentication on, searchd starts with the users of auth.json in its data folder. A new daemon gets the
-    # seed of creds.py with the user hoover_admin, and ../setup.py adds the zone user and the service users.
-    # searchd writes an auth.json without users when none exists, so that file also gets the seed.
-    start = ('grep -q username /var/lib/manticore/auth.json 2>/dev/null || '
-             '{ cp /seed/auth.json /var/lib/manticore/auth.json && chmod 600 /var/lib/manticore/auth.json; }; '
-             'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach')
-    seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
-    tier = zonestate.tier(zone, name, zonestate.site_tiers(common.settings.KUBECONFIG))
-    daemon = statefulset(f'{name}-kata', name, zone, container, ['sh', '-c', start], '/var/lib/manticore', tier, SIZES[name],
-                         replicas=1 if common.namespace_enabled(zone) else 0, user='999:999', extra_volumes=[seed])
-    # The measured CPU request and its basis (../../zones/cpu_requests.py).
-    import cpu_requests
-    cpu_requests.apply(daemon, f'statefulset/{name}-kata', 'zone', main='manticore')
-    return [service(name, zone, [('sql', 9306), ('http', 9308)]), daemon]
-
-
-BUILDERS = {'manticore': manticore, 'manticore-vectors': lambda z: manticore(z, 'manticore-vectors')}
-
-
 def grow_claims(namespace, current, size):
     """Keep the claim template of an existing StatefulSet, and grow the claim of each of its pods to size."""
     found_template = current['spec']['volumeClaimTemplates'][0]
@@ -170,18 +134,3 @@ def apply(objects, keep_replicas=True):
             raise SystemExit(f'kubectl diff failed: {diff.stderr.strip()[-500:]}')
         result = common.kubectl('apply', '-f', '-', input=json.dumps(o)).strip()
         common.log('stores.jsonl', step='applied', object=result)
-
-
-def main():
-    if len(sys.argv) != 4 or sys.argv[1] not in ('apply', 'show') or sys.argv[2] not in BUILDERS:
-        sys.exit(__doc__)
-    command, store, zone = sys.argv[1:]
-    objects = BUILDERS[store](zone)
-    if command == 'show':
-        print(json.dumps(objects, indent=1))
-        return
-    apply(objects)
-
-
-if __name__ == '__main__':
-    main()

@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
-"""The shared Hoover stores of a site: one ClickHouse, one Garage and one Temporal in the namespace hoover-stores.
+"""The shared Hoover stores of a site: one ClickHouse, one Garage, two Manticore daemons and one Temporal in the
+namespace hoover-stores.
 
-Each zone of the store layout site (../../config.py ZONE_VALUES) is a tenant of both stores. ../setup.py adds the
+Each zone of the store layout site (../../config.py ZONE_VALUES) is a tenant of the stores. ../setup.py adds the
 tenant of a zone: in ClickHouse a settings profile, the zone user and a user for each service, with grants on the
-databases of the zone prefix only, and in Garage the zone key, the service keys and the zone buckets. remove takes them
-away when the zone goes. The Manticore daemons stay in each zone namespace (hoover.py). The Temporal of the site, with
+databases of the zone prefix only, in Garage the zone key, the service keys and the zone buckets, and in both Manticore
+daemons the users <prefix>_read, <prefix>_write and <prefix>_schema with rights on the tables <prefix>_* only
+(service_users.py MANTICORE_GRANTS). remove takes them away when the zone goes, with the Manticore tables of the zone.
+A Manticore user with the right schema can create a distributed table that names a table of another user, and then
+read that table. Only the schema proxy of the zone (../manifests.py) holds the schema user, and the proxy has no
+operation for a distributed table. The Temporal of the site, with
 its Cassandra and OpenSearch and one Temporal namespace for each zone, is in temporal.py. apply creates it after the
 other stores, ready and grow include it, and remove deletes the Temporal namespace of the zone.
 
 The site file gives the plan (vars.stores, ../../config.py store_plan()): the nodes that can run a store pod and the
 Garage node count. Each store keeps one copy of its data, and the Service of each store selects every ready pod.
 - ClickHouse runs one pod.
+- Manticore runs one pod for text (manticore) and one for vectors (manticore-vectors). Hoover refuses one host for
+  both. Each daemon listens on 9306 (MySQL) and 9308 (HTTP), and on the read-only listeners 9307 (MySQL) and 9309
+  (HTTP). A connection to a read-only listener cannot change a row or a table, and SET ro=0 is refused. The zone
+  services that only search use the read user on 9309. A daemon starts with the user hoover_admin of the seed
+  auth.json (creds.py manticore_seed()).
 - Garage runs one pod on each of its nodes with the replication factor 1. The layout gives each node a part of the
   partitions by its capacity. A lost node loses its part until it returns, and the backups are the recovery path
   (k3s/Readme.md). A pod finds the others by their names in the headless Service garage-peers (bootstrap_peers), so
@@ -23,13 +33,13 @@ zone is added. A claim never becomes smaller. A store pod sees a grown claim at 
 value (part site of ../../zones/cpu-requests.json, hoover.site_cpu()). Each zone user of ClickHouse has the profile of its zone,
 which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
-ClickHouse (8123, 9000) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
+ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
 the admin port takes none.
 The ConfigMap shared-stores records the applied plan, the Garage node ids, the node counts of Cassandra and OpenSearch
 and the Temporal history shard count. The deploy check reads it (problems()). The stores of an earlier version kept
 several copies, and apply and the deploy check refuse them with the steps to create the stores again.
-The Secret hoover-stores of the namespace holds the ClickHouse admin password, the Garage RPC secret and the Garage
-admin token. The script never prints a credential.
+The Secret hoover-stores of the namespace holds the ClickHouse admin password, the Manticore admin password and seed,
+the Garage RPC secret and the Garage admin token. The script never prints a credential.
 
 Usage: shared.py apply             create or update the stores and Temporal, wait for them, join the Garage nodes and
                                    record the plan
@@ -37,13 +47,13 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py grow              make the claims large enough for the zones of the zone state
        shared.py ready             exit 1 when a store or Temporal has no ready pod
        shared.py check             print the problems of the plan against the cluster as JSON
-       shared.py remove <zone>     delete the ClickHouse databases, users and profile, the Garage buckets and keys and the
-                                   Temporal namespace of a zone.
+       shared.py remove <zone>     delete the ClickHouse databases, users and profile, the Manticore tables and users, the
+                                   Garage buckets and keys and the Temporal namespace of a zone.
                                    The operations pod of the zone empties the buckets. Without it, a non-empty bucket
                                    and the zone keys stay, and the log names them.
 """
 import base64, json, math, re, secrets, subprocess, sys, time
-import common, hoover, temporal
+import common, creds, hoover, service_users, temporal
 import config  # noqa: E402  (common puts the k3s folder on the path)
 import zonestate  # noqa: E402
 
@@ -53,6 +63,12 @@ STATE = 'shared-stores'
 PEERS = 'garage-peers'
 # The label of a Hoover namespace (../manifests.py objects()). Only these namespaces reach the stores.
 HOOVER_LABEL = 'hoover.dev/hoover'
+# The Manticore daemons, and the ports of each daemon: MySQL and HTTP, and the read-only MySQL and HTTP listeners.
+MANTICORE = ('manticore', 'manticore-vectors')
+MANTICORE_PORTS = (('sql', 9306), ('http', 9308), ('sql-ro', 9307), ('http-ro', 9309))
+# Manticore reads searchd settings from searchd_* variables (hoover.MANTICORE_ENV). The listeners replace the default
+# list of the image, which also opens the replication ports.
+MANTICORE_LISTEN = '9306:mysql|9308:http|9307:mysql_readonly|9309:http_readonly'
 GARAGE_CONFIG = (common.LAB / 'config' / 'garage' / 'garage.toml').read_text()
 # The Python of the operations image, which has an S3 client (../../platform/backups/backups.py PYTHON).
 OPS_PYTHON = '/opt/pysetup/.venv/bin/python3'
@@ -158,6 +174,29 @@ def garage(s, plan, zones, peers):
                                extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])]
 
 
+def manticore(s, plan, zones, name):
+    """One Manticore daemon of the site, with the admin of the seed and the read-only listeners."""
+    container = {
+        'name': 'manticore', 'image': hoover.IMAGES['manticore'],
+        'env': [{'name': k, 'value': v} for k, v in {**hoover.MANTICORE_ENV, 'searchd_listen': MANTICORE_LISTEN}.items()]
+               + [hoover.secret_env('MT_ADMIN_PASSWORD', 'manticore-admin')],
+        'ports': [{'name': n, 'containerPort': p} for n, p in MANTICORE_PORTS],
+        'readinessProbe': {'tcpSocket': {'port': 9306}, 'periodSeconds': 2, 'failureThreshold': 3},
+        'resources': hoover.resources(name),
+        'volumeMounts': [{'name': 'seed', 'mountPath': '/seed', 'readOnly': True}]}
+    # With authentication on, searchd starts with the users of auth.json in its data folder. A new daemon gets the
+    # seed with the user hoover_admin, and ../setup.py adds the users of each zone. searchd writes an auth.json without
+    # users when none exists, so that file also gets the seed.
+    start = ('grep -q username /var/lib/manticore/auth.json 2>/dev/null || '
+             '{ cp /seed/auth.json /var/lib/manticore/auth.json && chmod 600 /var/lib/manticore/auth.json; }; '
+             'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach')
+    seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
+    tier_name, nodes = tier(s, plan['nodes'], name)
+    return [hoover.service(name, NS, MANTICORE_PORTS, {'app.kubernetes.io/name': name}),
+            hoover.statefulset(name, name, NS, container, ['sh', '-c', start], '/var/lib/manticore', tier_name,
+                               size(name, zones), user='999:999', affinity=affinity(nodes, name, False), extra_volumes=[seed])]
+
+
 def network():
     def policy(name, spec):
         return {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': name, 'namespace': NS}, 'spec': spec}
@@ -171,6 +210,9 @@ def network():
                           'egress': [dns, {'to': [{'podSelector': {}}]}]}),
         policy('clickhouse-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}, 'policyTypes': ['Ingress'],
                                       'ingress': [{'from': [hoover_ns], 'ports': [{'port': 8123}, {'port': 9000}]}]}),
+        policy('manticore-clients', {'podSelector': {'matchExpressions': [
+            {'key': 'hoover.dev/store', 'operator': 'In', 'values': list(MANTICORE)}]}, 'policyTypes': ['Ingress'],
+            'ingress': [{'from': [hoover_ns], 'ports': [{'port': p} for _, p in MANTICORE_PORTS]}]}),
         policy('garage-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}, 'policyTypes': ['Ingress'],
                                   'ingress': [{'from': [hoover_ns], 'ports': [{'port': 3900}]},
                                               {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
@@ -180,7 +222,9 @@ def network():
 
 def objects(s, plan, zones, peers):
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}
-    return hoover.site_cpu([namespace, *network(), *clickhouse(s, plan, zones), *garage(s, plan, zones, peers)])
+    return hoover.site_cpu([namespace, *network(), *clickhouse(s, plan, zones),
+                            *[o for name in MANTICORE for o in manticore(s, plan, zones, name)],
+                            *garage(s, plan, zones, peers)])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -207,8 +251,9 @@ def credentials():
     """Create the Secret of the namespace, or add its missing keys. A present key keeps its value."""
     found = common.kubectl('-n', NS, 'get', 'secret', SECRET, '--ignore-not-found', '-o', 'json').strip()
     current = {k: base64.b64decode(v).decode() for k, v in json.loads(found).get('data', {}).items()} if found else {}
-    data = {'clickhouse-admin': secrets.token_hex(24), 'garage-rpc-secret': secrets.token_hex(32),
-            'garage-admin-token': secrets.token_hex(24), **current}
+    data = {'clickhouse-admin': secrets.token_hex(24), 'manticore-admin': secrets.token_hex(24),
+            'garage-rpc-secret': secrets.token_hex(32), 'garage-admin-token': secrets.token_hex(24), **current}
+    data.setdefault('manticore-seed', creds.manticore_seed(data['manticore-admin']))
     if data != current:
         common.apply({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': SECRET, 'namespace': NS, 'labels': {common.LABEL: 'credentials'}},
                       'type': 'Opaque', 'stringData': data})
@@ -264,6 +309,32 @@ def clickhouse_sql(sql, check=True):
     return r.stdout
 
 
+def manticore_sql(store, sql, check=True):
+    """Run SQL from stdin as the Manticore admin in a daemon of MANTICORE. The password stays in the pod environment."""
+    r = subprocess.run(common.K + ['-n', NS, 'exec', '-i', ready_pod(store), '-c', 'manticore', '--', 'sh', '-c',
+                                   'exec mysql -h0 -P9306 -uhoover_admin -p"$MT_ADMIN_PASSWORD" --batch --skip-column-names'],
+                       input=sql, capture_output=True, text=True, timeout=3600)
+    err = '\n'.join(l for l in r.stderr.splitlines() if 'Using a password' not in l)
+    if check and r.returncode:
+        raise SystemExit(f'Manticore {store} refused the statements: {err.strip()[-600:]}')
+    return r.stdout
+
+
+def manticore_rows(text):
+    """The rows of a mysql client answer, which prints tab-separated lines or a table with borders."""
+    rows = []
+    for line in text.splitlines():
+        if not line.strip() or line.startswith('+'):
+            continue
+        rows.append([c.strip() for c in (line.strip().strip('|').split('|') if line.startswith('|') else line.split('\t'))])
+    return rows
+
+
+def manticore_users(store):
+    """The user names of a Manticore daemon."""
+    return {row[0] for row in manticore_rows(manticore_sql(store, 'SHOW USERS\n')) if row and row[0] != 'username'}
+
+
 def garage_cli(*args, pod=None, check=True):
     r = subprocess.run(common.K + ['-n', NS, 'exec', pod or ready_pod('garage'), '-c', 'garage', '--', '/garage', *args],
                        capture_output=True, text=True, timeout=300)
@@ -313,7 +384,7 @@ def apply():
     common.apply(items[0])
     credentials()
     hoover.apply(items[1:], keep_replicas=False)
-    for store in ('clickhouse', 'garage'):
+    for store in ('clickhouse', *MANTICORE, 'garage'):
         wait_current(store)
     ids = join_garage(plan, size('garage', zones))
     if ids != peers:
@@ -331,6 +402,7 @@ def grow():
     """Make the claims of the stores and of the Temporal stores large enough for the zones of the zone state."""
     zones = len(site_zones())
     sizes = {'clickhouse': size('clickhouse', zones), 'garage': size('garage', zones),
+             **{store: size(store, zones) for store in MANTICORE},
              **{store: temporal.size(store, zones) for store in temporal.SIZES}}
     for store, wanted in sizes.items():
         current = common.kubectl('-n', NS, 'get', 'statefulset', store, '--ignore-not-found', '-o', 'json').strip()
@@ -354,6 +426,21 @@ def remove(zone):
     clickhouse_sql('\n'.join(sql) + '\n')
     common.log('stores.jsonl', step='clickhouse-tenant-removed', zone=zone, databases=sum(k == 'database' for k, _ in found),
                users=sum(k == 'user' for k, _ in found))
+    for store in MANTICORE:
+        # The table prefix of a zone is <prefix>_, and a zone id has no _, so the prefix of one zone never starts the
+        # table names of another zone. Manticore 29.9 stops searchd on a DROP USER of an unknown user, so only the
+        # present users are dropped. Without a ready daemon the tables and users of the zone stay, and the log names
+        # the daemon.
+        if not any(is_ready(p) for p in pods(store)):
+            common.log('stores.jsonl', step='manticore-tenant-kept', zone=zone, store=store, reason='no ready pod')
+            continue
+        tables = [row[0] for row in manticore_rows(manticore_sql(store, 'SHOW TABLES\n')) if row]
+        tables = [t for t in tables if t.startswith(f'{prefix}_')]
+        users = sorted({service_users.manticore_user(zone, r) for r in service_users.MANTICORE_ROLES} & manticore_users(store))
+        sql = [f'DROP TABLE IF EXISTS {t};' for t in tables] + [f"DROP USER '{u}';" for u in users]
+        if sql:
+            manticore_sql(store, '\n'.join(sql) + '\n')
+        common.log('stores.jsonl', step='manticore-tenant-removed', zone=zone, store=store, tables=len(tables), users=len(users))
     keys = {row[0]: row[2] for row in table(garage_cli('key', 'list')) if len(row) > 2 and (row[2] == zone or row[2].startswith(f'{zone}-'))}
 
     def zone_buckets():
@@ -396,7 +483,7 @@ def main(argv):
     elif argv[0] == 'grow':
         grow()
     elif argv[0] == 'ready':
-        for store in ('clickhouse', 'garage', 'temporal-cassandra', 'temporal-opensearch', 'temporal'):
+        for store in ('clickhouse', *MANTICORE, 'garage', 'temporal-cassandra', 'temporal-opensearch', 'temporal'):
             ready_pod(store)
     elif argv[0] == 'check':
         found = problems()

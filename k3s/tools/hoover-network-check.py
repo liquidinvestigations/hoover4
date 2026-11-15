@@ -3,7 +3,7 @@
 
 Each case opens one TCP connection from a running pod of hoover-<zone> with kubectl exec. It compares the result with
 the expected one of network() in ../hoover/manifests.py and ../hoover/stores/shared.py. A worker checks its stores,
-Temporal, the GPU forwarder and the internet. It also checks the GPU box, the Manticore of the other zone, the Garage
+Temporal, the GPU forwarder and the internet. It also checks the GPU box, the schema proxy of the other zone, the Garage
 RPC and admin ports of the shared stores, the internal ports of a Temporal pod of the site, the Cassandra and
 OpenSearch of Temporal, the openDesk stores of its zone, Prometheus and the Kubernetes API.
 An internet service checks the internet, the GPU box, the stores and a service of its namespace. The forwarder gpu
@@ -45,7 +45,9 @@ def cases(zone, other):
     box = gpu.site_pool()['address']
     temporal = temporal_pod()
     stores = [('shared ClickHouse', 'clickhouse', 8123, True), ('shared ClickHouse native', 'clickhouse', 9000, True),
-              ('own Manticore', 'manticore', 9306, True), ('shared Garage', 'garage', 3900, True), ('Temporal', 'temporal', 7233, True)]
+              ('shared Manticore', 'manticore', 9306, True), ('shared Manticore read-only HTTP', 'manticore', 9309, True),
+              ('shared Manticore vectors', 'manticore-vectors', 9306, True), ('own schema proxy', 'manticore-schema', 8080, True),
+              ('shared Garage', 'garage', 3900, True), ('Temporal', 'temporal', 7233, True)]
     garage_pod = 'garage-0.garage-peers.hoover-stores.svc.cluster.local'
     worker = ('hoover-workers', 'hoover-workers')
     return [
@@ -53,7 +55,8 @@ def cases(zone, other):
         (worker, 'GPU forwarder', 'gpu', 21961, True),
         (worker, 'internet', '1.1.1.1', 443, False),
         (worker, 'GPU box', box, 21961, False),
-        (worker, 'Manticore of the other zone', f'manticore.{other}.svc.cluster.local', 9306, False),
+        (worker, 'schema proxy of the other zone', f'manticore-schema.hoover-{other}.svc.cluster.local', 8080, False),
+        (('hoover4-mcp-collections', 'hoover4-mcp-collections'), 'own schema proxy', 'manticore-schema', 8080, False),
         (worker, 'Garage RPC', garage_pod, 3901, False),
         (worker, 'Garage admin', garage_pod, 3903, False),
         (worker, 'Temporal internal frontend', temporal, 7236, False),

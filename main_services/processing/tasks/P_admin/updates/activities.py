@@ -586,18 +586,16 @@ def apply_search_schema(params: StepParams) -> dict:
     the collection index. A new scalar attribute reads 0 on existing rows, so a writer
     that fills it must refresh the documents it changes.
     """
-    from database.manticore import client_for_table
+    from database.manticore import add_pages_column
 
     differences = selectors.schema_differences(params.collectionname)
     altered = 0
     for table, difference in sorted(differences.items()):
         if difference["retyped"]:
             continue
-        for name, kind in difference["missing"]:
-            with client_for_table(table) as cnx:
-                cursor = cnx.cursor()
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
-                cnx.commit()
+        # The schema operation takes the type of the column from the pages DDL.
+        for name, _kind in difference["missing"]:
+            add_pages_column(table, name)
             altered += 1
     rebuild = any(d["retyped"] for d in differences.values())
     return {"altered_columns": altered, "rebuild": rebuild}

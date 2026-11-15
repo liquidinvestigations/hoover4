@@ -14,10 +14,15 @@ Store layouts (the value stores of the zone state):
   ClickHouse, both Manticore daemons, Garage with its init job, and ZooKeeper, which the ClickHouse configuration
   names. The operations worker mounts the store claims as in Compose, so store backup and restore work. The Compose
   import (../import_compose/) fills these claims with the copied store folders.
-- site: ClickHouse, Garage and Temporal are shared by the site in the namespace hoover-stores (stores/shared.py,
-  stores/temporal.py), and both Manticore daemons run in Kata on block volumes in the zone namespace
-  (stores/hoover.py). ExternalName Services keep the Compose names. setup.py creates the tenant of the zone: its
-  ClickHouse users, its Garage keys and buckets, and its Temporal namespace. The Temporal clients (TEMPORAL_CLIENTS) get
+- site: ClickHouse, Garage, both Manticore daemons and Temporal are shared by the site in the namespace hoover-stores
+  (stores/shared.py, stores/temporal.py). ExternalName Services keep the Compose names. setup.py creates the tenant
+  of the zone: its ClickHouse users, its Garage keys and buckets, its three Manticore users and its Temporal
+  namespace. The services that only search (website, mcp-collections) use the Manticore read user on the read-only
+  HTTP listener 9309. The services that write rows (workers, singletons, operations) use the write user, which cannot
+  create, alter or drop a table, and send each schema change to the schema proxy of the zone (schema_proxy(),
+  MANTICORE_SCHEMA_URL) with the proxy credential. Only the proxy holds the schema user. A zone of this layout whose
+  entry has manticore = zone is from an earlier version, whose Manticore daemons ran in the zone namespace. The render
+  refuses it: the zone needs a delete and a new create. The Temporal clients (TEMPORAL_CLIENTS) get
   the namespace of the zone in TEMPORAL_NAMESPACE and the key of the zone in TEMPORAL_API_KEY. The key permits only
   that namespace. A zone of this layout whose entry has temporal = zone is from an earlier version, whose Temporal ran
   on the PostgreSQL of the zone. The render refuses it: the zone needs a delete and a new create.
@@ -225,12 +230,16 @@ LOCAL_CREDENTIALS = {'CLICKHOUSE_USER': 'clickhouse-user', 'CLICKHOUSE_PASSWORD'
                      'S3_ACCESS_KEY': 's3-access-key', 'S3_SECRET_KEY': 's3-secret-key',
                      'GARAGE_RPC_SECRET': 'garage-rpc-secret', 'GARAGE_ADMIN_TOKEN': 'garage-admin-token',
                      'VITE_CLICKHOUSE_USER': 'clickhouse-user', 'VITE_CLICKHOUSE_PASS': 'clickhouse-password'}
-# The stores of the zone namespace that the site layout uses.
-ZONE_STORES = ('manticore', 'manticore-vectors')
 # The shared stores of the site (stores/shared.py, stores/temporal.py) and the client ports that a Hoover namespace
-# reaches.
+# reaches. A Manticore daemon has the read-only listeners 9307 and 9309 beside 9306 and 9308.
 SHARED_NS = 'hoover-stores'
-SHARED_PORTS = {'clickhouse': (8123, 9000), 'garage': (3900,), 'temporal': (7233, 7243)}
+SHARED_PORTS = {'clickhouse': (8123, 9000), 'garage': (3900,), 'temporal': (7233, 7243),
+                'manticore': (9306, 9307, 9308, 9309), 'manticore-vectors': (9306, 9307, 9308, 9309)}
+# The schema proxy of the Manticore tables of a zone in the site layout (schema_proxy()), and its port.
+SCHEMA_PROXY = 'manticore-schema'
+SCHEMA_PROXY_PORT = 8080
+# The pods that send schema operations to the proxy: the pods of the services with the Manticore write user.
+SCHEMA_PROXY_CLIENTS = ['hoover-workers', 'hoover-singletons', 'hoover-operations']
 # The services that call Temporal (by the Compose name without hoover4-). In the site layout only they get the key of
 # the zone.
 TEMPORAL_CLIENTS = ('website', 'worker', 'ops', 'mcp-todo')
@@ -628,7 +637,14 @@ def store_secrets(target, service_key, wanted):
     if 'clickhouse' in used:
         env += [value('CLICKHOUSE_USER', service_users.user(target.zone, service_key)), from_secret('CLICKHOUSE_PASSWORD', f'clickhouse-{service_key}')]
     if 'manticore' in used:
-        env += [value('MANTICORE_USER', service_users.user(target.zone, service_key)), from_secret('MANTICORE_PASSWORD', f'manticore-{service_key}')]
+        role = used['manticore']
+        env += [value('MANTICORE_USER', service_users.manticore_user(target.zone, role)), from_secret('MANTICORE_PASSWORD', f'manticore-{role}')]
+        if role == 'read':
+            # The read-only HTTP listener refuses every change, also for a user with more rights.
+            env += [value('MANTICORE_URL', 'http://manticore:9309'), value('MANTICORE_VECTORS_URL', 'http://manticore-vectors:9309')]
+        else:
+            env += [value('MANTICORE_SCHEMA_URL', f'http://{SCHEMA_PROXY}:{SCHEMA_PROXY_PORT}'),
+                    from_secret('MANTICORE_SCHEMA_TOKEN', 'manticore-proxy-token')]
     if 'garage' in used:
         env += [from_secret('S3_ACCESS_KEY', f's3-access-key-{service_key}'), from_secret('S3_SECRET_KEY', f's3-secret-key-{service_key}')]
     return env
@@ -977,12 +993,36 @@ def proxy(target):
             workload(target, 'Deployment', 'oauth2-proxy', pod_spec(target, [c], vols), labels=OIDC_CLIENT), service(target, 'oauth2-proxy', [4180])]
 
 
+def schema_proxy(target):
+    """The Manticore schema proxy of the zone (main_services/processing/database/manticore_schema.py).
+
+    It runs the schema operations of Hoover with the schema user of the zone, which only the Secret manticore-schema
+    holds. The services with the write user send it an operation name and its arguments with the proxy credential.
+    The proxy builds every table name from the table prefix of the zone and runs no SQL of a caller. It uses the
+    processing image of the installation, so its operations match the code of the zone.
+    """
+    image = image_of(target, 'hoover4-worker', {})
+    env = [value(k, v) for k, v in sorted({**target.hoover.identity(), 'MANTICORE_HOST': 'manticore',
+                                           'MANTICORE_VECTORS_HOST': 'manticore-vectors',
+                                           'MANTICORE_SCHEMA_PORT': str(SCHEMA_PROXY_PORT)}.items())]
+    env += [value('MANTICORE_USER', service_users.manticore_user(target.zone, 'schema')),
+            from_secret('MANTICORE_PASSWORD', 'password', 'manticore-schema'),
+            from_secret('MANTICORE_SCHEMA_TOKEN', 'token', 'manticore-schema')]
+    c = {'name': SCHEMA_PROXY, 'image': image, 'imagePullPolicy': 'IfNotPresent', 'workingDir': '/app',
+         'command': ['/opt/pysetup/.venv/bin/python3', '-m', 'database.manticore_schema', 'serve'], 'env': env,
+         'ports': [{'name': 'http', 'containerPort': SCHEMA_PROXY_PORT}],
+         'readinessProbe': {'httpGet': {'path': '/ready', 'port': SCHEMA_PROXY_PORT}, 'periodSeconds': 2},
+         # The process holds 88 MiB after its imports.
+         'resources': {'requests': {'cpu': '10m', 'memory': '128Mi'}, 'limits': {'cpu': '500m', 'memory': '256Mi'}}}
+    return [workload(target, 'Deployment', SCHEMA_PROXY, pod_spec(target, [c])), service(target, SCHEMA_PROXY, [SCHEMA_PROXY_PORT])]
+
+
 def network(target):
     """The ingress and egress policies of the Hoover namespace.
 
     Egress is closed by default. Every pod reaches the cluster DNS and the pods of its namespace. In the site layout
-    every pod except the internet services reaches Manticore in the zone namespace and the client ports of the shared
-    ClickHouse, Garage and Temporal, and the browser server reaches the HTTP ports of ClickHouse and Garage. The
+    every pod except the internet services reaches the client ports of the shared ClickHouse, Manticore, Garage and
+    Temporal, and the browser server reaches the HTTP ports of ClickHouse and Garage. The
     shared stores admit a Hoover namespace by its label hoover.dev/hoover (stores/shared.py network()). In the local
     layout the stores are pods of the namespace,
     and the internet services reach no store pod except the browser server, which reaches ClickHouse and Garage.
@@ -994,7 +1034,6 @@ def network(target):
 
     def policy(name, spec):
         return {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': name, 'namespace': ns}, 'spec': spec}
-    zone_ns = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': target.zone}}}
     shared_ns = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': SHARED_NS}}}
 
     def shared(store, ports):
@@ -1012,13 +1051,20 @@ def network(target):
                                                                                                    'values': AGENT_API_CLIENTS}]}}],
                                                    'ports': [{'port': 8080}]}]}),
         # Workers and dependencies take connections only from the namespace. The proxy also takes them from the ingress.
+        # The Manticore schema proxy takes them only from the services that write rows (schema-proxy-clients).
         policy('namespace-only', {'podSelector': {'matchExpressions': [{'key': 'app.kubernetes.io/name', 'operator': 'NotIn',
-                                                                        'values': ['hoover-website', 'oauth2-proxy']}]},
+                                                                        'values': ['hoover-website', 'oauth2-proxy', SCHEMA_PROXY]}]},
                                   'policyTypes': ['Ingress'], 'ingress': [{'from': [{'podSelector': {}}]}]}),
         policy('proxy-from-ingress', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'oauth2-proxy'}}, 'policyTypes': ['Ingress'],
                                       'ingress': [{'from': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ingress'}}}],
                                                    'ports': [{'port': 4180}]}]}),
     ]
+    if not target.local:
+        items.append(policy('schema-proxy-clients', {
+            'podSelector': {'matchLabels': {'app.kubernetes.io/name': SCHEMA_PROXY}}, 'policyTypes': ['Ingress'],
+            'ingress': [{'from': [{'podSelector': {'matchExpressions': [{'key': 'app.kubernetes.io/name', 'operator': 'In',
+                                                                         'values': SCHEMA_PROXY_CLIENTS}]}}],
+                         'ports': [{'port': SCHEMA_PROXY_PORT}]}]}))
     if target.local:
         # The internet services reach no pod of the namespace except the services that they call.
         items.append(policy('egress-base', {'podSelector': {'matchExpressions': [{'key': 'hoover.dev/egress', 'operator': 'DoesNotExist'}]},
@@ -1035,9 +1081,7 @@ def network(target):
             policy('egress-base', {'podSelector': {}, 'policyTypes': ['Egress'], 'egress': [dns, {'to': [{'podSelector': {}}]}]}),
             policy('egress-stores', {'podSelector': {'matchExpressions': [{'key': 'hoover.dev/egress', 'operator': 'DoesNotExist'}]},
                                      'policyTypes': ['Egress'],
-                                     'egress': [{'to': [{**zone_ns, 'podSelector': {'matchExpressions': [
-                                         {'key': 'hoover.dev/store', 'operator': 'In', 'values': list(ZONE_STORES)}]}}]},
-                                                *[shared(s, ports) for s, ports in SHARED_PORTS.items()]]}),
+                                     'egress': [shared(s, ports) for s, ports in SHARED_PORTS.items()]}),
             policy('egress-browser-stores', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'hoover4-mcp-browser'}},
                                              'policyTypes': ['Egress'],
                                              'egress': [shared('clickhouse', (8123,)), shared('garage', (3900,))]}),
@@ -1088,6 +1132,9 @@ def objects(target):
     if target.hoover.stores == 'site' and target.hoover.temporal == 'zone':
         raise RenderError(f'{target.zone} runs its own Temporal on the PostgreSQL of the zone, from an earlier version. '
                           'Delete the zone and create it again.')
+    if target.hoover.stores == 'site' and target.hoover.manticore == 'zone':
+        raise RenderError(f'{target.zone} runs its own Manticore daemons in the zone namespace, from an earlier version. '
+                          'Delete the zone and create it again.')
     # The label hoover.dev/zone selects the namespace for the zone pod policy (../zones/manifests/zone-pods.yaml). The
     # shared stores admit the namespaces with the label hoover.dev/hoover (stores/shared.py).
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': target.ns, 'labels': {
@@ -1111,7 +1158,7 @@ def objects(target):
                               for c in i['spec']['template']['spec']['containers'])
         extra.append(temporal_retention(target, cfg, temporal_image))
     return [namespace, *stores, *claims, *config_maps(target, deploy, cfg, configs | {'tika-config', 'mirror'}),
-            *extra, *proxy(target), *(gpu.forwarder(target.zone, target.ns) if target.site.gpu_pool else []), *items,
+            *extra, *proxy(target), *([] if target.local else schema_proxy(target)), *(gpu.forwarder(target.zone, target.ns) if target.site.gpu_pool else []), *items,
             *network(target)]
 
 

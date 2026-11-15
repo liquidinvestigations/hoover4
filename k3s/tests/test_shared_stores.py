@@ -137,3 +137,47 @@ def test_the_store_size_grows_with_the_site_zones():
     assert shared.size('clickhouse', 0) == '20Gi' and shared.size('garage', 4) == '80Gi'
     data = {'zones': {'zone-a': {'stores': 'site'}, 'zone-b': {}, 'zone-c': {'stores': 'local'}, 'zone-d': {'stores': 'site'}}}
     assert shared.site_zones(data) == ['zone-a', 'zone-d']
+
+
+def test_the_site_runs_one_manticore_for_text_and_one_for_vectors_with_read_only_listeners():
+    site = remote('{nodes: [server-a, worker-b]}')
+    items = shared.objects(site, config.store_plan(site), 2, {})
+    for name in ('manticore', 'manticore-vectors'):
+        daemon = by(items, 'StatefulSet', name)
+        assert daemon['metadata']['namespace'] == 'hoover-stores' and daemon['spec']['replicas'] == 1
+        spec = daemon['spec']['template']['spec']
+        assert spec['runtimeClassName'] == 'kata'
+        assert spec['affinity']['nodeAffinity']['requiredDuringSchedulingIgnoredDuringExecution']['nodeSelectorTerms'][0][
+            'matchExpressions'][0]['values'] == list(shared.tier(site, ('server-a', 'worker-b'), name)[1])
+        c = next(c for c in spec['containers'] if c['name'] == 'manticore')
+        env = {e['name']: e.get('value', e.get('valueFrom')) for e in c['env']}
+        assert env['searchd_listen'] == '9306:mysql|9308:http|9307:mysql_readonly|9309:http_readonly'
+        assert env['searchd_auth'] == '1'
+        assert env['MT_ADMIN_PASSWORD'] == {'secretKeyRef': {'name': 'hoover-stores', 'key': 'manticore-admin'}}
+        assert {v['name']: v.get('secret', {}).get('items') for v in spec['volumes']}['seed'] == [
+            {'key': 'manticore-seed', 'path': 'auth.json'}]
+        claim = daemon['spec']['volumeClaimTemplates'][0]['spec']['resources']['requests']['storage']
+        assert claim == shared.size(name, 2)
+        assert [p['port'] for p in by(items, 'Service', name)['spec']['ports']] == [9306, 9308, 9307, 9309]
+    assert shared.size('manticore', 2) == '32Gi'
+    ingress = by(items, 'NetworkPolicy', 'manticore-clients')['spec']
+    assert ingress['podSelector']['matchExpressions'][0]['values'] == ['manticore', 'manticore-vectors']
+    assert ingress['ingress'] == [{'from': [{'namespaceSelector': {'matchLabels': {'hoover.dev/hoover': 'true'}}}],
+                                   'ports': [{'port': 9306}, {'port': 9308}, {'port': 9307}, {'port': 9309}]}]
+
+
+def test_each_zone_has_three_manticore_users_and_only_the_schema_user_can_change_a_table():
+    assert [service_users.manticore_user('zone-a', r) for r in service_users.MANTICORE_ROLES] == [
+        'zone_a_read', 'zone_a_write', 'zone_a_schema']
+    assert service_users.MANTICORE_GRANTS == {'read': ('read',), 'write': ('read', 'write'),
+                                              'schema': ('read', 'write', 'schema')}
+    # No service holds the schema user. The website and the collections server only search.
+    roles = {s: u['manticore'] for s, u in service_users.SERVICES.items() if 'manticore' in u}
+    assert roles == {'website': 'read', 'worker': 'write', 'ops': 'write', 'mcp-collections': 'read'}
+
+
+def test_mysql_answers_are_read_with_and_without_borders():
+    assert shared.manticore_rows('zone_a_read\nhoover_admin\n') == [['zone_a_read'], ['hoover_admin']]
+    bordered = '+----+----+\n| username | action |\n+----+----+\n| zone_a_read | read |\n+----+----+\n'
+    assert shared.manticore_rows(bordered) == [['username', 'action'], ['zone_a_read', 'read']]
+    assert shared.manticore_rows('zone_a_read\tread\tzone_a_*\t1\t\n')[0][:4] == ['zone_a_read', 'read', 'zone_a_*', '1']

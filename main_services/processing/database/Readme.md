@@ -8,6 +8,7 @@ This directory centralizes database utilities and schema definitions used by the
 - [db_collection_migrations/](db_collection_migrations) - SQL migrations applied to every per-collection ClickHouse database, `Hoover4_Collection_<collectionname>`.
 - [clickhouse.py](clickhouse.py) - ClickHouse client configuration and migration runner.
 - [manticore.py](manticore.py) - Manticore index maintenance and search configuration utilities.
+- [manticore_schema.py](manticore_schema.py) - the named Manticore schema operations and the schema proxy that runs them for one zone.
 - [s3.py](s3.py) - S3 client helpers and bucket naming for the Garage blob store.
 - [storage_identity.py](storage_identity.py) - the database, table and bucket names and the store users of an installation.
 - [chat_todos.py](chat_todos.py) - chat and agent-run todo lists: validation, storage, and the
@@ -74,6 +75,26 @@ A Compose deployment sets none of the two prefixes, so its names stay as the sec
 A prefix outside its allowed form stops the process at start, and the error names only the variable.
 Use the same values in the workers, the website and the agent services.
 A reader of a stored object still takes the bucket from the stored path.
+
+## Change Manticore tables through schema operations.
+
+Every create, alter and drop of a Hoover Manticore table is a named operation of [manticore_schema.py](manticore_schema.py).
+`manticore.schema_operation()` runs it. The callers name an operation and its arguments, and never send SQL.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MANTICORE_SCHEMA_URL` | empty | The schema proxy of the zone. Empty runs each operation in this process with `MANTICORE_USER`, as Compose does. |
+| `MANTICORE_SCHEMA_TOKEN` | empty | The proxy credential of the zone, sent as a bearer token. |
+
+The operations are `create_pages_table`, `create_vectors_table`, `create_vfs_table`, `create_entities_table`, `add_pages_column`, `drop_collection_tables`, `drop_collection_vector_tables` and `migrate`.
+Each operation checks its arguments and builds every table name from `HOOVER4_MANTICORE_TABLE_PREFIX`.
+`add_pages_column` takes the type of the column from the pages DDL. `migrate` takes the shard indexes of each collection from the ClickHouse ledgers, which the caller reads.
+No operation creates a distributed table, because Manticore lets a user with the right `schema` read the table of another user through one.
+
+In the site layout of k3s the services of a zone have a Manticore user that reads and writes rows and cannot create, alter or drop a table.
+The schema proxy of the zone (`python -m database.manticore_schema serve`) holds the only user with the right `schema`.
+The search services use a read user on the read-only HTTP listener. [k3s/Readme.md](../../../k3s/Readme.md#isolate-the-zones-in-manticore) describes the users.
+The Manticore table import of a collection restore needs the right `schema` and the data folder of the daemon, so it runs only where the process holds both, as in Compose.
 
 ## The two databases
 

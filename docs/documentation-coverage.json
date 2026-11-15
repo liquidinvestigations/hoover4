@@ -3305,11 +3305,14 @@
         "k3s/hoover/stores/shared.py",
         "k3s/hoover/setup.py",
         "k3s/config.py",
-        "k3s/tools/tenant-isolation-check.py"
+        "k3s/tools/tenant-isolation-check.py",
+        "main_services/processing/database/manticore_schema.py"
       ],
       "docs": [
         "docs/technical-specification/Features.md",
-        "k3s/Readme.md#share-the-hoover-stores-of-a-site"
+        "k3s/Readme.md#share-the-hoover-stores-of-a-site",
+        "k3s/Readme.md#isolate-the-zones-in-manticore",
+        "main_services/processing/database/Readme.md#change-manticore-tables-through-schema-operations"
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability changes the store pods and the site file. No page of the portal or of a zone application changes."

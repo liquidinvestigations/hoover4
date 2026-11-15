@@ -9,7 +9,8 @@
    ],
    "bootstrapped": true,
    "stores": "site",
-   "temporal": "site"
+   "temporal": "site",
+   "manticore": "site"
   },
   "zone-b": {
    "enabled": true,
@@ -20,6 +21,7 @@
    "bootstrapped": true,
    "stores": "site",
    "temporal": "site",
+   "manticore": "site",
    "extra_datasets": ["archive:server-node:/storage/archive"],
    "tiers": {
     "default": ["hdd"]

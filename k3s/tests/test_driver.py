@@ -334,6 +334,7 @@ def test_render_and_check_change_no_host_and_write_only_the_inventory_and_facts(
     assert not any('zone-a keeps' in p for p in problems)
     # zone-a of the fixture uses the Temporal of the site, so no problem names its Temporal.
     assert not any('Temporal on the PostgreSQL' in p for p in problems)
+    assert not any('zone-a runs its own Manticore' in p for p in problems)
     assert 'store_warnings' not in state
 
 
@@ -344,6 +345,15 @@ def test_check_names_a_site_zone_of_the_earlier_temporal(env):
     (env.private / 'zone-state.json').write_text(json.dumps(state))
     problems, _ = deploy.check(ctx, ['server-a'])
     assert any(p.startswith('the zone zone-a runs its own Temporal on the PostgreSQL of the zone') for p in problems)
+
+
+def test_check_names_a_site_zone_of_the_earlier_manticore(env):
+    ctx = env.make('remote.yml')
+    state = json.loads((env.private / 'zone-state.json').read_text())
+    del state['zones']['zone-a']['manticore']
+    (env.private / 'zone-state.json').write_text(json.dumps(state))
+    problems, _ = deploy.check(ctx, ['server-a'])
+    assert any(p.startswith('the zone zone-a runs its own Manticore daemons in the zone namespace') for p in problems)
 
 
 def test_check_refuses_shared_stores_with_copies(env, monkeypatch):

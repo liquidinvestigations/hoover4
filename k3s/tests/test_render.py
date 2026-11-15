@@ -317,15 +317,15 @@ def test_second_render_is_equal(tmp_path):
 
 # The remote topology ------------------------------------------------------------------------------------------------
 
-def test_site_zone_uses_the_shared_stores_and_temporal_and_its_own_manticore(tmp_path):
+def test_site_zone_uses_the_shared_stores_and_temporal(tmp_path):
     items = items_of(target('remote.yml', 'zone-a', tmp_path))
     names = {(i['kind'], i['metadata']['name']) for i in items}
     # The zone runs no Temporal and no Temporal store. It uses the Temporal of the site with its own namespace.
     assert not {n for n in names if n[0] in ('Deployment', 'StatefulSet', 'Job') and n[1].startswith('temporal')}
     assert ('StatefulSet', 'clickhouse') not in names
-    for name, namespace in (('clickhouse', 'hoover-stores'), ('garage', 'hoover-stores'), ('manticore', 'zone-a'),
-                            ('manticore-vectors', 'zone-a'), ('temporal', 'hoover-stores')):
-        assert get(items, 'Service', name)['spec'] == {'type': 'ExternalName', 'externalName': f'{name}.{namespace}.svc.cluster.local'}
+    assert not {n for n in names if n[0] == 'StatefulSet' and n[1].startswith('manticore')}
+    for name in ('clickhouse', 'garage', 'manticore', 'manticore-vectors', 'temporal'):
+        assert get(items, 'Service', name)['spec'] == {'type': 'ExternalName', 'externalName': f'{name}.hoover-stores.svc.cluster.local'}
     workers = get(items, 'Deployment', 'hoover-workers')
     e = env(containers(workers)[0])
     assert e['CLICKHOUSE_USER'] == 'zone_a_worker'
@@ -345,17 +345,72 @@ def test_a_site_zone_reaches_only_the_client_ports_of_the_shared_stores(tmp_path
     items = items_of(target('remote.yml', 'zone-a', tmp_path))
     shared_ns = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'hoover-stores'}}}
     rules = get(items, 'NetworkPolicy', 'egress-stores')['spec']['egress']
-    assert rules[0]['to'][0]['namespaceSelector'] == {'matchLabels': {'kubernetes.io/metadata.name': 'zone-a'}}
-    assert rules[0]['to'][0]['podSelector']['matchExpressions'][0]['values'] == ['manticore', 'manticore-vectors']
-    assert rules[1:] == [{'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}],
+    manticore_ports = [{'port': p} for p in (9306, 9307, 9308, 9309)]
+    assert rules == [{'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}],
                           'ports': [{'port': 8123}, {'port': 9000}]},
                          {'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
                           'ports': [{'port': 3900}]},
                          {'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'temporal'}}}],
-                          'ports': [{'port': 7233}, {'port': 7243}]}]
+                          'ports': [{'port': 7233}, {'port': 7243}]},
+                         {'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'manticore'}}}],
+                          'ports': manticore_ports},
+                         {'to': [{**shared_ns, 'podSelector': {'matchLabels': {'hoover.dev/store': 'manticore-vectors'}}}],
+                          'ports': manticore_ports}]
     browser = get(items, 'NetworkPolicy', 'egress-browser-stores')['spec']['egress']
     assert [r['ports'] for r in browser] == [[{'port': 8123}], [{'port': 3900}]]
     assert all(r['to'][0]['namespaceSelector'] == shared_ns['namespaceSelector'] for r in browser)
+
+
+def ref(secret, key):
+    return {'secretKeyRef': {'name': secret, 'key': key}}
+
+
+def test_a_site_zone_uses_the_manticore_user_of_its_role_and_the_schema_proxy(tmp_path):
+    items = items_of(target('remote.yml', 'zone-a', tmp_path))
+    proxy_url = 'http://manticore-schema:8080'
+    for name in ('hoover-workers', 'hoover-singletons', 'hoover-operations'):
+        e = env(containers(get(items, 'Deployment', name))[0])
+        assert e['MANTICORE_USER'] == 'zone_a_write' and e['MANTICORE_PASSWORD'] == ref('hoover-runtime', 'manticore-write'), name
+        assert e['MANTICORE_SCHEMA_URL'] == proxy_url and e['MANTICORE_SCHEMA_TOKEN'] == ref('hoover-runtime', 'manticore-proxy-token')
+    for name in ('hoover-website', 'hoover4-mcp-collections'):
+        e = env(containers(get(items, 'Deployment', name))[0])
+        assert e['MANTICORE_USER'] == 'zone_a_read' and e['MANTICORE_PASSWORD'] == ref('hoover-runtime', 'manticore-read'), name
+        # The read user reaches the read-only HTTP listeners, and gets no proxy credential.
+        assert (e['MANTICORE_URL'], e['MANTICORE_VECTORS_URL']) == ('http://manticore:9309', 'http://manticore-vectors:9309')
+        assert 'MANTICORE_SCHEMA_TOKEN' not in e and 'MANTICORE_SCHEMA_URL' not in e
+    for item in workloads(items):
+        if item['metadata']['name'] == 'manticore-schema':
+            continue
+        for c in containers(item):
+            assert not [e for e in c.get('env', []) if e.get('valueFrom', {}).get('secretKeyRef', {}).get('name') == 'manticore-schema']
+    proxy = get(items, 'Deployment', 'manticore-schema')
+    c = containers(proxy)[0]
+    e = env(c)
+    assert c['command'][-3:] == ['-m', 'database.manticore_schema', 'serve'] and c['image'].startswith(manifests.REGISTRY + '/hoover-processing:')
+    assert e['MANTICORE_USER'] == 'zone_a_schema' and e['HOOVER4_MANTICORE_TABLE_PREFIX'] == 'zone_a_'
+    assert e['MANTICORE_PASSWORD'] == ref('manticore-schema', 'password') and e['MANTICORE_SCHEMA_TOKEN'] == ref('manticore-schema', 'token')
+    assert 'runtimeClassName' not in proxy['spec']['template']['spec']
+    assert get(items, 'Service', 'manticore-schema')['spec']['ports'][0]['port'] == 8080
+    # Only the pods with the write user reach the proxy.
+    clients = get(items, 'NetworkPolicy', 'schema-proxy-clients')['spec']
+    assert clients['podSelector'] == {'matchLabels': {'app.kubernetes.io/name': 'manticore-schema'}}
+    assert clients['ingress'][0]['from'][0]['podSelector']['matchExpressions'][0]['values'] == [
+        'hoover-workers', 'hoover-singletons', 'hoover-operations']
+    namespace_only = get(items, 'NetworkPolicy', 'namespace-only')['spec']['podSelector']['matchExpressions'][0]
+    assert 'manticore-schema' in namespace_only['values']
+
+
+def test_a_site_zone_of_the_earlier_manticore_layout_is_refused(tmp_path):
+    t = target('remote.yml', 'zone-a', tmp_path)
+    t.hoover.manticore = 'zone'
+    with pytest.raises(manifests.RenderError, match='runs its own Manticore daemons in the zone namespace'):
+        items_of(t)
+
+
+def test_a_local_zone_has_no_schema_proxy(single):
+    assert not [i for i in single if i['metadata']['name'] == 'manticore-schema']
+    e = env(containers(get(single, 'StatefulSet', 'hoover-workers'))[0])
+    assert 'MANTICORE_SCHEMA_URL' not in e
 
 
 def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):

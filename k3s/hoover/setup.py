@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Prepare the store tenants and the runtime Secrets for the Hoover of one zone. Each step is idempotent.
 
-The two Manticore daemons (stores/hoover.py) run in the zone namespace. ClickHouse, Garage and Temporal are shared by
-the site in the namespace hoover-stores (stores/shared.py, stores/temporal.py), where each zone is a tenant.
+ClickHouse, Garage, Manticore and Temporal are shared by the site in the namespace hoover-stores (stores/shared.py,
+stores/temporal.py), where each zone is a tenant.
 The zone credentials are in the Secrets hoover-stores and garage-tenants of the zone namespace, so they go with the zone.
 
 - ClickHouse: the settings profile <prefix>, which limits the memory of one user to half of the ClickHouse limit, the
@@ -15,8 +15,11 @@ The zone credentials are in the Secrets hoover-stores and garage-tenants of the 
   own key with read and write access to <zone>-system only. A key reaches only the buckets that it created or that
   this step allows. A bucket that Hoover creates through S3 has a local alias of the zone key, so its name is private
   to the zone. The keys are in the Secret garage-tenants.
-- Manticore: the zone user and the user of each service on both daemons, with the password of hoover-stores. The
-  daemon starts with hoover_admin from its seed (stores/creds.py). A published bootstrap user manticore is removed.
+- Manticore: the users <prefix>_read, <prefix>_write and <prefix>_schema in both shared daemons of the site, with
+  the passwords of hoover-stores and the rights of stores/service_users.py MANTICORE_GRANTS on the tables <prefix>_*
+  only. The services that only search get the read user, and the services that write rows get the write user and the
+  proxy credential. Neither user can create, alter or drop a table. The Secret manticore-schema of the Hoover
+  namespace holds the schema user and the proxy credential, and only the schema proxy of the zone mounts it.
 - Temporal: the namespace <zone> with the retention of the setting main_services.temporal_retention of the zone, and
   the search attribute CollectionDataset. A present namespace gets the retention again and keeps its workflows.
 - Secrets hoover-runtime and oauth2-proxy in namespace hoover-<zone>. hoover-runtime holds the store credentials of
@@ -147,22 +150,32 @@ def clickhouse():
 
 
 def manticore():
-    # The statements go through stdin, so no password is on a command line. CREATE USER fails without effect for a
-    # present user, and SET PASSWORD then gives it the password of hoover-stores.
+    """Create the three Manticore users of the zone in both shared daemons, with their rights on <prefix>_* only.
+
+    Manticore 29.9 stops searchd on a GRANT to an unknown user and on a DROP USER of an unknown user, so the step reads
+    the users first. A present user gets the password of hoover-stores again. A missing right is granted, and a right
+    of a zone user that MANTICORE_GRANTS does not name is revoked.
+    """
     stores = secret(STORES, 'hoover-stores')
-    users = {PREFIX: (stores['manticore-zone'], ('read', 'write', 'schema'))}
-    for service in service_users.using('manticore'):
-        grants = service_users.MANTICORE_GRANTS[service_users.SERVICES[service]['manticore']]
-        users[service_users.user(ZONE, service)] = (stores[f'manticore-{service}'], grants)
-    sql = ["DROP USER 'manticore';"]
-    for name, (password, grants) in users.items():
-        sql += [f"CREATE USER '{name}' IDENTIFIED BY '{password}';", f"SET PASSWORD '{password}' FOR '{name}';"]
-        sql += [f"GRANT {a} ON '{PREFIX}_*' TO '{name}';" for a in grants]
-    script = ('mysql -h0 -P9306 -uhoover_admin -p"$MT_ADMIN_PASSWORD" --batch --force >/dev/null 2>&1; '
-              'mysql -h0 -P9306 -uhoover_admin -p"$MT_ADMIN_PASSWORD" --batch --skip-column-names -e "SHOW USERS" 2>/dev/null')
-    for pod in ('manticore-kata-0', 'manticore-vectors-kata-0'):
-        out = kubectl('-n', STORES, 'exec', '-i', pod, '-c', 'manticore', '--', 'sh', '-c', script, input='\n'.join(sql) + '\n').stdout
-        print(json.dumps({'step': 'manticore', 'pod': pod, 'users': [w for w in out.split() if w.strip('|+-')]}))
+    target = f'{PREFIX}_*'
+    for store in shared.MANTICORE:
+        present = shared.manticore_users(store)
+        sql = []
+        for role in service_users.MANTICORE_ROLES:
+            name, password = service_users.manticore_user(ZONE, role), stores[f'manticore-{role}']
+            sql.append(f"SET PASSWORD '{password}' FOR '{name}';" if name in present else
+                       f"CREATE USER '{name}' IDENTIFIED BY '{password}';")
+        shared.manticore_sql(store, '\n'.join(sql) + '\n')
+        users = {service_users.manticore_user(ZONE, r): r for r in service_users.MANTICORE_ROLES}
+        rights = {(row[0], row[1], row[2]) for row in shared.manticore_rows(shared.manticore_sql(store, 'SHOW PERMISSIONS\n'))
+                  if len(row) >= 4 and row[0] in users and row[3] == '1'}
+        wanted = {(name, action, target) for name, role in users.items() for action in service_users.MANTICORE_GRANTS[role]}
+        sql = [f"GRANT {a} ON '{t}' TO '{u}';" for u, a, t in sorted(wanted - rights)]
+        sql += [f"REVOKE {a} ON '{t}' FROM '{u}';" for u, a, t in sorted(rights - wanted)]
+        if sql:
+            shared.manticore_sql(store, '\n'.join(sql) + '\n')
+        print(json.dumps({'step': 'manticore', 'store': store, 'users': sorted(users), 'granted': len(wanted - rights),
+                          'revoked': len(rights - wanted)}))
 
 
 def runtime_secrets():
@@ -177,7 +190,10 @@ def runtime_secrets():
         if 'clickhouse' in used:
             stored[f'clickhouse-{service}'] = stores[f'clickhouse-{service}']
         if 'manticore' in used:
-            stored[f'manticore-{service}'] = stores[f'manticore-{service}']
+            role = used['manticore']
+            stored[f'manticore-{role}'] = stores[f'manticore-{role}']
+            if role == 'write':
+                stored['manticore-proxy-token'] = stores['manticore-proxy-token']
         if 'garage' in used:
             key = tenants[service_users.garage_key(ZONE, service)]
             stored[f's3-access-key-{service}'], stored[f's3-secret-key-{service}'] = key['access_key'], key['secret_key']
@@ -186,10 +202,14 @@ def runtime_secrets():
         'gpu-token': gpu.token(ZONE), 'mcp-shared-secret': secrets.token_hex(32), 'browser-fetch-token': secrets.token_hex(32),
         'factcheck-api-key': ''},
         follow=('gpu-token', 'temporal-api-key', *stored),
-        drop=('clickhouse-password', 'manticore-password', 's3-access-key', 's3-secret-key', 'temporal-db-password'))
+        drop=('clickhouse-password', 'manticore-password', 's3-access-key', 's3-secret-key', 'temporal-db-password',
+              *[f'manticore-{s}' for s in service_users.SERVICES if f'manticore-{s}' not in stored]))
+    # Only the schema proxy of the zone mounts this Secret (../manifests.py schema_proxy()).
+    ensure_secret('manticore-schema', {'password': stores['manticore-schema'], 'token': stores['manticore-proxy-token']},
+                  follow=('password', 'token'))
     ensure_secret('oauth2-proxy', {'client-secret': zone_data['hoover_oidc_secret'], 'cookie-secret': secrets.token_hex(16),
                                    'proxy-secret': runtime['proxy-secret']}, follow=('client-secret',))
-    print(json.dumps({'step': 'secrets', 'namespace': NS, 'secrets': ['hoover-runtime', 'oauth2-proxy']}))
+    print(json.dumps({'step': 'secrets', 'namespace': NS, 'secrets': ['hoover-runtime', 'oauth2-proxy', 'manticore-schema']}))
     return runtime
 
 

@@ -82,7 +82,7 @@ k3s/deploy-k3s down --target all
 k3s/deploy-k3s up --target all --start
 ```
 
-`down` stops the zone gates, then the applications and workers, then the Temporal of the site, then the stores with the shared ClickHouse, Garage, Cassandra and OpenSearch of the namespace `hoover-stores`, then the HTTPS frontend and k3s.
+`down` stops the zone gates, then the applications and workers, then the Temporal of the site, then the stores with the shared ClickHouse, Manticore, Garage, Cassandra and OpenSearch of the namespace `hoover-stores`, then the HTTPS frontend and k3s.
 It also suspends the CronJobs of the zones. The workers end through their grace period, and no workflow is cancelled.
 `up --start` starts the parts in the reverse order and resumes only the CronJobs that `down` suspended.
 

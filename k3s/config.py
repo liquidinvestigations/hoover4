@@ -142,10 +142,10 @@ STORE_PARTS = {'garage': {'nodes': (False, 'count')}, 'cassandra': {'nodes': (Fa
 # The history shard count of a new site Temporal. The Compose default (deploy.py temporal_history_shards) is the same.
 HISTORY_SHARDS = 128
 # The values of a zone entry of the zone state that the Hoover installation of the zone reads (zone_hoover()):
-# stores, the store layout, and temporal, the place of the Temporal of the zone, each with its default first.
+# stores, the store layout, temporal, the place of the Temporal of the zone, and manticore, the place of the Manticore
+# daemons of the zone, each with its default first.
 # extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
-# The store layouts: site (ClickHouse and Garage are the shared stores of the site, Manticore runs in the zone
-# namespace), local (the Compose stores in the Hoover namespace, from the Compose import), and zone (every store in the
+# The store layouts: site (ClickHouse, Garage and Manticore are the shared stores of the site), local (the Compose stores in the Hoover namespace, from the Compose import), and zone (every store in the
 # zone namespace, from an earlier version). An entry without the value is a zone of that earlier version. A new zone
 # gets site (../zones/zone.py register()). The installer refuses to apply a zone with the layout zone: delete the zone
 # and create it again.
@@ -153,7 +153,11 @@ HISTORY_SHARDS = 128
 # (the Temporal of the zone itself). A zone with stores = local runs the Compose Temporal in its Hoover namespace. A
 # zone with stores = site and temporal = zone is from an earlier version, whose Temporal ran on the PostgreSQL of the
 # zone. The installer refuses it: delete the zone and create it again. A new zone with stores = site gets site.
-ZONE_VALUES = {'stores': ('zone', 'local', 'site'), 'temporal': ('zone', 'site')}
+# The Manticore places: site (the two Manticore daemons of the site in hoover-stores, with three users of the zone and
+# the schema proxy of the zone), and zone (two Manticore daemons in the zone namespace). A zone with stores = site and
+# manticore = zone is from an earlier version. The installer refuses it: delete the zone and create it again. A new
+# zone with stores = site gets site.
+ZONE_VALUES = {'stores': ('zone', 'local', 'site'), 'temporal': ('zone', 'site'), 'manticore': ('zone', 'site')}
 # The defaults of the optional keys. A key without a default here is empty. public_firewall has no default here: it is
 # true on a public or calls node with a public address (parse).
 DEFAULTS = {
@@ -239,6 +243,7 @@ class Hoover:
     zone: str
     stores: str = 'zone'
     temporal: str = 'zone'
+    manticore: str = 'zone'
     extra_datasets: tuple = ()
     # The value home of a zone entry of an earlier version. Only data_node() reads it, so the data folder of such a zone
     # stays on its node. No pod and no volume of the zone uses it.

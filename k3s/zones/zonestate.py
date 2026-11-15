@@ -3,10 +3,11 @@
 zone-state.json of the state folder of the site (../settings.py PRIVATE) is the list of the zones of the site. The site
 file names no zone. Each entry names whether the zone is enabled, the namespaces that it owns, and
 whether its first openDesk install completed (bootstrapped, which zone.py writes for a new zone). The value stores of
-the Hoover installation of the zone is site for a new zone (the shared ClickHouse and Garage of the site), local for a
+the Hoover installation of the zone is site for a new zone (the shared ClickHouse, Garage and Manticore of the site), local for a
 Compose import, and zone for an entry without the value, from an earlier version (../config.py ZONE_VALUES). The value
 temporal is site for a new zone of the layout site (the Temporal of the site, with a namespace for the zone), and zone
-otherwise (the default). extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
+otherwise (the default). The value manticore is site for a new zone of the layout site (the Manticore daemons of the
+site, with three users of the zone), and zone otherwise (the default). extra_datasets lists read-only dataset folders of data nodes as name:node:/path.
 ../config.py zone_hoover() reads these values and derives the storage names from the zone id.
 zone-state.example.json shows the format. The file is state, so Git does not track it. zone.py and the zone runner of
 the operator portal add and remove zones.
