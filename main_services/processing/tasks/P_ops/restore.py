@@ -525,8 +525,10 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
                 "dataset": "date_modified", "dataset_settings": "setting_version_us"}
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     with get_global_client() as client:
+        # Every version of the row counts, the deleted ones included. hide_import_collection writes a deleted row
+        # with a newer version, and FINAL would drop it, so the restored row would lose to it and stay hidden.
         existing, latest = client.query(
-            "SELECT count(), max(updated_at) FROM collections FINAL "
+            "SELECT count(), max(updated_at) FROM collections "
             "WHERE collectionname = {name:String}",
             parameters={"name": collectionname},
         ).result_rows[0]

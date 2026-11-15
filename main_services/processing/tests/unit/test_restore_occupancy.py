@@ -155,13 +155,15 @@ def test_import_replay_uses_the_existing_finish_activity(monkeypatch):
 def test_import_hides_existing_registry_row_and_publishes_newer_version(monkeypatch):
     commands = []
     written = []
+    queries = []
     prior = datetime(2026, 9, 29, 10, 0, 0)
 
     class Client:
         def command(self, sql, parameters):
             commands.append((sql, parameters))
 
-        def query(self, _sql, **_kwargs):
+        def query(self, sql, **_kwargs):
+            queries.append(sql)
             return type("Result", (), {"result_rows": [(1, prior)]})()
 
         def raw_insert(self, table, insert_block, fmt):
@@ -183,3 +185,5 @@ def test_import_hides_existing_registry_row_and_publishes_newer_version(monkeypa
     assert commands[0][1] == {"name": "collection"}
     assert written[0][0] == "collections"
     assert datetime.fromisoformat(written[0][1]["updated_at"]) > prior
+    # The version check reads the deleted row that hide_import_collection wrote, so it cannot use FINAL.
+    assert "FINAL" not in queries[0]

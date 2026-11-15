@@ -12,7 +12,7 @@ stalled job never sends. Take the limits from [expected durations](expected-dura
 |---|---|---|
 | Progress of `deploy-k3s up` and `down` | `<state>/operator/deploy/records/<id>.json`: steps with `state`, `started`, `finished`, `error` | [k3s/tools/watch-record.py](../../../../k3s/tools/watch-record.py), `deploy-k3s status` |
 | Output of each step | `<state>/operator/deploy/logs/<id>.log` | `rg` for `FAILED`, `fatal`, `Error`. The size grows while a step works. |
-| Zone create and delete from the portal | `<state>/operations/op-<time>-<action>-zone-<zone>.log` | `tail`, size growth |
+| Zone create and delete from the portal | the operation list of the portal (`/zones.json`). The zone runner in the operator pod runs the operation, so no local log grows while it runs. | [k3s/tools/operator-zone.py](../../../../k3s/tools/operator-zone.py) prints the state and step every 30 s. Watch its output. |
 | Pods that are not ready, with reasons and Warning events | the cluster API | [k3s/tools/sweep.py](../../../../k3s/tools/sweep.py) `<namespace>... [--wait SECONDS]` in the operator image |
 | Requested and allocatable CPU and memory per node | the cluster API | `kubectl describe node <node>`, section "Allocated resources" |
 | Pod CPU over time | Prometheus in namespace `monitoring` (`container_cpu_usage_seconds_total`) | `kubectl get --raw` on the Prometheus service proxy, as [k3s/zones/cpu_requests.py](../../../../k3s/zones/cpu_requests.py) does |
