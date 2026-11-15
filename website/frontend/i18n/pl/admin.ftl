@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Ostatnie 24 godziny.
 admin-metrics-loading-u = Wczytywanie…
 admin-metrics-manticore-load-now = Obciążenie Manticore (teraz)
 admin-metrics-ram-is-the-memory-of = RAM to pamięć tabel. Obciążenie wątków dotyczy ostatnich 1, 5 i 15 minut.
+admin-metrics-site-wide-load = Ten serwer Manticore obsługuje też inne instalacje tego samego klastra. Wartości obciążenia, wątków i kolejki obejmują je wszystkie. Wartości tabel dotyczą tylko tej instalacji.
 admin-metrics-manticore-status-could-not-be = Nie udało się odczytać stanu Manticore: { $error }
 admin-metrics-thread-load-1-5-15 = Obciążenie wątków (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Obciążenie wątków głównych (1, 5, 15 min)

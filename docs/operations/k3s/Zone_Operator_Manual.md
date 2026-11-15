@@ -97,7 +97,7 @@ A site upgrade with `k3s/deploy-k3s up` also upgrades every zone. [The operation
 ## Back up and restore a zone
 
 A zone copy holds the openDesk databases and volumes of the zone and the volumes of its Hoover installation.
-The ClickHouse databases, Manticore tables and Garage buckets of a zone are in the shared stores of the site, so the zone copy does not hold them. The collection copies of the backup settings hold the ClickHouse and Garage data. `main.py reindex-collection` builds the Manticore tables of a collection again from ClickHouse. The workflow history of the zone is in the Temporal of the site, and no copy holds it.
+The ClickHouse databases, Manticore tables and Garage buckets of a zone are in the shared stores of the site, so the zone copy does not hold them. The collection copies of the backup settings hold them. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse. The workflow history of the zone is in the Temporal of the site, and no copy holds it.
 
 1. Turn on `backup.opendesk.enabled` and set `backup.opendesk.copies` in the settings of the zone, and Apply.
 2. The runner makes one copy each week. The zone closes during the copy and opens again with its earlier replicas.

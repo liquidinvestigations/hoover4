@@ -9,14 +9,14 @@ import mysql.connector
 import pytest
 import requests
 
-from database import manticore
+from database import manticore, manticore_files
 from tasks.P_ops import backup, restore
 from tasks.P_ops.params import ExportParams, ImportParams
 
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not Path(backup.MANTICORE_DATA_ROOT).is_dir(),
+        not Path(manticore_files.LOCAL_DATA_ROOT).is_dir(),
         reason="run in hoover4-ops with the Manticore datastore mounts",
     ),
 ]
@@ -48,12 +48,13 @@ def test_authenticated_backup_restores_rows_and_search(monkeypatch):
         client.commit()
         cursor.execute(f"FLUSH RAMCHUNK {table}")
     try:
-        with TemporaryDirectory() as directory:
+        # The export and the import take a folder of the backup root.
+        with TemporaryDirectory(dir=backup.BACKUP_ROOT) as directory:
             Path(directory, "manticore").mkdir()
             exported = backup.export_manticore(ExportParams("auth-export", "authbackup", directory=directory))
             assert exported.bytes_written > 0
             manifest = {"format": backup.FORMAT, "format_version": backup.FORMAT_VERSION,
-                        "stores": {"manticore": exported.detail}}
+                        "collectionname": "authbackup", "stores": {"manticore": exported.detail}}
             path = Path(directory, "manifest.json")
             path.write_text(json.dumps({**manifest, "format_version": 1}))
             with pytest.raises(ValueError, match="version 2"):

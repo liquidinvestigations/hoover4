@@ -5,7 +5,7 @@ import tarfile
 
 import pytest
 
-from tasks.P_ops import backup
+from database import manticore_files
 
 
 def test_a_meta_file_rewritten_during_the_read_enters_the_archive_whole(tmp_path, monkeypatch):
@@ -27,6 +27,9 @@ def test_a_meta_file_rewritten_during_the_read_enters_the_archive_whole(tmp_path
         def read(self):
             return self.data
 
+        def close(self):
+            pass
+
     def fake_open(path, mode="r", *args, **kwargs):
         if str(path) == str(meta) and mode == "rb":
             return Reader(next(reads))
@@ -34,10 +37,11 @@ def test_a_meta_file_rewritten_during_the_read_enters_the_archive_whole(tmp_path
 
     meta.write_bytes(full[:40])
     monkeypatch.setattr("builtins.open", fake_open)
-    monkeypatch.setattr(backup.time, "sleep", lambda s: None)
+    monkeypatch.setattr(manticore_files.time, "sleep", lambda s: None)
+    files = manticore_files.LocalFiles(data_root=str(tmp_path.parent))
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as tar:
-        size = backup._add_frozen_file(tar, str(meta))
+        size = manticore_files.add_file(tar, files, tmp_path.name, "t.meta")
     monkeypatch.undo()
     assert size == len(full)
     buffer.seek(0)
@@ -63,12 +67,12 @@ def test_a_file_that_keeps_changing_fails_the_export(tmp_path, monkeypatch):
             return json.dumps({"n": counter["n"]}).encode()
 
     monkeypatch.setattr("builtins.open", lambda p, mode="r", *a, **k: Reader() if str(p) == str(path) else real_open(p, mode, *a, **k))
-    monkeypatch.setattr(backup.time, "sleep", lambda s: None)
+    monkeypatch.setattr(manticore_files.time, "sleep", lambda s: None)
     with pytest.raises(RuntimeError, match="kept changing during the freeze"):
-        backup.stable_read(str(path), attempts=5)
+        manticore_files.stable_read(lambda: open(path, "rb").__enter__().read(), "t.meta", attempts=5)
 
 
 def test_an_unchanged_file_is_read_once_more_to_confirm(tmp_path):
     path = tmp_path / "t.settings"
     path.write_bytes(b"settings")
-    assert backup.stable_read(str(path), pause=0) == b"settings"
+    assert manticore_files.stable_read(path.read_bytes, "t.settings", pause=0) == b"settings"

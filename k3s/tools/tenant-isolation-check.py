@@ -14,7 +14,13 @@ user) and the schema proxy (Manticore schema user). Both zones need the collecti
 - Manticore, read user on the read-only listener 9309 and on 9308: it reads its own tables. It cannot read a table
   of the other zone, change a row, or create a distributed table.
 - Manticore schema proxy: with the proxy credential it creates a table of its own zone. It refuses a table of the
-  other zone, an unknown operation such as a distributed table, and a request without the credential.
+  other zone, an unknown operation such as a distributed table, and a request without the credential. export_tables
+  and import_tables refuse an export folder outside the backup root of the zone, a table argument, and a manifest
+  whose artifact path leaves the export folder. The operations pod cannot reach the file service of the text daemon.
+- Manticore status credential of the website: it reads the operation status, and the proxy refuses every schema
+  operation and the import with it.
+- Manticore file service, from the schema proxy with the schema user: it reads a file of an own table and writes and
+  removes an own import stage. It refuses a file of a table of the other zone, and a request without credentials.
 - Manticore, schema user (only the proxy holds it): it cannot read, change or drop a table of the other zone. The case
   that creates a distributed table over a table of the other zone and reads it through that table reports the result
   without a pass or fail: Manticore 29.9 allows it, so no zone service holds this user. The probe drops the table.
@@ -106,9 +112,64 @@ read = mt(f'SELECT count(*) FROM {mine}isolation_probe_d') if created[0] == 'all
 mt(f'DROP TABLE IF EXISTS {mine}isolation_probe_d')
 cases += [('manticore', 'schema user creates distributed table over other table', None, created),
           ('manticore', 'schema user reads other table through it', None, read)]
+import base64, secrets, shutil, urllib.error, urllib.request
+auth = 'Basic ' + base64.b64encode(f"{os.environ['MANTICORE_USER']}:{os.environ['MANTICORE_PASSWORD']}".encode()).decode()
+def files(method, path, body=None, header=None):
+    req = urllib.request.Request(os.environ['MANTICORE_FILES_URL'] + path, method=method, data=body,
+                                 headers={'Authorization': auth if header is None else header})
+    try:
+        return 'allowed', f'{urllib.request.urlopen(req, timeout=30).status}'
+    except urllib.error.HTTPError as e:
+        return ('refused' if e.code in (400, 401, 403) else 'error'), f'{e.code} {e.read().decode()[:120]}'
+    except OSError as e:
+        return 'error', str(e)[:120]
+stage = secrets.token_hex(4)
+cases += [
+    ('manticore', 'file service reads own table file', 'allowed', files('GET', f'/tables/{mine}demo_vfs/{mine}demo_vfs.meta')),
+    ('manticore', 'file service reads other table file', 'refused', files('GET', f'/tables/{theirs}demo_vfs/{theirs}demo_vfs.meta')),
+    ('manticore', 'file service without credentials', 'refused', files('GET', f'/tables/{mine}demo_vfs/{mine}demo_vfs.meta', header='')),
+    ('manticore', 'file service writes own stage', 'allowed', files('PUT', f'/stage/{stage}/{mine}probe/{mine}probe.meta', b'{}')),
+    ('manticore', 'file service removes own stage', 'allowed', files('DELETE', f'/stage/{stage}')),
+]
+# An export folder in the backup root of the zone whose manifest names a table file of the other zone.
+folder = os.path.join(os.environ.get('HOOVER4_BACKUP_ROOT', '/backups'), f'isolation-probe-{stage}')
+os.makedirs(os.path.join(folder, 'manticore'))
+with open(os.path.join(folder, 'manifest.json'), 'w') as handle:
+    json.dump({'collectionname': 'demo', 'stores': {'manticore': {'tables': [
+        {'table': f'{theirs}demo_vfs', 'path': f'../../var/lib/manticore/{theirs}demo_vfs/{theirs}demo_vfs.meta'}]}}}, handle)
+req = urllib.request.Request('http://127.0.0.1:' + os.environ.get('MANTICORE_SCHEMA_PORT', '8080') + '/operation',
+                             data=json.dumps({'operation': 'import_tables', 'arguments': {'collection': 'demo', 'export': os.path.basename(folder)}}).encode(),
+                             headers={'Authorization': f"Bearer {os.environ['MANTICORE_SCHEMA_TOKEN']}"})
+try:
+    result = ('allowed', urllib.request.urlopen(req, timeout=60).read().decode()[:120])
+except urllib.error.HTTPError as e:
+    result = ('refused' if e.code == 400 else 'error', f'{e.code} {e.read().decode()[:120]}')
+shutil.rmtree(folder, ignore_errors=True)
+cases.append(('manticore', 'proxy imports a manifest that names a file of the other zone', 'refused', result))
 for store, case, expected, (result, detail) in cases:
     print(json.dumps({'store': store, 'case': case, 'expected': expected, 'result': result, 'detail': detail,
                       'pass': None if expected is None else result == expected}))
+'''
+# The status credential of the website. The website image has bash and no Python, so the probe speaks HTTP over the
+# /dev/tcp of bash.
+WEB_PROBE = r'''
+call() {
+  exec 3<>/dev/tcp/manticore-schema/8080 || { echo 000; return; }
+  printf 'POST /operation HTTP/1.0\r\nHost: manticore-schema\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n%s' \
+    "$MANTICORE_STATUS_TOKEN" "${#1}" "$1" >&3
+  head -1 <&3 | cut -d' ' -f2
+  exec 3<&-
+}
+row() {
+  code=$(call "$3")
+  case "$code" in 200) result=allowed;; 401|403) result=refused;; *) result=error;; esac
+  pass=false; [ "$result" = "$2" ] && pass=true
+  printf '{"store": "manticore", "case": "%s", "expected": "%s", "result": "%s", "detail": "%s", "pass": %s}\n' "$1" "$2" "$result" "$code" "$pass"
+}
+row 'status credential reads the daemon status' allowed '{"operation": "status", "arguments": {}}'
+row 'status credential creates a table' refused '{"operation": "create_vfs_table", "arguments": {"collection": "demo"}}'
+row 'status credential imports tables' refused '{"operation": "import_tables", "arguments": {"collection": "demo", "export": "x"}}'
+row 'status credential drops the tables of a collection' refused '{"operation": "drop_collection_tables", "arguments": {"collection": "demo"}}'
 '''
 PROBE = r'''
 import json, os, sys, urllib.request, urllib.error
@@ -188,7 +249,21 @@ cases += [
     ('manticore', 'proxy distributed table', 'refused',
      proxy('create_distributed_table', {'name': f'{mine_mt}d', 'local': [f'{theirs_mt}demo_vfs']})),
     ('manticore', 'proxy without credential', 'refused', proxy('create_vfs_table', {'collection': 'demo'}, token='')),
+    ('manticore', 'proxy imports from a folder of the other zone', 'refused',
+     proxy('import_tables', {'collection': 'demo', 'export': f'../hoover-{other}'})),
+    ('manticore', 'proxy imports from an absolute path', 'refused', proxy('import_tables', {'collection': 'demo', 'export': '/backups'})),
+    ('manticore', 'proxy imports a table of the other zone', 'refused',
+     proxy('import_tables', {'collection': 'demo', 'export': 'x', 'table': f'{theirs_mt}demo_vfs'})),
+    ('manticore', 'proxy exports into the parent folder', 'refused', proxy('export_tables', {'collection': 'demo', 'export': '..'})),
 ]
+def files_port():
+    import socket
+    try:
+        socket.create_connection(('manticore', 9318), timeout=5).close()
+        return 'allowed', 'connected'
+    except OSError as e:
+        return 'refused', str(e)[:120]
+cases.append(('manticore', 'operations pod reaches the file service', 'refused', files_port()))
 name = f'{other}-c-p4probe'
 created = s3(lambda: client.make_bucket(name))
 if created[0] == 'allowed':
@@ -266,7 +341,7 @@ def main():
     zone, other = sys.argv[1:]
     ok = True
     for deployment, python, probe in (('hoover-operations', PYTHON, PROBE), ('hoover4-mcp-collections', 'python3', READ_PROBE),
-                                      ('manticore-schema', PYTHON, SCHEMA_PROBE)):
+                                      ('manticore-schema', PYTHON, SCHEMA_PROBE), ('hoover-website', 'bash', WEB_PROBE)):
         r = subprocess.run(K + ['-n', f'hoover-{zone}', 'exec', f'deploy/{deployment}', '--', python, '-c', probe, zone, other],
                            capture_output=True, text=True, timeout=300)
         if r.returncode:

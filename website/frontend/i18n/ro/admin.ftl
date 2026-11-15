@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Ultimele 24 de ore.
 admin-metrics-loading-u = Se încarcă…
 admin-metrics-manticore-load-now = Încărcarea Manticore (acum)
 admin-metrics-ram-is-the-memory-of = RAM este memoria tabelelor. Încărcarea firelor de execuție este calculată pentru ultimele 1, 5 și 15 minute.
+admin-metrics-site-wide-load = Acest server Manticore deservește și alte instalări din același cluster. Valorile de încărcare, fire de execuție și coadă le cuprind pe toate. Valorile tabelelor se referă doar la această instalare.
 admin-metrics-manticore-status-could-not-be = Starea Manticore nu a putut fi citită: { $error }
 admin-metrics-thread-load-1-5-15 = Încărcarea firelor (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Încărcarea firelor primare (1, 5, 15 min)

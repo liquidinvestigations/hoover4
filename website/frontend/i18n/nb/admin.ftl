@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = De siste 24 timene.
 admin-metrics-loading-u = Laster …
 admin-metrics-manticore-load-now = Manticore-belastning (nå)
 admin-metrics-ram-is-the-memory-of = RAM er minnet til tabellene. Trådbelastningen gjelder de siste 1, 5 og 15 minuttene.
+admin-metrics-site-wide-load = Denne Manticore-serveren betjener også andre installasjoner i samme klynge. Verdiene for belastning, tråder og kø gjelder alle. Tabellverdiene gjelder bare denne installasjonen.
 admin-metrics-manticore-status-could-not-be = Manticore-statusen kunne ikke leses: { $error }
 admin-metrics-thread-load-1-5-15 = Trådbelastning (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Primær trådbelastning (1, 5, 15 min)

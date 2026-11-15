@@ -36,41 +36,17 @@ from tasks import temporal_client
 import json
 import logging
 import os
-import shutil
 import time
 
 from temporalio import activity
 
 from ..heartbeat import with_heartbeat
 from .backup import (
-    BACKUP_ROOT, CLICKHOUSE_POLL_SECONDS, FORMAT, FORMAT_VERSION,
-    MANTICORE_DAEMON_DATA_ROOT, _Phase, validate_destination,
+    BACKUP_ROOT, CLICKHOUSE_POLL_SECONDS, FORMAT, FORMAT_VERSION, _Phase, validate_destination,
 )
 from .params import ExportStoreResult, ImportParams
 
 log = logging.getLogger(__name__)
-
-#: The Manticore data directory again, but read-write, and used for one thing only:
-#: staging a table's files where the daemon can `IMPORT TABLE` them.
-#:
-#: It has to be this volume rather than a staging area of its own, because `IMPORT TABLE`
-#: **moves** the files into the data directory and a move across filesystems is not a
-#: rename. The read-only mount beside it stays: the export path reads through that one,
-#: and nothing outside the two functions below writes through this one.
-MANTICORE_RESTORE_ROOT = "/stores/manticore-restore"
-
-#: Where a restore stages one table's files before handing them to the daemon.
-#:
-#: Inside the data directory but named for the operation, because the directory has to be
-#: on the data directory's filesystem and must not be the destination: `IMPORT TABLE`
-#: refuses a destination that already exists, and moves out of the staging directory it
-#: is given.
-#:
-#: **No leading dot.** `IMPORT TABLE` does not take the absolute path it is handed
-#: verbatim when the path contains a dot-prefixed component: it rebuilds one under the
-#: table's own directory, and the error then names a file nothing ever wrote.
-MANTICORE_STAGING_PREFIX = "restore-"
-
 
 class _VerifyingReader:
     """A read-only file wrapper that checks an artifact's recorded sha256 as it streams.
@@ -241,13 +217,12 @@ def begin_import(params: ImportParams) -> str:
     being restored into, the target is checked for anything a restore would land on top
     of, and the backup's schema version is compared with this deployment's.
 
-    It then removes empty Manticore tables and their directories. `IMPORT TABLE` refuses
-    a destination that already exists. It provisions an empty database before its timing
+    It then drops the empty Manticore tables of the collection. It provisions an empty database before its timing
     wrapper writes. The ClickHouse restore activity then removes that database. The bucket
     remains for the object phase.
     """
     from database.clickhouse import get_global_client
-    from database.manticore import drop_collection_tables, list_collection_tables
+    from database.manticore import drop_collection_tables
     from database.s3 import ensure_collection_storage
 
     source = validate_destination(params.source)
@@ -288,13 +263,7 @@ def begin_import(params: ImportParams) -> str:
               "`main.py operations` / the admin page's delete, or do not import."
         )
 
-    tables = list_collection_tables(params.collectionname)
     drop_collection_tables(params.collectionname)
-    for table in tables:
-        # `DROP TABLE` leaves the table's directory behind, and `IMPORT TABLE` refuses a
-        # destination that already exists, with an error about a directory rather than
-        # about a table.
-        shutil.rmtree(os.path.join(MANTICORE_RESTORE_ROOT, table), ignore_errors=True)
     ensure_collection_storage(params.collectionname)
     log.info("[P_ops] import %s restoring %s from %s",
              params.op_id, params.collectionname, directory)
@@ -448,91 +417,39 @@ def import_clickhouse(params: ImportParams) -> ExportStoreResult:
 @activity.defn
 @with_heartbeat
 def import_manticore(params: ImportParams) -> ExportStoreResult:
-    """Stage each shard's files beside the data directory and `IMPORT TABLE` them.
+    """Import the text tables of the backup into the live daemon, one table at a time.
 
     **Manticore's own restore tool cannot be used**: it restores configuration and data
-    together into an empty instance, and refuses one that is already serving. The
-    per-table path is the one that works against a live daemon. Stage the table's files,
-    then hand the daemon the staging directory, and it needs no restart.
+    together into an empty instance, and refuses one that is already serving. The schema
+    operation `import_tables` (database/manticore_files.py) checks each artifact, stages
+    its files, and runs `IMPORT TABLE`, which needs no restart. In the site layout of k3s
+    the schema proxy of the zone runs it, because only the daemon pod can write the data
+    folder and only the proxy holds the schema user. Otherwise this process runs it with
+    the mounts of the daemon data folder.
 
-    Two constraints shape the rest: the destination directory must not already exist,
-    and the staging directory must not *be* the destination, because
-    `IMPORT TABLE` moves the files rather than copying them. The staging directory lives
-    on the data directory's own filesystem for the same reason. A move across
-    filesystems is not a rename.
-
-    Decompression happens here rather than in the Manticore container, which has no zstd.
+    Decompression happens before the stage, because the Manticore image has no zstd.
     """
-    import tarfile
+    from database import manticore_files
+    from database.manticore import schema_operation
 
-    import zstandard
-
-    from database.manticore import TEXT, endpoint_for_table, get_manticore_client
-
-    manifest = read_manifest(params.directory)
-    block = manifest["stores"]["manticore"]
-    artifacts = [
-        artifact for artifact in (block.get("tables") or [])
-        if endpoint_for_table(str(artifact.get("table", ""))) == TEXT
-    ]
-    skipped = len((block.get("tables") or [])) - len(artifacts)
-    total = sum(int(artifact.get("source_bytes") or 0) for artifact in artifacts)
-
+    folder = manticore_files.backup_folder(os.path.basename(os.path.normpath(params.directory)))
+    if os.path.realpath(params.directory) != folder:
+        raise ValueError(f"{params.directory} is not a folder of the backup root {BACKUP_ROOT}.")
     phase = _Phase(params.op_id, "manticore")
-    phase.report(0, total, force=True)
-    staging_root = os.path.join(MANTICORE_RESTORE_ROOT,
-                                f"{MANTICORE_STAGING_PREFIX}{params.op_id}")
-    daemon_root = os.path.join(MANTICORE_DAEMON_DATA_ROOT,
-                               f"{MANTICORE_STAGING_PREFIX}{params.op_id}")
-    done = 0
-    restored: list[str] = []
-    try:
-        for artifact in artifacts:
-            table = artifact["table"]
-            staging = os.path.join(staging_root, table)
-            os.makedirs(staging, exist_ok=True)
-            os.chmod(staging_root, 0o777)
-            os.chmod(staging, 0o777)
-            path = os.path.join(params.directory, artifact["path"])
-            with open(path, "rb") as raw:
-                reader = _VerifyingReader(raw, artifact.get("sha256", ""),
-                                          artifact["path"])
-                decompressor = zstandard.ZstdDecompressor()
-                with decompressor.stream_reader(reader) as stream:
-                    with tarfile.open(fileobj=stream, mode="r|") as tar:
-                        tar.extractall(staging, filter="data")
-                reader.verify()
-            # The daemon runs as its own user and has to both read these files and move
-            # them out; the modes inside the archive are the ones the daemon wrote for
-            # itself, which say nothing about who is reading them here.
-            for entry in os.scandir(staging):
-                os.chmod(entry.path, 0o666)
-            done += int(artifact.get("source_bytes") or 0)
-            with get_manticore_client() as cnx:
-                cursor = cnx.cursor()
-                cursor.execute(f"DROP TABLE IF EXISTS {table}")
-                shutil.rmtree(os.path.join(MANTICORE_RESTORE_ROOT, table),
-                              ignore_errors=True)
-                cursor.execute(
-                    f"IMPORT TABLE {table} FROM "
-                    f"'{os.path.join(daemon_root, table, table)}'")
-                cnx.commit()
-            restored.append(table)
-            phase.report(done, total)
-    finally:
-        # `IMPORT TABLE` moves the files out, so what is left is empty directories --
-        # but a failure part way leaves a staged copy of a whole table, which is real
-        # space inside the data directory and belongs to nothing.
-        shutil.rmtree(staging_root, ignore_errors=True)
-
+    phase.report(0, 0, force=True)
+    detail = schema_operation("import_tables", progress=phase.report, collection=params.collectionname,
+                              export=os.path.basename(folder))
+    total = sum(int(a.get("source_bytes") or 0)
+                for a in read_manifest(folder)["stores"]["manticore"].get("tables") or []
+                if not str(a.get("table", "")).endswith("_vectors"))
     phase.report(total, total, force=True)
-    if skipped:
+    if detail.get("skipped_vectors"):
         log.info("[P_ops] import %s skipped %d disposable vector artifact(s)",
-                 params.op_id, skipped)
+                 params.op_id, detail["skipped_vectors"])
     return phase.finish(ExportStoreResult(
         store="manticore",
-        bytes_written=done,
-        detail={"tables": restored, "skipped_vectors": skipped},
+        bytes_written=total,
+        detail=detail,
     ))
 
 

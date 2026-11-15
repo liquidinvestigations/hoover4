@@ -3306,7 +3306,9 @@
         "k3s/hoover/setup.py",
         "k3s/config.py",
         "k3s/tools/tenant-isolation-check.py",
-        "main_services/processing/database/manticore_schema.py"
+        "k3s/hoover/stores/manticore_file_service.py",
+        "main_services/processing/database/manticore_schema.py",
+        "main_services/processing/database/manticore_files.py"
       ],
       "docs": [
         "docs/technical-specification/Features.md",

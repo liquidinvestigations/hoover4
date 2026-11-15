@@ -84,6 +84,9 @@ fn ManticorePanel() -> Element {
                         p { style: "{HELP_TEXT} color: var(--x-danger);", {tr!("admin-metrics-manticore-status-could-not-be", error: error.to_string())} }
                     },
                     Some(Ok(loads)) => rsx! {
+                        if loads.iter().any(|daemon| daemon.site_wide) {
+                            p { style: "{HELP_TEXT} margin: 0 0 12px;", {tr!("admin-metrics-site-wide-load")} }
+                        }
                         for daemon in loads {
                             h3 { style: SUBHEADING, "{daemon.daemon}" }
                             ManticoreLoadTables { load: daemon.load }

@@ -210,6 +210,13 @@ and answers with the exact file list. Copying a live table's directory without i
 an unflushed chunk mid-write. Every freeze is released on the way out, including out of a
 failure: a table left frozen accepts no more writes.
 
+The Manticore export and import are the schema operations `export_tables` and
+`import_tables` ([database/manticore_files.py](../../database/manticore_files.py)). In Compose
+this container runs them with its mounts of the daemon data folder. In the site layout of k3s
+the schema proxy of the zone runs them: only the proxy holds the user that can import a table,
+and only the file service in the daemon pod can read and write the data folder. The proxy
+mounts the backup claim of the zone, so the export folder is the same on both sides.
+
 **Order is object store, then ClickHouse, then Manticore.** No two stores can be snapshotted
 together, so the order decides what a backup taken during ingestion leaves behind: an
 orphaned blob rather than a row pointing at a blob that was never copied.
@@ -275,11 +282,12 @@ version than this deployment is refused before anything is touched.
 
 **Manticore is restored one table at a time, against the live daemon.** Its own restore tool
 takes configuration and data together into an empty instance and refuses one that is already
-serving. Each artifact is decompressed here (the Manticore image has no zstd) into a
-`.restore-<op_id>` staging directory on the data volume, and handed to `IMPORT TABLE`. The
-staging directory is on that volume because `IMPORT TABLE` **moves** the files and a move
-across filesystems is a copy rather than a rename. The staging directory is not the
-destination, because the destination must not exist, which is also why the directory `DROP TABLE` leaves behind is removed first.
+serving. Each artifact is checked against its sha256, decompressed (the Manticore image has no
+zstd), and staged: in Compose in a `restore-<stage>` folder of the data volume, in the site
+layout in `import/<schema user>/<stage>/` of the data volume through the file service. The
+files get the name of the target table. `IMPORT TABLE` of Manticore 29.9 copies them into the
+data folder, and the stage is removed after the last table. The target name is the prefix of
+the importing installation and the name after the prefix in the export.
 
 **The configuration rows are written after the vector plan children finish**, because they
 offer the collection to the rest of the system. The import operation waits for each child.

@@ -30,13 +30,24 @@ The operations (``OPERATIONS``):
 | ``drop_collection_tables`` | ``collection`` | Every table of a collection on both daemons. |
 | ``drop_collection_vector_tables`` | ``collection`` | The vectors tables of a collection. |
 | ``migrate`` | ``collections`` (name to shard indexes) | The Manticore migration of Hoover. |
+| ``export_tables`` | ``collection``, ``export`` | The text tables of a collection into the export folder. |
+| ``import_tables`` | ``collection``, ``export`` | The text tables of an export folder into the tables of this prefix. |
+| ``status`` | none | The load counters of ``SHOW STATUS`` of both daemons (``STATUS_COUNTERS``). |
+
+``export`` names one folder of the backup root (:mod:`database.manticore_files`), never a
+path. ``import_tables`` imports each table under this prefix and the name after the
+prefix in the export, so an export of another installation imports into the tables of
+this one. ``status`` changes nothing. Its counters cover the whole daemon, also the
+tables of the other zones of a site.
 
 The proxy (``python -m database.manticore_schema serve``) takes ``POST /operation`` with
 the JSON body ``{"operation": ..., "arguments": {...}}`` and the header
-``Authorization: Bearer <MANTICORE_SCHEMA_TOKEN>``. It answers ``{"result": ...}``, or
-``{"error": ...}`` with status 400 for refused arguments, 401 for a wrong token and 502
-for a Manticore error. ``GET /ready`` answers 200. The proxy refuses to start without a
-token or a table prefix.
+``Authorization: Bearer <token>``. ``MANTICORE_SCHEMA_TOKEN`` allows every operation.
+``MANTICORE_STATUS_TOKEN``, when set, allows ``status`` only: the website holds it. The
+proxy answers ``{"result": ...}``, or ``{"error": ...}`` with status 400 for refused
+arguments, 401 for a wrong token, 403 for an operation that the token does not allow and
+502 for a Manticore error. ``GET /ready`` answers 200. The proxy refuses to start without
+a token or a table prefix.
 """
 
 from __future__ import annotations
@@ -224,6 +235,57 @@ def migrate(arguments):
     return {"collections": len(collections), "shards": created, "dropped": dropped}
 
 
+def _export_folder(arguments) -> str:
+    from database import manticore_files
+
+    try:
+        return manticore_files.backup_folder(arguments["export"])
+    except manticore_files.FilesRefused as error:
+        raise Refused(str(error)) from None
+
+
+def export_tables(arguments, progress=None):
+    from database import manticore_files
+
+    collection = _collection(arguments)
+    folder = _export_folder(arguments)
+    try:
+        return manticore_files.export_tables(collection, folder, manticore_files.backend(), progress)
+    except manticore_files.FilesRefused as error:
+        raise Refused(str(error)) from None
+
+
+def import_tables(arguments, progress=None):
+    from database import manticore_files
+
+    collection = _collection(arguments)
+    folder = _export_folder(arguments)
+    try:
+        return manticore_files.import_tables(collection, folder, manticore_files.backend(), progress)
+    except manticore_files.FilesRefused as error:
+        raise Refused(str(error)) from None
+
+
+#: The counters of ``SHOW STATUS`` that ``status`` returns: the ones the admin load panel shows.
+STATUS_COUNTERS = ("uptime", "load", "load_primary", "load_secondary", "workers_total", "workers_active",
+                   "work_queue_length")
+
+
+def status(arguments):
+    """``{daemon: [{"Counter": name, "Value": value}]}`` of the text and the vectors daemon."""
+    from database import manticore
+
+    result = {}
+    for daemon, endpoint in (("manticore", manticore.TEXT), ("manticore-vectors", manticore.VECTORS)):
+        with manticore.get_manticore_client(endpoint) as cnx:
+            cursor = cnx.cursor()
+            cursor.execute("SHOW STATUS")
+            rows = cursor.fetchall()
+        result[daemon] = [{"Counter": str(name), "Value": str(value)} for name, value in rows
+                          if name in STATUS_COUNTERS]
+    return result
+
+
 #: Each operation, its function and the names of its arguments.
 OPERATIONS = {
     "create_pages_table": (create_pages_table, {"collection", "shard"}),
@@ -234,10 +296,17 @@ OPERATIONS = {
     "drop_collection_tables": (drop_collection_tables, {"collection"}),
     "drop_collection_vector_tables": (drop_collection_vector_tables, {"collection"}),
     "migrate": (migrate, {"collections"}),
+    "export_tables": (export_tables, {"collection", "export"}),
+    "import_tables": (import_tables, {"collection", "export"}),
+    "status": (status, set()),
 }
+#: The operations that report the bytes of their work to an in-process caller.
+WITH_PROGRESS = {"export_tables", "import_tables"}
+#: The operations that the status token allows.
+STATUS_OPERATIONS = {"status"}
 
 
-def run(operation, arguments):
+def run(operation, arguments, progress=None):
     """Check and run one operation in this process. Raise :class:`Refused` for a refused request."""
     if not isinstance(operation, str):
         raise Refused("the operation must be a name")
@@ -245,7 +314,9 @@ def run(operation, arguments):
         raise Refused(f"unknown operation {operation!r}")
     function, names = OPERATIONS[operation]
     if not isinstance(arguments, dict) or set(arguments) != names:
-        raise Refused(f"{operation} takes the arguments {', '.join(sorted(names))}")
+        raise Refused(f"{operation} takes the arguments {', '.join(sorted(names)) or 'none'}")
+    if operation in WITH_PROGRESS:
+        return function(arguments, progress)
     return function(arguments)
 
 
@@ -253,14 +324,23 @@ def run(operation, arguments):
 # The proxy
 # ----------------------------------------------------------------------------------------------------------------------
 
-def handle(token: str, authorization: str, body: bytes) -> tuple[int, dict]:
-    """The status and the JSON answer of one request to ``POST /operation``."""
-    if not hmac.compare_digest(authorization.encode(), f"Bearer {token}".encode()):
+def handle(token: str, authorization: str, body: bytes, status_token: str = "") -> tuple[int, dict]:
+    """The status and the JSON answer of one request to ``POST /operation``.
+
+    ``token`` allows every operation. ``status_token``, when it is not empty, allows the
+    operations of ``STATUS_OPERATIONS`` only.
+    """
+    given = authorization.encode()
+    full = hmac.compare_digest(given, f"Bearer {token}".encode())
+    limited = bool(status_token) and hmac.compare_digest(given, f"Bearer {status_token}".encode())
+    if not full and not limited:
         return 401, {"error": "the proxy credential is not valid"}
     try:
         request = json.loads(body)
         if not isinstance(request, dict) or set(request) != {"operation", "arguments"}:
             raise Refused("the request must hold operation and arguments only")
+        if not full and (not isinstance(request["operation"], str) or request["operation"] not in STATUS_OPERATIONS):
+            return 403, {"error": "this credential allows the status operation only"}
         return 200, {"result": run(request["operation"], request["arguments"])}
     except (Refused, json.JSONDecodeError, UnicodeDecodeError) as error:
         return 400, {"error": str(error)}
@@ -277,6 +357,9 @@ def serve(port: int = 8080) -> None:
     token = os.environ.get("MANTICORE_SCHEMA_TOKEN", "")
     if len(token) < 32:
         raise SystemExit("MANTICORE_SCHEMA_TOKEN must hold at least 32 characters.")
+    status_token = os.environ.get("MANTICORE_STATUS_TOKEN", "")
+    if status_token and (len(status_token) < 32 or status_token == token):
+        raise SystemExit("MANTICORE_STATUS_TOKEN must hold at least 32 characters and differ from the schema token.")
     if not manticore.table_prefix():
         raise SystemExit("HOOVER4_MANTICORE_TABLE_PREFIX must not be empty for the schema proxy.")
 
@@ -298,7 +381,7 @@ def serve(port: int = 8080) -> None:
                 return self.answer(404, {"error": "not found"})
             if length > MAX_BODY:
                 return self.answer(413, {"error": "the request is too large"})
-            status, payload = handle(token, self.headers.get("Authorization", ""), self.rfile.read(length))
+            status, payload = handle(token, self.headers.get("Authorization", ""), self.rfile.read(length), status_token)
             log.info("operation status %s", status)
             self.answer(status, payload)
 

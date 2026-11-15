@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = 最近 24 小时。
 admin-metrics-loading-u = 正在加载…
 admin-metrics-manticore-load-now = Manticore 负载（当前）
 admin-metrics-ram-is-the-memory-of = RAM 指表所占用的内存。线程负载为最近 1、5 和 15 分钟的值。
+admin-metrics-site-wide-load = 此 Manticore 服务器也为同一集群中的其他安装提供服务。负载、线程和队列的值包含所有安装。表的值仅针对此安装。
 admin-metrics-manticore-status-could-not-be = 无法读取 Manticore 状态：{ $error }
 admin-metrics-thread-load-1-5-15 = 线程负载（1、5、15 分钟）
 admin-metrics-primary-thread-load-1-5 = 主线程负载（1、5、15 分钟）

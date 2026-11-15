@@ -159,7 +159,8 @@ def test_the_site_runs_one_manticore_for_text_and_one_for_vectors_with_read_only
             {'key': 'manticore-seed', 'path': 'auth.json'}]
         claim = daemon['spec']['volumeClaimTemplates'][0]['spec']['resources']['requests']['storage']
         assert claim == shared.size(name, 2)
-        assert [p['port'] for p in by(items, 'Service', name)['spec']['ports']] == [9306, 9308, 9307, 9309]
+        ports = [9306, 9308, 9307, 9309] + ([9318] if name == 'manticore' else [])
+        assert [p['port'] for p in by(items, 'Service', name)['spec']['ports']] == ports
     assert shared.size('manticore', 2) == '32Gi'
     ingress = by(items, 'NetworkPolicy', 'manticore-clients')['spec']
     assert ingress['podSelector']['matchExpressions'][0]['values'] == ['manticore', 'manticore-vectors']
@@ -182,3 +183,81 @@ def test_mysql_answers_are_read_with_and_without_borders():
     bordered = '+----+----+\n| username | action |\n+----+----+\n| zone_a_read | read |\n+----+----+\n'
     assert shared.manticore_rows(bordered) == [['username', 'action'], ['zone_a_read', 'read']]
     assert shared.manticore_rows('zone_a_read\tread\tzone_a_*\t1\t\n')[0][:4] == ['zone_a_read', 'read', 'zone_a_*', '1']
+
+
+def test_the_text_daemon_pod_runs_the_file_service_on_its_volume():
+    site = remote('{nodes: [server-a, worker-b]}')
+    items = shared.objects(site, config.store_plan(site), 2, {})
+    spec = by(items, 'StatefulSet', 'manticore')['spec']['template']
+    files = next(c for c in spec['spec']['containers'] if c['name'] == 'files')
+    assert files['image'] == shared.FILES_IMAGE and files['ports'] == [{'name': 'files', 'containerPort': 9318}]
+    assert files['resources']['limits'] == {'cpu': '500m', 'memory': '128Mi'}
+    env = {e['name']: e['value'] for e in files['env']}
+    assert env['BLOCK_MOUNTS'] == '/dev/block-data:/var/lib/manticore' and env['BLOCK_USER'] == '999:999'
+    assert files['volumeDevices'] == [{'name': 'data', 'devicePath': '/dev/block-data'}]
+    # The container waits for the file system of the daemon container, then mounts it with the wrapper.
+    assert files['command'][:3] == ['/tools/busybox', 'sh', '-c'] and '53ef' in files['command'][3]
+    assert files['command'][3].endswith('exec /tools/busybox sh /tools/run.sh "$@"')
+    assert 'manticore_file_service.py' in files['args'][-1]
+    assert spec['metadata']['annotations']['hoover.dev/files-script']
+    assert by(items, 'ConfigMap', 'manticore-files')['data']['manticore_file_service.py'] == shared.FILES_SCRIPT
+    # Only one init container mounts the tools, and the vectors daemon has no file service.
+    assert [i['name'] for i in spec['spec']['initContainers']].count('blockmount-tools') == 1
+    vectors = by(items, 'StatefulSet', 'manticore-vectors')['spec']['template']['spec']
+    assert [c['name'] for c in vectors['containers']] == ['manticore']
+    policy = by(items, 'NetworkPolicy', 'manticore-files-clients')['spec']
+    assert policy['podSelector'] == {'matchLabels': {'hoover.dev/store': 'manticore'}}
+    assert policy['ingress'] == [{'from': [{'namespaceSelector': {'matchLabels': {'hoover.dev/hoover': 'true'}},
+                                            'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'manticore-schema'}}}],
+                                  'ports': [{'port': 9318}]}]
+
+
+def test_the_file_service_gives_a_schema_user_only_its_own_tables_and_stage(tmp_path, monkeypatch):
+    """The service with the Manticore check replaced: zone_a_schema sees the table zone_a_t only."""
+    import base64, http.server, importlib.util, threading, urllib.error, urllib.request
+    spec = importlib.util.spec_from_file_location('manticore_file_service', shared.Path(shared.__file__).parent / 'manticore_file_service.py')
+    service = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(service)
+    data = tmp_path / 'data'
+    for table in ('zone_a_t', 'zone_b_t'):
+        (data / table).mkdir(parents=True)
+        (data / table / f'{table}.meta').write_bytes(b'{"t": "%s"}' % table.encode())
+    (data / 'zone_a_t' / 'zone_a_t.link').symlink_to(data / 'zone_b_t' / 'zone_b_t.meta')
+    monkeypatch.setattr(service, 'DATA', str(data))
+
+    def caller(header):
+        user = base64.b64decode(header[6:]).decode().split(':')[0] if header.startswith('Basic ') else ''
+        if not service.USER.match(user):
+            raise service.Refused(403, 'only the schema user of a zone uses this service')
+        return user, {f'{user[:-len("_schema")]}_t'}
+    monkeypatch.setattr(service, 'caller', caller)
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), service.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f'http://127.0.0.1:{server.server_address[1]}'
+
+    def call(method, path, user='zone_a_schema', body=None):
+        request = urllib.request.Request(base + path, method=method, data=body,
+                                         headers={'Authorization': 'Basic ' + base64.b64encode(f'{user}:p'.encode()).decode()})
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as error:
+            return error.code, error.read()
+    try:
+        assert call('GET', '/tables/zone_a_t/zone_a_t.meta') == (200, b'{"t": "zone_a_t"}')
+        assert call('GET', '/tables/zone_b_t/zone_b_t.meta')[0] == 403
+        assert call('GET', '/tables/zone_a_t/zone_b_t.meta')[0] == 400
+        assert call('GET', '/tables/zone_a_t/zone_a_t.link')[0] in (403, 500)
+        assert call('GET', '/tables/zone_a_t/..%2Fzone_b_t%2Fzone_b_t.meta')[0] in (400, 404)
+        assert call('GET', '/tables/zone_a_t/zone_a_t.meta', user='zone_a_read')[0] == 403
+        assert call('PUT', '/stage/ab12/zone_a_t/zone_a_t.meta', body=b'{}')[0] == 200
+        assert (data / 'import' / 'zone_a_schema' / 'ab12' / 'zone_a_t' / 'zone_a_t.meta').read_bytes() == b'{}'
+        assert call('PUT', '/stage/../zone_a_t/zone_a_t.meta', body=b'{}')[0] in (400, 404)
+        assert call('PUT', '/stage/ab12/zone_a_t/other.meta', body=b'{}')[0] == 400
+        # zone_b_schema cannot remove the stage of zone_a_schema: the stage folder belongs to the caller.
+        assert call('DELETE', '/stage/ab12', user='zone_b_schema')[0] == 200
+        assert (data / 'import' / 'zone_a_schema' / 'ab12').is_dir()
+        assert call('DELETE', '/stage/ab12')[0] == 200
+        assert not (data / 'import' / 'zone_a_schema' / 'ab12').exists()
+    finally:
+        server.shutdown()

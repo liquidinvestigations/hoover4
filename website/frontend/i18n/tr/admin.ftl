@@ -466,6 +466,7 @@ admin-metrics-the-last-24-hours = Son 24 saat.
 admin-metrics-loading-u = Yükleniyor…
 admin-metrics-manticore-load-now = Manticore yükü (şimdi)
 admin-metrics-ram-is-the-memory-of = RAM, tabloların belleğidir. İş parçacığı yükü son 1, 5 ve 15 dakikayı gösterir.
+admin-metrics-site-wide-load = Bu Manticore sunucusu aynı kümedeki diğer kurulumlara da hizmet verir. Yük, iş parçacığı ve kuyruk değerleri bunların tümünü kapsar. Tablo değerleri yalnızca bu kurulumu kapsar.
 admin-metrics-manticore-status-could-not-be = Manticore durumu okunamadı: { $error }
 admin-metrics-thread-load-1-5-15 = İş parçacığı yükü (1, 5, 15 dk)
 admin-metrics-primary-thread-load-1-5 = Birincil iş parçacığı yükü (1, 5, 15 dk)

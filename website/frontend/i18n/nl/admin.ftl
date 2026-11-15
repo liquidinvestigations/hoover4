@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = De laatste 24 uur.
 admin-metrics-loading-u = Laden…
 admin-metrics-manticore-load-now = Manticore-belasting (nu)
 admin-metrics-ram-is-the-memory-of = RAM is het geheugen van de tabellen. De threadbelasting geldt voor de laatste 1, 5 en 15 minuten.
+admin-metrics-site-wide-load = Deze Manticore-server bedient ook andere installaties van hetzelfde cluster. De waarden voor belasting, threads en wachtrij gelden voor al deze installaties. De tabelwaarden gelden alleen voor deze installatie.
 admin-metrics-manticore-status-could-not-be = De Manticore-status kon niet worden gelezen: { $error }
 admin-metrics-thread-load-1-5-15 = Threadbelasting (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Primaire threadbelasting (1, 5, 15 min)

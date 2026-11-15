@@ -4,7 +4,7 @@
 Each case opens one TCP connection from a running pod of hoover-<zone> with kubectl exec. It compares the result with
 the expected one of network() in ../hoover/manifests.py and ../hoover/stores/shared.py. A worker checks its stores,
 Temporal, the GPU forwarder and the internet. It also checks the GPU box, the schema proxy of the other zone, the Garage
-RPC and admin ports of the shared stores, the internal ports of a Temporal pod of the site, the Cassandra and
+RPC and admin ports of the shared stores, the file service of the Manticore text daemon (open only for the schema proxy), the internal ports of a Temporal pod of the site, the Cassandra and
 OpenSearch of Temporal, the openDesk stores of its zone, Prometheus and the Kubernetes API.
 An internet service checks the internet, the GPU box, the stores and a service of its namespace. The forwarder gpu
 checks the GPU proxy and the GPU box.
@@ -57,6 +57,8 @@ def cases(zone, other):
         (worker, 'GPU box', box, 21961, False),
         (worker, 'schema proxy of the other zone', f'manticore-schema.hoover-{other}.svc.cluster.local', 8080, False),
         (('hoover4-mcp-collections', 'hoover4-mcp-collections'), 'own schema proxy', 'manticore-schema', 8080, False),
+        (worker, 'Manticore file service', 'manticore', 9318, False),
+        (('manticore-schema', 'manticore-schema'), 'Manticore file service', 'manticore', 9318, True),
         (worker, 'Garage RPC', garage_pod, 3901, False),
         (worker, 'Garage admin', garage_pod, 3903, False),
         (worker, 'Temporal internal frontend', temporal, 7236, False),

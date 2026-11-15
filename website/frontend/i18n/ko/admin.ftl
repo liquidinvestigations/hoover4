@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = 최근 24시간입니다.
 admin-metrics-loading-u = 불러오는 중…
 admin-metrics-manticore-load-now = Manticore 부하 (현재)
 admin-metrics-ram-is-the-memory-of = RAM은 테이블이 차지하는 메모리입니다. 스레드 부하는 최근 1분, 5분, 15분 기준입니다.
+admin-metrics-site-wide-load = 이 Manticore 서버는 같은 클러스터의 다른 설치에도 사용됩니다. 부하, 스레드, 대기열 값은 그 모두를 포함합니다. 테이블 값은 이 설치에만 해당합니다.
 admin-metrics-manticore-status-could-not-be = Manticore 상태를 읽을 수 없습니다: { $error }
 admin-metrics-thread-load-1-5-15 = 스레드 부하 (1분, 5분, 15분)
 admin-metrics-primary-thread-load-1-5 = 기본 스레드 부하 (1분, 5분, 15분)

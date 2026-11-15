@@ -242,18 +242,19 @@ def _execute_ddl(sql, endpoint: str = TEXT):
         log.info("SQL Executed OK.")
 
 
-def schema_operation(operation: str, **arguments):
+def schema_operation(operation: str, progress=None, **arguments):
     """Run one schema operation of :mod:`database.manticore_schema`.
 
     With ``MANTICORE_SCHEMA_URL`` the schema proxy of the zone runs it, and the request
     carries ``MANTICORE_SCHEMA_TOKEN``. The Manticore user of this process then cannot
     create, alter or drop a table. Without it (Compose) this process runs it with its own
-    Manticore user.
+    Manticore user, and ``progress(done, total)`` receives the bytes of an export or an
+    import. The proxy reports no progress.
     """
     url = os.getenv("MANTICORE_SCHEMA_URL", "")
     if not url:
         from database import manticore_schema
-        return manticore_schema.run(operation, arguments)
+        return manticore_schema.run(operation, arguments, progress=progress)
     import json
     import urllib.error
     import urllib.request
@@ -265,7 +266,8 @@ def schema_operation(operation: str, **arguments):
                  "Authorization": f"Bearer {os.getenv('MANTICORE_SCHEMA_TOKEN', '')}"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=SCHEMA_PROXY_TIMEOUT) as response:
+        timeout = DATA_OPERATION_TIMEOUT if operation in ("export_tables", "import_tables") else SCHEMA_PROXY_TIMEOUT
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read())["result"]
     except urllib.error.HTTPError as error:
         try:
@@ -278,6 +280,9 @@ def schema_operation(operation: str, **arguments):
 #: Seconds that one schema proxy request may take. A migration of a large site creates
 #: many tables in one request.
 SCHEMA_PROXY_TIMEOUT = 600
+#: Seconds that the export or the import of the tables of one collection may take, the
+#: time limit of the store activities of an export (tasks/P_ops/workflows.py).
+DATA_OPERATION_TIMEOUT = 24 * 3600
 
 
 def table_prefix() -> str:

@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = 過去24時間です。
 admin-metrics-loading-u = 読み込み中…
 admin-metrics-manticore-load-now = Manticoreの負荷 (現在)
 admin-metrics-ram-is-the-memory-of = RAMは、テーブルのメモリです。スレッド負荷は、過去1分、5分、15分の値です。
+admin-metrics-site-wide-load = この Manticore サーバーは、同じクラスターの他のインストールにも使われています。負荷、スレッド、キューの値はそのすべてを含みます。テーブルの値はこのインストールだけのものです。
 admin-metrics-manticore-status-could-not-be = Manticoreの状態を読み取れませんでした: { $error }
 admin-metrics-thread-load-1-5-15 = スレッド負荷 (1分、5分、15分)
 admin-metrics-primary-thread-load-1-5 = プライマリのスレッド負荷 (1分、5分、15分)

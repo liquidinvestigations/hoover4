@@ -256,8 +256,11 @@ SHARED_PORTS = {'clickhouse': (8123, 9000), 'garage': (3900,), 'temporal': (7233
 # The schema proxy of the Manticore tables of a zone in the site layout (schema_proxy()), and its port.
 SCHEMA_PROXY = 'manticore-schema'
 SCHEMA_PROXY_PORT = 8080
-# The pods that send schema operations to the proxy: the pods of the services with the Manticore write user.
-SCHEMA_PROXY_CLIENTS = ['hoover-workers', 'hoover-singletons', 'hoover-operations']
+# The pods that send operations to the proxy: the pods of the services with the Manticore write user, and the website,
+# whose credential allows only the operation status.
+SCHEMA_PROXY_CLIENTS = ['hoover-workers', 'hoover-singletons', 'hoover-operations', 'hoover-website']
+# The file service of the shared Manticore text daemon (stores/shared.py file_service()). Only the schema proxy reaches it.
+MANTICORE_FILES_PORT = 9318
 # The services that call Temporal (by the Compose name without hoover4-). In the site layout only they get the key of
 # the zone.
 TEMPORAL_CLIENTS = ('website', 'worker', 'ops', 'mcp-todo')
@@ -676,6 +679,10 @@ def store_secrets(target, service_key, wanted):
         if role == 'read':
             # The read-only HTTP listener refuses every change, also for a user with more rights.
             env += [value('MANTICORE_URL', 'http://manticore:9309'), value('MANTICORE_VECTORS_URL', 'http://manticore-vectors:9309')]
+            if service_key == 'website':
+                # SHOW STATUS needs the right schema. The admin load panel asks the proxy for the counters.
+                env += [value('MANTICORE_STATUS_URL', f'http://{SCHEMA_PROXY}:{SCHEMA_PROXY_PORT}'),
+                        from_secret('MANTICORE_STATUS_TOKEN', 'manticore-status-token')]
         else:
             env += [value('MANTICORE_SCHEMA_URL', f'http://{SCHEMA_PROXY}:{SCHEMA_PROXY_PORT}'),
                     from_secret('MANTICORE_SCHEMA_TOKEN', 'manticore-proxy-token')]
@@ -1033,23 +1040,35 @@ def schema_proxy(target):
 
     It runs the schema operations of Hoover with the schema user of the zone, which only the Secret manticore-schema
     holds. The services with the write user send it an operation name and its arguments with the proxy credential.
-    The proxy builds every table name from the table prefix of the zone and runs no SQL of a caller. It uses the
-    processing image of the installation, so its operations match the code of the zone.
+    The website sends only the operation status, with the status credential. The proxy builds every table name from
+    the table prefix of the zone and runs no SQL of a caller. It uses the processing image of the installation, so its
+    operations match the code of the zone.
+    The collection export and restore (operations export_tables and import_tables) read and write the export folders in
+    the claim ops-backups of the zone, which the proxy mounts at /backups. The claim is a local volume, so the proxy
+    runs on the node of the operations worker. The table files go through the file service of the text daemon
+    (stores/shared.py file_service()), which takes the schema user of the zone.
     """
     image = image_of(target, 'hoover4-worker', {})
     env = [value(k, v) for k, v in sorted({**target.hoover.identity(), 'MANTICORE_HOST': 'manticore',
                                            'MANTICORE_VECTORS_HOST': 'manticore-vectors',
-                                           'MANTICORE_SCHEMA_PORT': str(SCHEMA_PROXY_PORT)}.items())]
+                                           'MANTICORE_SCHEMA_PORT': str(SCHEMA_PROXY_PORT),
+                                           'MANTICORE_FILES_URL': f'http://manticore:{MANTICORE_FILES_PORT}',
+                                           'HOOVER4_BACKUP_ROOT': '/backups'}.items())]
     env += [value('MANTICORE_USER', service_users.manticore_user(target.zone, 'schema')),
             from_secret('MANTICORE_PASSWORD', 'password', 'manticore-schema'),
-            from_secret('MANTICORE_SCHEMA_TOKEN', 'token', 'manticore-schema')]
+            from_secret('MANTICORE_SCHEMA_TOKEN', 'token', 'manticore-schema'),
+            from_secret('MANTICORE_STATUS_TOKEN', 'status-token', 'manticore-schema')]
     c = {'name': SCHEMA_PROXY, 'image': image, 'imagePullPolicy': 'IfNotPresent', 'workingDir': '/app',
          'command': ['/opt/pysetup/.venv/bin/python3', '-m', 'database.manticore_schema', 'serve'], 'env': env,
          'ports': [{'name': 'http', 'containerPort': SCHEMA_PROXY_PORT}],
          'readinessProbe': {'httpGet': {'path': '/ready', 'port': SCHEMA_PROXY_PORT}, 'periodSeconds': 2},
-         # The process holds 88 MiB after its imports.
+         'volumeMounts': [{'name': 'ops-backups', 'mountPath': '/backups'}],
+         # The process holds 88 MiB after its imports. An export compresses one table file at a time.
          'resources': {'requests': {'cpu': '10m', 'memory': '128Mi'}, 'limits': {'cpu': '500m', 'memory': '256Mi'}}}
-    return [workload(target, 'Deployment', SCHEMA_PROXY, pod_spec(target, [c])), service(target, SCHEMA_PROXY, [SCHEMA_PROXY_PORT])]
+    spec = pod_spec(target, [c], [{'name': 'ops-backups', 'persistentVolumeClaim': {'claimName': 'ops-backups'}}])
+    spec['affinity'] = {'podAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': [
+        {'labelSelector': {'matchLabels': {'app.kubernetes.io/name': 'hoover-operations'}}, 'topologyKey': 'kubernetes.io/hostname'}]}}
+    return [workload(target, 'Deployment', SCHEMA_PROXY, spec), service(target, SCHEMA_PROXY, [SCHEMA_PROXY_PORT])]
 
 
 def network(target):
@@ -1120,6 +1139,9 @@ def network(target):
             policy('egress-browser-stores', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'hoover4-mcp-browser'}},
                                              'policyTypes': ['Egress'],
                                              'egress': [shared('clickhouse', (8123,)), shared('garage', (3900,))]}),
+            # The schema proxy reads and writes the table files of the zone through the file service of the text daemon.
+            policy('egress-manticore-files', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': SCHEMA_PROXY}},
+                                              'policyTypes': ['Egress'], 'egress': [shared('manticore', (MANTICORE_FILES_PORT,))]}),
         ]
     items += [
         policy('egress-oidc', {'podSelector': {'matchLabels': OIDC_CLIENT}, 'policyTypes': ['Egress'],

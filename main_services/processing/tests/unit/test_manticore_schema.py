@@ -189,3 +189,194 @@ def test_proxy_refusal_reaches_the_caller(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", urlopen)
     with pytest.raises(RuntimeError, match="status 400: unknown operation"):
         manticore.create_vfs_table("demo")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# status, export_tables and import_tables
+# ----------------------------------------------------------------------------------------------------------------------
+
+STATUS_TOKEN = "s" * 40
+
+
+class FakeCursor:
+    """The SHOW STATUS rows and the FREEZE answers of a daemon whose files are in data_root."""
+
+    def __init__(self, data_root=None):
+        self.data_root = data_root
+        self.rows = []
+        self.statements = []
+
+    def execute(self, sql):
+        self.statements.append(sql)
+        if sql == "SHOW STATUS":
+            self.rows = [("uptime", "7"), ("connections", "99"), ("workers_active", "2"), ("command_search", "5")]
+        elif sql.startswith("FREEZE "):
+            table = sql.split()[1]
+            folder = self.data_root / table
+            self.rows = [(f"{manticore_files.DAEMON_DATA_ROOT}/{table}/{p.name}", "") for p in sorted(folder.iterdir())]
+        else:
+            self.rows = []
+
+    def fetchall(self):
+        return self.rows
+
+
+def fake_client(cursor):
+    import contextlib
+
+    class Connection:
+        def cursor(self):
+            return cursor
+
+    @contextlib.contextmanager
+    def client(endpoint=manticore.TEXT):
+        yield Connection()
+    return client
+
+
+from database import manticore_files  # noqa: E402
+
+
+def test_status_returns_only_the_panel_counters_of_both_daemons(daemon, monkeypatch):
+    monkeypatch.setattr(manticore, "get_manticore_client", fake_client(FakeCursor()))
+    result = run("status", {})
+    assert set(result) == {"manticore", "manticore-vectors"}
+    assert result["manticore"] == [{"Counter": "uptime", "Value": "7"}, {"Counter": "workers_active", "Value": "2"}]
+    with pytest.raises(Refused):
+        run("status", {"table": "zone_b_demo_vfs"})
+    assert daemon["statements"] == []
+
+
+def test_the_status_token_allows_the_status_operation_only(daemon, monkeypatch):
+    monkeypatch.setattr(manticore, "get_manticore_client", fake_client(FakeCursor()))
+    status = json.dumps({"operation": "status", "arguments": {}}).encode()
+    schema = json.dumps({"operation": "create_vfs_table", "arguments": {"collection": "demo"}}).encode()
+    assert handle(TOKEN, f"Bearer {STATUS_TOKEN}", status, STATUS_TOKEN)[0] == 200
+    assert handle(TOKEN, f"Bearer {TOKEN}", status, STATUS_TOKEN)[0] == 200
+    for body in (schema,
+                 json.dumps({"operation": "import_tables", "arguments": {"collection": "demo", "export": "x"}}).encode(),
+                 json.dumps({"operation": ["status"], "arguments": {}}).encode()):
+        assert handle(TOKEN, f"Bearer {STATUS_TOKEN}", body, STATUS_TOKEN)[0] == 403
+    # Without a status token of the proxy, the status credential is not valid.
+    assert handle(TOKEN, f"Bearer {STATUS_TOKEN}", status, "")[0] == 401
+    assert handle(TOKEN, "Bearer ", status, "")[0] == 401
+    assert daemon["statements"] == []
+
+
+@pytest.fixture
+def stores(tmp_path, monkeypatch, daemon):
+    """A backup root, a daemon data folder with the tables of zone_a_demo, and the local backend over both."""
+    backups, data, restore = tmp_path / "backups", tmp_path / "data", tmp_path / "data"
+    backups.mkdir()
+    for table, files in {"zone_a_demo_1_pages": {"meta": b'{"v": 1}', "0.spa": b"A" * 100, "settings": b"s"},
+                         "zone_a_demo_vfs": {"meta": b'{"v": 2}', "ram": b"r"}}.items():
+        (data / table).mkdir(parents=True)
+        for suffix, content in files.items():
+            (data / table / f"{table}.{suffix}").write_bytes(content)
+    monkeypatch.setattr(manticore_files, "BACKUP_ROOT", str(backups))
+    monkeypatch.setattr(manticore_files, "backend", lambda: manticore_files.LocalFiles(str(data), str(restore)))
+    monkeypatch.setattr(manticore_files.time, "sleep", lambda s: None)
+    cursor = FakeCursor(data)
+    monkeypatch.setattr(manticore, "get_manticore_client", fake_client(cursor))
+    monkeypatch.setattr(manticore, "list_collection_tables",
+                        lambda c: ["zone_a_demo_1_pages", "zone_a_demo_1_vectors", "zone_a_demo_vfs"])
+    return {"backups": backups, "data": data, "cursor": cursor}
+
+
+def exported(stores, name="demo-export"):
+    folder = stores["backups"] / name
+    (folder / "manticore").mkdir(parents=True)
+    detail = run("export_tables", {"collection": "demo", "export": name})
+    (folder / "manifest.json").write_text(json.dumps({"collectionname": "demo", "stores": {"manticore": detail}}))
+    return folder, detail
+
+
+def test_export_then_import_into_another_prefix(stores, daemon, monkeypatch):
+    folder, detail = exported(stores)
+    assert [a["table"] for a in detail["tables"]] == ["zone_a_demo_1_pages", "zone_a_demo_vfs"]
+    assert detail["source_bytes"] == len(b'{"v": 1}') + 100 + 1 + len(b'{"v": 2}') + 1
+    assert stores["cursor"].statements == ["FREEZE zone_a_demo_1_pages", "UNFREEZE zone_a_demo_1_pages",
+                                           "FREEZE zone_a_demo_vfs", "UNFREEZE zone_a_demo_vfs"]
+    staged = {}
+    original = manticore._execute_ddl
+
+    def ddl(sql, endpoint=manticore.TEXT):
+        if sql.startswith("IMPORT TABLE"):
+            path = sql.split("'")[1].replace(manticore_files.DAEMON_DATA_ROOT, str(stores["data"]))
+            staged[sql.split()[2]] = sorted(p.name for p in __import__("pathlib").Path(path).parent.iterdir())
+        original(sql, endpoint)
+    monkeypatch.setattr(manticore, "_execute_ddl", ddl)
+    monkeypatch.setenv("HOOVER4_MANTICORE_TABLE_PREFIX", "zone_c_")
+    result = run("import_tables", {"collection": "demo", "export": "demo-export"})
+    assert result == {"tables": ["zone_c_demo_1_pages", "zone_c_demo_vfs"], "skipped_vectors": 0}
+    assert staged["zone_c_demo_1_pages"] == ["zone_c_demo_1_pages.0.spa", "zone_c_demo_1_pages.meta",
+                                             "zone_c_demo_1_pages.settings"]
+    statements = [s for _, s in daemon["statements"]]
+    assert statements[0] == "DROP TABLE IF EXISTS zone_c_demo_1_pages"
+    assert statements[1].startswith("IMPORT TABLE zone_c_demo_1_pages FROM '/var/lib/manticore/restore-")
+    assert statements[1].endswith("/zone_c_demo_1_pages/zone_c_demo_1_pages'")
+    # The stage is removed after the import.
+    assert [p.name for p in stores["data"].iterdir() if p.name.startswith("restore-")] == []
+
+
+@pytest.mark.parametrize("export", ["../backups", "/etc", "a/b", ".hidden", "missing", "", 5])
+def test_export_and_import_refuse_a_folder_outside_the_backup_root(stores, daemon, export):
+    for operation in ("export_tables", "import_tables"):
+        with pytest.raises(Refused):
+            run(operation, {"collection": "demo", "export": export})
+    with pytest.raises(Refused):
+        run("import_tables", {"collection": "demo", "export": "x", "table": "zone_b_demo_vfs"})
+    assert daemon["statements"] == [] and stores["cursor"].statements == []
+
+
+def test_import_refuses_a_manifest_that_leaves_the_export_or_names_other_files(stores, daemon):
+    import io
+    import tarfile
+
+    import zstandard
+
+    folder, detail = exported(stores)
+    manifest = json.loads((folder / "manifest.json").read_text())
+
+    def write(**changes):
+        artifact = {**detail["tables"][1], **changes}
+        (folder / "manifest.json").write_text(json.dumps({**manifest, "stores": {"manticore": {"tables": [artifact]}}}))
+
+    for changes in ({"path": "../../data/zone_a_demo_vfs/zone_a_demo_vfs.meta"}, {"path": "/etc/passwd"},
+                    {"table": "zone_b_other_vfs"}, {"table": "zone_a_demo_1_vectorsx"}):
+        write(**changes)
+        with pytest.raises(Refused):
+            run("import_tables", {"collection": "demo", "export": "demo-export"})
+    (folder / "manifest.json").write_text(json.dumps({**manifest, "collectionname": "other"}))
+    with pytest.raises(Refused):
+        run("import_tables", {"collection": "demo", "export": "demo-export"})
+    # A member outside the table, or a damaged artifact, stops the import before IMPORT TABLE.
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as tar:
+        info = tarfile.TarInfo("../zone_b_demo_vfs.meta")
+        info.size = 2
+        tar.addfile(info, io.BytesIO(b"{}"))
+    (folder / "manticore" / "evil.tar.zst").write_bytes(zstandard.ZstdCompressor().compress(raw.getvalue()))
+    write(path="manticore/evil.tar.zst", sha256="")
+    with pytest.raises(Refused):
+        run("import_tables", {"collection": "demo", "export": "demo-export"})
+    write(sha256="0" * 64)
+    with pytest.raises(RuntimeError, match="does not match the checksum"):
+        run("import_tables", {"collection": "demo", "export": "demo-export"})
+    assert [s for _, s in daemon["statements"] if s.startswith(("IMPORT", "DROP"))] == []
+
+
+def test_the_target_keeps_the_name_after_the_prefix(monkeypatch):
+    monkeypatch.setenv("HOOVER4_MANTICORE_TABLE_PREFIX", "zone_a_")
+    assert manticore_files.target_table("demo", "demo_3_pages") == "zone_a_demo_3_pages"
+    assert manticore_files.target_table("demo", "zone_b_demo_vfs") == "zone_a_demo_vfs"
+    assert manticore_files.target_table("b_demo", "zone_b_demo_entities") == "zone_a_b_demo_entities"
+    for source in ("zone_b_demo_03_pages", "zone_b_demox_vfs", "demo_1_vectors", "zone_b_demo_vfs; drop"):
+        with pytest.raises(manticore_files.FilesRefused):
+            manticore_files.target_table("demo", source)
+
+
+def test_the_service_backend_stages_below_the_user_of_the_process():
+    files = manticore_files.ServiceFiles("http://manticore:9318", "zone_a_schema", "p")
+    assert files.daemon_path("ab12", "zone_a_demo_vfs") == \
+        "/var/lib/manticore/import/zone_a_schema/ab12/zone_a_demo_vfs/zone_a_demo_vfs"

@@ -194,6 +194,9 @@ def runtime_secrets():
             stored[f'manticore-{role}'] = stores[f'manticore-{role}']
             if role == 'write':
                 stored['manticore-proxy-token'] = stores['manticore-proxy-token']
+            if service == 'website':
+                # The admin load panel reads the daemon counters through the operation status of the proxy.
+                stored['manticore-status-token'] = stores['manticore-status-token']
         if 'garage' in used:
             key = tenants[service_users.garage_key(ZONE, service)]
             stored[f's3-access-key-{service}'], stored[f's3-secret-key-{service}'] = key['access_key'], key['secret_key']
@@ -205,8 +208,9 @@ def runtime_secrets():
         drop=('clickhouse-password', 'manticore-password', 's3-access-key', 's3-secret-key', 'temporal-db-password',
               *[f'manticore-{s}' for s in service_users.SERVICES if f'manticore-{s}' not in stored]))
     # Only the schema proxy of the zone mounts this Secret (../manifests.py schema_proxy()).
-    ensure_secret('manticore-schema', {'password': stores['manticore-schema'], 'token': stores['manticore-proxy-token']},
-                  follow=('password', 'token'))
+    ensure_secret('manticore-schema', {'password': stores['manticore-schema'], 'token': stores['manticore-proxy-token'],
+                                       'status-token': stores['manticore-status-token']},
+                  follow=('password', 'token', 'status-token'))
     ensure_secret('oauth2-proxy', {'client-secret': zone_data['hoover_oidc_secret'], 'cookie-secret': secrets.token_hex(16),
                                    'proxy-secret': runtime['proxy-secret']}, follow=('client-secret',))
     print(json.dumps({'step': 'secrets', 'namespace': NS, 'secrets': ['hoover-runtime', 'oauth2-proxy', 'manticore-schema']}))

@@ -3,8 +3,9 @@
 script never prints them.
 
 Keys: clickhouse-zone and clickhouse-<service> for each ClickHouse service of service_users.py, manticore-read,
-manticore-write and manticore-schema for the three Manticore users of the zone, and manticore-proxy-token, the
-credential of the zone services at the schema proxy of the zone (../manifests.py).
+manticore-write and manticore-schema for the three Manticore users of the zone, manticore-proxy-token, the
+credential of the zone services at the schema proxy of the zone (../manifests.py), and manticore-status-token, the
+credential of the website at the proxy, which allows only the operation status.
 The zone user of ClickHouse has the name of the zone prefix, for example zone_a. The operator tool ch.py uses it. No
 Hoover service uses it.
 The admin of the shared ClickHouse, the admin of the shared Manticore and the Garage secrets are in the Secret
@@ -17,7 +18,7 @@ import common, service_users
 
 NAME = 'hoover-stores'
 NS = sys.argv[1] if __name__ == '__main__' else None
-KEYS = ['clickhouse-zone', 'manticore-proxy-token']
+KEYS = ['clickhouse-zone', 'manticore-proxy-token', 'manticore-status-token']
 KEYS += [f'clickhouse-{s}' for s in service_users.using('clickhouse')]
 KEYS += [f'manticore-{role}' for role in service_users.MANTICORE_ROLES]
 ADMIN_ACTIONS = ('read', 'write', 'schema', 'replication', 'admin', 'backup')

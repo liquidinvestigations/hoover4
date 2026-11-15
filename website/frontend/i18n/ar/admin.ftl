@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = آخر 24 ساعة.
 admin-metrics-loading-u = جارٍ التحميل…
 admin-metrics-manticore-load-now = حِمل Manticore (الآن)
 admin-metrics-ram-is-the-memory-of = RAM هي ذاكرة الجداول. حِمل الخيوط لآخر 1 و5 و15 دقيقة.
+admin-metrics-site-wide-load = يخدم خادم Manticore هذا أيضًا عمليات تثبيت أخرى في العنقود نفسه. تشمل قيم الحِمل والخيوط وقائمة الانتظار جميعها. تشمل قيم الجداول هذا التثبيت فقط.
 admin-metrics-manticore-status-could-not-be = تعذّرت قراءة حالة Manticore: { $error }
 admin-metrics-thread-load-1-5-15 = حِمل الخيوط (1 و5 و15 دقيقة)
 admin-metrics-primary-thread-load-1-5 = حِمل الخيوط الأساسية (1 و5 و15 دقيقة)

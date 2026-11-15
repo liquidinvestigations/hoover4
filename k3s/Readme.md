@@ -366,7 +366,7 @@ Each store keeps one copy of each part of its data. No store has replication or 
 - A claim holds the size of one zone store for each zone with `stores = site`, at least one zone: 20 GiB for ClickHouse and for each Garage pod, 16 GiB for Manticore text and 10 GiB for Manticore vectors. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace.
 - Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
-- The zone copy of the backups does not hold the ClickHouse databases, Manticore tables and Garage buckets of a zone with `stores = site`. The collection exports hold the ClickHouse and Garage data. `main.py reindex-collection` builds the Manticore tables of a collection again from ClickHouse.
+- The zone copy of the backups does not hold the ClickHouse databases, Manticore tables and Garage buckets of a zone with `stores = site`. The collection exports hold them. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse.
 
 ### Place the store pods.
 
@@ -417,7 +417,23 @@ A Manticore 29.9 user with the right `schema` can create a distributed table tha
 The schema proxy `manticore-schema` runs in the Hoover namespace of each zone with the processing image of the zone ([main_services/processing/database/manticore_schema.py](../main_services/processing/database/manticore_schema.py)).
 The services with the write user send each table change to it with an operation name, its arguments and the proxy credential `manticore-proxy-token`. No SQL passes the proxy.
 The proxy builds every table name from the table prefix of the zone, refuses a table of another zone, and has no operation that creates a distributed table.
-The migrations of Hoover run at the proxy (operation `migrate`). Only the workers, the singletons and the operations worker reach the proxy port.
+The migrations of Hoover run at the proxy (operation `migrate`). Only the workers, the singletons, the operations worker and the website reach the proxy port.
+The website holds `manticore-status-token`, a second proxy credential that allows only the operation `status`. The admin panel "Manticore load" reads the load counters of both daemons through it, because `SHOW STATUS` needs the right `schema`. The counters cover every zone of the site, and the panel says so. The table values of the panel come from the read user and cover the tables of the zone.
+
+The collection export and restore run at the proxy too (operations `export_tables` and `import_tables`).
+The data folder of the text daemon is a block volume in the Kata guest of its pod, so no other pod can mount it.
+The container `files` of the daemon pod ([hoover/stores/manticore_file_service.py](hoover/stores/manticore_file_service.py)) mounts the same file system and serves the table files on port 9318:
+
+| Access | Rule |
+|---|---|
+| Caller | A Manticore user whose name ends with `_schema`. The service checks the credentials with `SHOW TABLES` on the daemon. Only the schema proxies of the zones reach the port (policies `manticore-files-clients` and `egress-manticore-files`). |
+| Read | A file of the folder of a table that `SHOW TABLES` of the caller lists. The export reads the files that `FREEZE` names. |
+| Write | Files below `import/<caller>/<stage>/` of the data folder. The import stages the files there, `IMPORT TABLE` copies them into the data folder, and the import removes the stage. |
+| Names | Lowercase letters, digits and underscores. A file name starts with the table name and a dot. The service follows no symbolic link. |
+
+A zone proxy therefore reads the files of its own tables only, and writes only below its own stage folder. `IMPORT TABLE` of Manticore 29.9 takes any path that the daemon can read, also with the schema user of another zone, so the proxy builds the stage path from its own user and takes no path argument.
+The proxy mounts the claim `ops-backups` of the zone at `/backups` and runs on the node of the operations worker. It reads and writes only the export folders of its zone. An export or import argument names one folder of `/backups`, and the proxy refuses another path.
+The import gives each table the prefix of the zone and the name after the prefix in the export, so a copy of another zone imports into the tables of this zone.
 
 Manticore 29.9 stops `searchd` on a `GRANT` to an unknown user and on a `DROP USER` of an unknown user. The setup and the zone delete therefore read the users first.
 A zone create adds the users, and a zone delete drops the tables `<prefix>_*` and the three users.

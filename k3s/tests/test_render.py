@@ -378,6 +378,10 @@ def test_a_site_zone_uses_the_manticore_user_of_its_role_and_the_schema_proxy(tm
         # The read user reaches the read-only HTTP listeners, and gets no proxy credential.
         assert (e['MANTICORE_URL'], e['MANTICORE_VECTORS_URL']) == ('http://manticore:9309', 'http://manticore-vectors:9309')
         assert 'MANTICORE_SCHEMA_TOKEN' not in e and 'MANTICORE_SCHEMA_URL' not in e
+    # The website reads the daemon counters through the operation status, with a credential that allows nothing else.
+    e = env(containers(get(items, 'Deployment', 'hoover-website'))[0])
+    assert e['MANTICORE_STATUS_URL'] == proxy_url and e['MANTICORE_STATUS_TOKEN'] == ref('hoover-runtime', 'manticore-status-token')
+    assert 'MANTICORE_STATUS_TOKEN' not in env(containers(get(items, 'Deployment', 'hoover4-mcp-collections'))[0])
     for item in workloads(items):
         if item['metadata']['name'] == 'manticore-schema':
             continue
@@ -389,13 +393,27 @@ def test_a_site_zone_uses_the_manticore_user_of_its_role_and_the_schema_proxy(tm
     assert c['command'][-3:] == ['-m', 'database.manticore_schema', 'serve'] and c['image'].startswith(manifests.REGISTRY + '/hoover-processing:')
     assert e['MANTICORE_USER'] == 'zone_a_schema' and e['HOOVER4_MANTICORE_TABLE_PREFIX'] == 'zone_a_'
     assert e['MANTICORE_PASSWORD'] == ref('manticore-schema', 'password') and e['MANTICORE_SCHEMA_TOKEN'] == ref('manticore-schema', 'token')
+    assert e['MANTICORE_STATUS_TOKEN'] == ref('manticore-schema', 'status-token')
+    # The export and the restore: the backup claim of the zone, on the node of the operations worker, and the file
+    # service of the text daemon.
+    assert e['MANTICORE_FILES_URL'] == 'http://manticore:9318' and e['HOOVER4_BACKUP_ROOT'] == '/backups'
+    assert c['volumeMounts'] == [{'name': 'ops-backups', 'mountPath': '/backups'}]
+    spec = proxy['spec']['template']['spec']
+    assert spec['volumes'] == [{'name': 'ops-backups', 'persistentVolumeClaim': {'claimName': 'ops-backups'}}]
+    assert spec['affinity']['podAffinity']['requiredDuringSchedulingIgnoredDuringExecution'][0]['labelSelector'] == {
+        'matchLabels': {'app.kubernetes.io/name': 'hoover-operations'}}
+    assert spec['priorityClassName'] == 'hoover-node-bound'
+    files = get(items, 'NetworkPolicy', 'egress-manticore-files')['spec']
+    assert files['podSelector'] == {'matchLabels': {'app.kubernetes.io/name': 'manticore-schema'}}
+    assert files['egress'][0]['ports'] == [{'port': 9318}]
+    assert files['egress'][0]['to'][0]['podSelector'] == {'matchLabels': {'hoover.dev/store': 'manticore'}}
     assert 'runtimeClassName' not in proxy['spec']['template']['spec']
     assert get(items, 'Service', 'manticore-schema')['spec']['ports'][0]['port'] == 8080
-    # Only the pods with the write user reach the proxy.
+    # Only the pods with the write user and the website reach the proxy.
     clients = get(items, 'NetworkPolicy', 'schema-proxy-clients')['spec']
     assert clients['podSelector'] == {'matchLabels': {'app.kubernetes.io/name': 'manticore-schema'}}
     assert clients['ingress'][0]['from'][0]['podSelector']['matchExpressions'][0]['values'] == [
-        'hoover-workers', 'hoover-singletons', 'hoover-operations']
+        'hoover-workers', 'hoover-singletons', 'hoover-operations', 'hoover-website']
     namespace_only = get(items, 'NetworkPolicy', 'namespace-only')['spec']['podSelector']['matchExpressions'][0]
     assert 'manticore-schema' in namespace_only['values']
 
@@ -418,8 +436,11 @@ def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
     assert get(items, 'Namespace', 'hoover-zone-a')['metadata']['labels'] == {'hoover.dev/zone': 'true', 'hoover.dev/hoover': 'true'}
     for item in workloads(items):
         spec = item['spec']['template']['spec']
-        # Only the internet services name the public node. The zone layout has no shared claims and no affinity.
-        if item['metadata']['name'] not in manifests.INTERNET:
+        # Only the internet services name the public node. The zone layout shares one claim: the schema proxy follows
+        # the operations worker for the claim ops-backups. No other pod has an affinity.
+        if item['metadata']['name'] == 'manticore-schema':
+            assert list(spec['affinity']) == ['podAffinity'] and 'nodeSelector' not in spec
+        elif item['metadata']['name'] not in manifests.INTERNET:
             assert 'nodeSelector' not in spec and 'affinity' not in spec, item['metadata']['name']
         for c in containers(item):
             requested = manifests.mebibytes(c['resources']['requests']['memory'])

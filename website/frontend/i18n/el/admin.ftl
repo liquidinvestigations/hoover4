@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Οι τελευταίες 24 ώρες.
 admin-metrics-loading-u = Φόρτωση…
 admin-metrics-manticore-load-now = Φορτίο Manticore (τώρα)
 admin-metrics-ram-is-the-memory-of = Η RAM είναι η μνήμη των πινάκων. Το φορτίο νημάτων αφορά το τελευταίο 1, 5 και 15 λεπτό.
+admin-metrics-site-wide-load = Αυτός ο διακομιστής Manticore εξυπηρετεί επίσης άλλες εγκαταστάσεις του ίδιου συμπλέγματος. Οι τιμές φορτίου, νημάτων και ουράς τις καλύπτουν όλες. Οι τιμές των πινάκων αφορούν μόνο αυτή την εγκατάσταση.
 admin-metrics-manticore-status-could-not-be = Η κατάσταση του Manticore δεν μπόρεσε να διαβαστεί: { $error }
 admin-metrics-thread-load-1-5-15 = Φορτίο νημάτων (1, 5, 15 λεπτά)
 admin-metrics-primary-thread-load-1-5 = Φορτίο κύριων νημάτων (1, 5, 15 λεπτά)

@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = 24 השעות האחרונות.
 admin-metrics-loading-u = טוען…
 admin-metrics-manticore-load-now = עומס Manticore (כעת)
 admin-metrics-ram-is-the-memory-of = RAM הוא זיכרון הטבלאות. עומס התהליכונים הוא של 1, 5 ו-15 הדקות האחרונות.
+admin-metrics-site-wide-load = שרת Manticore זה משרת גם התקנות אחרות באותו אשכול. ערכי העומס, התהליכונים והתור כוללים את כולן. ערכי הטבלאות מתייחסים להתקנה זו בלבד.
 admin-metrics-manticore-status-could-not-be = לא ניתן היה לקרוא את מצב Manticore: { $error }
 admin-metrics-thread-load-1-5-15 = עומס תהליכונים (1, 5, 15 דקות)
 admin-metrics-primary-thread-load-1-5 = עומס תהליכונים ראשי (1, 5, 15 דקות)

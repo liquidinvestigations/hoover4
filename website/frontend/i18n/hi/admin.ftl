@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = पिछले 24 घंटे।
 admin-metrics-loading-u = लोड हो रहा है…
 admin-metrics-manticore-load-now = Manticore लोड (अभी)
 admin-metrics-ram-is-the-memory-of = RAM तालिकाओं की मेमोरी है। थ्रेड लोड पिछले 1, 5 और 15 मिनट का है।
+admin-metrics-site-wide-load = यह Manticore सर्वर उसी क्लस्टर के अन्य इंस्टॉलेशन को भी सेवा देता है। लोड, थ्रेड और कतार के मान उन सभी को शामिल करते हैं। तालिकाओं के मान केवल इस इंस्टॉलेशन के हैं।
 admin-metrics-manticore-status-could-not-be = Manticore की स्थिति पढ़ी नहीं जा सकी: { $error }
 admin-metrics-thread-load-1-5-15 = थ्रेड लोड (1, 5, 15 मिनट)
 admin-metrics-primary-thread-load-1-5 = प्राथमिक थ्रेड लोड (1, 5, 15 मिनट)

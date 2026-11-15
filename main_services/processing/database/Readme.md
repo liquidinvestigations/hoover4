@@ -9,6 +9,7 @@ This directory centralizes database utilities and schema definitions used by the
 - [clickhouse.py](clickhouse.py) - ClickHouse client configuration and migration runner.
 - [manticore.py](manticore.py) - Manticore index maintenance and search configuration utilities.
 - [manticore_schema.py](manticore_schema.py) - the named Manticore schema operations and the schema proxy that runs them for one zone.
+- [manticore_files.py](manticore_files.py) - the table files of the Manticore text daemon in a collection export and restore.
 - [s3.py](s3.py) - S3 client helpers and bucket naming for the Garage blob store.
 - [storage_identity.py](storage_identity.py) - the database, table and bucket names and the store users of an installation.
 - [chat_todos.py](chat_todos.py) - chat and agent-run todo lists: validation, storage, and the
@@ -85,8 +86,11 @@ Every create, alter and drop of a Hoover Manticore table is a named operation of
 |---|---|---|
 | `MANTICORE_SCHEMA_URL` | empty | The schema proxy of the zone. Empty runs each operation in this process with `MANTICORE_USER`, as Compose does. |
 | `MANTICORE_SCHEMA_TOKEN` | empty | The proxy credential of the zone, sent as a bearer token. |
+| `MANTICORE_STATUS_TOKEN` | empty | At the proxy: a second credential that allows only `status`. |
+| `MANTICORE_FILES_URL` | empty | The file service of the Manticore text daemon pod. Empty uses the mounts `/stores/manticore` and `/stores/manticore-restore`. |
+| `HOOVER4_BACKUP_ROOT` | `/backups` | The backup root of `export_tables` and `import_tables`. |
 
-The operations are `create_pages_table`, `create_vectors_table`, `create_vfs_table`, `create_entities_table`, `add_pages_column`, `drop_collection_tables`, `drop_collection_vector_tables` and `migrate`.
+The operations are `create_pages_table`, `create_vectors_table`, `create_vfs_table`, `create_entities_table`, `add_pages_column`, `drop_collection_tables`, `drop_collection_vector_tables`, `migrate`, `export_tables`, `import_tables` and `status`.
 Each operation checks its arguments and builds every table name from `HOOVER4_MANTICORE_TABLE_PREFIX`.
 `add_pages_column` takes the type of the column from the pages DDL. `migrate` takes the shard indexes of each collection from the ClickHouse ledgers, which the caller reads.
 No operation creates a distributed table, because Manticore lets a user with the right `schema` read the table of another user through one.
@@ -94,7 +98,12 @@ No operation creates a distributed table, because Manticore lets a user with the
 In the site layout of k3s the services of a zone have a Manticore user that reads and writes rows and cannot create, alter or drop a table.
 The schema proxy of the zone (`python -m database.manticore_schema serve`) holds the only user with the right `schema`.
 The search services use a read user on the read-only HTTP listener. [k3s/Readme.md](../../../k3s/Readme.md#isolate-the-zones-in-manticore) describes the users.
-The Manticore table import of a collection restore needs the right `schema` and the data folder of the daemon, so it runs only where the process holds both, as in Compose.
+The collection export and restore are the operations `export_tables` and `import_tables` ([manticore_files.py](manticore_files.py)).
+They take a collection and one folder of the backup root, never a path, and they read and write the table files of the text daemon.
+With `MANTICORE_FILES_URL` (the schema proxy of k3s) the file service in the daemon pod reads and writes the files with the schema user of the zone.
+Without it the process uses its mounts of the daemon data folder, as in Compose.
+The operation `status` returns the load counters of `SHOW STATUS` of both daemons and changes nothing.
+`MANTICORE_STATUS_TOKEN` of the proxy allows only `status`, so the website can read the counters and cannot change a table.
 
 ## The two databases
 

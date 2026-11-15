@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Последние 24 часа.
 admin-metrics-loading-u = Загрузка…
 admin-metrics-manticore-load-now = Нагрузка Manticore (сейчас)
 admin-metrics-ram-is-the-memory-of = RAM означает память таблиц. Нагрузка потоков дана за последние 1, 5 и 15 минут.
+admin-metrics-site-wide-load = Этот сервер Manticore обслуживает и другие установки того же кластера. Значения нагрузки, потоков и очереди охватывают их все. Значения таблиц относятся только к этой установке.
 admin-metrics-manticore-status-could-not-be = Не удалось прочитать состояние Manticore: { $error }
 admin-metrics-thread-load-1-5-15 = Нагрузка потоков (1, 5, 15 мин)
 admin-metrics-primary-thread-load-1-5 = Нагрузка основных потоков (1, 5, 15 мин)

@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Las últimas 24 horas.
 admin-metrics-loading-u = Cargando…
 admin-metrics-manticore-load-now = Carga de Manticore (ahora)
 admin-metrics-ram-is-the-memory-of = La RAM es la memoria de las tablas. La carga de hilos corresponde al último minuto y a los últimos 5 y 15 minutos.
+admin-metrics-site-wide-load = Este servidor Manticore también da servicio a otras instalaciones del mismo clúster. Los valores de carga, hilos y cola las incluyen a todas. Los valores de las tablas solo corresponden a esta instalación.
 admin-metrics-manticore-status-could-not-be = No se pudo leer el estado de Manticore: { $error }
 admin-metrics-thread-load-1-5-15 = Carga de hilos (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Carga de hilos primarios (1, 5, 15 min)

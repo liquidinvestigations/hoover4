@@ -56,8 +56,9 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
                                    The operations pod of the zone empties the buckets. Without it, a non-empty bucket
                                    and the zone keys stay, and the log names them.
 """
-import base64, json, math, re, secrets, subprocess, sys, time
-import common, creds, hoover, service_users, temporal
+import base64, hashlib, json, math, re, secrets, subprocess, sys, time
+from pathlib import Path
+import common, creds, hoover, podspec, service_users, temporal
 import config  # noqa: E402  (common puts the k3s folder on the path)
 import zonestate  # noqa: E402
 
@@ -73,6 +74,12 @@ MANTICORE_PORTS = (('sql', 9306), ('http', 9308), ('sql-ro', 9307), ('http-ro', 
 # Manticore reads searchd settings from searchd_* variables (hoover.MANTICORE_ENV). The listeners replace the default
 # list of the image, which also opens the replication ports.
 MANTICORE_LISTEN = '9306:mysql|9308:http|9307:mysql_readonly|9309:http_readonly'
+# The file service of the text daemon (manticore_file_service.py): its port, its image and its script.
+FILES_PORT = 9318
+FILES_IMAGE = 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
+FILES_SCRIPT = (Path(__file__).resolve().parent / 'manticore_file_service.py').read_text()
+# The schema proxies of the zones, the only clients of the file service (../manifests.py SCHEMA_PROXY).
+SCHEMA_PROXY_LABEL = {'app.kubernetes.io/name': 'manticore-schema'}
 GARAGE_CONFIG = (common.LAB / 'config' / 'garage' / 'garage.toml').read_text()
 # The Python of the operations image, which has an S3 client (../../platform/backups/backups.py PYTHON).
 OPS_PYTHON = '/opt/pysetup/.venv/bin/python3'
@@ -199,9 +206,43 @@ def manticore(s, plan, zones, name, placed=None):
     seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
     tier_name, nodes = tier(s, plan['nodes'], name)
     nodes = (placed or {}).get(name, nodes)
-    return [hoover.service(name, NS, MANTICORE_PORTS, {'app.kubernetes.io/name': name}),
-            hoover.statefulset(name, name, NS, container, ['sh', '-c', start], '/var/lib/manticore', tier_name,
-                               size(name, zones), user='999:999', affinity=affinity(nodes, name, False), extra_volumes=[seed])]
+    statefulset = hoover.statefulset(name, name, NS, container, ['sh', '-c', start], '/var/lib/manticore', tier_name,
+                                     size(name, zones), user='999:999', affinity=affinity(nodes, name, False), extra_volumes=[seed])
+    if name != 'manticore':
+        return [hoover.service(name, NS, MANTICORE_PORTS, {'app.kubernetes.io/name': name}), statefulset]
+    return [configmap('manticore-files', {'manticore_file_service.py': FILES_SCRIPT}),
+            hoover.service(name, NS, MANTICORE_PORTS + (('files', FILES_PORT),), {'app.kubernetes.io/name': name}),
+            file_service(statefulset)]
+
+
+def file_service(statefulset):
+    """Add the container files to the pod of the text daemon: the file service of manticore_file_service.py.
+
+    The data folder is a block volume inside the Kata guest of the pod, so the export and the restore of a collection
+    read and write the table files through this container. It mounts the same file system as the daemon. On a new
+    volume it waits until the daemon container has made the file system, so only one container runs mke2fs. A loop
+    starts the service again after a failure, so the container keeps running and the daemon pod stays ready.
+    """
+    spec = statefulset['spec']['template']['spec']
+    spec['containers'].append({
+        'name': 'files', 'image': FILES_IMAGE, 'imagePullPolicy': 'IfNotPresent',
+        'env': [{'name': 'FILES_PORT', 'value': str(FILES_PORT)}],
+        'ports': [{'name': 'files', 'containerPort': FILES_PORT}],
+        'resources': {'requests': {'cpu': '10m', 'memory': '32Mi'}, 'limits': {'cpu': '500m', 'memory': '128Mi'}},
+        'volumeMounts': [{'name': 'files-script', 'mountPath': '/service', 'readOnly': True}]})
+    spec['volumes'].append({'name': 'files-script', 'configMap': {'name': 'manticore-files'}})
+    spec = podspec.blockmount(spec, 'files', ['/bin/sh', '-c', 'while :; do python3 -I /service/manticore_file_service.py; sleep 5; done'],
+                              [('data', None, '/var/lib/manticore')], '999:999')
+    files = next(c for c in spec['containers'] if c['name'] == 'files')
+    b = '/tools/busybox'
+    wait = (f'until [ "$({b} dd if=/dev/block-data bs=1 skip=1080 count=2 2>/dev/null | {b} od -An -tx1 | {b} tr -d " \\n")" = 53ef ]; '
+            f'do {b} sleep 2; done; {b} sleep 5; exec {b} sh /tools/run.sh "$@"')
+    files['command'] = [b, 'sh', '-c', wait, 'files']
+    statefulset['spec']['template']['spec'] = spec
+    # A new script replaces the pod once (wait_current), so the running service matches the ConfigMap.
+    statefulset['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/files-script'] = \
+        hashlib.sha256(FILES_SCRIPT.encode()).hexdigest()[:16]
+    return statefulset
 
 
 def network():
@@ -220,6 +261,10 @@ def network():
         policy('manticore-clients', {'podSelector': {'matchExpressions': [
             {'key': 'hoover.dev/store', 'operator': 'In', 'values': list(MANTICORE)}]}, 'policyTypes': ['Ingress'],
             'ingress': [{'from': [hoover_ns], 'ports': [{'port': p} for _, p in MANTICORE_PORTS]}]}),
+        # The file service of the text daemon takes connections from the schema proxies of the zones only.
+        policy('manticore-files-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'manticore'}}, 'policyTypes': ['Ingress'],
+                                           'ingress': [{'from': [{**hoover_ns, 'podSelector': {'matchLabels': SCHEMA_PROXY_LABEL}}],
+                                                        'ports': [{'port': FILES_PORT}]}]}),
         policy('garage-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}, 'policyTypes': ['Ingress'],
                                   'ingress': [{'from': [hoover_ns], 'ports': [{'port': 3900}]},
                                               {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],

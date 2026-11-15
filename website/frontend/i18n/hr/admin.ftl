@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Zadnja 24 sata.
 admin-metrics-loading-u = Učitavanje…
 admin-metrics-manticore-load-now = Opterećenje Manticorea (sada)
 admin-metrics-ram-is-the-memory-of = RAM je memorija tablica. Opterećenje niti odnosi se na zadnjih 1, 5 i 15 minuta.
+admin-metrics-site-wide-load = Ovaj Manticore poslužitelj služi i drugim instalacijama istog klastera. Vrijednosti opterećenja, niti i reda obuhvaćaju sve njih. Vrijednosti tablica odnose se samo na ovu instalaciju.
 admin-metrics-manticore-status-could-not-be = Status Manticorea nije moguće pročitati: { $error }
 admin-metrics-thread-load-1-5-15 = Opterećenje niti (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Opterećenje primarnih niti (1, 5, 15 min)

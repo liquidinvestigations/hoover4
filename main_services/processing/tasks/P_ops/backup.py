@@ -63,12 +63,6 @@ BACKUP_ROOT = os.environ.get("HOOVER4_BACKUP_ROOT", "/backups")
 #: The only throttle that does anything: `backup_threads` is an obsolete setting.
 BACKUP_BANDWIDTH = int(os.environ.get("HOOVER4_BACKUP_BANDWIDTH_BYTES", "0") or 0)
 
-#: Where the Manticore data directory is mounted here, and where the daemon sees it.
-#: `FREEZE` answers with the daemon's own absolute paths, so one is translated into the
-#: other rather than either being guessed from a table name.
-MANTICORE_DATA_ROOT = "/stores/manticore"
-MANTICORE_DAEMON_DATA_ROOT = "/var/lib/manticore"
-
 #: How large one object volume grows before the next one is opened. Large enough that a
 #: corpus does not become a directory of thousands of tars, small enough that a single
 #: unreadable volume does not cost the whole object store. Reads
@@ -441,134 +435,34 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
     ))
 
 
-#: A frozen table file up to this size is read whole before it enters the archive.
-SMALL_FILE_BYTES = 4 * 1024 * 1024
-
-
-def stable_read(path: str, attempts: int = 20, pause: float = 0.25) -> bytes:
-    """Read a small file until two reads in a row are equal, and a `.meta` file is valid JSON.
-
-    `tarfile.add` takes the size from `stat` and then copies that many bytes. A file that the
-    daemon rewrites between the two calls enters the archive cut to its earlier size, which is
-    how an export held a truncated `.meta`. The whole file is read here, and the archive entry
-    gets the size of the bytes that were read.
-    """
-    previous = None
-    for _ in range(attempts):
-        with open(path, "rb") as handle:
-            data = handle.read()
-        valid = True
-        if path.endswith(".meta"):
-            try:
-                json.loads(data)
-            except ValueError:
-                valid = False
-        if valid and data == previous:
-            return data
-        previous = data if valid else None
-        time.sleep(pause)
-    raise RuntimeError(
-        f"{path} kept changing during the freeze, so the export cannot hold a consistent "
-        f"copy of it. Stop the writers of the collection and export again."
-    )
-
-
-def _add_frozen_file(tar, local: str) -> int:
-    """Add one frozen table file to the archive and return its size."""
-    import io
-
-    if os.path.getsize(local) > SMALL_FILE_BYTES:
-        info = tar.gettarinfo(local, arcname=os.path.basename(local))
-        with open(local, "rb") as handle:
-            tar.addfile(info, handle)
-        return info.size
-    data = stable_read(local)
-    info = tar.gettarinfo(local, arcname=os.path.basename(local))
-    info.size = len(data)
-    tar.addfile(info, io.BytesIO(data))
-    return len(data)
-
-
 @activity.defn
 @with_heartbeat
 def export_manticore(params: ExportParams) -> ExportStoreResult:
-    """Freeze each of the collection's tables in turn and copy it out compressed.
+    """Freeze each text table of the collection in turn and copy it out compressed.
 
-    `FREEZE` is what makes this safe against a live daemon: it flushes the table's RAM
-    chunk, holds it read-only, and answers with the exact list of files that make up the
-    table on disk. Copying a live table's directory without it captures an unflushed
-    chunk mid-write. **Every freeze is released**, including on the way out of a failure,
-    because a table left frozen accepts no more writes.
-
-    The daemon reports its own absolute paths, which this container sees under a
-    different, read-only mount; the prefix is translated rather than the path being
-    rebuilt from the table name.
+    The schema operation `export_tables` (database/manticore_files.py) writes the
+    artifacts. In the site layout of k3s the schema proxy of the zone runs it, because only
+    the daemon pod can read the table files. Otherwise this process runs it with the
+    mounts of the daemon data folder, and the phase shows the bytes copied.
 
     One artifact per table, zstd, because a text index compresses about thirteen times.
-    Progress is the frozen files' bytes: known before the copy starts, and real.
     """
-    import zstandard
-
-    from database.manticore import TEXT, endpoint_for_table, get_manticore_client, list_collection_tables
+    from database import manticore_files
+    from database.manticore import schema_operation
 
     phase = _Phase(params.op_id, "manticore")
-    manticore_dir = os.path.join(params.directory, "manticore")
-    tables = [
-        table for table in list_collection_tables(params.collectionname)
-        if endpoint_for_table(table) == TEXT
-    ]
-    artifacts: list[dict] = []
-    done = 0
-    total = 0
-
-    with get_manticore_client() as cnx:
-        cursor = cnx.cursor()
-        # Every table's size is known before any of them is copied, so the phase has one
-        # denominator rather than one per table. A freeze is taken and released per
-        # table, so this pass reads sizes from the mount instead of freezing them all.
-        for table in tables:
-            directory = os.path.join(MANTICORE_DATA_ROOT, table)
-            if not os.path.isdir(directory):
-                continue
-            for entry in os.scandir(directory):
-                if entry.is_file():
-                    total += entry.stat().st_size
-        phase.report(0, total, force=True)
-
-        for table in tables:
-            cursor.execute(f"FREEZE {table}")
-            files = [row[0] for row in cursor.fetchall()]
-            try:
-                path = os.path.join(manticore_dir, f"{table}.tar.zst")
-                raw = 0
-                with open(path, "wb") as handle:
-                    writer = _HashingWriter(handle)
-                    compressor = zstandard.ZstdCompressor(level=3)
-                    with compressor.stream_writer(writer, closefd=False) as stream:
-                        with tarfile.open(fileobj=stream, mode="w|",
-                                          format=tarfile.PAX_FORMAT) as tar:
-                            for source in files:
-                                local = source.replace(MANTICORE_DAEMON_DATA_ROOT,
-                                                       MANTICORE_DATA_ROOT, 1)
-                                size = _add_frozen_file(tar, local)
-                                raw += size
-                                done += size
-                                phase.report(done, total)
-            finally:
-                cursor.execute(f"UNFREEZE {table}")
-            artifacts.append({
-                "table": table,
-                "path": f"manticore/{table}.tar.zst",
-                "source_bytes": raw,
-                "bytes": writer.bytes_written,
-                "sha256": writer.hexdigest,
-            })
-
-    phase.report(done, total, force=True)
+    folder = manticore_files.backup_folder(os.path.basename(os.path.normpath(params.directory)))
+    if os.path.realpath(params.directory) != folder:
+        raise ValueError(f"{params.directory} is not a folder of the backup root {BACKUP_ROOT}.")
+    phase.report(0, 0, force=True)
+    detail = schema_operation("export_tables", progress=phase.report, collection=params.collectionname,
+                              export=os.path.basename(folder))
+    done = int(detail.get("source_bytes") or 0)
+    phase.report(done, done, force=True)
     return phase.finish(ExportStoreResult(
         store="manticore",
-        bytes_written=sum(a["bytes"] for a in artifacts),
-        detail={"tables": artifacts, "source_bytes": total},
+        bytes_written=sum(int(a["bytes"]) for a in detail["tables"]),
+        detail=detail,
     ))
 
 

@@ -467,6 +467,7 @@ admin-metrics-the-last-24-hours = Les dernières 24 heures.
 admin-metrics-loading-u = Chargement…
 admin-metrics-manticore-load-now = Charge de Manticore (actuelle)
 admin-metrics-ram-is-the-memory-of = La RAM est la mémoire des tables. La charge des threads porte sur la dernière minute, les 5 dernières minutes et les 15 dernières minutes.
+admin-metrics-site-wide-load = Ce serveur Manticore sert aussi d'autres installations du même cluster. Les valeurs de charge, de threads et de file d'attente les couvrent toutes. Les valeurs des tables ne concernent que cette installation.
 admin-metrics-manticore-status-could-not-be = L’état de Manticore n’a pas pu être lu : { $error }
 admin-metrics-thread-load-1-5-15 = Charge des threads (1, 5, 15 min)
 admin-metrics-primary-thread-load-1-5 = Charge des threads principaux (1, 5, 15 min)

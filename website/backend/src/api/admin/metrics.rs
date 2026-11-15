@@ -259,6 +259,12 @@ const MANTICORE_STATUS_PARALLELISM: usize = 8;
 /// `/admin/metrics`. It reads `SHOW STATUS`, `SHOW TABLES`, then `SHOW TABLE <t> STATUS`
 /// for each table. A table whose status call fails counts as unread and the rest still
 /// show. A failure of the first two calls fails the whole call.
+///
+/// `SHOW STATUS` needs the Manticore right `schema`. In the site layout of k3s the website
+/// has a read user, and `MANTICORE_STATUS_URL` names the schema proxy of the zone. The
+/// counters then come from its operation `status`, and they cover the daemon that every
+/// zone of the site shares. The table values come from the read user, so they cover the
+/// tables of this installation.
 pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<Vec<ManticoreDaemonLoad>> {
     use futures::StreamExt;
 
@@ -266,9 +272,17 @@ pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<Vec<
     let text = std::env::var("MANTICORE_URL").unwrap_or_else(|_| "http://manticore:9308".into());
     let vectors = std::env::var("MANTICORE_VECTORS_URL")
         .unwrap_or_else(|_| "http://manticore-vectors:9308".into());
+    let proxy = std::env::var("MANTICORE_STATUS_URL").ok().filter(|url| !url.is_empty());
+    let mut shared = match &proxy {
+        Some(url) => Some(proxy_status(url).await?),
+        None => None,
+    };
     let mut loads = Vec::new();
     for (daemon, base) in [("manticore", text), ("manticore-vectors", vectors)] {
-        let status = manticore_raw_sql(&base, "SHOW STATUS").await?;
+        let status = match shared.as_mut() {
+            Some(counters) => counters.remove(daemon).unwrap_or_default(),
+            None => manticore_raw_sql(&base, "SHOW STATUS").await?,
+        };
         let tables = manticore_raw_sql(&base, "SHOW TABLES").await?;
     let names: Vec<String> = tables
         .iter()
@@ -297,9 +311,47 @@ pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<Vec<
         loads.push(ManticoreDaemonLoad {
             daemon: daemon.to_string(),
             load: manticore_load_from_rows(&status, per_table, read_at),
+            site_wide: proxy.is_some(),
         });
     }
     Ok(loads)
+}
+
+/// The time that the operation `status` of the schema proxy may take.
+const PROXY_STATUS_TIMEOUT_SECONDS: u64 = 15;
+
+/// The `SHOW STATUS` rows of each daemon from the operation `status` of the schema proxy,
+/// with the status credential of the website, which allows no other operation.
+async fn proxy_status(
+    url: &str,
+) -> anyhow::Result<std::collections::HashMap<String, Vec<ManticoreRawRow>>> {
+    let token = std::env::var("MANTICORE_STATUS_TOKEN").unwrap_or_default();
+    let response = reqwest::Client::new()
+        .post(format!("{}/operation", url.trim_end_matches('/')))
+        .timeout(std::time::Duration::from_secs(PROXY_STATUS_TIMEOUT_SECONDS))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"operation": "status", "arguments": {}}))
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        anyhow::bail!("The Manticore schema proxy answered {status} to the operation status: {body}");
+    }
+    proxy_status_rows(&body)
+}
+
+/// Parse the answer `{"result": {daemon: [{"Counter": .., "Value": ..}]}}` of the operation `status`.
+fn proxy_status_rows(
+    body: &str,
+) -> anyhow::Result<std::collections::HashMap<String, Vec<ManticoreRawRow>>> {
+    #[derive(serde::Deserialize)]
+    struct Answer {
+        result: std::collections::HashMap<String, Vec<ManticoreRawRow>>,
+    }
+    Ok(serde_json::from_str::<Answer>(body)
+        .map_err(|e| anyhow::anyhow!("The Manticore schema proxy sent an answer that does not parse: {e}"))?
+        .result)
 }
 
 fn is_plain_table_name(name: &str) -> bool {
@@ -423,6 +475,19 @@ mod tests {
         assert_eq!(load.optimizing_tables, vec!["b_pages".to_string()]);
         assert_eq!(load.largest_tables[0].table, "b_pages");
         assert_eq!(load.largest_tables[0].disk_chunks, 2);
+    }
+
+    #[test]
+    fn the_proxy_status_answer_feeds_the_panel() {
+        let mut counters = proxy_status_rows(
+            r#"{"result": {"manticore": [{"Counter": "uptime", "Value": "7"},
+            {"Counter": "workers_active", "Value": "2"}], "manticore-vectors": []}}"#,
+        )
+        .unwrap();
+        let load = manticore_load_from_rows(&counters.remove("manticore").unwrap(), vec![], String::new());
+        assert_eq!((load.uptime_seconds, load.workers_active), (7, 2));
+        assert!(counters.remove("manticore-vectors").unwrap().is_empty());
+        assert!(proxy_status_rows(r#"{"error": "this credential allows the status operation only"}"#).is_err());
     }
 
     #[test]

@@ -126,6 +126,10 @@ pub struct ManticoreLoad {
 pub struct ManticoreDaemonLoad {
     pub daemon: String,
     pub load: ManticoreLoad,
+    /// True when the daemon is shared by the zones of a k3s site. The load, worker and
+    /// queue values then cover every zone, and the table values cover this installation.
+    #[serde(default)]
+    pub site_wide: bool,
 }
 
 /// One table's line of `SHOW TABLE <t> STATUS`.

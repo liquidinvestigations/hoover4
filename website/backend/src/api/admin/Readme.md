@@ -41,7 +41,10 @@ the actual gate.
   stay raw.
 - [metrics.rs](metrics.rs), aggregates for `/admin/metrics` and `/admin/users/:username/llm`, and
   `admin_get_manticore_load`, which reads Manticore's `SHOW STATUS` and the status of each
-  table for the load panel of `/admin/metrics`. The model and tool time of a user comes
+  table for the load panel of `/admin/metrics`. With `MANTICORE_STATUS_URL` (a k3s site) the
+  counters come from the operation `status` of the schema proxy with `MANTICORE_STATUS_TOKEN`,
+  because the read user cannot run `SHOW STATUS`. They cover every zone of the site, and the
+  panel shows that note. The model and tool time of a user comes
   from `agent_step_events`. See below.
 - [llm.rs](llm.rs), the model catalog, the model that `hoover4.ini` sets (`agent_model`, read
   from the environment and shown read only) and the thinking switch
