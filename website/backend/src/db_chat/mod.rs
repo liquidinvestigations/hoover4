@@ -249,6 +249,24 @@ pub async fn sessions_by_ids(session_ids: &[String]) -> anyhow::Result<Vec<ChatS
 /// sessions of investigation boards are left out unless `include_boards` is true. The
 /// caller sets `can_delete` of each item.
 pub async fn list_sessions_of_groups(owner_groups: &[String], limit: u32, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
+    list_sessions(owner_groups, limit, include_boards, None).await
+}
+
+/// The sessions of the groups `owner_groups` among `ids`, most recently active first. The
+/// cards of cited chats read them. The caller sets `can_delete` of each item.
+pub async fn sessions_of_groups_by_ids(owner_groups: &[String], ids: &[String]) -> anyhow::Result<Vec<ChatSessionItem>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    list_sessions(owner_groups, ids.len() as u32, true, Some(ids)).await
+}
+
+async fn list_sessions(
+    owner_groups: &[String],
+    limit: u32,
+    include_boards: bool,
+    ids: Option<&[String]>,
+) -> anyhow::Result<Vec<ChatSessionItem>> {
     if owner_groups.is_empty() {
         return Ok(Vec::new());
     }
@@ -256,11 +274,15 @@ pub async fn list_sessions_of_groups(owner_groups: &[String], limit: u32, includ
     let rows = client
         .query(&format!(
             "{SESSION_SELECT} WHERE owner_group IN ? AND owner_group != '' AND is_deleted = 0 \
-             AND (? OR NOT startsWith(session_id, ?)) ORDER BY updated_at DESC LIMIT ?"
+             AND (? OR NOT startsWith(session_id, ?)) AND (? OR session_id IN ?) \
+             ORDER BY updated_at DESC LIMIT ?"
         ))
         .bind(owner_groups)
         .bind(include_boards)
         .bind(common::board_types::BOARD_SESSION_PREFIX)
+        .bind(ids.is_none())
+        // A list with one empty id when no list applies: `IN []` has no element type.
+        .bind(ids.map(<[String]>::to_vec).unwrap_or_else(|| vec![String::new()]))
         .bind(limit)
         .fetch_all::<ChatSessionRow>()
         .await?;

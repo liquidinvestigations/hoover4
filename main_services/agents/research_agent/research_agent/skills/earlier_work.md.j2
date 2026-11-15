@@ -1,0 +1,34 @@
+---
+name: earlier_work
+group: technique
+description: how to find, read, cite and summarise earlier chats and boards
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Words for it: earlier chat, previous conversation, last time, investigation board, earlier work, what we found, what the team found, onboarding, summary of the boards, history.
+not_for: Not needed when the request asks only about the documents of the collections.
+---
+{# The method for a question about earlier chats and boards. The tools are in the `hoover`
+   pack, which a run has as a whole. Each sentence that names a tool renders only when the
+   run has it. #}
+Earlier chats and boards
+
+Use this method when the person asks about earlier chats, investigation boards or earlier work.
+
+{% if has('list_chats_and_boards') %}
+1. Call {{ tool('list_chats_and_boards') }}. Put the words of the subject in query, or leave query empty to list the newest items.
+{% endif %}
+{% if has('read_chat') %}
+2. Read each chat that matters with {{ tool('read_chat') }}. Read the next page when the result has next_page and you need the later turns.
+{% endif %}
+{% if has('read_board') %}
+3. Read each board that matters with {{ tool('read_board') }}. Give node to read the sources of one finding.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Call {{ tool('cite_chats_and_boards') }} with each chat and board that you use. Write the returned handle, for example [C1] or [B1], beside each statement that relies on it.
+{% endif %}
+5. Write the summary: what each chat or board asked, what it found, and what is still open.
+
+Labels such as (D1) in a read chat or board name the sources of that item. Do not write them as your own handles.
+{% if has('read_documents') and has('cite_documents') %}
+To cite a document of an earlier finding, read the document with {{ tool('read_documents') }} and cite it with {{ tool('cite_documents') }}.
+{% endif %}
+When the list holds no chat or board about the subject, say so.

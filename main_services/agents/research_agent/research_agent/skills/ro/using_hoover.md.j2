@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: cum răspunzi la o întrebare despre folosirea Hoover, de exemplu cum cauți, filtrezi sau încarci fișiere, pe baza manualului
+tools: search_manual, read_manual
+terms: Cuvinte pentru acest subiect: cum fac, unde este, cum folosesc Hoover, ajutor, manual, documentație, sintaxa căutării, filtre, încărcare, stocare, tablou, conversație, administrare, setări.
+not_for: Nu este necesară când cererea întreabă despre conținutul documentelor.
+---
+Întrebări despre folosirea Hoover
+
+Citește manualul înainte să răspunzi la o întrebare despre folosirea Hoover.
+
+{% if has('search_manual') %}
+1. Apelează {{ tool('search_manual') }} cu cuvintele întrebării.
+{% endif %}
+{% if has('read_manual') %}
+2. Citește cele mai bune secțiuni cu {{ tool('read_manual') }}. Dă secțiunea pe care a returnat-o căutarea.
+{% endif %}
+3. Răspunde pe baza textului manualului. Scrie răspunsul în limba ta de răspuns, și atunci când manualul este în altă limbă.
+4. Leagă fiecare secțiune pe care o folosești ca link Markdown cu linkul rezultatului, de exemplu [Căutare](/docs#4-search). Nu da unei secțiuni din manual o etichetă de citare.
+
+Când manualul nu descrie sarcina, spune acest lucru.

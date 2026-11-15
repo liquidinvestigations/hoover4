@@ -36,7 +36,11 @@ MAX_ENTRY_TEXT = 2000
 _CUT_TEXT = re.compile(r"^\s*(\d+)\s+of\s+(\d+)\s+bytes")
 
 #: A citation label as an answer writes it.
-LABEL_PATTERN = re.compile(r"\[\s*([DW]\d+(?:\s*,\s*[DW]\d+)*)\s*\]")
+LABEL_PATTERN = re.compile(r"\[\s*([DWCB]\d+(?:\s*,\s*[DWCB]\d+)*)\s*\]")
+
+#: A chat or board handle, `[C1]` or `[B1]`, and the kind that each letter names.
+ITEM_HANDLE = re.compile(r"\[([CB])[1-9]\d*\]")
+ITEM_KINDS = {"C": "chat", "B": "board"}
 
 
 def _clip(text: Any, limit: int = MAX_ENTRY_TEXT) -> str:
@@ -418,6 +422,8 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
         entries = _table_content(tool_name, parsed, args, error)
     elif tool_name == "cite_pages":
         entries = _page_citations(parsed, error)
+    elif tool_name == "cite_chats_and_boards":
+        entries = _item_citations(parsed, error)
     elif tool_name == "cite_documents":
         entries = _citations(parsed, args, doc_refs, error)
     elif tool_name == "write_note":
@@ -450,6 +456,40 @@ def _page_citations(parsed: Any, error: str) -> list[dict]:
             out.append(_entry(KIND_CITATION, STATUS_ERROR, {"url": row.get("url", "")},
                               f"web-citation-error:{i}", error=_clip(row.get("error"))))
     return out
+
+
+def _item_citations(parsed: Any, error: str) -> list[dict]:
+    """The entries of a `cite_chats_and_boards` result. A citation is valid when its handle
+    letter names its kind: `[Cn]` a chat, `[Bn]` a board."""
+    if error or not isinstance(parsed, dict):
+        return [_entry(KIND_CITATION, STATUS_ERROR, {}, "item-citation:call", error=error)]
+    out = []
+    for i, row in enumerate(parsed.get("citations") or []):
+        if not isinstance(row, dict):
+            continue
+        handle = str(row.get("handle") or "")
+        match = ITEM_HANDLE.fullmatch(handle)
+        ref = {"handle": handle, "item_kind": str(row.get("kind") or ""),
+               "item_id": str(row.get("id") or ""), "title": _clip(row.get("title"), 300)}
+        valid = bool(match and ITEM_KINDS[match.group(1)] == ref["item_kind"] and ref["item_id"])
+        out.append(_entry(KIND_CITATION, STATUS_OK if valid else STATUS_ERROR, ref,
+                          f"item-citation:{i}", error="" if valid else "Invalid chat or board citation."))
+    for i, row in enumerate(parsed.get("errors") or []):
+        if isinstance(row, dict):
+            out.append(_entry(KIND_CITATION, STATUS_ERROR,
+                              {"item_kind": str(row.get("kind") or ""), "item_id": str(row.get("id") or "")},
+                              f"item-citation-error:{i}", error=_clip(row.get("error"))))
+    return out
+
+
+def citation_source(reference: dict) -> str:
+    """The source that a citation reference names: a captured web page version, a chat or
+    a board, or the start of a document hash. Empty for none."""
+    if reference.get("url") and reference.get("version"):
+        return f"web:{reference['url']}:{reference['version']}"
+    if reference.get("item_kind") and reference.get("item_id"):
+        return f"{reference['item_kind']}:{reference['item_id']}"
+    return _hash_start(reference.get("file_hash"))
 
 
 def _unique_keys(entries: list[dict]) -> list[dict]:
@@ -487,7 +527,7 @@ def message_evidence(message) -> list[dict]:
 
 
 def answer_labels(answer: str) -> list[str]:
-    """Return distinct document and web citation labels in their answer order."""
+    """Return distinct document, web, chat and board citation labels in their answer order."""
     seen: list[str] = []
     for match in LABEL_PATTERN.finditer(answer or ""):
         for value in match.group(1).split(","):
@@ -498,16 +538,15 @@ def answer_labels(answer: str) -> list[str]:
 
 
 def label_bindings(entries: Iterable[dict]) -> dict[str, set[str]]:
-    """Bind successful labels to document hash starts or captured page versions."""
+    """Bind successful labels to document hash starts, captured page versions, chats or
+    boards (`citation_source`)."""
     out: dict[str, set[str]] = {}
     for entry in entries:
         if entry.get("kind") != KIND_CITATION or entry.get("status") != STATUS_OK:
             continue
         reference = entry.get("reference") or {}
         handle = str(reference.get("handle") or "")
-        file_hash = _hash_start(reference.get("file_hash"))
-        source = ("web:" + str(reference["url"]) + ":" + str(reference["version"])) if (
-            reference.get("url") and reference.get("version")) else file_hash
+        source = citation_source(reference)
         if handle and source:
             out.setdefault(handle, set()).add(source)
     return out
@@ -554,7 +593,7 @@ def check_labels(answer: str, bindings: dict[str, set[str]],
     for entry in one_citation_per_document(entries):
         reference = entry.get("reference") or {}
         if (entry.get("kind") == KIND_CITATION and entry.get("status") == STATUS_OK
-                and not reference.get("quote_verified")
+                and not reference.get("quote_verified") and not reference.get("item_kind")
                 and reference.get("handle") in labels):
             unverified.append({"handle": reference.get("handle"),
                                "quote_reason": reference.get("quote_reason") or "",
@@ -568,7 +607,7 @@ def session_citation_entries(username: str, session_id: str) -> list[dict]:
     from database import agent_runs
 
     out: list[dict] = []
-    for tool_name in ("cite_documents", "cite_pages"):
+    for tool_name in ("cite_documents", "cite_pages", "cite_chats_and_boards"):
         for messages in agent_runs.read_session_tool_messages(username, session_id, tool_name).values():
             for message in messages:
                 entries = message_evidence(message)

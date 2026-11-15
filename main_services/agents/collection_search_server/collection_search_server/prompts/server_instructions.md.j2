@@ -21,6 +21,15 @@ and {{ tool('folder_search') }} for their named collection reads.
 
 {{ tool('parse_link') }} gives the item and the reading tool call of a Hoover link in a message or a page.
 {% endif %}
+{% if has('list_chats_and_boards') %}
+
+{{ tool('list_chats_and_boards') }}, {{ tool('read_chat') }} and {{ tool('read_board') }} read the earlier chats and boards of the user.
+{{ tool('cite_chats_and_boards') }} returns a citation handle for each chat or board you use in an answer.
+{% endif %}
+{% if has('search_manual') %}
+
+{{ tool('search_manual') }} and {{ tool('read_manual') }} read the Hoover manual. Link each section you use with its link.
+{% endif %}
 
 {% include '_blocks/match_syntax.md.j2' %}
 

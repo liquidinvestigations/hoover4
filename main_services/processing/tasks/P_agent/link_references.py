@@ -13,8 +13,8 @@ The chat turn (`activities.open_run`) and the board prompts (`P_board.prompts`) 
 A board numbers the references of all its texts in one sequence (`P_board.commands`), so one
 block can serve a prompt that holds several texts of the board.
 
-A marker is not a citation handle. The citation checks read `[Dn]` and `[Wn]` only
-(`P_workspace.references`, `reports.check_labels`).
+A marker is not a citation handle. The citation checks read `[Dn]`, `[Wn]`, `[Cn]` and
+`[Bn]` only (`P_workspace.references`, `reports.check_labels`).
 """
 
 from __future__ import annotations

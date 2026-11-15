@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: hoe je eerdere chats en borden vindt, leest, citeert en samenvat
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Woorden ervoor: eerdere chat, vorig gesprek, de vorige keer, onderzoeksbord, eerder werk, wat we vonden, wat het team vond, inwerken, samenvatting van de borden, geschiedenis.
+not_for: Niet nodig wanneer de vraag alleen over de documenten van de collecties gaat.
+---
+Eerdere chats en borden
+
+Gebruik deze methode wanneer de persoon vraagt naar eerdere chats, onderzoeksborden of eerder werk.
+
+{% if has('list_chats_and_boards') %}
+1. Roep {{ tool('list_chats_and_boards') }} aan. Zet de woorden van het onderwerp in query, of laat query leeg om de nieuwste items te tonen.
+{% endif %}
+{% if has('read_chat') %}
+2. Lees elke relevante chat met {{ tool('read_chat') }}. Lees de volgende pagina wanneer het resultaat next_page heeft en je de latere beurten nodig hebt.
+{% endif %}
+{% if has('read_board') %}
+3. Lees elk relevant bord met {{ tool('read_board') }}. Geef node op om de bronnen van één bevinding te lezen.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Roep {{ tool('cite_chats_and_boards') }} aan met elke chat en elk bord dat je gebruikt. Schrijf het teruggegeven bronlabel, bijvoorbeeld [C1] of [B1], naast elke bewering die erop steunt.
+{% endif %}
+5. Schrijf de samenvatting: wat elke chat of elk bord vroeg, wat het vond en wat nog open is.
+
+Labels zoals (D1) in een gelezen chat of bord noemen de bronnen van dat item. Schrijf ze niet als je eigen bronlabels.
+{% if has('read_documents') and has('cite_documents') %}
+Om een document van een eerdere bevinding te citeren, lees je het document met {{ tool('read_documents') }} en citeer je het met {{ tool('cite_documents') }}.
+{% endif %}
+Wanneer de lijst geen chat of bord over het onderwerp bevat, zeg dat.

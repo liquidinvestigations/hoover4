@@ -3,9 +3,9 @@
 //! It applies the parser and the read rule of the chat input (`api::links`), limited to
 //! the collections of the run: the `X-Hoover4-Collections` header and the `collections` of
 //! the body, which the collection server takes from its caller ACL. A run without
-//! collections reads no dataset item, and it still reads chats and boards by the group
-//! rule. A link of any host is read by its path, because the website does not know the
-//! address that the person used.
+//! collections reads no dataset item. It reads only the chats and boards of the group of the
+//! chat of the run (`item_access::run_group`). A link of any host is read by its path,
+//! because the website does not know the address that the person used.
 
 use super::*;
 
@@ -46,7 +46,11 @@ async fn links_parse_body(
             None => run,
         });
     }
-    let reader = crate::api::links::LinkReader::new(user, only.as_ref()).await.map_err(AgentError::from_anyhow)?;
+    let group = crate::auth::item_access::run_group(user, headers).await.map_err(AgentError::from_anyhow)?;
+    let reader = crate::api::links::LinkReader::new(user, only.as_ref())
+        .await
+        .map_err(AgentError::from_anyhow)?
+        .in_run_group(group);
     let mut links = Vec::with_capacity(body.urls.len());
     for url in body.urls {
         let (reference, error) = match reader.resolve(user, &url).await {

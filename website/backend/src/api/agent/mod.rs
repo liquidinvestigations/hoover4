@@ -16,14 +16,18 @@ mod diff;
 mod documents;
 mod folders;
 mod images;
+mod items;
 mod links;
+mod manual;
 mod search;
 mod tables;
 
 use documents::*;
 use folders::*;
 use images::*;
+use items::*;
 use links::*;
+use manual::*;
 use search::*;
 use tables::*;
 
@@ -66,6 +70,7 @@ use crate::db_utils::clickhouse_utils::{collection_db_name, get_collection_clien
 
 /// A typed agent refusal. Constructed directly for a case a handler recognises itself,
 /// or produced by [`AgentError::from_anyhow`] from a backend read's `anyhow::Error`.
+#[derive(Debug)]
 pub struct AgentError {
     status: StatusCode,
     error: &'static str,
@@ -602,4 +607,10 @@ pub fn router() -> axum::Router {
         .route("/api/agent/v1/images/document", axum::routing::post(images_document))
         .route("/api/agent/v1/images/capture", axum::routing::post(images_capture))
         .route("/api/agent/v1/links/parse", axum::routing::post(links_parse))
+        .route("/api/agent/v1/chats/list", axum::routing::post(chats_list))
+        .route("/api/agent/v1/chats/read", axum::routing::post(chats_read))
+        .route("/api/agent/v1/boards/list", axum::routing::post(boards_list))
+        .route("/api/agent/v1/boards/read", axum::routing::post(boards_read))
+        .route("/api/agent/v1/manual/search", axum::routing::post(manual_search))
+        .route("/api/agent/v1/manual/read", axum::routing::post(manual_read))
 }

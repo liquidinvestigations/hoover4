@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: como responder a uma pergunta sobre a utilização do Hoover, por exemplo como pesquisar, filtrar ou carregar ficheiros, a partir do manual
+tools: search_manual, read_manual
+terms: Palavras para isto: como faço, onde está, como usar o Hoover, ajuda, manual, documentação, sintaxe de pesquisa, filtros, carregar, armazenamento, quadro, conversa, administração, definições.
+not_for: Não é necessária quando o pedido pergunta pelo conteúdo de documentos.
+---
+Perguntas sobre a utilização do Hoover
+
+Lê o manual antes de responderes a uma pergunta sobre a utilização do Hoover.
+
+{% if has('search_manual') %}
+1. Chama {{ tool('search_manual') }} com as palavras da pergunta.
+{% endif %}
+{% if has('read_manual') %}
+2. Lê as melhores secções com {{ tool('read_manual') }}. Indica a secção que a pesquisa devolveu.
+{% endif %}
+3. Responde a partir do texto do manual. Escreve a resposta no teu idioma de resposta, também quando o manual estiver noutro idioma.
+4. Liga cada secção que usares como ligação Markdown com a ligação do resultado, por exemplo [Pesquisa](/docs#4-search). Não dês a uma secção do manual um identificador de citação.
+
+Quando o manual não descrever a tarefa, di-lo.

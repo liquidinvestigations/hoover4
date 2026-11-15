@@ -555,7 +555,8 @@ the row as "Submitted by the board", with the kind, the slug or the older fact t
 open questions, and under the answer what the turn gave to the board. Each handle of the
 report resolves against the verified citations of the report version. A handle without a
 verified citation is named in the problems, and a sourced finding without a verified citation
-becomes inferred. A board prompt that shows the full text of a finding cuts it to 40,000
+becomes inferred. A chat or board handle (`[Cn]`, `[Bn]`) names no document, so it gives no
+citation row and does not make a finding sourced. The finding text keeps it. A board prompt that shows the full text of a finding cuts it to 40,000
 characters and marks the cut (`prompts.clip_fact`). The finding goes with its session, answer
 position and report version as an `explore_end` command, and the writer gives it its id. An
 older explore turn that called `submit_board_fact` itself keeps its rows, and the page still
@@ -567,6 +568,8 @@ reads the explore session and gives each stored citation the reason line, the se
 and the search route of the session citation with the same handle, dataset and file. The
 quote, its verification and the document target stay the stored ones. A `[Wn]` citation shows
 the session's web page card of the same handle and address. A click on a web page card opens the explore chat in a new tab with that page selected.
+A `[Cn]` or `[Bn]` handle of the fact text shows the card of the chat or the board that the
+explore cited with `cite_chats_and_boards`, loaded with the read rule of the reader.
 
 The chat history leaves board sessions out unless the person ticks "Show board chats", and
 `send_message` refuses a board session. The explorer links to the session page, where a person

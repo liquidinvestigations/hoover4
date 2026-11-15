@@ -396,6 +396,7 @@ python3 k3s/images/build-hoover.py --revision <commit>
 `show` prints the objects and changes nothing.
 The argument is the zone. The render reads the addresses of the NFS servers of `platform/hoover-data/` from the cluster.
 The image tag is the first 12 characters of the commit. The build exports the commit, so local changes stay out of the images.
+The website image holds the manuals of `docs/user-manual/` for the `/docs` page. The build copies them into the `website/` context of the exported tree.
 
 ## Keep the state in the cluster.
 

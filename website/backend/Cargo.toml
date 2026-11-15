@@ -38,6 +38,7 @@ rustix = { version = "1", features = ["fs"] }
 sha2 = "0.10"
 hex = "0.4"
 httpdate = "1"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 [dev-dependencies]
 # `test-util` gives the paused clock the readiness gate tests drive by hand.

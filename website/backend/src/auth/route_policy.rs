@@ -16,7 +16,7 @@
 /// exists to make visible: `every_custom_route_requires_a_session` in the tests below
 /// enumerates it, and `server_extra::private_routes` reads the same list for its CORS
 /// decision, so the two cannot drift.
-pub const CUSTOM_ROUTE_PREFIXES: [&str; 8] = [
+pub const CUSTOM_ROUTE_PREFIXES: [&str; 9] = [
     "/_chat_artifact/",
     "/_download_document/",
     "/_download_ocr_pdf/",
@@ -24,6 +24,7 @@ pub const CUSTOM_ROUTE_PREFIXES: [&str; 8] = [
     "/_download_pdf/",
     "/_feedback/",
     "/_image_preview/",
+    "/_manual/",
     "/_upload/",
 ];
 
@@ -75,6 +76,7 @@ mod tests {
             "/_download_ocr_pdf/testdata_testfiles/abc123/tesseract/eng",
             "/_chat_artifact/6f1a3c2e/page.html",
             "/_feedback/submit",
+            "/_manual/img/home.png",
             "/_feedback/6f1a3c2e-1b2c-4d5e-8f90-0123456789ab/dom.html",
             "/_upload/limits",
             "/_upload/begin",
@@ -115,6 +117,12 @@ mod tests {
             "/api/agent/v1/images/document",
             "/api/agent/v1/images/capture",
             "/api/agent/v1/links/parse",
+            "/api/agent/v1/chats/list",
+            "/api/agent/v1/chats/read",
+            "/api/agent/v1/boards/list",
+            "/api/agent/v1/boards/read",
+            "/api/agent/v1/manual/search",
+            "/api/agent/v1/manual/read",
         ] {
             assert!(requires_session(path), "{path} must require a session");
             assert!(is_agent_route(path), "{path} must carry the agent prefix");

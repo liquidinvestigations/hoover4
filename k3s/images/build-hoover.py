@@ -5,7 +5,8 @@ The script exports the commit with `git archive` into a temporary folder build-<
 local changes of the checkout stay out of the images, and removes the folder after the builds. The image tag is the
 first 12 characters of the commit.
 ../hoover/manifests.py names the images with the same tag (image_tag()).
-The website image is the release Dockerfile. The processing image starts the installed interpreter.
+The website image is the release Dockerfile. Its context is website/, so prepare() copies docs/user-manual/ to
+website/docs/user-manual/ of the exported tree, for the manual pages. The processing image starts the installed interpreter.
 The builds run at the same time, up to the CPU count of this host. The output of each build follows its end.
 Usage: build-hoover.py [--revision REV] [name ...]    Without names it builds every image of compose.IMAGES.
                                                       The default revision is HEAD.
@@ -54,6 +55,8 @@ def prepare(sha):
     if archive.wait():
         raise SystemExit(f'git archive of {sha} failed')
     stamp.write_text(sha)
+    # The website image serves the manuals of the repository (website/Dockerfile.release).
+    shutil.copytree(tree / 'docs' / 'user-manual', tree / 'website' / 'docs' / 'user-manual')
     return tree
 
 

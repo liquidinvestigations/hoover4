@@ -23,6 +23,7 @@ use crate::pages::admin::{
 };
 use crate::pages::ai_chat::{AiBoardCreatePage, AiBoardPage, AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
+use crate::pages::docs_page::{DocsAdminPage, DocsPage};
 use crate::pages::file_browser_page::{
     FileBrowserCollectionPage, FileBrowserCollectionsPage, FileBrowserPage,
 };
@@ -131,6 +132,14 @@ pub enum Route {
 
     #[route("/red_flag_terms")]
     SignalTermsPage {},
+
+    // The manuals. `section` is the anchor of a section (`common::manual`), empty for the top.
+    // The administration manual is "not found" for a user who is not an administrator.
+    #[route("/docs#:section")]
+    DocsPage { section: String },
+
+    #[route("/docs/admin#:section")]
+    DocsAdminPage { section: String },
 
     // `/settings` has no page yet. Each group of settings has its own subpage under it.
     #[route("/settings/language")]
@@ -354,6 +363,17 @@ mod link_tests {
             Ok(HooverLink::Board { board_id: "b1".into(), node: "intent-année".into() })
         );
         assert_eq!(parse(Route::ai_board("b1".into(), String::new())), Ok(HooverLink::Board { board_id: "b1".into(), node: String::new() }));
+
+        assert_eq!(Route::DocsPage { section: "4-search".into() }.to_string(), "/docs#4-search");
+        assert_eq!(
+            parse(Route::DocsPage { section: "4-search".into() }),
+            Ok(HooverLink::Manual { admin: false, section: "4-search".into() })
+        );
+        assert_eq!(
+            parse(Route::DocsAdminPage { section: "datasets".into() }),
+            Ok(HooverLink::Manual { admin: true, section: "datasets".into() })
+        );
+        assert_eq!(parse(Route::DocsPage { section: String::new() }), Ok(HooverLink::Manual { admin: false, section: String::new() }));
     }
 
     #[test]

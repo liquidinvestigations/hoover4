@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: comment répondre à une question sur l’utilisation de Hoover, par exemple comment rechercher, filtrer ou téléverser, à partir de son manuel
+tools: search_manual, read_manual
+terms: Mots pour le désigner : comment faire, où est, comment utiliser Hoover, aide, manuel, documentation, syntaxe de recherche, filtres, téléverser, stockage, tableau, chat, administration, paramètres.
+not_for: Inutile quand la demande porte sur le contenu des documents.
+---
+Questions sur l’utilisation de Hoover
+
+Lisez le manuel avant de répondre à une question sur l’utilisation de Hoover.
+
+{% if has('search_manual') %}
+1. Appelez {{ tool('search_manual') }} avec les mots de la question.
+{% endif %}
+{% if has('read_manual') %}
+2. Lisez les meilleures sections avec {{ tool('read_manual') }}. Indiquez la section que la recherche a renvoyée.
+{% endif %}
+3. Répondez à partir du texte du manuel. Écrivez la réponse dans votre langue de réponse, même quand le manuel est dans une autre langue.
+4. Liez chaque section que vous utilisez par un lien Markdown avec le lien du résultat, par exemple [Recherche](/docs#4-search). Ne donnez pas de repère de citation à une section du manuel.
+
+Quand le manuel ne décrit pas la tâche, dites-le.

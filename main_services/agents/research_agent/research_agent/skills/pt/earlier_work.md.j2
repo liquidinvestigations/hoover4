@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: como encontrar, ler, citar e resumir conversas e quadros anteriores
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Palavras para isto: conversa anterior, chat anterior, da última vez, quadro de investigação, trabalho anterior, o que encontrámos, o que a equipa encontrou, integração, resumo dos quadros, histórico.
+not_for: Não é necessária quando o pedido pergunta apenas pelos documentos das coleções.
+---
+Conversas e quadros anteriores
+
+Usa este método quando a pessoa pergunta por conversas anteriores, quadros de investigação ou trabalho anterior.
+
+{% if has('list_chats_and_boards') %}
+1. Chama {{ tool('list_chats_and_boards') }}. Põe as palavras do tema em query, ou deixa query vazio para listar os itens mais recentes.
+{% endif %}
+{% if has('read_chat') %}
+2. Lê cada conversa relevante com {{ tool('read_chat') }}. Lê a página seguinte quando o resultado tiver next_page e precisares das voltas posteriores.
+{% endif %}
+{% if has('read_board') %}
+3. Lê cada quadro relevante com {{ tool('read_board') }}. Indica node para ler as fontes de uma conclusão.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Chama {{ tool('cite_chats_and_boards') }} com cada conversa e cada quadro que usares. Escreve o identificador de citação devolvido, por exemplo [C1] ou [B1], ao lado de cada afirmação que dependa dele.
+{% endif %}
+5. Escreve o resumo: o que cada conversa ou quadro perguntou, o que encontrou e o que continua em aberto.
+
+Etiquetas como (D1) numa conversa ou num quadro lido nomeiam as fontes desse item. Não as escrevas como os teus próprios identificadores de citação.
+{% if has('read_documents') and has('cite_documents') %}
+Para citar um documento de uma conclusão anterior, lê o documento com {{ tool('read_documents') }} e cita-o com {{ tool('cite_documents') }}.
+{% endif %}
+Quando a lista não tiver nenhuma conversa nem quadro sobre o tema, di-lo.

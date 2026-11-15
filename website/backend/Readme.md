@@ -21,6 +21,7 @@ With a value, the middleware accepts a forwarded identity only with the same val
 An empty value refuses every forwarded identity.
 `HOOVER4_ADMIN_GROUPS` is a comma list of administrator groups, `admin` and `superuser` by default.
 `HOOVER4_IMPLICIT_GROUPS` is a comma list of the groups that every user has. An entry that ends in `*` is a prefix. [The group rule](src/auth/item_access.rs) of chats and boards uses it.
+`HOOVER4_MANUAL_DIR` names the folder of the manuals of the `/docs` page, `/app/docs/user-manual` by default. [The manual module](src/api/manual.rs) reads it once at start.
 The database, table and bucket names come from [the storage identity](src/db_utils/storage_identity.rs), and the start refuses an invalid name prefix.
 [The route policy](src/auth/route_policy.rs) defines the request requirements.
 Every full-text match argument uses the [shared builder](src/db_utils/manticore_match.rs).

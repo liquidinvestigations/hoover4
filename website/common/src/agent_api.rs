@@ -1352,3 +1352,233 @@ pub struct AgentLink {
 pub struct LinksParseResponse {
     pub links: Vec<AgentLink>,
 }
+
+// ---------------------------------------------------------------------------------
+// chats/list, chats/read, boards/list, boards/read
+// ---------------------------------------------------------------------------------
+
+/// The chats or the boards that the caller reads, newest first.
+///
+/// `query` keeps the items whose title or summary (and the goals of a board) hold every word
+/// of it, in any case. `ids` keeps only the items with these ids. The citation tool of the
+/// collection server uses it to check that the caller reads an item. Board explore chats are
+/// never in the list of chats.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ItemsListRequest {
+    #[serde(default)]
+    pub query: String,
+    #[serde(default)]
+    pub page: u32,
+    #[serde(default)]
+    pub ids: Vec<String>,
+}
+
+/// One chat of `chats/list`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentChatItem {
+    pub session_id: String,
+    pub title: String,
+    pub summary: String,
+    pub group: String,
+    pub creator: String,
+    pub updated_at: String,
+    pub message_count: u32,
+    pub link: String,
+}
+
+/// One page of `chats/list`. `next_page` is absent on the last page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatsListResponse {
+    pub chats: Vec<AgentChatItem>,
+    pub total: u32,
+    pub page: u32,
+    #[serde(default)]
+    pub next_page: Option<u32>,
+}
+
+/// One page of the turns of one chat.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChatsReadRequest {
+    pub session_id: String,
+    #[serde(default)]
+    pub page: u32,
+}
+
+/// One citation of a read chat or board. `label` is the handle in that item without its
+/// brackets, for example `D1`. It names a source of that item only.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct AgentItemCitation {
+    pub label: String,
+    /// `document`, `web`, `chat` or `board`.
+    pub kind: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub collection: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file_hash: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub quote: String,
+    /// The address of a web page, chat or board.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub link: String,
+}
+
+/// One turn of a read chat: the question of the person and the final answer. The citation
+/// handles of the texts are written as labels, `(D1)`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentChatTurn {
+    pub seq: u32,
+    pub created_at: String,
+    pub question: String,
+    pub answer: String,
+    pub citations: Vec<AgentItemCitation>,
+    /// The answer was longer, and the text ends at the limit.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+/// One page of the turns of one chat, oldest first. `next_page` is absent on the last page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatsReadResponse {
+    pub session_id: String,
+    pub title: String,
+    pub summary: String,
+    pub group: String,
+    pub link: String,
+    pub turn_count: u32,
+    pub turns: Vec<AgentChatTurn>,
+    pub page: u32,
+    #[serde(default)]
+    pub next_page: Option<u32>,
+}
+
+/// One board of `boards/list`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentBoardItem {
+    pub board_id: String,
+    pub title: String,
+    pub status: String,
+    pub summary: String,
+    pub goals: Vec<String>,
+    pub group: String,
+    pub updated_at: String,
+    pub link: String,
+}
+
+/// One page of `boards/list`. `next_page` is absent on the last page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardsListResponse {
+    pub boards: Vec<AgentBoardItem>,
+    pub total: u32,
+    pub page: u32,
+    #[serde(default)]
+    pub next_page: Option<u32>,
+}
+
+/// One board, or one node of it when `node` names a node by its slug or id.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BoardsReadRequest {
+    pub board_id: String,
+    #[serde(default)]
+    pub node: String,
+}
+
+/// One node of a read board. `citations` is filled for the node that the request names.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentBoardNode {
+    pub node: String,
+    /// `origin`, `goal`, `sourced`, `inferred`, `not_found` or `correction`.
+    pub kind: String,
+    pub title: String,
+    pub text: String,
+    pub link: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open_questions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub citations: Vec<AgentItemCitation>,
+}
+
+/// An accepted answer of one goal of a read board.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentBoardAnswer {
+    pub goal: String,
+    pub statement: String,
+    /// The nodes that support the answer.
+    pub from: Vec<String>,
+}
+
+/// One board: its background, goals, accepted answers and findings, and the node that the
+/// request names. Rejected findings are left out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardsReadResponse {
+    pub board_id: String,
+    pub title: String,
+    pub status: String,
+    pub summary: String,
+    pub group: String,
+    pub link: String,
+    pub background: String,
+    pub goals: Vec<AgentBoardNode>,
+    pub answers: Vec<AgentBoardAnswer>,
+    pub findings: Vec<AgentBoardNode>,
+    /// The findings after the first `MAX` that the response leaves out.
+    #[serde(default)]
+    pub findings_left_out: u32,
+    #[serde(default)]
+    pub node: Option<AgentBoardNode>,
+}
+
+// ---------------------------------------------------------------------------------
+// manual/search, manual/read
+// ---------------------------------------------------------------------------------
+
+/// Sections of the manuals that hold the words of `query`. The administration manual is
+/// searched for an administrator caller only.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ManualSearchRequest {
+    pub query: String,
+}
+
+/// One section of a manual. `link` opens it on the manual page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentManualSection {
+    /// `user` or `admin`.
+    pub manual: String,
+    pub section: String,
+    pub title: String,
+    pub link: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub snippet: String,
+}
+
+/// The best sections first.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManualSearchResponse {
+    pub sections: Vec<AgentManualSection>,
+}
+
+/// One section of a manual with its subsections, or the contents of the manual when
+/// `section` is empty. `section` can also be a link such as `/docs#4-search`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ManualReadRequest {
+    #[serde(default)]
+    pub section: String,
+    /// `user` (the default) or `admin`.
+    #[serde(default)]
+    pub manual: String,
+}
+
+/// The Markdown of one section and its subsections. Images are replaced by their
+/// descriptions, and the links point at the manual page.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManualReadResponse {
+    pub manual: String,
+    pub section: String,
+    pub title: String,
+    pub link: String,
+    pub text: String,
+    pub subsections: Vec<AgentManualSection>,
+    /// The section was longer, and the text ends at the limit.
+    #[serde(default)]
+    pub truncated: bool,
+}

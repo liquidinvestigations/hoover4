@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: hvordan du finder, læser, citerer og opsummerer tidligere chats og tavler
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Ord for det: tidligere chat, tidligere samtale, sidste gang, undersøgelsestavle, tidligere arbejde, hvad vi fandt, hvad teamet fandt, onboarding, opsummering af tavlerne, historik.
+not_for: Ikke nødvendig, når anmodningen kun spørger om samlingernes dokumenter.
+---
+Tidligere chats og tavler
+
+Brug denne metode, når personen spørger om tidligere chats, undersøgelsestavler eller tidligere arbejde.
+
+{% if has('list_chats_and_boards') %}
+1. Kald {{ tool('list_chats_and_boards') }}. Skriv emnets ord i query, eller lad query være tom for at vise de nyeste elementer.
+{% endif %}
+{% if has('read_chat') %}
+2. Læs hver relevant chat med {{ tool('read_chat') }}. Læs næste side, når resultatet har next_page, og du har brug for de senere ture.
+{% endif %}
+{% if has('read_board') %}
+3. Læs hver relevant tavle med {{ tool('read_board') }}. Angiv node for at læse kilderne til ét fund.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Kald {{ tool('cite_chats_and_boards') }} med hver chat og hver tavle, som du bruger. Skriv det returnerede henvisningsmærke, for eksempel [C1] eller [B1], ved hver påstand, der bygger på det.
+{% endif %}
+5. Skriv opsummeringen: hvad hver chat eller tavle spurgte om, hvad den fandt, og hvad der stadig er åbent.
+
+Mærker som (D1) i en læst chat eller tavle navngiver kilderne til det element. Skriv dem ikke som dine egne henvisningsmærker.
+{% if has('read_documents') and has('cite_documents') %}
+For at citere et dokument fra et tidligere fund skal du læse dokumentet med {{ tool('read_documents') }} og citere det med {{ tool('cite_documents') }}.
+{% endif %}
+Når listen ikke har nogen chat eller tavle om emnet, så sig det.

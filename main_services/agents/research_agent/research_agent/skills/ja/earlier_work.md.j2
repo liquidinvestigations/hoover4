@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: 以前のチャットとボードを探し、読み、引用し、要約する方法
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: 関連する語: 以前のチャット、前回の会話、前回、調査ボード、以前の作業、見つかったこと、チームが見つけたこと、オンボーディング、ボードの要約、履歴。
+not_for: 依頼がコレクションのドキュメントだけについて尋ねているときは不要です。
+---
+以前のチャットとボード
+
+相手が以前のチャット、調査ボード、または以前の作業について尋ねたときに、この方法を使ってください。
+
+{% if has('list_chats_and_boards') %}
+1. {{ tool('list_chats_and_boards') }} を呼び出してください。テーマの語を query に入れるか、最新の項目を一覧するには query を空にしてください。
+{% endif %}
+{% if has('read_chat') %}
+2. 関係する各チャットを {{ tool('read_chat') }} で読んでください。結果に next_page があり、後のターンが必要なときは次のページを読んでください。
+{% endif %}
+{% if has('read_board') %}
+3. 関係する各ボードを {{ tool('read_board') }} で読んでください。1つの調査結果の出典を読むには node を指定してください。
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. 使用する各チャットと各ボードについて {{ tool('cite_chats_and_boards') }} を呼び出してください。返された引用ハンドル（例: [C1] や [B1]）を、それに基づく各記述の横に書いてください。
+{% endif %}
+5. 要約を書いてください: 各チャットまたはボードが何を尋ね、何を見つけ、何がまだ未解決かを書きます。
+
+読んだチャットやボードの中の (D1) のようなラベルは、その項目の出典を指します。自分の引用ハンドルとして書かないでください。
+{% if has('read_documents') and has('cite_documents') %}
+以前の調査結果のドキュメントを引用するには、{{ tool('read_documents') }} でドキュメントを読み、{{ tool('cite_documents') }} で引用してください。
+{% endif %}
+一覧にテーマに関するチャットもボードもないときは、そのことを伝えてください。

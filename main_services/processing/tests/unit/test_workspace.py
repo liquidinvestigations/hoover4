@@ -85,6 +85,19 @@ def test_check_resolves_a_verified_handle_and_reports_the_others():
     assert "cite_documents" in actions["[D4]"] and "\\[D4]" in actions["[D4]"]
 
 
+def test_chat_and_board_handles_resolve_by_their_item():
+    from tasks.P_agent import reports
+
+    cited = reports.normalize("cite_chats_and_boards", {}, json.dumps({"success": True, "citations": [
+        {"handle": "[C1]", "kind": "chat", "id": "s1", "title": "Budget"},
+        {"handle": "[B1]", "kind": "board", "id": "b1", "title": "Who paid"}]}), "ok")
+    findings, resolved = references.check("report.md", "Budget [C1]. Payer [B1]. Other [B2].", cited)
+    assert [(r["handle"], r["item_kind"], r["item_id"]) for r in resolved] == [("[C1]", "chat", "s1"), ("[B1]", "board", "b1")]
+    assert [f["handle"] for f in findings] == ["[B2]"]
+    assert "cite_chats_and_boards" in findings[0]["action"]
+    assert references.handles("See [C1, B2] and `[C3]`.") == [("[C1]", 1), ("[B2]", 1)]
+
+
 def test_a_failed_citation_resolves_nothing():
     failed = {"kind": "citation", "status": "error", "reference": {"handle": "[D1]"}}
     findings, _ = references.check("report.md", "A [D1].", [failed])

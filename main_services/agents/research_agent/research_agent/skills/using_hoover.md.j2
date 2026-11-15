@@ -1,0 +1,25 @@
+---
+name: using_hoover
+group: technique
+description: how to answer a question about the use of Hoover, such as how to search, filter or upload, from its manual
+tools: search_manual, read_manual
+terms: Words for it: how do I, where is, how to use Hoover, help, manual, documentation, search syntax, filters, upload, storage, board, chat, administration, settings.
+not_for: Not needed when the request asks about the content of documents.
+---
+{# The method for a question about the use of Hoover. The tools are in the `hoover` pack.
+   A manual section gets no citation handle: the answer links it (`/docs#slug`). Each sentence
+   that names a tool renders only when the run has it. #}
+Questions about the use of Hoover
+
+Read the manual before you answer a question about the use of Hoover.
+
+{% if has('search_manual') %}
+1. Call {{ tool('search_manual') }} with the words of the question.
+{% endif %}
+{% if has('read_manual') %}
+2. Read the best sections with {{ tool('read_manual') }}. Give the section that the search returned.
+{% endif %}
+3. Answer from the text of the manual. Write the answer in your answer language, also when the manual is in another language.
+4. Link each section that you use as a Markdown link with the link of the result, for example [Search](/docs#4-search). Do not give a manual section a citation handle.
+
+When the manual does not describe the task, say so.

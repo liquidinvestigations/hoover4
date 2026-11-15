@@ -4,6 +4,9 @@ Open **Administration** from the account control.
 Your account must have administrator access.
 Use this manual to manage collections, processing, users, settings, and failures.
 [The user manual](User_Manual.md) explains document investigation tasks.
+Hoover shows this manual at `/docs/admin` to administrators only.
+Select the question mark in the rail, then select **Administration manual**.
+An agent reads this manual only in a chat that an administrator created.
 
 ## Find an administration task.
 

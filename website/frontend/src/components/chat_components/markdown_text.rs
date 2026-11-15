@@ -18,10 +18,12 @@
 //! that opens with `# Summary` still reads as one message rather than a new document.
 
 use dioxus::prelude::*;
+use common::chat_items::ChatItemRef;
 use common::chat_pages::ChatPageRef;
 use common::board_text::{link_nodes, LinkNode, TextPart};
 use common::chat_types::ChatDocRef;
 use super::transcript::DocumentCitationCards;
+use super::item_card::ItemCitationCard;
 use super::web_page::WebPageCard;
 use crate::tr;
 
@@ -50,6 +52,9 @@ pub fn MarkdownishText(
     sources: Vec<ChatDocRef>,
     #[props(default)]
     pages: Vec<ChatPageRef>,
+    /// The chats and boards that the citations of the conversation gave (`[Cn]`, `[Bn]`).
+    #[props(default)]
+    items: Vec<ChatItemRef>,
     #[props(default = true)]
     citation_links: bool,
     #[props(default)]
@@ -80,34 +85,34 @@ pub fn MarkdownishText(
             style: "font-size: {BODY_PX}px; line-height: var(--x-line-body); color: var(--x-ink-strong); \
                     word-break: break-word; overflow-wrap: anywhere;",
             for (i, block) in blocks.into_iter().enumerate() {
-                CitationBlock { key: "{i}", block, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting_handles.clone() }
+                CitationBlock { key: "{i}", block, sources: sources.clone(), pages: pages.clone(), items: items.clone(), conflicting: conflicting_handles.clone() }
             }
         }
     }
 }
 
 #[component]
-fn CitationBlock(block: Block, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>, conflicting: Vec<String>) -> Element {
+fn CitationBlock(block: Block, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>, items: Vec<ChatItemRef>, conflicting: Vec<String>) -> Element {
     if let Block::Paragraph(spans) = &block {
         let parts = citation_parts(spans);
         if parts.len() > 1 {
             return rsx! {
                 for (index, spans) in parts.into_iter().enumerate() {
-                    CitationBlock { key: "part-{index}", block: Block::Paragraph(spans), sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                    CitationBlock { key: "part-{index}", block: Block::Paragraph(spans), sources: sources.clone(), pages: pages.clone(), items: items.clone(), conflicting: conflicting.clone() }
                 }
             };
         }
     }
     let list = match &block {
-        Block::Bullets(items) => Some((false, items.clone())),
-        Block::Numbers(items) => Some((true, items.clone())),
+        Block::Bullets(entries) => Some((false, entries.clone())),
+        Block::Numbers(entries) => Some((true, entries.clone())),
         _ => None,
     };
-    if let Some((ordered, items)) = list {
+    if let Some((ordered, entries)) = list {
         let children = rsx! {
-            for (index, spans) in items.into_iter().enumerate() {
+            for (index, spans) in entries.into_iter().enumerate() {
                 li { key: "{index}", style: "margin-bottom: 4px;",
-                    CitationBlock { block: Block::Paragraph(spans), sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                    CitationBlock { block: Block::Paragraph(spans), sources: sources.clone(), pages: pages.clone(), items: items.clone(), conflicting: conflicting.clone() }
                 }
             }
         };
@@ -116,13 +121,13 @@ fn CitationBlock(block: Block, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>
     }
     let handles = if matches!(&block, Block::Table { .. }) { Vec::new() } else { block_handles(&block) };
     rsx! {
-        BlockView { block, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
-        CitationSources { handles, sources, pages, conflicting }
+        BlockView { block, sources: sources.clone(), pages: pages.clone(), items: items.clone(), conflicting: conflicting.clone() }
+        CitationSources { handles, sources, pages, items, conflicting }
     }
 }
 
 #[component]
-fn CitationSources(handles: Vec<String>, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>, conflicting: Vec<String>) -> Element {
+fn CitationSources(handles: Vec<String>, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>, #[props(default)] items: Vec<ChatItemRef>, conflicting: Vec<String>) -> Element {
     rsx! {
         for handle in handles {
             if let Some(doc) = sources.iter().find(|source| source.handle == handle).cloned() {
@@ -133,6 +138,9 @@ fn CitationSources(handles: Vec<String>, sources: Vec<ChatDocRef>, pages: Vec<Ch
                     "data-citation-aliases": serde_json::to_string(&pages.iter().filter(|source| source.url == page.url).map(|source| source.handle.clone()).collect::<Vec<_>>()).unwrap_or_default(),
                     WebPageCard { page: page.clone(), passages: pages.iter().filter(|source| source.url == page.url).cloned().collect::<Vec<_>>() }
                 }
+            }
+            if let Some(item) = items.iter().find(|item| item.handle == handle).cloned() {
+                ItemCitationCard { item }
             }
         }
     }
@@ -188,6 +196,7 @@ fn BlockView(
     block: Block,
     #[props(default)] sources: Vec<ChatDocRef>,
     #[props(default)] pages: Vec<ChatPageRef>,
+    #[props(default)] items: Vec<ChatItemRef>,
     #[props(default)] conflicting: Vec<String>,
 ) -> Element {
     match block {
@@ -273,7 +282,7 @@ fn BlockView(
                         if !header_handles.is_empty() {
                             tr { "data-citation-table-row": "header",
                                 td { colspan: "{columns}",
-                                    CitationSources { handles: header_handles, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                                    CitationSources { handles: header_handles, sources: sources.clone(), pages: pages.clone(), items: items.clone(), conflicting: conflicting.clone() }
                                 }
                             }
                         }
@@ -292,7 +301,7 @@ fn BlockView(
                             if !handles.is_empty() {
                                 tr { key: "sources-{r}", "data-citation-table-row": "{r}",
                                     td { colspan: "{columns}",
-                                        CitationSources { handles, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                                        CitationSources { handles, sources: sources.clone(), pages: pages.clone(), items: items.clone(), conflicting: conflicting.clone() }
                                     }
                                 }
                             }
@@ -867,12 +876,13 @@ fn parse_inline_depth(text: &str, depth: usize) -> Vec<Span> {
     out
 }
 
-/// Read document and web citation handles. Other bracketed words remain ordinary text.
+/// Read document, web, chat and board citation handles (`[D1]`, `[W1]`, `[C1]`, `[B1]`). Other
+/// bracketed words remain ordinary text.
 fn as_handles(chars: &[char]) -> Option<Vec<String>> {
     let inner: String = chars.iter().collect();
     inner.strip_prefix('[')?.strip_suffix(']')?.split(',').map(|value| {
         let value = value.trim();
-        let digits = value.strip_prefix('D').or_else(|| value.strip_prefix('W'))?;
+        let digits = value.strip_prefix(['D', 'W', 'C', 'B'])?;
         if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) { return None; }
         Some(format!("[{value}]"))
     }).collect()
@@ -927,14 +937,22 @@ fn find_seq(chars: &[char], from: usize, seq: &[char]) -> Option<usize> {
         .find(|&i| chars[i..i + seq.len()] == *seq)
 }
 
-/// Only http(s) and mailto links become anchors.
+/// Only http(s) and mailto links, and links to the manual pages of this site (`/docs`,
+/// `/docs#slug`, `/docs/admin#slug`), become anchors.
 ///
 /// The blocked case that matters is `javascript:`; everything unrecognised is left as
 /// literal text, which is the safe direction to fail in for text a model produced from
 /// scraped pages.
 fn is_safe_href(href: &str) -> bool {
     let lower = href.trim().to_ascii_lowercase();
-    lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:")
+    lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:") || is_manual_href(&lower)
+}
+
+/// A link to a manual page of this site.
+fn is_manual_href(href: &str) -> bool {
+    [common::manual::ADMIN_MANUAL_PATH, common::manual::USER_MANUAL_PATH].iter().any(|path| {
+        href.strip_prefix(path).is_some_and(|rest| rest.is_empty() || rest.starts_with('#'))
+    })
 }
 
 #[cfg(test)]
@@ -950,6 +968,28 @@ mod tests {
         let blocks = unique_card_blocks(parse_blocks("First **[D1]**. Again [D1].\n\n| Source |\n| --- |\n| [D1] |\n| [D2] |"), Some(&["[D1]".into()]));
         assert_eq!(blocks.iter().flat_map(block_handles).collect::<Vec<_>>(), vec!["[D1]"]);
         assert_eq!(referenced_handles("**[D1]** then *[D2]*"), vec!["[D1]", "[D2]"]);
+    }
+
+    #[test]
+    fn chat_and_board_handles_are_citations() {
+        assert_eq!(referenced_handles("See [C1] and [B2, D1]. Not [C] or [Cx] or [E1]."), vec!["[C1]", "[B2]", "[D1]"]);
+        let marked = mark_handles(parse_blocks("Earlier work [C1] [B9]."), &["[C1]".into()], &[]);
+        assert_eq!(marked, vec![Block::Paragraph(vec![
+            Span::Text("Earlier work ".into()),
+            Span::Handle("[C1]".into()),
+            Span::Text(" ".into()),
+            Span::UncitedHandle("[B9]".into()),
+            Span::Text(".".into()),
+        ])]);
+    }
+
+    #[test]
+    fn manual_links_are_anchors_and_other_site_paths_stay_text() {
+        assert_eq!(parse_inline("[Search](/docs#4-search)"), vec![Span::Link { text: "Search".into(), href: "/docs#4-search".into() }]);
+        assert_eq!(parse_inline("[Data](/docs/admin#datasets)"), vec![Span::Link { text: "Data".into(), href: "/docs/admin#datasets".into() }]);
+        assert!(!matches!(parse_inline("[x](/docsx)")[0], Span::Link { .. }));
+        assert!(!matches!(parse_inline("[x](/admin)")[0], Span::Link { .. }));
+        assert!(!matches!(parse_inline("[x](javascript:alert(1))")[0], Span::Link { .. }));
     }
 
     #[test]

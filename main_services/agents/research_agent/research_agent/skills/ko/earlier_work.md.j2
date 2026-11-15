@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: 이전 채팅과 보드를 찾고, 읽고, 인용하고, 요약하는 방법
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: 관련 단어: 이전 채팅, 이전 대화, 지난번, 조사 보드, 이전 작업, 우리가 찾은 것, 팀이 찾은 것, 온보딩, 보드 요약, 기록.
+not_for: 요청이 컬렉션의 문서만 물을 때는 필요하지 않습니다.
+---
+이전 채팅과 보드
+
+사용자가 이전 채팅, 조사 보드 또는 이전 작업에 대해 물을 때 이 방법을 사용하십시오.
+
+{% if has('list_chats_and_boards') %}
+1. {{ tool('list_chats_and_boards') }}을(를) 호출하십시오. 주제의 단어를 query에 넣거나, 최신 항목을 나열하려면 query를 비워 두십시오.
+{% endif %}
+{% if has('read_chat') %}
+2. 관련된 각 채팅을 {{ tool('read_chat') }}(으)로 읽으십시오. 결과에 next_page가 있고 이후 턴이 필요하면 다음 페이지를 읽으십시오.
+{% endif %}
+{% if has('read_board') %}
+3. 관련된 각 보드를 {{ tool('read_board') }}(으)로 읽으십시오. 한 조사 결과의 출처를 읽으려면 node를 지정하십시오.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. 사용하는 각 채팅과 각 보드로 {{ tool('cite_chats_and_boards') }}을(를) 호출하십시오. 반환된 인용 핸들(예: [C1] 또는 [B1])을 그것에 근거한 각 진술 옆에 쓰십시오.
+{% endif %}
+5. 요약을 쓰십시오: 각 채팅이나 보드가 무엇을 물었고, 무엇을 찾았으며, 무엇이 아직 열려 있는지 씁니다.
+
+읽은 채팅이나 보드의 (D1) 같은 레이블은 그 항목의 출처를 가리킵니다. 그것을 자신의 인용 핸들로 쓰지 마십시오.
+{% if has('read_documents') and has('cite_documents') %}
+이전 조사 결과의 문서를 인용하려면 {{ tool('read_documents') }}(으)로 문서를 읽고 {{ tool('cite_documents') }}(으)로 인용하십시오.
+{% endif %}
+목록에 주제에 관한 채팅이나 보드가 없으면 그렇다고 말하십시오.

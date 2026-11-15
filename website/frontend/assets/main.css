@@ -1016,3 +1016,74 @@ a.x-ref-chip-link {
 a.x-ref-chip-link:hover {
     background-color: var(--x-surface-muted);
 }
+
+/* The manual pages (`/docs`, `/docs/admin`). The list of sections stays in view beside the
+   text. The text is the HTML of the manual Markdown, so these rules style plain elements. */
+.x-manual-layout {
+    display: flex;
+    gap: var(--x-space-5);
+    align-items: flex-start;
+    padding: var(--x-space-5);
+    box-sizing: border-box;
+}
+.x-manual-state {
+    padding: var(--x-space-5);
+    color: var(--x-ink-muted);
+}
+.x-manual-contents {
+    position: sticky;
+    top: 0;
+    flex: 0 0 240px;
+    max-height: calc(100vh - 2 * var(--x-space-5));
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--x-text-detail);
+    line-height: var(--x-line-detail);
+}
+.x-manual-link,
+.x-manual-other {
+    color: var(--x-ink);
+    text-decoration: none;
+    padding: 2px var(--x-space-2);
+    border-radius: 4px;
+}
+.x-manual-link-sub {
+    padding-left: calc(var(--x-space-2) + var(--x-space-4));
+    color: var(--x-ink-muted);
+}
+.x-manual-link:hover,
+.x-manual-link[aria-current="location"] {
+    background: var(--x-selected);
+    color: var(--x-ink-strong);
+}
+.x-manual-other {
+    color: var(--x-link);
+    margin-bottom: var(--x-space-3);
+    font-size: var(--x-text-body);
+}
+.x-manual {
+    flex: 1;
+    min-width: 0;
+    max-width: 960px;
+    color: var(--x-ink-strong);
+    line-height: var(--x-line-body);
+}
+.x-manual h1 { font-size: var(--x-text-page); line-height: var(--x-line-page); margin: 0 0 var(--x-space-4); }
+.x-manual h2 { font-size: var(--x-text-section); line-height: var(--x-line-section); margin: var(--x-space-5) 0 var(--x-space-3); }
+.x-manual h3, .x-manual h4 { font-size: var(--x-text-body); margin: var(--x-space-4) 0 var(--x-space-2); }
+.x-manual h1, .x-manual h2, .x-manual h3, .x-manual h4 { scroll-margin-top: var(--x-space-4); }
+.x-manual a { color: var(--x-link); }
+.x-manual img { max-width: 100%; height: auto; }
+.x-manual img[align="right"] { margin: 0 0 var(--x-space-3) var(--x-space-4); }
+.x-manual code {
+    background: var(--x-surface-muted);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: var(--x-text-detail);
+}
+.x-manual pre { background: var(--x-surface-muted); padding: var(--x-space-3); overflow-x: auto; }
+.x-manual pre code { padding: 0; }
+.x-manual table { border-collapse: collapse; margin: var(--x-space-3) 0; font-size: var(--x-text-detail); }
+.x-manual th, .x-manual td { border: 1px solid var(--x-border); padding: 4px var(--x-space-2); text-align: left; vertical-align: top; }

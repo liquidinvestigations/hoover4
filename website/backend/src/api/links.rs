@@ -3,7 +3,8 @@
 //! A pasted link becomes a reference only when the person can read its item. The read rule
 //! is the rule of the page that the link opens: the dataset permission for a search, a
 //! document, a folder and an email graph, the collection permission for a collection page,
-//! and the group rule of `auth::item_access` for a chat and a board. An item that the person
+//! the group rule of `auth::item_access` for a chat and a board, and the administrator
+//! rule of `api::manual` for a section of the administration manual. An item that the person
 //! cannot read and an item that does not exist give the same error, so the error does not
 //! show that an item exists.
 //!
@@ -29,6 +30,10 @@ const NOT_READABLE: &str = "the link names an item that you cannot read, or that
 pub struct LinkReader {
     collection_of: HashMap<String, String>,
     collections: HashMap<String, String>,
+    /// The group of the chat of an agent run (`item_access::run_group`). A run resolves only
+    /// the chats and boards of this group. `None` for a person, who resolves every chat and
+    /// board of their groups.
+    item_group: Option<String>,
 }
 
 impl LinkReader {
@@ -48,7 +53,17 @@ impl LinkReader {
             let label = node.display_name.clone().filter(|name| !name.is_empty()).unwrap_or_else(|| node.collectionname.clone());
             collections.insert(node.collectionname, label);
         }
-        Ok(Self { collection_of, collections })
+        Ok(Self { collection_of, collections, item_group: None })
+    }
+
+    /// Limit the chats and boards to the items of `group`, the group of the chat of a run.
+    pub fn in_run_group(mut self, group: String) -> Self {
+        self.item_group = Some(group);
+        self
+    }
+
+    fn in_item_group(&self, owner_group: &str) -> bool {
+        self.item_group.as_deref().is_none_or(|group| crate::auth::item_access::in_run_group(group, owner_group))
     }
 
     fn collection_of(&self, dataset: &str) -> Option<String> {
@@ -96,10 +111,20 @@ impl LinkReader {
                 Some(path.path.clone())
             }
             HooverLink::Chat { session_id } => {
-                super::chat::readable_session(user, session_id).await.ok().map(|row| row.title)
+                let row = super::chat::readable_session(user, session_id).await.ok()?;
+                self.in_item_group(&row.owner_group).then_some(row.title)
             }
             HooverLink::Board { board_id, .. } => {
-                super::boards::readable_board_title(user, board_id).await.ok()
+                let (title, group) = super::boards::readable_board_title_and_group(user, board_id).await.ok()?;
+                self.in_item_group(&group).then_some(title)
+            }
+            HooverLink::Manual { admin, section } => {
+                let manual = super::manual::manual_for(super::manual::load(), user, *admin).ok()?;
+                if section.is_empty() {
+                    Some(manual.page.title.clone())
+                } else {
+                    manual.sections.iter().find(|s| &s.slug == section).map(|s| s.title.clone())
+                }
             }
         }
     }

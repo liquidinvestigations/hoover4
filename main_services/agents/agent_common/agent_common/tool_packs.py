@@ -16,9 +16,10 @@ kind. The `board` pack holds `submit_board_fact`, which no run kind gets, also w
 The board's conversion activity sends that schema to the model on its own, after the
 explore wrote its report.
 
-The `hoover` pack holds the tools that read Hoover items without a document source, such as
-`parse_link`. The collection server serves them, and no source removes them, so a run
-without collections binds them too.
+The `hoover` pack holds the tools that read Hoover items without a document source:
+`parse_link`, the chat and board tools (`list_chats_and_boards`, `read_chat`, `read_board`,
+`cite_chats_and_boards`) and the manual tools (`search_manual`, `read_manual`). The collection
+server serves them, and no source removes them, so a run without collections binds them too.
 
 A run also has a set of sources (`SOURCE_PACKS`). The `documents` source is present when the
 ACL of the run holds a collection. The `web` source is present when the agent lists
@@ -55,7 +56,10 @@ PACKS: Dict[str, FrozenSet[str]] = {
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),
     "board": frozenset({"submit_board_fact"}),
-    "hoover": frozenset({"parse_link"}),
+    "hoover": frozenset({
+        "parse_link", "list_chats_and_boards", "read_chat", "read_board", "cite_chats_and_boards",
+        "search_manual", "read_manual",
+    }),
 }
 
 #: The kinds of agent run.

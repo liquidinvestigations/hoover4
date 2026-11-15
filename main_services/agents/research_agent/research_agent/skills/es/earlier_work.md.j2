@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: cómo encontrar, leer, citar y resumir chats y tableros anteriores
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Palabras para ello: chat anterior, conversación anterior, la última vez, tablero de investigación, trabajo anterior, lo que encontramos, lo que encontró el equipo, incorporación, resumen de los tableros, historial.
+not_for: No hace falta cuando la solicitud pregunta solo por los documentos de las colecciones.
+---
+Chats y tableros anteriores
+
+Usa este método cuando la persona pregunte por chats anteriores, tableros de investigación o trabajo anterior.
+
+{% if has('list_chats_and_boards') %}
+1. Llama a {{ tool('list_chats_and_boards') }}. Pon las palabras del tema en query, o deja query vacío para listar los elementos más recientes.
+{% endif %}
+{% if has('read_chat') %}
+2. Lee cada chat relevante con {{ tool('read_chat') }}. Lee la página siguiente cuando el resultado tenga next_page y necesites los turnos posteriores.
+{% endif %}
+{% if has('read_board') %}
+3. Lee cada tablero relevante con {{ tool('read_board') }}. Indica node para leer las fuentes de un hallazgo.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Llama a {{ tool('cite_chats_and_boards') }} con cada chat y cada tablero que uses. Escribe el identificador de cita devuelto, por ejemplo [C1] o [B1], junto a cada afirmación que dependa de él.
+{% endif %}
+5. Escribe el resumen: qué preguntó cada chat o tablero, qué encontró y qué sigue abierto.
+
+Las etiquetas como (D1) de un chat o tablero leído nombran las fuentes de ese elemento. No las escribas como tus propios identificadores de cita.
+{% if has('read_documents') and has('cite_documents') %}
+Para citar un documento de un hallazgo anterior, lee el documento con {{ tool('read_documents') }} y cítalo con {{ tool('cite_documents') }}.
+{% endif %}
+Cuando la lista no contenga ningún chat ni tablero sobre el tema, dilo.

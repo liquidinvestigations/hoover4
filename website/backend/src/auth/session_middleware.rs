@@ -141,6 +141,11 @@ fn admin_groups_from(value: Option<String>) -> Vec<String> {
         .collect()
 }
 
+/// True when the members of `group` are administrators.
+pub fn is_admin_group(group: &str) -> bool {
+    admin_groups().iter().any(|name| name == group)
+}
+
 fn is_admin_from_groups(groups: &[String]) -> bool {
     let allowed = admin_groups();
     groups.iter().any(|group| allowed.iter().any(|name| name == group))

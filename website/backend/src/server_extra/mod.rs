@@ -3,6 +3,7 @@ pub mod download_document;
 pub mod download_ocr_pdf;
 pub mod feedback;
 pub mod image_preview;
+pub mod manual_assets;
 pub mod private_routes;
 pub mod tus;
 pub mod uploads;

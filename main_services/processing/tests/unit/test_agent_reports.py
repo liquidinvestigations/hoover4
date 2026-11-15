@@ -68,6 +68,19 @@ def test_web_discovery_and_citations_keep_distinct_evidence():
     assert reports.check_labels("The result is 5 [W1].", reports.label_bindings([cited[0], changed]))["conflicting"] == ["[W1]"]
 
 
+def test_chat_and_board_citations_bind_their_handles():
+    cited = reports.normalize("cite_chats_and_boards", {}, json.dumps({"success": True, "citations": [
+        {"handle": "[C1]", "kind": "chat", "id": "s1", "title": "Budget"},
+        {"handle": "[C2]", "kind": "board", "id": "b9", "title": "Wrong letter"}],
+        "errors": [{"kind": "board", "id": "b2", "error": "No board with this id that the user can read."}]}), "ok")
+    assert [entry["status"] for entry in cited] == ["ok", "error", "error"]
+    bindings = reports.label_bindings(cited)
+    assert bindings == {"[C1]": {"chat:s1"}}
+    check = reports.check_labels("The budget chat [C1] and [B2, D1].", bindings, cited)
+    assert check["labels"] == ["[C1]", "[B2]", "[D1]"]
+    assert check["unresolved"] == ["[B2]", "[D1]"] and check["unverified_quotes"] == []
+
+
 # ------------------------------------------------------------------------ evidence
 
 

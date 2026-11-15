@@ -25,8 +25,9 @@ FIXTURES = Path(__file__).parent / "prompt_fixtures"
 TOOL_DESCRIPTIONS = json.loads((FIXTURES / "tool_descriptions.json").read_text())
 
 #: The size budget of the system text of every profile. The request rules that replace the
-#: chat classifier added about 700 characters.
-MAX_PROMPT_CHARS = 13_000
+#: chat classifier added about 700 characters. The tool lines of the `hoover` pack and the
+#: skills `earlier_work` and `using_hoover` added about 700 more.
+MAX_PROMPT_CHARS = 13_800
 
 #: Any backticked snake_case word in a rendered prompt.
 BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
@@ -82,7 +83,7 @@ def listed_lines(text):
 
 def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     skills = all_skills("full_research")
-    assert len(skills) == 17
+    assert len(skills) == 19
     text = rendered("full_research", skills=skills)
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]

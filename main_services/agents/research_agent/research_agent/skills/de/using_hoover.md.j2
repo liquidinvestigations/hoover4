@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: wie Sie eine Frage zur Verwendung von Hoover, etwa wie man sucht, filtert oder hochlädt, aus dem Handbuch beantworten
+tools: search_manual, read_manual
+terms: Wörter dafür: wie mache ich, wo ist, wie benutze ich Hoover, Hilfe, Handbuch, Dokumentation, Suchsyntax, Filter, Hochladen, Speicher, Board, Chat, Administration, Einstellungen.
+not_for: Nicht nötig, wenn die Anfrage nach dem Inhalt von Dokumenten fragt.
+---
+Fragen zur Verwendung von Hoover
+
+Lesen Sie das Handbuch, bevor Sie eine Frage zur Verwendung von Hoover beantworten.
+
+{% if has('search_manual') %}
+1. Rufen Sie {{ tool('search_manual') }} mit den Wörtern der Frage auf.
+{% endif %}
+{% if has('read_manual') %}
+2. Lesen Sie die besten Abschnitte mit {{ tool('read_manual') }}. Geben Sie den Abschnitt an, den die Suche zurückgegeben hat.
+{% endif %}
+3. Antworten Sie aus dem Text des Handbuchs. Schreiben Sie die Antwort in Ihrer Antwortsprache, auch wenn das Handbuch in einer anderen Sprache ist.
+4. Verlinken Sie jeden Abschnitt, den Sie verwenden, als Markdown-Link mit dem Link des Ergebnisses, zum Beispiel [Suche](/docs#4-search). Geben Sie einem Handbuchabschnitt keine Belegkennung.
+
+Wenn das Handbuch die Aufgabe nicht beschreibt, sagen Sie das.

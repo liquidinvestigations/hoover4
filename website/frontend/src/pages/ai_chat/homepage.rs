@@ -10,18 +10,14 @@ use common::chat_gate::ChatGate;
 use common::chat_types::ChatOptions;
 use dioxus::prelude::*;
 
-use common::board_types::BoardListItem;
-
 use crate::api::admin_api::chat_llm_configured;
 use crate::api::board_api::list_boards;
 use crate::api::error_util::user_facing_message;
-use crate::components::board_graph::BoardThumbnail;
-use crate::pages::admin::llm_reports::format_utc_ms;
 use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatGateOverlay, ChatSessionCard, GroupName, GroupPicker,
+    BoardCard, ChatComposer, ChatGateOverlay, ChatSessionCard, GroupPicker,
 };
 use common::item_groups::GroupChoice;
 use crate::routes::Route;
@@ -224,47 +220,4 @@ fn BoardsOverview() -> Element {
     }
 }
 
-#[component]
-fn BoardCard(board: BoardListItem) -> Element {
-    let status = match (board.status.as_str(), board.graph.not_answered.len()) {
-        ("active", _) => tr!("ai-chat-homepage-active"),
-        ("paused", _) => tr!("ai-chat-homepage-paused"),
-        ("review", _) => tr!("ai-chat-homepage-waits-for-review"),
-        ("completed", 0) => tr!("ai-chat-homepage-completed"),
-        ("completed", 1) => "Completed, 1 goal not answered".to_string(),
-        ("completed", n) => tr!("ai-chat-homepage-completed-goals-not-answered", n: n.to_string()),
-        ("dropped", _) => tr!("ai-chat-homepage-dropped"),
-        _ => tr!("ai-chat-homepage-unknown"),
-    };
-    // The generated summary of the board. Before its first label pass, the first goal.
-    let summary = if board.summary.is_empty() {
-        board.graph.facts.iter().find(|f| f.fact_id == "goal").map(|f| f.text.clone()).unwrap_or_default()
-    } else {
-        board.summary.clone()
-    };
-    rsx! {
-        Link {
-            class: "x-board-card",
-            "data-board-id": "{board.board_id}",
-            to: Route::ai_board(board.board_id.clone(), String::new()),
-            style: "display: block; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
-                    padding: 12px 14px; text-decoration: none; color: inherit;",
-            div { style: "display: flex; justify-content: space-between; gap: 8px;",
-                span { style: "font-size: var(--x-text-body); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{board.title}" }
-                span { style: "font-size: var(--x-text-detail); color: var(--x-ink-muted); white-space: nowrap;", "{status}" }
-            }
-            BoardThumbnail { input: board.graph.clone() }
-            div {
-                class: "x-board-card-summary",
-                style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); color: var(--x-ink); \
-                        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;",
-                "{summary}"
-            }
-            div { style: "display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 2px;",
-                span { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint);", {tr!("ai-chat-homepage-updated", format_utc_ms_board_updated_ms: (format_utc_ms(board.updated_ms)).to_string())} }
-                GroupName { name: board.owner_group.clone() }
-            }
-        }
-    }
-}
 

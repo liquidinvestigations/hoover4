@@ -698,6 +698,9 @@ services:
       - ../../../website/backend:/app/backend
       - ../../../website/Cargo.toml:/app/Cargo.toml
       - ../../../website/Cargo.lock:/app/Cargo.lock
+      # The manuals of the `/docs` page (`backend/src/api/manual.rs`). The release image
+      # copies the same folder to the same path.
+      - ../../../docs/user-manual:/app/docs/user-manual:ro
       # /app/target, not /app/frontend/target: the workspace manifest is at /app, so
       # that is where cargo writes. Mounted one directory too deep, the volume held
       # nothing and the 3 GB build tree lived in the container's writable layer, which

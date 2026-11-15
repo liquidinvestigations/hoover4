@@ -28,7 +28,7 @@ Every route requires an already-resolved identity except `/favicon.ico`, includi
 shell, `/assets/…` and the wasm bundle. The policy is one file,
 [website/backend/src/auth/route_policy.rs](../../website/backend/src/auth/route_policy.rs), and its tests enumerate the custom routes
 (`/_download_document/…`, `/_download_ocr_pdf/…`, `/_image_preview/…`, `/_chat_artifact/…`,
-`/_feedback/…`) literally, so a
+`/_feedback/…`, `/_manual/…`) literally, so a
 route added to `main.rs` and forgotten there fails a test rather than shipping open.
 
 An identity comes from one of two places. An `X-Forwarded-User` header, which the reverse

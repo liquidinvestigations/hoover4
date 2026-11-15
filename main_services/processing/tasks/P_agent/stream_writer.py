@@ -336,8 +336,9 @@ def tool_row_fields(name: str, args: Any, content: str, doc_refs: Any = None) ->
             result = json.loads(content)
         except (TypeError, ValueError):
             result = content
-        # Web citations retain every handle and quote that the answer can reference.
-        tool_output = _dumps(result) if name in ("read_page", "cite_pages") else truncate_json(_dumps(result))
+        # Web, chat and board citations retain every handle that the answer can reference.
+        tool_output = (_dumps(result) if name in ("read_page", "cite_pages", "cite_chats_and_boards")
+                       else truncate_json(_dumps(result)))
     if isinstance(doc_refs, list):
         refs = response_doc_refs(name, doc_refs, call_query(args))
     else:

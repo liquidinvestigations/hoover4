@@ -7,6 +7,7 @@
 | Source card | Open its document or captured web page in the preview pane. | Web pages use the captured Markdown version. |
 | Web source title | Open the source website in a new tab. | The captured preview stays available through the card. |
 | Citation handle | Select its source and scroll to the existing card. | Each source has one card across the conversation. |
+| Chat or board citation card | Open the cited chat or board. | The card loads the item with the read rule of the reader. An item that the reader cannot read shows a line that says so. |
 | Search-term line | Open the originating search with the cited document selected. | The line requires a query association in the stored trace. |
 | Find exact text | Highlight exact, case-sensitive matches in the captured page. | Formatting boundaries can occur inside a match. |
 | Previous match | Select and scroll to the previous exact match. | Selection wraps through the available matches. |
@@ -49,6 +50,7 @@ Tables show a source card after the first row that cites it.
 Document cards contain the matching source excerpt.
 Web cards show a linked title, its domain on the line under the title, and the verified source excerpt below them.
 Document and web cards show their citation handle in the card header.
+A chat citation (`[Cn]`) shows the chat list card, and a board citation (`[Bn]`) shows the board overview card with its graph thumbnail, under the handle and the citation reason.
 They are 124px high, with the 23px body line height.
 Two 13px lines under the card controls show the file size and the earliest confirmed date of the document. They stay empty while the values load and after a failed read.
 The card text shows at most three complete lines, with an ellipsis when text is omitted, and does not scroll.

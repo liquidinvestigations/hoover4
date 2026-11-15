@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: 如何根据手册回答有关 Hoover 使用的问题，例如如何搜索、筛选或上传
+tools: search_manual, read_manual
+terms: 相关词语：我怎么、在哪里、如何使用 Hoover、帮助、手册、文档说明、搜索语法、筛选、上传、存储、调查板、对话、管理、设置。
+not_for: 请求询问文档内容时不需要。
+---
+有关 Hoover 使用的问题
+
+在回答有关 Hoover 使用的问题之前，先阅读手册。
+
+{% if has('search_manual') %}
+1. 用问题中的词语调用 {{ tool('search_manual') }}。
+{% endif %}
+{% if has('read_manual') %}
+2. 用 {{ tool('read_manual') }} 阅读最相关的章节。提供搜索返回的章节。
+{% endif %}
+3. 根据手册的文字回答。用你的回答语言撰写答案，即使手册是另一种语言。
+4. 把你使用的每个章节写成带有结果链接的 Markdown 链接，例如 [搜索](/docs#4-search)。不要给手册章节分配引用标识。
+
+当手册没有描述该任务时，请说明。

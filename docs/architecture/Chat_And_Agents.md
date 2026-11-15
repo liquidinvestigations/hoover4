@@ -11,6 +11,8 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 - [A chat belongs to a group.](#a-chat-belongs-to-a-group)
 - [Internet access stays fixed for a conversation.](#internet-access-stays-fixed-for-a-conversation)
 - [A pasted Hoover link becomes a reference.](#a-pasted-hoover-link-becomes-a-reference)
+- [Agents read earlier chats and boards.](#agents-read-earlier-chats-and-boards)
+- [Agents read the manuals.](#agents-read-the-manuals)
 - [Reaching the agents](#reaching-the-agents)
 - [Run sources](#run-sources)
 - [Citations, and why they are not the search cards](#citations)
@@ -91,7 +93,8 @@ A reference is a Hoover link that a person pasted into a text that goes to a mod
 
 - One parser reads every address that names an item
   ([common/src/links.rs](../../website/common/src/links.rs), `parse_link`). The items are a
-  search, a document, the file browser pages, a folder, an email graph, a chat and a board.
+  search, a document, the file browser pages, a folder, an email graph, a chat, a board and a
+  section of a manual (`/docs#slug`, `/docs/admin#slug`).
   The parser reads only the segments that name the item and skips the viewer segments. A test
   in [routes.rs](../../website/frontend/src/routes.rs) builds each `Route` and parses it.
   `UrlParam`, the CBOR and base64 form of a typed segment, is in `common`.
@@ -112,6 +115,7 @@ The table gives the tool of each item.
 | Email graph | `doc_email` |
 | Chat | `read_chat` |
 | Board | `read_board` |
+| Manual section | `read_manual` |
 
 - The input (`ReferenceInput`,
   [reference_input.rs](../../website/frontend/src/components/chat_components/reference_input.rs)
@@ -134,7 +138,7 @@ The table gives the tool of each item.
   The block has one JSON line for each reference that the text names, with its handle, kind,
   label, tool and arguments. The board prompts use the same formatter. The system prompt
   says in one sentence what a marker means.
-- A marker is not a citation handle. The citation checks read `[Dn]` and `[Wn]` only.
+- A marker is not a citation handle. The citation checks read `[Dn]`, `[Wn]`, `[Cn]` and `[Bn]` only.
 
 The agent tool `parse_link(urls)` reads a Hoover link that the model finds in a message or
 a page. It is in the pack `hoover`, which no source removes. The collection server serves it
@@ -143,6 +147,64 @@ the read rule of the input, limited to the collections of the run. A run without
 reads no dataset item, and it still reads chats and boards by the group rule. The route reads
 a link of any host by its path, because the website has no record of the address that the
 person used.
+
+## Agents read earlier chats and boards.
+
+The pack `hoover` holds four tools for the chats and the boards that the person can read.
+The collection server serves them through website agent routes
+([api/agent/items.rs](../../website/backend/src/api/agent/items.rs)).
+
+| Tool | Route | Result |
+|---|---|---|
+| `list_chats_and_boards(query, kind, page)` | `chats/list`, `boards/list` | The chats and the boards of the groups of the person, newest first, 20 on a page. `query` keeps the items whose title or summary hold every word. The explore chats of the boards are not in the list. |
+| `read_chat(session_id, page)` | `chats/read` | The questions and final answers of one chat, five turns on a page, with the sources of the handles of each answer. Tool rows are left out. An answer that shows a report has the report text. |
+| `read_board(board_id, node)` | `boards/read` | The background, goals, accepted answers and findings of one board. `node` adds one node with its citations. |
+| `cite_chats_and_boards(items)` | `chats/list`, `boards/list` with `ids` | A handle for each chat (`[Cn]`) and board (`[Bn]`) that the person reads. |
+
+The routes apply the group rule of the pages (`auth::item_access`). The agent runs as the
+creator of the chat (see [A chat belongs to a group.](#a-chat-belongs-to-a-group)), and every
+member of the group can send a turn. The routes therefore also limit a run to the items of
+the group of its chat. The collection server forwards `x-hoover4-chat-session`, and the website
+reads that chat under the user of the run (`item_access::run_group`). A run without the
+header, or with a chat that its user did not create, reads no chat and no board. A read of
+an item outside the group of the run is 403, and a read of an item that does not exist is
+404. `links/parse` gives no reference for a chat or board outside that group.
+
+The texts of a read chat or board can hold the handles of that item. The routes write them as
+labels in round brackets, `(D1)`, and list each one in `citations`. A model then does not copy
+a handle that names another source in its own conversation. The skill `earlier_work` gives the
+method: list, read, cite each item that the answer uses, and summarise.
+
+The collection server stores each chat or board handle as an artifact of kind `item_citation`
+before it returns it
+([item_citations.py](../../main_services/agents/collection_search_server/collection_search_server/item_citations.py)).
+The numbers of a session start at 1 for each kind, and an item cited again keeps its handle.
+The worker check, the workspace check and `markdown_text.rs` accept `[Cn]` and `[Bn]` like the
+other handles. A chat card is the chat list card (`session_card.rs`), and a board card is the
+board overview card with its graph thumbnail (`item_card.rs`). The page loads each card again
+with the read rule of the person who reads the transcript. A card of an item that this person
+cannot read shows a line that says so.
+
+## Agents read the manuals.
+
+The website image holds `docs/user-manual/`, and the server reads both manuals at start
+([api/manual.rs](../../website/backend/src/api/manual.rs)). The page `/docs` shows the user
+manual to every person. The page `/docs/admin` shows the administration manual to
+administrators, and another person gets the not-found page. Each heading has its GitHub
+anchor, so `/docs#4-search` opens the section that `User_Manual.md#4-search` opens on
+GitHub. The page HTML comes from `pulldown-cmark` with the raw HTML of the manuals, because
+the Markdown is part of the image. No model output reaches this renderer. The images go
+through the route `/_manual/img/…` and `/_manual/crops/…`.
+
+The pack `hoover` holds `search_manual(query)` and `read_manual(section, manual)`. They call
+the agent routes `manual/search` and `manual/read`. Only an administrator caller reads the
+administration manual, and only in a chat of an administrator group (`HOOVER4_ADMIN_GROUPS`),
+whose members are all administrators (`item_access::run_manual_reader`). Each section result holds its link, such as `/docs#4-search`. The skill
+`using_hoover` gives the method. The agent reads the manual before it answers a question about
+the use of Hoover, and it answers in the agent language. It links each section that it uses as
+a Markdown link. A manual section gets no citation handle. The chat renderer shows a Markdown
+link to `/docs` as a link, as it does for a web address. A pasted `/docs#slug` link becomes a
+reference whose tool call is `read_manual`.
 
 ## Reaching the agents
 
@@ -251,7 +313,7 @@ spans, failed items, citations, notes, and artifacts.
 Table row windows and cell text count as document reads. Table metadata and search results
 count as discovery. A page find with no match does not count as a content read. The read
 record keeps its source version and unread continuation when the page gives them.
-`markdown_text.rs` renders bare document and web handles as controls that scroll to their cards.
+`markdown_text.rs` renders bare document, web, chat and board handles as controls that scroll to their cards.
 Repeated references resolve beside their claim within the answer.
 A Markdown link remains a link.
 A bracket after a backslash, such as `\[D9]`, and a bracket in a code span are text.

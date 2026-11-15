@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: 검색, 필터, 업로드 방법 등 Hoover 사용에 관한 질문에 매뉴얼로 답하는 방법
+tools: search_manual, read_manual
+terms: 관련 단어: 어떻게 하나요, 어디에 있나요, Hoover 사용법, 도움말, 매뉴얼, 문서, 검색 구문, 필터, 업로드, 저장소, 보드, 채팅, 관리, 설정.
+not_for: 요청이 문서의 내용을 물을 때는 필요하지 않습니다.
+---
+Hoover 사용에 관한 질문
+
+Hoover 사용에 관한 질문에 답하기 전에 매뉴얼을 읽으십시오.
+
+{% if has('search_manual') %}
+1. 질문의 단어로 {{ tool('search_manual') }}을(를) 호출하십시오.
+{% endif %}
+{% if has('read_manual') %}
+2. 가장 적합한 섹션을 {{ tool('read_manual') }}(으)로 읽으십시오. 검색이 반환한 섹션을 지정하십시오.
+{% endif %}
+3. 매뉴얼 본문을 근거로 답하십시오. 매뉴얼이 다른 언어로 되어 있어도 답변은 답변 언어로 쓰십시오.
+4. 사용한 각 섹션을 결과의 링크를 사용한 Markdown 링크로 연결하십시오. 예: [검색](/docs#4-search). 매뉴얼 섹션에 인용 핸들을 붙이지 마십시오.
+
+매뉴얼에 그 작업이 설명되어 있지 않으면 그렇다고 말하십시오.

@@ -68,6 +68,7 @@ pub fn kind_name(kind: &str) -> String {
         "email_graph" => tr!("chat-reference-kind-email-graph"),
         "chat" => tr!("chat-reference-kind-chat"),
         "board" => tr!("chat-reference-kind-board"),
+        "manual" => tr!("chat-reference-kind-manual"),
         _ => kind.to_string(),
     }
 }
@@ -78,7 +79,7 @@ pub fn chip_label(reference: &ChatReference) -> String {
 }
 
 fn kinds_json() -> String {
-    let kinds = ["search", "document", "storage", "collection", "folder", "email_graph", "chat", "board"];
+    let kinds = ["search", "document", "storage", "collection", "folder", "email_graph", "chat", "board", "manual"];
     let map: serde_json::Map<String, serde_json::Value> =
         kinds.iter().map(|k| (k.to_string(), serde_json::Value::String(kind_name(k)))).collect();
     serde_json::Value::Object(map).to_string()

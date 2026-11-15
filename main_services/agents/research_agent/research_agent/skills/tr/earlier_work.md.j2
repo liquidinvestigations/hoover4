@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: önceki sohbetleri ve panoları bulma, okuma, atıf yapma ve özetleme yöntemi
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Bunun sözcükleri: önceki sohbet, önceki konuşma, geçen sefer, soruşturma panosu, önceki çalışma, ne bulduk, ekip ne buldu, işe alıştırma, panoların özeti, geçmiş.
+not_for: İstek yalnızca koleksiyonların belgelerini sorduğunda gerekmez.
+---
+Önceki sohbetler ve panolar
+
+Kişi önceki sohbetleri, soruşturma panolarını veya önceki çalışmayı sorduğunda bu yöntemi kullan.
+
+{% if has('list_chats_and_boards') %}
+1. {{ tool('list_chats_and_boards') }} aracını çağır. Konunun sözcüklerini query içine yaz veya en yeni öğeleri listelemek için query alanını boş bırak.
+{% endif %}
+{% if has('read_chat') %}
+2. İlgili her sohbeti {{ tool('read_chat') }} ile oku. Sonuçta next_page varsa ve sonraki turlara ihtiyacın varsa sonraki sayfayı oku.
+{% endif %}
+{% if has('read_board') %}
+3. İlgili her panoyu {{ tool('read_board') }} ile oku. Bir bulgunun kaynaklarını okumak için node ver.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Kullandığın her sohbet ve her pano ile {{ tool('cite_chats_and_boards') }} aracını çağır. Dönen atıf etiketini, örneğin [C1] veya [B1], ona dayanan her ifadenin yanına yaz.
+{% endif %}
+5. Özeti yaz: her sohbetin veya panonun ne sorduğunu, ne bulduğunu ve neyin hâlâ açık olduğunu.
+
+Okunan bir sohbet veya panodaki (D1) gibi etiketler o öğenin kaynaklarını adlandırır. Onları kendi atıf etiketlerin olarak yazma.
+{% if has('read_documents') and has('cite_documents') %}
+Önceki bir bulgunun belgesine atıf yapmak için belgeyi {{ tool('read_documents') }} ile oku ve ona {{ tool('cite_documents') }} ile atıf yap.
+{% endif %}
+Listede konuyla ilgili hiçbir sohbet veya pano yoksa bunu söyle.

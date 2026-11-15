@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: hvordan du svarer på et spørsmål om bruken av Hoover, for eksempel hvordan man søker, filtrerer eller laster opp, ut fra håndboken
+tools: search_manual, read_manual
+terms: Ord for det: hvordan gjør jeg, hvor er, hvordan bruker jeg Hoover, hjelp, håndbok, dokumentasjon, søkesyntaks, filtre, opplasting, lagring, tavle, chat, administrasjon, innstillinger.
+not_for: Ikke nødvendig når forespørselen spør om innholdet i dokumenter.
+---
+Spørsmål om bruken av Hoover
+
+Les håndboken før du svarer på et spørsmål om bruken av Hoover.
+
+{% if has('search_manual') %}
+1. Kall {{ tool('search_manual') }} med ordene i spørsmålet.
+{% endif %}
+{% if has('read_manual') %}
+2. Les de beste avsnittene med {{ tool('read_manual') }}. Angi avsnittet som søket returnerte.
+{% endif %}
+3. Svar ut fra teksten i håndboken. Skriv svaret på svarspråket ditt, også når håndboken er på et annet språk.
+4. Lenk hvert avsnitt du bruker som en Markdown-lenke med lenken i resultatet, for eksempel [Søk](/docs#4-search). Ikke gi et avsnitt i håndboken et henvisningsmerke.
+
+Når håndboken ikke beskriver oppgaven, si det.

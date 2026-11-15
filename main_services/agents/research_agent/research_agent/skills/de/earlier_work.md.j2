@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: wie Sie frühere Chats und Boards finden, lesen, zitieren und zusammenfassen
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Wörter dafür: früherer Chat, frühere Unterhaltung, letztes Mal, Untersuchungsboard, frühere Arbeit, was wir gefunden haben, was das Team gefunden hat, Einarbeitung, Zusammenfassung der Boards, Verlauf.
+not_for: Nicht nötig, wenn die Anfrage nur nach den Dokumenten der Sammlungen fragt.
+---
+Frühere Chats und Boards
+
+Verwenden Sie diese Methode, wenn die Person nach früheren Chats, Untersuchungsboards oder früherer Arbeit fragt.
+
+{% if has('list_chats_and_boards') %}
+1. Rufen Sie {{ tool('list_chats_and_boards') }} auf. Geben Sie die Wörter des Themas in query an, oder lassen Sie query leer, um die neuesten Elemente aufzulisten.
+{% endif %}
+{% if has('read_chat') %}
+2. Lesen Sie jeden relevanten Chat mit {{ tool('read_chat') }}. Lesen Sie die nächste Seite, wenn das Ergebnis next_page hat und Sie die späteren Runden brauchen.
+{% endif %}
+{% if has('read_board') %}
+3. Lesen Sie jedes relevante Board mit {{ tool('read_board') }}. Geben Sie node an, um die Quellen eines Befunds zu lesen.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Rufen Sie {{ tool('cite_chats_and_boards') }} mit jedem Chat und jedem Board auf, die Sie verwenden. Schreiben Sie die zurückgegebene Belegkennung, zum Beispiel [C1] oder [B1], neben jede Aussage, die darauf beruht.
+{% endif %}
+5. Schreiben Sie die Zusammenfassung: was jeder Chat oder jedes Board gefragt hat, was er oder es gefunden hat und was noch offen ist.
+
+Bezeichnungen wie (D1) in einem gelesenen Chat oder Board benennen die Quellen dieses Elements. Schreiben Sie sie nicht als Ihre eigenen Belegkennungen.
+{% if has('read_documents') and has('cite_documents') %}
+Um ein Dokument eines früheren Befunds zu zitieren, lesen Sie das Dokument mit {{ tool('read_documents') }} und zitieren Sie es mit {{ tool('cite_documents') }}.
+{% endif %}
+Wenn die Liste keinen Chat und kein Board zum Thema enthält, sagen Sie das.

@@ -49,7 +49,7 @@ NEW_DESCRIPTIONS = {
 }
 TECHNIQUE_SKILLS = sorted([
     "browser_use", "web_research", "spreadsheets", "emails", "folders_and_files", "passages",
-    "entities",
+    "entities", "earlier_work", "using_hoover",
 ])
 STUMBLE_SKILLS = sorted([
     "after_a_result", "todo_upkeep", "document_ids", "call_arguments", "collection_names",
@@ -373,3 +373,23 @@ def test_the_recovery_skills_show_a_correction_and_a_terminal_lack_of_support():
     assert "Send the next call with the third page only" in web
     assert "When a citation fails, do not put another handle in its place." in citation
     assert "When a citation fails, do not put another handle in its place." in web
+
+
+def test_the_earlier_work_and_manual_skills_follow_the_hoover_pack():
+    hoover = {"earlier_work", "using_hoover"}
+    with_pack = {s.name for s in listed_skills(context("full_research", NARROW_TOOLS | PACKS["hoover"]))}
+    assert hoover <= with_pack
+    assert not hoover & {s.name for s in listed_skills(context("full_research", NARROW_TOOLS))}
+    earlier = render_skill("earlier_work", context("internal_search", NARROW_TOOLS | PACKS["hoover"]), strict=True)
+    for name in ("list_chats_and_boards", "read_chat", "read_board", "cite_chats_and_boards"):
+        assert f"`{name}`" in earlier
+    assert "[C1] or [B1]" in earlier and "(D1)" in earlier
+    manual = render_skill("using_hoover", context("internal_search", PACKS["hoover"] | PACKS["skills"]), strict=True)
+    assert "`search_manual`" in manual and "[Search](/docs#4-search)" in manual
+    assert "Do not give a manual section a citation handle." in manual
+
+
+def test_a_request_about_earlier_work_or_the_use_of_hoover_finds_its_skill():
+    ctx = context("full_research", EVERY_TOOL)
+    assert skill_store.search_skills("summary of the earlier boards", ctx)[0]["name"] == "earlier_work"
+    assert skill_store.search_skills("how to use Hoover uploads", ctx)[0]["name"] == "using_hoover"

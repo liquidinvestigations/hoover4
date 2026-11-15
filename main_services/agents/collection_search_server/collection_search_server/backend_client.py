@@ -188,6 +188,33 @@ class LinksParseRequest(AgentRequest):
     collections: list[str] | None = None
 
 
+class ItemsListRequest(AgentRequest):
+    """`chats/list` and `boards/list`. `ids` keeps only these items."""
+
+    query: str = ""
+    page: int = Field(default=0, ge=0)
+    ids: list[str] = Field(default_factory=list)
+
+
+class ChatsReadRequest(AgentRequest):
+    session_id: str
+    page: int = Field(default=0, ge=0)
+
+
+class BoardsReadRequest(AgentRequest):
+    board_id: str
+    node: str = ""
+
+
+class ManualSearchRequest(AgentRequest):
+    query: str
+
+
+class ManualReadRequest(AgentRequest):
+    section: str = ""
+    manual: str = ""
+
+
 class SearchResultsRequest(AgentRequest):
     expected_source: str | None = None
     collectionname: list[str] = Field(default_factory=list)
@@ -908,6 +935,9 @@ class BackendClient:
         return {
             "x-hoover4-user": headers.get("x-hoover4-user", ""),
             "X-Hoover4-Collections": headers.get("x-hoover4-collections", ""),
+            # The website reads the chat of the run from this header and gives the chat, board
+            # and manual routes only what every member of the chat group can read.
+            "x-hoover4-chat-session": headers.get("x-hoover4-chat-session", ""),
         }
 
     def post(self, route: str, request: AgentModel, response_model: type[T] | None = None, expected_source: str | None = None) -> T | dict[str, Any] | AgentError:

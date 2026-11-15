@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: jak znaleźć, przeczytać, zacytować i podsumować wcześniejsze czaty i tablice
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Słowa na to: wcześniejszy czat, poprzednia rozmowa, ostatnim razem, tablica dochodzeniowa, wcześniejsza praca, co znaleźliśmy, co znalazł zespół, wdrożenie, podsumowanie tablic, historia.
+not_for: Niepotrzebne, gdy prośba dotyczy tylko dokumentów kolekcji.
+---
+Wcześniejsze czaty i tablice
+
+Użyj tej metody, gdy osoba pyta o wcześniejsze czaty, tablice dochodzeniowe lub wcześniejszą pracę.
+
+{% if has('list_chats_and_boards') %}
+1. Wywołaj {{ tool('list_chats_and_boards') }}. Wpisz słowa tematu w query albo zostaw query puste, aby wypisać najnowsze elementy.
+{% endif %}
+{% if has('read_chat') %}
+2. Przeczytaj każdy ważny czat za pomocą {{ tool('read_chat') }}. Przeczytaj następną stronę, gdy wynik ma next_page i potrzebujesz późniejszych tur.
+{% endif %}
+{% if has('read_board') %}
+3. Przeczytaj każdą ważną tablicę za pomocą {{ tool('read_board') }}. Podaj node, aby przeczytać źródła jednego ustalenia.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Wywołaj {{ tool('cite_chats_and_boards') }} z każdym czatem i każdą tablicą, których używasz. Wpisz zwróconą sygnaturę cytowania, na przykład [C1] lub [B1], obok każdego stwierdzenia, które na niej się opiera.
+{% endif %}
+5. Napisz podsumowanie: o co pytał każdy czat lub każda tablica, co znalazł lub znalazła i co pozostaje otwarte.
+
+Etykiety takie jak (D1) w przeczytanym czacie lub tablicy nazywają źródła tego elementu. Nie wpisuj ich jako własnych sygnatur cytowania.
+{% if has('read_documents') and has('cite_documents') %}
+Aby zacytować dokument wcześniejszego ustalenia, przeczytaj dokument za pomocą {{ tool('read_documents') }} i zacytuj go za pomocą {{ tool('cite_documents') }}.
+{% endif %}
+Gdy lista nie zawiera żadnego czatu ani tablicy na ten temat, napisz to.

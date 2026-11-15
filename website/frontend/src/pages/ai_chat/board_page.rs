@@ -1320,8 +1320,14 @@ fn FactDetail(
         Some(Some((session_id, read))) if *session_id == fact.session_id => enrich_fact_sources(&stored, read),
         _ => (stored, Vec::new()),
     };
+    // The chats and boards that the explore cited (`[Cn]`, `[Bn]`).
+    let items = match &*session.read() {
+        Some(Some((session_id, read))) if *session_id == fact.session_id => read.items.clone(),
+        _ => Vec::new(),
+    };
     let handles: Vec<String> = sources.iter().map(|s| s.handle.clone())
-        .chain(pages.iter().map(|p| p.handle.clone())).collect();
+        .chain(pages.iter().map(|p| p.handle.clone()))
+        .chain(items.iter().map(|i| i.handle.clone())).collect();
     let rejected_by = if fact.rejected_by.is_empty() { "A person".to_string() } else { fact.rejected_by.clone() };
     rsx! {
         div { class: "x-board-fact-detail", style: PANEL,
@@ -1363,7 +1369,7 @@ fn FactDetail(
             // The gray area behind the citation cards, as on the chat page, so the white cards
             // stand out.
             div { class: "x-board-fact-text", style: "margin: 6px 0; background: #ECEEF2; padding: 12px; border-radius: 8px;",
-                MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources, pages, node_links: Some(links.clone()) }
+                MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources, pages, items, node_links: Some(links.clone()) }
             }
             if fact.kind == "goal" {
                 GoalAnswer {

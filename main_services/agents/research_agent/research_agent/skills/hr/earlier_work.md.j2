@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: kako pronaći, pročitati, citirati i sažeti ranije razgovore i ploče
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Riječi za to: raniji razgovor, prethodni razgovor, prošli put, istražna ploča, raniji rad, što smo pronašli, što je tim pronašao, uvođenje, sažetak ploča, povijest.
+not_for: Nije potrebno kad se zahtjev odnosi samo na dokumente zbirki.
+---
+Raniji razgovori i ploče
+
+Upotrijebi ovu metodu kad osoba pita o ranijim razgovorima, istražnim pločama ili ranijem radu.
+
+{% if has('list_chats_and_boards') %}
+1. Pozovi {{ tool('list_chats_and_boards') }}. Upiši riječi teme u query ili ostavi query prazan da bi se ispisale najnovije stavke.
+{% endif %}
+{% if has('read_chat') %}
+2. Pročitaj svaki važan razgovor pomoću {{ tool('read_chat') }}. Pročitaj sljedeću stranicu kad rezultat ima next_page i trebaju ti kasniji krugovi.
+{% endif %}
+{% if has('read_board') %}
+3. Pročitaj svaku važnu ploču pomoću {{ tool('read_board') }}. Navedi node da bi pročitao izvore jednog nalaza.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Pozovi {{ tool('cite_chats_and_boards') }} sa svakim razgovorom i svakom pločom koje upotrebljavaš. Napiši vraćenu oznaku citata, na primjer [C1] ili [B1], uz svaku tvrdnju koja se na nju oslanja.
+{% endif %}
+5. Napiši sažetak: što je pitao svaki razgovor ili ploča, što je pronašao i što je još otvoreno.
+
+Oznake poput (D1) u pročitanom razgovoru ili ploči imenuju izvore te stavke. Ne piši ih kao vlastite oznake citata.
+{% if has('read_documents') and has('cite_documents') %}
+Da bi citirao dokument ranijeg nalaza, pročitaj dokument pomoću {{ tool('read_documents') }} i citiraj ga pomoću {{ tool('cite_documents') }}.
+{% endif %}
+Kad popis nema razgovor ni ploču o toj temi, reci to.

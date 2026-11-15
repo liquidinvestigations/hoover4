@@ -5,6 +5,7 @@ pub mod auth_api;
 pub mod board_api;
 pub mod chat_api;
 pub mod error_util;
+pub mod manual_api;
 pub mod search_api;
 pub mod server_auth;
 pub mod settings_api;

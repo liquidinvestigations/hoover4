@@ -38,7 +38,13 @@ echo "version: $VERSION"
 echo "a tag that already exists at this version and this registry is overwritten by this run."
 
 SUMMARY_FILE="$(mktemp)"
-trap 'rm -f "$SUMMARY_FILE"' EXIT
+# The website image serves the manuals of docs/user-manual/, and its build context is
+# website/, so the manuals are copied into the context for the build and removed after it.
+MANUAL_COPY="$REPO_ROOT/website/docs"
+trap 'rm -f "$SUMMARY_FILE"; rm -rf "$MANUAL_COPY"' EXIT
+rm -rf "$MANUAL_COPY"
+mkdir -p "$MANUAL_COPY"
+cp -r "$REPO_ROOT/docs/user-manual" "$MANUAL_COPY/user-manual"
 
 # Builds one image and pushes one tag. Records one summary line.
 push_tag() {

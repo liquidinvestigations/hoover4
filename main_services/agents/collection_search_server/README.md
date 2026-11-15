@@ -100,11 +100,28 @@ a `504` whose body is the route's own `timed_out` answer.
 | `folder_list` | return a folder breadcrumb, children, and files |
 | `folder_search` | find folders and files by name |
 | `parse_link` | give the kind, the name and the reading tool call of each Hoover link, in the pack `hoover` |
+| `list_chats_and_boards` | list the chats and boards that the user reads, newest first, in the pack `hoover` |
+| `read_chat` | read the questions and final answers of one chat, five turns a page, in the pack `hoover` |
+| `read_board` | read the background, goals, answers and findings of one board, or one node with its sources, in the pack `hoover` |
+| `cite_chats_and_boards` | give a `[Cn]` handle for a chat and a `[Bn]` handle for a board, in the pack `hoover` |
+| `search_manual` | find the sections of the Hoover manuals for a question, with their `/docs` links, in the pack `hoover` |
+| `read_manual` | read one manual section with its subsections, or the contents, in the pack `hoover` |
 
-`parse_link` (`tools_hoover.py`) needs no document source, so a run without collections
-binds it too. It posts the links to the agent route `links/parse` with the collections of the
-caller ACL. The route reads no dataset item outside them, and it reads chats and boards by
-the group rule of the website.
+The tools of the pack `hoover` (`tools_hoover.py`) need no document source, so a run without
+collections binds them too.
+
+- `parse_link` posts the links to the agent route `links/parse` with the collections of the
+  caller ACL. The route reads no dataset item outside them, and it reads only the chats and
+  boards of the group of the chat of the run.
+- The chat and board tools call `chats/list`, `chats/read`, `boards/list` and `boards/read`.
+  The routes apply the group rule of the website and limit the run to the group of its chat.
+  The client forwards `x-hoover4-chat-session` for that limit. An item of another group is a
+  `permission_denied` result. `cite_chats_and_boards` checks each item through the list
+  routes with `ids`, and stores each new handle as an artifact of kind `item_citation`
+  (`item_citations.py`) before it returns it. The numbers of each kind start at 1 in each
+  chat session, and an item cited again keeps its handle.
+- `search_manual` and `read_manual` call `manual/search` and `manual/read`. Only an
+  administrator caller in a chat of an administrator group reads the administration manual.
 
 ## Collection arguments and facet results
 

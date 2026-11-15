@@ -3,6 +3,12 @@
 # `website/Dockerfile`, the full Rust and dioxus toolchain, and `dx serve` against a host
 # mount, so the local development loop is unchanged. This file is the only place that
 # runs `dx build --release`.
+#
+# The build context is `website/`, and the image also needs the manuals of the `/docs` page
+# from `docs/user-manual/` of the repository. The builders copy that folder to
+# `website/docs/user-manual/` before the build: `k3s/images/build-hoover.py` in its exported
+# tree, and `main_services/ops/publish-images.sh` in the checkout. A build without the copy
+# stops at the `COPY docs/user-manual` step.
 
 FROM rust:1.91.0-trixie AS builder
 
@@ -50,6 +56,8 @@ RUN apt-get update -yq && apt-get install -yq --no-install-recommends ca-certifi
 
 WORKDIR /app
 COPY --from=builder /release/app /app
+# The manuals that the server reads at start (`HOOVER4_MANUAL_DIR`, default this path).
+COPY docs/user-manual /app/docs/user-manual
 
 # How the dioxus fullstack server picks its socket, matching compose/website-release.yaml.
 ENV IP=0.0.0.0

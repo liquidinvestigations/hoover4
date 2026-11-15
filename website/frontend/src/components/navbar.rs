@@ -20,6 +20,7 @@ use crate::pages::file_browser_page::FileBrowserPage;
 use crate::pages::home_page::HomePage;
 use crate::pages::search_page::SearchPage;
 
+use dioxus_free_icons::icons::md_action_icons::MdHelpOutline;
 use dioxus_free_icons::icons::md_action_icons::MdHome;
 use dioxus_free_icons::icons::md_action_icons::MdSearch;
 use dioxus_free_icons::icons::md_action_icons::MdSettings;
@@ -142,6 +143,7 @@ fn NavbarBottomIconLinks() -> Element {
                 justify-content: center;
             ",
 
+            IconLink { to: Route::DocsPage { section: String::new() }, icon: MdHelpOutline, label: tr!("nav-manual") }
             if show_admin {
                 IconLink { to: Route::AdminDashboardPage { }, icon: MdSettings, label: tr!("nav-admin") }
             }

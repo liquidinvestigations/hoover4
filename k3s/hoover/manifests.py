@@ -191,7 +191,8 @@ CONFIG_FILES = {
 }
 CONFIG_DIRS = {'/etc/temporal/config/dynamicconfig': 'temporal-dynamicconfig',
                '/mirror/processing-tasks': 'mirror', '/mirror/website-backend-src': 'mirror'}
-SOURCE_BINDS = {'/app', '/app/frontend', '/app/common', '/app/backend', '/app/Cargo.toml', '/app/Cargo.lock', '/app/main.py'}
+SOURCE_BINDS = {'/app', '/app/frontend', '/app/common', '/app/backend', '/app/Cargo.toml', '/app/Cargo.lock', '/app/main.py',
+                '/app/docs/user-manual'}
 # The memory limits that ../zones/memory-limits.json measured for the zone layout. Other limits come from Compose.
 MEASURED = {'hoover4-website': 'hoover-website', 'hoover4-ops': 'hoover-operations'}
 # The memory limit of a service that has none in Compose. The default is 512Mi. The values are 1.5 times the peak of

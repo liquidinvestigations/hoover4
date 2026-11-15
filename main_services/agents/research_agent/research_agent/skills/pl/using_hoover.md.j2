@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: jak odpowiedzieć na pytanie o korzystanie z Hoover, na przykład jak wyszukiwać, filtrować lub przesyłać pliki, na podstawie podręcznika
+tools: search_manual, read_manual
+terms: Słowa na to: jak mam, gdzie jest, jak używać Hoover, pomoc, podręcznik, dokumentacja, składnia wyszukiwania, filtry, przesyłanie, magazyn, tablica, czat, administracja, ustawienia.
+not_for: Niepotrzebne, gdy prośba dotyczy treści dokumentów.
+---
+Pytania o korzystanie z Hoover
+
+Przeczytaj podręcznik, zanim odpowiesz na pytanie o korzystanie z Hoover.
+
+{% if has('search_manual') %}
+1. Wywołaj {{ tool('search_manual') }} ze słowami pytania.
+{% endif %}
+{% if has('read_manual') %}
+2. Przeczytaj najlepsze sekcje za pomocą {{ tool('read_manual') }}. Podaj sekcję, którą zwróciło wyszukiwanie.
+{% endif %}
+3. Odpowiadaj na podstawie tekstu podręcznika. Napisz odpowiedź w swoim języku odpowiedzi, także gdy podręcznik jest w innym języku.
+4. Podaj każdą użytą sekcję jako link Markdown z linkiem wyniku, na przykład [Wyszukiwanie](/docs#4-search). Nie nadawaj sekcji podręcznika sygnatury cytowania.
+
+Gdy podręcznik nie opisuje zadania, napisz to.

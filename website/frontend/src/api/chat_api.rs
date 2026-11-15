@@ -32,6 +32,18 @@ pub async fn chat_list_sessions(include_boards: bool) -> Result<Vec<ChatSessionI
         .map_err(to_server_fn_error)
 }
 
+/// The cards of the chats and boards that an answer cites, read with the rule of the reader.
+#[server]
+pub async fn chat_cited_item_cards(
+    chat_ids: Vec<String>,
+    board_ids: Vec<String>,
+) -> Result<common::chat_items::CitedItemCards, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::cited_item_cards(&user, chat_ids, board_ids)
+        .await
+        .map_err(to_server_fn_error)
+}
+
 /// Create a chat in `group`. An empty `collections` selects every collection that the user
 /// and the group can both read.
 #[server]

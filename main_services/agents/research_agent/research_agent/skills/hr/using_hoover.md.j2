@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: kako odgovoriti na pitanje o upotrebi Hoovera, na primjer kako pretraživati, filtrirati ili prenositi datoteke, iz njegova priručnika
+tools: search_manual, read_manual
+terms: Riječi za to: kako da, gdje je, kako upotrijebiti Hoover, pomoć, priručnik, dokumentacija, sintaksa pretraživanja, filtri, prijenos, pohrana, ploča, razgovor, administracija, postavke.
+not_for: Nije potrebno kad se zahtjev odnosi na sadržaj dokumenata.
+---
+Pitanja o upotrebi Hoovera
+
+Pročitaj priručnik prije nego što odgovoriš na pitanje o upotrebi Hoovera.
+
+{% if has('search_manual') %}
+1. Pozovi {{ tool('search_manual') }} s riječima pitanja.
+{% endif %}
+{% if has('read_manual') %}
+2. Pročitaj najbolje odjeljke pomoću {{ tool('read_manual') }}. Navedi odjeljak koji je pretraživanje vratilo.
+{% endif %}
+3. Odgovori iz teksta priručnika. Napiši odgovor na svom jeziku odgovora, i kad je priručnik na drugom jeziku.
+4. Poveži svaki odjeljak koji upotrebljavaš kao Markdown poveznicu s poveznicom rezultata, na primjer [Pretraživanje](/docs#4-search). Ne daj odjeljku priručnika oznaku citata.
+
+Kad priručnik ne opisuje zadatak, reci to.

@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: hoe je een vraag over het gebruik van Hoover, zoals zoeken, filteren of uploaden, beantwoordt vanuit de handleiding
+tools: search_manual, read_manual
+terms: Woorden ervoor: hoe doe ik, waar is, hoe gebruik ik Hoover, hulp, handleiding, documentatie, zoeksyntaxis, filters, uploaden, opslag, bord, chat, beheer, instellingen.
+not_for: Niet nodig wanneer de vraag over de inhoud van documenten gaat.
+---
+Vragen over het gebruik van Hoover
+
+Lees de handleiding voordat je een vraag over het gebruik van Hoover beantwoordt.
+
+{% if has('search_manual') %}
+1. Roep {{ tool('search_manual') }} aan met de woorden van de vraag.
+{% endif %}
+{% if has('read_manual') %}
+2. Lees de beste delen met {{ tool('read_manual') }}. Geef het deel op dat de zoekopdracht teruggaf.
+{% endif %}
+3. Antwoord vanuit de tekst van de handleiding. Schrijf het antwoord in je antwoordtaal, ook wanneer de handleiding in een andere taal is.
+4. Link elk deel dat je gebruikt als Markdown-link met de link van het resultaat, bijvoorbeeld [Zoeken](/docs#4-search). Geef een deel van de handleiding geen bronlabel.
+
+Wanneer de handleiding de taak niet beschrijft, zeg dat.

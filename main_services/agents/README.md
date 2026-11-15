@@ -170,6 +170,12 @@ worker gives the model a `References:` block after a message with references
 ([Chat_And_Agents.md](../../docs/architecture/Chat_And_Agents.md#a-pasted-hoover-link-becomes-a-reference)).
 The description of `parse_link` says it too.
 
+The pack `hoover` also holds the tools for earlier chats and boards and for the manuals
+([Chat_And_Agents.md](../../docs/architecture/Chat_And_Agents.md#agents-read-earlier-chats-and-boards)).
+The skills `earlier_work` and `using_hoover` give their methods. Their tool lines and skill
+lines made the system prompt about 700 characters longer, so the size budget of the prompt
+tests is 13,800 characters.
+
 **Keep the agent prompts short.** Qwen3.5-2B follows a long numbered prompt by doing all
 of it forever. An earlier five-step draft made it search, search again, then re-run a
 query it had already run until the request died. Detail belongs in tool descriptions,

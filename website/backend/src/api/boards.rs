@@ -305,9 +305,25 @@ async fn readable_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<(B
     }
 }
 
+/// The whole board for an agent route, which tells a board that does not exist from a
+/// board of a group that `user` is not a member of.
+pub async fn board_for_agent(user: &CurrentUser, board_id: &str) -> anyhow::Result<item_access::ItemLookup<BoardSnapshot>> {
+    Ok(match live_board(user, board_id).await? {
+        None => item_access::ItemLookup::Missing,
+        Some((_, access)) if !access.read => item_access::ItemLookup::Unreadable,
+        Some((row, access)) => item_access::ItemLookup::Readable(read_snapshot(row, access.delete).await?),
+    })
+}
+
 /// The title of a board that `user` can read. Not-found otherwise.
 pub async fn readable_board_title(user: &CurrentUser, board_id: &str) -> anyhow::Result<String> {
     Ok(readable_board(user, board_id).await?.0.title)
+}
+
+/// The title and the group of a board that `user` can read. Not-found otherwise.
+pub async fn readable_board_title_and_group(user: &CurrentUser, board_id: &str) -> anyhow::Result<(String, String)> {
+    let row = readable_board(user, board_id).await?.0;
+    Ok((row.title, row.owner_group))
 }
 
 /// The stored request id of a person action, or an error for an id that a page cannot send.
@@ -564,15 +580,24 @@ fn board_intent(i: IntentRow, marks: &EventFacts, summary: &serde_json::Value) -
 
 /// Every board of the groups of the caller, with the graph of its thumbnail.
 pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem>> {
+    list_boards_with(user, None).await
+}
+
+/// The boards of the groups of the caller, newest first. `ids` keeps only the boards with
+/// these ids: the cards of cited boards and the agent citation check read them.
+pub async fn list_boards_with(user: &CurrentUser, ids: Option<&[String]>) -> anyhow::Result<Vec<BoardListItem>> {
     let groups = item_access::member_groups(user).await?;
-    if groups.is_empty() {
+    if groups.is_empty() || ids.is_some_and(|ids| ids.is_empty()) {
         return Ok(Vec::new());
     }
     let client = get_global_client();
     let boards = client
         .query("SELECT ?fields FROM boards FINAL WHERE owner_group IN ? AND owner_group != '' AND is_deleted = 0 \
-                ORDER BY created_at DESC")
+                AND (? OR board_id IN ?) ORDER BY created_at DESC")
         .bind(&groups)
+        .bind(ids.is_none())
+        // A list with one empty id when no list applies: `IN []` has no element type.
+        .bind(ids.map(<[String]>::to_vec).unwrap_or_else(|| vec![String::new()]))
         .fetch_all::<BoardRow>()
         .await?;
     let ids: Vec<String> = boards.iter().map(|b| b.board_id.clone()).collect();

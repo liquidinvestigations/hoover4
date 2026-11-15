@@ -223,11 +223,15 @@ def resolve(text: str, kind: str, citations: list[dict]) -> tuple[str, list[dict
     claimed `kind`.
 
     `citations` is the resolved citation list of the report version. Every entry in it has
-    a verified quote, because the workspace check stores only such entries.
+    a verified quote, because the workspace check stores only such entries. A chat or board
+    handle (`C1`, `B1`) names no document, so it gives no board citation row. The fact text
+    keeps it, and the fact pane shows the card of the chat or the board.
     """
     by_label = {str(c.get("handle") or "").strip("[]"): c for c in citations}
     rows, problems, unknown = [], [], []
     for label in labels(text):
+        if label[:1] in ("C", "B"):
+            continue
         c = by_label.get(label)
         if c is None:
             unknown.append(label)

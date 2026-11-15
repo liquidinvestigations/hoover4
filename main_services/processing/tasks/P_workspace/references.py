@@ -4,7 +4,7 @@ The parse follows the transcript renderer (`website/frontend/.../markdown_text.r
 `parse_inline` and `as_handles`), so a handle that the check accepts is a handle that the
 page shows as a citation.
 
-* A handle is `[D1]` or `[W2]`, or a list such as `[D1, W2]`.
+* A handle is `[D1]`, `[W2]`, `[C1]` or `[B1]`, or a list such as `[D1, W2]`.
 * Text in a fenced code block or in an inline code span is literal.
 * A bracket written after a backslash, such as `\\[D9]`, is literal.
 * A bracketed text that a parenthesis follows is a Markdown link, not a handle.
@@ -12,8 +12,8 @@ page shows as a citation.
 
 `check` resolves each handle against the successful citation results of the session
 (`tasks.P_agent.reports.session_citation_entries`). A handle resolves when one source holds
-it and that citation has a verified quote. The check does not show that a claim follows from
-its source.
+it and that citation has a verified quote. A chat or board citation (`[Cn]`, `[Bn]`) has no
+quote, so one source is enough. The check does not show that a claim follows from its source.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import re
 from typing import Iterable
 
 FENCE = re.compile(r"^\s*(```|~~~)")
-HANDLE_VALUE = re.compile(r"[DW]\d+")
+HANDLE_VALUE = re.compile(r"[DWCB]\d+")
 
 
 def _as_handles(inner: str) -> list[str] | None:
@@ -65,7 +65,7 @@ def handles(text: str) -> list[tuple[str, int]]:
     return out
 
 
-CODE_HANDLE = re.compile(r"\[\s*[DW]\d+(?:\s*,\s*[DW]\d+)*\s*\]")
+CODE_HANDLE = re.compile(r"\[\s*[DWCB]\d+(?:\s*,\s*[DWCB]\d+)*\s*\]")
 
 
 def code_handle_places(text: str) -> list[tuple[str, bool]]:
@@ -105,9 +105,15 @@ def code_handles(text: str) -> list[str]:
 
 
 def _source(reference: dict) -> str:
-    if reference.get("url") and reference.get("version"):
-        return f"web:{reference['url']}:{reference['version']}"
-    return str(reference.get("file_hash") or "")[:16]
+    from tasks.P_agent.reports import citation_source
+
+    return citation_source(reference)
+
+
+def _tool(handle: str) -> str:
+    """The tool that gives a handle of this letter."""
+    return {"[W": "cite_pages", "[C": "cite_chats_and_boards", "[B": "cite_chats_and_boards"}.get(
+        handle[:2], "cite_documents")
 
 
 def check(name: str, text: str, entries: Iterable[dict]) -> tuple[list[dict], list[dict]]:
@@ -131,8 +137,8 @@ def check(name: str, text: str, entries: Iterable[dict]) -> tuple[list[dict], li
         seen.add(handle)
         references = found.get(handle) or []
         sources = {_source(reference) for reference in references} - {""}
-        web = handle.startswith("[W")
-        tool = "cite_pages" if web else "cite_documents"
+        tool = _tool(handle)
+        item = handle.startswith(("[C", "[B"))
         if not references:
             findings.append({"file": name, "line": line, "handle": handle,
                              "action": f"No successful {tool} call of this conversation gave "
@@ -146,7 +152,7 @@ def check(name: str, text: str, entries: Iterable[dict]) -> tuple[list[dict], li
                                        f"conversation. Cite the source again with {tool} "
                                        "and use the new handle."})
             continue
-        verified = [r for r in references if r.get("quote_verified") is True]
+        verified = references if item else [r for r in references if r.get("quote_verified") is True]
         if not verified:
             findings.append({"file": name, "line": line, "handle": handle,
                              "action": f"The quote of {handle} was not found in its source. "
@@ -155,7 +161,8 @@ def check(name: str, text: str, entries: Iterable[dict]) -> tuple[list[dict], li
             continue
         reference = verified[-1]
         keep = ("handle", "collectionname", "collection_dataset", "file_hash", "path",
-                "page_id", "quote", "url", "final_url", "version", "artifact_id")
+                "page_id", "quote", "url", "final_url", "version", "artifact_id",
+                "item_kind", "item_id", "title")
         resolved.append({key: reference[key] for key in keep if reference.get(key) not in (None, "")})
     return findings, resolved
 

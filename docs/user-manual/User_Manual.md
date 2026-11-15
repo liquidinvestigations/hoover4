@@ -46,11 +46,20 @@ Every page shares the dark rail down the left edge. From the top:
 | magnifier | Search |
 | folder | Storage (the file browser) |
 | speech bubble | AI chat |
+| question mark (bottom) | this manual |
 | gear (bottom) | administration, for administrators only |
 | bug (bottom) | report a bug or send feedback |
 | flag (bottom) | your language settings. The flag is the flag of the interface language. |
 
 Hold the pointer over an icon to show its name beside it.
+
+### Read the manual in Hoover.
+
+Select the question mark in the rail to open this manual at `/docs`.
+The list on the left names the sections. Select a section to go to it.
+A link such as `/docs#4-search` opens the manual at that section.
+An administrator also sees **Administration manual**, which opens the administration manual at `/docs/admin`.
+The manual is in English.
 
 ### Choose your languages
 
@@ -883,6 +892,7 @@ A missing match does not prove that an event did not occur.
 <a href="img/chat-answer.png"><img src="img/chat-answer.png" alt="An existing Enron answer that separates search counts from cited document evidence" width="100%"></a>
 
 Document references use labels such as **[D1]**. Web references use labels such as **[W1]**.
+Chat references use labels such as **[C1]**, and board references use labels such as **[B1]**.
 The corresponding source cards appear beside the passages that use them or below the answer.
 Read the quoted passage and its document context before using the claim.
 An unverified quote message means that the displayed wording was not verified against the source.
@@ -907,6 +917,25 @@ A current website can differ from its earlier capture.
 
 Close the preview to return the conversation to the available width.
 Drag the pane divider to change the space assigned to the conversation and the source.
+
+A chat citation shows the card of the chat from the chat list.
+A board citation shows the overview card of the board with its graph.
+Select the card to open the chat or the board.
+If you cannot read the chat or the board, the card says that it was deleted or that you are not in its group.
+
+### Ask about earlier chats and boards.
+
+Ask the assistant about earlier work, for example "Summarise the boards about the payments".
+The assistant lists the chats and boards of your groups, reads those about the subject, and summarises them.
+It cites each chat or board that it uses with a label such as **[C1]** or **[B1]**.
+Board explore chats are not in its list. It reads them through their boards.
+
+### Ask how to use Hoover.
+
+Ask the assistant how to do a task in Hoover.
+For example, ask how to filter the results by date.
+The assistant reads this manual and answers in your agent language.
+The answer links each manual section that it uses. Select a link to open the section.
 
 ### Search in a conversation.
 

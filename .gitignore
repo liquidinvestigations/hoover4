@@ -33,6 +33,8 @@ hoover4-site.ini
 # never tracked: docs/ and the skills are public.
 INFRASTRUCTURE_INVENTORY.md
 /website/TEST_LOGIN.env
+# main_services/ops/publish-images.sh copies docs/user-manual here for the website image build.
+/website/docs/
 # scripts/collect-debug-report.py writes its zip here. The zip holds logs and configuration
 # of one deployment.
 /tmp/

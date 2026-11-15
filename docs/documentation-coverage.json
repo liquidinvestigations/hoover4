@@ -1384,6 +1384,24 @@
       "no_screenshot_reason": "This feature is an agent tool. It has no page of its own."
     },
     {
+      "id": "F-chat-38",
+      "source": [
+        "website/backend/src/api/agent/items.rs",
+        "main_services/agents/collection_search_server/collection_search_server/tools_hoover.py",
+        "main_services/agents/collection_search_server/collection_search_server/item_citations.py",
+        "website/common/src/chat_items.rs",
+        "website/frontend/src/components/chat_components/item_card.rs",
+        "main_services/processing/tasks/P_agent/reports.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#ask-about-earlier-chats-and-boards",
+        "docs/architecture/Chat_And_Agents.md#agents-read-earlier-chats-and-boards",
+        "main_services/agents/collection_search_server/README.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "A chat or board citation card needs a finished agent turn that cited an earlier chat or board, and no screenshot scenario runs one."
+    },
+    {
       "id": "F-chat-08",
       "source": [
         "website/frontend/src/components/chat_components",
@@ -3298,6 +3316,37 @@
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability changes the Temporal pods, the site file and the connection of the services. No page of the portal or of a zone application changes."
+    },
+    {
+      "id": "F-docs-01",
+      "source": [
+        "website/backend/src/api/manual.rs",
+        "website/frontend/src/pages/docs_page.rs",
+        "website/common/src/manual.rs",
+        "website/backend/src/server_extra/manual_assets.rs",
+        "website/Dockerfile.release"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#read-the-manual-in-hoover",
+        "docs/user-manual/Admin_Manual.md",
+        "docs/architecture/Chat_And_Agents.md#agents-read-the-manuals"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "The manual page shows the manual itself, and no stack ran for this change to capture it."
+    },
+    {
+      "id": "F-docs-02",
+      "source": [
+        "website/backend/src/api/agent/manual.rs",
+        "main_services/agents/collection_search_server/collection_search_server/tools_hoover.py",
+        "website/common/src/links.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#ask-how-to-use-hoover",
+        "docs/architecture/Chat_And_Agents.md#agents-read-the-manuals"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature is an agent tool. It has no page of its own."
     }
   ],
   "routes": {
@@ -3337,6 +3386,8 @@
     "/uploads?:collection": "docs/user-manual/User_Manual.md#upload-files-and-folders",
     "/uploads/:collection/:batch_id?:page": "docs/user-manual/User_Manual.md#upload-files-and-folders",
     "/settings/language": "docs/user-manual/User_Manual.md#choose-your-languages",
-    "/upload?:collection&:dataset&:folder": "docs/user-manual/User_Manual.md#upload-files-and-folders"
+    "/upload?:collection&:dataset&:folder": "docs/user-manual/User_Manual.md#upload-files-and-folders",
+    "/docs#:section": "docs/user-manual/User_Manual.md#read-the-manual-in-hoover",
+    "/docs/admin#:section": "docs/user-manual/Admin_Manual.md"
   }
 }

@@ -81,6 +81,15 @@ pub fn item_access(user: &CurrentUser, member_of: &[String], owner_group: &str, 
     ItemAccess { read, delete: user.is_admin || (read && user.username == creator) }
 }
 
+/// One item that an agent route looks up by id. The agent routes answer 404 for a missing
+/// item and 403 for an item of a group that the caller is not a member of.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ItemLookup<T> {
+    Missing,
+    Unreadable,
+    Readable(T),
+}
+
 /// The groups of the person are read again after this time, so a membership change applies
 /// to the next request after it.
 const MEMBER_CACHE_TTL: Duration = Duration::from_secs(10);
@@ -192,6 +201,45 @@ pub fn check_collections(requested: &[String], allowed: &[String]) -> Result<Vec
     Ok(out)
 }
 
+/// The header that names the chat session of an agent run.
+pub const RUN_SESSION_HEADER: &str = "x-hoover4-chat-session";
+
+/// The group of the chat that an agent run answers, or empty.
+///
+/// An agent run calls the agent routes as the creator of its chat, and a member of the chat
+/// group can send its turn. The agent routes that read chats, boards and the manuals give a
+/// run only what every member of the chat group can read. The website reads the chat from
+/// the session header and the user of the run, so a run can name only a chat of its own
+/// user. A run without the header or with an unknown chat has no group, and reads no chat
+/// or board.
+pub async fn run_group(user: &CurrentUser, headers: &axum::http::HeaderMap) -> anyhow::Result<String> {
+    let session = headers
+        .get(RUN_SESSION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .unwrap_or_default();
+    if session.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(crate::db_chat::get_session(&user.username, session)
+        .await?
+        .map(|row| row.owner_group)
+        .unwrap_or_default())
+}
+
+/// True when an item of `owner_group` is in the group of the run.
+pub fn in_run_group(run_group: &str, owner_group: &str) -> bool {
+    !run_group.is_empty() && run_group == owner_group
+}
+
+/// The caller as the manual routes of a run see it. The run reads the administration manual
+/// only when its user is an administrator and every member of the chat group is one.
+pub fn run_manual_reader(user: &CurrentUser, run_group: &str) -> CurrentUser {
+    let mut reader = user.clone();
+    reader.is_admin = user.is_admin && !run_group.is_empty() && crate::auth::session_middleware::is_admin_group(run_group);
+    reader
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,6 +267,18 @@ mod tests {
         assert!(is_implicit_in("org-sales", &custom) && is_implicit_in("staff", &custom));
         assert!(!is_implicit_in("user", &custom));
         assert_eq!(implicit_rules_from(Some(" ")), rules);
+    }
+
+    #[test]
+    fn a_run_reads_only_the_items_of_its_chat_group() {
+        assert!(in_run_group("team-a", "team-a"));
+        assert!(!in_run_group("team-a", "team-b"));
+        assert!(!in_run_group("", ""));
+        // HOOVER4_ADMIN_GROUPS is absent in the tests, so `admin` is an administrator group.
+        assert!(run_manual_reader(&user("root", true), "admin").is_admin);
+        assert!(!run_manual_reader(&user("root", true), "team-a").is_admin);
+        assert!(!run_manual_reader(&user("root", true), "").is_admin);
+        assert!(!run_manual_reader(&user("alice", false), "admin").is_admin);
     }
 
     #[test]

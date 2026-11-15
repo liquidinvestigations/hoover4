@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: cum găsești, citești, citezi și rezumi conversații și tablouri anterioare
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Cuvinte pentru acest subiect: conversație anterioară, chat anterior, data trecută, tablou de investigație, muncă anterioară, ce am găsit, ce a găsit echipa, integrare, rezumatul tablourilor, istoric.
+not_for: Nu este necesară când cererea întreabă doar despre documentele colecțiilor.
+---
+Conversații și tablouri anterioare
+
+Folosește această metodă când persoana întreabă despre conversații anterioare, tablouri de investigație sau muncă anterioară.
+
+{% if has('list_chats_and_boards') %}
+1. Apelează {{ tool('list_chats_and_boards') }}. Pune cuvintele subiectului în query sau lasă query gol pentru a lista cele mai noi elemente.
+{% endif %}
+{% if has('read_chat') %}
+2. Citește fiecare conversație relevantă cu {{ tool('read_chat') }}. Citește pagina următoare când rezultatul are next_page și ai nevoie de turele ulterioare.
+{% endif %}
+{% if has('read_board') %}
+3. Citește fiecare tablou relevant cu {{ tool('read_board') }}. Dă node pentru a citi sursele unei constatări.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Apelează {{ tool('cite_chats_and_boards') }} cu fiecare conversație și fiecare tablou pe care le folosești. Scrie eticheta de citare returnată, de exemplu [C1] sau [B1], lângă fiecare afirmație care se bazează pe ea.
+{% endif %}
+5. Scrie rezumatul: ce a întrebat fiecare conversație sau tablou, ce a găsit și ce rămâne deschis.
+
+Etichetele precum (D1) dintr-o conversație sau dintr-un tablou citit numesc sursele acelui element. Nu le scrie ca propriile tale etichete de citare.
+{% if has('read_documents') and has('cite_documents') %}
+Pentru a cita un document al unei constatări anterioare, citește documentul cu {{ tool('read_documents') }} și citează-l cu {{ tool('cite_documents') }}.
+{% endif %}
+Când lista nu conține nicio conversație și niciun tablou despre subiect, spune acest lucru.

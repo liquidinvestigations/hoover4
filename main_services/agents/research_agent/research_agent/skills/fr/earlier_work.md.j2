@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: comment trouver, lire, citer et résumer les chats et tableaux antérieurs
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: Mots pour le désigner : chat antérieur, conversation précédente, la dernière fois, tableau d’enquête, travail antérieur, ce que nous avons trouvé, ce que l’équipe a trouvé, prise en main, résumé des tableaux, historique.
+not_for: Inutile quand la demande porte seulement sur les documents des collections.
+---
+Chats et tableaux antérieurs
+
+Utilisez cette méthode quand la personne demande des chats antérieurs, des tableaux d’enquête ou un travail antérieur.
+
+{% if has('list_chats_and_boards') %}
+1. Appelez {{ tool('list_chats_and_boards') }}. Mettez les mots du sujet dans query, ou laissez query vide pour lister les éléments les plus récents.
+{% endif %}
+{% if has('read_chat') %}
+2. Lisez chaque chat utile avec {{ tool('read_chat') }}. Lisez la page suivante quand le résultat a next_page et que vous avez besoin des tours suivants.
+{% endif %}
+{% if has('read_board') %}
+3. Lisez chaque tableau utile avec {{ tool('read_board') }}. Indiquez node pour lire les sources d’un constat.
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. Appelez {{ tool('cite_chats_and_boards') }} avec chaque chat et chaque tableau que vous utilisez. Écrivez le repère de citation renvoyé, par exemple [C1] ou [B1], à côté de chaque affirmation qui en dépend.
+{% endif %}
+5. Écrivez le résumé : ce que chaque chat ou tableau a demandé, ce qu’il a trouvé et ce qui reste ouvert.
+
+Les étiquettes comme (D1) d’un chat ou d’un tableau lu nomment les sources de cet élément. Ne les écrivez pas comme vos propres repères de citation.
+{% if has('read_documents') and has('cite_documents') %}
+Pour citer un document d’un constat antérieur, lisez le document avec {{ tool('read_documents') }} et citez-le avec {{ tool('cite_documents') }}.
+{% endif %}
+Quand la liste ne contient aucun chat ni tableau sur le sujet, dites-le.

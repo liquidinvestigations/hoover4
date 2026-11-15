@@ -35,6 +35,9 @@ fn main() {
             // The upload receiver. Its startup recovery and hourly sweep run on this
             // runtime, and their file work runs on its blocking pool.
             backend::uploads::start();
+            // The manuals of `/docs`, read once. A missing manual is logged, and its page
+            // shows the error.
+            backend::api::manual::load();
 
 
             use dioxus::server::axum;
@@ -66,6 +69,12 @@ fn main() {
                 .route(
                     "/_image_preview/{collection_dataset}/{file_hash}",
                     axum::routing::get(backend::server_extra::image_preview::image_preview),
+                )
+                // The images of the manual pages (`/docs`). Only the `img/` and `crops/`
+                // folders of the manual folder are served.
+                .route(
+                    "/_manual/{*path}",
+                    axum::routing::get(backend::server_extra::manual_assets::manual_asset),
                 )
                 // Chat tool artifacts: thumb.webp, page.html, detail.json. The handler
                 // resolves the id to its owner and enforces owner-or-admin, the id

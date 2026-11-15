@@ -78,6 +78,27 @@ pub async fn list_chat_sessions(user: &CurrentUser, include_boards: bool) -> any
     Ok(items)
 }
 
+/// The most cited items of each kind that one card request reads.
+const MAX_CARD_ITEMS: usize = 50;
+
+/// The cards of the chats and boards that an answer cites, read with the rule of the reader
+/// now. An item that the reader cannot read, or that no longer exists, has no card.
+pub async fn cited_item_cards(
+    user: &CurrentUser,
+    chat_ids: Vec<String>,
+    board_ids: Vec<String>,
+) -> anyhow::Result<common::chat_items::CitedItemCards> {
+    let groups = item_access::member_groups(user).await?;
+    let chat_ids: Vec<String> = chat_ids.into_iter().take(MAX_CARD_ITEMS).collect();
+    let board_ids: Vec<String> = board_ids.into_iter().take(MAX_CARD_ITEMS).collect();
+    let mut chats = db_chat::sessions_of_groups_by_ids(&groups, &chat_ids).await?;
+    for item in &mut chats {
+        item.can_delete = item_access::item_access(user, &groups, &item.owner_group, &item.owner).delete;
+    }
+    let boards = crate::api::boards::list_boards_with(user, Some(&board_ids)).await?;
+    Ok(common::chat_items::CitedItemCards { chats, boards })
+}
+
 /// Start a new conversation in `group`.
 ///
 /// The creator must be a member of the group. The requested collections must be readable

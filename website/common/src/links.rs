@@ -2,7 +2,8 @@
 //! boards build from them.
 //!
 //! [`parse_link`] decodes every address of the frontend `Route` that names an item: a
-//! search, a document, the storage pages, a folder, an email graph, a chat and a board. It
+//! search, a document, the storage pages, a folder, an email graph, a chat, a board and a
+//! section of a manual (`/docs#slug`, `/docs/admin#slug`). It
 //! reads only the segments that name the item and skips the viewer segments, so the
 //! frontend viewer types stay in the frontend. A segment that does not decode is an error,
 //! and the caller then keeps the text as text.
@@ -45,6 +46,9 @@ pub enum HooverLink {
     /// `/ai_chat/boards/:board_id?selected`. `node` is the slug or the id of the selected
     /// node, empty for none.
     Board { board_id: String, node: String },
+    /// `/docs#slug` or `/docs/admin#slug`. `section` is the anchor of the section, empty for
+    /// the whole manual. `admin` names the administration manual.
+    Manual { admin: bool, section: String },
 }
 
 impl HooverLink {
@@ -59,6 +63,7 @@ impl HooverLink {
             HooverLink::EmailGraph { .. } => "email_graph",
             HooverLink::Chat { .. } => "chat",
             HooverLink::Board { .. } => "board",
+            HooverLink::Manual { .. } => "manual",
         }
     }
 
@@ -98,6 +103,10 @@ impl HooverLink {
                 }
                 Some(call("read_board", arguments))
             }
+            HooverLink::Manual { admin, section } => Some(call("read_manual", serde_json::json!({
+                "manual": if *admin { crate::manual::ADMIN_MANUAL } else { crate::manual::USER_MANUAL },
+                "section": section,
+            }))),
         }
     }
 }
@@ -219,7 +228,7 @@ pub fn parse_link(text: &str, host: LinkHost) -> Result<HooverLink, LinkError> {
         return Err(LinkError::NotALink);
     }
     let path = path_part(text, host)?;
-    let path = path.split_once('#').map_or(path, |(before, _)| before);
+    let (path, fragment) = path.split_once('#').unwrap_or((path, ""));
     let (path, query) = path.split_once('?').unwrap_or((path, ""));
     let query = percent_decode(query).ok_or(LinkError::BadSegment("query"))?;
     let path = path.strip_suffix('/').unwrap_or(path);
@@ -268,6 +277,10 @@ pub fn parse_link(text: &str, host: LinkHost) -> Result<HooverLink, LinkError> {
             node: query_value(&query, "selected"),
         }),
         ["ai_chat", "c", ..] | ["ai_chat", "boards", ..] => Err(LinkError::Incomplete),
+        ["docs"] | ["docs", "admin"] => Ok(HooverLink::Manual {
+            admin: parts.len() == 2,
+            section: percent_decode(fragment).ok_or(LinkError::BadSegment("section"))?,
+        }),
         _ => Err(LinkError::UnknownAddress),
     }
 }
@@ -656,6 +669,17 @@ mod tests {
             parse_link("/ai_chat/boards/0a1b", LinkHost::Any),
             Ok(HooverLink::Board { board_id: "0a1b".into(), node: String::new() })
         );
+
+        assert_eq!(
+            parse_link("https://hoover.example.org/docs#4-search", LinkHost::Own("https://hoover.example.org")),
+            Ok(HooverLink::Manual { admin: false, section: "4-search".into() })
+        );
+        assert_eq!(parse_link("/docs", LinkHost::Any), Ok(HooverLink::Manual { admin: false, section: String::new() }));
+        assert_eq!(
+            parse_link("/docs/admin#datasets", LinkHost::Any),
+            Ok(HooverLink::Manual { admin: true, section: "datasets".into() })
+        );
+        assert_eq!(parse_link("/docs/other", LinkHost::Any), Err(LinkError::UnknownAddress));
     }
 
     #[test]
@@ -757,6 +781,10 @@ mod tests {
         assert_eq!(
             call(HooverLink::Board { board_id: "b1".into(), node: String::new() }),
             Some(("read_board".into(), serde_json::json!({"board_id": "b1"})))
+        );
+        assert_eq!(
+            call(HooverLink::Manual { admin: true, section: "datasets".into() }),
+            Some(("read_manual".into(), serde_json::json!({"manual": "admin", "section": "datasets"})))
         );
         assert_eq!(
             call(HooverLink::Search { query: SearchQuery { query_string: "a".into(), ..Default::default() }, selected: None }),

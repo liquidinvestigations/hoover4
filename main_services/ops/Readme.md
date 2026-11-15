@@ -34,7 +34,10 @@ The compose stack and the published set differ on purpose, for four services.
 - **`hoover4-website`** builds from `website/Dockerfile.release`. Compose keeps building
   from `website/Dockerfile`, mounting the source and running `dx serve` for hot reload.
   The published image runs `dx build --release` at image build time. It ships the
-  compiled binary, with no Rust toolchain and no source.
+  compiled binary, with no Rust toolchain and no source. It also holds `docs/user-manual/`
+  for the `/docs` page. The build context is `website/`, so `publish-images.sh` copies the
+  manuals to `website/docs/user-manual/` before the build and removes the copy after it.
+  Compose mounts `docs/user-manual/` read-only at the same path.
 - **`hoover4-worker` and `hoover4-ops`** compose mounts `main_services/processing` over
   `/app`. The published image copies that source in at build time. The dependency layer
   (`pyproject.toml`, `uv.lock`) is copied and synced ahead of the source, so a

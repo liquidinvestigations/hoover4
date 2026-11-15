@@ -136,12 +136,12 @@ pub fn ChatTranscript(
     // Handles are allocated for the whole conversation, so a handle that any citation of
     // any run gave is a real one. The answers mark every other handle as not cited.
     let mut cited_handles = issued_handles(&messages, &run_cited_handles);
-    let SessionSources { documents: all_sources, pages: web_pages, conflicting } =
+    let SessionSources { documents: all_sources, pages: web_pages, items: cited_items, conflicting } =
         session_citation_sources(&messages, &collection_tree, &run_cited_refs);
-    for page in &web_pages {
-        if !cited_handles.contains(&page.handle) { cited_handles.push(page.handle.clone()); }
+    for handle in web_pages.iter().map(|page| &page.handle).chain(cited_items.iter().map(|item| &item.handle)) {
+        if !cited_handles.contains(handle) { cited_handles.push(handle.clone()); }
     }
-    let placements = citation_placements(&messages, &all_sources, &web_pages);
+    let placements = citation_placements(&messages, &all_sources, &web_pages, &cited_items);
     // The sources that the turn without an answer cited so far.
     let pending = placements.get(&messages.len()).cloned().unwrap_or_default();
     // The todo calls that show a task summary after their group, by row index.
@@ -186,7 +186,9 @@ pub fn ChatTranscript(
                 card_handles: placement.inline,
                 trailing_docs: placement.documents,
                 trailing_pages: placement.pages,
+                trailing_items: placement.items,
                 web_pages: web_pages.clone(),
+                items: cited_items.clone(),
                 cited_handles: cited_handles.clone(),
                 conflicting_handles: conflicting.clone(),
                 datasets: datasets.clone(),
@@ -368,9 +370,9 @@ pub fn ChatTranscript(
                     }
                 }
             }
-            if !pending.documents.is_empty() || !pending.pages.is_empty() {
+            if !pending.documents.is_empty() || !pending.pages.is_empty() || !pending.items.is_empty() {
                 div { "data-pending-citations": "true", style: "align-self: stretch; max-width: 96%; padding: 0 2px;",
-                    UnreferencedCitations { documents: pending.documents, pages: pending.pages,
+                    UnreferencedCitations { documents: pending.documents, pages: pending.pages, items: pending.items,
                         web_pages: web_pages.clone(), conflicting: conflicting.clone() }
                 }
             }
@@ -383,11 +385,13 @@ pub fn ChatTranscript(
 fn UnreferencedCitations(
     documents: Vec<ChatDocRef>,
     pages: Vec<common::chat_pages::ChatPageRef>,
+    #[props(default)]
+    items: Vec<common::chat_items::ChatItemRef>,
     web_pages: Vec<common::chat_pages::ChatPageRef>,
     conflicting: Vec<String>,
 ) -> Element {
     rsx! {
-        if !documents.is_empty() || !pages.is_empty() {
+        if !documents.is_empty() || !pages.is_empty() || !items.is_empty() {
             div { "data-unreferenced-citations": "true",
                 if !documents.is_empty() {
                     DocumentCitationCards { sources: documents, conflicting }
@@ -400,6 +404,9 @@ fn UnreferencedCitations(
                         WebPageCard { page: page.clone(), passages: web_pages.iter().filter(|source| source.url == page.url).cloned().collect::<Vec<_>>() }
                     }
                 }
+                for item in items {
+                    super::ItemCitationCard { key: "{item.handle}", item }
+                }
             }
         }
     }
@@ -410,17 +417,24 @@ struct CitationPlacement {
     inline: Vec<String>,
     documents: Vec<ChatDocRef>,
     pages: Vec<common::chat_pages::ChatPageRef>,
+    items: Vec<common::chat_items::ChatItemRef>,
 }
 
 /// The source cards of each answer, by row index. The key `messages.len()` holds the cards
 /// of a turn without an answer yet: they follow the rows of that turn.
-fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages: &[common::chat_pages::ChatPageRef]) -> HashMap<usize, CitationPlacement> {
+fn citation_placements(
+    messages: &[ChatMessageItem],
+    docs: &[ChatDocRef],
+    pages: &[common::chat_pages::ChatPageRef],
+    items: &[common::chat_items::ChatItemRef],
+) -> HashMap<usize, CitationPlacement> {
     let mut result = HashMap::new();
     let mut seen = HashSet::new();
     let identity = |handle: &str| {
         if handle.is_empty() { return None; }
         docs.iter().find(|doc| doc.handle == handle).map(|doc| format!("document:{}", doc.file_hash))
             .or_else(|| pages.iter().find(|page| page.handle == handle).map(|page| format!("page:{}", page.url)))
+            .or_else(|| items.iter().find(|item| item.handle == handle).map(|item| format!("{}:{}", item.kind, item.id)))
     };
     // The cited handles of the rows, then every source of the session for the last turn.
     let issued_in = |rows: &[ChatMessageItem], last_turn: bool| {
@@ -428,10 +442,12 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
         for row in rows {
             if row.tool_name == "cite_documents" { issued.extend(row.parsed_doc_refs().into_iter().map(|doc| doc.handle)); }
             if row.tool_name == "cite_pages" { issued.extend(common::chat_pages::extract_page_refs(&row.tool_output).into_iter().map(|page| page.handle)); }
+            if row.tool_name == "cite_chats_and_boards" { issued.extend(common::chat_items::extract_item_refs(&row.tool_output).into_iter().map(|item| item.handle)); }
         }
         if last_turn {
             issued.extend(docs.iter().map(|doc| doc.handle.clone()));
             issued.extend(pages.iter().map(|page| page.handle.clone()));
+            issued.extend(items.iter().map(|item| item.handle.clone()));
         }
         issued
     };
@@ -443,6 +459,7 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
                         placement.documents.extend(docs.iter().filter(|doc| doc.file_hash == source.file_hash).cloned());
                     }
                     if let Some(page) = pages.iter().find(|page| page.handle == handle) { placement.pages.push(page.clone()); }
+                    if let Some(item) = items.iter().find(|item| item.handle == handle) { placement.items.push(item.clone()); }
                 }
             }
         }
@@ -777,6 +794,8 @@ fn collect_datasets(
 pub struct SessionSources {
     pub documents: Vec<ChatDocRef>,
     pub pages: Vec<common::chat_pages::ChatPageRef>,
+    /// The cited chats and boards (`cite_chats_and_boards`).
+    pub items: Vec<common::chat_items::ChatItemRef>,
     pub conflicting: Vec<String>,
 }
 
@@ -791,7 +810,9 @@ pub fn session_citation_sources(
         .flat_map(|(index, _)| citation_search_context_with_tree(messages, index, tree)).collect::<Vec<_>>();
     documents.extend(run_cited_refs.iter().cloned());
     documents.retain(|source| !source.handle.is_empty());
-    SessionSources { documents, pages, conflicting: conflicting_handles(messages) }
+    let items = common::chat_items::merge_item_refs(messages.iter().filter(|row| row.tool_name == "cite_chats_and_boards")
+        .flat_map(|row| common::chat_items::extract_item_refs(&row.tool_output)).collect::<Vec<_>>());
+    SessionSources { documents, pages, items, conflicting: conflicting_handles(messages) }
 }
 
 /// The handles that the citation rows of the conversation give to more than one document.
@@ -1132,6 +1153,11 @@ fn MessageEntry(
     trailing_docs: Vec<ChatDocRef>,
     #[props(default)]
     trailing_pages: Vec<common::chat_pages::ChatPageRef>,
+    #[props(default)]
+    trailing_items: Vec<common::chat_items::ChatItemRef>,
+    /// The cited chats and boards of the conversation.
+    #[props(default)]
+    items: Vec<common::chat_items::ChatItemRef>,
     /// The handles that the citations of the conversation gave (`issued_handles`).
     #[props(default)]
     cited_handles: Vec<String>,
@@ -1197,6 +1223,7 @@ fn MessageEntry(
                                 conflicting_handles: conflicting_handles.clone(),
                                 sources: sources.clone(),
                                 pages: web_pages.clone(),
+                                items: items.clone(),
                                 card_handles: Some(if replaced { Vec::new() } else { card_handles.clone() }),
                             }
                             if let Some(footer) = context_footer.as_ref() {
@@ -1220,6 +1247,7 @@ fn MessageEntry(
                                 conflicting_handles: conflicting_handles.clone(),
                                 sources: sources.clone(),
                                 pages: web_pages.clone(),
+                                items: items.clone(),
                                 card_handles: Some(if replaced { Vec::new() } else { card_handles.clone() }),
                             }
                         }
@@ -1236,6 +1264,7 @@ fn MessageEntry(
                                     conflicting_handles: conflicting_handles.clone(),
                                     sources: sources.clone(),
                                     pages: web_pages.clone(),
+                                    items: items.clone(),
                                     card_handles: Some(Vec::new()),
                                 }
                             }
@@ -1255,7 +1284,7 @@ fn MessageEntry(
                         }
                     }
                     if !replaced {
-                        UnreferencedCitations { documents: trailing_docs, pages: trailing_pages,
+                        UnreferencedCitations { documents: trailing_docs, pages: trailing_pages, items: trailing_items,
                             web_pages: web_pages.clone(), conflicting: conflicting_handles.clone() }
                         if let Some(tool_input) = board_fact.clone() {
                             BoardFactSummary { tool_input }
@@ -1605,7 +1634,7 @@ mod tests {
             row(2, ChatRole::Assistant, "", "", "First [D1]. Again [D1]."),
             row(3, ChatRole::User, "", "", "Next question"),
             row(4, ChatRole::Assistant, "", "", "Earlier source [D1].")];
-        let places = citation_placements(&messages, &docs, &[]);
+        let places = citation_placements(&messages, &docs, &[], &[]);
         assert_eq!(places[&2].inline, vec!["[D1]"]);
         assert_eq!(places[&2].documents.iter().map(|doc| doc.handle.as_str()).collect::<Vec<_>>(), vec!["[D2]"]);
         assert!(places[&4].inline.is_empty() && places[&4].documents.is_empty());
@@ -1619,7 +1648,7 @@ mod tests {
             row(1, ChatRole::Assistant, "", "", "An answer without sources."),
             row(2, ChatRole::User, "", "", "Search for music"),
             row(3, ChatRole::Tool, "cite_documents", &serde_json::to_string(&docs[..1]).unwrap(), "")];
-        let places = citation_placements(&messages, &docs, &[]);
+        let places = citation_placements(&messages, &docs, &[], &[]);
         assert!(places[&1].documents.is_empty());
         assert_eq!(places[&4].documents.iter().map(|doc| doc.handle.as_str()).collect::<Vec<_>>(), vec!["[D1]", "[D2]"]);
     }
@@ -1639,10 +1668,27 @@ mod tests {
         let messages = vec![row(0, ChatRole::User, "", "", "Question"),
             row(1, ChatRole::Tool, "cite_documents", &serde_json::to_string(&docs).unwrap(), ""),
             row(2, ChatRole::Assistant, "", "", "First [D1], alias [D2].")];
-        let places = citation_placements(&messages, &docs, &[page]);
+        let places = citation_placements(&messages, &docs, &[page], &[]);
         assert_eq!(places[&2].inline, vec!["[D1]"]);
         assert!(places[&2].documents.is_empty());
         assert_eq!(places[&2].pages.len(), 1);
+    }
+
+    #[test]
+    fn chat_and_board_citations_get_one_card_each() {
+        let output = serde_json::json!({"success": true, "citations": [
+            {"handle": "[C1]", "kind": "chat", "id": "s1", "title": "Budget"},
+            {"handle": "[B1]", "kind": "board", "id": "b1", "title": "Who paid"}]}).to_string();
+        let mut tool = row(1, ChatRole::Tool, "cite_chats_and_boards", "", "");
+        tool.tool_output = output;
+        let messages = vec![row(0, ChatRole::User, "", "", "What did we find before?"), tool,
+            row(2, ChatRole::Assistant, "", "", "The budget chat [C1] and again [C1].")];
+        let sources = session_citation_sources(&messages, &[], &[]);
+        assert_eq!(sources.items.iter().map(|i| i.handle.as_str()).collect::<Vec<_>>(), vec!["[C1]", "[B1]"]);
+        let places = citation_placements(&messages, &[], &[], &sources.items);
+        assert_eq!(places[&2].inline, vec!["[C1]"]);
+        // The board that the answer does not mark shows after the answer.
+        assert_eq!(places[&2].items.iter().map(|i| i.handle.as_str()).collect::<Vec<_>>(), vec!["[B1]"]);
     }
 
     #[test]
@@ -1651,7 +1697,7 @@ mod tests {
         let messages = vec![row(0, ChatRole::Assistant, "", "", "Draft [D1]."),
             row(1, ChatRole::Nag, CITATION_NOTE_NAME, "", "Repair"),
             row(2, ChatRole::Assistant, "", "", "Final [D1].")];
-        let places = citation_placements(&messages, &docs, &[]);
+        let places = citation_placements(&messages, &docs, &[], &[]);
         assert!(!places.contains_key(&0));
         assert_eq!(places[&2].inline, vec!["[D1]"]);
     }

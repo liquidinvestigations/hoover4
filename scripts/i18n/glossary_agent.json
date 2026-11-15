@@ -14,6 +14,8 @@
   {"term": "web page", "meaning": "a page of a public website."},
   {"term": "run", "meaning": "the work of the assistant for one user message."},
   {"term": "note", "meaning": "a short message that the system adds to the conversation for the assistant."},
-  {"term": "plan", "meaning": "the list of steps that the assistant keeps with update_plan."}
+  {"term": "plan", "meaning": "the list of steps that the assistant keeps with update_plan."},
+  {"term": "investigation board", "meaning": "a page of goals, explores and findings that the assistant works on for a group. read_board reads it."},
+  {"term": "manual", "meaning": "the Hoover user manual or administration manual at /docs. search_manual and read_manual read it."}
  ]
 }

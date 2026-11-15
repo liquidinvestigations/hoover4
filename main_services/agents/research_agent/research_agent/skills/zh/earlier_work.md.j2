@@ -1,0 +1,31 @@
+---
+name: earlier_work
+group: technique
+description: 如何查找、阅读、引用和总结以前的对话和调查板
+tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
+terms: 相关词语：以前的对话、上一次对话、上次、调查板、以前的工作、我们发现了什么、团队发现了什么、入门、调查板总结、历史。
+not_for: 请求只询问文档集中的文档时不需要。
+---
+以前的对话和调查板
+
+当用户询问以前的对话、调查板或以前的工作时，使用此方法。
+
+{% if has('list_chats_and_boards') %}
+1. 调用 {{ tool('list_chats_and_boards') }}。在 query 中填写主题的词语，或将 query 留空以列出最新的项目。
+{% endif %}
+{% if has('read_chat') %}
+2. 用 {{ tool('read_chat') }} 阅读每个相关的对话。当结果中有 next_page 且你需要后面的轮次时，阅读下一页。
+{% endif %}
+{% if has('read_board') %}
+3. 用 {{ tool('read_board') }} 阅读每个相关的调查板。提供 node 以阅读某个发现的来源。
+{% endif %}
+{% if has('cite_chats_and_boards') %}
+4. 对你使用的每个对话和每个调查板调用 {{ tool('cite_chats_and_boards') }}。把返回的引用标识（例如 [C1] 或 [B1]）写在依赖它的每个陈述旁边。
+{% endif %}
+5. 撰写总结：每个对话或调查板问了什么、发现了什么、还有什么尚未解决。
+
+已阅读的对话或调查板中的 (D1) 等标签指的是该项目的来源。不要把它们当作你自己的引用标识来写。
+{% if has('read_documents') and has('cite_documents') %}
+要引用以前某个发现中的文档，先用 {{ tool('read_documents') }} 阅读该文档，再用 {{ tool('cite_documents') }} 引用它。
+{% endif %}
+当列表中没有与该主题相关的对话或调查板时，请说明。

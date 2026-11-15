@@ -22,7 +22,7 @@ import re
 from tasks.P_agent import link_references
 from tasks.P_board import model as m
 
-LABEL_PATTERN = re.compile(r"\s*\[(?:D|W)\d+\](?:\s*,)?")
+LABEL_PATTERN = re.compile(r"\s*\[(?:D|W|C|B)\d+\](?:\s*,)?")
 
 #: Model steps per tool call of the guidance in a brief. The chat control layer gives its own
 #: guidance from the request class, and a brief that states a smaller number keeps an

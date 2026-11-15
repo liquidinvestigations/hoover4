@@ -1,0 +1,22 @@
+---
+name: using_hoover
+group: technique
+description: Hoover kullanımıyla ilgili bir soruyu, örneğin nasıl arama, filtreleme veya yükleme yapılacağını, kılavuzundan yanıtlama yöntemi
+tools: search_manual, read_manual
+terms: Bunun sözcükleri: nasıl yaparım, nerede, Hoover nasıl kullanılır, yardım, kılavuz, belgeler, arama sözdizimi, filtreler, yükleme, depolama, pano, sohbet, yönetim, ayarlar.
+not_for: İstek belgelerin içeriğini sorduğunda gerekmez.
+---
+Hoover kullanımıyla ilgili sorular
+
+Hoover kullanımıyla ilgili bir soruyu yanıtlamadan önce kılavuzu oku.
+
+{% if has('search_manual') %}
+1. {{ tool('search_manual') }} aracını sorunun sözcükleriyle çağır.
+{% endif %}
+{% if has('read_manual') %}
+2. En iyi bölümleri {{ tool('read_manual') }} ile oku. Aramanın döndürdüğü bölümü ver.
+{% endif %}
+3. Kılavuzun metnine göre yanıtla. Kılavuz başka bir dilde olsa bile yanıtı yanıt dilinde yaz.
+4. Kullandığın her bölüme sonucun bağlantısıyla bir Markdown bağlantısı ver, örneğin [Arama](/docs#4-search). Bir kılavuz bölümüne atıf etiketi verme.
+
+Kılavuz görevi açıklamıyorsa bunu söyle.

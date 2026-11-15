@@ -60,6 +60,12 @@ SERVER_TOOLS: Tuple[str, ...] = (
     "folder_list",
     "folder_search",
     "parse_link",
+    "list_chats_and_boards",
+    "read_chat",
+    "read_board",
+    "cite_chats_and_boards",
+    "search_manual",
+    "read_manual",
 )
 
 

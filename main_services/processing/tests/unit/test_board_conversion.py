@@ -116,6 +116,13 @@ def test_resolve_keeps_the_report_handles_only_and_downgrades_an_unsourced_fact(
     assert kind == m.INFERRED and rows == [] and "became inferred" in problems[0]
 
 
+def test_a_chat_or_board_handle_gives_no_board_citation_row():
+    item = [{"handle": "[C1]", "item_kind": "chat", "item_id": "s1", "title": "Budget"}]
+    kind, rows, problems = conversion.resolve("The budget chat found it [C1] [B2].", "sourced", CITATIONS + item)
+    assert rows == [] and kind == m.INFERRED
+    assert not any("C1" in problem or "B2" in problem for problem in problems)
+
+
 # ---------------------------------------------------------------------- the end of a turn
 
 
