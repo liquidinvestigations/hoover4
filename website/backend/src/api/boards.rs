@@ -23,10 +23,15 @@
 //! it only when an event carries the same request id, because the writer writes the facts
 //! before their event.
 //!
-//! Every user can own boards. Only the owner of a board can read it or act on it. This
-//! applies to administrators too. Anyone else gets not-found, which is the convention of
-//! `auth::guard::NOT_FOUND`. A board starts only while AI chat is open
-//! (`chat::gate::evaluate_live_chat_gate`), because its explores are chat turns.
+//! Every board belongs to one group (`boards.owner_group`, `auth::item_access`). Every member
+//! of the group reads the board and acts on it. Only the creator (`owner`) and
+//! administrators drop it. A person outside the group gets not-found, which is the
+//! convention of `auth::guard::NOT_FOUND`, also an administrator. The collections of a board
+//! are collections that its group can read. The explores run as chat turns of the creator:
+//! their sessions have the creator as `username` and the group of the board as
+//! `owner_group`, and the agent runs with the identity of the creator. A board starts only
+//! while AI chat is open (`chat::gate::evaluate_live_chat_gate`), because its explores are
+//! chat turns.
 //!
 //! The explore model and the budgets are not inputs. The website writes the base values in
 //! the board row, and the worker computes the budget from the events
@@ -53,7 +58,7 @@ use common::board_types::{
 use common::current_user::CurrentUser;
 use time::OffsetDateTime;
 
-use crate::auth::guard;
+use crate::auth::{guard, item_access};
 use crate::db_auth::insert_row;
 use crate::db_utils::clickhouse_utils::get_global_client;
 
@@ -104,6 +109,8 @@ struct BoardRow {
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
     updated_at: OffsetDateTime,
     is_deleted: u8,
+    /// The group of the board. Every write of the row carries it.
+    owner_group: String,
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
@@ -257,15 +264,23 @@ fn clip(text: &str) -> String {
     text.trim().chars().take(MAX_TEXT).collect()
 }
 
-/// The board, when it exists, is not dropped, and belongs to `user`. Not-found otherwise.
-async fn owned_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<BoardRow> {
+/// The board when it exists and is not dropped, and the access of `user` to it.
+async fn live_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<Option<(BoardRow, item_access::ItemAccess)>> {
     let rows = get_global_client()
         .query("SELECT ?fields FROM boards FINAL WHERE board_id = ? AND is_deleted = 0")
         .bind(board_id)
         .fetch_all::<BoardRow>()
         .await?;
-    match rows.into_iter().next() {
-        Some(row) if row.owner == user.username => Ok(row),
+    let Some(row) = rows.into_iter().next() else { return Ok(None) };
+    let access = item_access::access(user, &row.owner_group, &row.owner).await?;
+    Ok(Some((row, access)))
+}
+
+/// The board, when it exists, is not dropped, and `user` is a member of its group.
+/// Not-found otherwise.
+async fn readable_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<(BoardRow, item_access::ItemAccess)> {
+    match live_board(user, board_id).await? {
+        Some((row, access)) if access.read => Ok((row, access)),
         _ => anyhow::bail!("board {}", guard::NOT_FOUND),
     }
 }
@@ -522,12 +537,17 @@ fn board_intent(i: IntentRow, marks: &EventFacts, summary: &serde_json::Value) -
     }
 }
 
-/// Every board of the caller, with the graph of its thumbnail.
+/// Every board of the groups of the caller, with the graph of its thumbnail.
 pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem>> {
+    let groups = item_access::member_groups(user).await?;
+    if groups.is_empty() {
+        return Ok(Vec::new());
+    }
     let client = get_global_client();
     let boards = client
-        .query("SELECT ?fields FROM boards FINAL WHERE owner = ? AND is_deleted = 0 ORDER BY created_at DESC")
-        .bind(&user.username)
+        .query("SELECT ?fields FROM boards FINAL WHERE owner_group IN ? AND owner_group != '' AND is_deleted = 0 \
+                ORDER BY created_at DESC")
+        .bind(&groups)
         .fetch_all::<BoardRow>()
         .await?;
     let ids: Vec<String> = boards.iter().map(|b| b.board_id.clone()).collect();
@@ -632,6 +652,7 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
                 status,
                 board_id: b.board_id,
                 title: b.title,
+                owner_group: b.owner_group,
             }
         })
         .collect())
@@ -640,6 +661,8 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
 /// Create a board: its definition, then the `create_board` command, which writes the
 /// background, the goals, the creation event and the first hints. The board id comes from
 /// the user and the request id, so the same request sent again names the same board.
+/// The creator must be a member of the group of the request, and the group and the creator
+/// must both read every requested collection, else the request is refused.
 /// `accept_language` is the browser header, which decides the board language when the
 /// owner has saved none.
 pub async fn create_board_command(user: &CurrentUser, request_id: String,
@@ -657,8 +680,10 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
     if goals.len() > MAX_GOALS {
         anyhow::bail!("a board has at most {MAX_GOALS} goals");
     }
-    // The rule of chat and search: an administrator reads every collection.
-    let permitted = crate::db_utils::clickhouse_utils::list_permitted_collections(user).await?;
+    let group = item_access::require_member(user, &request.group).await?;
+    // The collections that the group and the creator can both read.
+    let permitted = item_access::shared_collections(user, &group).await?;
+    item_access::check_collections(&request.collections, &permitted)?;
     let (collections, internet_tools) = board_sources(
         &request.collections,
         &permitted,
@@ -695,6 +720,7 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
                 created_at: created,
                 updated_at: created,
                 is_deleted: 0,
+                owner_group: group,
             };
             insert_row("boards", &row).await?;
         }
@@ -774,11 +800,12 @@ async fn set_internet_tools(user: &CurrentUser, mut board: BoardRow, request_id:
     submit(user, &board.board_id, request_id, "set_internet_tools", serde_json::json!({"on": on})).await
 }
 
-/// One action of the board owner, as one command. The command writer checks it against the
-/// committed state of the board, so a stale page cannot act on a newer review or answer.
+/// One action of a member of the group of the board, as one command. The command writer
+/// checks it against the committed state of the board, so a stale page cannot act on a newer
+/// review or answer.
 pub async fn board_command(user: &CurrentUser, board_id: String, request_id: String,
                            action: BoardAction) -> anyhow::Result<BoardCommandReceipt> {
-    let board = owned_board(user, &board_id).await?;
+    let (board, _) = readable_board(user, &board_id).await?;
     let (kind, body) = match action {
         BoardAction::AddHint { text } => {
             let text = clip(&text);
@@ -820,18 +847,18 @@ pub async fn board_command(user: &CurrentUser, board_id: String, request_id: Str
     submit(user, &board.board_id, &request_id, kind, body).await
 }
 
-/// The state of one command of the owner's board.
+/// The state of one command of a board that the caller reads.
 pub async fn board_command_status(user: &CurrentUser, board_id: String,
                                   request_id: String) -> anyhow::Result<BoardCommandReceipt> {
-    owned_board(user, &board_id).await?;
+    readable_board(user, &board_id).await?;
     command_state(&board_id, &person_request(&request_id)?).await
 }
 
-/// The fact that an intent of the owner's board concluded in, or `None` while it has none.
-/// A fact whose event is not written yet is not shown.
+/// The fact that an intent of a board that the caller reads concluded in, or `None` while it
+/// has none. A fact whose event is not written yet is not shown.
 pub async fn board_fact_for_intent(user: &CurrentUser, board_id: String,
                                    intent_id: String) -> anyhow::Result<Option<String>> {
-    owned_board(user, &board_id).await?;
+    readable_board(user, &board_id).await?;
     let client = get_global_client();
     // A board explore chat names an intent id outside ASCII by its `node_key`.
     let intent_id = if intent_id.is_ascii() && intent_id.starts_with('x') {
@@ -993,11 +1020,13 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value,
 
 /// The whole board.
 pub async fn board_snapshot(user: &CurrentUser, board_id: String) -> anyhow::Result<BoardSnapshot> {
-    read_snapshot(owned_board(user, &board_id).await?).await
+    let (board, access) = readable_board(user, &board_id).await?;
+    read_snapshot(board, access.delete).await
 }
 
-/// The whole board of a row that the caller already checked with `owned_board`.
-async fn read_snapshot(board: BoardRow) -> anyhow::Result<BoardSnapshot> {
+/// The whole board of a row that the caller already checked with `readable_board`.
+/// `can_delete` is the drop right of the caller.
+async fn read_snapshot(board: BoardRow, can_delete: bool) -> anyhow::Result<BoardSnapshot> {
     let board_id = board.board_id.clone();
     let client = get_global_client();
     let state = client
@@ -1146,6 +1175,8 @@ async fn read_snapshot(board: BoardRow) -> anyhow::Result<BoardSnapshot> {
             max_parallel: board.max_parallel,
             internet_tools: board.internet_tools != 0 && super::chat::gate::internet_tools_enabled(),
             language: board.language,
+            owner_group: board.owner_group,
+            can_delete,
         },
     })
 }
@@ -1201,7 +1232,7 @@ struct AssessmentRow {
 /// The prompt, the reply and the outcome of one assessment. An assessment that ran before the
 /// prompts were stored has no row, and shows the reply that its event holds.
 pub async fn board_assessment(user: &CurrentUser, board_id: String, reason_no: u32) -> anyhow::Result<BoardAssessment> {
-    owned_board(user, &board_id).await?;
+    readable_board(user, &board_id).await?;
     let client = get_global_client();
     let event = client
         .query("SELECT ?fields FROM board_events FINAL WHERE board_id = ? AND event_type = 'reason_result' AND subject = ?")
@@ -1257,7 +1288,15 @@ fn assessment_of(reason_no: u32, created_ms: i64, payload: &serde_json::Value, r
 /// of its nine tables. The command writer refuses every command of a tombstoned board, so no
 /// command writes after the delete.
 pub async fn board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<()> {
-    let mut board = owned_board(user, &board_id).await?;
+    // The creator and administrators drop a board. Another member gets 403, and a person
+    // outside the group gets not-found.
+    let mut board = match live_board(user, &board_id).await? {
+        Some((row, access)) if access.delete => row,
+        Some((_, access)) if access.read => {
+            return Err(guard::Forbidden(super::chat::ONLY_CREATOR_DELETES.into()).into());
+        }
+        _ => anyhow::bail!("board {}", guard::NOT_FOUND),
+    };
     board.is_deleted = 1;
     board.updated_at = now();
     insert_row("boards", &board).await?;
@@ -1279,12 +1318,12 @@ pub async fn board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<
     }
     let sessions: Vec<String> = client
         .query("SELECT session_id FROM chat_sessions FINAL WHERE username = ? AND startsWith(session_id, ?) AND is_deleted = 0")
-        .bind(&user.username)
+        .bind(&board.owner)
         .bind(format!("{BOARD_SESSION_PREFIX}{board_id}-"))
         .fetch_all()
         .await?;
     for session_id in sessions {
-        crate::db_chat::delete_session(&user.username, &session_id).await?;
+        crate::db_chat::delete_session(&board.owner, &session_id).await?;
     }
     for table in ["board_events", "board_state", "board_intents", "board_facts", "board_fact_citations",
                   "board_labels", "board_assessments", "board_command_inputs", "board_command_receipts"] {
@@ -1325,7 +1364,7 @@ mod tests {
             max_explores: BASE_EXPLORES, max_parallel: MAX_PARALLEL,
             explore_step_budget: BASE_EXPLORE_STEPS, internet_tools, language: String::new(),
             created_at: t,
-            updated_at: t, is_deleted: 0,
+            updated_at: t, is_deleted: 0, owner_group: "team".into(),
         }
     }
 

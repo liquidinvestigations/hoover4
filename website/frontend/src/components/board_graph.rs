@@ -414,6 +414,37 @@ pub fn node_style(kind: &NodeKind) -> (&'static str, &'static str, &'static str,
     }
 }
 
+/// The node `id`, every ancestor and every descendant of it over the edges of `graph`. A hover
+/// on a card keeps these nodes and the edges between them at full strength. Empty when `id` is
+/// not a node.
+pub fn related_nodes(graph: &Graph, id: &str) -> HashSet<String> {
+    let mut related = HashSet::new();
+    if !graph.nodes.iter().any(|n| n.id == id) {
+        return related;
+    }
+    related.insert(id.to_string());
+    // Two walks from the node: one against the edges (ancestors), one along them (descendants).
+    for forward in [false, true] {
+        let mut queue = vec![id.to_string()];
+        let mut seen: HashSet<String> = HashSet::from([id.to_string()]);
+        while let Some(current) = queue.pop() {
+            for edge in &graph.edges {
+                let (from, to) = if forward { (&edge.src, &edge.dst) } else { (&edge.dst, &edge.src) };
+                if *from == current && seen.insert(to.clone()) {
+                    related.insert(to.clone());
+                    queue.push(to.clone());
+                }
+            }
+        }
+    }
+    related
+}
+
+/// True when a hover is active and the edge has an end outside the related nodes of the hover.
+pub fn edge_hover_dimmed(edge: &GraphEdge, related: &HashSet<String>) -> bool {
+    !related.is_empty() && !(related.contains(&edge.src) && related.contains(&edge.dst))
+}
+
 /// Colour, width and dash pattern of an edge.
 pub fn edge_style(kind: EdgeKind) -> (&'static str, &'static str, &'static str) {
     match kind {
@@ -440,16 +471,18 @@ pub fn path_data(points: &[(f64, f64)]) -> String {
         .collect()
 }
 
-pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, marker: &str) -> Element {
+/// One edge. `hover_dimmed` draws it faint, because a hover on a card does not include it.
+pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, marker: &str, hover_dimmed: bool) -> Element {
     let points = edge_points(edge, layout);
     if points.is_empty() {
         return rsx! {};
     }
     let (stroke, width, dash) = edge_style(edge.kind);
+    let class = if hover_dimmed { "x-board-edge x-board-hover-dim" } else { "x-board-edge" };
     rsx! {
         path {
             key: "{edge.src}-{edge.dst}",
-            class: "x-board-edge",
+            class: "{class}",
             "data-edge-kind": edge.kind.name(),
             d: "{path_data(&points)}",
             fill: "none",
@@ -494,11 +527,16 @@ pub fn corners(kind: &NodeKind, slug: &str, rejected: bool, answer: &str) -> (St
 /// One node: the title in bold, the summary under it, and a meta row with the type on the left
 /// and the statuses on the right (`corners`). The origin and the goals have no title row. The classes in `assets/main.css` give the fonts. A dimmed node has an opaque
 /// white card under its translucent card, so an edge under it does not show through.
+/// `hover_dimmed` draws the whole node faint, because a hover on another card does not include
+/// it. `on_hover` gets the node id when the pointer enters the node and an empty id when it
+/// leaves.
 pub fn render_node(
     node: &GraphNode,
     layout: &HashMap<String, NodePosition>,
     selected: &str,
     on_select: Callback<String>,
+    hover_dimmed: bool,
+    on_hover: Callback<String>,
 ) -> Element {
     let Some(position) = layout.get(&node.id) else { return rsx! {} };
     let (fill, stroke, dash, _) = node_style(&node.kind);
@@ -516,15 +554,19 @@ pub fn render_node(
     let title_class = if node.rejected { "x-board-node-title x-board-node-rejected" } else { "x-board-node-title" };
     let (left, status) = corners(&node.kind, &node.slug, node.rejected, &node.answer);
     let id = node.id.clone();
+    let hover_id = node.id.clone();
+    let class = if hover_dimmed { "x-board-node x-board-hover-dim" } else { "x-board-node" };
     rsx! {
         g {
             key: "{node.id}",
-            class: "x-board-node",
+            class: "{class}",
             "data-node": "{node.id}",
             "data-slug": "{node.slug}",
             style: "cursor: pointer;",
             transform: "translate({position.x - NODE_WIDTH / 2.0}, {position.y - NODE_HEIGHT / 2.0})",
             onclick: move |_| on_select.call(id.clone()),
+            onmouseenter: move |_| on_hover.call(hover_id.clone()),
+            onmouseleave: move |_| on_hover.call(String::new()),
             if node.dimmed {
                 rect { width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}", rx: "8", fill: "#ffffff" }
             }
@@ -843,6 +885,33 @@ mod tests {
         data.status = "completed".into();
         data.answers_accepted = vec![answer("goal", "f1.1"), answer("goal-2", "f1.2")];
         data
+    }
+
+    #[test]
+    fn a_hover_keeps_the_node_its_ancestors_and_its_descendants() {
+        let graph = build_graph(&test_board());
+        let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<HashSet<String>>();
+        // f1.2 comes from the origin through i1.2. It leads to i2.1 and f2.1, to goal-2 through
+        // the accepted answer, and to the corrections c1 and c2.
+        assert_eq!(
+            related_nodes(&graph, "f1.2"),
+            ids(&["f1.2", "i1.2", "origin", "i2.1", "f2.1", "goal-2", "c1", "c2"]),
+        );
+        // The origin is an ancestor of every finding, but the other branches are not related to
+        // f1.2. The origin has no ancestors, so its set is every descendant.
+        let origin = related_nodes(&graph, "origin");
+        assert!(origin.contains("f1.1") && origin.contains("goal") && origin.contains("c1"));
+        assert!(!origin.contains("c3"));
+        // A node without edges keeps only itself, and an unknown id keeps nothing.
+        assert_eq!(related_nodes(&graph, "c3"), ids(&["c3"]));
+        assert!(related_nodes(&graph, "missing").is_empty());
+        // An edge is dimmed when one of its ends is outside the set, and no edge without a hover.
+        let related = related_nodes(&graph, "f1.2");
+        for edge in &graph.edges {
+            let inside = related.contains(&edge.src) && related.contains(&edge.dst);
+            assert_eq!(edge_hover_dimmed(edge, &related), !inside, "{edge:?}");
+            assert!(!edge_hover_dimmed(edge, &HashSet::new()));
+        }
     }
 
     #[test]

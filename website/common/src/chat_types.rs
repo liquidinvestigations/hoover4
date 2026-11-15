@@ -20,6 +20,15 @@ pub struct ChatSessionItem {
     /// The two agent switches, frozen at the first turn. See [`ChatOptions`].
     #[serde(default)]
     pub options: ChatOptions,
+    /// The group of the chat (`crate::item_groups`). Every member reads and continues it.
+    #[serde(default)]
+    pub owner_group: String,
+    /// The person who created the chat.
+    #[serde(default)]
+    pub owner: String,
+    /// The reader may delete the chat: the creator and administrators.
+    #[serde(default)]
+    pub can_delete: bool,
 }
 
 /// The internet setting for one conversation, locked at the first message.
@@ -785,7 +794,8 @@ pub struct ChatSendResult {
 pub struct ChatSessionDetail {
     pub session: ChatSessionItem,
     pub messages: Vec<ChatMessageItem>,
-    /// The collections the owner may currently read, which is what the collection picker offers.
+    /// The collections that the reader and the group of the chat can both read, which is
+    /// what the collection picker offers.
     /// Resolved fresh on every load, so a revoked permission disappears from the picker
     /// even in an old conversation.
     pub available_collections: Vec<String>,

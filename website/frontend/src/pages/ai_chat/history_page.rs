@@ -1,13 +1,16 @@
 //! `/ai_chat/history`, full conversation list with delete.
 //!
-//! The explore chats of the user's investigation boards are hidden unless the checkbox
-//! "Show board chats" is ticked. A board chat is marked as such and has no delete button,
-//! because its board deletes it when the board is dropped.
+//! The list holds the chats of the groups of the user. Each row shows its group. The explore
+//! chats of the investigation boards are hidden unless the checkbox "Show board chats" is
+//! ticked. A board chat is marked as such and has no delete button, because its board deletes
+//! it when the board is dropped. Another chat has a delete button when the user created it or
+//! is an administrator.
 
 use common::board_types::is_board_session;
 use dioxus::prelude::*;
 
 use crate::api::chat_api::{chat_delete_session, chat_list_sessions};
+use crate::components::chat_components::GroupName;
 use crate::routes::Route;
 use crate::tr;
 
@@ -88,11 +91,13 @@ pub fn AiChatHistoryPage() -> Element {
                                         }
                                     }
                                     div {
-                                        style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 6px;",
-                                        {tr!("ai-chat-history-messages-updated", s_message_count: s.message_count, s_updated_at: s.updated_at.to_string())}
+                                        style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 6px; \
+                                                display: flex; gap: 10px; align-items: center; flex-wrap: wrap;",
+                                        span { {tr!("ai-chat-history-messages-updated", s_message_count: s.message_count, s_updated_at: s.updated_at.to_string())} }
+                                        GroupName { name: s.owner_group.clone() }
                                     }
                                 }
-                                if !is_board_session(&s.session_id) { button {
+                                if !is_board_session(&s.session_id) && s.can_delete { button {
                                     style: "background: none; border: 1px solid #FEE2E2; color: var(--x-danger); \
                                             border-radius: 8px; padding: 6px 10px; cursor: pointer; \
                                             font-size: var(--x-text-xs); flex-shrink: 0;",

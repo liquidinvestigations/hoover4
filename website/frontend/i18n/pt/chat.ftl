@@ -502,3 +502,11 @@ board-status-on = Ativado
 board-status-off = Desativado
 
 chat-transcript-generic-tool = a ferramenta
+
+group-picker-loading-groups-u = A carregar grupos…
+group-picker-group = Grupo
+group-picker-show-groups-of-all-users = Mostrar os grupos de todos os utilizadores
+group-picker-you-have-no-group-of-your-own = Não tem nenhum grupo próprio. Selecione «Mostrar os grupos de todos os utilizadores» ou peça a um administrador que o adicione a um grupo.
+group-picker-you-are-not-in-a-group = Não está em nenhum grupo. Peça a um administrador que o adicione a um grupo.
+ai-chat-homepage-members-of-the-group-can-read = Todos os membros do grupo podem ler e continuar este chat.
+chat-board-create-members-of-the-group-can-read = Todos os membros do grupo podem ler este quadro e agir nele.

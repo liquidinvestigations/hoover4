@@ -767,6 +767,8 @@ services:
       # Held chat polls per user, and the flat poll ceiling. Both are read once
       # at process start (LazyLock). A change needs a website restart, not a reload.
       - HOOVER4_MAX_HELD_POLLS_PER_USER=${HOOVER4_MAX_HELD_POLLS_PER_USER:-8}
+      # The implicit groups ([main_services] implicit_groups). Empty gives the website default.
+      - "HOOVER4_IMPLICIT_GROUPS=${HOOVER4_IMPLICIT_GROUPS:-}"
       - HOOVER4_RATE_CHAT_POLL_PER_MINUTE=${HOOVER4_RATE_CHAT_POLL_PER_MINUTE:-1800}
       # The failure rate above which the operations page calls a task type out as a
       # possible tooling limitation rather than as ordinary corpus mess.

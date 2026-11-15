@@ -57,13 +57,13 @@ def fake(monkeypatch):
 COLUMNS = [
     "session_id", "username", "title", "collections", "summary",
     "use_internet_tools", "options_locked",
-    "created_at", "updated_at", "is_deleted", "peak_context_tokens",
+    "created_at", "updated_at", "is_deleted", "peak_context_tokens", "owner_group",
 ]
 
 
 def _row(peak: int) -> list:
     return ["s1", "u1", "a title", ["c"], "a summary", 1, 1,
-            "2020-01-01", "2020-01-01", 0, peak]
+            "2020-01-01", "2020-01-01", 0, peak, "team-a"]
 
 
 def test_a_bigger_peak_is_recorded(fake):
@@ -95,6 +95,15 @@ def test_the_title_writer_carries_the_peak_forward(fake):
     _, rows, columns = client.inserted[0]
     assert columns == COLUMNS
     assert rows[0][columns.index("peak_context_tokens")] == 26432
+
+
+def test_both_session_writers_keep_the_group_of_the_chat(fake):
+    """A row without `owner_group` would move the chat out of its group."""
+    client = fake([_row(1000)])
+    activities._raise_session_peak("u1", "s1", 26432)
+    activities._set_session_title("u1", "s1", "new title", "new summary")
+    for _, rows, columns in client.inserted:
+        assert rows[0][columns.index("owner_group")] == "team-a"
 
 
 def test_both_session_writers_name_the_same_columns():

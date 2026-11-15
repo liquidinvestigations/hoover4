@@ -493,3 +493,11 @@ board-status-on = चालू
 board-status-off = बंद
 
 chat-transcript-generic-tool = टूल
+
+group-picker-loading-groups-u = समूह लोड हो रहे हैं…
+group-picker-group = समूह
+group-picker-show-groups-of-all-users = सभी उपयोगकर्ताओं के समूह दिखाएँ
+group-picker-you-have-no-group-of-your-own = आपका अपना कोई समूह नहीं है। “सभी उपयोगकर्ताओं के समूह दिखाएँ” चुनें, या किसी व्यवस्थापक से आपको किसी समूह में जोड़ने को कहें।
+group-picker-you-are-not-in-a-group = आप किसी समूह में नहीं हैं। किसी व्यवस्थापक से आपको किसी समूह में जोड़ने को कहें।
+ai-chat-homepage-members-of-the-group-can-read = समूह का हर सदस्य यह चैट पढ़ और जारी रख सकता है।
+chat-board-create-members-of-the-group-can-read = समूह का हर सदस्य यह बोर्ड पढ़ सकता है और उस पर कार्रवाई कर सकता है।

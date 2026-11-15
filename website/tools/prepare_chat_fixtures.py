@@ -2,7 +2,8 @@
 """Write the stored chat sessions that the chat screenshot cases open by name.
 
 The named chat cases in `website/browser-tests/` open `{{chat_fixture:<name>}}`. This
-script writes one session for each name, owned by one user, and prints the JSON map from
+script writes one session for each name, created by one user in one group of that user
+(`--group`, else the first stored group of the user), and prints the JSON map from
 name to session id that `HOOVER4_SCREENSHOT_CHAT_FIXTURES` holds. It runs in the worker
 container, which has the datastore clients and credentials. `prepare_chat_fixtures.sh`
 runs it.
@@ -415,7 +416,7 @@ FIXTURES = {
 }
 
 
-def write_fixture(client, name: str, username: str, now: datetime) -> str:
+def write_fixture(client, name: str, username: str, group: str, now: datetime) -> str:
     from database.clickhouse import insert_durable
 
     spec = FIXTURES[name](name, username)
@@ -423,10 +424,10 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
     turn = fixture_uuid(name, username, "turn")
     insert_durable(client, "chat_sessions", [[
         sid, username, spec["title"], [COLLECTION], "", int(spec.get("internet", False)),
-        1, now, now, 0,
+        1, now, now, 0, group,
     ]], column_names=["session_id", "username", "title", "collections", "summary",
                       "use_internet_tools", "options_locked", "created_at",
-                      "updated_at", "is_deleted"])
+                      "updated_at", "is_deleted", "owner_group"])
     rows = []
     for seq, row in enumerate(spec["rows"]):
         rows.append([
@@ -508,6 +509,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--username", required=True,
                         help="the account that the screenshot run signs in as")
+    parser.add_argument("--group", default="",
+                        help="the group of the sessions, default the first stored group of the user")
     parser.add_argument("--only", default="",
                         help="comma-separated fixture names, default every name")
     args = parser.parse_args()
@@ -533,7 +536,15 @@ def main() -> int:
         if not present:
             print(f"warning: the {COLLECTION} collection has no document {DOC_PATH}",
                   file=sys.stderr)
-        result = {name: write_fixture(client, name, args.username, now) for name in names}
+        # A chat belongs to a group, and only its members read it.
+        group = args.group or next(iter(row[0] for row in client.query(
+            "SELECT groupname FROM user_group_membership FINAL WHERE username = {u:String} "
+            "AND is_deleted = 0 ORDER BY groupname LIMIT 1", parameters={"u": args.username}).result_rows), "")
+        if not group:
+            print(f"{args.username} is in no group. Add the user to a group, or name one with --group.",
+                  file=sys.stderr)
+            return 2
+        result = {name: write_fixture(client, name, args.username, group, now) for name in names}
         stored = {row[0] for row in client.query(
             "SELECT session_id FROM chat_sessions FINAL WHERE username = {u:String} "
             "AND session_id IN {s:Array(String)} AND is_deleted = 0",

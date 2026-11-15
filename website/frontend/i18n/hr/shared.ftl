@@ -268,3 +268,8 @@ shared-boards-budget-unchanged = {" "}(proračun je nepromijenjen, ploča je na 
 shared-email-graph-selected-copy-removed = Odabrana kopija e-pošte više ne postoji.
 
 shared-table-generation-changed = Tablica se promijenila. Ponovno pokušajte pročitati tablicu.
+
+shared-item-access-choose-a-group = Odaberite grupu.
+shared-item-access-not-a-member = Niste član ove grupe.
+shared-item-access-group-cannot-read = Grupa ne može čitati jednu od odabranih zbirki.
+shared-item-access-only-creator-deletes = Samo autor ili administrator može ga izbrisati.

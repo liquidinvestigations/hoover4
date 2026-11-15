@@ -23,6 +23,7 @@ pub mod email_graph;
 pub mod entity_cards;
 pub mod entity_stoplist;
 pub mod failure_types;
+pub mod item_groups;
 pub mod language;
 pub mod ocr_detection;
 pub mod feedback_types;

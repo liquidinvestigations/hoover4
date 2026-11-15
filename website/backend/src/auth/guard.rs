@@ -11,8 +11,21 @@ pub fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
 }
 
 pub fn is_forbidden(err: &anyhow::Error) -> bool {
-    err.to_string().contains("forbidden")
+    err.to_string().contains("forbidden") || err.chain().any(|cause| cause.is::<Forbidden>())
 }
+
+/// A refusal of an action that the caller may not do, with a sentence for the person.
+/// Matched by type, as [`InvalidInput`], so the message needs no marker word.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Forbidden(pub String);
+
+impl std::fmt::Display for Forbidden {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Forbidden {}
 
 /// Marker a handler puts in an error message to mean "this does not exist for you".
 ///

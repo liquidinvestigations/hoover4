@@ -441,3 +441,11 @@ board-status-on = Açık
 board-status-off = Kapalı
 
 chat-transcript-generic-tool = araç
+
+group-picker-loading-groups-u = Gruplar yükleniyor…
+group-picker-group = Grup
+group-picker-show-groups-of-all-users = Tüm kullanıcıların gruplarını göster
+group-picker-you-have-no-group-of-your-own = Size ait bir grup yok. “Tüm kullanıcıların gruplarını göster” seçeneğini işaretleyin ya da bir yöneticiden sizi bir gruba eklemesini isteyin.
+group-picker-you-are-not-in-a-group = Hiçbir grupta değilsiniz. Bir yöneticiden sizi bir gruba eklemesini isteyin.
+ai-chat-homepage-members-of-the-group-can-read = Grubun her üyesi bu sohbeti okuyabilir ve sürdürebilir.
+chat-board-create-members-of-the-group-can-read = Grubun her üyesi bu panoyu okuyabilir ve üzerinde işlem yapabilir.

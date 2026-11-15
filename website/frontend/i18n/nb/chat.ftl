@@ -505,3 +505,11 @@ board-status-on = På
 board-status-off = Av
 
 chat-transcript-generic-tool = verktøyet
+
+group-picker-loading-groups-u = Laster grupper …
+group-picker-group = Gruppe
+group-picker-show-groups-of-all-users = Vis gruppene til alle brukere
+group-picker-you-have-no-group-of-your-own = Du har ingen egen gruppe. Velg «Vis gruppene til alle brukere», eller be en administrator om å legge deg til i en gruppe.
+group-picker-you-are-not-in-a-group = Du er ikke i noen gruppe. Be en administrator om å legge deg til i en gruppe.
+ai-chat-homepage-members-of-the-group-can-read = Alle medlemmer av gruppen kan lese og fortsette denne chatten.
+chat-board-create-members-of-the-group-can-read = Alle medlemmer av gruppen kan lese denne tavlen og handle på den.

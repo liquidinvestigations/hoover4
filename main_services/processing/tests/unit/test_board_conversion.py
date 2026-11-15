@@ -458,6 +458,34 @@ def test_the_conversion_names_sources_and_keeps_the_web_handles_of_a_web_only_fi
 # ------------------------------------------------------------- the explore turn
 
 
+def test_an_explore_session_belongs_to_the_group_of_its_board(monkeypatch):
+    """Every member of the group of the board reads its explore chats, so the session row
+    carries the group. The creator of the board stays the storage key."""
+    from database import clickhouse
+
+    inserted = []
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def query(self, sql, parameters=None):
+            return SimpleNamespace(result_rows=[[0]])
+
+    monkeypatch.setattr(clickhouse, "get_global_client", lambda: Client())
+    monkeypatch.setattr(clickhouse, "insert_durable",
+                        lambda client, table, rows, column_names=None: inserted.append((table, rows, column_names)))
+    row = BoardRow("b1", OWNER, "t", "g", collections=["enron"], owner_group="team-a")
+    activities._ensure_session(row, "board-b1-i1", "t: i1", ["enron"])
+    [(table, rows, columns)] = inserted
+    assert table == "chat_sessions"
+    assert rows[0][columns.index("owner_group")] == "team-a"
+    assert rows[0][columns.index("username")] == OWNER
+
+
 @pytest.fixture
 def opening(board, monkeypatch):
     """The writers of `open_explore_turn`, with the collections that exist."""

@@ -788,9 +788,14 @@ Use these procedures to [start a conversation](#start-a-conversation), [inspect 
 <img src="crops/chat-new-chat-and-1-more.png" align="right" width="40%" alt="Red frames mark the AI chat icon, Ask the bot, Internet tools and the send arrow.">
 
 1. Select the speech-bubble icon in the left rail.
-2. Enter a question in **Ask the bot...**.
-3. Set **Internet tools** before you send the first message.
-4. Select the send arrow.
+2. Check the **Group** of the new chat. Every member of the group can read and continue the chat.
+3. Enter a question in **Ask the bot...**.
+4. Set **Internet tools** before you send the first message.
+5. Select the send arrow.
+
+The **Group** list shows the groups that you are a member of. Select **Show groups of all users** to add the groups that every user has.
+If you are in no group, the composer does not send. Ask an administrator to add you to a group.
+The chat searches the collections that both you and the group can read.
 
 Name the collection, people, dates, and result you need.
 For example, ask for dated Enron emails about California electricity prices and request source citations.
@@ -942,7 +947,7 @@ A summary can omit earlier detail. Repeat a source or requirement when it remain
 
 Select **History**, or **View all conversations** on the chat home page, to open the conversation list.
 Select a title to restore its transcript.
-The list shows its summary, message count, and last update.
+The list shows the conversations of your groups, with the summary, message count, last update and group of each.
 **Show board chats** includes the explore conversations created by your investigation boards.
 
 <a href="img/chat-history.png"><img src="img/chat-history.png" alt="Conversation history with summaries, deletion controls, and the Show board chats option" width="100%"></a>
@@ -952,6 +957,7 @@ The list shows its summary, message count, and last update.
 <img src="crops/chat-new-view-all-conversations-and-1-more.png" align="right" width="40%" alt="Red frames mark View all conversations and Show board chats.">
 
 Use the deletion control only for a conversation you no longer need.
+Only the creator of a conversation and administrators see the deletion control.
 Board explore chats have no separate deletion control. Their board manages them.
 Chats remain stored until a person deletes them.
 
@@ -966,8 +972,9 @@ You review its proposed answers and decide whether they satisfy the goals.
 Use these procedures to [create a board](#create-a-board), [read findings](#read-findings-and-ask-questions),
 [accept an answer](#accept-an-answer), [complete the review](#complete-the-review), or [correct a result](#correct-a-result).
 
-The right side of the AI chat home page lists your boards.
-Each card shows a graph preview, summary, status, and last update.
+The right side of the AI chat home page lists the boards of your groups.
+Each card shows a graph preview, summary, status, last update, and group.
+Every member of the group of a board can read it and act on it. Only the creator and administrators can drop it.
 Select a card to open the board.
 
 ### Create a board.
@@ -975,17 +982,18 @@ Select a card to open the board.
 1. Select **New board** on the AI chat home page.
 2. Enter a title and between one and six goals.
 3. Enter background context that defines known facts, constraints, and the required result.
-4. Select the collections to search. **Collections** selects or clears every collection. A board without collections searches the web only and needs **Internet tools**.
-5. Enter initial hints when you have useful leads.
-6. Set **Internet tools** when the investigation must compare documents with online sources.
-7. Check the agent language beside **Create board**. The board writes its findings, titles, summaries and assessments in this language. To change it, select the flag. Your language settings open in a new tab.
-8. Select **Create board**.
+4. Check the **Group** of the board. **Show groups of all users** adds the groups that every user has.
+5. Select the collections to search. The list shows the collections that both you and the group can read. **Collections** selects or clears every collection. A board without collections searches the web only and needs **Internet tools**.
+6. Enter initial hints when you have useful leads.
+7. Set **Internet tools** when the investigation must compare documents with online sources.
+8. Check the agent language beside **Create board**. The board writes its findings, titles, summaries and assessments in this language. To change it, select the flag. Your language settings open in a new tab.
+9. Select **Create board**.
 
 <a href="img/board-create.png"><img src="img/board-create.png" alt="Board creation form with goals, background context, hints, collections, Internet tools and the board language" width="100%"></a>
 
 <img src="crops/chat-new-new-board-and-1-more.png" align="right" width="40%" alt="Red frames mark New board, Collections, Internet tools and Create board.">
 
-The collections and the language stay fixed after creation.
+The group, the collections and the language stay fixed after creation.
 Write goals that you can review separately.
 For example, separate a question about dates from a question about competing explanations.
 A hint supplies a lead. A goal defines an answer that the board must provide.
@@ -1012,6 +1020,7 @@ A complex graph can extend beyond the visible pane.
 
 Drag the graph to move through it.
 Use **-** and **+** to change its zoom between the available levels.
+Point at a card to see its path: the card, the cards before it and the cards after it stay clear, and the other cards fade.
 Select a card to read its complete text and controls in the right pane.
 Selecting a distant card can move the graph to show it.
 
@@ -1023,7 +1032,7 @@ Selecting a distant card can move the graph to show it.
 
 The page address records the selected card.
 Copy the address to bookmark that finding or goal.
-Opening the link still requires access to the owning account.
+Opening the link requires membership of the group of the board.
 Select **Show the board overview** to return to the full goal and event list.
 The graph and detail pane can scroll independently.
 

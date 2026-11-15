@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}(το όριο δεν άλλαξε, ο ε�
 shared-email-graph-selected-copy-removed = Το επιλεγμένο αντίγραφο του μηνύματος ηλεκτρονικού ταχυδρομείου δεν υπάρχει πλέον.
 
 shared-table-generation-changed = Ο πίνακας άλλαξε. Επαναλάβετε την ανάγνωση του πίνακα.
+
+shared-item-access-choose-a-group = Επιλέξτε μια ομάδα.
+shared-item-access-not-a-member = Δεν είστε μέλος αυτής της ομάδας.
+shared-item-access-group-cannot-read = Η ομάδα δεν μπορεί να διαβάσει μία από τις επιλεγμένες συλλογές.
+shared-item-access-only-creator-deletes = Μόνο ο δημιουργός ή ένας διαχειριστής μπορεί να το διαγράψει.

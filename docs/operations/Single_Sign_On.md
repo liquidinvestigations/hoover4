@@ -27,6 +27,17 @@ Other groups receive collection access through stored grants.
 [Permission checks](../../website/backend/src/auth/permissions.rs) restrict each collection read.
 [The administration manual](../user-manual/Admin_Manual.md#users-and-groups) explains group management.
 
+## Share chats and boards through groups.
+
+Every chat and every board belongs to one group. Every member of the group reads it, continues a chat, and acts on a board.
+Only the creator and administrators delete it.
+The header groups and the groups that an administrator adds both count as memberships.
+A group that the identity provider gives to every user is implicit.
+`[main_services] implicit_groups` lists the implicit groups. An entry that ends in `*` is a name prefix.
+The create forms list implicit groups only when the person selects "Show groups of all users".
+Add each team to its own group so that its members can share chats and boards.
+[Chat and agents](../architecture/Chat_And_Agents.md#a-chat-belongs-to-a-group) describes the rule.
+
 ## Verify sign-in and sign-out behavior.
 
 Verify the identity returned by `whoami` through the configured provider.

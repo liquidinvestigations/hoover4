@@ -156,6 +156,7 @@ fn TranslationFixture() -> Element {
                             session_id: format!("browser-count-{count}"), title: format!("Count {count}"),
                             summary: String::new(), collections: Vec::new(), created_at: String::new(),
                             updated_at: String::new(), message_count: count, options: ChatOptions::default(),
+                            owner_group: String::new(), owner: String::new(), can_delete: false,
                         } }
                         button { disabled: true, "data-fixture-upload-count": "{count}",
                             {crate::tr!("uploads-upload-upload-files", format_count_count_as_u64: count)}

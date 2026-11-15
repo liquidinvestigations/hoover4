@@ -269,3 +269,8 @@ shared-boards-budget-unchanged = {" "}(budget unchanged, the board is at its exp
 shared-email-graph-selected-copy-removed = The selected email copy no longer exists.
 
 shared-table-generation-changed = The table changed. Retry the table read.
+
+shared-item-access-choose-a-group = Choose a group.
+shared-item-access-not-a-member = You are not a member of this group.
+shared-item-access-group-cannot-read = The group cannot read one of the selected collections.
+shared-item-access-only-creator-deletes = Only the creator or an administrator can delete it.

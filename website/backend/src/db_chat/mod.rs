@@ -1,9 +1,12 @@
 //! Storage for AI Chat sessions and their message trajectories.
 //!
-//! **Every function here takes a `username` and filters on it.** Ownership is not
-//! checked once at the edge and then trusted: a transcript can quote documents from
-//! restricted collections, so the owner is part of the primary key of every query. A
-//! session id alone is never sufficient to read a conversation.
+//! **Every function here takes a `username` and filters on it.** The `username` is the
+//! creator of the session (`chat_sessions.username`), which is the storage key of every row
+//! of the session: the messages, the stream rows, the runs, the artifacts and the workspace
+//! files. A member of the group of the session who continues it writes under the creator's
+//! name too. The callers in `api::chat` check the group rule (`auth::item_access`) with
+//! [`get_session_by_id`] first and then pass the creator. A session id alone never reads a
+//! conversation.
 
 pub mod artifacts;
 pub mod workspace;
@@ -38,6 +41,11 @@ pub struct ChatSessionRow {
     /// silently erases what another writer put there.
     #[serde(default)]
     pub peak_context_tokens: u32,
+    /// The group of the session (`auth::item_access`). Carried through every
+    /// read-modify-write, as every other column: a writer that drops it moves the chat out
+    /// of its group.
+    #[serde(default)]
+    pub owner_group: String,
 }
 
 impl ChatSessionRow {
@@ -130,7 +138,7 @@ pub struct ChatStreamRow {
 
 const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, collections, created_at, \
      updated_at, is_deleted, use_internet_tools, options_locked, \
-     peak_context_tokens FROM chat_sessions FINAL";
+     peak_context_tokens, owner_group FROM chat_sessions FINAL";
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
@@ -155,8 +163,11 @@ fn generate_chat_session_id() -> String {
     crate::db_auth::sessions::generate_session_id()
 }
 
+/// A new session of `username` in `owner_group`. The caller checks that the creator is a
+/// member of the group.
 pub async fn create_session(
     username: &str,
+    owner_group: &str,
     title: &str,
     collections: &[String],
 ) -> anyhow::Result<String> {
@@ -174,6 +185,7 @@ pub async fn create_session(
         options_locked: 0,
         // Nothing has been counted yet. The worker raises it as turns complete.
         peak_context_tokens: 0,
+        owner_group: owner_group.to_string(),
     };
     insert_row("chat_sessions", &row).await?;
     Ok(session_id)
@@ -189,6 +201,19 @@ pub async fn get_session(
             "{SESSION_SELECT} WHERE username = ? AND session_id = ? AND is_deleted = 0"
         ))
         .bind(username)
+        .bind(session_id)
+        .fetch_all::<ChatSessionRow>()
+        .await?;
+    Ok(rows.pop())
+}
+
+/// The live session with this id, of any creator. **The caller checks the group rule**
+/// (`auth::item_access`) before it shows or changes anything of the session, and then uses
+/// `username` of the row as the storage key.
+pub async fn get_session_by_id(session_id: &str) -> anyhow::Result<Option<ChatSessionRow>> {
+    let client = get_global_client();
+    let mut rows = client
+        .query(&format!("{SESSION_SELECT} WHERE session_id = ? AND is_deleted = 0"))
         .bind(session_id)
         .fetch_all::<ChatSessionRow>()
         .await?;
@@ -217,29 +242,38 @@ pub async fn sessions_by_ids(session_ids: &[String]) -> anyhow::Result<Vec<ChatS
     Ok(rows)
 }
 
-/// Sessions of one user, most recently active first. The explore sessions of the user's
-/// investigation boards are left out unless `include_boards` is true.
-pub async fn list_sessions(username: &str, limit: u32, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
+/// The sessions of the groups `owner_groups`, most recently active first. The explore
+/// sessions of investigation boards are left out unless `include_boards` is true. The
+/// caller sets `can_delete` of each item.
+pub async fn list_sessions_of_groups(owner_groups: &[String], limit: u32, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
+    if owner_groups.is_empty() {
+        return Ok(Vec::new());
+    }
     let client = get_global_client();
     let rows = client
         .query(&format!(
-            "{SESSION_SELECT} WHERE username = ? AND is_deleted = 0 \
+            "{SESSION_SELECT} WHERE owner_group IN ? AND owner_group != '' AND is_deleted = 0 \
              AND (? OR NOT startsWith(session_id, ?)) ORDER BY updated_at DESC LIMIT ?"
         ))
-        .bind(username)
+        .bind(owner_groups)
         .bind(include_boards)
         .bind(common::board_types::BOARD_SESSION_PREFIX)
         .bind(limit)
         .fetch_all::<ChatSessionRow>()
         .await?;
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    // Message counts in one grouped query rather than one per session.
+    // Message counts in one grouped query rather than one per session. A session id names
+    // one session, so the creator is not needed to group the counts.
+    let ids: Vec<&str> = rows.iter().map(|r| r.session_id.as_str()).collect();
     let counts: Vec<(String, u64)> = client
         .query(
             "SELECT session_id, count() FROM chat_messages FINAL \
-             WHERE username = ? GROUP BY session_id",
+             WHERE session_id IN ? GROUP BY session_id",
         )
-        .bind(username)
+        .bind(&ids)
         .fetch_all()
         .await?;
     let counts: std::collections::HashMap<String, u64> = counts.into_iter().collect();
@@ -255,6 +289,9 @@ pub async fn list_sessions(username: &str, limit: u32, include_boards: bool) -> 
             collections: r.collections,
             created_at: fmt(r.created_at),
             updated_at: fmt(r.updated_at),
+            owner_group: r.owner_group,
+            owner: r.username,
+            can_delete: false,
         })
         .collect())
 }
@@ -530,7 +567,7 @@ mod live_tests {
     #[ignore = "needs live clickhouse"]
     async fn can_append_and_list_a_tool_payload_row() {
         let username = "live-test-chat";
-        let session_id = create_session(username, "live", &[])
+        let session_id = create_session(username, "live-test-group", "live", &[])
             .await
             .expect("create_session");
         let seq = next_seq(username, &session_id).await.expect("next_seq");
@@ -554,7 +591,7 @@ mod live_tests {
     #[ignore = "needs live clickhouse"]
     async fn a_deleted_session_leaves_no_plan_rows() {
         let username = "live-test-chat";
-        let session_id = create_session(username, "live plan delete", &[])
+        let session_id = create_session(username, "live-test-group", "live plan delete", &[])
             .await
             .expect("create_session");
         let client = get_global_client();

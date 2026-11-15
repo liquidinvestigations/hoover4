@@ -311,6 +311,16 @@ default is `false`. The release sample sets `true`, and the development sample s
 empty takes the code's defaults. `max_held_polls_per_user` is how many chat polls one user
 may hold at once. `rate_chat_poll_per_minute` is the flat poll ceiling per user.
 
+`implicit_groups` lists the groups that the identity provider gives to every user, as a comma
+list. An entry that ends in `*` is a name prefix, and every other entry is an exact name. The
+chat and board forms list these groups only when the person selects "Show groups of all
+users". Empty is the default list: `user`, `Guests`, the liquid-core application groups
+(`hoover`, `hoover4`, `nextcloud`, `nextcloud28`, `nextcloud-admin`, `wikijs`, `dokuwiki`,
+`codimd`, `grist`, `matrix`, `prophecies`, `bbb`, `xwiki`), `Domain Users`, `Domain Admins`,
+`IAM API - Full Access` and the prefix `managed-by-attribute-*`. `./deploy` renders it as
+`HOOVER4_IMPLICIT_GROUPS` for the website, and a k3s installation gets it from its operator
+setting `main_services.implicit_groups`. A change needs a website restart.
+
 `development_auth_backdoor_enabled` switches on `hoover4-development-auth-backdoor`, a
 header-setting reverse proxy that asserts a fixed identity on every request, with no
 sign-in step. Default `false`: a deployment that omits this key, or copies
@@ -725,7 +735,7 @@ literally. This index maps each key to the group above that explains it.
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `agent_tool_concurrency`
-- `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
+- `implicit_groups`, `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
 - `agent_packs_chat`
 - `agent_catalogue_match_count`

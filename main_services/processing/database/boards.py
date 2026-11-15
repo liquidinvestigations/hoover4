@@ -63,6 +63,8 @@ class BoardRow:
     language: str = ""
     created_at: datetime | None = None
     is_deleted: int = 0
+    #: The group of the board. Its explore sessions belong to the same group.
+    owner_group: str = ""
 
 
 @dataclass
@@ -126,7 +128,7 @@ class LabelRow:
 
 BOARD_COLUMNS = ["board_id", "owner", "title", "goal", "context", "collections", "llm_model",
                  "max_explores", "max_parallel", "explore_step_budget", "internet_tools",
-                 "language", "created_at", "is_deleted"]
+                 "language", "created_at", "is_deleted", "owner_group"]
 FACT_COLUMNS = ["board_id", "fact_id", "kind", "text", "intent_id", "session_id", "answer_seq",
                 "open_questions", "problems", "created_by", "created_at", "request_id"]
 CITATION_COLUMNS = ["board_id", "fact_id", "label", "collection_dataset", "collectionname",

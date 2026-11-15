@@ -504,3 +504,11 @@ board-status-on = Aan
 board-status-off = Uit
 
 chat-transcript-generic-tool = het hulpmiddel
+
+group-picker-loading-groups-u = Groepen laden…
+group-picker-group = Groep
+group-picker-show-groups-of-all-users = Groepen van alle gebruikers tonen
+group-picker-you-have-no-group-of-your-own = Je hebt geen eigen groep. Selecteer ‘Groepen van alle gebruikers tonen’, of vraag een beheerder om je aan een groep toe te voegen.
+group-picker-you-are-not-in-a-group = Je zit in geen enkele groep. Vraag een beheerder om je aan een groep toe te voegen.
+ai-chat-homepage-members-of-the-group-can-read = Elk lid van de groep kan deze chat lezen en voortzetten.
+chat-board-create-members-of-the-group-can-read = Elk lid van de groep kan dit bord lezen en erop handelen.

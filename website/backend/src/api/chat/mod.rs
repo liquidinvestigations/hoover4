@@ -8,6 +8,14 @@
 //! live permissions on every message, so a permission revoked after a chat started takes
 //! effect on the next message.
 //!
+//! **Every chat belongs to one group** (`chat_sessions.owner_group`, `auth::item_access`).
+//! Every member of the group reads the chat and continues it. Only the creator and
+//! administrators delete it. A person outside the group gets "not found". The rows of a
+//! session keep the creator (`chat_sessions.username`) as their storage key, so a turn of a
+//! member writes under the creator's name and the agent runs with the creator's identity.
+//! The collections of a turn are the session's collections that the group and the sender
+//! can both read at the time of the turn.
+//!
 //! **Every turn is a Temporal workflow.** This process never holds an agent call open:
 //! [`send_message`] writes the user row, reserves the transcript position and dispatches
 //! `AgentRun`, then returns. The worker writes the answer back into the same tables the
@@ -42,57 +50,79 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::api::rate_limit::{check_and_record, RateLimitKind};
 use crate::api::telemetry::{self, EVENT_LLM_CHAT_MESSAGE};
-use crate::db_chat::{self, AppendMessageExtras};
-use crate::db_utils::clickhouse_utils::list_permitted_collections;
+use crate::auth::{guard, item_access};
+use crate::db_chat::{self, AppendMessageExtras, ChatSessionRow};
 
 /// Cap on sessions returned to the history sidebar / homepage.
 const SESSION_LIST_LIMIT: u32 = 100;
 
-/// The sessions of the user. `include_boards` adds the explore sessions of the user's
-/// investigation boards, which the history shows on request.
-pub async fn list_chat_sessions(user: &CurrentUser, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
-    let username = user.username.as_str();
-    db_chat::list_sessions(username, SESSION_LIST_LIMIT, include_boards).await
+/// The session, when the caller may read it: a member of its group. "not found" otherwise,
+/// so an id of another group reads as an id that does not exist.
+pub async fn readable_session(user: &CurrentUser, session_id: &str) -> anyhow::Result<ChatSessionRow> {
+    if let Some(row) = db_chat::get_session_by_id(session_id).await? {
+        if item_access::access(user, &row.owner_group, &row.username).await?.read {
+            return Ok(row);
+        }
+    }
+    anyhow::bail!("chat session {}", guard::NOT_FOUND)
 }
 
-/// Start a new conversation.
+/// The chats of the groups of the user, with the explore sessions of the boards when
+/// `include_boards` is true. The history shows those on request.
+pub async fn list_chat_sessions(user: &CurrentUser, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
+    let groups = item_access::member_groups(user).await?;
+    let mut items = db_chat::list_sessions_of_groups(&groups, SESSION_LIST_LIMIT, include_boards).await?;
+    for item in &mut items {
+        item.can_delete = item_access::item_access(user, &groups, &item.owner_group, &item.owner).delete;
+    }
+    Ok(items)
+}
+
+/// Start a new conversation in `group`.
 ///
-/// The requested collections are intersected with what the user may actually read, so a
-/// crafted request cannot seed a session with a collection the user has no access to.
+/// The creator must be a member of the group. The requested collections must be readable
+/// by the group and by the creator, else the request is refused. An empty request selects
+/// every collection that both can read.
 pub async fn create_chat_session(
     user: &CurrentUser,
+    group: String,
     collections: Vec<String>,
 ) -> anyhow::Result<String> {
-    let username = user.username.as_str();
-    let permitted = list_permitted_collections(user).await?;
-    let selected = intersect_collections(&collections, &permitted);
-    db_chat::create_session(username, "New chat", &selected).await
+    let group = item_access::require_member(user, &group).await?;
+    let allowed = item_access::shared_collections(user, &group).await?;
+    let selected = if collections.is_empty() {
+        allowed
+    } else {
+        item_access::check_collections(&collections, &allowed)?
+    };
+    db_chat::create_session(&user.username, &group, "New chat", &selected).await
 }
 
-/// The model steps of one turn of a session that the caller owns, for the narration of the
-/// transcript. A session of another account is "not found", as in `get_chat_session`.
+/// The groups that the user can choose for a new chat or board.
+pub async fn group_choices(user: &CurrentUser) -> anyhow::Result<Vec<common::item_groups::GroupChoice>> {
+    item_access::group_choices(user).await
+}
+
+/// The model steps of one turn of a session that the caller reads, for the narration of the
+/// transcript. A session of another group is "not found", as in `get_chat_session`.
 pub async fn turn_narration(
     user: &CurrentUser,
     session_id: String,
     turn_seq: u32,
 ) -> anyhow::Result<Vec<common::chat_types::NarrationStep>> {
-    let username = user.username.as_str();
-    db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
-    db_chat::turn_narration(username, &session_id, turn_seq).await
+    let row = readable_session(user, &session_id).await?;
+    db_chat::turn_narration(&row.username, &session_id, turn_seq).await
 }
 
 pub async fn get_chat_session(
     user: &CurrentUser,
     session_id: String,
 ) -> anyhow::Result<ChatSessionDetail> {
-    let username = user.username.as_str();
-    let row = db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    let row = readable_session(user, &session_id).await?;
+    let access = item_access::access(user, &row.owner_group, &row.username).await?;
+    let username = row.username.as_str();
     let messages = db_chat::list_messages(username, &session_id).await?;
-    let available_collections = list_permitted_collections(user).await?;
+    let available_collections = item_access::shared_collections(user, &row.owner_group).await?;
     let tail = stream_state(username, &session_id).await?;
     let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
     let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
@@ -109,6 +139,9 @@ pub async fn get_chat_session(
             updated_at: String::new(),
             message_count: messages.len() as u32,
             options,
+            owner_group: row.owner_group,
+            owner: row.username,
+            can_delete: access.delete,
         },
         messages,
         available_collections,
@@ -186,20 +219,17 @@ async fn pinned_reports(
     db_chat::workspace::versions(username, session_id, &refs).await
 }
 
-/// The workspace files of a session that the caller owns. A session of another account is
+/// The workspace files of a session that the caller reads. A session of another group is
 /// "not found", as in `get_chat_session`.
 pub async fn workspace_files(
     user: &CurrentUser,
     session_id: String,
 ) -> anyhow::Result<Vec<common::chat_types::WorkspaceFile>> {
-    let username = user.username.as_str();
-    db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
-    db_chat::workspace::files(username, &session_id).await
+    let row = readable_session(user, &session_id).await?;
+    db_chat::workspace::files(&row.username, &session_id).await
 }
 
-/// One version of a workspace file of a session that the caller owns, or the current
+/// One version of a workspace file of a session that the caller reads, or the current
 /// version when `version` is `None`.
 pub async fn workspace_version(
     user: &CurrentUser,
@@ -207,18 +237,29 @@ pub async fn workspace_version(
     name: String,
     version: Option<u32>,
 ) -> anyhow::Result<common::chat_types::WorkspaceVersion> {
-    let username = user.username.as_str();
-    db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
-    db_chat::workspace::version(username, &session_id, &name, version)
+    let row = readable_session(user, &session_id).await?;
+    db_chat::workspace::version(&row.username, &session_id, &name, version)
         .await?
         .ok_or_else(|| anyhow::anyhow!("the workspace has no file {name}"))
 }
 
+/// The refusal of a delete by a member who did not create the item.
+pub const ONLY_CREATOR_DELETES: &str = "Only the creator or an administrator can delete it.";
+
+/// Delete a chat. The creator and administrators delete. A member of the group gets 403, and
+/// a person outside the group gets "not found". A session that does not exist is no error.
 pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
-    let username = user.username.as_str();
-    db_chat::delete_session(username, &session_id).await
+    let Some(row) = db_chat::get_session_by_id(&session_id).await? else {
+        return Ok(());
+    };
+    let access = item_access::access(user, &row.owner_group, &row.username).await?;
+    if !access.delete {
+        if access.read {
+            return Err(guard::Forbidden(ONLY_CREATOR_DELETES.into()).into());
+        }
+        anyhow::bail!("chat session {}", guard::NOT_FOUND);
+    }
+    db_chat::delete_session(&row.username, &session_id).await
 }
 
 /// Load search details or captured page Markdown for a chat source preview.
@@ -234,13 +275,12 @@ pub async fn get_chat_artifact_detail(
     user: &CurrentUser,
     artifact_id: String,
 ) -> anyhow::Result<String> {
-    let username = user.username.as_str();
     let Some(row) = db_chat::artifacts::get_artifact(&artifact_id).await? else {
         // Phrased to match `guard::is_not_found`, so this answers 404 rather than 500.
         anyhow::bail!("artifact not found");
     };
-    if row.username != username && !user.is_admin {
-        anyhow::bail!("forbidden: this artifact belongs to another user");
+    if !artifact_readable(user, &row).await? {
+        anyhow::bail!("forbidden: this artifact belongs to a chat of another group");
     }
     if row.body_key.is_empty() {
         anyhow::bail!(
@@ -253,16 +293,36 @@ pub async fn get_chat_artifact_detail(
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Change which collections a conversation searches.
+/// True when the caller may read the artifact: an administrator, or a member of the group of
+/// the chat of the artifact.
+pub async fn artifact_readable(user: &CurrentUser, row: &db_chat::artifacts::ChatArtifactRow) -> anyhow::Result<bool> {
+    if user.is_admin {
+        return Ok(true);
+    }
+    match db_chat::get_session_by_id(&row.session_id).await? {
+        Some(session) if session.username == row.username => {
+            Ok(item_access::access(user, &session.owner_group, &session.username).await?.read)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Change which collections a conversation searches. Every member of the group can change
+/// them. A collection that the group or the caller cannot read refuses the change, and an
+/// empty list selects every collection that both can read.
 pub async fn set_chat_collections(
     user: &CurrentUser,
     session_id: String,
     collections: Vec<String>,
 ) -> anyhow::Result<()> {
-    let username = user.username.as_str();
-    let permitted = list_permitted_collections(user).await?;
-    let selected = intersect_collections(&collections, &permitted);
-    db_chat::touch_session(username, &session_id, None, Some(&selected)).await
+    let row = readable_session(user, &session_id).await?;
+    let allowed = item_access::shared_collections(user, &row.owner_group).await?;
+    let selected = if collections.is_empty() {
+        allowed
+    } else {
+        item_access::check_collections(&collections, &allowed)?
+    };
+    db_chat::touch_session(&row.username, &session_id, None, Some(&selected)).await
 }
 
 /// Keep only requested collections the user may actually read.
@@ -319,14 +379,15 @@ pub async fn send_message(
     accept_language: Option<&str>,
 ) -> anyhow::Result<ChatSendResult> {
     gate::require_chat_open().await?;
-    let username = user.username.as_str();
+    // The sender: the rate limit, the language and the live permission of the turn.
+    let sender = user.username.as_str();
     // An investigation board owns its explore sessions and is their only writer. A person's
     // message there would race the board's seq allocation.
     if common::board_types::is_board_session(&session_id) {
         anyhow::bail!("this conversation belongs to an investigation board and is read-only");
     }
 
-    if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
+    if let Err(e) = check_and_record(sender, RateLimitKind::ChatMessage) {
         return Ok(ChatSendResult {
             messages: Vec::new(),
             retry_after_seconds: Some(e.retry_after_seconds),
@@ -343,16 +404,18 @@ pub async fn send_message(
         anyhow::bail!("message is too long (max {MAX_MESSAGE_CHARS} characters)");
     }
 
-    let session = db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    // Every member of the group continues the chat. The rows of the turn keep the creator
+    // as their storage key, see the module documentation.
+    let session = readable_session(user, &session_id).await?;
+    let username = session.username.as_str();
 
     // Resolve the model before allocating a seq, so a deployment without a model refuses
     // the turn before anything is written.
     let llm_model = crate::api::admin::llm::chat_turn_model()?;
 
-    // Live permissions win over whatever the session was created with.
-    let permitted = list_permitted_collections(user).await?;
+    // Live permissions win over whatever the session was created with: the collections that
+    // the group and the sender can both read now.
+    let permitted = item_access::shared_collections(user, &session.owner_group).await?;
     let allowed = intersect_collections(&session.collections, &permitted);
 
     // Freeze the agent switches onto the conversation on the first turn; afterwards
@@ -468,7 +531,7 @@ pub async fn send_message(
         let _ = db_chat::mark_stream_final(username, &session_id).await;
         return Err(e);
     }
-    telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat");
+    telemetry::record_event(sender, EVENT_LLM_CHAT_MESSAGE, "chat");
 
     let messages = db_chat::list_messages(username, &session_id).await?;
     Ok(ChatSendResult {
@@ -801,12 +864,12 @@ pub async fn poll_chat(
     after_seq: Option<u32>,
     sig: String,
 ) -> anyhow::Result<ChatPollResult> {
-    let username = user.username.as_str();
+    let reader = user.username.as_str();
     // Typed, not prose. The client counts consecutive poll failures and declares "lost
     // contact with the chat" at three, and a rate limit is the opposite of lost contact:
     // the server is answering, the turn is still running, and the only correct response is
     // to wait exactly this long and ask again.
-    check_and_record(username, RateLimitKind::ChatPoll).map_err(|e| {
+    check_and_record(reader, RateLimitKind::ChatPoll).map_err(|e| {
         anyhow::anyhow!(
             "{}{} polling too fast ({} window)",
             common::chat_types::RATE_LIMITED_PREFIX,
@@ -815,12 +878,11 @@ pub async fn poll_chat(
         )
     })?;
 
-    // Ownership: reading another user's transcript is not allowed even to poll it.
-    db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    // The group rule: a person outside the group may not even poll the transcript.
+    let session = readable_session(user, &session_id).await?;
+    let username = session.username.as_str();
 
-    let held = HeldPollGuard::try_acquire(username);
+    let held = HeldPollGuard::try_acquire(reader);
     let started = Instant::now();
     let deadline = started + POLL_HOLD;
     let floor = if sig.is_empty() { Duration::ZERO } else { POLL_STEP };
@@ -879,11 +941,9 @@ pub async fn poll_chat(
 /// `false` means nothing was in flight, which is the ordinary outcome of a stop that
 /// arrives just after the turn finished.
 pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<bool> {
-    let username = user.username.as_str();
-    // Ownership: stopping another user's turn is not allowed even though the id is theirs.
-    db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    // The group rule: every member can stop the turn, a person outside the group cannot.
+    let session = readable_session(user, &session_id).await?;
+    let username = session.username.as_str();
 
     let (last_user_seq, last_answer_seq) = db_chat::turn_boundaries(username, &session_id).await?;
     let Some(user_seq) = last_user_seq else {
@@ -903,7 +963,7 @@ pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::R
             tracing::warn!("stop of session {session_id}: {e}");
         }
     }
-    telemetry::record_event(username, EVENT_LLM_CHAT_MESSAGE, "chat_stopped");
+    telemetry::record_event(&user.username, EVENT_LLM_CHAT_MESSAGE, "chat_stopped");
     Ok(true)
 }
 
@@ -914,7 +974,8 @@ pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::R
 /// asks, so the button is enabled exactly when the page is showing the interrupted
 /// marker.
 pub async fn dismiss_interrupted_turn(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
-    let username = user.username.as_str();
+    let session = readable_session(user, &session_id).await?;
+    let username = session.username.as_str();
     if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is still running in this session");
     }

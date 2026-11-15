@@ -268,3 +268,8 @@ shared-boards-budget-unchanged = {" "}(התקציב לא השתנה, הלוח ה
 shared-email-graph-selected-copy-removed = עותק הודעת הדואר האלקטרוני שנבחר אינו קיים עוד.
 
 shared-table-generation-changed = הטבלה השתנתה. יש לנסות לקרוא אותה שוב.
+
+shared-item-access-choose-a-group = בחרו קבוצה.
+shared-item-access-not-a-member = אינכם חברים בקבוצה הזו.
+shared-item-access-group-cannot-read = הקבוצה לא יכולה לקרוא אחד מהאוספים שנבחרו.
+shared-item-access-only-creator-deletes = רק היוצר או מנהל יכולים למחוק אותו.

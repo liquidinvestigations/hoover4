@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}(bütçe değişmedi, pano keşif sınır�
 shared-email-graph-selected-copy-removed = Seçilen e-posta kopyası artık mevcut değil.
 
 shared-table-generation-changed = Tablo değişti. Tabloyu okumayı yeniden deneyin.
+
+shared-item-access-choose-a-group = Bir grup seçin.
+shared-item-access-not-a-member = Bu grubun üyesi değilsiniz.
+shared-item-access-group-cannot-read = Grup, seçilen koleksiyonlardan birini okuyamıyor.
+shared-item-access-only-creator-deletes = Yalnızca oluşturan kişi veya bir yönetici silebilir.

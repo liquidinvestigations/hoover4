@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}（预算不变，调查板已达探索上
 shared-email-graph-selected-copy-removed = 所选电子邮件副本已不存在。
 
 shared-table-generation-changed = 表格已更改。请重试表格读取。
+
+shared-item-access-choose-a-group = 请选择一个组。
+shared-item-access-not-a-member = 您不是该组的成员。
+shared-item-access-group-cannot-read = 该组无法读取所选文档集之一。
+shared-item-access-only-creator-deletes = 只有创建者或管理员可以删除它。

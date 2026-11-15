@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}(बजट अपरिवर्तित,
 shared-email-graph-selected-copy-removed = चुने गए ईमेल की प्रति अब मौजूद नहीं है।
 
 shared-table-generation-changed = तालिका बदल गई है। तालिका पढ़ने का फिर से प्रयास करें।
+
+shared-item-access-choose-a-group = एक समूह चुनें।
+shared-item-access-not-a-member = आप इस समूह के सदस्य नहीं हैं।
+shared-item-access-group-cannot-read = समूह चुने गए संग्रहों में से एक को नहीं पढ़ सकता।
+shared-item-access-only-creator-deletes = केवल निर्माता या व्यवस्थापक इसे हटा सकता है।

@@ -32,10 +32,21 @@ pub async fn chat_list_sessions(include_boards: bool) -> Result<Vec<ChatSessionI
         .map_err(to_server_fn_error)
 }
 
+/// Create a chat in `group`. An empty `collections` selects every collection that the user
+/// and the group can both read.
 #[server]
-pub async fn chat_create_session(collections: Vec<String>) -> Result<String, ServerFnError> {
+pub async fn chat_create_session(group: String, collections: Vec<String>) -> Result<String, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::create_chat_session(&user, collections)
+    backend::api::chat::create_chat_session(&user, group, collections)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The groups that the user can choose for a new chat or board, with the collections of each.
+#[server]
+pub async fn chat_group_choices() -> Result<Vec<common::item_groups::GroupChoice>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::group_choices(&user)
         .await
         .map_err(to_server_fn_error)
 }

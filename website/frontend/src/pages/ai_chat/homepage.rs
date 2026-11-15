@@ -1,8 +1,10 @@
 //! `/ai_chat`, the AI Chat homepage. The left column is the chat: "What are you
-//! researching?", the newest conversations and the composer. The right column is the board
-//! overview of the signed-in user: a card per board with its title, counts and a thumbnail
-//! of its graph, and a link to the create page. The boards need the chat models, so the
-//! column shows only while the chat gate is open.
+//! researching?", the newest conversations of the groups of the user, the group of the new
+//! chat and the composer. A new chat searches every collection that the user and its group
+//! can both read. Without a group to choose, the composer does not send. The right column is
+//! the board overview of the groups of the user: a card per board with its title, group,
+//! counts and a thumbnail of its graph, and a link to the create page. The boards need the
+//! chat models, so the column shows only while the chat gate is open.
 
 use common::chat_gate::ChatGate;
 use common::chat_types::ChatOptions;
@@ -19,8 +21,9 @@ use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatGateOverlay, ChatSessionCard,
+    ChatComposer, ChatGateOverlay, ChatSessionCard, GroupName, GroupPicker,
 };
+use common::item_groups::GroupChoice;
 use crate::routes::Route;
 use crate::tr;
 
@@ -35,6 +38,8 @@ pub fn AiChatPage() -> Element {
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
+    let group = use_signal(String::new);
+    let group_choices = use_signal(|| None::<Vec<GroupChoice>>);
     let nav = navigator();
 
     let gate = match configured_res.read().as_ref() {
@@ -57,13 +62,17 @@ pub fn AiChatPage() -> Element {
         if !live_gate.is_open() {
             return;
         }
+        let chosen_group = group.read().clone();
+        if chosen_group.is_empty() {
+            return;
+        }
         let opts = *options.read();
         draft.set(String::new());
         sending.set(true);
         error.set(None);
         retry_after.set(None);
         spawn(async move {
-            match chat_create_session(Vec::new()).await {
+            match chat_create_session(chosen_group, Vec::new()).await {
                 Ok(id) => {
                     // The session exists before the first message can be refused. When
                     // that message never lands, the empty "New chat" it left behind is
@@ -139,6 +148,9 @@ pub fn AiChatPage() -> Element {
                 }
             }
 
+            div { style: "width: 100%; max-width: 720px; margin-bottom: 8px;",
+                GroupPicker { selected: group, choices: group_choices, hint: tr!("ai-chat-homepage-members-of-the-group-can-read") }
+            }
             div { style: "width: 100%; max-width: 720px; position: relative;",
                 ChatComposer {
                     draft,
@@ -146,7 +158,7 @@ pub fn AiChatPage() -> Element {
                     sending,
                     retry_after_seconds: retry_after,
                     on_submit,
-                    blocked: !gate_open,
+                    blocked: !gate_open || group.read().is_empty(),
                 }
                 if let Some(ChatGate::Closed(reason)) = gate {
                     ChatGateOverlay { reason }
@@ -173,7 +185,7 @@ pub fn AiChatPage() -> Element {
     }
 }
 
-/// The right column: a card per board of the user, newest first.
+/// The right column: a card per board of the groups of the user, newest first.
 #[component]
 fn BoardsOverview() -> Element {
     let boards_res = use_resource(list_boards);
@@ -248,7 +260,10 @@ fn BoardCard(board: BoardListItem) -> Element {
                         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;",
                 "{summary}"
             }
-            div { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint); margin-top: 2px;", {tr!("ai-chat-homepage-updated", format_utc_ms_board_updated_ms: (format_utc_ms(board.updated_ms)).to_string())} }
+            div { style: "display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 2px;",
+                span { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint);", {tr!("ai-chat-homepage-updated", format_utc_ms_board_updated_ms: (format_utc_ms(board.updated_ms)).to_string())} }
+                GroupName { name: board.owner_group.clone() }
+            }
         }
     }
 }

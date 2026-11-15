@@ -1,5 +1,5 @@
-//! Investigation board server function wrappers. Every user can own boards, and the backend
-//! lets only the owner read or act on one (`backend::api::boards`).
+//! Investigation board server function wrappers. Every board belongs to one group, and the
+//! backend lets every member read it and act on it (`backend::api::boards`).
 //!
 //! A person action is one board command (`board_command`). `run_board_action` makes the
 //! request id of the action, sends the action again with the same id after a lost response,

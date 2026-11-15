@@ -268,3 +268,8 @@ shared-boards-budget-unchanged = {" "}(bugetul rămâne neschimbat, tabloul a at
 shared-email-graph-selected-copy-removed = Copia selectată a mesajului de e-mail nu mai există.
 
 shared-table-generation-changed = Tabelul s-a schimbat. Reîncearcă citirea tabelului.
+
+shared-item-access-choose-a-group = Alege un grup.
+shared-item-access-not-a-member = Nu ești membru al acestui grup.
+shared-item-access-group-cannot-read = Grupul nu poate citi una dintre colecțiile selectate.
+shared-item-access-only-creator-deletes = Doar creatorul sau un administrator îl poate șterge.

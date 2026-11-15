@@ -139,14 +139,15 @@ def _raise_session_peak(username: str, session_id: str, peak: int) -> None:
 
     Read-modify-write, like `_set_session_title` and for the same reason: the table is a
     ReplacingMergeTree keyed on `(username, session_id)`, so a partial row would silently
-    reset the conversation's collections and both agent switches to their defaults.
+    reset the conversation's collections and both agent switches to their defaults, and
+    would move the chat out of its group (`owner_group`).
     """
     from database.clickhouse import get_global_client
 
     columns = [
         "session_id", "username", "title", "collections", "summary",
         "use_internet_tools", "options_locked",
-        "created_at", "updated_at", "is_deleted", "peak_context_tokens",
+        "created_at", "updated_at", "is_deleted", "peak_context_tokens", "owner_group",
     ]
     try:
         with get_global_client() as client:
@@ -233,14 +234,15 @@ def _set_session_title(username: str, session_id: str, title: str, summary: str)
     `(username, session_id)` and versioned by `updated_at`, so a whole row with a newer
     timestamp replaces the old one. Every other column is carried over unchanged -- most
     of them, the two agent switches especially, are the conversation's settings and would
-    silently reset to their defaults if this wrote a partial row.
+    silently reset to their defaults if this wrote a partial row. `owner_group` would reset
+    to empty, and the chat would leave its group.
     """
     from database.clickhouse import get_global_client
 
     columns = [
         "session_id", "username", "title", "collections", "summary",
         "use_internet_tools", "options_locked",
-        "created_at", "updated_at", "is_deleted", "peak_context_tokens",
+        "created_at", "updated_at", "is_deleted", "peak_context_tokens", "owner_group",
     ]
     with get_global_client() as client:
         rows = client.query(

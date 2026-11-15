@@ -8,9 +8,9 @@
 //!
 //! **An `artifact_id` is a lookup key, not a capability.** It arrives in a tool payload
 //! written by an MCP server that an LLM drives, so it is never trusted: every read
-//! resolves it back to a row and enforces owner-or-admin before a byte is served. That is
-//! why `username` is denormalised onto the row. A read must not have to join
-//! `chat_sessions` to prove ownership.
+//! resolves it back to a row and requires a member of the group of its chat, or an admin,
+//! before a byte is served (`api::chat::artifact_readable`). `username` on the row is the
+//! creator of the chat, the storage key of every row of the session.
 
 use crate::db_auth::{insert_row, now};
 use crate::db_utils::clickhouse_utils::get_global_client;
@@ -48,9 +48,9 @@ pub struct ChatArtifactRow {
 
 /// Look an artifact up by id alone.
 ///
-/// **No `username` filter here, on purpose.** The route needs the row's owner in order to
+/// **No `username` filter here, on purpose.** The route needs the row's chat in order to
 /// decide whether the caller may have it, and filtering by the caller's name would turn
-/// "someone else's artifact" into "no such artifact". A 404 where a 403 belongs, which
+/// "an artifact of another group" into "no such artifact". A 404 where a 403 belongs, which
 /// hides a real permission failure behind an apparent missing row.
 pub async fn get_artifact(artifact_id: &str) -> anyhow::Result<Option<ChatArtifactRow>> {
     let client = get_global_client();

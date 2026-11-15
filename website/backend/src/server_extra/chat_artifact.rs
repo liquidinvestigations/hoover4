@@ -3,9 +3,10 @@
 //! Three routes, one ACL. An `artifact_id` reaches the browser through a tool payload
 //! that an MCP server (driven by an LLM) wrote, so it is **never** treated as a
 //! capability. Each request resolves the id back to a `chat_artifacts` row and requires
-//! the caller to be the owner or an admin. Unknown id is a 404; someone else's id is a
-//! **403**, not a 404: collapsing the two would hide a real permission failure behind an
-//! apparent missing row, and the difference is what makes the check testable.
+//! the caller to be a member of the group of its chat or an admin
+//! (`api::chat::artifact_readable`). Unknown id is a 404. The id of a chat of another group
+//! is a **403**, not a 404: collapsing the two would hide a real permission failure behind
+//! an apparent missing row, and the difference is what makes the check testable.
 //!
 //! ## Why `page.html` needs both the CSP and the sandbox
 //!
@@ -82,20 +83,6 @@ impl Asset {
     }
 }
 
-/// Owner or admin. A **403** rather than a 404, see the module docstring.
-///
-/// A pure function so the rule itself is testable. It cannot be exercised end to end on a
-/// deployment whose proxy asserts an administrator group for every caller, where every
-/// request is legitimately allowed.
-pub fn may_read(caller: &str, caller_is_admin: bool, owner: &str) -> bool {
-    if caller_is_admin {
-        return true;
-    }
-    // An empty owner would otherwise match an empty caller and make an unowned artifact
-    // world-readable. Rows always carry a username; belt and braces.
-    !caller.is_empty() && caller == owner
-}
-
 /// Fetch one object out of the blobs bucket.
 ///
 /// The whole object is read into memory rather than streamed: a thumbnail is tens of kB
@@ -126,12 +113,18 @@ async fn _chat_artifact(
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "artifact not found".to_string()))?;
 
-    if !may_read(&user.username, user.is_admin, &row.username) {
+    // Member of the group of the chat, or admin. A **403** rather than a 404, see the module
+    // docstring.
+    let readable = crate::api::chat::artifact_readable(user, &row).await.map_err(|e| {
+        tracing::error!("chat_artifact access check failed for {artifact_id}: {e:#}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "lookup failed".to_string())
+    })?;
+    if !readable {
         tracing::warn!(
-            "user {} was refused artifact {} owned by {}",
+            "user {} was refused artifact {} of a chat of {}",
             user.username, artifact_id, row.username
         );
-        return Err((StatusCode::FORBIDDEN, "not yours".to_string()));
+        return Err((StatusCode::FORBIDDEN, "this artifact belongs to a chat of another group".to_string()));
     }
 
     let key = asset.key_of(&row);
@@ -170,8 +163,8 @@ async fn _chat_artifact(
     set("content-length", bytes.len().to_string());
     set("x-content-type-options", "nosniff".to_string());
     set("content-disposition", "inline".to_string());
-    // Private: an artifact belongs to one user, and a shared cache holding it would undo
-    // the ACL above.
+    // Private: an artifact belongs to the chat of one group, and a shared cache holding it
+    // would undo the ACL above.
     set("cache-control", "private, max-age=86400".to_string());
     if asset == Asset::Page {
         set("content-security-policy", CSP.to_string());
@@ -193,29 +186,6 @@ pub async fn chat_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_owner_may_read_their_own_artifact() {
-        assert!(may_read("alice", false, "alice"));
-    }
-
-    #[test]
-    fn another_user_may_not() {
-        // What this asserts: an artifact_id arrives from an LLM-driven tool payload, so it
-        // is a lookup key and never a capability.
-        assert!(!may_read("bob", false, "alice"));
-    }
-
-    #[test]
-    fn an_admin_may_read_anyones() {
-        assert!(may_read("root", true, "alice"));
-    }
-
-    #[test]
-    fn an_unnamed_caller_may_not_read_an_unowned_artifact() {
-        // Otherwise "" == "" would make a row with no owner world-readable.
-        assert!(!may_read("", false, ""));
-    }
 
     #[test]
     fn only_the_three_known_assets_resolve() {

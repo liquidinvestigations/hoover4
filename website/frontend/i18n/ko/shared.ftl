@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}(예산 변동 없음, 보드가 탐색 �
 shared-email-graph-selected-copy-removed = 선택한 이메일 사본이 더 이상 존재하지 않습니다.
 
 shared-table-generation-changed = 표가 변경되었습니다. 표 읽기를 다시 시도하세요.
+
+shared-item-access-choose-a-group = 그룹을 선택하세요.
+shared-item-access-not-a-member = 이 그룹의 구성원이 아닙니다.
+shared-item-access-group-cannot-read = 그룹이 선택한 컬렉션 중 하나를 읽을 수 없습니다.
+shared-item-access-only-creator-deletes = 작성자나 관리자만 삭제할 수 있습니다.

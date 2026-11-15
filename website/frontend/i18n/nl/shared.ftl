@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}(budget ongewijzigd, het bord zit op zijn 
 shared-email-graph-selected-copy-removed = De geselecteerde kopie van de e-mail bestaat niet meer.
 
 shared-table-generation-changed = De tabel is gewijzigd. Probeer de tabel opnieuw te lezen.
+
+shared-item-access-choose-a-group = Kies een groep.
+shared-item-access-not-a-member = Je bent geen lid van deze groep.
+shared-item-access-group-cannot-read = De groep kan een van de geselecteerde collecties niet lezen.
+shared-item-access-only-creator-deletes = Alleen de maker of een beheerder kan het verwijderen.

@@ -716,6 +716,20 @@ line. A goal is blue with white text. */
 .x-board-node-anchor .x-board-node-meta {
     color: rgba(255, 255, 255, 0.85);
 }
+/* A hover on a card dims every card and edge outside the path of that card. */
+.x-board-node,
+.x-board-edge {
+    transition: opacity 0.12s;
+}
+.x-board-hover-dim {
+    opacity: 0.2;
+}
+@media (prefers-reduced-motion: reduce) {
+    .x-board-node,
+    .x-board-edge {
+        transition: none;
+    }
+}
 /* An open question in the fact pane: a card with the question in a larger font, and the
 request to explore it, or the intent that follows it, in the bottom-right corner. */
 .x-board-fact-question {

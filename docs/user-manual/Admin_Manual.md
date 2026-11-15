@@ -148,6 +148,14 @@ to their LLM usage, and holds the delete action.
 
 Groups work the same way, and a group's page is where **collection access** is granted.
 
+Every chat and investigation board belongs to one group. Every member of the group reads the chat or board, continues the chat, and acts on the board.
+Only the creator and administrators delete a chat or drop a board.
+An administrator who is not a member of the group does not see the chat or board.
+The collections of a chat or board are the collections that its group can read, so grant a group the collections that its members share.
+A group that the identity provider gives to every user is implicit. `[main_services] implicit_groups` lists these groups.
+The chat and board forms hide implicit groups until the person selects **Show groups of all users**.
+Add a person to a group here so that they can create and share chats and boards.
+
 
 
 

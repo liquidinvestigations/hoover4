@@ -8,6 +8,7 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 
 ## Contents
 
+- [A chat belongs to a group.](#a-chat-belongs-to-a-group)
 - [Internet access stays fixed for a conversation.](#internet-access-stays-fixed-for-a-conversation)
 - [Reaching the agents](#reaching-the-agents)
 - [Run sources](#run-sources)
@@ -26,8 +27,8 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 
 Routes (see [website/frontend/src/routes.rs](../../website/frontend/src/routes.rs)):
 
-- `/ai_chat`, homepage ("What are you researching?") with recent-session cards and composer
-- `/ai_chat/history`, full conversation list
+- `/ai_chat`, homepage ("What are you researching?") with recent-session cards, the group picker and composer
+- `/ai_chat/history`, full conversation list of the groups of the person
 - `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state`, transcript + document preview (60/40)
 
 Storage lives in the global ClickHouse database: `chat_sessions` (migration `00011`) and
@@ -42,6 +43,38 @@ is collapsed, so do not look for them in `ALTER` files of their own.
 a per-attempt error to the row's writer. The column and the disclosure that renders it are
 kept because a future writer would want exactly that shape, and an empty column renders
 nothing.
+
+## A chat belongs to a group.
+
+Every chat belongs to one group (`chat_sessions.owner_group`, migration `00055`). The rule is
+in [auth/item_access.rs](../../website/backend/src/auth/item_access.rs), and the boards use the
+same rule ([Boards.md](Boards.md#groups-of-boards)).
+
+- A person reads a chat when they are a member of its group. A stored membership in
+  `user_group_membership` and a group of the current request both count. Every member continues the chat,
+  stops its turn and changes its collections. A person outside the group gets "not found",
+  administrators too. The chat list and the history show the chats of the groups of the person.
+- Only the creator and administrators delete a chat. Another member gets 403.
+- The homepage composer has a group picker. It lists the explicit groups of the person, and the
+  checkbox "Show groups of all users" adds the implicit groups (`[main_services]
+  implicit_groups`). With no group to select, the composer does not send. The server refuses a
+  group of which the person is not a member.
+- The collections of a chat are collections that its group can read. A group reads its granted
+  collections and the public collections. A new chat gets every collection that the group
+  and the creator can both read. The server refuses a collection outside that set. A turn uses
+  the collections of the chat that the group and the sender can both read at that time.
+- `chat_sessions.username` is the creator. It stays the storage key of the messages, stream
+  rows, runs, artifacts and workspace files of the chat. A turn of another member writes under
+  the creator's name. The agent runs with the identity of the creator, so its tools also apply
+  the live permission of the creator.
+- An artifact or a workspace file of a chat is readable by the members of its group and by
+  administrators.
+- Every writer of `chat_sessions` writes the whole row, so every writer carries `owner_group`.
+  A row without it has the empty group, which has no member.
+
+Migration `00055_item_groups.sql` deleted every chat from before the groups. It wrote a
+tombstone row for each chat, so the daily artifact sweeper (`SweepChatArtifacts`) removes the
+artifacts, and deleted the other rows of the chat.
 
 ## Internet access stays fixed for a conversation.
 
@@ -640,7 +673,7 @@ image that one message names twice is sent once. A later reference to an image t
 not be read is read again.
 
 The content of the message stays text, so a restart builds the same image input from the
-stored references. The website checks collection access or capture ownership on each read,
+stored references. The website checks collection access, or for a capture the group of its chat, on each read,
 also for an image that the agent service has in its cache.
 [research_agent/images.py](../../main_services/agents/research_agent/research_agent/images.py) describes the size limits, the cost estimate
 and the model without images. [compaction.py](../../main_services/agents/research_agent/research_agent/compaction.py) describes the images of a summary.

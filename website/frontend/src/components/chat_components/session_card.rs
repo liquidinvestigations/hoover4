@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
 
+use crate::components::chat_components::GroupName;
 use crate::routes::Route;
 use crate::tr;
 
@@ -46,6 +47,9 @@ pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
                                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; \
                                 overflow: hidden;",
                         "{summary}"
+                    }
+                    div { style: "margin-top: 4px; display: flex;",
+                        GroupName { name: session.owner_group.clone() }
                     }
                 }
             }

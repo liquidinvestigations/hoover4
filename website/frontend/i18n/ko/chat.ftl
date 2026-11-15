@@ -439,3 +439,11 @@ board-status-on = 켜짐
 board-status-off = 꺼짐
 
 chat-transcript-generic-tool = 도구
+
+group-picker-loading-groups-u = 그룹을 불러오는 중…
+group-picker-group = 그룹
+group-picker-show-groups-of-all-users = 모든 사용자의 그룹 표시
+group-picker-you-have-no-group-of-your-own = 본인의 그룹이 없습니다. '모든 사용자의 그룹 표시'를 선택하거나 관리자에게 그룹에 추가해 달라고 요청하세요.
+group-picker-you-are-not-in-a-group = 어떤 그룹에도 속해 있지 않습니다. 관리자에게 그룹에 추가해 달라고 요청하세요.
+ai-chat-homepage-members-of-the-group-can-read = 그룹의 모든 구성원이 이 채팅을 읽고 계속할 수 있습니다.
+chat-board-create-members-of-the-group-can-read = 그룹의 모든 구성원이 이 보드를 읽고 작업할 수 있습니다.

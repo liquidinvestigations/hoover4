@@ -54,7 +54,7 @@ use crate::components::admin_components::{
     ErrorBar, BTN, BTN_PRIMARY, BTN_SMALL, BTN_SMALL_DANGER, HELP_TEXT, INPUT, LINK, SUBHEADING, TABLE, TD, TH,
 };
 use crate::components::board_graph::{
-    build_graph, corners, render_edge, render_node, settle, ArrowMarker, NodeKind, NodePosition,
+    build_graph, corners, edge_hover_dimmed, related_nodes, render_edge, render_node, settle, ArrowMarker, NodeKind, NodePosition,
 };
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::markdown_text::{MarkdownishText, NodeLinks};
@@ -252,6 +252,8 @@ fn BoardExplorer(
     // The node id that the scroll of `D29` last handled. A node click sets it before it
     // selects the node, so a click does not scroll.
     let mut scrolled_for = use_signal(String::new);
+    // The node under the pointer, or empty. A hover dims the nodes and edges outside its path.
+    let mut hovered = use_signal(String::new);
 
     // The citation cards of a fact read the selection fields of a search page. This page
     // has no search, so the fields hold nothing and a card click goes to `ChatDocOpen`.
@@ -379,6 +381,8 @@ fn BoardExplorer(
         scrolled_for.set(id.clone());
         on_select.call(id);
     });
+    let on_hover = Callback::new(move |id: String| hovered.set(id));
+    let related = related_nodes(&graph, &hovered.read());
     let popup_board = snap.board.board_id.clone();
     let set_assessment = Callback::new(move |number: Option<u32>| {
         navigator().replace(Route::AiBoardPage {
@@ -489,10 +493,11 @@ fn BoardExplorer(
                         view_box: "0 0 {graph.width} {graph.height}",
                         ArrowMarker { id: "x-board-arrow" }
                         for edge in graph.edges.iter() {
-                            {render_edge(edge, &positions, "x-board-arrow")}
+                            {render_edge(edge, &positions, "x-board-arrow", edge_hover_dimmed(edge, &related))}
                         }
                         for node in graph.nodes.iter() {
-                            {render_node(node, &positions, &selected_id, on_node)}
+                            {render_node(node, &positions, &selected_id, on_node,
+                                !related.is_empty() && !related.contains(&node.id), on_hover)}
                         }
                     }
                 }
@@ -620,6 +625,8 @@ fn BoardSettings(
                     }
                     p { style: HELP_TEXT, {tr!("ai-chat-board-the-next-explores-of-the")} }
                 }
+                div { style: SUBHEADING, {tr!("group-picker-group")} }
+                p { class: "x-board-group", style: "margin: 4px 0;", "{snap.board.owner_group}" }
                 div { style: SUBHEADING, {tr!("ai-chat-board-collections")} }
                 p { style: "margin: 4px 0;", "{collections}" }
                 p { style: HELP_TEXT, {tr!("ai-chat-board-the-collections-are-fixed-when")} }
@@ -670,7 +677,7 @@ fn BoardSettings(
                             },
                             {tr!("ai-chat-board-confirm-drop")}
                         }
-                    } else if snap.status != "dropped" {
+                    } else if snap.status != "dropped" && snap.board.can_delete {
                         button { style: BTN_SMALL_DANGER, onclick: move |_| confirm_drop.set(true), {tr!("ai-chat-board-drop-the-board")} }
                     }
                     span { style: "flex: 1;" }
@@ -1938,6 +1945,7 @@ mod tests {
                 board_id: "b".into(), owner: "o".into(), title: "t".into(), goal: "g".into(),
                 context: String::new(), collections: vec![], llm_model: String::new(), max_parallel: 1,
                 internet_tools: false, created_ms: 0, language: String::new(),
+                owner_group: String::new(), can_delete: false,
             },
             status: "active".into(), explores_used: 0, reasons_done: 0, stall_count: 0,
             review_statement: String::new(), answers_proposed: vec![], answers_accepted: vec![],

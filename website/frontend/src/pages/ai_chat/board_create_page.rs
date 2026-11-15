@@ -2,8 +2,12 @@
 //! board.
 //!
 //! The form has no model, explore count or step budget. The worker starts every board at the
-//! same budget and grows it with the person's corrections and hints. Every collection that
-//! the person can read is selected at first. The Sources group has a Collections checkbox
+//! same budget and grows it with the person's corrections and hints.
+//!
+//! The board belongs to the group that the form selects (`GroupPicker`). The collections are
+//! the collections that the person and the group can both read, and every one of them is
+//! selected at first and again after a change of the group. Without a group to choose, the
+//! form shows why and Create board stays disabled. The Sources group has a Collections checkbox
 //! that selects or clears every collection. A board needs a collection or the internet tools,
 //! so Create board stays disabled while the group shows the source error. The collections
 //! cannot change after creation, and the internet tools can when the deployment enables them
@@ -18,10 +22,12 @@ use common::board_types::{BoardCreateRequest, MAX_GOALS};
 use dioxus::prelude::*;
 use dioxus_free_icons::{icons::md_navigation_icons::MdArrowBack, Icon};
 
+use common::item_groups::GroupChoice;
+
 use crate::api::board_api::{board_command_status, create_board_command, new_request_id};
 use crate::api::error_util::user_facing_message;
-use crate::api::storage_api::collections_overview;
 use crate::components::chat_components::agent_language::AgentLanguageControl;
+use crate::components::chat_components::GroupPicker;
 use crate::components::admin_components::{ErrorBar, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT, LABEL, LINK, SUBHEADING};
 use crate::routes::Route;
 use crate::tr;
@@ -71,31 +77,34 @@ pub fn source_error(collections: usize, internet_tools: bool, internet_tools_ena
     }
 }
 
+/// The collections of `group` in `choices`, or none while the groups load or without a group.
+pub fn group_collections(choices: Option<&[GroupChoice]>, group: &str) -> Option<Vec<String>> {
+    choices?.iter().find(|c| c.name == group).map(|c| c.collections.clone())
+}
+
 #[component]
 pub fn AiBoardCreatePage() -> Element {
-    let collections_res = use_resource(collections_overview);
+    let group = use_signal(String::new);
+    let group_choices = use_signal(|| None::<Vec<GroupChoice>>);
     let mut title = use_signal(String::new);
     let mut goals = use_signal(|| vec![String::new()]);
     let mut context = use_signal(String::new);
     let mut hints = use_signal(String::new);
-    // `None` until the collections arrive. Then every collection is selected.
+    // `None` until the groups arrive and while no group is selected. Then every collection of
+    // the group is selected.
     let mut chosen = use_signal(|| None::<Vec<String>>);
     let mut internet_tools = use_signal(|| true);
     let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     let mut error_msg = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
 
-    let listed: Vec<String> = match &*collections_res.read() {
-        Some(Ok(cols)) => cols.iter().map(|c| c.collectionname.clone()).collect(),
-        _ => Vec::new(),
-    };
+    let group_list = group_collections(group_choices.read().as_deref(), &group.read());
+    let listed: Vec<String> = group_list.clone().unwrap_or_default();
 
+    // A new group selects every collection of the group.
     use_effect(move || {
-        if let Some(Ok(list)) = &*collections_res.read() {
-            if chosen.peek().is_none() {
-                chosen.set(Some(list.iter().map(|c| c.collectionname.clone()).collect()));
-            }
-        }
+        let list = group_collections(group_choices.read().as_deref(), &group.read());
+        chosen.set(list);
     });
 
     // HTML has no `indeterminate` attribute, so the property is set after each render.
@@ -107,8 +116,9 @@ pub fn AiBoardCreatePage() -> Element {
         ));
     }));
 
-    let collection_boxes = match &*collections_res.read() {
-        Some(Ok(cols)) => rsx! {
+    let groups_loaded = group_choices.read().is_some();
+    let collection_boxes = match group_list {
+        Some(cols) => rsx! {
             label { style: LABEL,
                 input {
                     class: "x-board-collections-all",
@@ -127,14 +137,14 @@ pub fn AiBoardCreatePage() -> Element {
             }
             div { style: "display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding-left: 22px;",
                 for c in cols.clone() {
-                    label { key: "{c.collectionname}", style: LABEL,
+                    label { key: "{c}", style: LABEL,
                         input {
                             class: "x-board-collection",
-                            "data-collection": "{c.collectionname}",
+                            "data-collection": "{c}",
                             r#type: "checkbox",
-                            checked: chosen.read().as_ref().is_some_and(|list| list.contains(&c.collectionname)),
+                            checked: chosen.read().as_ref().is_some_and(|list| list.contains(&c)),
                             onchange: {
-                                let name = c.collectionname.clone();
+                                let name = c.clone();
                                 move |e: FormEvent| {
                                     let mut list = chosen.read().clone().unwrap_or_default();
                                     list.retain(|x| *x != name);
@@ -145,12 +155,13 @@ pub fn AiBoardCreatePage() -> Element {
                                 }
                             },
                         }
-                        "{c.collectionname}"
+                        "{c}"
                     }
                 }
             }
         },
-        Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
+        // Without a group the picker says why. While the groups load, the collections wait.
+        None if groups_loaded => rsx! {},
         None => rsx! { span { style: HELP_TEXT, {tr!("chat-board-create-loading-collections-u")} } },
     };
     let goal_count = goals.read().len();
@@ -236,6 +247,9 @@ pub fn AiBoardCreatePage() -> Element {
                             value: "{hints}", oninput: move |e| hints.set(e.value()),
                         }
                     }
+                    div { class: "x-board-group",
+                        GroupPicker { selected: group, choices: group_choices, hint: tr!("chat-board-create-members-of-the-group-can-read") }
+                    }
                     div { class: "x-board-sources", style: "display: flex; flex-direction: column; gap: 8px;",
                         div { style: SUBHEADING, {tr!("chat-board-create-sources")} }
                         {collection_boxes}
@@ -258,9 +272,9 @@ pub fn AiBoardCreatePage() -> Element {
                         button {
                             class: "x-board-create",
                             style: BTN_PRIMARY,
-                            disabled: busy() || chosen.read().is_none() || missing_source.is_some(),
+                            disabled: busy() || chosen.read().is_none() || group.read().is_empty() || missing_source.is_some(),
                             onclick: move |_| {
-                                if *busy.peek() || chosen.peek().is_none() { return; }
+                                if *busy.peek() || chosen.peek().is_none() || group.peek().is_empty() { return; }
                                 busy.set(true);
                                 let request = BoardCreateRequest {
                                     title: title.read().clone(),
@@ -269,6 +283,7 @@ pub fn AiBoardCreatePage() -> Element {
                                     collections: chosen.read().clone().unwrap_or_default(),
                                     internet_tools: internet_tools_enabled && internet_tools(),
                                     hints: hints.read().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect(),
+                                    group: group.read().clone(),
                                 };
                                 spawn(async move {
                                     error_msg.set(None);
@@ -335,6 +350,18 @@ mod tests {
         assert_eq!(master_click(&listed, &listed), Vec::<String>::new());
         assert_eq!(master_click(&listed, &names(&["tables"])), listed);
         assert_eq!(master_click(&listed, &[]), listed);
+    }
+
+    #[test]
+    fn the_collections_are_the_collections_of_the_selected_group() {
+        let choices = vec![
+            GroupChoice { name: "team-a".into(), implicit: false, collections: names(&["enron"]) },
+            GroupChoice { name: "user".into(), implicit: true, collections: names(&["enron", "tables"]) },
+        ];
+        assert_eq!(group_collections(Some(&choices), "user"), Some(names(&["enron", "tables"])));
+        assert_eq!(group_collections(Some(&choices), "team-a"), Some(names(&["enron"])));
+        assert_eq!(group_collections(Some(&choices), ""), None);
+        assert_eq!(group_collections(None, "team-a"), None);
     }
 
     #[test]

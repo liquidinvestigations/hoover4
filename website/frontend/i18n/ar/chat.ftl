@@ -601,3 +601,11 @@ board-status-on = مفعّل
 board-status-off = معطّل
 
 chat-transcript-generic-tool = الأداة
+
+group-picker-loading-groups-u = جارٍ تحميل مجموعات المستخدمين…
+group-picker-group = مجموعة المستخدمين
+group-picker-show-groups-of-all-users = إظهار مجموعات جميع المستخدمين
+group-picker-you-have-no-group-of-your-own = ليست لديك مجموعة مستخدمين خاصة بك. حدّد «إظهار مجموعات جميع المستخدمين»، أو اطلب من مسؤول أن يضيفك إلى مجموعة.
+group-picker-you-are-not-in-a-group = لست في أي مجموعة مستخدمين. اطلب من مسؤول أن يضيفك إلى مجموعة.
+ai-chat-homepage-members-of-the-group-can-read = يستطيع كل عضو في مجموعة المستخدمين قراءة هذه المحادثة ومتابعتها.
+chat-board-create-members-of-the-group-can-read = يستطيع كل عضو في مجموعة المستخدمين قراءة هذه اللوحة والعمل عليها.

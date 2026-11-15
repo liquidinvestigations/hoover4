@@ -268,3 +268,8 @@ shared-boards-budget-unchanged = {" "}(orçamento inalterado, o quadro está no 
 shared-email-graph-selected-copy-removed = A cópia da mensagem de correio selecionada já não existe.
 
 shared-table-generation-changed = A tabela foi alterada. Repita a leitura da tabela.
+
+shared-item-access-choose-a-group = Escolha um grupo.
+shared-item-access-not-a-member = Não é membro deste grupo.
+shared-item-access-group-cannot-read = O grupo não pode ler uma das coleções selecionadas.
+shared-item-access-only-creator-deletes = Só o criador ou um administrador o pode eliminar.

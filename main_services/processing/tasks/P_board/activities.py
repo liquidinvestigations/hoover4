@@ -628,12 +628,15 @@ def _ensure_session(board, session_id: str, title: str, collections: list[str]) 
         if exists:
             return
         now = boards.now().replace(microsecond=0)
+        # The explore session belongs to the group of the board, so every member of the group
+        # reads it. The creator of the board stays the storage key (`username`).
         insert_durable(client, "chat_sessions",
                        [[session_id, board.owner, title[:200], collections,
-                         int(effective_internet_tools(bool(board.internet_tools))), 1, now, now, 0]],
+                         int(effective_internet_tools(bool(board.internet_tools))), 1, now, now, 0,
+                         board.owner_group]],
                        column_names=["session_id", "username", "title", "collections",
                                      "use_internet_tools", "options_locked", "created_at",
-                                     "updated_at", "is_deleted"])
+                                     "updated_at", "is_deleted", "owner_group"])
 
 
 def _existing_user_seq(owner: str, session_id: str, turn_uuid: str) -> int | None:

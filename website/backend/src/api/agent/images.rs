@@ -115,8 +115,9 @@ pub(super) async fn images_document(
     Ok(image_response(etag, "application/octet-stream", Some(bytes)))
 }
 
-/// `POST images/capture`: the screenshot of a page capture. The caller must own the
-/// capture or be an administrator.
+/// `POST images/capture`: the screenshot of a page capture. The caller must be a member of
+/// the group of the chat of the capture, or an administrator. The agent runs a chat turn with
+/// the identity of the creator of the chat, who is a member.
 pub(super) async fn images_capture(
     Extension(user): Extension<CurrentUser>,
     headers: HeaderMap,
@@ -127,8 +128,8 @@ pub(super) async fn images_capture(
         .await
         .map_err(AgentError::from_anyhow)?
         .ok_or_else(|| AgentError::not_found("no such capture"))?;
-    if !chat_artifact::may_read(&user.username, user.is_admin, &row.username) {
-        return Err(AgentError::permission_denied("the capture belongs to another user"));
+    if !crate::api::chat::artifact_readable(&user, &row).await.map_err(AgentError::from_anyhow)? {
+        return Err(AgentError::permission_denied("the capture belongs to a chat of another group"));
     }
     if row.thumb_key.is_empty() {
         return Err(AgentError::not_found("the capture has no screenshot"));

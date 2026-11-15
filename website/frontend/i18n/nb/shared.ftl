@@ -271,3 +271,8 @@ shared-boards-budget-unchanged = {" "}(budsjettet er uendret, tavlen har nådd g
 shared-email-graph-selected-copy-removed = Den valgte kopien av e-posten finnes ikke lenger.
 
 shared-table-generation-changed = Tabellen er endret. Prøv å lese tabellen på nytt.
+
+shared-item-access-choose-a-group = Velg en gruppe.
+shared-item-access-not-a-member = Du er ikke medlem av denne gruppen.
+shared-item-access-group-cannot-read = Gruppen kan ikke lese en av de valgte samlingene.
+shared-item-access-only-creator-deletes = Bare den som opprettet den, eller en administrator, kan slette den.

@@ -146,6 +146,9 @@ pub struct BoardListItem {
     pub max_explores: u32,
     /// Milliseconds since the epoch of the newest event.
     pub updated_ms: i64,
+    /// The group of the board (`crate::item_groups`). Every member reads it and acts on it.
+    #[serde(default)]
+    pub owner_group: String,
     /// The generated summary of the board, 10 to 15 words. Empty before its first label pass.
     #[serde(default)]
     pub summary: String,
@@ -167,6 +170,10 @@ pub struct BoardCreateRequest {
     pub internet_tools: bool,
     /// First hints, one per entry. Empty entries are dropped.
     pub hints: Vec<String>,
+    /// The group of the board. The creator must be a member, and the collections must be
+    /// readable by the group.
+    #[serde(default)]
+    pub group: String,
 }
 
 /// The definition of a board, as created.
@@ -187,6 +194,12 @@ pub struct BoardDefinition {
     /// the saved languages of the owner.
     #[serde(default)]
     pub language: String,
+    /// The group of the board. Every member reads it and acts on it.
+    #[serde(default)]
+    pub owner_group: String,
+    /// The reader may drop the board: the creator and administrators.
+    #[serde(default)]
+    pub can_delete: bool,
 }
 
 /// One resolved citation of a board fact.
@@ -637,6 +650,7 @@ mod tests {
                 board_id: "b".into(), owner: "o".into(), title: "t".into(), goal: "g".into(),
                 context: String::new(), collections: vec![], llm_model: String::new(), max_parallel: 1,
                 internet_tools: false, created_ms: 0, language: String::new(),
+                owner_group: String::new(), can_delete: false,
             },
             status: "active".into(), explores_used: 0, reasons_done: 0, stall_count: 0,
             review_statement: String::new(), answers_proposed: vec![], answers_accepted: vec![],

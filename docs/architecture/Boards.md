@@ -44,11 +44,12 @@ then the saved interface language, then English (`activities.board_language`).
 ## Routes
 
 - `/ai_chat` shows the chat on the left and the board overview on the right: a card per board
-  with its title, status, a thumbnail of its graph and the board summary (the first goal
-  before the summary exists). The overview shows while the chat gate
+  of the groups of the person, with its title, status, a thumbnail of its graph, the board
+  summary (the first goal before the summary exists) and its group. The overview shows while the chat gate
   is open, because the explores are chat turns.
 - `/ai_chat/boards/new` is the create form. "Create board" opens the new board after its
-  command writer wrote its goals.
+  command writer wrote its goals. The form has the group picker of
+  [Groups of boards](#groups-of-boards).
 - `/ai_chat/boards/:board_id?selected=&zoom=&assessment=` is the explorer. `selected` is the
   slug of a node, and empty selects the board overview. The page resolves it by slug first and
   then by storage id, so a link with a storage id keeps working. A click on a node puts its
@@ -61,8 +62,32 @@ then the saved interface language, then English (`activities.board_language`).
   intent from the board (`board_fact_for_intent`). While the board has not published the fact,
   the card selects the intent.
 
-Every user can own boards. A board belongs to the user who created it, also for
-administrators, and the server functions return "not found" for a board of another user.
+### Groups of boards
+
+Every board belongs to one group (`boards.owner_group`). `owner` is the person who created it.
+The rule is in [auth/item_access.rs](../../website/backend/src/auth/item_access.rs) and is the
+same rule as for chats.
+
+- A person reads a board when they are a member of its group. A stored membership in
+  `user_group_membership` and a group of the current request both count. Every member acts on
+  the board with hints, goals, reviews, answers, pause and the internet tools.
+- Only the creator and administrators drop a board. Another member gets 403, and the settings
+  popup shows no drop button to that member.
+- A person outside the group gets "not found", administrators too. Only a drop by an
+  administrator works without membership.
+- The create form lists the explicit groups of the person and selects the first one. The
+  checkbox "Show groups of all users" adds the implicit groups (`[main_services]
+  implicit_groups`). With no group to select, the form says what to do and does not submit.
+- The form offers the collections that the group and the person can both read. A group reads
+  its granted collections and the public collections. The server refuses a group of which the
+  person is not a member. It also refuses a collection outside that set.
+- The explores run as chat turns of the creator. Their sessions have the creator as `username`
+  and the group of the board as `owner_group`, so every member reads them. The agent of an
+  explore runs with the identity of the creator. Its collections are the stored board
+  collections.
+
+Migration `00055_item_groups.sql` deleted every board from before the groups, with the rows of
+every board table and its explore chats.
 
 ## Storage
 
@@ -72,10 +97,11 @@ Migration `00045_board_labels.sql` adds `board_labels`.
 Migration `00046_board_assessments.sql` adds `board_assessments`.
 Migration `00047_board_commands.sql` adds `board_command_inputs`, `board_command_receipts` and
 the `request_id` column of `board_facts`.
+Migration `00055_item_groups.sql` adds the `owner_group` column of `boards`.
 
 | Table | Content | Writer |
 |---|---|---|
-| `boards` | The definition: owner, first goal, context, collections, internet tools. A drop sets `is_deleted`. A settings change writes a new version of the row. | the website |
+| `boards` | The definition: owner, group (`owner_group`), first goal, context, collections, internet tools. A drop sets `is_deleted`. A settings change writes a new version of the row with every column. | the website |
 | `board_command_inputs` | One row for each command: the request id, the digest of its body, the actor, the kind and the body. A row never changes. | the website for person actions, the board activities for worker commands |
 | `board_command_receipts` | One row for each decided request: `prepared`, then `committed` or `rejected`, with the frozen rows of the command, the node ids that it allocated, its sequence range and its result. | `BoardCommands` only |
 | `board_events` | Every action, with a JSON payload. This table is the record of the board. | `BoardCommands`, and `board_plan` for the derived `status_changed` rows |
@@ -550,7 +576,7 @@ writer decides it. A refused command shows its reason above the board.
 
 | Action | Command and effect |
 |---|---|
-| Create | `create_board`. The website writes the definition with the agent language of the owner (`boards.language`), which the form shows beside Create board and the settings popup shows read-only, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. Every readable collection is selected at first, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
+| Create | `create_board`. The website writes the definition with the agent language of the owner (`boards.language`), which the form shows beside Create board and the settings popup shows read-only, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. The form selects the first explicit group of the person and every collection that the group and the person can both read, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
 | Settings | `set_internet_tools`. The website writes a new version of the `boards` row, and the command writes `settings_changed`. Explores that run keep the setting they started with. The website refuses to turn off the internet tools of a board without collections, and it then writes no row and no command. |
 | Add hint | `add_hint` writes `hint_added`. The next assessment reads it. It also opens intents that asked a question. |
 | Add goal | `add_goal` writes the goal fact in the first free slot and `goal_added`, at any status but dropped, up to 6 goals. The next assessment reads the goal. A board in review or complete becomes active. |
@@ -603,7 +629,10 @@ in gray monospace with the type of the node on the left and its statuses on the 
 
 The background context is white with a black border. The goals are blue with white text. The
 background context and the goals show their text with no title. A rejected fact and a
-cancelled intent are dimmed, with an opaque white card under them. The detail pane of a node
+cancelled intent are dimmed, with an opaque white card under them. A pointer over a card dims
+every card and edge outside the path of that card: the card, its ancestors and its
+descendants over the edges (`board_graph::related_nodes`) stay at full strength, and so do the
+edges between them. The thumbnail has no hover. The detail pane of a node
 shows the same type and statuses under its title, and "Open the explore chat" at the right
 of the title for an intent or fact with a chat. The graph does not scale to its pane. The pane scrolls, a press and a drag of more than 4 pixels
 pans it up to the edges of the graph, and a control in its lower-right corner zooms out to
