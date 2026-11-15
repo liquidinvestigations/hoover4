@@ -12,6 +12,7 @@ caller sees:
   GET    /tables/<table>/<file>          a file of the table folder. The table must be in SHOW TABLES of the caller.
   PUT    /stage/<stage>/<table>/<file>   write a file into import/<user>/<stage>/<table>/ of the data folder.
   DELETE /stage/<stage>                  remove import/<user>/<stage>/.
+  DELETE /import                         remove import/<user>/. The removal of a zone (shared.py remove) calls it.
   GET    /ready                          200 without credentials.
 
 A caller writes only below import/<user>/ of its own user and reads only the folders of its own tables. The schema
@@ -128,6 +129,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         left -= len(data)
                 os.replace(path + '.part', path)
                 return self.answer(200, {'written': length})
+            if method == 'DELETE' and self.path.split('?', 1)[0].strip('/') == 'import':
+                folder = os.path.join(DATA, 'import', user)
+                if os.path.lexists(folder):
+                    no_links(folder)
+                    shutil.rmtree(folder)
+                return self.answer(200, {'removed': 'import'})
             if method == 'DELETE':
                 kind, stage = self.parts(2)
                 if kind != 'stage' or not STAGE.match(stage):

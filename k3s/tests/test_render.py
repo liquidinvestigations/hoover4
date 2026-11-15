@@ -473,6 +473,20 @@ def test_only_the_temporal_clients_of_a_site_zone_get_its_namespace_and_key(tmp_
     assert with_key == {'hoover-website', 'hoover-workers', 'hoover-singletons', 'hoover-operations', 'hoover4-mcp-todo'}
 
 
+def test_only_the_operations_pod_of_a_site_zone_gets_the_export_bucket(tmp_path):
+    items = items_of(target('remote.yml', 'zone-a', tmp_path))
+    found = {}
+    for item in workloads(items):
+        for c in containers(item):
+            if 'CLICKHOUSE_BACKUP_S3_URL' in env(c):
+                found[item['metadata']['name']] = env(c)['CLICKHOUSE_BACKUP_S3_URL']
+    assert found == {'hoover-operations': 'http://garage.hoover-stores.svc.cluster.local:3900/zone-a-exports'}
+    # The local store layout keeps the file of the backup root.
+    (tmp_path / 'local').mkdir()
+    with_local = items_of(target('single-node.yml', 'zone-a', tmp_path / 'local'))
+    assert not any('CLICKHOUSE_BACKUP_S3_URL' in env(c) for item in workloads(with_local) for c in containers(item))
+
+
 def test_a_site_zone_of_the_earlier_temporal_is_refused(tmp_path, monkeypatch):
     original = config.zone_hoover
 
@@ -849,6 +863,9 @@ def test_the_public_peer_needs_the_dropped_probe_of_the_coturn_user():
     users = {c['name']: c['securityContext']['runAsUser'] for c in spec['containers']}
     assert users == {'coturn': turn_peers.COTURN_UID, 'control': turn_peers.PROBE_CONTROL_UID}
     assert all(c['command'][-2:] == ['203.0.113.7', str(turn_peers.PROBE_PORT)] for c in spec['containers'])
+    # On a full media node the probe preempts a pod of the default priority, so the calls step does not wait.
+    assert spec['priorityClassName'] == 'hoover-node-bound'
+    assert all(c['resources']['requests'] == {'cpu': '10m', 'memory': '16Mi'} for c in spec['containers'])
 
 
 def test_the_probe_reports_an_open_and_a_refused_port_as_open():

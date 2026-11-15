@@ -688,6 +688,11 @@ def store_secrets(target, service_key, wanted):
                     from_secret('MANTICORE_SCHEMA_TOKEN', 'manticore-proxy-token')]
     if 'garage' in used:
         env += [from_secret('S3_ACCESS_KEY', f's3-access-key-{service_key}'), from_secret('S3_SECRET_KEY', f's3-secret-key-{service_key}')]
+    if service_key == service_users.BACKUP_SERVICE:
+        # The shared ClickHouse writes the archive of a collection export into the export bucket of the zone, at the
+        # address of Garage in its own namespace (main_services/processing/tasks/P_ops/backup.py).
+        env += [value('CLICKHOUSE_BACKUP_S3_URL',
+                      f'http://garage.{SHARED_NS}.svc.cluster.local:3900/{service_users.export_bucket(target.zone)}')]
     return env
 
 

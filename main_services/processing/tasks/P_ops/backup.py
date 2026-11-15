@@ -7,8 +7,11 @@ and a manifest naming everything in it:
       manifest.json                      what is here, how big it is, and what it checks against
       garage/vol-000.tar ...             the collection's objects, uncompressed
       garage/objects.json.gz             key -> (volume, offset, size, etag)
-      clickhouse/clickhouse-<op_id>.tar  BACKUP DATABASE, uncompressed
+      clickhouse/clickhouse-<op_id>.tar  BACKUP DATABASE, uncompressed (Compose)
       manticore/<table>.tar.zst          one artifact per shard table, zstd
+
+In the site layout of k3s the shared ClickHouse writes the archive into the export bucket of
+the zone (`CLICKHOUSE_BACKUP_S3_URL`) with the zone key. The manifest names the object.
 
 **Every format choice below is measured rather than aesthetic.**
 
@@ -74,6 +77,14 @@ OBJECT_VOLUME_BYTES = int(os.environ.get("HOOVER4_BACKUP_OBJECT_VOLUME_BYTES", "
 #: How often a running ClickHouse backup is asked how far it has got.
 CLICKHOUSE_POLL_SECONDS = 5
 
+#: The export bucket of the zone as ClickHouse reaches it, for example
+#: `http://<garage host>:3900/<zone>-exports`. Set in the site layout of k3s, where ClickHouse
+#: is shared by the zones and mounts no backup folder of a zone. ClickHouse then writes the
+#: archive into this bucket with the Garage key of this process (`S3_ACCESS_KEY`), and
+#: Garage refuses every other bucket to that key. Empty in Compose: ClickHouse writes into
+#: the backup root.
+CLICKHOUSE_BACKUP_S3_URL = os.environ.get("CLICKHOUSE_BACKUP_S3_URL", "").rstrip("/")
+
 #: How often a phase's byte counters reach the operation row.
 #:
 #: Throttled rather than written per object, and the difference is not cosmetic: a row
@@ -107,6 +118,71 @@ def validate_destination(destination: str) -> str:
 def staging_name(destination: str, op_id: str) -> str:
     """The directory a run writes into before its manifest is complete."""
     return f"{destination}.partial-{op_id}"
+
+
+def clickhouse_operation_id(op_id: str) -> str:
+    """The ClickHouse id of a backup or restore: the database prefix, a dash and the operation id.
+
+    In the site layout the zone user reads `system.backups` through a row policy. The policy
+    shows only the ids that start with the database prefix of the zone.
+    """
+    from database import storage_identity
+
+    return f"{storage_identity.setting('clickhouse_database_prefix')}-{op_id}"
+
+
+def export_bucket() -> str:
+    """The bucket of `CLICKHOUSE_BACKUP_S3_URL`."""
+    return CLICKHOUSE_BACKUP_S3_URL.rsplit("/", 1)[-1]
+
+
+def clickhouse_s3(key: str) -> str:
+    """The ClickHouse `S3(...)` target of an object of the export bucket, with the zone key.
+
+    ClickHouse shows `[HIDDEN]` for the secret in `system.backups` and in the query log.
+    """
+    from database.s3 import S3_ACCESS_KEY, S3_SECRET_KEY
+
+    def quoted(text: str) -> str:
+        return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+    return (f"S3({quoted(CLICKHOUSE_BACKUP_S3_URL + '/' + key)}, {quoted(S3_ACCESS_KEY)}, "
+            f"{quoted(S3_SECRET_KEY)})")
+
+
+def fetch_clickhouse_object(directory: str) -> str:
+    """Copy the ClickHouse object of an export folder into the folder, and return the local path.
+
+    The backup job of a site zone copies the export folder out of the cluster, and the
+    archive must go with it. The import of such a copy then reads the local file.
+    """
+    from database.s3 import get_s3_client
+
+    manifest_path = os.path.join(directory, "manifest.json")
+    with open(manifest_path, encoding="utf-8") as handle:
+        block = json.load(handle)["stores"]["clickhouse"]
+    target = os.path.join(directory, block["artifact"])
+    found = block.get("object")
+    if not found or os.path.isfile(target):
+        return target
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    get_s3_client().fget_object(found["bucket"], found["key"], target + ".part")
+    if os.path.getsize(target + ".part") != int(block.get("bytes") or 0):
+        raise RuntimeError(f"the copy of {found['key']} has another size than the manifest records.")
+    os.replace(target + ".part", target)
+    return target
+
+
+def remove_clickhouse_object(directory: str) -> bool:
+    """Delete the ClickHouse object of an export folder from the export bucket. Return True when one was named."""
+    from database.s3 import get_s3_client
+
+    with open(os.path.join(directory, "manifest.json"), encoding="utf-8") as handle:
+        found = json.load(handle)["stores"]["clickhouse"].get("object")
+    if not found:
+        return False
+    get_s3_client().remove_object(found["bucket"], found["key"])
+    return True
 
 
 class _HashingWriter:
@@ -362,11 +438,15 @@ def export_object_store(params: ExportParams) -> ExportStoreResult:
 def export_clickhouse(params: ExportParams) -> ExportStoreResult:
     """Run `BACKUP DATABASE` into the backup directory and follow it to the end.
 
-    **ClickHouse writes the artifact itself, into this very directory**, because the
-    backup root is mounted onto its own `backups/` path as well. Nothing is copied
+    **In Compose ClickHouse writes the artifact itself, into this very directory**, because
+    the backup root is mounted onto its own `backups/` path as well. Nothing is copied
     afterwards, and the alternative (letting it write inside its data volume and copying
     the tar out) would both double the space and strand the original, since this
     container holds that volume read-only and has no way to delete anything in it.
+
+    **In the site layout of k3s ClickHouse writes it into the export bucket of the zone**
+    (`CLICKHOUSE_BACKUP_S3_URL`) with the zone key. The shared ClickHouse mounts no folder of
+    a zone, and the manifest names the object.
 
     **`BACKUP` copies parts verbatim, and that is why it is the mechanism.** Most tables
     here are `ReplacingMergeTree` and most of those have no version column, so the
@@ -379,10 +459,15 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
 
     phase = _Phase(params.op_id, "clickhouse")
     destination = validate_destination(params.destination)
-    relative = (f"{staging_name(destination, params.op_id)}/clickhouse/"
-                f"clickhouse-{params.op_id}.tar")
+    artifact = f"clickhouse/clickhouse-{params.op_id}.tar"
+    key = f"{destination}/clickhouse-{params.op_id}.tar"
+    if CLICKHOUSE_BACKUP_S3_URL:
+        target = clickhouse_s3(key)
+    else:
+        target = f"File('{staging_name(destination, params.op_id)}/{artifact}')"
     database = collection_db_name(params.collectionname)
-    settings = [f"id='{params.op_id}'", "async=1"]
+    backup_id = clickhouse_operation_id(params.op_id)
+    settings = [f"id='{backup_id}'", "async=1"]
     if BACKUP_BANDWIDTH:
         settings.append(f"max_backup_bandwidth={BACKUP_BANDWIDTH}")
 
@@ -390,14 +475,14 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
     error = ""
     numbers: dict = {}
     with get_collection_client(params.collectionname) as client:
-        client.query(f"BACKUP DATABASE `{database}` TO File('{relative}') "
+        client.query(f"BACKUP DATABASE `{database}` TO {target} "
                      f"SETTINGS {', '.join(settings)}")
         while status in ("CREATING_BACKUP", ""):
             time.sleep(CLICKHOUSE_POLL_SECONDS)
             rows = client.query(
                 "SELECT status, error, num_files, total_size, uncompressed_size, "
                 "compressed_size, files_read, bytes_read FROM system.backups "
-                "WHERE id = {id:String}", parameters={"id": params.op_id},
+                "WHERE id = {id:String}", parameters={"id": backup_id},
             ).result_rows
             if not rows:
                 # The row appears as the backup is registered; an empty answer this
@@ -415,21 +500,29 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
     if status != "BACKUP_CREATED":
         raise RuntimeError(f"ClickHouse backup of {database} ended {status}: {error}")
 
-    artifact = os.path.join(params.directory, "clickhouse",
-                            f"clickhouse-{params.op_id}.tar")
-    size = os.path.getsize(artifact)
+    location: dict = {}
+    if CLICKHOUSE_BACKUP_S3_URL:
+        from database.s3 import get_s3_client
+
+        size = int(get_s3_client().stat_object(export_bucket(), key).size)
+        location = {"object": {"bucket": export_bucket(), "key": key}}
+    else:
+        size = os.path.getsize(os.path.join(params.directory, artifact))
     phase.report(size, size, force=True)
     return phase.finish(ExportStoreResult(
         store="clickhouse",
         bytes_written=size,
         detail={
             "database": database,
-            "artifact": f"clickhouse/clickhouse-{params.op_id}.tar",
+            # The local path of the archive. In the site layout the archive is the object
+            # of `object`, and the backup job copies it to this path.
+            "artifact": artifact,
             "bytes": size,
             # No sha256: the tar carries ClickHouse's own per-file checksums inside it,
             # so an outer digest would cost a second full read of the largest artifact in
             # the backup and guarantee nothing the inner ones do not.
             "checksums": "internal to the ClickHouse archive",
+            **location,
             **numbers,
         },
     ))

@@ -71,6 +71,37 @@ def zone_grants(zone):
     return [f'GRANT {rights} ON {p}.*', f'GRANT {rights.replace("DROP TABLE", "DROP DATABASE, DROP TABLE")} ON {p}_*.*']
 
 
+# The service that runs the collection export and import (main_services/processing/tasks/P_ops/backup.py). Its
+# ClickHouse user alone gets the backup grants (backup_grants()).
+BACKUP_SERVICE = 'ops'
+
+
+def backup_policy(zone):
+    """The name of the row policy on system.backups of a zone."""
+    return f'{prefix(zone)}_backups'
+
+
+def backup_grants(zone):
+    """The ClickHouse statements that let the operations user of a zone back up and restore its own databases.
+
+    BACKUP names the databases <prefix>_* only. RESTORE needs no grant of its own: it creates the database and the
+    tables with the rights of zone_grants(). The operations user reads system.backups for the progress of its backup.
+    The row policy shows it only the rows whose id starts with <prefix>- (backup.py clickhouse_operation_id()). The id <prefix>- never starts the id of another zone, because a zone id has no
+    _ and the prefix ends before the -. ClickHouse writes the archive into the export bucket of the zone with the zone
+    key, and Garage refuses every other bucket to that key.
+    """
+    p, user_name = prefix(zone), user(zone, BACKUP_SERVICE)
+    return [f'GRANT BACKUP ON {p}_*.* TO `{user_name}`;',
+            f'GRANT SELECT ON system.backups TO `{user_name}`;',
+            f"CREATE ROW POLICY OR REPLACE `{backup_policy(zone)}` ON system.backups USING startsWith(id, '{p}-') "
+            f'AS permissive TO `{user_name}`;']
+
+
+def export_bucket(zone):
+    """The Garage bucket of the ClickHouse part of the collection exports of a zone. Only the zone key reaches it."""
+    return f'{zone}-exports'
+
+
 def clickhouse_grants(zone, service):
     p = prefix(zone)
     if SERVICES[service]['clickhouse'] == 'zone':

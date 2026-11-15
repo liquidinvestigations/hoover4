@@ -61,15 +61,24 @@ except OSError as error:
 """
 
 
+# The PriorityClass of the pods that can run on one node only (../../cluster/priorityclasses.yaml).
+NODE_BOUND = 'hoover-node-bound'
+
+
 def probe_pod(namespace, node, address, image, security):
-    """The pod that checks the chain coturn_peers on node: one container as the coturn user, one as another user."""
+    """The pod that checks the chain coturn_peers on node: one container as the coturn user, one as another user.
+
+    The pod must run on the media node. It requests little memory and has the PriorityClass NODE_BOUND. On a full
+    media node it therefore preempts a pod of the default priority, and the calls step continues.
+    """
     def container(name, uid):
         return {'name': name, 'image': image, 'command': ['python3', '-c', PROBE, address, str(PROBE_PORT)],
-                'resources': {'limits': {'cpu': '100m', 'memory': '64Mi'}},
+                'resources': {'requests': {'cpu': '10m', 'memory': '16Mi'}, 'limits': {'cpu': '100m', 'memory': '64Mi'}},
                 'securityContext': {**security, 'runAsUser': uid, 'runAsGroup': uid}}
     return {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': 'coturn-peer-check', 'namespace': namespace},
             'spec': {'restartPolicy': 'Never', 'hostNetwork': True, 'automountServiceAccountToken': False,
                      'enableServiceLinks': False, 'nodeSelector': {'kubernetes.io/hostname': node},
+                     'priorityClassName': NODE_BOUND,
                      'containers': [container('coturn', COTURN_UID), container('control', PROBE_CONTROL_UID)]}}
 
 

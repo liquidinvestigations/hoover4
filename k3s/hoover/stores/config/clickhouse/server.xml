@@ -9,6 +9,11 @@
         <errorlog remove="1"/>
     </logger>
     <listen_host>0.0.0.0</listen_host>
+    <!-- No BACKUP or RESTORE with a file of the server volume. The zones share that volume, and no zone pod mounts
+         it. A collection export writes into the export bucket of its zone in Garage with the zone key. -->
+    <backups>
+        <allowed_path remove="1"/>
+    </backups>
     <max_server_memory_usage>0</max_server_memory_usage>
     <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
     <cache_size_to_ram_max_ratio>0.2</cache_size_to_ram_max_ratio>

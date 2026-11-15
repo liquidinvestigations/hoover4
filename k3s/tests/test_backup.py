@@ -201,6 +201,29 @@ def test_the_export_check_finds_a_truncated_manticore_meta_file(tmp_path):
     assert json.loads(out.stdout) == ['cut.tar.zst:cut.meta']
 
 
+def test_the_collection_job_copies_the_clickhouse_object_and_removes_it_after_the_copy(monkeypatch):
+    backups = backups_module()
+    steps = []
+    hoover = type('H', (), {'zone': 'zone-a', 'namespace': 'hoover-zone-a'})()
+    monkeypatch.setattr(backups.site_config, 'hoovers', lambda _s: {'zone-a': hoover})
+    monkeypatch.setattr(backups, 'operations_pod', lambda _ns: 'ops-0')
+
+    def kubectl(*args, **_kw):
+        command = list(args[args.index('--') + 1:])
+        if backups.CLICKHOUSE_OBJECT in command:
+            steps.append(command[3])
+        elif backups.META_CHECK in command:
+            steps.append('check')
+            return '[]'
+        else:
+            steps.append(command[0] if command[0] == 'rm' else 'export')
+        return ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    monkeypatch.setattr(backups, 'stream_out', lambda *a: steps.append('stream'))
+    backups.run_hoover(None, 'zone-a', 'demo', 'g1', '/partial')
+    assert steps == ['export', 'check', 'fetch_clickhouse_object', 'stream', 'remove_clickhouse_object', 'rm']
+
+
 # The store client, the destination node, the recovery set and the zone closure ---------------------------------------
 
 import config  # noqa: E402

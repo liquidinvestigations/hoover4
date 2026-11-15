@@ -115,12 +115,19 @@ def test_only_hoover_namespaces_reach_the_client_ports():
     site = remote('{nodes: [server-a, worker-b]}')
     items = shared.objects(site, config.store_plan(site), 1, {})
     closed = by(items, 'NetworkPolicy', 'closed')['spec']
-    assert closed['podSelector'] == {} and closed['ingress'] == [] and set(closed['policyTypes']) == {'Ingress', 'Egress'}
+    assert closed['podSelector'] == {'matchExpressions': [{'key': 'hoover.dev/store', 'operator': 'NotIn', 'values': ['clickhouse']}]}
+    assert closed['ingress'] == [] and set(closed['policyTypes']) == {'Ingress', 'Egress'}
+    # ClickHouse reaches DNS and the S3 port of Garage only, so a BACKUP or RESTORE cannot name another address.
+    own = by(items, 'NetworkPolicy', 'clickhouse-closed')['spec']
+    assert own['podSelector'] == {'matchLabels': {'hoover.dev/store': 'clickhouse'}} and own['ingress'] == []
+    assert own['egress'][1] == {'to': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}], 'ports': [{'port': 3900}]}
+    assert [p['port'] for p in own['egress'][0]['ports']] == [53, 53]
     clickhouse = by(items, 'NetworkPolicy', 'clickhouse-clients')['spec']['ingress']
     assert clickhouse == [{'from': [{'namespaceSelector': {'matchLabels': {'hoover.dev/hoover': 'true'}}}],
                            'ports': [{'port': 8123}, {'port': 9000}]}]
     garage = by(items, 'NetworkPolicy', 'garage-clients')['spec']['ingress']
     assert garage[0]['ports'] == [{'port': 3900}]
+    assert garage[0]['from'][1] == {'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}
     # The RPC port takes only the Garage pods, and no rule names the admin port 3903.
     assert garage[1] == {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}], 'ports': [{'port': 3901}]}
     assert '3903' not in json.dumps([i for i in items if i['kind'] == 'NetworkPolicy'])
@@ -132,6 +139,18 @@ def test_zone_grants_name_only_the_databases_of_the_zone():
     # The browser user gets single tables of its zone.
     assert all(' ON zone_a_Processing.' in g for g in service_users.clickhouse_grants('zone-a', 'mcp-browser'))
     assert service_users.clickhouse_grants('zone-b', 'worker') == service_users.zone_grants('zone-b')
+
+
+def test_only_the_operations_user_backs_up_and_reads_its_own_backup_rows():
+    statements = service_users.backup_grants('zone-a')
+    assert statements[0] == 'GRANT BACKUP ON zone_a_*.* TO `zone_a_ops`;'
+    assert statements[1] == 'GRANT SELECT ON system.backups TO `zone_a_ops`;'
+    assert statements[2] == ("CREATE ROW POLICY OR REPLACE `zone_a_backups` ON system.backups USING "
+                             "startsWith(id, 'zone_a-') AS permissive TO `zone_a_ops`;")
+    assert service_users.export_bucket('zone-a') == 'zone-a-exports'
+    # The ClickHouse server of the site writes no backup into its own volume.
+    server = (shared.common.LAB / 'config' / 'clickhouse' / 'server.xml').read_text()
+    assert '<allowed_path remove="1"/>' in server
 
 
 def test_the_store_size_grows_with_the_site_zones():
@@ -259,5 +278,14 @@ def test_the_file_service_gives_a_schema_user_only_its_own_tables_and_stage(tmp_
         assert (data / 'import' / 'zone_a_schema' / 'ab12').is_dir()
         assert call('DELETE', '/stage/ab12')[0] == 200
         assert not (data / 'import' / 'zone_a_schema' / 'ab12').exists()
+        # The removal of a zone removes the whole import folder of its schema user, and only that folder.
+        assert call('PUT', '/stage/cd34/zone_a_t/zone_a_t.meta', body=b'{}')[0] == 200
+        assert call('PUT', '/stage/cd34/zone_b_t/zone_b_t.meta', user='zone_b_schema', body=b'{}')[0] == 200
+        assert call('DELETE', '/import', user='zone_b_schema')[0] == 200
+        assert not (data / 'import' / 'zone_b_schema').exists()
+        assert (data / 'import' / 'zone_a_schema' / 'cd34').is_dir()
+        assert call('DELETE', '/import')[0] == 200
+        assert not (data / 'import' / 'zone_a_schema').exists()
+        assert call('DELETE', '/import')[0] == 200
     finally:
         server.shutdown()

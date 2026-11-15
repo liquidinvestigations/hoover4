@@ -916,3 +916,14 @@ def test_the_frontend_step_names_the_local_ca_of_the_internal_mode(tmp_path):
     assert str(ran[0][1]).endswith('platform/frontend/install-frontend.sh')
     ctx.site = config.parse(site_text('remote.yml'))
     assert deploy.step_frontend(ctx) == {'tls_mode': 'cloudflare'}
+
+
+def test_the_pull_pod_requests_nothing_so_a_full_node_admits_it():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('prepull', Path(__file__).resolve().parents[1] / 'images' / 'prepull.py')
+    prepull = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(prepull)
+    pod = prepull.pod('edge', ['registry.example/a:1'])
+    spec = pod['spec']
+    assert spec['nodeName'] == 'edge'
+    assert all(c['resources']['requests'] == {'cpu': '0', 'memory': '0'} for c in spec['initContainers'] + spec['containers'])

@@ -8,8 +8,10 @@ The zone credentials are in the Secrets hoover-stores and garage-tenants of the 
 - ClickHouse: the settings profile <prefix>, which limits the memory of one user to half of the ClickHouse limit, the
   zone user <prefix> and a user for each service (stores/service_users.py), with the passwords of hoover-stores and
   the profile <prefix>. The grants name only the databases <prefix> and <prefix>_*, so a zone user reaches no database
-  of another zone. A zone id has no _, so the prefix of one zone never starts the prefix of another.
-- Garage: the zone key <zone>, the buckets <zone>-system and <zone>-c-demo with read and write access for the zone key.
+  of another zone. A zone id has no _, so the prefix of one zone never starts the prefix of another. The operations
+  user also gets BACKUP on <prefix>_* and reads only its own rows of system.backups (service_users.backup_grants()).
+- Garage: the zone key <zone>, the buckets <zone>-system, <zone>-c-demo and <zone>-exports with read and write access
+  for the zone key. ClickHouse writes the archive of a collection export into <zone>-exports with the zone key.
   The zone key can create buckets, because Hoover creates the bucket <zone>-c-<collection> of each new collection.
   The services that use the collection buckets share it (stores/service_users.py). Each other Garage service gets its
   own key with read and write access to <zone>-system only. A key reaches only the buckets that it created or that
@@ -119,7 +121,7 @@ def garage():
                 'name': 'garage-tenants', 'namespace': STORES, 'labels': {'hoover.dev/kata-stores': 'credentials'}},
                 'type': 'Opaque', 'stringData': {'tenants.json': json.dumps(tenants)}}))
     buckets = {row[2] for row in shared.table(run('bucket', 'list')) if len(row) > 2}
-    for bucket in (f'{ZONE}-system', f'{ZONE}-c-demo'):
+    for bucket in (f'{ZONE}-system', f'{ZONE}-c-demo', service_users.export_bucket(ZONE)):
         if bucket not in buckets:
             run('bucket', 'create', bucket)
         run('bucket', 'allow', '--read', '--write', bucket, '--key', tenants[ZONE]['access_key'])
@@ -127,7 +129,8 @@ def garage():
     own = [n for n in wanted if n != ZONE]
     for name in own:
         run('bucket', 'allow', '--read', '--write', f'{ZONE}-system', '--key', tenants[name]['access_key'])
-    print(json.dumps({'step': 'garage', 'buckets': [f'{ZONE}-system', f'{ZONE}-c-demo'], 'service_keys': own}))
+    print(json.dumps({'step': 'garage', 'buckets': [f'{ZONE}-system', f'{ZONE}-c-demo', service_users.export_bucket(ZONE)],
+                      'service_keys': own}))
 
 
 def clickhouse():
@@ -145,6 +148,7 @@ def clickhouse():
         sql += [f"CREATE USER IF NOT EXISTS `{name}` IDENTIFIED WITH sha256_password BY '{password}' SETTINGS PROFILE `{PREFIX}`;",
                 f"ALTER USER `{name}` IDENTIFIED WITH sha256_password BY '{password}' SETTINGS PROFILE `{PREFIX}`;"]
         sql += [f'{g} TO `{name}`;' for g in grants]
+    sql += service_users.backup_grants(ZONE)
     shared.clickhouse_sql('\n'.join(sql) + '\n')
     print(json.dumps({'step': 'clickhouse', 'profile': PREFIX, 'users': sorted(users)}))
 

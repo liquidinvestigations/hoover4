@@ -25,7 +25,9 @@ Jobs:
   A zone of the store layout site keeps its ClickHouse databases and Garage buckets in the shared stores of the site
   (../../hoover/stores/shared.py). The zone copy does not hold them. The collection exports of the next job hold them.
 - hoover:<zone>:<collection>: the collection export of the operations worker (main.py export-collection), streamed out
-  of the claim ops-backups. The export directory in the claim is removed after the copy, so no second archive stays.
+  of the claim ops-backups. In a zone of the store layout site the ClickHouse archive of the export is an object of the
+  export bucket of the zone, and the job first copies it into the export directory. The export directory in the claim
+  and the object are removed after the copy, so no second archive stays.
 - platform: an etcd snapshot of the control-plane server with its token and k3s configuration (the snapshot command of
   ../../ansible/roles/hoover4_k3s/files/k3s-datastore.py with sudo -n on that node, ../../driver/nodeshell.py), the
   operator state and the private files
@@ -113,6 +115,16 @@ for archive in sorted(glob.glob(sys.argv[1] + '/manticore/*.tar.zst')):
                     except ValueError:
                         bad.append(archive.rsplit('/', 1)[1] + ':' + member.name)
 print(json.dumps(bad))
+"""
+
+# The ClickHouse part of an export of a site zone is an object of the export bucket of the zone
+# (main_services/processing/tasks/P_ops/backup.py). It runs in the operations pod, which holds the zone key. Arguments:
+# fetch_clickhouse_object or remove_clickhouse_object, and the export folder. fetch copies the object into the export
+# folder, so the copy holds it. remove deletes the object after the copy. An export without an object changes nothing.
+CLICKHOUSE_OBJECT = """
+import sys
+from tasks.P_ops import backup
+print(getattr(backup, sys.argv[1])(sys.argv[2]))
 """
 
 
@@ -586,12 +598,17 @@ def run_hoover(s, zone, collection, generation, partial):
     name = f'backup-{collection}-{generation}'
     kubectl('-n', ns, 'exec', pod, '--', 'sh', '-c', f'cd /app && {" ".join(PYTHON)} export-collection {collection} --destination {name} --wait')
     problems = json.loads(kubectl('-n', ns, 'exec', pod, '--', PYTHON[0], '-c', META_CHECK, f'/backups/{name}').strip() or '[]')
-    if problems:
+
+    def remove_export():
+        kubectl('-n', ns, 'exec', pod, '--', PYTHON[0], '-c', CLICKHOUSE_OBJECT, 'remove_clickhouse_object', f'/backups/{name}')
         kubectl('-n', ns, 'exec', pod, '--', 'rm', '-rf', f'/backups/{name}')
+    if problems:
+        remove_export()
         raise SystemExit(f'the export of {collection} holds Manticore metadata that the import cannot read: {problems}. '
                          f'The copy is not kept. Run the job again.')
+    kubectl('-n', ns, 'exec', pod, '--', PYTHON[0], '-c', CLICKHOUSE_OBJECT, 'fetch_clickhouse_object', f'/backups/{name}')
     stream_out(ns, pod, None, f'/backups/{name}', partial)
-    kubectl('-n', ns, 'exec', pod, '--', 'rm', '-rf', f'/backups/{name}')
+    remove_export()
 
 
 def helper_pod(ns, claim, node):

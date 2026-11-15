@@ -42,7 +42,8 @@ from temporalio import activity
 
 from ..heartbeat import with_heartbeat
 from .backup import (
-    BACKUP_ROOT, CLICKHOUSE_POLL_SECONDS, FORMAT, FORMAT_VERSION, _Phase, validate_destination,
+    BACKUP_ROOT, CLICKHOUSE_BACKUP_S3_URL, CLICKHOUSE_POLL_SECONDS, FORMAT, FORMAT_VERSION, _Phase,
+    clickhouse_operation_id, clickhouse_s3, export_bucket, validate_destination,
 )
 from .params import ExportStoreResult, ImportParams
 
@@ -349,6 +350,40 @@ def import_object_store(params: ImportParams) -> ExportStoreResult:
     ))
 
 
+def _clickhouse_source(params: ImportParams, block: dict) -> tuple[str, str]:
+    """(ClickHouse source, uploaded object key) of the archive of a backup.
+
+    In Compose the archive is a file of the backup root. In the site layout ClickHouse reads
+    it from the export bucket of the zone. A local archive, for example of a copy of the
+    backup job or of a Compose export, is uploaded there first, and the second value names
+    that object so the caller removes it. An export of this zone names its object, which
+    stays.
+    """
+    local = os.path.join(params.directory, block["artifact"])
+    if not CLICKHOUSE_BACKUP_S3_URL:
+        if not os.path.isfile(local):
+            raise ValueError(
+                f"{params.source} holds no ClickHouse archive at {block['artifact']}. An "
+                f"export of a k3s site keeps it in the export bucket of its zone; copy the "
+                f"export with the backup job of that site, which adds the archive."
+            )
+        return f"File('{validate_destination(params.source)}/{block['artifact']}')", ""
+    if os.path.isfile(local):
+        from database.s3 import get_s3_client
+
+        key = f"imports/{params.op_id}/clickhouse.tar"
+        get_s3_client().fput_object(export_bucket(), key, local)
+        return clickhouse_s3(key), key
+    found = block.get("object") or {}
+    if found.get("bucket") != export_bucket():
+        raise ValueError(
+            f"{params.source} holds no ClickHouse archive, and its manifest names no object "
+            f"of the export bucket {export_bucket()} of this zone. Copy the export with the "
+            f"backup job of its site, then import that copy."
+        )
+    return clickhouse_s3(found["key"]), ""
+
+
 @activity.defn
 @with_heartbeat
 def import_clickhouse(params: ImportParams) -> ExportStoreResult:
@@ -371,31 +406,38 @@ def import_clickhouse(params: ImportParams) -> ExportStoreResult:
     manifest = read_manifest(params.directory)
     block = manifest["stores"]["clickhouse"]
     database = collection_db_name(params.collectionname)
-    relative = f"{validate_destination(params.source)}/{block['artifact']}"
     total = int(block.get("total_size") or block.get("bytes") or 0)
+    restore_id = clickhouse_operation_id(params.op_id)
 
     phase = _Phase(params.op_id, "clickhouse")
     phase.report(0, total, force=True)
     status = ""
     error = ""
-    # `begin_import` must keep this database until its timing wrapper records the
-    # activity result. This activity restores it before its own wrapper writes.
-    drop_collection_db(params.collectionname)
-    with get_global_client() as client:
-        client.query(f"RESTORE DATABASE `{database}` FROM File('{relative}') "
-                     f"SETTINGS id='{params.op_id}', async=1")
-        while status in ("RESTORING", ""):
-            time.sleep(CLICKHOUSE_POLL_SECONDS)
-            rows = client.query(
-                "SELECT status, error, bytes_read, total_size FROM system.backups "
-                "WHERE id = {id:String}", parameters={"id": params.op_id},
-            ).result_rows
-            if not rows:
-                # The row appears as the restore is registered; an empty answer this
-                # early is "not yet", not "gone".
-                continue
-            status, error, bytes_read, total_size = rows[0]
-            phase.report(int(bytes_read), max(int(total_size), int(bytes_read), total))
+    source, uploaded = _clickhouse_source(params, block)
+    try:
+        # `begin_import` must keep this database until its timing wrapper records the
+        # activity result. This activity restores it before its own wrapper writes.
+        drop_collection_db(params.collectionname)
+        with get_global_client() as client:
+            client.query(f"RESTORE DATABASE `{database}` FROM {source} "
+                         f"SETTINGS id='{restore_id}', async=1")
+            while status in ("RESTORING", ""):
+                time.sleep(CLICKHOUSE_POLL_SECONDS)
+                rows = client.query(
+                    "SELECT status, error, bytes_read, total_size FROM system.backups "
+                    "WHERE id = {id:String}", parameters={"id": restore_id},
+                ).result_rows
+                if not rows:
+                    # The row appears as the restore is registered; an empty answer this
+                    # early is "not yet", not "gone".
+                    continue
+                status, error, bytes_read, total_size = rows[0]
+                phase.report(int(bytes_read), max(int(total_size), int(bytes_read), total))
+    finally:
+        if uploaded:
+            from database.s3 import get_s3_client
+
+            get_s3_client().remove_object(export_bucket(), uploaded)
 
     if status != "RESTORED":
         raise RuntimeError(f"ClickHouse restore of {database} ended {status}: {error}")

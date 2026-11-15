@@ -365,8 +365,24 @@ Each store keeps one copy of each part of its data. No store has replication or 
 - The stores step chooses the node of each store pod before its volume exists. See [Place the store pods](#place-the-store-pods).
 - A claim holds the size of one zone store for each zone with `stores = site`, at least one zone: 20 GiB for ClickHouse and for each Garage pod, 16 GiB for Manticore text and 10 GiB for Manticore vectors. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace.
-- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection.
+- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection. ClickHouse reaches only DNS and Garage on 3900.
 - The zone copy of the backups does not hold the ClickHouse databases, Manticore tables and Garage buckets of a zone with `stores = site`. The collection exports hold them. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse.
+
+### Export the ClickHouse part of a collection.
+
+The shared ClickHouse mounts no folder of a zone. A collection export of a zone with `stores = site` therefore writes the ClickHouse archive into the Garage bucket `<zone>-exports` of the zone:
+
+| Part | Rule |
+|---|---|
+| Writer | The operations user `<prefix>_ops` runs `BACKUP DATABASE ... TO S3(...)` with the zone key. It has the grant `BACKUP` on `<prefix>_*` only. `RESTORE` uses the grants of the zone databases. |
+| Bucket | Only the zone key reaches `<zone>-exports`. Garage refuses the bucket of another zone to that key. The operations pod gets the bucket address in `CLICKHOUSE_BACKUP_S3_URL`. |
+| Progress | The operations user reads `system.backups`. The row policy `<prefix>_backups` shows only the rows whose id starts with `<prefix>-`. |
+| Server | ClickHouse allows no backup to a file of its own volume (`backups.allowed_path` is removed). ClickHouse 25.8 has no setting that limits the S3 address of a backup. The network policy `clickhouse-closed` therefore lets ClickHouse reach only DNS and Garage on 3900. |
+| Export folder | The folder in the claim `ops-backups` keeps the manifest and the other parts. The ClickHouse part of the manifest names the object (`object`: bucket and key). |
+| Collection copy | The backup job `hoover:<zone>:<collection>` copies the object into the export folder, copies the folder, and then removes the folder and the object. A collection copy therefore holds the ClickHouse archive. |
+| Import | An import reads the object of its own bucket. A folder can hold the archive, for example a collection copy or a Compose export. The import then uploads it to `imports/<operation>/` of the bucket and removes it after the restore. |
+
+A zone delete removes the bucket with its objects. An export that fails after the ClickHouse part leaves its object in the bucket until the zone delete.
 
 ### Place the store pods.
 
@@ -436,8 +452,8 @@ The proxy mounts the claim `ops-backups` of the zone at `/backups` and runs on t
 The import gives each table the prefix of the zone and the name after the prefix in the export, so a copy of another zone imports into the tables of this zone.
 
 Manticore 29.9 stops `searchd` on a `GRANT` to an unknown user and on a `DROP USER` of an unknown user. The setup and the zone delete therefore read the users first.
-A zone create adds the users, and a zone delete drops the tables `<prefix>_*` and the three users.
-[tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) `<zone> <other zone>` checks the isolation of ClickHouse, Garage, Manticore and Temporal from the pods of the zone. Both zones need the collection `demo` with its Manticore tables.
+A zone create adds the users, and a zone delete drops the tables `<prefix>_*` and the three users. Before it drops the users, the zone delete asks the file service to remove `import/<prefix>_schema/` with the schema user of the zone.
+[tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) `<zone> <other zone>` checks the isolation of ClickHouse, Garage, Manticore and Temporal from the pods of the zone, also the ClickHouse backup grant and the export bucket. Both zones need the collection `demo` with its Manticore tables.
 
 ### Lost store nodes
 
@@ -644,6 +660,7 @@ The chain `coturn_peers` of [coturn-peers.sh](ansible/roles/hoover4_public_firew
 The steps `operator` and `calls` of `deploy-k3s up` check that chain with a probe pod in the host network of the media node (`install-calls.py --probe`).
 They record the result in the ConfigMap `coturn-peer-check` of `calls`.
 The pod admission policy of `calls` refuses a host network pod other than coturn, so the probe pod runs in `kube-system` with the admin kubeconfig.
+The probe pod and the call services must run on the media node, so they have the PriorityClass `hoover-node-bound`. On a full media node they preempt a pod of the default priority. The probe requests 16 MiB for each of its two containers.
 The step `calls`, also in a portal zone operation, adds the public address only when that record names the media node and its address.
 Without the record, the step stops and names `deploy-k3s up --steps operator`.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.

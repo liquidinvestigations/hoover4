@@ -179,6 +179,8 @@ def checksum(items):
   # The CPU policy values go in before the hash, so a later cpu_policy.py run changes nothing.
   if item['kind']=='Deployment':
    item['spec']['template']['spec']['nodeSelector']={'kubernetes.io/hostname':NODE}
+   # The services run on the media node only, so on a full node they preempt a pod of the default priority.
+   item['spec']['template']['spec']['priorityClassName']=turn_peers.NODE_BOUND
    cpu_policy.apply(item)
   if item['kind']=='Deployment':
    digest=hashlib.sha256(json.dumps(data.get(item['metadata']['name'],{}),sort_keys=True).encode()).hexdigest()[:16]

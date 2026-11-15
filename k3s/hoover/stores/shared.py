@@ -37,7 +37,9 @@ value (part site of ../../zones/cpu-requests.json, hoover.site_cpu()). Each zone
 which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
 ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
-the admin port takes none.
+the admin port takes none. ClickHouse reaches only DNS and the S3 port of Garage, where it writes and reads the
+ClickHouse part of the collection exports in the bucket <zone>-exports with the zone key. The server allows no
+BACKUP to a file of its own volume (config/clickhouse/server.xml).
 The ConfigMap shared-stores records the applied plan, the nodes of the store pods, the Garage node ids, the node counts of Cassandra and OpenSearch
 and the Temporal history shard count. The deploy check reads it (problems()). The stores of an earlier version kept
 several copies, and apply and the deploy check refuse them with the steps to create the stores again.
@@ -51,8 +53,9 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py ready             exit 1 when a store or Temporal has no ready pod
        shared.py check             print the problems of the plan against the cluster as JSON
        shared.py plan              print the placement plan of the store pods and the problems of vars.replicas as JSON
-       shared.py remove <zone>     delete the ClickHouse databases, users and profile, the Manticore tables and users, the
-                                   Garage buckets and keys and the Temporal namespace of a zone.
+       shared.py remove <zone>     delete the ClickHouse databases, users, profile and row policy, the Manticore tables,
+                                   users and import folder, the Garage buckets and keys and the Temporal namespace of a
+                                   zone.
                                    The operations pod of the zone empties the buckets. Without it, a non-empty bucket
                                    and the zone keys stay, and the log names them.
 """
@@ -161,11 +164,16 @@ def clickhouse(s, plan, zones, placed=None):
         'resources': hoover.resources('clickhouse')}
     name, nodes = tier(s, plan['nodes'], 'clickhouse')
     nodes = (placed or {}).get('clickhouse', nodes)
+    statefulset = hoover.statefulset('clickhouse', 'clickhouse', NS, container, ['/entrypoint.sh'], '/var/lib/clickhouse',
+                                     name, size('clickhouse', zones), affinity=affinity(nodes, 'clickhouse', False),
+                                     extra_volumes=[{'name': 'config', 'configMap': {'name': 'clickhouse-config'}}])
+    # The configuration files are subPath mounts, which a changed ConfigMap does not update. A changed file replaces the
+    # pod once.
+    statefulset['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/config'] = \
+        hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()[:16]
     return [configmap('clickhouse-config', files),
             hoover.service('clickhouse', NS, [('http', 8123), ('native', 9000)], {'app.kubernetes.io/name': 'clickhouse'}),
-            hoover.statefulset('clickhouse', 'clickhouse', NS, container, ['/entrypoint.sh'], '/var/lib/clickhouse',
-                               name, size('clickhouse', zones), affinity=affinity(nodes, 'clickhouse', False),
-                               extra_volumes=[{'name': 'config', 'configMap': {'name': 'clickhouse-config'}}])]
+            statefulset]
 
 
 def garage(s, plan, zones, peers, placed=None):
@@ -252,11 +260,20 @@ def network():
     dns = {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}},
                    'podSelector': {'matchLabels': {'k8s-app': 'kube-dns'}}}],
            'ports': [{'port': 53, 'protocol': 'UDP'}, {'port': 53, 'protocol': 'TCP'}]}
+    clickhouse_pod = {'matchLabels': {'hoover.dev/store': 'clickhouse'}}
     return [
         # Every pod takes only the connections that a later policy admits, and reaches only DNS and the namespace.
-        policy('closed', {'podSelector': {}, 'policyTypes': ['Ingress', 'Egress'], 'ingress': [],
+        # ClickHouse has a policy of its own.
+        policy('closed', {'podSelector': {'matchExpressions': [{'key': 'hoover.dev/store', 'operator': 'NotIn', 'values': ['clickhouse']}]},
+                          'policyTypes': ['Ingress', 'Egress'], 'ingress': [],
                           'egress': [dns, {'to': [{'podSelector': {}}]}]}),
-        policy('clickhouse-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}, 'policyTypes': ['Ingress'],
+        # ClickHouse reaches DNS and the S3 port of Garage only. A zone user names the S3 address of a BACKUP or a
+        # RESTORE, and ClickHouse 25.8 has no setting that limits that address (remote_url_allow_hosts does not apply
+        # to BACKUP). Garage refuses each bucket of another zone to the zone key.
+        policy('clickhouse-closed', {'podSelector': clickhouse_pod, 'policyTypes': ['Ingress', 'Egress'], 'ingress': [],
+                                     'egress': [dns, {'to': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
+                                                      'ports': [{'port': 3900}]}]}),
+        policy('clickhouse-clients', {'podSelector': clickhouse_pod, 'policyTypes': ['Ingress'],
                                       'ingress': [{'from': [hoover_ns], 'ports': [{'port': 8123}, {'port': 9000}]}]}),
         policy('manticore-clients', {'podSelector': {'matchExpressions': [
             {'key': 'hoover.dev/store', 'operator': 'In', 'values': list(MANTICORE)}]}, 'policyTypes': ['Ingress'],
@@ -266,7 +283,7 @@ def network():
                                            'ingress': [{'from': [{**hoover_ns, 'podSelector': {'matchLabels': SCHEMA_PROXY_LABEL}}],
                                                         'ports': [{'port': FILES_PORT}]}]}),
         policy('garage-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}, 'policyTypes': ['Ingress'],
-                                  'ingress': [{'from': [hoover_ns], 'ports': [{'port': 3900}]},
+                                  'ingress': [{'from': [hoover_ns, {'podSelector': clickhouse_pod}], 'ports': [{'port': 3900}]},
                                               {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
                                                'ports': [{'port': 3901}]}]}),
     ]
@@ -517,6 +534,34 @@ def grow():
         hoover.grow_claims(NS, json.loads(current), wanted)
 
 
+# Runs in the container files of the text daemon pod. It asks the file service to remove import/<schema user>/ of the
+# data folder, with the schema user of the zone. The credentials come through stdin.
+REMOVE_IMPORT = """
+import base64, json, sys, urllib.request
+user, password = json.load(sys.stdin)
+request = urllib.request.Request('http://127.0.0.1:%d/import', method='DELETE', headers={
+    'Authorization': 'Basic ' + base64.b64encode(f'{user}:{password}'.encode()).decode()})
+print(urllib.request.urlopen(request, timeout=60).read().decode())
+""" % FILES_PORT
+
+
+def remove_import_folder(zone):
+    """Remove the import folder import/<schema user>/ of a zone from the data folder of the text daemon, through the
+    file service with the schema user of the zone. A failure goes to the log and does not stop the removal."""
+    user = service_users.manticore_user(zone, 'schema')
+    found = common.kubectl('-n', zone, 'get', 'secret', 'hoover-stores', '-o', 'jsonpath={.data.manticore-schema}',
+                           check=False).strip()
+    pod = next((p['metadata']['name'] for p in pods('manticore') if is_ready(p)), '')
+    if not found or not pod:
+        common.log('stores.jsonl', step='manticore-import-folder-kept', zone=zone,
+                   reason='no schema credential' if not found else 'no ready pod')
+        return
+    r = subprocess.run(common.K + ['-n', NS, 'exec', '-i', pod, '-c', 'files', '--', 'python3', '-I', '-c', REMOVE_IMPORT],
+                       input=json.dumps([user, base64.b64decode(found).decode()]), capture_output=True, text=True)
+    common.log('stores.jsonl', step='manticore-import-folder-removed' if r.returncode == 0 else 'manticore-import-folder-kept',
+               zone=zone, user=user, detail=(r.stdout if r.returncode == 0 else r.stderr).strip()[-200:])
+
+
 def remove(zone):
     """Delete the tenant of a zone from ClickHouse, Garage and Temporal. A bucket that the zone cannot empty stays, and
     the log names it."""
@@ -528,7 +573,8 @@ def remove(zone):
     found = [line.split('\t') for line in rows.splitlines() if line.strip()]
     sql = [f'DROP DATABASE IF EXISTS `{name}` SYNC;' for kind, name in found if kind == 'database']
     sql += [f'DROP USER IF EXISTS `{name}`;' for kind, name in found if kind == 'user']
-    sql += [f'DROP SETTINGS PROFILE IF EXISTS `{prefix}`;']
+    sql += [f'DROP SETTINGS PROFILE IF EXISTS `{prefix}`;',
+            f'DROP ROW POLICY IF EXISTS `{service_users.backup_policy(zone)}` ON system.backups;']
     clickhouse_sql('\n'.join(sql) + '\n')
     common.log('stores.jsonl', step='clickhouse-tenant-removed', zone=zone, databases=sum(k == 'database' for k, _ in found),
                users=sum(k == 'user' for k, _ in found))
@@ -540,6 +586,8 @@ def remove(zone):
         if not any(is_ready(p) for p in pods(store)):
             common.log('stores.jsonl', step='manticore-tenant-kept', zone=zone, store=store, reason='no ready pod')
             continue
+        if store == 'manticore':
+            remove_import_folder(zone)
         tables = [row[0] for row in manticore_rows(manticore_sql(store, 'SHOW TABLES\n')) if row]
         tables = [t for t in tables if t.startswith(f'{prefix}_')]
         users = sorted({service_users.manticore_user(zone, r) for r in service_users.MANTICORE_ROLES} & manticore_users(store))

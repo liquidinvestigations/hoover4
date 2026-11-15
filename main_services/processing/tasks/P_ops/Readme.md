@@ -182,7 +182,7 @@ container cannot be asked for.
   manifest.json                      what is here, how big it is, and what it checks against
   garage/vol-000.tar ...             the collection's objects, uncompressed
   garage/objects.json.gz             key -> (volume, offset, size, etag)
-  clickhouse/clickhouse-<op_id>.tar  BACKUP DATABASE, uncompressed
+  clickhouse/clickhouse-<op_id>.tar  BACKUP DATABASE, uncompressed (Compose)
   manticore/<table>.tar.zst          one artifact per shard table, zstd
 ```
 
@@ -201,6 +201,21 @@ backup root is mounted onto its `backups/` path as well as onto this container's
 copied afterwards, which matters: this container holds the store volumes read-only and could
 neither delete an original nor hard-link one. **A cross-mount hard link is refused even
 inside one filesystem, so a backup copies bytes.**
+
+**In the site layout of k3s ClickHouse writes the archive into the export bucket of the zone.**
+The ClickHouse of the site is shared by the zones and mounts no folder of a zone.
+`CLICKHOUSE_BACKUP_S3_URL` names the bucket `<zone>-exports` as ClickHouse reaches it. The
+operations worker runs `BACKUP DATABASE ... TO S3(...)` with its own Garage key, which is the
+zone key, at `<destination>/clickhouse-<op_id>.tar` of the bucket. The ClickHouse part of the
+manifest names that object in `object` (bucket and key), and `artifact` names the local path
+of the archive. The backup job of the site copies the object to that path before it copies
+the folder (`fetch_clickhouse_object`), and removes the object after the copy
+(`remove_clickhouse_object`). The import reads a local archive when the folder holds one, else
+the object of its own bucket. In the site layout it uploads a local archive to
+`imports/<op_id>/clickhouse.tar` of the bucket and removes it after the restore. Compose
+reads only a local archive. The id of each `BACKUP` and `RESTORE` is
+`<database prefix>-<op_id>`, because the row policy of a site zone shows the zone only the
+rows of `system.backups` with its own prefix.
 
 Manticore backs up its text tables only. Vector tables are disposable and a restore rebuilds
 them from the stored vectors after the text tables and configuration rows are present.

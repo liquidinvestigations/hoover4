@@ -7,8 +7,13 @@ user) and the schema proxy (Manticore schema user). Both zones need the collecti
 <prefix>_demo_vfs exists in each zone.
 - ClickHouse: the user reads its own database <prefix>_Processing. It cannot read, write or drop a table of
   <other prefix>_Processing, create a database with the other prefix, or list the other databases.
-- Garage: the key lists its own system bucket. It cannot list, read or write the system bucket of the other zone, and
-  the bucket list holds no bucket of the other zone.
+- ClickHouse backup: the operations user backs up a table of its own database into the export bucket of its zone
+  (CLICKHOUSE_BACKUP_S3_URL) and reads that row of system.backups. It cannot back up a table of the other zone or back
+  up to a file of the server volume. It cannot write into or restore from the export bucket of the other zone, or
+  restore into a database of the other zone. It reads no row of system.backups with another prefix. The probe removes
+  its archive.
+- Garage: the key lists its own system bucket. It cannot list, read or write the system bucket of the other zone, or
+  list its export bucket, and the bucket list holds no bucket of the other zone.
 - Manticore, write user: it reads and changes rows of its own tables. It cannot read or change a table of the other
   zone, and it cannot create, alter or drop a table, also not a distributed table that names a table of the other zone.
 - Manticore, read user on the read-only listener 9309 and on 9308: it reads its own tables. It cannot read a table
@@ -183,7 +188,8 @@ def ch(sql):
         return 'allowed', urllib.request.urlopen(req, timeout=20).read().decode().strip()
     except urllib.error.HTTPError as e:
         body = e.read().decode()
-        return ('refused' if 'ACCESS_DENIED' in body or 'Not enough privileges' in body else 'error'), body[:160]
+        denied = ('ACCESS_DENIED', 'Not enough privileges', 'Forbidden', 'AccessDenied', 'Access Denied', 'allowed_path')
+        return ('refused' if any(d in body for d in denied) else 'error'), body[:160]
 def s3(call):
     try:
         return 'allowed', str(call())[:160]
@@ -208,6 +214,42 @@ cases = [
     ('garage', 'bucket list', 'allowed',
      ('allowed' if not any(b.name.startswith(other + '-') for b in client.list_buckets()) else 'refused', 'no bucket of the other zone')),
 ]
+# The ClickHouse backup of a collection export: the operations user backs up its own databases into the export bucket
+# of its zone (CLICKHOUSE_BACKUP_S3_URL) with the zone key, and reads only its own rows of system.backups.
+import uuid
+url = os.environ['CLICKHOUSE_BACKUP_S3_URL']
+garage, own_bucket = url.rsplit('/', 1)
+other_bucket, pfx, run = f'{other}-exports', zone.replace('-', '_'), uuid.uuid4().hex[:12]
+def quoted(text):
+    return "'" + text.replace('\\', '\\\\').replace("'", "\\'") + "'"
+def target(bucket, key):
+    return (f"S3({quoted(garage + '/' + bucket + '/' + key)}, {quoted(os.environ['S3_ACCESS_KEY'])}, "
+            f"{quoted(os.environ['S3_SECRET_KEY'])})")
+probe_key = f'isolation-probe/{run}.tar'
+cases += [
+    ('clickhouse', 'back up own table into own export bucket', 'allowed',
+     ch(f"BACKUP TABLE {mine}.server_settings TO {target(own_bucket, probe_key)} SETTINGS id='{pfx}-isolation-{run}'")),
+    ('clickhouse', 'read own row of system.backups', 'allowed',
+     ch(f"SELECT status FROM system.backups WHERE id = '{pfx}-isolation-{run}'")),
+    ('clickhouse', 'back up other database into own export bucket', 'refused',
+     ch(f"BACKUP TABLE {theirs}.server_settings TO {target(own_bucket, f'isolation-probe/{run}-other.tar')}")),
+    ('clickhouse', 'write archive into other export bucket', 'refused',
+     ch(f"BACKUP TABLE {mine}.server_settings TO {target(other_bucket, f'isolation-probe/{run}.tar')} "
+        f"SETTINGS id='{pfx}-isolation-{run}-b'")),
+    ('clickhouse', 'back up to a file of the server volume', 'refused',
+     ch(f"BACKUP TABLE {mine}.server_settings TO File('isolation-probe-{run}.tar')")),
+    ('clickhouse', 'restore into other database', 'refused',
+     ch(f"RESTORE TABLE {mine}.server_settings AS {theirs}.isolation_probe FROM {target(own_bucket, probe_key)}")),
+    ('clickhouse', 'restore from other export bucket', 'refused',
+     ch(f"RESTORE TABLE {mine}.server_settings AS {mine}.isolation_probe FROM {target(other_bucket, probe_key)}")),
+]
+seen = ch(f"SELECT count() FROM system.backups WHERE NOT startsWith(id, '{pfx}-')")
+cases.append(('clickhouse', 'read rows of system.backups of other zones', 'refused',
+              ('refused', 'no row') if seen == ('allowed', '0') else ('allowed' if seen[0] == 'allowed' else 'error', seen[1])))
+ch(f'DROP TABLE IF EXISTS {mine}.isolation_probe')
+for key in client.list_objects(own_bucket, prefix='isolation-probe/', recursive=True):
+    client.remove_object(own_bucket, key.object_name)
+cases.append(('garage', 'list other export bucket', 'refused', s3(lambda: len(list(client.list_objects(other_bucket))))))
 import mysql.connector
 mine_mt, theirs_mt = zone.replace('-', '_') + '_', other.replace('-', '_') + '_'
 def mt(sql):

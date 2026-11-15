@@ -8,7 +8,7 @@ Ready, schedulable and has no NoSchedule or NoExecute taint, so a GPU node is le
 For each node the script starts one pod prepull-<node> in kube-system, bound to the node. Its first init container
 copies the static busybox binary into an emptyDir volume. Each further init container uses one image and runs that
 binary as true, so the kubelet pulls the image (imagePullPolicy IfNotPresent) and the container ends at once, also in
-an image without a shell. The nodes pull at the same time. The kubelet of a node pulls one image after the other.
+an image without a shell. The containers request no CPU and no memory, so a full node admits the pod. The nodes pull at the same time. The kubelet of a node pulls one image after the other.
 The script waits until each pod has succeeded, then deletes the pods. It fails with the node and the image of a pod
 that did not succeed before the timeout (default 1800 s). KUBECONFIG names the admin kubeconfig.
 """
@@ -54,7 +54,10 @@ def pod_images(pods):
 def pod(node, images):
     """The pull pod of one node."""
     tools = {'name': 'tools', 'mountPath': '/prepull'}
-    small = {'requests': {'cpu': '10m', 'memory': '16Mi'}, 'limits': {'cpu': '200m', 'memory': '64Mi'}}
+    # The pod is bound to its node, so the kubelet admits it without the scheduler and refuses it when the requests do
+    # not fit (OutOfcpu, OutOfmemory). A node can have all of its CPU or memory requested. The containers only start an
+    # image and end, so they request nothing.
+    small = {'requests': {'cpu': '0', 'memory': '0'}, 'limits': {'cpu': '200m', 'memory': '64Mi'}}
     init = [{'name': 'copy-true', 'image': BUSYBOX, 'command': ['/bin/busybox', 'cp', '/bin/busybox', '/prepull/true'],
              'resources': small, 'volumeMounts': [tools]}]
     for index, image in enumerate(images):

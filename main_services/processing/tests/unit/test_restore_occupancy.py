@@ -46,8 +46,10 @@ def test_payload_rows_block_import():
     assert client.queries == ["SELECT count() FROM `text_content`"]
 
 
-def test_clickhouse_restore_drops_target_after_begin_import_timing(monkeypatch):
+def test_clickhouse_restore_drops_target_after_begin_import_timing(monkeypatch, tmp_path):
     events = []
+    (tmp_path / "clickhouse").mkdir()
+    (tmp_path / "clickhouse" / "archive.tar").write_bytes(b"x")
 
     class Phase:
         def __init__(self, *_args):
@@ -83,7 +85,7 @@ def test_clickhouse_restore_drops_target_after_begin_import_timing(monkeypatch):
     monkeypatch.setattr(clickhouse, "drop_collection_db", lambda _name: events.append("drop"))
 
     result = restore.import_clickhouse(
-        restore.ImportParams("operation", "collection", "backup", "/backups/backup")
+        restore.ImportParams("operation", "collection", "backup", str(tmp_path))
     )
 
     assert result.detail["schema_version"] == 51
