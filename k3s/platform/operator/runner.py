@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run the zone operations that the operator website records. Usage: runner.py [--once]
 The runner also starts the next due backup job once a minute (../backups/backups.py). Backups stay off until the site file
-names a destination and an operator turns a backup policy on.
+names a destination and an operator turns a backup policy on. The job writes into the backup folder that the runner
+container mounts (backup-mount.py).
 
 The portal writes each operation as a ConfigMap with the label hoover.dev/operation in the namespace operator-portal.
 The runner is the container runner of the operator pod (operator-login.yaml, pod.py). Its state folder is a folder of

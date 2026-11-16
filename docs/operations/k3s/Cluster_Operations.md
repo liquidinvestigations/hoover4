@@ -106,20 +106,19 @@ The portal also shows the recent warning events of the cluster and the operation
 
 `backup` of the site file names the backup node and its backup folder.
 The settings `backup.opendesk.*` and `backup.hoover.*` of each zone and `backup.platform.*` of the cluster turn each job on and set its retained copies.
+The operator pod runs on the backup node, and its runner container writes the copies into the folder of that node. No copy needs SSH.
 
-1. Create the backup folder. The `up` run creates it on the backup node with the folders `zones` and `platform`.
-2. Write the marker of the folder. A folder without the marker pauses every job, so a missing mount does not fill the disk.
-
-   ```sh
-   python3 k3s/platform/backups/backups.py enable
-   ```
-
+1. Mount the file system of the backups at the backup folder on the backup node. Make sure that it is on another host. The system cannot check this.
+2. Run `deploy-k3s up`. The host step creates the folders `zones`, `platform` and `staging` and the marker of the folder.
+   A folder without the marker pauses every job, so a missing mount does not fill the disk.
+   When the fstab names a mount at the folder and it is not mounted, the step writes no marker.
 3. Turn on the backup policies on the settings page, and Apply.
-4. Read the state of the jobs and the list of copies:
+4. Read the state of the jobs and the list of copies in the runner container:
 
    ```sh
-   python3 k3s/platform/backups/backups.py status
-   python3 k3s/platform/backups/backups.py copies
+   run="kubectl -n operator-portal exec deploy/portal -c runner -- python3 /opt/hoover4/k3s/platform/backups/backups.py"
+   $run status
+   $run copies
    ```
 
 | Copy | Folder below the backup folder |
@@ -128,9 +127,9 @@ The settings `backup.opendesk.*` and `backup.hoover.*` of each zone and `backup.
 | A Hoover collection of a zone | `zones/<zone>/collections/<collection>/<generation>/` |
 | The platform recovery set | `platform/<generation>/` |
 
-The commands take names only. A zone copy closes the zone during the copy and reopens it with the recorded replicas.
-A copy replaces an older copy only after its check on the backup node. A failed transfer keeps the older copies.
-Keep the backup folder on another site. The system cannot check this.
+The commands take names only. A zone copy reads the running zone and stops no application.
+A copy replaces an older copy only after its check against its manifest. A failed job keeps the older copies.
+The platform job reads the etcd snapshot over SSH from the control plane. The runner container has no SSH access, so that job does not finish there.
 
 The settings page shows the backup folder and the backup policies of the selected scope.
 
@@ -141,16 +140,16 @@ The settings page shows the backup folder and the backup policies of the selecte
 A restore replaces the data of an installed zone with a zone copy.
 
 1. Install the target zone. It can be the zone of the copy or another zone.
-2. Check the copy on the backup node:
+2. Check the copy in the runner container (`$run` of [Back up the site](#back-up-the-site)):
 
    ```sh
-   python3 k3s/platform/backups/backups.py verify zone:<zone of the copy> <generation>
+   $run verify zone:<zone of the copy> <generation>
    ```
 
 3. Restore it. `--from` names the zone of the copy when it differs from the target zone.
 
    ```sh
-   python3 k3s/platform/backups/backups.py restore-zone <zone> <generation> --from <zone of the copy>
+   $run restore-zone <zone> <generation> --from <zone of the copy>
    ```
 
 4. Sign in to the zone, and check the files, the chats and boards, and the collections.
@@ -162,7 +161,7 @@ For a zone with `stores = site` it also replaces the ClickHouse databases `<pref
 A database dump without the end line of its dump tool stops the restore before it changes the zone. Restore another copy.
 A database error during the import stops the restore and shows the error.
 A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps, and a second run continues after them.
-Restore a single collection with `backups.py restore-hoover <zone> <collection> <generation>`.
+Restore a single collection with `$run restore-hoover <zone> <collection> <generation>`.
 
 ## Restore the platform
 
@@ -172,8 +171,8 @@ An etcd snapshot holds no volume data, so a complete recovery also restores the 
 1. Print the recovery set and the root steps of a copy:
 
    ```sh
-   python3 k3s/platform/backups/backups.py recovery <generation>
-   python3 k3s/platform/backups/backups.py restore-platform <generation>
+   $run recovery <generation>
+   $run restore-platform <generation>
    ```
 
 2. Do the printed steps on the stopped server of an isolated cluster.

@@ -245,7 +245,9 @@ spec:
 ---
 # The operator pod: the portal and the zone runner (pod.py) from the operator image of the registry, which the step
 # images of deploy-k3s builds from the checkout. start-web-tools.sh sets the image, the image tags and the node.
-# The portal page reads cluster slice usage from the host cgroup files, so the pod runs on the control-plane node.
+# The pod runs on the control-plane node. When the site file names a backup node, backup-mount.py puts the pod on that
+# node and mounts the backup folder of the node in the runner container, where ../backups/backups.py writes the copies.
+# The portal page shows the cluster slice of the node of the pod, from the host cgroup files.
 # The pod mounts no checkout and no state folder of a host. The state folder of /site/site.json is /site/site, a
 # folder of the pod that both containers share. The cluster holds the authoritative copy of the state
 # (../../clusterstate.py). The runner keeps the zone secrets in its own folder at /site/site/zones.
@@ -267,8 +269,8 @@ spec:
       # The portal reads cluster events and the zone namespaces. It writes zone operations and its settings as
       # ConfigMaps. The runner uses the token of the ServiceAccount zone-runner (runner-rights.yaml).
       serviceAccountName: portal
-      # The pod runs on the control plane only. When that node is full, the class lets the scheduler preempt a pod of
-      # the default priority there (../../cluster/priorityclasses.yaml).
+      # The pod runs on one node only, the control plane or the backup node. When that node is full, the class lets the
+      # scheduler preempt a pod of the default priority there (../../cluster/priorityclasses.yaml).
       priorityClassName: hoover-node-bound
       nodeSelector: {kubernetes.io/hostname: CONTROL_PLANE}
       securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}

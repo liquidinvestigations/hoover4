@@ -47,7 +47,8 @@ fi
 kubectl get namespace operator-portal >/dev/null 2>&1 || kubectl create namespace operator-portal
 kubectl -n operator-portal create configmap operator-revision --from-literal=revision="$OPERATOR_REVISION" --dry-run=client -o yaml | kubectl apply -f -
 # cpu_policy.py writes the CPU policy values into the manifest.
-# The portal runs on the control-plane node, because it shows the cgroup values of that node.
+# The operator pod runs on the control-plane node. backup-mount.py moves it to the backup node of the site file and
+# mounts the backup folder there.
 read -r control_plane single < <(python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import settings as s
 print(s.SITE.control_plane, str(s.SITE.single).lower()) if s.SITE else print("- -")' "$source_dir")
 [ "$control_plane" != - ] || { echo "the operator portal needs a site file. Set HOOVER4_SITE." >&2; exit 1; }
@@ -58,7 +59,7 @@ pod_cgroup=/sys/fs/cgroup/kubepods.slice
 # The tags go in first, because the name OPERATOR_IMAGE_TAGS starts with OPERATOR_IMAGE.
 sed -e "s|value: OPERATOR_IMAGE_TAGS|value: '$OPERATOR_IMAGE_TAGS'|" \
   -e "s|CONTROL_PLANE|$control_plane|; s|POD_CGROUP|$pod_cgroup|; s|OPERATOR_IMAGE|$OPERATOR_IMAGE|" operator-login.yaml |
-  python3 "$source_dir/zones/cpu_policy.py" --render - | sed -e "s/hoover\.test/$(python3 "$source_dir/settings.py" suffix)/g" -e "$hash_rule" | kubectl apply -f -
+  python3 "$source_dir/zones/cpu_policy.py" --render - | python3 backup-mount.py | sed -e "s/hoover\.test/$(python3 "$source_dir/settings.py" suffix)/g" -e "$hash_rule" | kubectl apply -f -
 # The one GPU key of the installation, which the portal shows and from which the GPU proxy derives the zone tokens.
 python3 "$source_dir/hoover/gpu.py" ensure-key
 kubectl -n operator-portal create secret generic operator-login --from-file="$login/client-secret" --from-file="$login/cookie-secret" --from-file="$login/proxy-secret" --dry-run=client -o yaml | kubectl apply -f -

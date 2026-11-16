@@ -7,10 +7,15 @@ schedule.py holds the rules. This file reads the receipts and the sizes, runs on
 <operator state>/backups/state.json, which it writes atomically.
 
 Arguments are names: a zone, a collection, a job and a generation (the name of a copy). No command takes a host path.
-vars.backup of the site file names the node and the mount folder of the destination. The copies of a zone are in
-<mount>/zones/<zone>/<generation>/, the collection exports of a zone in <mount>/zones/<zone>/collections/<collection>/
-<generation>/, and the platform copies in <mount>/platform/<generation>/. The level zones/ keeps a zone named
-platform apart from the platform copies.
+The operator pod runs on the backup node of vars.backup and mounts the folder at the same path in its runner
+container (../operator/backup-mount.py), so this file reads and writes the copies as local files and needs no SSH, no
+user entry and no key for them. The operator makes sure that the folder is on another host. The
+copies of a zone are in <folder>/zones/<zone>/<generation>/,
+the collection exports of a zone in <folder>/zones/<zone>/collections/<collection>/<generation>/, and the platform
+copies in <folder>/platform/<generation>/. The level zones/ keeps a zone named platform apart from the platform copies.
+The commands run in the runner container: kubectl -n operator-portal exec deploy/portal -c runner -- python3
+/opt/hoover4/k3s/platform/backups/backups.py <command>. On a host without the folder, every command that reads the
+destination stops with a message.
 
 Jobs:
 - zone:<zone>: the complete zone, which is its openDesk namespace and its complete Hoover installation. The copy holds
@@ -36,20 +41,21 @@ Jobs:
   export bucket of the zone, and the job first copies it into the export directory. The export directory in the claim
   and the object are removed after the copy, so no second archive stays.
 - platform: an etcd snapshot of the control-plane server with its token and k3s configuration (the snapshot command of
-  ../../ansible/roles/hoover4_k3s/files/k3s-datastore.py with sudo -n on that node, ../../driver/nodeshell.py), the
-  operator state and the private files
+  ../../ansible/roles/hoover4_k3s/files/k3s-datastore.py with sudo -n on that node), the operator state and the
+  private files
   of the site (credentials included), and recovery.json. recovery.json has format_version 2, the datastore etcd, the
   execution host, the control plane, the destination node, the k3s version, the applied source and settings
   revisions, the pinned tool versions and the application copies that a complete recovery needs. An etcd snapshot holds
   no claim data, so the application copies are part of the recovery set. read_recovery() also reads a copy of the
   earlier format, with the SQLite file k3s-state.db, for the conversion of an earlier installation. No new copy uses
-  SQLite.
-The copy of a job is made in <operator state>/backups/staging/ on this host. Each tar stream of a pod must reach its
-end-of-archive marker and each database dump must end with the trailer line of its dump tool, or the part is read again.
-The copy then gets copy-manifest.json with the size and SHA-256 of every file. It then goes over the user shell of the backup node into <folder>/<generation>.partial,
-is read again there against the manifest, and is renamed. Only then does retention remove older copies. A failed transfer
-or check leaves the older copies. The capacity check, the marker check, the check of the copy and retention run on the
-backup node.
+  SQLite. The snapshot command and the read of the snapshot use the user shell of the control plane over SSH
+  (../../driver/nodeshell.py). The runner container has no SSH user and no key, so this job does not finish there.
+A job writes its copy into <folder>/staging/<job>/<generation>.partial, on the volume of the copies. Each tar stream
+of a pod must reach its end-of-archive marker and each database dump must end with the trailer line of its dump tool,
+or the part is read again. The copy then gets copy-manifest.json with the size and SHA-256 of every file, is read
+again against it, and is renamed into its folder. Only then does retention remove older copies. A failed job or check
+leaves the older copies. The destination folder must hold the marker file of schedule.py, which the host step of the
+backup node writes (../../ansible/roles/hoover4_host/tasks/backup.yml), so a missing mount pauses the jobs.
 The zone job records the replicas of each workload of the zone in workloads.json, which restore-zone applies. It stops
 and scales no workload. A job of an earlier version closed the zone during the copy. A runner that finds such a
 recorded closure without a running job restores it.
@@ -68,9 +74,9 @@ after which every included update_dataset finished without an error, is a comple
 Usage: backups.py tick                      start the next due job, as the operator runner does every minute
        backups.py status                    print the state, the next slots and the blocked jobs
        backups.py run <job> <generation>    run one job now, in the foreground
-       backups.py enable                    write the marker of the destination folder
+       backups.py enable                    write the folders and the marker of the destination
        backups.py copies                    list the copies of the destination
-       backups.py verify <job> <generation>                        read a copy again against its manifest, on its node
+       backups.py verify <job> <generation>                        read a copy again against its manifest
        backups.py restore-zone <zone> <generation> [--from <zone>]  restore a complete zone copy into a zone
        backups.py restore-hoover <zone> <collection> <generation> [--from <zone>]
                                                                     import a collection copy into the zone's Hoover
@@ -82,7 +88,6 @@ import contextlib
 import hashlib
 import json
 import os
-import shlex
 import shutil
 import socket
 import subprocess
@@ -292,132 +297,87 @@ def jobs(s, data):
 
 
 class Destination:
-    """The destination folder on the backup node. Every check, write and removal runs on that node."""
+    """The destination folder of vars.backup, mounted at the same path in the runner container of the operator pod.
+
+    The operator pod runs on the backup node and mounts the folder of that node (../operator/backup-mount.py). Every
+    check, write, rename, removal and read is a file operation of this process, so no copy needs SSH. A command that runs
+    on a host without the folder reports the problem of a missing destination.
+    """
 
     def __init__(self, s):
         self.node = s.nodes[s.backup['node']]
         self.path = s.backup['path']
-        self.shell = nodeshell.Shell(self.node)
-
-    def run(self, script, timeout=600, input=None):
-        return self.shell.run(script, timeout=timeout, input=input)
 
     def problem(self):
-        q = shlex.quote(self.path)
-        code, out = self.run(f'if [ ! -d {q} ]; then echo missing; elif [ ! -e {q}/{schedule.MARKER} ]; then echo marker; '
-                             'else echo ok; fi', timeout=60)
-        if code:
-            return f'the backup node {self.node.name} does not answer: {out[-200:]}'
-        state = out.strip().splitlines()[-1] if out.strip() else ''
-        if state == 'missing':
-            return f'the backup destination {self.path} on {self.node.name} does not exist.'
-        if state == 'marker':
-            return (f'the backup destination {self.path} on {self.node.name} has no {schedule.MARKER}. A mount may be '
-                    'missing. The jobs pause until the destination is mounted again.')
-        return ''
+        if not os.path.isdir(self.path):
+            return (f'the backup destination {self.path} of {self.node.name} is not mounted here. Run backups.py in the '
+                    'runner container of the operator pod.')
+        problem = schedule.destination_problem(self.path)
+        return f'{self.node.name}: {problem}' if problem else ''
 
     def free_bytes(self):
-        code, out = self.run(f'df -P -B1 {shlex.quote(self.path)} | tail -n 1', timeout=60)
-        if code:
-            raise SystemExit(f'the free space of {self.path} on {self.node.name} is unreadable: {out[-200:]}')
-        return int(out.split()[3])
+        stat = os.statvfs(self.path)
+        return stat.f_bavail * stat.f_frsize
 
     def folder(self, key, generation):
         return f'{self.path}/{job_folder(key)}/{name_arg(generation, "generation")}'
 
+    def staging(self, key, generation):
+        """The folder in which a job writes its copy. It is on the volume of the copies, so publish() renames it."""
+        return Path(self.path) / STAGING / key.replace(':', '_') / f'{name_arg(generation, "generation")}.partial'
+
     def copies(self):
         """{job folder: [generations]} of the destination, from its folders."""
-        q = shlex.quote(self.path)
-        code, out = self.run(f'cd {q} && find platform zones -mindepth 2 -maxdepth 5 -name {MANIFEST} 2>/dev/null', timeout=120)
         found = {}
-        for line in out.splitlines():
-            folder, _, generation = line.strip().rsplit('/', 1)[0].rpartition('/')
-            if folder and not generation.endswith('.partial'):
-                found.setdefault(folder, []).append(generation)
+        for top in ('platform', 'zones'):
+            root = Path(self.path) / top
+            for manifest_path in root.rglob(MANIFEST) if root.is_dir() else ():
+                relative = manifest_path.parent.relative_to(self.path)
+                if len(relative.parts) < 2 or len(relative.parts) > 5:
+                    continue
+                folder, generation = '/'.join(relative.parts[:-1]), relative.parts[-1]
+                if not generation.endswith('.partial'):
+                    found.setdefault(folder, []).append(generation)
         return {k: sorted(v) for k, v in sorted(found.items())}
 
     def check(self, key, generation):
-        """Read a copy on the node again against its manifest."""
+        """Read a copy again against its manifest."""
         path = self.folder(key, generation)
-        code, out = self.run(f'python3 -c {shlex.quote(REMOTE_VERIFY)} {shlex.quote(path)}', timeout=24 * 3600)
-        try:
-            return json.loads(out.strip().splitlines()[-1])
-        except (ValueError, IndexError):
-            raise SystemExit(f'the check of {path} on {self.node.name} failed: {out[-200:]}')
+        if not os.path.isfile(os.path.join(path, MANIFEST)):
+            raise SystemExit(f'the copy {path} does not exist.')
+        return verify(path)
 
-    def publish(self, local, key, generation):
-        """Copy a verified local copy to the node, check it there against its manifest, then rename it."""
+    def publish(self, partial, key, generation):
+        """Rename a staging folder that verify() accepted into the folder of its copy.
+
+        The staging folder is on the same file system, so the rename moves no data, and the copy is not read again.
+        """
         final = self.folder(key, generation)
-        partial = final + '.partial'
-        code, out = self.run(f'rm -rf {shlex.quote(partial)}')
-        if code:
-            raise SystemExit(f'the old partial copy {partial} on {self.node.name} cannot be removed: {out[-200:]}')
-        try:
-            self.shell.send_tree(local, partial, timeout=24 * 3600)
-        except nodeshell.RouteError as error:
-            raise SystemExit(f'the transfer to {self.node.name} failed: {error}')
-        code, out = self.run(f'python3 -c {shlex.quote(REMOTE_VERIFY)} {shlex.quote(partial)}', timeout=24 * 3600)
-        try:
-            checked = json.loads(out.strip().splitlines()[-1])
-        except (ValueError, IndexError):
-            checked = {'differences': [f'the check on {self.node.name} failed: {out[-200:]}']}
-        if code or checked['differences']:
-            self.run(f'rm -rf {shlex.quote(partial)}')
-            raise SystemExit(f'the copy {partial} on {self.node.name} differs from its manifest: {checked["differences"][:5]}')
-        code, out = self.run(f'rm -rf {shlex.quote(final)} && mv {shlex.quote(partial)} {shlex.quote(final)}')
-        if code:
-            raise SystemExit(f'the copy {partial} on {self.node.name} cannot be renamed: {out[-200:]}')
+        partial = Path(partial)
+        if not str(partial).startswith(str(Path(self.path) / STAGING) + '/'):
+            raise SystemExit(f'{partial} is not a staging folder of the backup destination {self.path}.')
+        checked = verify(partial)
+        if checked['differences']:
+            raise SystemExit(f'the copy {partial} differs from its manifest: {checked["differences"][:5]}')
+        Path(final).parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(final, ignore_errors=True)
+        os.rename(partial, final)
         return final, checked
 
     def remove(self, path):
         if not path.startswith(self.path.rstrip('/') + '/'):
             raise SystemExit(f'{path} is outside the backup destination {self.path}.')
-        self.run(f'rm -rf {shlex.quote(path)}')
+        shutil.rmtree(path, ignore_errors=True)
 
-    def manifest_digest(self, key, generation):
-        """The SHA-256 of the manifest of a copy on the node."""
-        path = f'{self.folder(key, generation)}/{MANIFEST}'
-        code, out = self.run(f'sha256sum {shlex.quote(path)}', timeout=60)
-        if code or not out.strip():
-            raise SystemExit(f'the manifest {path} on {self.node.name} is unreadable: {out[-200:]}')
-        return out.strip().splitlines()[-1].split()[0]
-
-    def fetch(self, key, generation, target):
-        """Copy a copy of the node into a local staging folder, for a restore. fetched() checks the result."""
-        path = self.folder(key, generation)
-        target = Path(target)
-        target.mkdir(parents=True, exist_ok=True)
-        reader = subprocess.Popen(self.shell.command(f'tar -C {shlex.quote(path)} -cf - .'), stdout=subprocess.PIPE)
-        subprocess.run(['tar', '-C', str(target), '-xf', '-'], stdin=reader.stdout, check=True)
-        reader.stdout.close()
-        if reader.wait():
-            raise SystemExit(f'the copy {path} on {self.node.name} cannot be read.')
-        return target
+    def enable(self):
+        """Write the folders and the marker. The host step of the backup node writes them too."""
+        for name in ('zones', 'platform', STAGING):
+            os.makedirs(os.path.join(self.path, name), exist_ok=True)
+        Path(self.path, schedule.MARKER).write_text('This folder receives the backups of the hoover4 site.\n')
 
 
-# The check of a copy on the destination node: the size and SHA-256 of every file against copy-manifest.json. It runs
-# with the python3 of the node, so it needs no file of this repository there.
-REMOTE_VERIFY = r"""
-import hashlib, json, os, sys
-folder = sys.argv[1]
-wanted = json.load(open(os.path.join(folder, 'copy-manifest.json')))
-found = {}
-for root, _, files in os.walk(folder):
-    for name in files:
-        path = os.path.join(root, name)
-        rel = os.path.relpath(path, folder)
-        if rel == 'copy-manifest.json':
-            continue
-        digest = hashlib.sha256()
-        with open(path, 'rb') as f:
-            for chunk in iter(lambda: f.read(4 << 20), b''):
-                digest.update(chunk)
-        found[rel] = {'path': rel, 'bytes': os.path.getsize(path), 'sha256': digest.hexdigest()}
-differences = [r['path'] for r in wanted['files'] if found.get(r['path']) != r]
-differences += sorted(set(found) - {r['path'] for r in wanted['files']})
-print(json.dumps({'files': len(wanted['files']), 'bytes': sum(r['bytes'] for r in wanted['files']),
-                  'differences': differences}))
-"""
+# The folder of the destination in which a job writes its copy before the rename.
+STAGING = 'staging'
 
 
 def destination(s):
@@ -426,10 +386,6 @@ def destination(s):
         return None, 'the site file has no vars.backup.'
     target = Destination(s)
     return target, target.problem()
-
-
-def staging(s):
-    return s.operator_state() / 'backups' / 'staging'
 
 
 def free_bytes(target):
@@ -511,9 +467,11 @@ def manifest(folder):
 
 
 def verify(folder):
+    """The file count, the byte count and the paths that differ from the manifest, files that it lacks included."""
     wanted = json.loads((Path(folder) / MANIFEST).read_text())
     found = {r['path']: r for r in manifest(folder)}
     differences = [r['path'] for r in wanted['files'] if found.get(r['path']) != r]
+    differences += sorted(set(found) - {r['path'] for r in wanted['files']})
     return {'files': len(wanted['files']), 'bytes': sum(r['bytes'] for r in wanted['files']), 'differences': differences}
 
 
@@ -1257,11 +1215,6 @@ def platform_steps(folder, generation):
             'and backups.py restore-hoover for each collection copy, then sign in to each zone.']
 
 
-def restore_staging(s, key, generation):
-    """The local folder of a fetched copy: <operator state>/backups/restore/<job folder>/<generation>."""
-    return s.operator_state() / 'backups' / 'restore' / job_folder(key) / name_arg(generation, 'generation')
-
-
 def run_job(key, generation):
     s = site()
     target, problem = destination(s)
@@ -1269,7 +1222,7 @@ def run_job(key, generation):
         raise SystemExit(problem)
     data = load_state(s)
     data['jobs'].setdefault(key, {'copies': []})
-    partial = staging(s) / key.replace(':', '_') / f'{generation}.partial'
+    partial = target.staging(key, generation)
     shutil.rmtree(partial, ignore_errors=True)
     partial.parent.mkdir(parents=True, exist_ok=True)
     started = time.time()
@@ -1289,12 +1242,9 @@ def run_job(key, generation):
         lock.release()
         rows = manifest(partial)
         (partial / MANIFEST).write_text(json.dumps({'job': key, 'generation': generation, 'files': rows}, indent=1))
-        checked = verify(partial)
-        if checked['differences']:
-            raise SystemExit(f'the copy {partial} differs from its manifest: {checked["differences"][:5]}')
-        final, remote_check = target.publish(partial, key, generation)
+        final, checked = target.publish(partial, key, generation)
         copy = {'generation': generation, 'path': final, 'host': target.node.name,
-                'execution_host': socket.gethostname(), 'finished': int(time.time()), 'bytes': remote_check['bytes'],
+                'execution_host': socket.gethostname(), 'finished': int(time.time()), 'bytes': checked['bytes'],
                 'seconds': round(time.time() - started), 'verified': True}
     except BaseException as error:
         lock.release()
@@ -1314,7 +1264,7 @@ def run_job(key, generation):
     copies = {'hoover': 'backup.hoover.copies', 'zone': 'backup.opendesk.copies', 'opendesk': 'backup.opendesk.copies',
               'platform': 'backup.platform.copies'}[kind]
     scope = 'cluster' if key == 'platform' else f'zone:{key.split(":")[1]}'
-    # Retention runs on the destination node, and only after the new copy was verified there.
+    # Retention runs only after the new copy was verified.
     for old in schedule.retention(record, int(applied_values(s, scope)[copies])):
         target.remove(old['path'])
         record['copies'].remove(old)
@@ -1323,44 +1273,17 @@ def run_job(key, generation):
 
 
 def fetched(s, key, generation):
-    """Fetch a copy of the destination into the restore staging folder and verify it there. Return the folder.
-
-    A fetched copy is good when its manifest has the SHA-256 of the manifest on the backup node and every file has the
-    size and SHA-256 of the manifest. A staging folder of an earlier fetch that passes the same check stays. Otherwise
-    the copy is fetched again, and a copy that fails the check after the fetch stops the restore.
-    """
+    """The folder of a copy of the destination, after a check of every file against its manifest."""
     target, problem = destination(s)
     if problem:
         raise SystemExit(problem)
-    if target.node.local:
-        # The destination is a folder of this host, so the restore reads it in place.
-        folder = Path(target.folder(key, generation))
-        if not (folder / MANIFEST).exists():
-            raise SystemExit(f'the copy {folder} does not exist.')
-        if verify(folder)['differences']:
-            raise SystemExit(f'the copy {folder} differs from its manifest.')
-        return folder
-    folder = restore_staging(s, key, generation)
-    source = target.manifest_digest(key, generation)
-    if copy_problem(folder, source):
-        shutil.rmtree(folder, ignore_errors=True)
-        target.fetch(key, generation, folder)
-        problem = copy_problem(folder, source)
-        if problem:
-            raise SystemExit(f'the fetched copy {folder} of {target.folder(key, generation)} on {target.node.name} '
-                             f'{problem}. Fetch it again, or check the copy on the backup node with backups.py verify.')
-    return folder
-
-
-def copy_problem(folder, digest):
-    """Empty when folder holds a manifest with the SHA-256 digest and every file matches that manifest."""
-    path = Path(folder) / MANIFEST
-    if not path.exists():
-        return 'has no manifest'
-    if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-        return 'has another manifest than the copy on the backup node'
+    folder = Path(target.folder(key, generation))
+    if not (folder / MANIFEST).exists():
+        raise SystemExit(f'the copy {folder} does not exist.')
     differences = verify(folder)['differences']
-    return f'differs from its manifest: {differences[:5]}' if differences else ''
+    if differences:
+        raise SystemExit(f'the copy {folder} differs from its manifest: {differences[:5]}')
+    return folder
 
 
 def restore_hoover(zone, collection, generation, source_zone=None):
@@ -1442,7 +1365,7 @@ def restore_zone(zone, generation, source_zone=None):
     progress = json.loads(record_path.read_text()) if record_path.exists() else {'copy': copy, 'steps': []}
     if progress['copy'] != copy:
         raise SystemExit(f'{record_path} belongs to the restore of {progress["copy"]}. Remove it after its check.')
-    # fetched() checks the copy against its manifest and the manifest against the one on the backup node.
+    # fetched() checks the copy against its manifest.
     folder = fetched(s, key, generation)
     if (folder / 'postgresql.sql').exists() and b'DROP DATABASE' not in (folder / 'postgresql.sql').read_bytes()[:1 << 20]:
         raise SystemExit('the PostgreSQL dump of this copy has no DROP statements, because an earlier version made it. '
@@ -1675,11 +1598,10 @@ def main(argv):
         target, _ = destination(site())
         if target is None:
             raise SystemExit('the site file has no vars.backup.')
-        q = shlex.quote(target.path)
-        code, out = target.run(f'mkdir -p {q}/zones {q}/platform && echo "This folder receives the backups of the hoover4 '
-                               f'site." > {q}/{schedule.MARKER}')
-        if code:
-            raise SystemExit(f'the destination {target.path} on {target.node.name} cannot be written: {out[-200:]}')
+        if not os.path.isdir(target.path):
+            raise SystemExit(f'the backup destination {target.path} of {target.node.name} is not mounted here. Run '
+                             'backups.py in the runner container of the operator pod.')
+        target.enable()
         print(json.dumps({'destination': target.path, 'node': target.node.name, 'marker': schedule.MARKER}))
     elif argv == ['copies']:
         target, problem = destination(site())

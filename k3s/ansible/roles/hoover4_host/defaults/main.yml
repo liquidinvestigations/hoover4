@@ -23,3 +23,6 @@ hoover4_docker_units: [docker.socket, docker.service, containerd.service]
 hoover4_stop_docker: false
 hoover4_k3s_volume_group: ""
 hoover4_backup_path: ""
+# The user and group of the operator pod (runAsUser and runAsGroup of ../../../../platform/operator/operator-login.yaml),
+# which writes the copies into the backup path.
+hoover4_backup_uid: 1000

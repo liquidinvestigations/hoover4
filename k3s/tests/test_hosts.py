@@ -476,3 +476,19 @@ def test_the_scheduler_scores_the_fit_and_the_balance_of_cpu_and_memory():
     assert yaml.safe_load(text)['clientConnection']['kubeconfig'].endswith('/scheduler.kubeconfig')
     # Agents get no scheduler argument.
     assert 'kube-scheduler-arg' not in render('config.yaml.j2', host_vars(site_text('remote.yml'), 'worker-b'))
+
+
+def test_the_backup_step_gives_the_folders_to_the_pod_user_and_writes_the_marker_only_on_a_mounted_folder():
+    sys.path.insert(0, str(K3S / 'platform' / 'backups'))
+    import schedule
+    tasks = {t['name']: t for t in yaml.safe_load((ROLES / 'hoover4_host/tasks/backup.yml').read_text())}
+    folders, marker = tasks['Create the backup folders'], tasks['Write the marker of the backup destination']
+    owned = tasks['Give the copies to the user of the operator pod']
+    assert marker['ansible.builtin.copy']['dest'].endswith('/' + schedule.MARKER)
+    for task in (folders, owned):
+        assert task['ansible.builtin.file']['owner'] == task['ansible.builtin.file']['group'] == '{{ hoover4_backup_uid }}'
+    assert folders['ansible.builtin.file']['mode'] == '0700' and 'mode' not in owned['ansible.builtin.file']
+    assert '{{ hoover4_backup_path }}/staging' in tasks['Read the backup folders']['loop']
+    # A mount that the fstab names and that is missing gets no folder and no marker, so the jobs pause.
+    ready = 'hoover4_backup_mounted.rc == 0 or hoover4_backup_fstab.rc != 0'
+    assert folders['when'] == marker['when'] == owned['when'] == ready

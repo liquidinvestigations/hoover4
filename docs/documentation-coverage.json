@@ -3243,11 +3243,14 @@
       "id": "F-admin-55",
       "source": [
         "k3s/platform/backups/backups.py",
-        "k3s/platform/backups/schedule.py"
+        "k3s/platform/backups/schedule.py",
+        "k3s/platform/operator/backup-mount.py",
+        "k3s/ansible/roles/hoover4_host/tasks/backup.yml"
       ],
       "docs": [
         "docs/technical-specification/Features.md",
-        "k3s/Readme.md#back-up-and-restore"
+        "k3s/Readme.md#back-up-and-restore",
+        "docs/operations/k3s/Cluster_Operations.md#back-up-the-site"
       ],
       "audience": "operator",
       "no_screenshot_reason": "The capability is operator deployment code. The portal controls of the policies belong to F-admin-50."

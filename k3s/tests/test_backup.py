@@ -262,31 +262,79 @@ def copy_folder(backups, folder, files):
     return folder
 
 
-def test_the_destination_node_checks_writes_verifies_and_keeps_older_copies(local_destination, tmp_path):
+def staged(backups, target, key, generation, files):
+    """A staging folder of the destination with a manifest of its files, as run_job() leaves it before publish()."""
+    folder = target.staging(key, generation)
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    return copy_folder(backups, folder, files)
+
+
+def test_the_mounted_destination_checks_renames_verifies_and_keeps_older_copies(local_destination, tmp_path):
     backups, s, dest = local_destination
     target = backups.Destination(s)
-    assert 'does not exist' in target.problem()
+    assert 'is not mounted here' in target.problem()
     dest.mkdir()
     assert 'has no .hoover4-backup-destination' in target.problem()
-    (dest / schedule.MARKER).write_text('x')
+    target.enable()
     assert target.problem() == '' and target.free_bytes() > 0
-    first = copy_folder(backups, tmp_path / 'one', {'a.sql': b'one'})
+    assert {p.name for p in dest.iterdir()} == {'zones', 'platform', 'staging', schedule.MARKER}
+    first = staged(backups, target, 'zone:zone-a', 'week-1', {'a.sql': b'one'})
+    assert str(first) == f'{dest}/staging/zone_zone-a/week-1.partial'
+    inode = (first / 'a.sql').stat().st_ino
     final, checked = target.publish(first, 'zone:zone-a', 'week-1')
-    assert final == f'{dest}/zones/zone-a/week-1' and checked['differences'] == []
-    assert (dest / 'zones/zone-a/week-1/a.sql').read_bytes() == b'one'
-    # A copy that changes in the transfer is refused on the node, and the older copy stays.
-    second = copy_folder(backups, tmp_path / 'two', {'a.sql': b'two'})
+    assert final == f'{dest}/zones/zone-a/week-1' and checked['differences'] == [] and checked['bytes'] == 3
+    # The copy is renamed into place, so the file is the same file and nothing stays in staging.
+    assert (dest / 'zones/zone-a/week-1/a.sql').stat().st_ino == inode and not first.exists()
+    # A copy that changed after its manifest, or that holds a file the manifest lacks, is refused and the older copy stays.
+    second = staged(backups, target, 'zone:zone-a', 'week-2', {'a.sql': b'two'})
     (second / 'a.sql').write_bytes(b'changed after the manifest')
     with pytest.raises(SystemExit, match='differs from its manifest'):
         target.publish(second, 'zone:zone-a', 'week-2')
-    assert not (dest / 'zones/zone-a/week-2.partial').exists()
+    third = staged(backups, target, 'zone:zone-a', 'week-3', {'a.sql': b'three'})
+    (third / 'extra').write_bytes(b'x')
+    with pytest.raises(SystemExit, match='differs from its manifest'):
+        target.publish(third, 'zone:zone-a', 'week-3')
+    assert not (dest / 'zones/zone-a/week-2').exists() and not (dest / 'zones/zone-a/week-3').exists()
     assert (dest / 'zones/zone-a/week-1/a.sql').read_bytes() == b'one'
+    with pytest.raises(SystemExit, match='not a staging folder'):
+        target.publish(tmp_path, 'zone:zone-a', 'week-4')
     assert target.copies() == {'zones/zone-a': ['week-1']}
     assert target.check('zone:zone-a', 'week-1')['differences'] == []
+    with pytest.raises(SystemExit, match='does not exist'):
+        target.check('zone:zone-a', 'week-9')
     with pytest.raises(SystemExit, match='outside the backup destination'):
         target.remove('/etc')
     target.remove(final)
     assert not (dest / 'zones/zone-a/week-1').exists()
+
+
+def test_a_job_writes_its_copy_on_the_destination_volume_and_retention_follows_the_check(local_destination, monkeypatch):
+    backups, s, dest = local_destination
+    dest.mkdir()
+    backups.Destination(s).enable()
+    monkeypatch.setattr(backups, 'site', lambda: s)
+    monkeypatch.setattr(backups, 'applied_values', lambda s, scope: {'backup.opendesk.copies': '2'})
+    held = []
+    lock = type('Lock', (), {'acquire': lambda self, kind, op: held.append(op), 'release': lambda self: None})()
+    monkeypatch.setattr(backups.oplock, 'site_lock', lambda folder: lock)
+    # Each job ends at a later time, so retention keeps the newest copies.
+    clock = iter(range(T0, T0 + 1000, 10))
+    monkeypatch.setattr(backups.time, 'time', lambda: next(clock))
+    seen = []
+
+    def run_zone(s, zone, partial, key):
+        seen.append(partial)
+        partial.mkdir()
+        (partial / 'postgresql.sql').write_bytes(f'dump {len(seen)}'.encode())
+    monkeypatch.setattr(backups, 'run_zone', run_zone)
+    for generation in ('g1', 'g2', 'g3'):
+        backups.run_job('zone:zone-a', generation)
+    assert all(str(p).startswith(f'{dest}/staging/') for p in seen) and len(held) == 3
+    record = backups.load_state(s)['jobs']['zone:zone-a']
+    assert [c['generation'] for c in record['copies']] == ['g2', 'g3']
+    assert record['copies'][-1]['path'] == f'{dest}/zones/zone-a/g3' and record['copies'][-1]['bytes'] == len(b'dump 3')
+    assert backups.Destination(s).copies() == {'zones/zone-a': ['g2', 'g3']}
+    assert list((dest / 'staging').rglob('*.partial')) == []
 
 
 def test_job_folders_put_zones_below_zones_and_refuse_paths():
@@ -503,50 +551,18 @@ def test_the_restore_runs_psql_with_on_error_stop(tmp_path, monkeypatch):
     assert 'ON_ERROR_STOP=1' in imports[0] and 'ON_ERROR_STOP=0' not in imports[0]
 
 
-class FakeTarget:
-    """A remote backup destination that serves one copy folder."""
-
-    def __init__(self, backups, source, damage=False):
-        self.backups, self.source, self.damage, self.fetches = backups, source, damage, 0
-        self.node = type('Node', (), {'local': False, 'name': 'store'})()
-
-    def folder(self, key, generation):
-        return f'/srv/backups/{generation}'
-
-    def manifest_digest(self, key, generation):
-        import hashlib
-        return hashlib.sha256((self.source / self.backups.MANIFEST).read_bytes()).hexdigest()
-
-    def fetch(self, key, generation, target):
-        import shutil
-        self.fetches += 1
-        shutil.copytree(self.source, target)
-        if self.damage:
-            (target / 'postgresql.sql').write_bytes(b'damaged')
-        return target
-
-
-def test_a_fetched_copy_is_verified_against_the_copy_on_the_backup_node(tmp_path, monkeypatch):
-    backups = backups_module()
-    s = config.parse(site_text('remote.yml'))
-    monkeypatch.setattr(type(s), 'operator_state', lambda self: tmp_path / 'state')
-    source = copy_folder(backups, tmp_path / 'source', {'postgresql.sql': b'dump', 'claims.json': b'[]'})
-    damaged = FakeTarget(backups, source, damage=True)
-    monkeypatch.setattr(backups, 'destination', lambda s: (damaged, ''))
+def test_a_restore_reads_the_copy_in_place_after_its_check(local_destination):
+    backups, s, dest = local_destination
+    dest.mkdir()
+    target = backups.Destination(s)
+    target.enable()
+    copy_folder(backups, dest / 'zones/zone-a/g1', {'postgresql.sql': b'dump', 'claims.json': b'[]'})
+    assert backups.fetched(s, 'zone:zone-a', 'g1') == dest / 'zones/zone-a/g1'
+    (dest / 'zones/zone-a/g1/postgresql.sql').write_bytes(b'damaged')
     with pytest.raises(SystemExit, match='differs from its manifest'):
         backups.fetched(s, 'zone:zone-a', 'g1')
-    good = FakeTarget(backups, source)
-    monkeypatch.setattr(backups, 'destination', lambda s: (good, ''))
-    folder = backups.fetched(s, 'zone:zone-a', 'g1')
-    assert (folder / 'postgresql.sql').read_bytes() == b'dump' and good.fetches == 1
-    # A verified staging folder of the same copy stays.
-    backups.fetched(s, 'zone:zone-a', 'g1')
-    assert good.fetches == 1
-    # Another copy on the node under the same name gives another manifest, so the copy is fetched again.
-    copy_folder(backups, tmp_path / 'other', {'postgresql.sql': b'other dump'})
-    good.source = tmp_path / 'other'
-    folder = backups.fetched(s, 'zone:zone-a', 'g1')
-    assert good.fetches == 2 and (folder / 'postgresql.sql').read_bytes() == b'other dump'
+    with pytest.raises(SystemExit, match='does not exist'):
+        backups.fetched(s, 'zone:zone-a', 'g2')
 
 
 def test_a_restored_secret_keeps_the_items_that_the_copy_lacks(tmp_path, monkeypatch):

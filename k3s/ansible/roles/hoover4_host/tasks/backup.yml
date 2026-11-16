@@ -1,10 +1,15 @@
 ---
-# The backup node receives the copies of the platform backup (../../../platform/backups/backups.py) in the folders
-# zones and platform below the backup path of the site file. The SSH user of the node owns them.
+# The backup node keeps the copies of ../../../platform/backups/backups.py in the folders zones and platform of the
+# backup path. A job writes its copy into staging first. The runner container of the operator pod mounts the path
+# (../../../platform/operator/backup-mount.py) and writes as the user hoover4_backup_uid. That user and its group own
+# the folders. The marker file tells backups.py that the destination is present.
+# The fstab of the node can name a mount at the path. When that file system is not mounted, the step writes nothing
+# below the path, so the jobs pause instead of filling the root file system.
 - name: Read the backup folders
   ansible.builtin.stat:
     path: "{{ item }}"
-  loop: ["{{ hoover4_backup_path }}", "{{ hoover4_backup_path }}/zones", "{{ hoover4_backup_path }}/platform"]
+  loop: ["{{ hoover4_backup_path }}", "{{ hoover4_backup_path }}/zones", "{{ hoover4_backup_path }}/platform",
+         "{{ hoover4_backup_path }}/staging"]
   register: hoover4_backup_stat
 
 - name: Refuse a symbolic link in the backup path
@@ -16,13 +21,52 @@
   loop_control:
     label: "{{ item.item }}"
 
+- name: Read the mount at the backup path
+  ansible.builtin.command: findmnt -n -o TARGET --mountpoint {{ hoover4_backup_path }}
+  register: hoover4_backup_mounted
+  changed_when: false
+  failed_when: hoover4_backup_mounted.rc not in [0, 1]
+
+- name: Read the fstab entry of the backup path
+  ansible.builtin.command: findmnt --fstab -n -o TARGET --mountpoint {{ hoover4_backup_path }}
+  register: hoover4_backup_fstab
+  changed_when: false
+  failed_when: hoover4_backup_fstab.rc not in [0, 1]
+
+- name: Report a backup file system that is not mounted
+  ansible.builtin.debug:
+    msg: "The fstab names a mount at {{ hoover4_backup_path }}, which is not mounted. The backups pause until it is mounted."
+  when: hoover4_backup_fstab.rc == 0 and hoover4_backup_mounted.rc != 0
+
 - name: Create the backup folders
   ansible.builtin.file:
     path: "{{ item.item }}"
     state: directory
-    owner: "{{ ansible_user_id }}"
+    owner: "{{ hoover4_backup_uid }}"
+    group: "{{ hoover4_backup_uid }}"
     mode: "0700"
   loop: "{{ hoover4_backup_stat.results }}"
   loop_control:
     label: "{{ item.item }}"
-  when: not item.stat.exists
+  when: hoover4_backup_mounted.rc == 0 or hoover4_backup_fstab.rc != 0
+
+# The copies of an earlier version belong to the SSH user of the node. The runner removes old copies at retention, so
+# it owns every copy. The modes of the files stay.
+- name: Give the copies to the user of the operator pod
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ hoover4_backup_uid }}"
+    group: "{{ hoover4_backup_uid }}"
+    recurse: true
+  loop: ["{{ hoover4_backup_path }}/zones", "{{ hoover4_backup_path }}/platform"]
+  when: hoover4_backup_mounted.rc == 0 or hoover4_backup_fstab.rc != 0
+
+- name: Write the marker of the backup destination
+  ansible.builtin.copy:
+    dest: "{{ hoover4_backup_path }}/.hoover4-backup-destination"
+    content: "This folder receives the backups of the hoover4 site.\n"
+    owner: "{{ hoover4_backup_uid }}"
+    group: "{{ hoover4_backup_uid }}"
+    mode: "0600"
+  when: hoover4_backup_mounted.rc == 0 or hoover4_backup_fstab.rc != 0

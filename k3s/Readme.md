@@ -766,6 +766,8 @@ The cluster holds the authoritative zone state, zone secrets and operator state.
 
 The operator pod (Deployment `portal` of `operator-portal`) runs the portal and the zone runner from the operator image of the registry ([platform/operator/pod.py](platform/operator/pod.py)).
 It mounts no checkout and no host state folder. Each container reads the cluster copy into a folder of the pod at its start. The runner keeps the zone secrets in its own memory folder, so the portal container cannot read them.
+The pod runs on the control-plane node. When the site file has `backup`, it runs on the backup node, and the runner container mounts the backup folder of that node at the same path ([platform/operator/backup-mount.py](platform/operator/backup-mount.py)).
+The portal page then shows the cluster slice of the backup node.
 The runner uses the token of the ServiceAccount `zone-runner` and needs no SSH access. The HTTPS frontend serves every zone host, so a zone operation does not change it.
 A create or upgrade checks that the frontend answers for `<zone>-portal.<domain>` with a valid certificate, and stops at the step `frontend` until it does. `deploy-k3s up --target <public node> --steps frontend` on the workstation installs the frontend.
 The runner checks that the registry has the images of the revision. `deploy-k3s up --steps images` builds them.
@@ -915,8 +917,12 @@ Check a call from outside the site after a remote installation:
 ## Back up and restore.
 
 Backups are off until the site file has `backup`, the destination folder has its marker, and an operator turns a policy on in the portal.
-The `backup` node holds the backup folder (`path`). The capacity check, the marker check, the check of each copy and retention run on that node over its user shell.
+The `backup` node holds the backup folder (`path`). The operator pod runs on that node, and its runner container mounts the folder at the same path.
+The runner writes, checks, lists and removes the copies as files of that folder, so no copy needs SSH, a user entry or a key.
+The host step `hosts:prepare` creates the folders `zones/`, `platform/` and `staging/` and the marker `.hoover4-backup-destination`, owned by the user of the operator pod (uid 1000).
+When the fstab of the node names a mount at the path and the file system is not mounted, the step writes nothing there.
 The commands take names: a zone, a collection, a job and a generation (the name of a copy). No command takes a host path.
+Run them in the runner container, because only that container has the folder:
 
 | Copy | Folder below the backup folder |
 |---|---|
@@ -925,26 +931,27 @@ The commands take names: a zone, a collection, a job and a generation (the name 
 | The platform recovery set | `platform/<generation>/` |
 
 ```sh
-python3 k3s/platform/backups/backups.py enable    # writes the marker .hoover4-backup-destination and the folders
-python3 k3s/platform/backups/backups.py status
-python3 k3s/platform/backups/backups.py copies
-python3 k3s/platform/backups/backups.py verify zone:<zone> <generation>
-python3 k3s/platform/backups/backups.py restore-zone <zone> <generation> [--from <zone of the copy>]
-python3 k3s/platform/backups/backups.py restore-hoover <zone> <collection> <generation> [--from <zone of the copy>]
-python3 k3s/platform/backups/backups.py recovery <generation>
-python3 k3s/platform/backups/backups.py restore-platform <generation>
+run="kubectl -n operator-portal exec deploy/portal -c runner -- python3 /opt/hoover4/k3s/platform/backups/backups.py"
+$run enable    # writes the folders and the marker, as the host step does
+$run status
+$run copies
+$run verify zone:<zone> <generation>
+$run restore-zone <zone> <generation> [--from <zone of the copy>]
+$run restore-hoover <zone> <collection> <generation> [--from <zone of the copy>]
+$run recovery <generation>
+$run restore-platform <generation>
 ```
 
 - The operator runner starts at most one due job each minute. [schedule.py](platform/backups/schedule.py) holds the rules: eligibility, the weekly limit, the slots and the retention.
 - A Hoover collection gets a copy after its first completed ingestion and after each complete reprocessing, at most once in 7 days, and keeps one or two copies.
 - Each zone and the platform recovery set get one copy each week, and keep two or three copies. The portal setting `backup.opendesk.*` controls the zone copy.
 - A missing marker pauses every job, so a missing remote mount does not fill the local disk.
-- A copy is made in `<operator state>/backups/staging/`, checked, sent to the node into `<generation>.partial`, checked there and renamed. A failed transfer or check keeps the older copies.
-- A restore reads a copy on the operator host in place, or fetches it into `<operator state>/backups/restore/`.
-  A fetched copy must have the manifest of the copy on the backup node, and every file must match that manifest.
+- A copy is made in `staging/<job>/<generation>.partial` of the backup folder, checked against its manifest and renamed into its folder. The rename moves no data. A failed job or check keeps the older copies.
+- A restore reads a copy in place, after a check of every file against its manifest.
 - Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
 - The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
   The snapshot runs `k3s-datastore.py snapshot <name>` with `sudo -n` on the server, which writes `~/hoover4-snapshots/<name>/` of the operator user. The operator user needs sudo without a password on the control plane.
+  The snapshot and its read use SSH to the control plane. The runner container has no SSH user and no key, so the platform job does not finish there.
 - The zone copy reads the running zone. No workload stops or scales. `workloads.json` of the copy records the replicas
   of the applications, gates and workers, which `restore-zone` applies. The next runner tick restores a closure that a
   job of an earlier version left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
@@ -963,7 +970,7 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 - The object store claim is not copied as a file, because its files change while it runs.
 - The receipt queries use the ClickHouse of the store layout. The site layout uses the admin of the shared ClickHouse. The local layout uses the Compose credentials.
 - The collection export reads each small frozen Manticore file whole, and a `.meta` file must be JSON. The archive entry gets the size of the bytes that the export read.
-- Make sure that the destination is on another site. The system cannot check this.
+- Make sure that the backup folder is on another host. The system cannot check this.
 - Each copy has `copy-manifest.json` with the SHA-256 of every file. A collection copy also holds the `manifest.json` of the export, which the import reads.
 - A collection copy fails when the JSON metadata of a Manticore table in the export does not parse, because the import refuses it.
 - A zone copy keeps the dumps of the zone databases, the objects of the object store, and one tar file for each other claim of the zone namespace, with the owners and modes, and the same parts of the Hoover namespace in `hoover/<installation>/`.

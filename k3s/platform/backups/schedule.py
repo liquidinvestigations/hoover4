@@ -19,9 +19,9 @@ Retention. A job keeps its newest `copies` verified copies. A copy is removed on
 A failed or unverified copy never replaces the last valid copy.
 Space. A job runs only when the destination has its estimated size, with a fifth more for temporary files. Otherwise
 the job is blocked, and the report names the job and proposes to keep one copy fewer. The rules delete no copy for room.
-Destination. The destination folder must hold the marker file .hoover4-backup-destination, which backups.py writes
-when an operator enables backups. A remote mount that disappeared shows the folder below it without the marker, so the
-jobs pause instead of filling the local disk.
+Destination. The destination folder must hold the marker file .hoover4-backup-destination, which the host step of the
+backup node writes (../../ansible/roles/hoover4_host/tasks/backup.yml). A mount that disappeared shows the folder below
+it without the marker, so the jobs pause instead of filling the root file system.
 """
 import hashlib
 import os

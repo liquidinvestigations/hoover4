@@ -166,6 +166,31 @@ def test_the_operator_pod_mounts_no_host_folder_except_the_cgroup_and_keeps_zone
     assert runner_mounts['/var/run/zone-runner'] == 'runner-token'
 
 
+def test_the_backup_node_gets_the_operator_pod_and_only_the_runner_mounts_the_backup_folder():
+    import copy
+    spec = importlib.util.spec_from_file_location('backup_mount', OPERATOR / 'backup-mount.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    docs = [d for d in yaml.safe_load_all((OPERATOR / 'operator-login.yaml').read_text()) if d]
+    # Without vars.backup the manifest stays as it is: the control plane and no backup mount.
+    assert module.mount(copy.deepcopy(docs), {}) == docs
+    backup = {'node': 'store', 'path': '/srv/hoover4-backups'}
+    once = module.mount(copy.deepcopy(docs), backup)
+    # A second render gives the same objects, so a second up changes nothing.
+    assert module.mount(copy.deepcopy(once), backup) == once
+    changed = [(a, b) for a, b in zip(docs, once) if a != b]
+    assert [b['metadata']['name'] for _, b in changed] == ['portal']
+    pod = changed[0][1]['spec']['template']['spec']
+    assert pod['nodeSelector'] == {'kubernetes.io/hostname': 'store'}
+    assert {'name': 'backups', 'hostPath': {'path': '/srv/hoover4-backups', 'type': 'Directory'}} in pod['volumes']
+    containers = {c['name']: c for c in pod['containers']}
+    assert {'name': 'backups', 'mountPath': '/srv/hoover4-backups'} in containers['runner']['volumeMounts']
+    assert all(m['name'] != 'backups' for m in containers['portal']['volumeMounts'])
+    # The host step gives the folders to the user of the pod.
+    defaults = yaml.safe_load((K3S / 'ansible/roles/hoover4_host/defaults/main.yml').read_text())
+    assert pod['securityContext']['runAsUser'] == pod['securityContext']['runAsGroup'] == defaults['hoover4_backup_uid']
+
+
 def test_the_runner_frontend_step_checks_a_new_zone_and_skips_a_delete(tmp_path, monkeypatch):
     import sys
     from conftest import write_site

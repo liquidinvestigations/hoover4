@@ -2,7 +2,8 @@
 """Start a container of the operator pod (operator-login.yaml). Usage: pod.py portal|runner
 
 The pod runs the operator image of the registry (../../images/operator-pod/), which holds the files of the checkout and
-the operator tools. No container mounts a host folder of a checkout or a state folder.
+the operator tools. No container mounts a host folder of a checkout or a state folder. On a site with a backup node the
+runner mounts the backup folder of that node (backup-mount.py).
 HOOVER4_SITE names the site file in its JSON form (the ConfigMap portal-site). Its state folder is a folder of the pod,
 which both containers share. The runner mounts its own folder at zones/ of the state folder, so the portal container
 never sees a zone secret.
