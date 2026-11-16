@@ -208,13 +208,16 @@ def test_a_site_without_zones_plans_with_the_zone_estimate():
 
 def test_the_store_pod_request_counts_the_runtime_overhead_and_the_init_containers():
     overhead = placement.runtime_overhead()
-    assert overhead['kata']['memory'] == 1024 and overhead['gvisor']['memory'] == 32
+    assert overhead['kata']['memory'] == 640 and overhead['gvisor']['memory'] == 32
     s = remote('    stores: {nodes: [server-a, worker-b]}\n')
     plan = config.store_plan(s)
     items = shared.objects(s, plan, 1, {})
     requests = placement.store_requests(items, overhead)
-    # ClickHouse: the container request and the Kata overhead. The blockmount init container is smaller.
-    assert requests['clickhouse'][0] == 640 + 1024
+    # ClickHouse: the container request and the Kata overhead, together the measured peak with the margin
+    # (../zones/memory-requests.json). The blockmount init container is smaller.
+    import memory_requests
+    measured = memory_requests.mebibytes(memory_requests.load()['site']['statefulset/clickhouse']['request'])
+    assert requests['clickhouse'][0] == max(measured, 640 + memory_requests.FLOOR)
 
 
 # Placement in the render ----------------------------------------------------------------------------------------------
@@ -299,10 +302,14 @@ def test_clamav_tika_and_tesseract_request_their_measured_use(tmp_path):
     items = render(tmp_path)
     requests = {i['metadata']['name']: i['spec']['template']['spec']['containers'][0]['resources']['requests']['memory']
                 for i in items if i['kind'] == 'Deployment'}
-    assert (requests['hoover4-clamav'], requests['hoover4-tika'], requests['hoover4-tesseract-cpu']) == ('2048Mi', '640Mi', '512Mi')
+    import memory_requests
+    measured = memory_requests.load()['hoover']
+    for name in ('hoover4-clamav', 'hoover4-tika', 'hoover4-tesseract-cpu'):
+        assert requests[name] == measured[f'deployment/{name}']['request'], name
     import manifests
     pods = manifests.scaled_pods()
-    assert pods['hoover4-clamav'] == (2048 + 32, pods['hoover4-clamav'][1], True)
+    clamav = memory_requests.mebibytes(measured['deployment/hoover4-clamav']['request'])
+    assert pods['hoover4-clamav'] == (clamav + 32, pods['hoover4-clamav'][1], True)
     assert set(pods) == {f'hoover4-{k}' for k in config.REPLICA_SERVICES}
 
 

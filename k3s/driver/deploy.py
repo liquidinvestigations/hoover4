@@ -1003,6 +1003,9 @@ def cluster_steps(ctx):
         steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', relayed.name, 'apply')
     # The call services join the Jitsi of every zone, so they follow the zones.
     steps['calls'] = step_calls
+    # The descheduler runs once, after every step that starts pods, so pods move only during a deployment
+    # (../cluster/deschedule.py).
+    steps['descheduler'] = step_script(sys.executable, '@cluster/deschedule.py')
     return steps
 
 
@@ -1212,6 +1215,7 @@ def independent(step, other):
 # The images of the revision come before every step that starts them, and the operator pod reads the monitoring
 # Services. A zone needs every platform step except prepull, which pulls the zone images on the nodes while the zones
 # apply. The call services join the Jitsi of every zone, and the relay serves a zone, so both follow the zones.
+# The descheduler moves pods after every step that starts them.
 # A step that this table does not name, for example a host step or a step of down, waits for every earlier step that
 # is not independent() of it.
 PLATFORM = ('ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'stores', 'gpu-images', 'gpu-pool', 'gpu-proxy')
@@ -1230,6 +1234,7 @@ PREREQUISITES = {
     'zone:': ('registry', 'images') + PLATFORM,
     'mcp-relay': ('zone:',) + PLATFORM,
     'calls': ('zone:',) + PLATFORM,
+    'descheduler': ('zone:', 'mcp-relay', 'calls', 'prepull') + PLATFORM,
 }
 # The steps before the registry form a chain: each one waits for every earlier step.
 CHAIN = ('hosts:', 'tools', 'cluster', 'registry')

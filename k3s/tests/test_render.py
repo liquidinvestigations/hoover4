@@ -445,10 +445,26 @@ def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
         for c in containers(item):
             requested = manifests.mebibytes(c['resources']['requests']['memory'])
             assert requested <= manifests.mebibytes(c['resources']['limits']['memory']), (item['metadata']['name'], c['name'])
+    # A measured workload requests its peak with the margin (../zones/memory-requests.json), and names its basis.
+    measured = manifests.memory_requests().load()['hoover']
     web = containers(get(items, 'Deployment', 'hoover-website'))[0]['resources']
-    assert web['requests']['memory'] == '320Mi' and web['limits']['memory'] == '2048Mi'
+    assert web['requests']['memory'] == measured['deployment/hoover-website']['request'] and web['limits']['memory'] == '2048Mi'
     clamav = containers(get(items, 'Deployment', 'hoover4-clamav'))[0]['resources']
-    assert clamav['requests']['memory'] == '2048Mi' and clamav['limits']['memory'] == '3456Mi'
+    assert clamav['requests']['memory'] == measured['deployment/hoover4-clamav']['request']
+    assert clamav['limits']['memory'] == '3456Mi'
+    annotations = get(items, 'Deployment', 'hoover4-clamav')['spec']['template']['metadata']['annotations']
+    assert annotations['hoover.dev/memory-peak'] == measured['deployment/hoover4-clamav']['peak']
+    # A Kata pod requests the measured peak: the container gets it minus the RuntimeClass overhead.
+    import memory_requests
+    workers = containers(get(items, 'Deployment', 'hoover-workers'))[0]['resources']
+    assert manifests.mebibytes(workers['requests']['memory']) == max(
+        memory_requests.FLOOR, manifests.mebibytes(measured['deployment/hoover-workers']['request']) - memory_requests.kata_fixed())
+    # Every Deployment of one replica whose pod requests 512 MiB or more starts no second pod in an update.
+    for item in items:
+        if item['kind'] == 'Deployment' and item['spec'].get('replicas', 1) == 1:
+            pod = sum(manifests.mebibytes(c['resources']['requests']['memory']) for c in item['spec']['template']['spec']['containers'])
+            if pod >= 512:
+                assert item['spec']['strategy'] == {'type': 'Recreate'}, item['metadata']['name']
     import zone_ini
     assert zone_ini.derive(zone_ini.BUDGET)[('main_services', 'mcp_browser_mem_limit')] == '10240M'
     tika = containers(get(items, 'Deployment', 'hoover4-tika'))[0]['resources']

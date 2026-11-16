@@ -14,8 +14,11 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
 - Resources: cpu_policy.py sets the CPU request and limit of each controller and CronJob. cpu_requests.py then
   raises the CPU request of each measured workload to the value of cpu-requests.json, from its start peak and its idle
   baseline, and writes the annotations of that basis into its pod template. memory-limits.json sets the memory
-  limits, and the memory requests of the larger workloads from their measured use, so the scheduler places each pod
-  by its real load. Jobs keep the chart values, because a Job template cannot change after its creation.
+  limits. memory_requests.py sets the memory request of each workload of memory-requests.json from its measured peak
+  under load, so the scheduler places each pod by its real load. Jobs keep the chart values, because a Job template
+  cannot change after its creation.
+- Rollout: a single-replica Deployment that requests MAX_SURGE_MEMORY or more replaces its pod with maxSurge 0 and
+  maxUnavailable 1 (rollout()), so an update does not need the memory of a second pod on a full site.
 - Patches: Synapse loads synapse/hoover_e2ee.py, the user verification service logs at warn, Jitsi web uses the UDP
   TURN server for the bridge connection, the OpenProject worker loads openproject/zz-hoover-cron.rb, and the Element
   media cleanup has no starting deadline. The docstrings of the functions below give the reasons.
@@ -45,12 +48,16 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parent / 'hoover' / 'stores'))
 import cpu_policy  # noqa: E402
 import cpu_requests  # noqa: E402
+import memory_requests  # noqa: E402
 import podspec  # noqa: E402
 import settings  # noqa: E402
 import zonestate  # noqa: E402
 
 MEMORY_FILE = json.loads((HERE / 'memory-limits.json').read_text())
-MEMORY, REQUESTS = MEMORY_FILE['zone'], MEMORY_FILE['requests']
+MEMORY = MEMORY_FILE['zone']
+# A single-replica Deployment whose pod requests this many MiB or more starts its new pod only after the old one
+# stopped (rollout()).
+MAX_SURGE_MEMORY = 512
 # The workloads of each openDesk application, by name pattern. A disabled application (operator setting app.<name>)
 # renders zero replicas and keeps its claims, so an enable restores it with its data.
 APP_WORKLOADS = {
@@ -264,15 +271,21 @@ def memory(doc):
         requested = (resources.get('requests') or {}).get('memory')
         if requested and mebibytes(requested) > mebibytes(limit):
             resources['requests']['memory'] = limit
-    for name, wanted in REQUESTS.get(ref(doc), {}).items():
-        resources = container(pod_spec(doc), name).setdefault('resources', {})
-        requested = (resources.get('requests') or {}).get('memory')
-        limit = (resources.get('limits') or {}).get('memory')
-        # The measured use raises a lower chart request. A request above the limit is not valid.
-        if limit and mebibytes(wanted) > mebibytes(limit):
-            wanted = limit
-        if not requested or mebibytes(wanted) > mebibytes(requested):
-            resources.setdefault('requests', {})['memory'] = wanted
+
+
+def rollout(doc):
+    """Give a single-replica Deployment that requests MAX_SURGE_MEMORY or more the rolling update maxSurge 0 and
+    maxUnavailable 1. The old pod stops before the new pod starts, so an update needs no free memory for a second pod.
+    A Recreate strategy of the chart stays, because it also starts no second pod."""
+    if doc['kind'] != 'Deployment' or doc['spec'].get('replicas', 1) != 1:
+        return
+    if (doc['spec'].get('strategy') or {}).get('type') == 'Recreate':
+        return
+    spec = pod_spec(doc)
+    requested = sum(mebibytes(((c.get('resources') or {}).get('requests') or {}).get('memory', '0'))
+                    for c in spec.get('containers') or [])
+    if requested >= MAX_SURGE_MEMORY:
+        doc['spec']['strategy'] = {'type': 'RollingUpdate', 'rollingUpdate': {'maxSurge': 0, 'maxUnavailable': 1}}
 
 
 def synapse(doc, extra, zone):
@@ -402,8 +415,10 @@ def overlay(documents, namespace):
         probes(doc, key)
         cpu_policy.apply(doc)
         memory(doc)
-        main = next(iter(REQUESTS.get(key) or MEMORY.get(key) or {}), None)
+        main = next(iter(MEMORY.get(key) or {}), None)
+        memory_requests.apply(doc, key, 'zone', main=main)
         cpu_requests.apply(doc, key, 'zone', main=main)
+        rollout(doc)
         if zone.disabled and kind != 'CronJob':
             doc['spec']['replicas'] = 0
         elif kind in ('Deployment', 'StatefulSet') and disabled_app(name, values):

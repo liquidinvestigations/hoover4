@@ -1,0 +1,341 @@
+{
+ "about": "Memory requests of the zone and site workloads from a load measurement, by <kind>/<name>: part zone (openDesk, postrender.py), part hoover (../hoover/manifests.py) and part site (the shared stores of hoover-stores, ../hoover/stores). peak is the highest working set of the pod cgroup on the host in the load. request = margin x peak, rounded up to 32 MiB. The margin is 1.0: each workload gets the highest peak of its pods in both zones over the whole load, and the sum of these peaks was 23 % above the highest working set of all pods of the site at one time (63.3 GiB on 2026-11-16). outsidePeak of a Kata workload is the highest difference between its pod cgroup and the working set of its containers in the guest. node is the memory reserve of the kubelet of an agent and of the control plane (server): margin x the highest difference between the node working set and the pods. memory_requests.py measure rebuilds the table from Prometheus and the output of ../tools/load/guest_sampler.py. measured (zone, hoover) and measuredSite (site) name the load in Unix seconds. The JVM stores of Temporal (temporal-cassandra, temporal-opensearch) have no entry: a JVM heap grows to its maximum over days, so a load of one hour does not show its peak. Their request is the heap plus the measured use outside the heap (../hoover/stores/temporal.py). Their peaks in the load were 3206 MiB and 1743 MiB, below those requests.",
+ "margin": 1.0,
+ "measured": {
+  "source": "load of 2026-11-16",
+  "seconds": [
+   1794818529,
+   1794823049
+  ]
+ },
+ "measuredSite": {
+  "source": "load of 2026-11-16",
+  "seconds": [
+   1794818529,
+   1794823049
+  ]
+ },
+ "node": {
+  "agent": "1472Mi",
+  "server": "2464Mi"
+ },
+ "zone": {
+  "deployment/collabora": {
+   "peak": "1746Mi",
+   "request": "1760Mi"
+  },
+  "deployment/cryptpad": {
+   "peak": "401Mi",
+   "request": "416Mi"
+  },
+  "deployment/element-element-web": {
+   "peak": "134Mi",
+   "request": "160Mi"
+  },
+  "deployment/element-haproxy": {
+   "peak": "132Mi",
+   "request": "160Mi"
+  },
+  "deployment/element-matrix-authentication-service": {
+   "peak": "117Mi",
+   "request": "128Mi"
+  },
+  "deployment/element-matrix-rtc-authorisation-service": {
+   "peak": "31Mi",
+   "request": "32Mi"
+  },
+  "deployment/gate": {
+   "peak": "80Mi",
+   "request": "96Mi"
+  },
+  "deployment/impress-backend": {
+   "peak": "1271Mi",
+   "request": "1280Mi"
+  },
+  "deployment/impress-backend-worker": {
+   "peak": "745Mi",
+   "request": "768Mi"
+  },
+  "deployment/impress-docspec": {
+   "peak": "179Mi",
+   "request": "192Mi"
+  },
+  "deployment/impress-frontend": {
+   "peak": "84Mi",
+   "request": "96Mi"
+  },
+  "deployment/impress-y-provider": {
+   "peak": "221Mi",
+   "request": "224Mi"
+  },
+  "deployment/intercom-service": {
+   "peak": "111Mi",
+   "request": "128Mi"
+  },
+  "deployment/jitsi-jicofo": {
+   "peak": "235Mi",
+   "request": "256Mi"
+  },
+  "deployment/jitsi-jitsi-keycloak-adapter": {
+   "peak": "117Mi",
+   "request": "128Mi"
+  },
+  "deployment/jitsi-web": {
+   "peak": "128Mi",
+   "request": "128Mi"
+  },
+  "deployment/matrix-neoboard-widget": {
+   "peak": "49Mi",
+   "request": "64Mi"
+  },
+  "deployment/matrix-neochoice-widget": {
+   "peak": "52Mi",
+   "request": "64Mi"
+  },
+  "deployment/matrix-neodatefix-bot": {
+   "peak": "104Mi",
+   "request": "128Mi"
+  },
+  "deployment/matrix-neodatefix-widget": {
+   "peak": "51Mi",
+   "request": "64Mi"
+  },
+  "deployment/memcached": {
+   "peak": "212Mi",
+   "request": "224Mi",
+   "outsidePeak": "137Mi"
+  },
+  "deployment/opendesk-matrix-user-verification-service": {
+   "peak": "105Mi",
+   "request": "128Mi"
+  },
+  "deployment/opendesk-nextcloud-aio": {
+   "peak": "888Mi",
+   "request": "896Mi"
+  },
+  "deployment/opendesk-nextcloud-exporter": {
+   "peak": "37Mi",
+   "request": "64Mi"
+  },
+  "deployment/opendesk-nextcloud-notifypush": {
+   "peak": "75Mi",
+   "request": "96Mi"
+  },
+  "deployment/opendesk-provisioning-synapse": {
+   "peak": "75Mi",
+   "request": "96Mi"
+  },
+  "deployment/opendesk-static-files": {
+   "peak": "51Mi",
+   "request": "64Mi"
+  },
+  "deployment/openproject-hocuspocus": {
+   "peak": "226Mi",
+   "request": "256Mi"
+  },
+  "deployment/openproject-web": {
+   "peak": "2549Mi",
+   "request": "2560Mi"
+  },
+  "deployment/openproject-worker-default": {
+   "peak": "820Mi",
+   "request": "832Mi"
+  },
+  "deployment/seaweedfs-all-in-one": {
+   "peak": "412Mi",
+   "request": "416Mi",
+   "outsidePeak": "345Mi"
+  },
+  "deployment/ums-keycloak-extensions-handler": {
+   "peak": "93Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-keycloak-extensions-proxy": {
+   "peak": "94Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-portal-frontend": {
+   "peak": "99Mi",
+   "request": "128Mi"
+  },
+  "deployment/ums-portal-server": {
+   "peak": "109Mi",
+   "request": "128Mi"
+  },
+  "deployment/ums-provisioning-api": {
+   "peak": "94Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-provisioning-dispatcher": {
+   "peak": "66Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-provisioning-prefill": {
+   "peak": "75Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-provisioning-udm-transformer": {
+   "peak": "83Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-selfservice-listener": {
+   "peak": "69Mi",
+   "request": "96Mi"
+  },
+  "deployment/ums-udm-rest-api": {
+   "peak": "442Mi",
+   "request": "448Mi"
+  },
+  "deployment/ums-umc-gateway": {
+   "peak": "287Mi",
+   "request": "288Mi",
+   "outsidePeak": "235Mi"
+  },
+  "deployment/ums-umc-server": {
+   "peak": "63Mi",
+   "request": "64Mi"
+  },
+  "statefulset/element-synapse-main": {
+   "peak": "256Mi",
+   "request": "256Mi"
+  },
+  "statefulset/element-synapse-media-repo": {
+   "peak": "237Mi",
+   "request": "256Mi"
+  },
+  "statefulset/jitsi-prosody": {
+   "peak": "97Mi",
+   "request": "128Mi"
+  },
+  "statefulset/postgresql": {
+   "peak": "1132Mi",
+   "request": "1152Mi",
+   "outsidePeak": "762Mi"
+  },
+  "statefulset/redis-master": {
+   "peak": "261Mi",
+   "request": "288Mi",
+   "outsidePeak": "221Mi"
+  },
+  "statefulset/ums-keycloak": {
+   "peak": "852Mi",
+   "request": "864Mi"
+  },
+  "statefulset/ums-ldap-notifier": {
+   "peak": "5Mi",
+   "request": "32Mi"
+  },
+  "statefulset/ums-ldap-server-primary": {
+   "peak": "892Mi",
+   "request": "896Mi"
+  },
+  "statefulset/ums-portal-consumer": {
+   "peak": "128Mi",
+   "request": "128Mi"
+  },
+  "statefulset/ums-provisioning-nats": {
+   "peak": "235Mi",
+   "request": "256Mi",
+   "outsidePeak": "206Mi"
+  },
+  "statefulset/ums-provisioning-udm-listener": {
+   "peak": "112Mi",
+   "request": "128Mi"
+  },
+  "statefulset/ums-umc-server": {
+   "peak": "138Mi",
+   "request": "160Mi"
+  },
+  "statefulset/xwiki": {
+   "peak": "2955Mi",
+   "request": "2976Mi"
+  }
+ },
+ "hoover": {
+  "deployment/hoover-operations": {
+   "peak": "473Mi",
+   "request": "480Mi",
+   "outsidePeak": "380Mi"
+  },
+  "deployment/hoover-singletons": {
+   "peak": "593Mi",
+   "request": "608Mi",
+   "outsidePeak": "362Mi"
+  },
+  "deployment/hoover-website": {
+   "peak": "315Mi",
+   "request": "320Mi"
+  },
+  "deployment/hoover-workers": {
+   "peak": "2453Mi",
+   "request": "2464Mi",
+   "outsidePeak": "1219Mi"
+  },
+  "deployment/hoover4-clamav": {
+   "peak": "2042Mi",
+   "request": "2048Mi"
+  },
+  "deployment/hoover4-mcp-collections": {
+   "peak": "132Mi",
+   "request": "160Mi"
+  },
+  "deployment/hoover4-mcp-todo": {
+   "peak": "79Mi",
+   "request": "96Mi"
+  },
+  "deployment/hoover4-ocr-pdf": {
+   "peak": "166Mi",
+   "request": "192Mi"
+  },
+  "deployment/hoover4-pdf-search": {
+   "peak": "44Mi",
+   "request": "64Mi"
+  },
+  "deployment/hoover4-regex-entity-scanner": {
+   "peak": "121Mi",
+   "request": "128Mi"
+  },
+  "deployment/hoover4-tesseract-cpu": {
+   "peak": "600Mi",
+   "request": "608Mi"
+  },
+  "deployment/hoover4-tika": {
+   "peak": "648Mi",
+   "request": "672Mi"
+  },
+  "deployment/manticore-schema": {
+   "peak": "104Mi",
+   "request": "128Mi"
+  },
+  "deployment/oauth2-proxy": {
+   "peak": "116Mi",
+   "request": "128Mi"
+  }
+ },
+ "site": {
+  "deployment/temporal": {
+   "peak": "489Mi",
+   "request": "512Mi"
+  },
+  "statefulset/clickhouse": {
+   "peak": "1578Mi",
+   "request": "1600Mi",
+   "outsidePeak": "1147Mi"
+  },
+  "statefulset/garage": {
+   "peak": "308Mi",
+   "request": "320Mi",
+   "outsidePeak": "299Mi"
+  },
+  "statefulset/manticore": {
+   "peak": "679Mi",
+   "request": "704Mi",
+   "outsidePeak": "557Mi"
+  },
+  "statefulset/manticore-vectors": {
+   "peak": "423Mi",
+   "request": "448Mi",
+   "outsidePeak": "394Mi"
+  }
+ }
+}

@@ -1375,6 +1375,8 @@ def _cpus(text):
 SPEED_STEP = 0.05
 # The CPU table of the workloads. runtimeOverhead.node holds the measured base CPU of k3s on a node.
 CPU_TABLE = HERE / 'zones' / 'cpu-requests.json'
+# The memory table of the workloads. node holds the measured memory of k3s and the system beside the pods of a node.
+MEMORY_TABLE = HERE / 'zones' / 'memory-requests.json'
 
 
 def node_speed(folder, name):
@@ -1453,6 +1455,16 @@ def base_cpu(table=None):
     return {k: _cpus(node[k]) * 1000 for k in ('agent', 'server')}
 
 
+def base_memory(table=None):
+    """{'agent': MiB, 'server': MiB}: the memory reserve of a node for k3s, the system and the kernel (node of the
+    memory table), or {} without a measurement. server holds the control plane."""
+    try:
+        node = (table or json.loads(MEMORY_TABLE.read_text())).get('node') or {}
+    except (OSError, ValueError):
+        return {}
+    return {k: int(_memory_gib(node[k]) * 1024) for k in ('agent', 'server') if k in node}
+
+
 def node_threads(folder, name):
     """The threads of a node: the stored value of its speed measurement, else the facts value cpus. The facts value
     counts two threads for each core, also for the cores without Hyper-Threading of a hybrid CPU."""
@@ -1465,8 +1477,12 @@ def node_threads(folder, name):
         return 0
 
 
-def kubelet_reserved(node, factor, threads, server=False, base=None):
-    """The system-reserved value of the kubelet of a node: the memory of the site value reserved, and the CPU reserve.
+def kubelet_reserved(node, factor, threads, server=False, base=None, memory=None):
+    """The system-reserved value of the kubelet of a node: the memory reserve and the CPU reserve.
+
+    The memory reserve is the memory of the site value reserved, else memory['server' or 'agent'] (base_memory()), the
+    measured peak of k3s, the system and the kernel beside the pods of a node under load. Without the reserve the
+    kubelet counts that memory as allocatable, and pods that use their requests bring the node to memory pressure.
 
     The allocatable CPU of the node counts threads of the fastest node: factor x threads - base, where base is the
     measured CPU of k3s without pods (base_cpu(), the server value on the control plane). k3s needs base / factor
@@ -1479,6 +1495,9 @@ def kubelet_reserved(node, factor, threads, server=False, base=None):
         reserve = threads - factor * (threads - own) if factor < 1 and threads else own
     else:
         reserve = (threads * (1 - factor) if threads else 0) + (base or base_cpu())['server' if server else 'agent'] / 1000
+    role = 'server' if server else 'agent'
+    if 'memory' not in parts and memory and role in memory:
+        parts['memory'] = f'{memory[role]}Mi'
     parts['cpu'] = f'{int(math.ceil(reserve * 10 - 1e-9)) * 100}m'
     return ','.join(f'{k}={v}' for k, v in parts.items())
 
@@ -1496,7 +1515,7 @@ def ansible_variables(site, private):
     media = calls_node(site) if site.with_role('public') else None
     nodes = {}
     factors = speed_factors(site, private)
-    base = base_cpu()
+    base, memory = base_cpu(), base_memory()
     for node in site.nodes.values():
         reserved = dict(part.split('=', 1) for part in node.reserved.split(',') if '=' in part)
         single_local = site.single and node.local
@@ -1511,7 +1530,7 @@ def ansible_variables(site, private):
             'reserved': node.reserved,
             # The kubelet value system-reserved, with the CPU reserve of the speed factor and of k3s (kubelet_reserved()).
             'kubelet_reserved': kubelet_reserved(node, factors[node.name], node_threads(private, node.name),
-                                                 node.name == site.control_plane, base),
+                                                 node.name == site.control_plane, base, memory),
             # The host step measures the speed of a node without a stored value (role hoover4_speed).
             'speed_stored': bool(node_speed(private, node.name)),
             'reserved_memory_gib': _memory_gib(reserved.get('memory', '8Gi')),

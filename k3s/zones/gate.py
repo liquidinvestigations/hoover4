@@ -88,10 +88,12 @@ def objects(zone):
         {'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress', 'metadata': {'name': 'gate', 'namespace': zone, 'labels': LABELS},
          'spec': {'ingressClassName': 'haproxy', 'rules': [{'host': auth, 'http': {'paths': [{
              'path': '/', 'pathType': 'Prefix', 'backend': {'service': {'name': 'gate', 'port': {'number': 4180}}}}]}}]}}]}
-    # The measured CPU request and its basis (cpu_requests.py).
+    # The measured memory and CPU requests and their basis (memory_requests.py, cpu_requests.py).
     import cpu_requests
+    import memory_requests
     for item in objects['items']:
         if item['kind'] == 'Deployment':
+            memory_requests.apply(item, f"deployment/{item['metadata']['name']}", 'zone', main='oauth2-proxy')
             cpu_requests.apply(item, f"deployment/{item['metadata']['name']}", 'zone')
     return objects
 

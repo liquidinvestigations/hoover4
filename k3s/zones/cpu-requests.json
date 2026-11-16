@@ -405,7 +405,7 @@
   }
  },
  "runtimeOverhead": {
-  "about": "The steady CPU that k3s and the runtime spend for a node and for each pod outside the pod cgroups, in threads of the fastest node. node: the k3s process of a node without pods (agent: the kubelet; server: the kubelet and the control plane). The kubelet grows by kubeletPerPod and the containerd shim and containerd by shimPerPod for each pod (millicores). containerd collects the statistics of each gVisor container and sandbox every statsPeriodSeconds with one runsc command of runscStatsCpuSeconds. An exec probe starts one command of execCpuSeconds at each period. cpu_requests.py turns the values into the RuntimeClass overhead (pod_fixed(), ../cluster/runtimeclasses.yaml) and into the part of each pod request that depends on its containers and exec probes (runtime_cost()). The values are steady costs, so the start-peak factor does not apply. shimMemory is the memory of the shim and the runsc process of one gVisor pod outside its pod cgroup (proportional set size, about 13.5 MiB on each node). The gVisor memoryOverhead is about twice that value. The Kata memoryOverhead covers the guest memory and the VMM (../cluster/runtimeclasses.yaml).",
+  "about": "The steady CPU that k3s and the runtime spend for a node and for each pod outside the pod cgroups, in threads of the fastest node. node: the k3s process of a node without pods (agent: the kubelet; server: the kubelet and the control plane). The kubelet grows by kubeletPerPod and the containerd shim and containerd by shimPerPod for each pod (millicores). containerd collects the statistics of each gVisor container and sandbox every statsPeriodSeconds with one runsc command of runscStatsCpuSeconds. An exec probe starts one command of execCpuSeconds at each period. cpu_requests.py turns the values into the RuntimeClass overhead (pod_fixed(), ../cluster/runtimeclasses.yaml) and into the part of each pod request that depends on its containers and exec probes (runtime_cost()). The values are steady costs, so the start-peak factor does not apply. shimMemory is the memory of the shim and the runsc process of one gVisor pod outside its pod cgroup (proportional set size, about 13.5 MiB on each node). The gVisor memoryOverhead is about twice that value. The Kata memoryOverhead covers the 512 MiB base memory of the guest and the memory outside the guest of the shim, the VMM, virtiofsd and the kernel (../cluster/runtimeclasses.yaml).",
   "measured": "2026-11-15, site of three nodes with two zones: CPU of the k3s service cgroup by process over 3 x 60 s, the count of runsc commands, and 40 timed runsc statistics calls on each node",
   "node": {
    "agent": "130m",
@@ -423,7 +423,7 @@
   },
   "kata": {
    "overhead": "5m",
-   "memoryOverhead": "1Gi"
+   "memoryOverhead": "640Mi"
   }
  }
 }

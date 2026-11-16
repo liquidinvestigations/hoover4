@@ -212,8 +212,11 @@ python3 k3s/zones/zone.py delete zone-x
     (`runtime_cost()`), and names it in the annotation `hoover.dev/cpu-runtime`. containerd collects the statistics of
     each gVisor container every 10 s with one runsc command of about 7 ms (0.7m). Each liveness and readiness exec
     probe starts one command of about 45 ms at each period (4.5m at 10 s).
-  - The memory overhead is 32 MiB for gVisor (the shim and its runsc process use about 14 MiB) and 1 GiB for Kata
-    (the guest and the VMM).
+  - The memory overhead is 32 MiB for gVisor (the shim and its runsc process use about 14 MiB) and 640 MiB for Kata.
+    A Kata pod cgroup holds the VM, the shim and virtiofsd. The host keeps each guest page that the guest used once,
+    so the cgroup grows to the guest size: 512 MiB of `default_memory` plus the container limits. The pod cgroup limit
+    is the container limits plus the overhead, so the overhead holds the 512 MiB and the memory outside the guest
+    (at most 60 MiB per pod under load). See [Size the memory](#size-the-memory).
   - The values are steady costs, so the start-peak factor of the requests does not apply to them. A runc pod outside
     the renders, for example a platform DaemonSet, has no RuntimeClass, and its cost stays in the free CPU of the node.
 - The renders keep the runtime cost low. containerd collects the CPU statistics every 10 s
@@ -223,8 +226,8 @@ python3 k3s/zones/zone.py delete zone-x
   `http_probe()`). The post-renderer removes the openDesk exec probes that always pass (`exit 0`), uses a TCP probe
   for memcached, and lengthens the Nextcloud and Redis probe periods to 10 s (`probes()` of
   [zones/postrender.py](zones/postrender.py)). The Temporal readiness probe of the site runs every 15 s.
-- The memory request of a pod follows its measured use ([zones/memory-limits.json](zones/memory-limits.json) `requests`,
-  [hoover/manifests.py](hoover/manifests.py) `REQUESTS`). The CPU request of a measured workload is
+- The memory request of a pod is its measured peak under load ([Size the memory](#size-the-memory)). The CPU request
+  of a measured workload is
   `baseline + 0.2 x (start peak - baseline)`, rounded up to 10m, from [zones/cpu-requests.json](zones/cpu-requests.json).
   The start peak is the highest CPU rate (1 min) from the pod start until Ready plus 120 s, and the baseline is the
   median CPU rate in an idle period. Each pod names them in the annotations `hoover.dev/cpu-start-peak`,
@@ -241,9 +244,11 @@ python3 k3s/zones/zone.py delete zone-x
   Deployments start them again on another node. A pod of the default priority preempts no pod, and two pods of the class
   do not preempt each other, so preemption does not repeat. The Hoover render, the post-renderer of openDesk
   ([zones/postrender.py](zones/postrender.py)) and the store installers set the class. A chart value stays.
-- The descheduler ([cluster/descheduler.yaml](cluster/descheduler.yaml)) moves running stateless pods every 10 minutes
-  with `LowNodeUtilization` on the requests: from a node more than 15 points above the mean requested CPU or memory to
-  a node more than 15 points below the mean in both. It never moves a pod with a claim, a store pod, a Job pod, a pod
+- The descheduler ([cluster/descheduler.yaml](cluster/descheduler.yaml)) runs once in the last step `descheduler` of
+  `deploy-k3s up`, as a Job with a deadline of 300 s ([cluster/deschedule.py](cluster/deschedule.py)). The step deletes
+  the Job when it ends, and fails when the Job does not complete. No descheduler runs between deployments. It moves
+  running stateless pods with `LowNodeUtilization` on the requests: from a node more than 15 points above the mean
+  requested CPU or memory to a node more than 15 points below the mean in both. It never moves a pod with a claim, a store pod, a Job pod, a pod
   without a controller, a pod of the class `hoover-node-bound`, a pod younger than 15 minutes, or a pod of the platform
   namespaces. The band of 30 points around the mean keeps a moved pod from moving back. The PodDisruptionBudgets of
   openDesk apply to its evictions. The scheduler respects them in a preemption when another victim is possible.
@@ -276,6 +281,60 @@ The certificate of `*.<domain>` and the DNS record of `*.<domain>` cover every z
   One sign-in opens every host of the zone. The gate of another zone does not accept the cookie.
 - The HTTPS frontend serves the one site `*.<domain>` ([platform/frontend/frontend-sync.sh](platform/frontend/frontend-sync.sh)). It takes the zone id from the host name and asks the gate of that zone. It removes the gate cookies from the requests to the applications. Another name below the domain gets 404.
 - `python3 k3s/platform/calls/public_endpoints.py dns` prints the records `*.<domain>`, `<domain>` and `turn.<domain>`.
+
+### Keep the pods in place.
+
+A pod stops or moves on a running site only in a deployment: `deploy-k3s up`, a zone operation of the portal or of
+`zones/zone.py`, and a settings Apply. The other sources have these limits:
+
+| Source | Between deployments |
+|---|---|
+| Descheduler | No. It runs only in the last step of `up` ([cluster/deschedule.py](cluster/deschedule.py)). |
+| Preemption | No. Only a new pod of the class `hoover-node-bound` preempts. The renders give the class only to Deployments, StatefulSets, the operator portal and the coturn probe pod of the calls step, so no Job or CronJob creates such a pod. |
+| Node-pressure eviction | No, while each pod stays at its measured peak: the requests hold the peaks and the kubelet reserves the memory of k3s and the system ([Size the memory](#size-the-memory)). |
+| OOM kill | A container above its limit restarts in its pod, on its node. The limits stay above the measured peaks. |
+| CronJobs and Jobs | They start their own pods only. Their pods have the default priority, so they preempt no pod. |
+| Rollout | A large single-replica Deployment stops its old pod before the new pod starts (`rollout()` of [zones/postrender.py](zones/postrender.py), `Recreate` in the Hoover render), so an update needs no free memory for a second pod. |
+| Node restart | A node that returns within 300 s restarts its pods in place. After 300 s the taint `node.kubernetes.io/unreachable` evicts its pods, and their controllers start them on other nodes. The pods of the class `hoover-node-bound` wait for their node. |
+| Zone backup | The scheduled zone copy scales the applications of the zone to zero and back ([Back up and restore](#back-up-and-restore)). |
+
+### Size the memory.
+
+The memory request of each workload is its peak under load ([zones/memory-requests.json](zones/memory-requests.json),
+[zones/memory_requests.py](zones/memory_requests.py)). `peak` is the highest working set of the pod cgroup on the host
+in a load and the 30 minutes after it. `request` is `margin` x `peak`, rounded up to 32 MiB. A workload without an
+entry keeps the request of its installer ([hoover/manifests.py](hoover/manifests.py) `REQUESTS`).
+
+- The pod cgroup holds every container of the pod and the gVisor sentry. For a Kata pod it holds the VM, the shim and
+  virtiofsd. The render gives the main container the table value minus the requests of the other containers, and for
+  a Kata pod also minus the RuntimeClass overhead, which the scheduler adds to the pod. So a Kata pod requests its
+  peak with the margin, and at least the overhead of 640 MiB and 16 MiB.
+- `outsidePeak` of a Kata workload is the highest difference between its pod cgroup and the working set of its
+  containers in the guest. It holds the guest kernel, the agent, the guest pages that the host keeps after the guest
+  freed them, and the memory outside the guest. The host part outside the guest (the heaps of the shim, Cloud
+  Hypervisor and virtiofsd, and the kernel memory of the cgroup) was at most 60 MiB per pod.
+- The kubelet reserves the memory of k3s, the system and the kernel beside the pods (`system-reserved`,
+  [config.py](config.py) `kubelet_reserved()`): `node` of the table, from the highest difference between the node working
+  set and the pods in the load, with the margin. `server` holds the control plane. A site value `reserved` with
+  `memory=` replaces it. The hard eviction threshold stays `memory.available<500Mi`, and no soft threshold is set. So
+  a node reaches memory pressure only when its pods use more than their requests.
+- The limits stay in [zones/memory-limits.json](zones/memory-limits.json). The tool names each workload whose limit is
+  below its peak.
+
+The load of a measurement: an ingest of the fixture corpus in each zone (`hoover/seed.py <zone>` and
+`hoover/seed.py <zone> --browser`), the browser load of [tools/load/monkey.py](tools/load/monkey.py) with two tabs for
+each user in every application, and a ClamAV signature reload (`RELOAD` on the clamd socket) at the start and in the
+middle. Sample the Kata guests in the same time with [tools/load/guest_sampler.py](tools/load/guest_sampler.py). Then
+write the table:
+
+```sh
+python3 k3s/tools/load/guest_sampler.py guest.jsonl --seconds 7200
+python3 k3s/zones/memory_requests.py measure --zone zone-a --zone zone-b --start T --end T --guest guest.jsonl --write
+python3 k3s/zones/memory_requests.py measure --site --start T --end T --guest guest.jsonl --write
+```
+
+`--write` keeps the margin, and with `--guest` it also writes `node`. The next `up` applies the requests and the reserve.
+The pods whose request changes start again.
 
 ## Deploy a site.
 

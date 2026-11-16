@@ -23,10 +23,15 @@ metadata:
 handler: kata
 overhead:
   podFixed:
-    # The VM runs in the pod cgroup. Its guest has 512 MiB (default_memory, ../ansible/roles/hoover4_k3s/tasks/kata.yml) plus the
-    # container limits, and Cloud Hypervisor used 212 to 328 MiB on the public host. With a smaller overhead a guest
-    # that fills its memory, for example with the page cache of a store, exceeds the cgroup, and the kernel kills the VM.
-    memory: 1Gi
+    # The VM, its shim and virtiofsd run in the pod cgroup (sandbox_cgroup_only). The guest has 512 MiB
+    # (default_memory, ../ansible/roles/hoover4_k3s/tasks/kata.yml) plus the container limits. The host keeps each
+    # guest page that the guest used once. So the pod cgroup grows to the guest size, for example with the page cache
+    # of a store. The limit of the pod cgroup is the container limits plus this overhead. The overhead holds the 512
+    # MiB of the guest and the memory outside the guest. That memory is the heaps of the shim, Cloud Hypervisor and
+    # virtiofsd, and the kernel memory of the cgroup. It was at most 60 MiB per pod under load, and 640Mi leaves 68 MiB
+    # above it. With a smaller value a full guest exceeds the cgroup, and the kernel kills the VM. The memory request
+    # of a Kata workload is its measured peak (../zones/memory_requests.py). The render subtracts this value from it.
+    memory: 640Mi
     # The steady cost of one Kata pod outside its pod cgroup: its part of the kubelet, containerd and the shim
     # (pod_fixed() of ../zones/cpu_requests.py). The VM runs in the pod cgroup, so the CPU request of the pod covers it.
     cpu: 5m

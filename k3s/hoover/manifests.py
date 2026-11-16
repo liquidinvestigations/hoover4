@@ -224,6 +224,8 @@ UNLIMITED_IN_COMPOSE = {'hoover4-full-research-agent': '2560Mi', 'hoover4-mcp-co
 # rounded up to 64 MiB. ClamAV, Tika and Tesseract request the largest working set of their pod cgroup in three days of
 # zone creates and ingests on a three-node site (2039, 626 and 464 MiB), rounded up to 64 MiB, because the earlier
 # values were below their use. A container without an entry requests DEFAULT_REQUEST. A request never exceeds the limit.
+# The measured request of ../zones/memory-requests.json replaces these values for each workload that it names
+# (workload()), so these values apply to the workloads without a measurement.
 REQUESTS = {'hoover-website': '320Mi', 'hoover-workers': '1856Mi', 'temporal': '448Mi', 'hoover4-mcp-browser': '512Mi',
             'hoover4-clamav': '2048Mi', 'hoover4-tika': '640Mi', 'hoover4-tesseract-cpu': '512Mi',
             'hoover4-regex-entity-scanner': '192Mi', 'hoover4-full-research-agent': '640Mi',
@@ -452,23 +454,38 @@ def workload(target, kind, name, spec, replicas=1, labels=None, spread=False, cl
     item = {'apiVersion': 'apps/v1', 'kind': kind, 'metadata': {'name': name, 'namespace': target.ns,
                                                                 'labels': {'app.kubernetes.io/name': name, PART: name}},
             'spec': body}
-    # The measured CPU request and its basis (../zones/cpu_requests.py, part hoover of cpu-requests.json).
+    # The measured memory request (../zones/memory_requests.py) and CPU request (../zones/cpu_requests.py), part hoover
+    # of memory-requests.json and cpu-requests.json, with their basis.
+    memory_requests().apply(item, f'{kind.lower()}/{name}', 'hoover')
     cpu_requests().apply(item, f'{kind.lower()}/{name}', 'hoover')
     return item
 
 
 def scaled_pods():
-    """{name: (MiB, millicores, public)} of one pod of each service of SCALABLE: its memory request, its CPU request of
-    ../zones/cpu-requests.json and the overhead of gVisor. public is True for a service on the public node."""
+    """{name: (MiB, millicores, public)} of one pod of each service of SCALABLE: its memory request of
+    ../zones/memory-requests.json (else REQUESTS), its CPU request of ../zones/cpu-requests.json and the overhead of
+    gVisor. public is True for a service on the public node."""
     import placement
     overhead = placement.runtime_overhead()['gvisor']
     table = cpu_requests().load().get('hoover', {})
+    memory = memory_requests().load().get('hoover', {})
     out = {}
     for name in SCALABLE:
         cpu = table.get(f'deployment/{name}', {}).get('request', '50m')
-        out[name] = (placement.mem_mi(REQUESTS.get(name, DEFAULT_REQUEST)) + overhead['memory'],
+        wanted = memory.get(f'deployment/{name}', {}).get('request') or REQUESTS.get(name, DEFAULT_REQUEST)
+        out[name] = (placement.mem_mi(wanted) + overhead['memory'],
                      placement.cpu_m(cpu) + overhead['cpu'], name in INTERNET)
     return out
+
+
+def memory_requests():
+    if 'memory_requests' not in sys.modules:
+        cpu_requests()
+        spec = importlib.util.spec_from_file_location('memory_requests', K3S / 'zones' / 'memory_requests.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sys.modules['memory_requests'] = module
+    return sys.modules['memory_requests']
 
 
 def cpu_requests():

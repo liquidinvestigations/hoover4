@@ -43,15 +43,19 @@ def resources(store):
 
 
 def site_cpu(items):
-    """Write the measured CPU request and its basis into each shared store workload of the site.
+    """Write the measured memory and CPU requests and their basis into each shared store workload of the site.
 
-    The values are the part site of ../../zones/cpu-requests.json (../../zones/cpu_requests.py). A workload without a
-    measurement keeps the request of resources().
+    The values are the part site of ../../zones/memory-requests.json (../../zones/memory_requests.py) and of
+    ../../zones/cpu-requests.json (../../zones/cpu_requests.py). A workload without a measurement keeps the request of
+    resources().
     """
     import cpu_requests
+    import memory_requests
     for o in items:
         if o['kind'] in ('Deployment', 'StatefulSet'):
-            cpu_requests.apply(o, f"{o['kind'].lower()}/{o['metadata']['name']}", 'site')
+            key = f"{o['kind'].lower()}/{o['metadata']['name']}"
+            memory_requests.apply(o, key, 'site')
+            cpu_requests.apply(o, key, 'site')
     return items
 
 

@@ -1,5 +1,8 @@
 # The Kubernetes descheduler moves running stateless pods off nodes with a high requested share, for example after a
-# node joins. setup.sh applies this file. The scheduler then places each evicted pod by the requested CPU and memory
+# node joins. It runs only during a deployment: deschedule.py runs it once as a Job in the last step of deploy-k3s up,
+# after the zones and the call services, and deletes the Job when it ends. No descheduler runs between deployments,
+# so no pod moves outside a deployment. setup.sh applies the account, the rights and the policy of this file.
+# The scheduler then places each evicted pod by the requested CPU and memory
 # shares of the nodes (the scheduler configuration of ../ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2).
 # LowNodeUtilization compares the requests of each node with the mean of all nodes (useDeviationThresholds):
 # - A node is underused when its requested CPU and its requested memory are both more than 15 points below the mean.
@@ -7,7 +10,7 @@
 # The descheduler evicts pods only when the site has both kinds, and only until the overused node is inside the band.
 # Nodes inside the band of 30 points around the mean never lose pods, so a moved pod does not move back.
 # A node that joins has no requests, so it is underused until it takes its share of the pods.
-# A run evicts at most 5 pods of a node and 10 pods in total, every 10 minutes, so the moves are gradual.
+# A run evicts at most 5 pods of a node and 10 pods in total, so the moves are gradual.
 # The evictor never evicts:
 # - a pod with a claim (PodsWithPVC). TopoLVM claims are local volumes on one node, and the store pods have claims.
 # - a pod with the label hoover.dev/store (the stores of the zones and of the site), or a pod of a Job
@@ -111,45 +114,3 @@ data:
         plugins:
           balance:
             enabled: [LowNodeUtilization]
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: descheduler
-  namespace: kube-system
-  labels: {app.kubernetes.io/name: descheduler}
-spec:
-  replicas: 1
-  selector:
-    matchLabels: {app.kubernetes.io/name: descheduler}
-  template:
-    metadata:
-      labels: {app.kubernetes.io/name: descheduler}
-      # setup.sh writes the hash of this file, so a changed policy restarts the descheduler, which reads it at start.
-      annotations: {hoover.dev/source-hash: SOURCE_HASH}
-    spec:
-      serviceAccountName: descheduler
-      priorityClassName: system-cluster-critical
-      containers:
-        - name: descheduler
-          image: registry.k8s.io/descheduler/descheduler:v0.36.0@sha256:7ca92c0a7b4f1c51d306409da6b832005fcadb224e384795646376726734c6e5
-          command: [/bin/descheduler]
-          args: [--policy-config-file=/policy/policy.yaml, --descheduling-interval=10m, --v=3]
-          resources:
-            requests: {cpu: 10m, memory: 64Mi}
-            limits: {cpu: 500m, memory: 256Mi}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 65534
-            capabilities: {drop: [ALL]}
-          livenessProbe:
-            httpGet: {path: /healthz, port: 10258, scheme: HTTPS}
-            initialDelaySeconds: 5
-            periodSeconds: 20
-          volumeMounts:
-            - {name: policy, mountPath: /policy, readOnly: true}
-      volumes:
-        - name: policy
-          configMap: {name: descheduler-policy}

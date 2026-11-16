@@ -370,8 +370,22 @@ def test_the_reserve_covers_the_base_cost_of_k3s_and_the_threads_that_a_slow_nod
     # The memory of a site value stays, and the formula gives the CPU.
     node.reserved = 'memory=4Gi'
     assert config.kubelet_reserved(node, 1.0, 4, base=BASE) == 'memory=4Gi,cpu=200m'
+    # Without a site value the measured memory of k3s and the system beside the pods is the memory reserve.
+    node.reserved = ''
+    memory = {'agent': 2048, 'server': 3072}
+    assert config.kubelet_reserved(node, 1.0, 12, base=BASE, memory=memory) == 'memory=2048Mi,cpu=200m'
+    assert config.kubelet_reserved(node, 1.0, 12, server=True, base=BASE, memory=memory) == 'memory=3072Mi,cpu=300m'
+    node.reserved = 'memory=4Gi'
+    assert config.kubelet_reserved(node, 1.0, 4, base=BASE, memory=memory) == 'memory=4Gi,cpu=200m'
     values = host_vars(site_text('remote.yml'), 'worker-b') | {'hoover4_kubelet_reserved': 'cpu=2200m'}
     assert '  - system-reserved=cpu=2200m\n' in render('config.yaml.j2', values)
+
+
+def test_the_memory_reserve_comes_from_the_memory_table():
+    table = json.loads(config.MEMORY_TABLE.read_text())
+    assert config.base_memory(table) == {k: int(config._memory_gib(table['node'][k]) * 1024) for k in ('agent', 'server')}
+    assert 0 < config.base_memory()['agent'] <= config.base_memory()['server']
+    assert config.base_memory({'zone': {}}) == {}
 
 
 def test_the_base_cost_comes_from_the_cpu_table():
@@ -388,7 +402,8 @@ def test_up_uses_the_stored_speed_and_measures_only_a_node_without_one(tmp_path)
     nodes = config.ansible_variables(site, tmp_path)['hoover4_nodes']
     assert nodes['server-a']['speed_stored'] and nodes['worker-b']['speed_stored'] and not nodes['edge']['speed_stored']
     base = config.base_cpu()
-    assert nodes['worker-b']['kubelet_reserved'] == config.kubelet_reserved(site.nodes['worker-b'], 0.5, 4, base=base)
+    assert nodes['worker-b']['kubelet_reserved'] == config.kubelet_reserved(site.nodes['worker-b'], 0.5, 4, base=base,
+                                                                          memory=config.base_memory())
     assert config.ansible_variables(site, tmp_path)['hoover4_speed_dir'] == str(tmp_path / 'speed')
     # The facts play no longer measures the speed, so a new facts file does not change the factors.
     (tmp_path / 'facts').mkdir()

@@ -50,9 +50,10 @@ SEPARATE = (('clickhouse', 'manticore'), ('clickhouse', 'manticore-vectors'))
 SCORE = ('memory_per_mille', 'shared_pairs', 'cpu_per_mille', 'memory_per_mille_without_zones',
          'cpu_per_mille_without_zones')
 # The requests of one zone (openDesk and Hoover, with the runtime overhead of each pod) when no zone runs: a zone of a
-# three-node site with the default applications and settings, measured after its create. public is the part of the pods
-# that name the public node, the services that reach the internet (../manifests.py INTERNET).
-ZONE_ESTIMATE = {'memory': 35139, 'cpu': 5120, 'public': {'memory': 2080, 'cpu': 60}}
+# three-node site with the default applications and settings. The memory is the sum of the measured requests of
+# ../../zones/memory-requests.json of 2026-11-16. public is the part of the pods that name the public node, the services
+# that reach the internet (../manifests.py INTERNET).
+ZONE_ESTIMATE = {'memory': 32976, 'cpu': 5120, 'public': {'memory': 2080, 'cpu': 60}}
 # The label of the pods of the stateless services that vars.replicas scales (../manifests.py SCALABLE).
 APP_LABEL = 'app.kubernetes.io/name'
 
