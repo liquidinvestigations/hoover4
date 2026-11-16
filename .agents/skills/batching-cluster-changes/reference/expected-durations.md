@@ -17,9 +17,11 @@ A larger site must not be slower.
 | `up` step `stores`, no store change | 5 to 36 s | 2 min |
 | `up` step `stores`, new stores | 228 to 270 s | 7 min |
 | `up` step `prepull` | about 77 s | 3 min |
+| `up` step `placement` | 2 to 3 s, 78 s with a new render and an empty chart cache | 3 min |
 | `up --target all` without a zone change | about 243 s | 7 min |
-| `up --target all` without any change (second run) | 211 s, of which each zone step about 155 s | 6 min |
-| Zone apply without a chart change | about 100 s for the openDesk waves | 5 min |
+| `up --target all` without any change (second run) | 72 s, of which each zone step 15 to 16 s | 3 min |
+| `up` zone step that runs the openDesk waves (changed input or `--full`) | 127 to 146 s, of which the waves about 95 s | 5 min |
+| Zone apply without a chart change | 127 s, of which about 95 s for the openDesk waves | 5 min |
 | Zone create | 1036 to 1178 s | 25 min |
 | Zone delete | 146 to 187 s | 5 min |
 | ClickHouse export of a small collection | under 1 min | 3 min |

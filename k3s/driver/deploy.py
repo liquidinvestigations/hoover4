@@ -931,8 +931,37 @@ def step_frontend(ctx):
     return {'tls_mode': config.tls_mode(public)}
 
 
+def rolled_out(item):
+    """True when the status of a Deployment or a StatefulSet shows the result that wait_rollouts() waits for.
+
+    The controller saw the current generation. Every replica runs the current template and is available or ready. No
+    old replica remains. An OnDelete StatefulSet needs only its ready replicas. False means that the status alone does
+    not prove a complete rollout.
+    """
+    spec, status = item['spec'], item.get('status') or {}
+    replicas = spec.get('replicas', 1)
+    if status.get('observedGeneration', 0) < item['metadata'].get('generation', 1):
+        return False
+    if item['kind'] == 'Deployment':
+        return (status.get('updatedReplicas', 0) >= replicas and status.get('replicas', 0) <= status.get('updatedReplicas', 0)
+                and status.get('availableReplicas', 0) >= status.get('updatedReplicas', 0))
+    strategy = spec.get('updateStrategy') or {}
+    if strategy.get('type') == 'OnDelete':
+        # The same condition as the kubectl wait of wait_rollouts().
+        return status.get('readyReplicas', 0) == replicas
+    if status.get('readyReplicas', 0) < replicas:
+        return False
+    partition = (strategy.get('rollingUpdate') or {}).get('partition', 0)
+    if partition:
+        return status.get('updatedReplicas', 0) >= replicas - partition
+    return bool(status.get('updateRevision')) and status.get('updateRevision') == status.get('currentRevision')
+
+
 def wait_rollouts(ctx, namespace, timeout=1800):
-    """Wait until every Deployment and StatefulSet of a namespace with replicas is ready, and every claim is Bound."""
+    """Wait until every Deployment and StatefulSet of a namespace with replicas is ready, and every claim is Bound.
+
+    A workload whose status already shows a complete rollout (rolled_out()) needs no kubectl call, so a namespace
+    without a change costs one list request."""
     text = ctx.kubectl('-n', namespace, 'get', 'deployments,statefulsets', '-o', 'json', check=False)
     try:
         items = json.loads(text)['items']
@@ -940,7 +969,7 @@ def wait_rollouts(ctx, namespace, timeout=1800):
         raise StepFailed(f'the workloads of {namespace} are unreadable')
     for item in items:
         name = item['metadata']['name']
-        if item['spec'].get('replicas', 1) == 0:
+        if item['spec'].get('replicas', 1) == 0 or rolled_out(item):
             continue
         if (item['spec'].get('updateStrategy') or {}).get('type') == 'OnDelete':
             # kubectl rollout status refuses an OnDelete StatefulSet. Its ready replicas show that it runs.
@@ -1072,7 +1101,8 @@ def step_zone(zone):
         # with the certificate of *.<domain>, so a zone needs no frontend change.
         ctx.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import zone; zone.register(sys.argv[2])',
                  SOURCE / 'zones', zone])
-        ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone])
+        # zone.py runs the openDesk waves only when an input of the zone changed. up --full runs them in every zone.
+        ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone] + (['--full'] if getattr(ctx, 'full', False) else []))
         hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the zone changes that the Helm render cannot hold. Usage: zone-patches.py <zone>
+"""Apply the zone changes that the Helm render cannot hold. Usage: zone-patches.py <zone> [--discovery]
 
 zone.py runs this script after each Helm pass. postrender.py holds every change of a rendered object. This script holds
 the changes of application state. Each change checks the current state first, so a second run changes nothing.
@@ -13,6 +13,7 @@ the changes of application state. Each change checks the current state first, so
   was ready is empty, and each document open then fails with HTTP 500. The script fetches it again after Collabora is
   Ready and keeps the callback address.
 The three AI steps run only when <state folder>/ai.json exists.
+--discovery runs only the Collabora discovery check. zone.py runs it when no input of the zone changed.
 The script prints one JSON line for each change it makes.
 """
 import json,os,pathlib,subprocess,sys,time
@@ -49,6 +50,8 @@ def office_discovery():
  nextcloud('php','/var/www/html/occ','richdocuments:activate-config',f'--callback-url={callback}')
  if not discovery_valid():sys.exit('Nextcloud did not get a valid Collabora discovery')
  print(json.dumps({'zone':zone,'change':'Collabora discovery fetched again'}),flush=True)
+if '--discovery' in sys.argv[2:]:
+ office_discovery();sys.exit(0)
 # A host without private/ai.json keeps the empty AI values that zones.py renders.
 if (settings.PRIVATE/'ai.json').exists():
  subprocess.run([sys.executable,str(lab/'zone-ai.py'),zone],check=True,stdout=subprocess.DEVNULL)

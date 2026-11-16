@@ -45,6 +45,8 @@ An upgrade installs the scripts and the images of the commit of the checkout.
 
 The record of a run pins the commit, the uncommitted changes of the checkout, the site file, the saved settings revision and the cluster.
 A resume refuses a change of these inputs. A second `up` of the same commit changes no object, starts or restarts no pod and builds no image. A commit that changes no input of an image keeps its tag.
+A zone step runs the openDesk waves only when an input of the zone or a Helm release of the zone changed since its last complete run.
+After a change by hand, for example a deleted zone user or an edited object, run `k3s/deploy-k3s up --target all --full`.
 A waiting or failed step stops every step that depends on it.
 The step `placement` lowers the CPU requests of the site by one factor when the pods do not fit, and resizes the running pods in place. A normal `up` moves no running pod. `up --rebalance` moves running pods to their planned nodes one at a time, so run it in a maintenance window.
 Between two runs no pod moves, except in the cases of [Keep the pods in place](../../../k3s/Readme.md#keep-the-pods-in-place).

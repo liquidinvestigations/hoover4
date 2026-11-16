@@ -264,6 +264,27 @@ python3 k3s/zones/zone.py delete zone-x
   An entry without an installed release uses `helmfile sync`, so a new zone has no diff pass. A failed entry runs once
   more on its own, and the log names the cause (`helmfile-retry`). An openDesk release with another entry list stops
   the install until `OPENDESK_WAVES` names its entries.
+- The waves and the steps that set the login flow, the users and the application state run only after a change.
+  `zone.py` compares a digest of their inputs with the record `zones/<zone>/opendesk-applied.json` of the state
+  folder, which the last complete run of the zone wrote. It also compares the Helm releases of the zone namespace.
+  The inputs are these:
+  - the openDesk release, the post-renderer with its modules and tables, the pinned tool versions and the scripts of
+    the application state
+  - the openDesk values and the other files of the zone folder, the shared value files, the zone user passwords and
+    `ai.json`
+  - the zone state entry, the effective operator settings and the site settings
+  - the environment of helmfile, the Kubernetes version and the storage tiers
+
+  The Helm releases must have the recorded names, revisions and charts, and the status `deployed`. The log line
+  `opendesk-check` names each changed input. Without a change, only the Collabora discovery check of
+  `zone-patches.py` runs. The record is part of the cluster copy of the zone secrets. The runner of the operator pod
+  and every workstation therefore read the same record.
+- A change by hand of an object or of the application state is not an input. `zone.py apply <zone> --full` and
+  `deploy-k3s up --full` run the waves and the application state steps without the check.
+- helmfile keeps each pulled chart version in `opendesk-charts/` of the state folder, with a lock file for each
+  version. It pulls and verifies only a version that is missing. The cache is not part of the cluster copy. On the test
+  site it holds 33 chart versions in 24 MiB. Remove the folder to pull every chart again, for example after an
+  interrupted pull.
 - `deploy-k3s up` applies each zone of the zone state again, after the platform steps. It runs at most
   `vars.deploy.parallel_zones` zone steps at the same time (default 2).
 
@@ -448,11 +469,12 @@ k3s/deploy-k3s measure-speed --site <file> --target <node>   # see "Measure the 
   A settings save takes no lock, so a save during a run waits as a later revision.
 - A failed step ends the run. A failed play names the nodes of its failed tasks, and the log of the record holds the output of each task.
 - A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
+  A workload whose status shows a complete rollout needs no `kubectl rollout status` call.
 - A zone step then starts a check pod with the OIDC egress label of oauth2-proxy. The pod sends an invalid sign-in code with the client secret of the proxy to Keycloak. The step fails when Keycloak does not answer `invalid_grant`, for example when a NetworkPolicy or a DNS answer blocks the token exchange.
   The step records a digest of the objects that the sign-in depends on: the workloads, NetworkPolicies, Services, Secrets, ConfigMaps and Ingresses of the zone and its Hoover namespace, and the CoreDNS configuration. When the digest equals the one of the last complete `up`, the check pod does not run.
 - A second `up` without a change of its inputs changes no object, starts, deletes or restarts no pod, builds no image and restarts no service:
   the image tags are digests of the image inputs (see [Render a Hoover installation](#render-a-hoover-installation)), the operator step restarts a pod of `operator-portal` only when the configuration that it reads at start changed,
-  a zone apply restarts the portal server only at the first install of the zone, the prepull step starts no pull pod when the Hoover images, the openDesk release and the nodes are those of the last complete `up`,
+  a zone apply restarts the portal server only at the first install of the zone and runs the openDesk waves only on a changed input, the prepull step starts no pull pod when the Hoover images, the openDesk release and the nodes are those of the last complete `up`,
   the probe of the calls step runs again only when its inputs changed, the ingress and monitoring steps upgrade a Helm release only when its chart version or values changed ([platform/helm-release.sh](platform/helm-release.sh)), and the registry step starts no pod on the nodes, because the host play writes the registry mirror file.
   The record of the deployment changes. The cluster copy of the state changes only when a file of the state changed, for example the placement plan after pods moved.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.

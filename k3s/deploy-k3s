@@ -4,7 +4,7 @@
 Usage:
   deploy-k3s render    --target NODE... [--manifests]                    print the configuration. Changes no host.
   deploy-k3s check     --target NODE...                                  check the hosts and the site. Changes no host.
-  deploy-k3s up        --target NODE... [--steps STEP...] [--start] [--rebalance]
+  deploy-k3s up        --target NODE... [--steps STEP...] [--start] [--rebalance] [--full]
   deploy-k3s up        --resume RECORD
   deploy-k3s down      --target NODE... [--steps STEP...]
   deploy-k3s down      --resume RECORD
@@ -24,6 +24,8 @@ up --start starts what down stopped: k3s, then the stores, Temporal, the applica
 up moves no running pod, and a second up without a change of its inputs changes nothing. up --rebalance adds the last
 step rebalance: it moves the running pods of the site to the nodes of a new plan, one at a time, waits until each new
 pod is ready, and stops at the first failure. Run it in a maintenance window, because each moved pod restarts.
+A zone step runs the openDesk waves only when an input of the zone changed (zones/zone.py). up --full runs them in
+every zone step, for example to correct a change by hand.
 down stops the ingress, the applications and workers, Temporal, the stores, and then k3s. It cancels no workflow.
 --steps runs only the named steps of the plan. render prints the plan.
 The cluster holds the zone state, the zone secrets and the operator state (clusterstate.py). Each command reads the
@@ -231,6 +233,7 @@ def main(argv):
     parser.add_argument('--resume')
     parser.add_argument('--start', action='store_true')
     parser.add_argument('--rebalance', action='store_true')
+    parser.add_argument('--full', action='store_true')
     parser.add_argument('--manifests', action='store_true')
     parser.add_argument('--ask-become-pass', action='store_true')
     args = parser.parse_args(argv)
@@ -302,6 +305,7 @@ def main(argv):
         if args.resume:
             ctx.kubelet_hold = record.get('kubelet_hold') or {}
             ctx.rebalance = bool(record.get('rebalance'))
+            ctx.full = bool(record.get('full'))
             steps = deploy.plan(ctx, record['command'], targets, start=record.get('start', False))
             names = [s['name'] for s in record['steps']]
             missing = [n for n in names if n not in steps]
@@ -313,6 +317,7 @@ def main(argv):
             # (../kubelet.py).
             ctx.kubelet_hold = deploy.kubelet_hold(ctx, targets) if args.command == 'up' and not args.start else {}
             ctx.rebalance = args.rebalance and args.command == 'up' and not args.start
+            ctx.full = args.full and args.command == 'up' and not args.start
             steps = deploy.select(deploy.plan(ctx, args.command, targets, start=args.start), args.steps)
             if 'hosts:k3s' not in steps:
                 ctx.kubelet_hold = {}
@@ -320,6 +325,7 @@ def main(argv):
             complete = not args.steps and not args.start and set(targets) == set(site.nodes)
             record = ctx.records.new(args.command, targets, revision, list(steps), start=args.start, complete=complete,
                                      kubelet_hold=ctx.kubelet_hold, image_tags=ctx.image_tags(required=False), rebalance=ctx.rebalance,
+                                     full=ctx.full,
                                      checkout=str(ctx.repo), checkout_changes=deploy.dirty_files(ctx.repo),
                                      applied_before=(ctx.records.applied() or {}).get('revision'),
                                      inputs=deploy.pinned_inputs(ctx))

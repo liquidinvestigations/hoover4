@@ -2,13 +2,14 @@
 """Create, upgrade or delete one zone: openDesk, its stores and its Hoover. This is the one installer command of a zone.
 
 Usage:
-  zone.py apply <zone> [--stores site|local]
+  zone.py apply <zone> [--stores site|local] [--full]
                 [--dataset name:node:/path ...]
                                           create the zone, or bring it to the source state. The options set the
                                           values of a new zone (zonestate.py), and each option must match for an
                                           existing zone. --home <node> of an earlier version is accepted and has no
-                                          effect, because the scheduler places the pods of a zone.
-  zone.py delete <zone>                   delete the zone namespaces with their volumes, and the zone entry.
+                                          effect, because the scheduler places the pods of a zone. --full runs the
+                                          openDesk waves also when no input changed (step 5).
+  zone.py delete <zone>                  delete the zone namespaces with their volumes, and the zone entry.
 The zone state of the state folder holds the zones. The site file names no zone.
 Apply reads the current state before each step. Verify unchanged output with ../tools/zone-snapshot.py after an upgrade.
 An apply of a disabled zone saves a private render without applying objects or running hooks.
@@ -23,7 +24,8 @@ The steps of apply, in order:
      gate client Secrets.
   5. helmfile installs openDesk wave by wave (OPENDESK_WAVES), with postrender.py as the Helm post-renderer. The
      entries of one wave (the sub-helmfiles of the release) run at the same time, each in its own helmfile process with
-     its own chart cache. An entry without an installed release, or with a release that is not deployed, uses
+     its own Helm configuration. They share the chart cache <state folder>/opendesk-charts (CHART_CACHE): helmfile
+     pulls a chart version once, verifies its signature, and keeps it. An entry without an installed release, or with a release that is not deployed, uses
      helmfile sync, and an entry with only deployed releases uses helmfile apply with a server-side diff. A release
      list that differs from the waves stops the install. A failed entry runs once more on its own after the repair of
      its known cause, and the log names the cause: a new zone has no 2fa-browser flow, which the openDesk Keycloak
@@ -33,8 +35,15 @@ The steps of apply, in order:
      The zone state records the completion (bootstrapped), so an existing zone keeps its OpenProject integration.
      While the waves run, a helper sets the login flow as soon as zone-login-no-mfa.sh succeeds, checks Nextcloud, and replaces
      outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
+     The waves and step 6 run only when an input changed (opendesk_changes()): the digest of every input that they read
+     (opendesk_inputs()) differs from the record of the last complete run, or a Helm release of the zone namespace has
+     another revision or a status other than deployed. The record is zones/<zone>/opendesk-applied.json of the state
+     folder, in the cluster copy of the zone secrets, so every operator host reads the same record. --full runs the
+     waves and step 6 without this check, for example after a change by hand.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
-     gate.py adds the sign-in service of the zone gate.
+     When the waves do not run, only the Collabora discovery check of zone-patches.py runs, because a Nextcloud start
+     before Collabora is ready breaks the discovery without an input change. gate.py adds the sign-in service of the
+     zone gate.
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
      stores = site (every new zone, with temporal = site and manticore = site) gets a tenant in the shared ClickHouse,
      Garage, Manticore and Temporal of the site, which deploy-k3s up creates (step stores, ../hoover/stores/shared.py
@@ -78,6 +87,27 @@ PRIVATE = settings.PRIVATE
 OPENDESK = PRIVATE / 'downloads/opendesk-v1.19.1/src'
 TOOLS = PRIVATE / 'bin/opendesk'
 STORES = SOURCE / 'hoover' / 'stores'
+# The chart cache of the openDesk waves. helmfile keeps each pulled chart version in <cache>/<repository>/<chart>/<version>
+# and takes a lock file for each version, so the processes of both zones share the folder. A version that is in the
+# cache is not pulled again. Remove the folder to pull every chart again. It is not part of the cluster copy.
+CHART_CACHE = PRIVATE / 'opendesk-charts'
+# The record of the last complete openDesk run of a zone, in the zone folder of the cluster copy of the zone secrets.
+RECORD_NAME = 'opendesk-applied.json'
+# The files of the checkout, relative to k3s/, that the openDesk waves and the application state steps read: this
+# installer, the post-renderer with the modules and tables that it reads, the pinned tool versions, and the scripts of
+# step 6. test_zones.py checks that the list names every local module of the post-renderer.
+INPUT_SOURCES = (
+    'zones/zone.py', 'zones/postrender.py', 'zones/cpu_policy.py', 'zones/cpu-policy.json', 'zones/cpu_requests.py',
+    'zones/cpu-requests.json', 'zones/memory_requests.py', 'zones/memory-requests.json', 'zones/memory-limits.json',
+    'zones/zonestate.py', 'zones/synapse', 'zones/openproject', 'hoover/stores/podspec.py', 'settings.py', 'config.py',
+    'platform/operator/settings.py', 'cluster/runtimeclasses.yaml', 'driver/artifacts.json',
+    'zones/zone-login-no-mfa.sh', 'zones/zone-users.py', 'zones/zone-users.json', 'zones/udm.py',
+    'zones/zone-patches.py', 'zones/zone-ai.py', 'zones/nextcloud-ai.py', 'zones/xwiki-ai.sh',
+    'zones/xwiki-admin-script.py', 'zones/zone-jobs.py',
+)
+# The environment variables of a helmfile process that the openDesk helmfiles read (env and requiredEnv).
+INPUT_ENV = ('DOMAIN', 'MAIL_DOMAIN', 'MATRIX_DOMAIN', 'MASTER_PASSWORD', 'DEBUG_ENABLED')
+INPUT_ENV_PREFIXES = ('OPENDESK_', 'OD_', 'DOVECOT_')
 # The helmfile processes of a wave print their output one at a time.
 PRINT = threading.Lock()
 
@@ -270,15 +300,17 @@ def entry_releases(entry):
 
 
 def helmfile_env(zone, home=None):
-    """The environment of a helmfile process. home gives the process its own Helm and helmfile cache and Helm
-    configuration, so processes that run at the same time do not share a chart cache."""
+    """The environment of a helmfile process. home gives the process its own Helm cache and Helm configuration, so
+    processes that run at the same time do not share them. Every process reads the charts from CHART_CACHE."""
     env = dict(os.environ, PWD=str(OPENDESK), PATH=f"{TOOLS}:{os.environ['PATH']}", HELM_PLUGINS=str(TOOLS / 'plugins'),
                HELM_CONFIG_HOME=str(TOOLS / 'config'), HELM_CACHE_HOME=str(TOOLS / 'cache'), HELM_DATA_HOME=str(TOOLS / 'data'),
+               HELMFILE_CACHE_HOME=str(CHART_CACHE),
                KUBECONFIG=str(settings.KUBECONFIG), MASTER_PASSWORD=(PRIVATE / 'zones' / zone / 'master-password').read_text().strip(),
                DOMAIN=settings.SUFFIX, MAIL_DOMAIN=settings.zone_domain(zone), MATRIX_DOMAIN=settings.zone_domain(zone))
     if home:
         env.update(HELM_CACHE_HOME=str(home / 'helm-cache'), HELM_CONFIG_HOME=str(home / 'helm-config'),
-                   HELMFILE_CACHE_HOME=str(home / 'helmfile-cache'), XDG_CACHE_HOME=str(home / 'cache'))
+                   XDG_CACHE_HOME=str(home / 'cache'))
+    CHART_CACHE.mkdir(parents=True, exist_ok=True)
     return env
 
 
@@ -302,6 +334,114 @@ def helm_releases(zone):
     """{release: status} of the Helm releases of the zone namespace, in every status."""
     out = run('helm', 'list', '-n', zone, '-a', '-o', 'json', env=helmfile_env(zone), quiet=True).stdout
     return {r['name']: r['status'] for r in json.loads(out or '[]')}
+
+
+def helm_revisions(zone):
+    """{release: {revision, status, chart}} of the Helm releases of the zone namespace, in every status."""
+    out = run('helm', 'list', '-n', zone, '-a', '-o', 'json', env=helmfile_env(zone), quiet=True).stdout
+    return {r['name']: {'revision': str(r['revision']), 'status': r['status'], 'chart': r['chart']}
+            for r in json.loads(out or '[]')}
+
+
+def sha(value):
+    """The SHA-256 of bytes, or of the sorted JSON form of a value."""
+    data = value if isinstance(value, bytes) else json.dumps(value, sort_keys=True).encode()
+    return hashlib.sha256(data).hexdigest()
+
+
+def tree_digest(root):
+    """The SHA-256 of the relative path and the content of every file below root."""
+    digest = hashlib.sha256()
+    for path in sorted(p for p in Path(root).rglob('*') if p.is_file() and '__pycache__' not in p.parts):
+        digest.update(path.relative_to(root).as_posix().encode() + b'\0' + path.read_bytes() + b'\0')
+    return digest.hexdigest()
+
+
+def operator_effective(zone):
+    """The effective operator settings that the post-renderer reads: cluster (cpu_policy.py) and the zone
+    (postrender.py operator_values()), at HOOVER4_SETTINGS_REVISION, else the newest saved revision."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('operator_settings', SOURCE / 'platform/operator/settings.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    folder = settings.SITE.operator_state() if settings.SITE else None
+    overrides = {}
+    if folder and (folder / 'desired.json').exists():
+        revision = os.environ.get('HOOVER4_SETTINGS_REVISION')
+        overrides = module.State(folder).overrides(int(revision) if revision else None)
+    return {scope: module.effective(scope, overrides.get(scope, {})) for scope in ('cluster', f'zone:{zone}')}
+
+
+def opendesk_inputs(zone):
+    """{input: SHA-256} of every input of the openDesk waves and of the application state steps of a zone.
+
+    The inputs are the files of INPUT_SOURCES and the openDesk release. The zone folder gives the values, the master
+    password, the client secrets and the value files. zones/ gives the shared value files and the zone user passwords.
+    ai.json, the zone state entry, the effective operator settings and the site settings follow. The last inputs are the
+    environment of helmfile, the Kubernetes version and the storage tiers. The values and the release name the images.
+    The value bootstrapped of the zone state entry is left out, because the first run changes it.
+    """
+    out = {}
+    for name in INPUT_SOURCES:
+        path = SOURCE / name
+        out[f'source/{name}'] = tree_digest(path) if path.is_dir() else sha(path.read_bytes())
+    out['opendesk-release'] = tree_digest(OPENDESK)
+    folder = PRIVATE / 'zones'
+    for path in sorted(folder.glob('*.yaml')) + [settings.ZONE_USER_PASSWORDS, PRIVATE / 'ai.json']:
+        if path.is_file():
+            out[f'state/{path.relative_to(PRIVATE).as_posix()}'] = sha(path.read_bytes())
+    for path in sorted((folder / zone).iterdir()):
+        if path.is_file() and path.name != RECORD_NAME and not path.name.startswith('.'):
+            out[f'state/zones/{zone}/{path.name}'] = sha(path.read_bytes())
+    entry = dict(zonestate.load()['zones'][zone])
+    entry.pop('bootstrapped', None)
+    out['zone-state'] = sha(entry)
+    out['operator-settings'] = sha(operator_effective(zone))
+    out['site-settings'] = sha(settings.HOST)
+    env = helmfile_env(zone)
+    out['environment'] = sha({k: env[k] for k in sorted(env) if k in INPUT_ENV or k.startswith(INPUT_ENV_PREFIXES)})
+    version = json.loads(kubectl('version', '-o', 'json')).get('serverVersion', {}).get('gitVersion')
+    out['cluster'] = sha({'version': version, 'tiers': zonestate.site_tiers(settings.KUBECONFIG)})
+    return out
+
+
+def read_record(zone):
+    path = PRIVATE / 'zones' / zone / RECORD_NAME
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def opendesk_changes(zone, inputs, releases):
+    """The reasons to run the openDesk waves and the application state steps. An empty list means that nothing changed
+    since the last complete run: the same digest of the inputs, the same Helm releases with the same revisions, and
+    every release deployed. releases is helm_revisions() of the zone."""
+    if first_bootstrap(zone):
+        return ['the first install of the zone has not completed']
+    record = read_record(zone)
+    if not record:
+        return ['no record of a complete run']
+    reasons = []
+    if record.get('digest') != sha(inputs):
+        before = record.get('inputs') or {}
+        reasons += [f'{name} changed' for name in sorted(set(inputs) | set(before)) if inputs.get(name) != before.get(name)]
+        reasons = reasons or ['the input digest changed']
+    reasons += [f'release {name} is {r["status"]}' for name, r in sorted(releases.items()) if r['status'] != 'deployed']
+    recorded = record.get('releases') or {}
+    reasons += [f'release {name} changed by revision or chart' for name in sorted(set(releases) | set(recorded))
+                if releases.get(name) != recorded.get(name)]
+    return reasons
+
+
+def write_record(zone, inputs):
+    """Record a complete run of the waves and the application state steps with its inputs and Helm releases."""
+    path = PRIVATE / 'zones' / zone / RECORD_NAME
+    record = {'digest': sha(inputs), 'inputs': inputs, 'releases': helm_revisions(zone),
+              'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+    path.touch(mode=0o600)
+    path.write_text(json.dumps(record, indent=1, sort_keys=True) + '\n')
+    clusterstate.checkpoint(PRIVATE)
 
 
 def entry_command(entry, releases):
@@ -614,7 +754,7 @@ def hoover(zone):
     run(sys.executable, SOURCE / 'hoover' / 'manifests.py', zone, 'apply')
 
 
-def apply(zone, home=None, values=None):
+def apply(zone, home=None, values=None, full=False):
     register(zone, home, values)
     run(sys.executable, HERE / 'zones.py', quiet=True)
     # The zone secrets exist before the first object that uses them, so the cluster copy gets them now.
@@ -634,14 +774,24 @@ def apply(zone, home=None, values=None):
     cluster()
     namespaces(zone)
     step('namespaces', zone=zone)
-    opendesk(zone)
-    step('opendesk', zone=zone)
-    run('bash', HERE / 'zone-login-no-mfa.sh', zone, quiet=True)
-    run(sys.executable, HERE / 'zone-users.py', zone)
-    run(sys.executable, HERE / 'zone-patches.py', zone)
+    inputs = opendesk_inputs(zone)
+    reasons = ['--full'] if full else opendesk_changes(zone, inputs, helm_revisions(zone))
+    if reasons:
+        step('opendesk-check', zone=zone, result='run', reasons=reasons[:12])
+        opendesk(zone)
+        step('opendesk', zone=zone)
+        run('bash', HERE / 'zone-login-no-mfa.sh', zone, quiet=True)
+        run(sys.executable, HERE / 'zone-users.py', zone)
+        run(sys.executable, HERE / 'zone-patches.py', zone)
+    else:
+        step('opendesk-check', zone=zone, result='unchanged since the last complete run')
+        run(sys.executable, HERE / 'zone-patches.py', zone, '--discovery')
     apply_manifest((HERE / 'manifests/zone-keycloak-admin.yaml').read_text().replace('KEYCLOAK_HOST', settings.zone_host(zone, 'id')), zone)
     import gate
     apply_manifest(json.dumps(gate.objects(zone)), zone)
+    if reasons:
+        # The inputs again, because the steps can write a zone file, for example the password of a new test.user.
+        write_record(zone, opendesk_inputs(zone))
     step('zone-state-of-apps', zone=zone)
     hoover(zone)
     step('hoover', zone=zone)
@@ -687,6 +837,7 @@ def main():
     parser.add_argument('--home', help='accepted for an earlier version, without effect')
     parser.add_argument('--stores')
     parser.add_argument('--dataset', action='append', default=[], help='name:node:/path of a read-only dataset folder')
+    parser.add_argument('--full', action='store_true', help='run the openDesk waves also when no input changed')
     args = parser.parse_args()
     if not zonestate_name(args.zone):
         raise SystemExit(__doc__)
@@ -695,7 +846,7 @@ def main():
         if args.command == 'delete':
             delete(args.zone)
             return
-        apply(args.zone, args.home, {'stores': args.stores, 'extra_datasets': args.dataset})
+        apply(args.zone, args.home, {'stores': args.stores, 'extra_datasets': args.dataset}, full=args.full)
 
 
 @contextlib.contextmanager

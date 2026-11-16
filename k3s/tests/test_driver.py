@@ -655,6 +655,51 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     record = ctx.records.new('up', ['dev'], rev, list(steps), complete=False, inputs=deploy.pinned_inputs(ctx))
     assert deploy.execute(ctx, record, steps) == 0
     assert checked == ['hoover-zone-a']
+    # up --full gives zone.py --full, so it runs the openDesk waves without its check of the inputs.
+    ctx.full = True
+    ran.clear()
+    record = ctx.records.new('up', ['dev'], rev, list(steps), complete=False, inputs=deploy.pinned_inputs(ctx))
+    assert deploy.execute(ctx, record, steps) == 0
+    zone = [r for r in ran if r[0][1].endswith('zones/zone.py')]
+    assert zone[0][0][2:] == ['apply', 'zone-a', '--full']
+
+
+def workload(kind, wanted=1, generation=2, observed=2, strategy=None, **status):
+    """A Deployment or StatefulSet with wanted replicas in its spec and the given status values."""
+    item = {'kind': kind, 'metadata': {'name': 'x', 'generation': generation},
+            'spec': {'replicas': wanted, **({'updateStrategy': strategy} if strategy else {})},
+            'status': {'observedGeneration': observed, **status}}
+    return item
+
+
+@pytest.mark.parametrize('item, done', [
+    (workload('Deployment', updatedReplicas=1, availableReplicas=1, replicas=1), True),
+    # An old pod remains, or the new pod is not available, or the controller has not seen the new template.
+    (workload('Deployment', updatedReplicas=1, availableReplicas=1, replicas=2), False),
+    (workload('Deployment', updatedReplicas=1, availableReplicas=0, replicas=1), False),
+    (workload('Deployment', observed=1, updatedReplicas=1, availableReplicas=1, replicas=1), False),
+    (workload('StatefulSet', readyReplicas=1, updateRevision='b', currentRevision='b'), True),
+    (workload('StatefulSet', readyReplicas=1, updateRevision='b', currentRevision='a'), False),
+    (workload('StatefulSet', readyReplicas=0, updateRevision='b', currentRevision='b'), False),
+    (workload('StatefulSet', wanted=3, readyReplicas=3, updatedReplicas=1, updateRevision='b', currentRevision='a',
+              strategy={'type': 'RollingUpdate', 'rollingUpdate': {'partition': 2}}), True),
+    (workload('StatefulSet', readyReplicas=1, strategy={'type': 'OnDelete'}), True),
+    (workload('StatefulSet', readyReplicas=0, strategy={'type': 'OnDelete'}), False),
+])
+def test_a_complete_rollout_needs_no_wait(item, done):
+    assert deploy.rolled_out(item) is done
+
+
+def test_the_rollout_wait_calls_kubectl_only_for_an_incomplete_workload(env, monkeypatch):
+    ctx = env.make()
+    ready = workload('Deployment', updatedReplicas=1, availableReplicas=1, replicas=1)
+    rolling = workload('Deployment', updatedReplicas=0, availableReplicas=1, replicas=1)
+    rolling['metadata']['name'] = 'y'
+    monkeypatch.setattr(ctx, 'kubectl', lambda *args, check=True: json.dumps({'items': [ready, rolling]}) if 'deployments,statefulsets' in args else '{"items": []}')
+    calls = []
+    monkeypatch.setattr(ctx, 'run', lambda argv, **kw: calls.append([str(a) for a in argv]) or (0, ''))
+    deploy.wait_rollouts(ctx, 'zone-a')
+    assert [c[-2] for c in calls] == ['deployment/y']
 
 
 @pytest.mark.parametrize('phase, logs, passes', [

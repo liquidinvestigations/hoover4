@@ -329,6 +329,27 @@ def apply_module():
     return sys.modules['operator_apply']
 
 
+def test_an_apply_in_the_operator_pod_takes_the_revision_of_its_environment(tmp_path, monkeypatch):
+    # The operator pod has no Git checkout and no deploy records (operator/deploy/ stays out of the cluster copy).
+    # Both containers have HOOVER4_REVISION, so a Start Apply reads it and calls no git.
+    A = apply_module()
+
+    class Site:
+        def operator_state(self):
+            return tmp_path / 'operator'
+
+    def no_git(*args, **kw):
+        raise AssertionError('the revision came from git')
+    monkeypatch.setattr(A.subprocess, 'run', no_git)
+    monkeypatch.setenv('HOOVER4_REVISION', 'f' * 40)
+    assert A.deployment_revision(Site()) == 'f' * 40
+    # The workstation without the variable reads the applied deployment.
+    monkeypatch.delenv('HOOVER4_REVISION')
+    (tmp_path / 'operator/deploy').mkdir(parents=True)
+    (tmp_path / 'operator/deploy/applied.json').write_text(json.dumps({'revision': 'a' * 40}))
+    assert A.deployment_revision(Site()) == 'a' * 40
+
+
 def test_the_apply_plan_names_one_step_for_each_changed_part(state):
     A = apply_module()
     site = single_site()

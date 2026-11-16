@@ -1,4 +1,5 @@
 """The openDesk waves of the zone installer, the measured CPU requests and the periodic tasks of the zone render."""
+import json
 import signal
 import subprocess
 import sys
@@ -410,3 +411,117 @@ def test_the_loop_runs_again_after_a_failed_run_and_stops_at_once():
     process.send_signal(signal.SIGTERM)
     process.communicate(timeout=5)
     assert process.returncode == 0 and time.monotonic() - started < 2
+
+
+# The check of the openDesk waves without a change (zone.py opendesk_changes()) ---------------------------------------
+
+LOCAL_MODULE_DIRS = (K3S / 'zones', K3S, K3S / 'hoover' / 'stores')
+
+
+def local_modules(path, seen):
+    """The k3s modules that a file imports, and the modules that they import."""
+    import re
+    for name in re.findall(r'^\s*(?:import|from)\s+([A-Za-z_]\w*)', path.read_text(), re.M):
+        found = next((d / f'{name}.py' for d in LOCAL_MODULE_DIRS if (d / f'{name}.py').exists()), None)
+        if found and found not in seen:
+            seen.add(found)
+            local_modules(found, seen)
+    return seen
+
+
+def test_the_inputs_name_every_module_and_table_that_the_post_renderer_reads():
+    import re
+    sources = {K3S / s for s in zone.INPUT_SOURCES}
+    modules = local_modules(K3S / 'zones/postrender.py', set())
+    assert modules - sources == set()
+    # The tables that the modules of zones/ read by their file name.
+    for module in [m for m in modules if m.parent == K3S / 'zones'] + [K3S / 'zones/postrender.py']:
+        for name in re.findall(r"'([\w-]+\.(?:json|yaml|rb|py))'", module.read_text()):
+            for folder in (module.parent, K3S / 'cluster'):
+                if (folder / name).is_file():
+                    assert folder / name in sources, f'{module.name} reads {name}'
+    # postrender.py reads its patch files from these folders.
+    assert {'zones/synapse', 'zones/openproject'} <= set(zone.INPUT_SOURCES)
+    # The scripts of step 6 that zone.py and zone-patches.py run.
+    for script in re.findall(r"HERE / '([\w.-]+)'", (K3S / 'zones/zone.py').read_text()):
+        if script.startswith('zone-') and (K3S / 'zones' / script).is_file() and script != 'zone-state.example.json':
+            assert f'zones/{script}' in zone.INPUT_SOURCES, script
+    for script in re.findall(r"lab/'([\w.-]+)'", (K3S / 'zones/zone-patches.py').read_text()):
+        assert f'zones/{script}' in zone.INPUT_SOURCES, script
+
+
+def test_every_helmfile_process_reads_the_charts_from_the_shared_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(zone, 'PRIVATE', tmp_path)
+    monkeypatch.setattr(zone, 'CHART_CACHE', tmp_path / 'opendesk-charts')
+    (tmp_path / 'zones/zone-a').mkdir(parents=True)
+    (tmp_path / 'zones/zone-a/master-password').write_text('x\n')
+    assert zone.helmfile_env('zone-a')['HELMFILE_CACHE_HOME'] == str(tmp_path / 'opendesk-charts')
+    env = zone.helmfile_env('zone-a', tmp_path / 'home')
+    assert env['HELMFILE_CACHE_HOME'] == str(tmp_path / 'opendesk-charts')
+    # Each process keeps its own Helm cache and configuration.
+    assert env['HELM_CACHE_HOME'] == str(tmp_path / 'home/helm-cache')
+    assert (tmp_path / 'opendesk-charts').is_dir()
+
+
+RELEASES = {'nubus': {'revision': '4', 'status': 'deployed', 'chart': 'nubus-1.0'},
+            'xwiki': {'revision': '7', 'status': 'deployed', 'chart': 'xwiki-2.0'}}
+
+
+@pytest.fixture
+def recorded(monkeypatch):
+    inputs = {'source/zones/postrender.py': 'a', 'state/zones/zone-a/values.yaml': 'b'}
+    record = {'digest': zone.sha(inputs), 'inputs': inputs, 'releases': RELEASES}
+    monkeypatch.setattr(zone, 'first_bootstrap', lambda z: False)
+    monkeypatch.setattr(zone, 'read_record', lambda z: record)
+    return inputs, record
+
+
+def test_the_waves_skip_only_with_the_same_inputs_and_the_same_releases(recorded, monkeypatch):
+    inputs, record = recorded
+    assert zone.opendesk_changes('zone-a', dict(inputs), json.loads(json.dumps(RELEASES))) == []
+    # A changed input names itself, without its value.
+    assert zone.opendesk_changes('zone-a', {**inputs, 'state/zones/zone-a/values.yaml': 'c'}, RELEASES) == [
+        'state/zones/zone-a/values.yaml changed']
+    assert zone.opendesk_changes('zone-a', {**inputs, 'source/zones/new.py': 'd'}, RELEASES) == ['source/zones/new.py changed']
+    # A Helm upgrade, a rollback, a removed release or a failed release since the record runs the waves.
+    upgraded = {**RELEASES, 'xwiki': {**RELEASES['xwiki'], 'revision': '8'}}
+    assert zone.opendesk_changes('zone-a', inputs, upgraded) == ['release xwiki changed by revision or chart']
+    assert zone.opendesk_changes('zone-a', inputs, {'nubus': RELEASES['nubus']}) == ['release xwiki changed by revision or chart']
+    failed = {**RELEASES, 'nubus': {**RELEASES['nubus'], 'status': 'failed'}}
+    assert 'release nubus is failed' in zone.opendesk_changes('zone-a', inputs, failed)
+    # Without a record, and before the first complete install, the waves run.
+    monkeypatch.setattr(zone, 'read_record', lambda z: None)
+    assert zone.opendesk_changes('zone-a', inputs, RELEASES) == ['no record of a complete run']
+    monkeypatch.setattr(zone, 'read_record', lambda z: record)
+    monkeypatch.setattr(zone, 'first_bootstrap', lambda z: True)
+    assert zone.opendesk_changes('zone-a', inputs, RELEASES) == ['the first install of the zone has not completed']
+
+
+@pytest.mark.parametrize('full, changes, waves', [(False, [], False), (False, ['x changed'], True), (True, [], True)])
+def test_a_zone_apply_without_a_change_runs_only_the_discovery_check(monkeypatch, full, changes, waves):
+    calls = []
+    for name in ('register', 'images', 'cluster', 'namespaces', 'hoover'):
+        monkeypatch.setattr(zone, name, lambda *a, **kw: None)
+    monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)
+    monkeypatch.setattr(zone.zonestate, 'enabled', lambda z: True)
+    monkeypatch.setattr(zone, 'run', lambda *args, **kw: calls.append([str(a).rsplit('/', 1)[-1] for a in args[1:]]))
+    monkeypatch.setattr(zone, 'apply_manifest', lambda *a, **kw: None)
+    monkeypatch.setattr(zone, 'opendesk_inputs', lambda z: {'a': '1'})
+    monkeypatch.setattr(zone, 'helm_revisions', lambda z: RELEASES)
+    monkeypatch.setattr(zone, 'opendesk_changes', lambda z, inputs, releases: changes)
+    monkeypatch.setattr(zone, 'opendesk', lambda z: calls.append(['waves']))
+    monkeypatch.setattr(zone, 'write_record', lambda z, inputs: calls.append(['record', inputs]))
+    gate = type(sys)('gate')
+    gate.objects = lambda z: []
+    monkeypatch.setitem(sys.modules, 'gate', gate)
+    monkeypatch.setattr(zone.settings, 'zone_host', lambda z, app: f'{z}-{app}.test', raising=False)
+    zone.apply('zone-a', full=full)
+    calls = [c for c in calls if c[0] not in ('zones.py', 'write-password-table.py')]
+    names = [c[0] for c in calls]
+    if waves:
+        assert names == ['waves', 'zone-login-no-mfa.sh', 'zone-users.py', 'zone-patches.py', 'record']
+        assert calls[3] == ['zone-patches.py', 'zone-a'] and calls[4] == ['record', {'a': '1'}]
+    else:
+        assert 'waves' not in names and 'record' not in names
+        assert ['zone-patches.py', 'zone-a', '--discovery'] in calls
+        assert 'zone-users.py' not in names and 'zone-login-no-mfa.sh' not in names

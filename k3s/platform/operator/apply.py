@@ -125,7 +125,14 @@ def services(state, s, revision=None):
 
 
 def deployment_revision(s):
-    """The source revision of the applied deployment, else the commit of the checkout."""
+    """The source revision of the deployment.
+
+    The value is HOOVER4_REVISION, else the revision of the applied deployment, else the commit of the checkout. The
+    portal and the runner container of the operator pod have HOOVER4_REVISION from the ConfigMap operator-revision. The
+    pod has no Git checkout, and the cluster copy of the state leaves out the deploy records of operator/deploy/.
+    """
+    if os.environ.get('HOOVER4_REVISION'):
+        return os.environ['HOOVER4_REVISION']
     applied = s.operator_state() / 'deploy' / 'applied.json'
     if applied.exists():
         return json.loads(applied.read_text())['revision']
