@@ -24,7 +24,7 @@ operator pod, keeps a manifest of the last synchronization: the digest of each l
 its object. pull() writes the files that changed in the cluster and that did not change in the folder. push() writes
 the files that changed in the folder. A replace names the resourceVersion of the manifest, so the API server refuses a
 file that another writer changed after the last pull. push() then raises Conflict, and the next pull and push resolve
-it. A file that is new in the folder and in the cluster takes the cluster copy at the pull.
+it. A file of MERGERS (the backup state) that changed on both sides is merged at the pull instead. A file that is new in the folder and in the cluster takes the cluster copy at the pull.
 The site operation lock (oplock.py) makes deploy-k3s, the runner and the backups the only writer at a time. The
 settings saves of the portal take no lock, and they write other files than the operations of the lock holder.
 
@@ -233,6 +233,34 @@ def move_earlier_paths(folder, store):
         write_manifest(folder, 'secret', manifest)
 
 
+def merge_backup_state(local, remote):
+    """Merge two versions of operator/backups/state.json.
+
+    A backup command run from the workstation and the backup runner of the operator pod both write this file. The
+    merge keeps every job and every copy of both versions, once per generation, and the blocked entries of both. The
+    pause message comes from the cluster copy, because the runner writes it.
+    """
+    mine, theirs = json.loads(local or b'{}'), json.loads(remote or b'{}')
+    merged = dict(theirs)
+    jobs = {}
+    for source in (theirs, mine):
+        for name, job in (source.get('jobs') or {}).items():
+            target = jobs.setdefault(name, {**job, 'copies': []})
+            known = {c.get('generation') for c in target['copies']}
+            target['copies'] += [c for c in job.get('copies', []) if c.get('generation') not in known]
+            target['copies'].sort(key=lambda c: c.get('finished') or 0)
+    merged['jobs'] = jobs
+    blocked = list(theirs.get('blocked') or [])
+    merged['blocked'] = blocked + [b for b in (mine.get('blocked') or []) if b not in blocked]
+    merged['paused'] = theirs.get('paused', mine.get('paused', ''))
+    return (json.dumps(merged, indent=1, sort_keys=True) + '\n').encode()
+
+
+# Files that two writers change in normal use. pull() merges them instead of raising Conflict, and push() then writes
+# the merge.
+MERGERS = {'operator/backups/state.json': merge_backup_state}
+
+
 def pull(folder, kinds=('configmap', 'secret'), store=None):
     """Write the cluster changes into the folder. Return {path: action} of the changed files."""
     store = store or Kubectl()
@@ -257,6 +285,13 @@ def pull(folder, kinds=('configmap', 'secret'), store=None):
                     continue
                 if seen and seen['version'] == item['version']:
                     # The cluster copy did not change. push() sends a local change or a local delete.
+                    continue
+                if changed_here and seen is not None and path in MERGERS:
+                    merged = MERGERS[path]((Path(folder) / path).read_bytes(), item['data'])
+                    write_file(folder, path, merged, kind)
+                    changes[path] = 'merged'
+                    # The manifest names the cluster version, so the next push writes the merge over it.
+                    manifest[path] = {'digest': digest(item['data']), 'version': item['version']}
                     continue
                 if changed_here and seen is not None:
                     raise Conflict(f'{path} changed in the cluster and in {folder} since the last sync. '

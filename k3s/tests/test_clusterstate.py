@@ -94,6 +94,25 @@ def test_a_change_in_two_folders_is_a_conflict_and_no_write_is_lost(tmp_path):
     assert (b / 'operator/applied.json').read_text() == 'from b'
 
 
+def test_the_backup_state_changed_on_both_sides_is_merged_and_pushed(tmp_path):
+    store = Store()
+    pod, workstation = tmp_path / 'pod', tmp_path / 'workstation'
+    path = 'operator/backups/state.json'
+    copy = {'generation': 'g1', 'finished': 1}
+    write(pod, path, json.dumps({'jobs': {}, 'blocked': [], 'paused': ''}))
+    clusterstate.push(pod, store=store)
+    clusterstate.pull(workstation, store=store)
+    write(pod, path, json.dumps({'jobs': {'zone:b': {'copies': []}}, 'blocked': ['x'], 'paused': 'no user'}))
+    write(workstation, path, json.dumps({'jobs': {'zone:a': {'copies': [copy]}}, 'blocked': [], 'paused': ''}))
+    clusterstate.push(pod, store=store)
+    assert clusterstate.pull(workstation, store=store) == {path: 'merged'}
+    clusterstate.push(workstation, store=store)
+    merged = json.loads(store.objects[('configmap', path)]['data'])
+    assert merged['jobs']['zone:a']['copies'] == [copy]
+    assert 'zone:b' in merged['jobs'] and merged['blocked'] == ['x'] and merged['paused'] == 'no user'
+    assert clusterstate.pull(workstation, store=store) == {}
+
+
 def test_a_change_of_another_file_does_not_block_a_push(tmp_path):
     store = Store()
     a, b = tmp_path / 'a', tmp_path / 'b'
