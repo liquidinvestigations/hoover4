@@ -512,3 +512,15 @@ def test_the_schema_password_moves_out_of_the_zone_namespace(monkeypatch):
     written.clear(), patched.clear()
     setup.runtime_secrets()
     assert len(written['manticore-schema'][0]['password']) == 48 and patched == []
+
+
+def test_the_clickhouse_tenant_is_one_answer_row_and_a_cut_answer_is_an_error(monkeypatch):
+    row = {'database': ['zone_a_Processing'], 'user': ['zone_a', 'zone_a_ops'], 'profile': ['zone_a'], 'row policy': ['zone_a_backups']}
+    sent = []
+    monkeypatch.setattr(shared, 'clickhouse_sql', lambda sql: sent.append(sql) or json.dumps(row) + '\n')
+    assert shared.clickhouse_tenant('zone-a') == [('database', 'zone_a_Processing'), ('user', 'zone_a'), ('user', 'zone_a_ops'),
+                                                  ('profile', 'zone_a'), ('row policy', 'zone_a_backups')]
+    assert "startsWith(name, 'zone_a_')" in sent[0] and 'FORMAT JSONEachRow' in sent[0]
+    monkeypatch.setattr(shared, 'clickhouse_sql', lambda sql: json.dumps(row)[:30])
+    with pytest.raises(SystemExit, match='incomplete answer'):
+        shared.clickhouse_tenant('zone-a')

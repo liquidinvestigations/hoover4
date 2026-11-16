@@ -267,6 +267,9 @@ spec:
       # The portal reads cluster events and the zone namespaces. It writes zone operations and its settings as
       # ConfigMaps. The runner uses the token of the ServiceAccount zone-runner (runner-rights.yaml).
       serviceAccountName: portal
+      # The pod runs on the control plane only. When that node is full, the class lets the scheduler preempt a pod of
+      # the default priority there (../../cluster/priorityclasses.yaml).
+      priorityClassName: hoover-node-bound
       nodeSelector: {kubernetes.io/hostname: CONTROL_PLANE}
       securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
       containers:

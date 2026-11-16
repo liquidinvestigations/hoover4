@@ -236,8 +236,8 @@ python3 k3s/zones/zone.py delete zone-x
   the stores with `measure --site` and the times of their start.
 - A pod that can run on one node only has the PriorityClass `hoover-node-bound`
   ([cluster/priorityclasses.yaml](cluster/priorityclasses.yaml)): the store pods of `hoover-stores`, a zone pod with a
-  claim, and a zone pod that names a node, for example ClamAV and the other services that reach the internet from the
-  public node. When its node is full, the scheduler preempts pods of the default priority on that node, and their
+  claim, a zone pod that names a node, for example ClamAV and the other services that reach the internet from the
+  public node, and the operator portal on the control plane. When its node is full, the scheduler preempts pods of the default priority on that node, and their
   Deployments start them again on another node. A pod of the default priority preempts no pod, and two pods of the class
   do not preempt each other, so preemption does not repeat. The Hoover render, the post-renderer of openDesk
   ([zones/postrender.py](zones/postrender.py)) and the store installers set the class. A chart value stays.

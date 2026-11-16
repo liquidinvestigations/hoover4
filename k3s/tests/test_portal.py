@@ -155,6 +155,8 @@ def test_the_operator_pod_mounts_no_host_folder_except_the_cgroup_and_keeps_zone
     pod = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'] == 'portal')['spec']['template']['spec']
     host = [v for v in pod['volumes'] if 'hostPath' in v]
     assert [v['name'] for v in host] == ['cgroup']
+    # The pod is bound to the control plane, so it may preempt a pod of the default priority there.
+    assert pod['nodeSelector'] == {'kubernetes.io/hostname': 'CONTROL_PLANE'} and pod['priorityClassName'] == 'hoover-node-bound'
     containers = {c['name']: c for c in pod['containers']}
     assert {c['image'] for c in containers.values()} == {'OPERATOR_IMAGE'}
     assert containers['portal']['args'] == ['portal'] and containers['runner']['args'] == ['runner']

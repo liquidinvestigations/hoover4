@@ -549,15 +549,23 @@ def remove_import_folder(zone, pod):
 
 
 def clickhouse_tenant(zone):
-    """[(kind, name)] of the ClickHouse objects of a zone: its databases, users, settings profile and row policy."""
-    prefix = service_users.prefix(zone)
-    rows = clickhouse_sql(
-        f"SELECT 'database', name FROM system.databases WHERE name = '{prefix}' OR startsWith(name, '{prefix}_') "
-        f"UNION ALL SELECT 'user', name FROM system.users WHERE name = '{prefix}' OR startsWith(name, '{prefix}_') "
-        f"UNION ALL SELECT 'profile', name FROM system.settings_profiles WHERE name = '{prefix}' "
-        f"UNION ALL SELECT 'row policy', short_name FROM system.row_policies "
-        f"WHERE short_name = '{service_users.backup_policy(zone)}' FORMAT TSV\n")
-    return [tuple(line.split('\t')) for line in rows.splitlines() if line.strip()]
+    """[(kind, name)] of the ClickHouse objects of a zone: its databases, users, settings profile and row policy.
+
+    The answer is one JSON row. An answer of several blocks through kubectl exec once lost every block after the first,
+    so an answer that does not parse is an error and never an empty tenant."""
+    prefix, policy = service_users.prefix(zone), service_users.backup_policy(zone)
+    named = f"name = '{prefix}' OR startsWith(name, '{prefix}_')"
+    out = clickhouse_sql(
+        f"SELECT (SELECT groupArray(name) FROM system.databases WHERE {named}) AS database, "
+        f"(SELECT groupArray(name) FROM system.users WHERE {named}) AS user, "
+        f"(SELECT groupArray(name) FROM system.settings_profiles WHERE name = '{prefix}') AS profile, "
+        f"(SELECT groupArray(short_name) FROM system.row_policies WHERE short_name = '{policy}') AS `row policy` "
+        "FORMAT JSONEachRow\n")
+    try:
+        row = json.loads(out.strip())
+    except ValueError:
+        raise SystemExit(f'ClickHouse gave an incomplete answer for the tenant of {zone}: {out.strip()[-200:]!r}') from None
+    return [(kind, name) for kind in ('database', 'user', 'profile', 'row policy') for name in row[kind]]
 
 
 def manticore_tenant(zone, store):
