@@ -293,10 +293,35 @@ A pod stops or moves on a running site only in a deployment: `deploy-k3s up`, a 
 | Preemption | No. Only a new pod of the class `hoover-node-bound` preempts. The renders give the class only to Deployments, StatefulSets, the operator portal and the coturn probe pod of the calls step, so no Job or CronJob creates such a pod. |
 | Node-pressure eviction | No, while each pod stays at its measured peak: the requests hold the peaks and the kubelet reserves the memory of k3s and the system ([Size the memory](#size-the-memory)). |
 | OOM kill | A container above its limit restarts in its pod, on its node. The limits stay above the measured peaks. |
-| CronJobs and Jobs | They start their own pods only. Their pods have the default priority, so they preempt no pod. |
+| Periodic tasks and Jobs | A zone has no CronJob. Each periodic openDesk task runs in a container that stays running ([Run the periodic tasks](#run-the-periodic-tasks)). The install and migration Jobs start their own pods, only in a deployment. These pods have the default priority, so they preempt no pod. |
 | Rollout | A large single-replica Deployment stops its old pod before the new pod starts (`rollout()` of [zones/postrender.py](zones/postrender.py), `Recreate` in the Hoover render), so an update needs no free memory for a second pod. |
 | Node restart | A node that returns within 300 s restarts its pods in place. After 300 s the taint `node.kubernetes.io/unreachable` evicts its pods, and their controllers start them on other nodes. The pods of the class `hoover-node-bound` wait for their node. |
 | Zone backup | The scheduled zone copy scales the applications of the zone to zero and back ([Back up and restore](#back-up-and-restore)). |
+
+### Run the periodic tasks.
+
+The openDesk charts start a new pod for each run of a CronJob. The post-renderer replaces each CronJob with a container
+that stays running (`PERIODIC` and `periodic()` of [zones/postrender.py](zones/postrender.py)). The container runs the
+command of the CronJob with its image, environment, volumes and service account. It runs the command once at its start
+and then at each time of the CronJob schedule, in UTC.
+
+| Task | Container | Interval |
+|---|---|---|
+| Nextcloud background jobs (`cron.php`) | sidecar `cron` in the pod of `opendesk-nextcloud-aio` | 5 minutes |
+| UDM license cache | sidecar `license-cache` in the pod of `ums-udm-rest-api` | 1 hour |
+| UDM blocklist cleanup | sidecar `blocklist-cleanup` in the pod of `ums-udm-rest-api` | 1 day, at 08:00 |
+| Matrix media cleanup | Deployment `opendesk-element-customization-media-cleanup` | 1 hour |
+
+- Each run writes the line `periodic task <name>: exit <code> after <seconds> s` into the log of its container.
+  A failed run does not stop the loop. It repeats after 60 s, at most 5 times, unless the next time of the schedule
+  comes first. Read the runs with `kubectl -n <zone> logs deployment/opendesk-nextcloud-aio -c cron`.
+- A sidecar has its own copy of each volume of the CronJob, so it shares no empty folder with the other containers.
+- The memory request of the container is the peak of one run. The pod requests its measured peak plus its sidecars.
+- The media cleanup runs `kubectl exec` in the Synapse media pod with its own service account, so it has its own
+  Deployment.
+- A chart that renders a CronJob without a rule in `PERIODIC` stops the zone install. A new rule names the pod or
+  `None`, the container name and the memory of one run. It also names the command when the CronJob uses the entrypoint
+  of its image.
 
 ### Size the memory.
 

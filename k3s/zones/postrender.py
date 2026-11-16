@@ -20,10 +20,12 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
 - Rollout: a single-replica Deployment that requests MAX_SURGE_MEMORY or more replaces its pod with maxSurge 0 and
   maxUnavailable 1 (rollout()), so an update does not need the memory of a second pod on a full site.
 - Patches: Synapse loads synapse/hoover_e2ee.py, the user verification service logs at warn, Jitsi web uses the UDP
-  TURN server for the bridge connection, the OpenProject worker loads openproject/zz-hoover-cron.rb, and the Element
-  media cleanup has no starting deadline. The docstrings of the functions below give the reasons.
-- A disabled zone (zonestate.py) renders zero replicas and suspended CronJobs and Jobs.
-- A suspended CronJob stays suspended, so an update does not resume a CronJob that an operator suspended.
+  TURN server for the bridge connection, and the OpenProject worker loads openproject/zz-hoover-cron.rb. The
+  docstrings of the functions below give the reasons.
+- Periodic tasks: each CronJob of the charts becomes a container that stays running and runs the same command at the
+  same interval (PERIODIC, periodic()). A CronJob would start a new pod for each run. A CronJob without a rule stops
+  the render.
+- A disabled zone (zonestate.py) renders zero replicas and suspended Jobs.
 - A Job that the chart names by the release revision gets a name from a hash of its content (REVISION_JOBS).
 - The runtime exceptions of EXCEPTIONS run in Kata or with runc instead of gVisor.
 - Probes: each exec probe starts one runtime command at each period (cpu_requests.py runtime_cost()). probes()
@@ -36,7 +38,6 @@ import fnmatch
 import hashlib
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -65,7 +66,8 @@ APP_WORKLOADS = {
     'collabora': ('collabora', 'collabora-*'),
     'cryptpad': ('cryptpad*',),
     # The names of openDesk v1.19.1, checked against a deployed zone on 2026-11-11.
-    'element': ('element-*', 'matrix-*', 'opendesk-matrix-*', 'opendesk-provisioning-synapse'),
+    'element': ('element-*', 'matrix-*', 'opendesk-matrix-*', 'opendesk-provisioning-synapse',
+                'opendesk-element-customization-media-cleanup'),
     'jitsi': ('jitsi-*',),
     'openproject': ('openproject-*',),
     'xwiki': ('xwiki*',),
@@ -172,17 +174,59 @@ EXCEPTIONS = {
 REVISION_JOBS = ('openproject-seeder', 'opendesk-nextcloud-management', 'opendesk-migrations-pre', 'opendesk-migrations-post',
                  'opendesk-keycloak-bootstrap-bootstrap', 'opendesk-trust', 'opendesk-openproject-bootstrap-bootstrap',
                  'ums-keycloak-bootstrap-bootstrap', 'ums-provisioning-register-consumers', 'ums-stack-data-ums')
+# The CronJobs of the openDesk charts. periodic() replaces each with a container that stays running. The container
+# runs the command of the CronJob with its image, environment, volumes and service account, at the times of its
+# schedule, and also once at its start.
+#   pod        the workload whose pod gets the container (a sidecar). None: the container runs in its own Deployment
+#              with the name of the CronJob. A sidecar needs the service account of that pod.
+#   container  the name of the container.
+#   command    the command of the run when the CronJob container names none: the entrypoint and the command of the
+#              image.
+#   memory     the memory request: the highest working set of the pod cgroup in one run of the CronJob pod, of both zones
+#              (load of 2026-11-16), rounded up to 32 MiB. It holds the gVisor sentry of that pod, so it is the upper
+#              value for a sidecar.
+PERIODIC = {
+    # cron.php runs the Nextcloud background jobs. Peaks 126 and 91 MiB.
+    'opendesk-nextcloud-aio-cron': {'pod': 'deployment/opendesk-nextcloud-aio', 'container': 'cron', 'memory': '128Mi',
+                                    'command': ['/docker-entrypoint.sh', '/usr/bin/php',
+                                                '/usr/local/bin/entrypoint/entrypoint.php']},
+    # Counts the users, servers and clients, and writes the counts into the license object of the directory, where UMC
+    # and the UDM REST API read them. Peaks 86 and 74 MiB.
+    'ums-udm-rest-api-license-cache': {'pod': 'deployment/ums-udm-rest-api', 'container': 'license-cache', 'memory': '96Mi'},
+    # Removes the expired entries of the UDM blocklist. Peaks 61 and 47 MiB.
+    'ums-udm-rest-api-blocklist-cleanup': {'pod': 'deployment/ums-udm-rest-api', 'container': 'blocklist-cleanup',
+                                           'memory': '64Mi', 'command': ['/bin/blocklist_clean_expired.py']},
+    # Moves old Matrix media into the object store. It runs kubectl exec in the Synapse media pod with its own service
+    # account, so it runs in its own Deployment. Peaks 99 and 50 MiB.
+    'opendesk-element-customization-media-cleanup': {'pod': None, 'container': 'media-cleanup', 'memory': '128Mi'},
+}
+PERIODIC_LABEL = 'hoover.dev/periodic'
+# The loop of a periodic task. Arguments: the task name, then the interval, the offset and the retry wait in seconds,
+# then the command.
+# A run that fails does not stop the loop. As the backoffLimit 6 of a Job, a failed run repeats after RETRY seconds, at
+# most 5 times, unless the next time of the schedule comes first. The first run at the start of a sidecar can fail
+# while its own pod is not ready, for example the blocklist cleanup, which calls the Service of the UDM REST API.
+# The sleep runs in the background, so a stop signal ends the wait at once.
+PERIODIC_RETRY = 60
+PERIODIC_LOOP = '''trap 'kill $! 2>/dev/null; exit 0' TERM INT
+name=$0 every=$1 offset=$2 retry=$3
+shift 3
+failed=0
+while :; do
+  start=$(date +%s)
+  "$@"
+  code=$?
+  end=$(date +%s)
+  echo "periodic task $name: exit $code after $((end - start)) s"
+  wait=$(( (end - offset) / every * every + every + offset - end ))
+  if [ $code -eq 0 ]; then failed=0; else failed=$((failed + 1)); fi
+  if [ $failed -gt 0 ] && [ $failed -le 5 ] && [ $retry -lt $wait ]; then wait=$retry; fi
+  sleep $wait &
+  wait $!
+done
+'''
 JITSI_MARK = '// hoover: the bridge connection uses the UDP TURN server of Prosody.'
 JITSI_TURN = JITSI_MARK + '\nconfig.useTurnUdp = true;\n'
-
-
-def kubectl_json(*args):
-    result = subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), *args, '-o', 'json'], capture_output=True, text=True)
-    if result.returncode:
-        if 'NotFound' in result.stderr:
-            return None
-        raise RuntimeError(f'kubectl {" ".join(args)}: {result.stderr.strip()[:300]}')
-    return json.loads(result.stdout)
 
 
 class Zone:
@@ -348,6 +392,90 @@ def openproject_worker(doc, extra):
     doc['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/cron'] = hashlib.sha256(source.encode()).hexdigest()[:16]
 
 
+def interval(schedule):
+    """(seconds, offset) of a CronJob schedule of the form '*/N * * * *', 'M * * * *' or 'M H * * *', in UTC. The loop
+    runs at each time t with (t - offset) a multiple of seconds, as the CronJob did."""
+    fields = schedule.split()
+    if len(fields) == 5 and fields[2:] == ['*', '*', '*']:
+        minute, hour = fields[:2]
+        if minute.startswith('*/') and minute[2:].isdigit() and hour == '*':
+            return int(minute[2:]) * 60, 0
+        if minute.isdigit() and hour == '*':
+            return 3600, int(minute) * 60
+        if minute.isdigit() and hour.isdigit():
+            return 86400, int(hour) * 3600 + int(minute) * 60
+    raise RuntimeError(f'the CronJob schedule {schedule!r} has no interval form in postrender.py interval()')
+
+
+def periodic_container(doc, rule):
+    """The container that runs the task of a CronJob in a loop, and its volumes. The volumes get the container name as
+    a prefix, so a sidecar shares no emptyDir with the containers of its pod."""
+    spec = pod_spec(doc)
+    name = doc['metadata']['name']
+    if len(spec['containers']) != 1 or spec.get('initContainers'):
+        raise RuntimeError(f'the CronJob {name} has more than one container, which periodic() does not support')
+    c = json.loads(json.dumps(spec['containers'][0]))
+    command = (c.pop('command', None) or rule.get('command')) + c.pop('args', [])
+    if not command:
+        raise RuntimeError(f'the CronJob {name} names no command, and PERIODIC gives none')
+    every, offset = interval(doc['spec']['schedule'])
+    prefix = rule['container']
+    c['name'] = prefix
+    c['command'] = ['/bin/sh', '-c', PERIODIC_LOOP, name, str(every), str(offset), str(PERIODIC_RETRY), *command]
+    c['resources'].setdefault('requests', {})['memory'] = rule['memory']
+    volumes = []
+    for volume in spec.get('volumes') or []:
+        volumes.append(dict(volume, name=f"{prefix}-{volume['name']}"))
+    for mount in c.get('volumeMounts') or []:
+        mount['name'] = f"{prefix}-{mount['name']}"
+    return c, volumes
+
+
+def periodic(documents, disabled=False, values=None):
+    """Replace each CronJob with the container of its PERIODIC rule: a sidecar in the pod of rule['pod'], or a
+    Deployment with the name of the CronJob. A CronJob without a rule stops the render. The containers keep the CPU
+    values that overlay() gave the CronJob. A pod that gets a sidecar gets rollout() again, because its request grew."""
+    out, targets = [], {}
+    for doc in documents:
+        if isinstance(doc, dict) and doc.get('kind') in ('Deployment', 'StatefulSet'):
+            targets[ref(doc)] = doc
+    for doc in documents:
+        if not isinstance(doc, dict) or doc.get('kind') != 'CronJob':
+            out.append(doc)
+            continue
+        name = doc['metadata']['name']
+        rule = PERIODIC.get(name)
+        if rule is None:
+            raise RuntimeError(f'the chart renders the CronJob {name}, which has no rule in postrender.py PERIODIC. '
+                               'A CronJob starts a new pod for each run.')
+        c, volumes = periodic_container(doc, rule)
+        template = doc['spec']['jobTemplate']['spec']['template']
+        spec = template['spec']
+        if rule['pod']:
+            target = targets.get(rule['pod'])
+            if target is None:
+                raise RuntimeError(f'the CronJob {name} needs {rule["pod"]}, which this render does not have')
+            pod = pod_spec(target)
+            for field in ('serviceAccountName', 'securityContext'):
+                if spec.get(field) != pod.get(field):
+                    raise RuntimeError(f'the CronJob {name} and {rule["pod"]} differ in {field}')
+            pod['containers'] = [x for x in pod['containers'] if x['name'] != c['name']] + [c]
+            kept = {v['name'] for v in volumes}
+            pod['volumes'] = [v for v in pod.get('volumes') or [] if v['name'] not in kept] + volumes
+            rollout(target)
+            continue
+        labels = dict(template['metadata'].get('labels') or {}, **{PERIODIC_LABEL: name})
+        spec = dict(spec, containers=[c], volumes=volumes, restartPolicy='Always')
+        replicas = 0 if disabled or disabled_app(name, values or {}) else 1
+        out.append({'apiVersion': 'apps/v1', 'kind': 'Deployment',
+                    'metadata': {'name': name, 'namespace': doc['metadata'].get('namespace'),
+                                 'labels': doc['metadata'].get('labels') or {}},
+                    'spec': {'replicas': replicas, 'strategy': {'type': 'Recreate'},
+                             'selector': {'matchLabels': {PERIODIC_LABEL: name}},
+                             'template': {'metadata': dict(template['metadata'], labels=labels), 'spec': spec}}})
+    return out
+
+
 def overlay(documents, namespace):
     zone = Zone(namespace)
     values = operator_values(namespace)
@@ -371,17 +499,8 @@ def overlay(documents, namespace):
                 doc.clear()
                 doc.update(renamed)
                 name = doc['metadata']['name']
-        if kind in ('Job', 'CronJob') and zone.disabled:
+        if kind == 'Job' and zone.disabled:
             doc['spec']['suspend'] = True
-        elif kind == 'CronJob':
-            live = kubectl_json('-n', namespace, 'get', 'cronjob', name)
-            # Only a suspended CronJob changes the render, so a second install of an unchanged zone finds no difference.
-            if live is not None and live['spec'].get('suspend'):
-                doc['spec']['suspend'] = True
-            if name == 'opendesk-element-customization-media-cleanup':
-                # The chart gives a starting deadline of 600 s. Without it, the CronJob starts one Job for its most
-                # recent missed time when the zone starts again after a stop.
-                doc['spec'].pop('startingDeadlineSeconds', None)
         if kind == 'DaemonSet' and zone.disabled:
             raise RuntimeError(f'the disabled namespace {namespace} renders the DaemonSet {name}, which has no replica count')
         if kind not in CONTROLLERS:
@@ -433,7 +552,7 @@ def overlay(documents, namespace):
                     doc['spec']['resources'] = {'requests': {'storage': size}}
             else:
                 doc['spec']['storageClassName'] = zone.storage_class('default', 'ext4')
-    return documents + extra
+    return periodic(documents, zone.disabled, values) + extra
 
 
 def main():

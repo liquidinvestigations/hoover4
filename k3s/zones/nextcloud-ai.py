@@ -37,7 +37,7 @@ def set_image_and_worker(zone):
 def wait(zone):
  kubectl(zone,'rollout','status','deployment/opendesk-nextcloud-aio','--timeout=600s')
 def aio_pod(zone):
- # The cron Job pods carry the same labels, so kubectl exec on the Deployment can reach a finished cron pod.
+ # Other pods can carry the labels of the Deployment, so the pod is selected by its ReplicaSet.
  pods=json.loads(kubectl(zone,'get','pods','-o','json'))['items']
  return next(p['metadata']['name'] for p in pods if p['status'].get('phase')=='Running' and not p['metadata'].get('deletionTimestamp')
   and any(o['kind']=='ReplicaSet' and o['name'].startswith('opendesk-nextcloud-aio-') for o in p['metadata'].get('ownerReferences',[])))

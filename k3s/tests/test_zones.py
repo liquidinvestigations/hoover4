@@ -1,5 +1,8 @@
-"""The openDesk waves of the zone installer and the measured CPU requests of the zone render."""
+"""The openDesk waves of the zone installer, the measured CPU requests and the periodic tasks of the zone render."""
+import signal
+import subprocess
 import sys
+import time
 
 import pytest
 import yaml
@@ -254,3 +257,140 @@ def test_the_post_renderer_removes_no_op_probes_and_lengthens_short_periods():
     postrender.probes(memcached, 'deployment/memcached')
     assert memcached['spec']['template']['spec']['containers'][0]['livenessProbe'] == \
         {'tcpSocket': {'port': 11211}, 'periodSeconds': 10}
+
+
+def cronjob(name, schedule, container, account='a', security=None, volumes=()):
+    spec = {'serviceAccountName': account, 'securityContext': security or {}, 'restartPolicy': 'Never',
+            'containers': [container], 'volumes': list(volumes)}
+    return {'kind': 'CronJob', 'metadata': {'name': name, 'namespace': 'zone-a', 'labels': {'app': name}},
+            'spec': {'schedule': schedule, 'jobTemplate': {'spec': {'template': {
+                'metadata': {'labels': {'app': name}, 'annotations': {'note': 'x'}}, 'spec': spec}}}}}
+
+
+def pod_workload(name, containers, account, memory, security=None, volumes=()):
+    return {'kind': 'Deployment', 'metadata': {'name': name}, 'spec': {'replicas': 1, 'template': {'metadata': {}, 'spec': {
+        'serviceAccountName': account, 'securityContext': security or {}, 'volumes': list(volumes),
+        'containers': [{'name': c, 'resources': {'requests': {'memory': memory}}} for c in containers]}}}}
+
+
+def task(name, command=None, mounts=()):
+    c = {'name': name, 'image': f'{name}:1', 'env': [{'name': 'E', 'value': '1'}],
+         'resources': {'requests': {'cpu': '26m', 'memory': '204Mi'}, 'limits': {'cpu': '3', 'memory': '1Gi'}},
+         'volumeMounts': [{'name': m, 'mountPath': f'/{m}'} for m in mounts]}
+    if command:
+        c['command'] = command
+    return c
+
+
+def opendesk_cronjobs():
+    """The four CronJobs of openDesk v1.19.1 and the workloads whose pods get their sidecars."""
+    empty = {'name': 'nextcloud-config', 'emptyDir': {'medium': 'Memory'}}
+    ldap = {'name': 'secret-ldap', 'secret': {'secretName': 'ums-ldap-server-admin'}}
+    return [
+        pod_workload('opendesk-nextcloud-aio', ['aio'], 'opendesk-nextcloud-aio', '896Mi', {'fsGroup': 101},
+                     [{'name': 'nextcloud-config', 'emptyDir': {}}]),
+        pod_workload('ums-udm-rest-api', ['main'], 'ums-udm-rest-api', '448Mi', {'fsGroup': 1000}, [ldap]),
+        cronjob('opendesk-nextcloud-aio-cron', '*/5 * * * *', task('cron', mounts=['nextcloud-config']),
+                'opendesk-nextcloud-aio', {'fsGroup': 101}, [empty]),
+        cronjob('ums-udm-rest-api-license-cache', '0 * * * *', task('main', ['/usr/share/update-license-cache'], ['secret-ldap']),
+                'ums-udm-rest-api', {'fsGroup': 1000}, [ldap]),
+        cronjob('ums-udm-rest-api-blocklist-cleanup', '0 8 * * *', task('main', mounts=['secret-ldap']), 'ums-udm-rest-api',
+                {'fsGroup': 1000}, [ldap]),
+        cronjob('opendesk-element-customization-media-cleanup', '0 * * * *',
+                task('media-cleanup', ['/bin/bash', '/usr/local/bin/media-cleanup.sh']), 'media-cleanup'),
+    ]
+
+
+def test_each_cronjob_of_the_charts_becomes_a_container_that_stays_running():
+    import postrender
+    out = postrender.periodic(opendesk_cronjobs())
+    assert not [d for d in out if d['kind'] == 'CronJob']
+    by_name = {d['metadata']['name']: d for d in out}
+    aio = by_name['opendesk-nextcloud-aio']['spec']['template']['spec']
+    cron = aio['containers'][1]
+    assert [c['name'] for c in aio['containers']] == ['aio', 'cron']
+    assert cron['command'][:2] == ['/bin/sh', '-c'] and cron['command'][3:] == [
+        'opendesk-nextcloud-aio-cron', '300', '0', '60', '/docker-entrypoint.sh', '/usr/bin/php', '/usr/local/bin/entrypoint/entrypoint.php']
+    assert cron['image'] == 'cron:1' and cron['env'] == [{'name': 'E', 'value': '1'}]
+    assert cron['resources'] == {'requests': {'cpu': '26m', 'memory': '128Mi'}, 'limits': {'cpu': '3', 'memory': '1Gi'}}
+    # The sidecar has its own copy of each volume, so it shares no emptyDir with the aio container.
+    assert cron['volumeMounts'] == [{'name': 'cron-nextcloud-config', 'mountPath': '/nextcloud-config'}]
+    assert {'name': 'cron-nextcloud-config', 'emptyDir': {'medium': 'Memory'}} in aio['volumes']
+    assert {'name': 'nextcloud-config', 'emptyDir': {}} in aio['volumes']
+    udm = by_name['ums-udm-rest-api']
+    names = [c['name'] for c in udm['spec']['template']['spec']['containers']]
+    assert names == ['main', 'license-cache', 'blocklist-cleanup']
+    license, blocklist = udm['spec']['template']['spec']['containers'][1:]
+    assert license['command'][4:] == ['3600', '0', '60', '/usr/share/update-license-cache']
+    assert blocklist['command'][4:] == ['86400', '28800', '60', '/bin/blocklist_clean_expired.py']
+    # 448 + 96 + 64 MiB: the pod now starts its new pod only after the old one stopped.
+    assert udm['spec']['strategy'] == {'type': 'RollingUpdate', 'rollingUpdate': {'maxSurge': 0, 'maxUnavailable': 1}}
+    media = by_name['opendesk-element-customization-media-cleanup']
+    spec = media['spec']['template']['spec']
+    assert media['kind'] == 'Deployment' and media['spec']['replicas'] == 1 and media['spec']['strategy'] == {'type': 'Recreate'}
+    assert media['spec']['selector'] == {'matchLabels': {'hoover.dev/periodic': 'opendesk-element-customization-media-cleanup'}}
+    assert media['spec']['template']['metadata']['labels'] == {
+        'app': 'opendesk-element-customization-media-cleanup', 'hoover.dev/periodic': 'opendesk-element-customization-media-cleanup'}
+    assert spec['serviceAccountName'] == 'media-cleanup' and spec['restartPolicy'] == 'Always'
+    assert spec['containers'][0]['command'][4:] == ['3600', '0', '60', '/bin/bash', '/usr/local/bin/media-cleanup.sh']
+    # A second render gives the same result.
+    assert postrender.periodic(out) == out
+
+
+def test_a_disabled_zone_or_application_runs_no_periodic_deployment():
+    import postrender
+    media = [d for d in opendesk_cronjobs() if d['metadata']['name'].endswith('media-cleanup')]
+    assert postrender.periodic(json_copy(media), disabled=True)[0]['spec']['replicas'] == 0
+    assert postrender.periodic(json_copy(media), values={'app.element': 'false'})[0]['spec']['replicas'] == 0
+
+
+def json_copy(value):
+    import json
+    return json.loads(json.dumps(value))
+
+
+def test_a_cronjob_without_a_rule_stops_the_render():
+    import postrender
+    new = cronjob('opendesk-new-task', '0 * * * *', task('main', ['run']))
+    with pytest.raises(RuntimeError, match='opendesk-new-task, which has no rule in postrender.py PERIODIC'):
+        postrender.periodic([new])
+    cron = opendesk_cronjobs()
+    cron[2]['spec']['jobTemplate']['spec']['template']['spec']['serviceAccountName'] = 'other'
+    with pytest.raises(RuntimeError, match='differ in serviceAccountName'):
+        postrender.periodic(cron)
+    with pytest.raises(RuntimeError, match='needs deployment/opendesk-nextcloud-aio'):
+        postrender.periodic(opendesk_cronjobs()[2:])
+
+
+def test_the_schedules_give_their_interval_and_offset():
+    import postrender
+    assert postrender.interval('*/5 * * * *') == (300, 0)
+    assert postrender.interval('0 * * * *') == (3600, 0)
+    assert postrender.interval('15 * * * *') == (3600, 900)
+    assert postrender.interval('0 8 * * *') == (86400, 28800)
+    with pytest.raises(RuntimeError, match='no interval form'):
+        postrender.interval('0 8 * * 1')
+
+
+def test_the_loop_runs_again_after_a_failed_run_and_stops_at_once():
+    import postrender
+    loop = ['sh', '-c', postrender.PERIODIC_LOOP, 'task']
+    process = subprocess.Popen(loop + ['1', '0', '60', 'sh', '-c', 'echo run; exit 3'], stdout=subprocess.PIPE, text=True)
+    time.sleep(2.5)
+    process.send_signal(signal.SIGTERM)
+    out, _ = process.communicate(timeout=5)
+    assert process.returncode == 0
+    assert out.count('run\n') >= 2 and 'periodic task task: exit 3 after 0 s' in out
+    # A failed run repeats after the retry wait, before the next time of the schedule, at most 5 times.
+    process = subprocess.Popen(loop + ['3600', '0', '1', 'false'], stdout=subprocess.PIPE, text=True)
+    time.sleep(7.5)
+    process.send_signal(signal.SIGTERM)
+    out, _ = process.communicate(timeout=5)
+    assert out.count('exit 1') == 6
+    # A stop signal during the wait ends the loop without waiting for the next run.
+    process = subprocess.Popen(loop + ['3600', '0', '60', 'true'], stdout=subprocess.PIPE, text=True)
+    time.sleep(0.5)
+    started = time.monotonic()
+    process.send_signal(signal.SIGTERM)
+    process.communicate(timeout=5)
+    assert process.returncode == 0 and time.monotonic() - started < 2
