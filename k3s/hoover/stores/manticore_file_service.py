@@ -12,7 +12,7 @@ caller sees:
   GET    /tables/<table>/<file>          a file of the table folder. The table must be in SHOW TABLES of the caller.
   PUT    /stage/<stage>/<table>/<file>   write a file into import/<user>/<stage>/<table>/ of the data folder.
   DELETE /stage/<stage>                  remove import/<user>/<stage>/.
-  DELETE /import                         remove import/<user>/. The removal of a zone (shared.py remove) calls it.
+  DELETE /import                         remove import/<user>/.
   GET    /ready                          200 without credentials.
 
 A caller writes only below import/<user>/ of its own user and reads only the folders of its own tables. The schema

@@ -18,16 +18,20 @@ The zone credentials are in the Secrets hoover-stores and garage-tenants of the 
   this step allows. A bucket that Hoover creates through S3 has a local alias of the zone key, so its name is private
   to the zone. The keys are in the Secret garage-tenants.
 - Manticore: the users <prefix>_read, <prefix>_write and <prefix>_schema in both shared daemons of the site, with
-  the passwords of hoover-stores and the rights of stores/service_users.py MANTICORE_GRANTS on the tables <prefix>_*
-  only. The services that only search get the read user, and the services that write rows get the write user and the
-  proxy credential. Neither user can create, alter or drop a table. The Secret manticore-schema of the Hoover
-  namespace holds the schema user and the proxy credential, and only the schema proxy of the zone mounts it.
+  the rights of stores/service_users.py MANTICORE_GRANTS on the tables <prefix>_* only. The read and write passwords
+  are in hoover-stores. The services that only search get the read user, and the services that write rows get the
+  write user and the proxy credential. Neither user can create, alter or drop a table. The Secret manticore-schema of
+  the Hoover namespace holds the schema password and the proxy credential, and only the schema proxy of the zone
+  mounts it. No Secret of the zone namespace holds the schema password, because openDesk service accounts can list
+  the Secrets of that namespace.
 - Temporal: the namespace <zone> with the retention of the setting main_services.temporal_retention of the zone, and
   the search attribute CollectionDataset. A present namespace gets the retention again and keeps its workflows.
 - Secrets hoover-runtime and oauth2-proxy in namespace hoover-<zone>. hoover-runtime holds the store credentials of
   each service, which follow hoover-stores and garage-tenants, and the Temporal key of the zone (temporal-api-key),
   which follows the signing key of the site. Other existing values stay unchanged. The GPU token follows gpu.token, and
   the shared secrets of the MCP servers and of the browser fetch are random.
+A new zone (no key of the zone in garage-tenants) is refused while the shared stores hold buckets, keys, users,
+databases, tables or a Temporal namespace of an earlier zone with the same id (stores/shared.py leftovers()).
 The script reads credentials from cluster Secrets and never prints a credential.
 An installation with the local store layout (manifests.py) needs only the Secrets: setup.py <zone> local-secrets.
 Usage: setup.py <zone> [garage] [clickhouse] [secrets] [temporal] [manticore]    Without steps it runs all of them.
@@ -89,6 +93,24 @@ def ensure_secret(name, wanted, follow=(), drop=()):
     if removed:
         kubectl('-n', NS, 'patch', 'secret', name, '--type=json', '-p', json.dumps(removed))
     return data
+
+
+def refuse_leftovers():
+    """Stop when the shared stores hold an object of an earlier zone with the id of this zone.
+
+    A zone without its key in garage-tenants is a new tenant. The zone delete of an earlier version could leave
+    buckets, keys, users, tables or a Temporal namespace of a deleted zone. A new zone with the same id would get
+    access to them. The message names them and the step that removes them.
+    """
+    tenants = json.loads(secret(STORES, 'garage-tenants').get('tenants.json', '{}'))
+    if ZONE in tenants:
+        return
+    left = shared.leftovers(ZONE)
+    if left:
+        names = '. '.join(f'{store}: {", ".join(items[:20])}' + (f' and {len(items) - 20} more' if len(items) > 20 else '')
+                          for store, items in left.items())
+        raise SystemExit(f'the shared stores hold objects of an earlier zone {ZONE}. {names}. Remove them with '
+                         f'k3s/hoover/stores/shared.py remove {ZONE} in the operator image, then apply the zone again.')
 
 
 def temporal(runtime):
@@ -161,6 +183,9 @@ def manticore():
     of a zone user that MANTICORE_GRANTS does not name is revoked.
     """
     stores = secret(STORES, 'hoover-stores')
+    stores['manticore-schema'] = secret(NS, 'manticore-schema').get('password', '')
+    if not stores['manticore-schema']:
+        raise SystemExit(f'the Secret manticore-schema of {NS} has no password. Run setup.py {ZONE} secrets first.')
     target = f'{PREFIX}_*'
     for store in shared.MANTICORE:
         present = shared.manticore_users(store)
@@ -211,10 +236,15 @@ def runtime_secrets():
         follow=('gpu-token', 'temporal-api-key', *stored),
         drop=('clickhouse-password', 'manticore-password', 's3-access-key', 's3-secret-key', 'temporal-db-password',
               *[f'manticore-{s}' for s in service_users.SERVICES if f'manticore-{s}' not in stored]))
-    # Only the schema proxy of the zone mounts this Secret (../manifests.py schema_proxy()).
-    ensure_secret('manticore-schema', {'password': stores['manticore-schema'], 'token': stores['manticore-proxy-token'],
-                                       'status-token': stores['manticore-status-token']},
-                  follow=('password', 'token', 'status-token'))
+    # Only the schema proxy of the zone mounts this Secret (../manifests.py schema_proxy()), and it is the only place
+    # of the schema password. A zone of an earlier version has the password in hoover-stores of the zone namespace,
+    # which openDesk service accounts can list. The password moves here and leaves that Secret.
+    ensure_secret('manticore-schema', {'password': stores.get('manticore-schema') or secrets.token_hex(24),
+                                       'token': stores['manticore-proxy-token'], 'status-token': stores['manticore-status-token']},
+                  follow=('token', 'status-token'))
+    if 'manticore-schema' in stores:
+        kubectl('-n', STORES, 'patch', 'secret', 'hoover-stores', '--type=json',
+                '-p', json.dumps([{'op': 'remove', 'path': '/data/manticore-schema'}]))
     ensure_secret('oauth2-proxy', {'client-secret': zone_data['hoover_oidc_secret'], 'cookie-secret': secrets.token_hex(16),
                                    'proxy-secret': runtime['proxy-secret']}, follow=('client-secret',))
     print(json.dumps({'step': 'secrets', 'namespace': NS, 'secrets': ['hoover-runtime', 'oauth2-proxy', 'manticore-schema']}))
@@ -251,6 +281,7 @@ def main():
         local_secrets()
         return
     steps = sys.argv[2:] or ['garage', 'clickhouse', 'secrets', 'temporal', 'manticore']
+    refuse_leftovers()
     if kubectl('get', 'namespace', NS, check=False).returncode:
         apply({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {'hoover.dev/zone': 'true', shared.HOOVER_LABEL: 'true'}}})
     # The garage step creates the service keys, which the secrets step copies.

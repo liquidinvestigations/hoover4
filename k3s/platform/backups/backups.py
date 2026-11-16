@@ -22,8 +22,11 @@ Jobs:
   system of a Kata store, which only the guest of the store pod mounts, so the copy reads it through the store
   container with the busybox of ../../hoover/stores/podspec.py. A claim that a pod owns (a generic ephemeral volume)
   holds temporary files and is not copied. The earlier job key opendesk:<zone> reads as zone:<zone>.
-  A zone of the store layout site keeps its ClickHouse databases and Garage buckets in the shared stores of the site
-  (../../hoover/stores/shared.py). The zone copy does not hold them. The collection exports of the next job hold them.
+  A zone of the store layout site keeps its ClickHouse databases, Manticore tables and Garage buckets in the shared
+  stores of the site (../../hoover/stores/shared.py). The folder hoover/<installation>/shared/ of the zone copy holds
+  the ClickHouse databases <prefix> and <prefix>_Processing (users, groups, chats, boards, settings, operation history)
+  and the objects of the bucket <zone>-system (copy_shared_stores()). The collection copies of the next job hold the
+  collection databases, tables and buckets.
 - hoover:<zone>:<collection>: the collection export of the operations worker (main.py export-collection), streamed out
   of the claim ops-backups. In a zone of the store layout site the ClickHouse archive of the export is an object of the
   export bucket of the zone, and the job first copies it into the export directory. The export directory in the claim
@@ -50,7 +53,9 @@ finds a recorded closure without a running job restores it.
 The zone and platform jobs hold the site operation lock (../../oplock.py), so no deployment, Apply or Compose import
 changes the site during the copy.
 restore-zone restores a complete zone copy into an installed zone: the Secrets, the claims and the database dumps of
-the zone namespace and of its Hoover installation, with the applications and the other stores stopped. --from names
+the zone namespace and of its Hoover installation, with the applications and the other stores stopped. For a site
+zone it also replaces the zone databases and the objects of the system bucket with the shared/ part of the copy, and
+it keeps the tenant credentials of the target zone (TENANT_SECRETS). --from names
 the zone of the copy when it differs. On a failure the zone stays closed, and the state file names the step.
 A runner restart finds a job that runs (its process id and its export operation in the state) and waits for it.
 Receipts of a collection come from the table operations of the installation: the first finished add_dataset of each of
@@ -69,6 +74,7 @@ Usage: backups.py tick                      start the next due job, as the opera
        backups.py restore-platform <generation>                     print the root steps that restore a platform copy
 """
 import base64
+import contextlib
 import hashlib
 import json
 import os
@@ -611,6 +617,122 @@ def run_hoover(s, zone, collection, generation, partial):
     remove_export()
 
 
+# The shared stores of a site zone (../../hoover/stores/shared.py) hold the zone databases and the system bucket. The
+# zone job copies them into hoover/<installation>/shared/ of the copy: the archive of the ClickHouse databases
+# <prefix> and <prefix>_Processing (clickhouse.tar), the objects of the bucket <zone>-system (system-bucket.tar) and
+# stores.json. The shared ClickHouse writes the archive with BACKUP ... TO S3 into the export bucket of the zone with
+# the zone key, as the collection export does. The S3 client of ../../hoover/stores/garage_client.py copies the
+# archive and the bucket out and deletes the archive object. The collection buckets and the Manticore tables are in
+# the collection copies (job hoover:<zone>:<collection>).
+SHARED_PART = 'shared'
+GARAGE_S3 = 'http://garage.hoover-stores.svc.cluster.local:3900'
+
+
+def zone_databases(hoover):
+    prefix = hoover.clickhouse_database_prefix
+    return [prefix, f'{prefix}_Processing']
+
+
+def sql_text(text):
+    return "'" + text.replace('\\', '\\\\').replace("'", "\\'") + "'"
+
+
+def s3_target(bucket, key, zone_key):
+    return f"S3({sql_text(f'{GARAGE_S3}/{bucket}/{key}')}, {sql_text(zone_key['access_key'])}, {sql_text(zone_key['secret_key'])})"
+
+
+def clickhouse_with_key(hoover, sql, zone_key):
+    """clickhouse() for a statement that holds the zone key. The client repeats a failed statement in its error, so
+    the error loses the secret."""
+    try:
+        return clickhouse(hoover, sql)
+    except SystemExit as error:
+        raise SystemExit(str(error).replace(zone_key['secret_key'], '[HIDDEN]')) from None
+
+
+@contextlib.contextmanager
+def archive_object(pod, zone_key, bucket, key):
+    """Delete the archive object after the block. After a failure in the block, a failed delete does not hide it."""
+    import garage_client
+    try:
+        yield
+    except BaseException:
+        with contextlib.suppress(SystemExit):
+            garage_client.run(pod, zone_key, 'delete', bucket, key)
+        raise
+    garage_client.run(pod, zone_key, 'delete', bucket, key)
+
+
+def clickhouse_status(output, wanted):
+    """The status of a BACKUP or RESTORE answer, or SystemExit when it is not wanted."""
+    rows = [json.loads(line) for line in output.splitlines() if line.strip().startswith('{')]
+    status = rows[-1].get('status') if rows else None
+    if status != wanted:
+        raise SystemExit(f'ClickHouse answered {status or output.strip()[-300:]!r} instead of {wanted}.')
+    return status
+
+
+def copy_shared_stores(hoover, target):
+    """Copy the zone databases and the system bucket of a site zone into target. The zone is closed."""
+    import garage_client
+    target.mkdir(parents=True, exist_ok=True)
+    wanted = zone_databases(hoover)
+    present = [json.loads(line)['name'] for line in clickhouse(
+        hoover, f"SELECT name FROM system.databases WHERE name IN ({', '.join(sql_text(n) for n in wanted)})").splitlines()
+        if line.strip()]
+    databases = [n for n in wanted if n in present]
+    bucket = f'{hoover.zone}-exports'
+    run_id = f'{int(time.time())}-{os.urandom(3).hex()}'
+    key = f'zone-backups/{run_id}/clickhouse.tar'
+    zone_key = garage_client.zone_key(hoover.zone)
+    info = {'zone': hoover.zone, 'prefix': hoover.clickhouse_database_prefix, 'databases': databases,
+            'system_bucket': hoover.system_bucket}
+    with garage_client.client() as pod:
+        if databases:
+            with archive_object(pod, zone_key, bucket, key):
+                answer = clickhouse_with_key(hoover, f"BACKUP {', '.join(f'DATABASE `{n}`' for n in databases)} TO "
+                                                     f"{s3_target(bucket, key, zone_key)} SETTINGS id='{info['prefix']}-zone-{run_id}'",
+                                             zone_key)
+                clickhouse_status(answer, 'BACKUP_CREATED')
+                _, got = garage_client.run(pod, zone_key, 'get', bucket, key, out=target / 'clickhouse.tar')
+            # The copy must have the size of the object and the tar end marker.
+            info['clickhouse_bytes'] = (target / 'clickhouse.tar').stat().st_size
+            if (info['clickhouse_bytes'] != next((r['bytes'] for r in got if 'bytes' in r), -1)
+                    or not tar_complete(target / 'clickhouse.tar')):
+                raise SystemExit(f'the copy of the ClickHouse archive of {hoover.zone} is incomplete. Run the job again.')
+        _, reports = garage_client.run(pod, zone_key, 'tar', hoover.system_bucket, out=target / 'system-bucket.tar')
+    if not tar_complete(target / 'system-bucket.tar'):
+        raise SystemExit(f'the copy of {hoover.system_bucket} has no tar end. Run the job again.')
+    info['system_objects'] = next((r['objects'] for r in reports if 'objects' in r), 0)
+    (target / 'stores.json').write_text(json.dumps(info, indent=1))
+    return info
+
+
+def restore_shared_stores(folder, hoover):
+    """Replace the zone databases and the objects of the system bucket of a site zone with a copy of
+    copy_shared_stores(). A copy of another zone restores under the prefix of this zone. The zone is closed."""
+    import garage_client
+    info = json.loads((folder / 'stores.json').read_text())
+    source, prefix = info['prefix'], hoover.clickhouse_database_prefix
+    names = [(n, prefix + n[len(source):]) for n in info['databases']]
+    bucket = f'{hoover.zone}-exports'
+    key = f'imports/zone-restore-{int(time.time())}-{os.urandom(3).hex()}/clickhouse.tar'
+    zone_key = garage_client.zone_key(hoover.zone)
+    with garage_client.client() as pod:
+        if names:
+            archive = folder / 'clickhouse.tar'
+            with archive_object(pod, zone_key, bucket, key):
+                garage_client.run(pod, zone_key, 'put', bucket, key, str(archive.stat().st_size), data=archive)
+                for _, name in names:
+                    clickhouse(hoover, f'DROP DATABASE IF EXISTS `{name}` SYNC')
+                answer = clickhouse_with_key(hoover, f"RESTORE {', '.join(f'DATABASE `{a}` AS `{b}`' for a, b in names)} FROM "
+                                                     f"{s3_target(bucket, key, zone_key)} SETTINGS id='{prefix}-zone-restore-{key.split('/')[1]}'",
+                                             zone_key)
+                clickhouse_status(answer, 'RESTORED')
+        garage_client.run(pod, zone_key, 'empty', hoover.system_bucket)
+        garage_client.run(pod, zone_key, 'untar', hoover.system_bucket, data=folder / 'system-bucket.tar')
+
+
 def helper_pod(ns, claim, node):
     name = f'backup-read-{hashlib.sha256(claim.encode()).hexdigest()[:8]}'
     pod = {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': name, 'namespace': ns, 'labels': {'app.kubernetes.io/name': 'backup-reader'}},
@@ -696,6 +818,8 @@ def run_zone(s, zone, partial, key=None):
     copy_namespace(zone, partial)
     for hoover in (h for h in site_config.hoovers(s).values() if h.zone == zone):
         copy_namespace(hoover.namespace, partial / 'hoover' / hoover.name)
+        if hoover.stores == 'site':
+            copy_shared_stores(hoover, partial / 'hoover' / hoover.name / SHARED_PART)
     reopen(closed)
     if key:
         data = load_state(s)
@@ -1105,10 +1229,15 @@ def restore_zone(zone, generation, source_zone=None):
             record_path.parent.mkdir(parents=True, exist_ok=True)
             record_path.write_text(json.dumps(progress, indent=1))
         step('close', lambda: apply_closure(progress['closed']))
+        target = next((h for h in site_config.hoovers(s).values() if h.zone == zone), None)
+        site_zone = target is not None and target.stores == 'site'
         for part, ns in parts:
             label = '' if ns == zone else f':{ns}'
-            step('secrets' + label, lambda part=part, ns=ns: restore_secrets(part, ns))
+            step('secrets' + label, lambda part=part, ns=ns: restore_secrets(part, ns, TENANT_SECRETS if site_zone else {}))
             restore_claims(part, ns, step)
+            if site_zone and ns != zone and (part / SHARED_PART / 'stores.json').exists():
+                hoover = next(h for h in site_config.hoovers(s).values() if h.namespace == ns)
+                step('shared-stores' + label, lambda part=part, hoover=hoover: restore_shared_stores(part / SHARED_PART, hoover))
         step('databases', lambda: restore_databases(folder, zone))
         # The replicas of the source zone apply when the copy names them. Otherwise the zone keeps its own.
         opened = dict(progress['closed'])
@@ -1127,17 +1256,30 @@ def restore_zone(zone, generation, source_zone=None):
     print(json.dumps({'zone': zone, 'restored': copy, 'steps': progress['steps']}))
 
 
-def restore_secrets(folder, zone):
-    """Apply the Secrets of the copy. Service account tokens and Helm release records belong to the target.
+# The Secrets and the Secret items of a site zone that hold the credentials of its tenant in the shared stores
+# (../../hoover/stores/creds.py and ../../hoover/setup.py). They belong to the target zone, because the store users
+# and the Garage keys of the target have these passwords and keys. None (the value) is the whole Secret, and a tuple
+# names the item prefixes of the Secret.
+TENANT_SECRETS = {'hoover-stores': None, 'garage-tenants': None, 'manticore-schema': None,
+                  'hoover-runtime': ('clickhouse-', 'manticore-', 's3-access-key-', 's3-secret-key-', 'temporal-api-key')}
+
+
+def restore_secrets(folder, zone, tenant=None):
+    """Apply the Secrets of the copy. Service account tokens and Helm release records belong to the target, and so do
+    the tenant Secrets of a site zone (tenant, TENANT_SECRETS).
 
     The items of a Secret of the copy replace the same items of the target Secret. The other items of the target stay,
     because a later release can add an item that an earlier copy does not hold.
     """
+    tenant = tenant or {}
     objects = json.loads((folder / 'objects.json').read_text())['items']
     skipped = ('kubernetes.io/service-account-token', 'helm.sh/release.v1')
     for item in objects:
-        if item['kind'] != 'Secret' or item.get('type') in skipped:
+        name = item['metadata']['name']
+        if item['kind'] != 'Secret' or item.get('type') in skipped or (name in tenant and tenant[name] is None):
             continue
+        if name in tenant:
+            item = {**item, 'data': {k: v for k, v in (item.get('data') or {}).items() if not k.startswith(tenant[name])}}
         metadata = {k: v for k, v in item['metadata'].items() if k in ('name', 'labels', 'annotations')}
         metadata['namespace'] = zone
         metadata.get('annotations', {}).pop('kubectl.kubernetes.io/last-applied-configuration', None)

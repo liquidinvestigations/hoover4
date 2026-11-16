@@ -569,3 +569,143 @@ def test_the_local_retirement_uses_the_tar_check_of_the_backups():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert module.tar_complete.__code__.co_filename == str(K3S / 'platform/backups/backups.py')
+
+
+# The zone databases and the system bucket of a site zone ---------------------------------------------------------------
+
+def shared_stores_fakes(backups, monkeypatch, tmp_path, databases=('zone_a', 'zone_a_Processing'), fail=None):
+    """Fake ClickHouse and Garage client for copy_shared_stores() and restore_shared_stores()."""
+    import contextlib
+    import io
+    import tarfile
+    sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
+    import garage_client
+    calls = []
+
+    def clickhouse(hoover, sql):
+        calls.append(('sql', sql))
+        if sql.startswith('SELECT name FROM system.databases'):
+            return ''.join(json.dumps({'name': n}) + '\n' for n in databases)
+        if fail and sql.startswith(fail):
+            raise SystemExit(f"kubectl exec failed: Code: 36. (query: {sql})")
+        if sql.startswith('BACKUP'):
+            return json.dumps({'id': 'x', 'status': 'BACKUP_CREATED'}) + '\n'
+        if sql.startswith('RESTORE'):
+            return json.dumps({'id': 'x', 'status': 'RESTORED'}) + '\n'
+        return ''
+
+    def tar_of(members):
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode='w') as archive:
+            for name, data in members:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        return raw.getvalue()
+
+    def run(pod, key, command, *args, data=None, out=None):
+        calls.append(('s3', key['access_key'], command, *args))
+        if command == 'get':
+            payload = tar_of([('metadata/zone_a.sql', b'ATTACH DATABASE')])
+            open(out, 'wb').write(payload)
+            return None, [{'bytes': len(payload)}]
+        if command == 'tar':
+            open(out, 'wb').write(tar_of([('a/b', b'one'), ('c', b'two')]))
+            return None, [{'objects': 2}]
+        return '', []
+    monkeypatch.setattr(backups, 'clickhouse', clickhouse)
+    monkeypatch.setattr(garage_client, 'run', run)
+    monkeypatch.setattr(garage_client, 'client', lambda: contextlib.nullcontext('garage-client-1'))
+    monkeypatch.setattr(garage_client, 'zone_key', lambda zone: {'access_key': f'GK-{zone}', 'secret_key': 'very-secret'})
+    return calls
+
+
+def site_hoover(zone='zone-a'):
+    return config.Hoover(zone=zone, stores='site', temporal='site', manticore='site')
+
+
+def test_the_zone_copy_holds_the_zone_databases_and_the_system_bucket(tmp_path, monkeypatch):
+    backups = backups_module()
+    calls = shared_stores_fakes(backups, monkeypatch, tmp_path)
+    info = backups.copy_shared_stores(site_hoover(), tmp_path / 'shared')
+    sql = [c[1] for c in calls if c[0] == 'sql']
+    assert sql[1].startswith("BACKUP DATABASE `zone_a`, DATABASE `zone_a_Processing` TO "
+                             "S3('http://garage.hoover-stores.svc.cluster.local:3900/zone-a-exports/zone-backups/")
+    assert "'GK-zone-a', 'very-secret')" in sql[1] and "SETTINGS id='zone_a-zone-" in sql[1]
+    s3 = [c[2:] for c in calls if c[0] == 's3']
+    key = s3[0][2]
+    assert s3 == [('get', 'zone-a-exports', key), ('delete', 'zone-a-exports', key), ('tar', 'zone-a-system')]
+    assert info['databases'] == ['zone_a', 'zone_a_Processing'] and info['system_objects'] == 2
+    assert json.loads((tmp_path / 'shared' / 'stores.json').read_text()) == info
+    assert (tmp_path / 'shared' / 'clickhouse.tar').exists() and (tmp_path / 'shared' / 'system-bucket.tar').exists()
+
+
+def test_a_failed_zone_backup_removes_its_object_and_shows_no_key(tmp_path, monkeypatch):
+    backups = backups_module()
+    calls = shared_stores_fakes(backups, monkeypatch, tmp_path, fail='BACKUP')
+    with pytest.raises(SystemExit) as error:
+        backups.copy_shared_stores(site_hoover(), tmp_path / 'shared')
+    assert 'very-secret' not in str(error.value) and '[HIDDEN]' in str(error.value)
+    assert [c[2] for c in calls if c[0] == 's3'] == ['delete']
+
+
+def test_a_zone_without_its_databases_copies_only_the_system_bucket(tmp_path, monkeypatch):
+    backups = backups_module()
+    calls = shared_stores_fakes(backups, monkeypatch, tmp_path, databases=('zone_a_Processing',))
+    info = backups.copy_shared_stores(site_hoover(), tmp_path / 'shared')
+    assert info['databases'] == ['zone_a_Processing']
+    calls[:] = []
+    shared_stores_fakes(backups, monkeypatch, tmp_path, databases=())
+    assert backups.copy_shared_stores(site_hoover(), tmp_path / 'empty')['databases'] == []
+    assert not (tmp_path / 'empty' / 'clickhouse.tar').exists()
+
+
+def test_the_zone_restore_replaces_the_databases_under_the_prefix_of_the_target(tmp_path, monkeypatch):
+    backups = backups_module()
+    shared_stores_fakes(backups, monkeypatch, tmp_path)
+    backups.copy_shared_stores(site_hoover('zone-a'), tmp_path / 'shared')
+    calls = shared_stores_fakes(backups, monkeypatch, tmp_path)
+    backups.restore_shared_stores(tmp_path / 'shared', site_hoover('zone-b'))
+    sql = [c[1] for c in calls if c[0] == 'sql']
+    assert sql[:2] == ['DROP DATABASE IF EXISTS `zone_b` SYNC', 'DROP DATABASE IF EXISTS `zone_b_Processing` SYNC']
+    assert sql[2].startswith("RESTORE DATABASE `zone_a` AS `zone_b`, DATABASE `zone_a_Processing` AS `zone_b_Processing` FROM "
+                             "S3('http://garage.hoover-stores.svc.cluster.local:3900/zone-b-exports/imports/zone-restore-")
+    s3 = [c[1:] for c in calls if c[0] == 's3']
+    key = s3[0][3]
+    assert s3 == [('GK-zone-b', 'put', 'zone-b-exports', key, s3[0][4]), ('GK-zone-b', 'delete', 'zone-b-exports', key),
+                  ('GK-zone-b', 'empty', 'zone-b-system'), ('GK-zone-b', 'untar', 'zone-b-system')]
+
+
+def test_the_zone_job_copies_the_shared_stores_of_a_site_zone_only(tmp_path, monkeypatch):
+    backups = backups_module()
+    hoovers = {'zone-a': site_hoover('zone-a'), 'zone-c': config.Hoover(zone='zone-c', stores='local')}
+    monkeypatch.setattr(backups.site_config, 'hoovers', lambda _s: hoovers)
+    monkeypatch.setattr(backups, 'close_zone', lambda s, zone: {'namespaces': [], 'workloads': {}, 'cronjobs': {}})
+    monkeypatch.setattr(backups, 'apply_closure', lambda record: None)
+    monkeypatch.setattr(backups, 'reopen', lambda record: None)
+    copied = []
+    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial: copied.append(ns))
+    monkeypatch.setattr(backups, 'copy_shared_stores', lambda hoover, target: copied.append(str(target.relative_to(tmp_path))))
+    backups.run_zone(None, 'zone-a', tmp_path / 'a')
+    backups.run_zone(None, 'zone-c', tmp_path / 'c')
+    assert copied == ['zone-a', 'hoover-zone-a', 'a/hoover/zone-a/shared', 'zone-c', 'hoover-zone-c']
+
+
+def test_a_restored_site_zone_keeps_its_own_tenant_credentials(tmp_path, monkeypatch):
+    backups = backups_module()
+    (tmp_path / 'objects.json').write_text(json.dumps({'items': [
+        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'hoover-runtime'},
+         'data': {'clickhouse-worker': 'b2xk', 'temporal-api-key': 'b2xk', 'proxy-secret': 'Y29weQ=='}},
+        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'manticore-schema'}, 'data': {'password': 'b2xk'}},
+        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'oauth2-proxy'}, 'data': {'proxy-secret': 'Y29weQ=='}}]}))
+    applied = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        if 'get' in args:
+            return json.dumps({'data': {'clickhouse-worker': 'bmV3', 'temporal-api-key': 'bmV3'}})
+        applied.append(json.loads(input))
+        return ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    backups.restore_secrets(tmp_path, 'hoover-zone-a', backups.TENANT_SECRETS)
+    assert [a['metadata']['name'] for a in applied] == ['hoover-runtime', 'oauth2-proxy']
+    assert applied[0]['data'] == {'clickhouse-worker': 'bmV3', 'temporal-api-key': 'bmV3', 'proxy-secret': 'Y29weQ=='}

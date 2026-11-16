@@ -3,9 +3,10 @@
 Each service that uses ClickHouse has its own ClickHouse user with its own random password. A user name is the zone
 prefix and the service, for example zone_a_mcp_browser. Manticore has three users for each zone (MANTICORE_ROLES):
 <prefix>_read, <prefix>_write and <prefix>_schema. A service uses the read or the write user. Only the schema proxy of
-the zone holds the schema user. creds.py writes the passwords into the Secret hoover-stores of the zone namespace.
-../setup.py creates the users in the shared ClickHouse and in the shared Manticore daemons, and copies the passwords
-into the Secrets hoover-runtime and manticore-schema of the Hoover namespace.
+the zone holds the schema user. creds.py writes the passwords into the Secret hoover-stores of the zone namespace,
+except the password of the schema user, which ../setup.py keeps in the Secret manticore-schema of the Hoover namespace
+only. ../setup.py creates the users in the shared ClickHouse and in the shared Manticore daemons, and copies the
+passwords into the Secret hoover-runtime of the Hoover namespace.
 Garage has no grant on a bucket that is created later, and the processing code creates a bucket for each new
 collection. The services that use the collection buckets therefore share the zone key, which can create buckets.
 Each other Garage user has its own key with access to the system bucket only.

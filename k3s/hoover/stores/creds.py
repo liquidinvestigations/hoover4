@@ -2,14 +2,16 @@
 """Create the credentials Secret hoover-stores of a zone, and add its missing keys. The values are random and the
 script never prints them.
 
-Keys: clickhouse-zone and clickhouse-<service> for each ClickHouse service of service_users.py, manticore-read,
-manticore-write and manticore-schema for the three Manticore users of the zone, manticore-proxy-token, the
-credential of the zone services at the schema proxy of the zone (../manifests.py), and manticore-status-token, the
+Keys: clickhouse-zone and clickhouse-<service> for each ClickHouse service of service_users.py, manticore-read and
+manticore-write for the Manticore users <prefix>_read and <prefix>_write, manticore-proxy-token, the credential of
+the zone services at the schema proxy of the zone (../manifests.py), and manticore-status-token, the
 credential of the website at the proxy, which allows only the operation status.
 The zone user of ClickHouse has the name of the zone prefix, for example zone_a. The operator tool ch.py uses it. No
 Hoover service uses it.
 The admin of the shared ClickHouse, the admin of the shared Manticore and the Garage secrets are in the Secret
-hoover-stores of the namespace hoover-stores (shared.py).
+hoover-stores of the namespace hoover-stores (shared.py). The password of the schema user is only in the Secret
+manticore-schema of the Hoover namespace (../setup.py), because openDesk service accounts can list the Secrets of the
+zone namespace.
 A present key keeps its value.
 Usage: creds.py <zone>
 """
@@ -20,7 +22,8 @@ NAME = 'hoover-stores'
 NS = sys.argv[1] if __name__ == '__main__' else None
 KEYS = ['clickhouse-zone', 'manticore-proxy-token', 'manticore-status-token']
 KEYS += [f'clickhouse-{s}' for s in service_users.using('clickhouse')]
-KEYS += [f'manticore-{role}' for role in service_users.MANTICORE_ROLES]
+# The schema password is not here: ../setup.py keeps it in the Secret manticore-schema of the Hoover namespace only.
+KEYS += [f'manticore-{role}' for role in service_users.MANTICORE_ROLES if role != 'schema']
 ADMIN_ACTIONS = ('read', 'write', 'schema', 'replication', 'admin', 'backup')
 
 

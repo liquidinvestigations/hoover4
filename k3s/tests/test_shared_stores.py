@@ -128,6 +128,7 @@ def test_only_hoover_namespaces_reach_the_client_ports():
     garage = by(items, 'NetworkPolicy', 'garage-clients')['spec']['ingress']
     assert garage[0]['ports'] == [{'port': 3900}]
     assert garage[0]['from'][1] == {'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}
+    assert len(garage[0]['from']) == 2
     # The RPC port takes only the Garage pods, and no rule names the admin port 3903.
     assert garage[1] == {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}], 'ports': [{'port': 3901}]}
     assert '3903' not in json.dumps([i for i in items if i['kind'] == 'NetworkPolicy'])
@@ -289,3 +290,225 @@ def test_the_file_service_gives_a_schema_user_only_its_own_tables_and_stage(tmp_
         assert call('DELETE', '/import')[0] == 200
     finally:
         server.shutdown()
+
+
+# The removal of a zone tenant and the refusal of a new zone with objects of an earlier one --------------------------
+
+import importlib.util  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+import garage_client  # noqa: E402
+import temporal  # noqa: E402
+
+
+@pytest.mark.parametrize('module', [shared, temporal])
+@pytest.mark.parametrize('name', ['zone', 'zone-', 'zone-a-b', 'zone-A', 'zone-a ', 'zone_a', 'zone-abcdefghijklm'])
+def test_remove_refuses_a_partial_zone_id_before_any_store_call(monkeypatch, module, name):
+    calls = []
+    monkeypatch.setattr(shared, 'remove', lambda zone: calls.append(zone))
+    monkeypatch.setattr(temporal, 'remove', lambda zone: calls.append(zone))
+    monkeypatch.setattr(shared, 'clickhouse_sql', lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(temporal, 'cli', lambda *a, **k: calls.append(a))
+    with pytest.raises(SystemExit) as error:
+        module.main(['remove', name])
+    assert 'is not a zone id' in str(error.value) and calls == []
+    module.main(['remove', 'zone-a1'])
+    assert calls == ['zone-a1']
+
+
+def remove_parts(monkeypatch, failing=(), left=None):
+    calls = []
+
+    def part(name):
+        def run(*args):
+            calls.append(name if not args[1:] else f'{name}:{args[1]}')
+            if name in failing or (args[1:] and args[1] in failing):
+                raise SystemExit(f'{args[1] if args[1:] else name} has no ready pod')
+        return run
+    monkeypatch.setattr(shared, 'remove_clickhouse', part('clickhouse'))
+    monkeypatch.setattr(shared, 'remove_manticore', part('manticore'))
+    monkeypatch.setattr(shared, 'remove_garage', part('garage'))
+    monkeypatch.setattr(temporal, 'remove', part('temporal'))
+    monkeypatch.setattr(shared, 'leftovers', lambda zone: calls.append('check') or (left or {}))
+    monkeypatch.setattr(shared.common, 'log', lambda *a, **k: None)
+    return calls
+
+
+def test_a_complete_removal_ends_after_the_check(monkeypatch):
+    calls = remove_parts(monkeypatch)
+    shared.remove('zone-a')
+    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'check']
+
+
+def test_a_failed_part_or_a_remaining_object_ends_the_removal_with_an_error(monkeypatch):
+    # A stopped Manticore daemon: the other parts still run, and the command fails and names the daemon.
+    calls = remove_parts(monkeypatch, failing=('manticore',), left={'manticore': ['manticore table zone_a_demo_vfs']})
+    with pytest.raises(SystemExit) as error:
+        shared.remove('zone-a')
+    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'check']
+    message = str(error.value)
+    assert 'manticore: manticore has no ready pod' in message and 'zone_a_demo_vfs' in message
+    assert 'run shared.py remove zone-a again' in message
+    # An object that stays without a failed part also fails the command.
+    remove_parts(monkeypatch, left={'temporal': ['namespace zone-a']})
+    with pytest.raises(SystemExit, match='temporal keeps namespace zone-a'):
+        shared.remove('zone-a')
+
+
+def test_only_the_answer_not_found_counts_as_an_absent_temporal_namespace(monkeypatch):
+    answers = []
+    monkeypatch.setattr(temporal, 'cli', lambda *a, check=True: answers.pop(0))
+    done = subprocess.CompletedProcess
+    answers[:] = [done([], 0, 'NamespaceInfo.Name zone-a', '')]
+    assert temporal.namespace_present('zone-a') is True
+    answers[:] = [done([], 1, '', 'unable to describe namespace zone-a: Namespace zone-a is not found.')]
+    assert temporal.namespace_present('zone-a') is False
+    answers[:] = [done([], 1, '', 'context deadline exceeded')]
+    with pytest.raises(SystemExit, match='context deadline exceeded'):
+        temporal.namespace_present('zone-a')
+
+
+class FakeGarage:
+    """The Garage CLI and the client pod of garage_client.py over a dictionary of keys and buckets."""
+
+    def __init__(self, keys, buckets, stuck=()):
+        self.keys, self.buckets, self.stuck, self.calls = dict(keys), dict(buckets), set(stuck), []
+
+    def cli(self, *args, pod=None, check=True):
+        self.calls.append(args)
+        if args[:2] == ('key', 'list'):
+            return 'ID  Created  Name  Expiration\n' + ''.join(f'{i}  2026-11-16  {n}  never\n' for i, n in self.keys.items())
+        if args[:2] == ('bucket', 'list'):
+            rows = [f'b{i}  2026-11-16  {"" if k else n}  {f"{k}:{n}" if k else ""}' for i, (n, k) in enumerate(self.buckets.items())]
+            return 'ID  Created  Global aliases  Local aliases\n' + ''.join(f'{r}\n' for r in rows)
+        if args[:2] == ('key', 'create'):
+            self.keys['GKpurge'] = args[2]
+            return 'Key ID: GKpurge\nSecret key: s-purge\n'
+        if args[:2] == ('key', 'info'):
+            return f'Key ID: {args[3]}\nSecret key: s-{args[3]}\n'
+        if args[:2] == ('key', 'delete'):
+            self.keys.pop(args[3], None)
+        if args[:2] == ('bucket', 'delete') and args[3] not in self.stuck:
+            self.buckets.pop(args[3], None)
+        return ''
+
+    def run(self, pod, key, command, *buckets, **kw):
+        self.calls.append(('s3', key['access_key'], command, *buckets))
+        for bucket in buckets:
+            if bucket not in self.stuck:
+                self.buckets.pop(bucket, None)
+        return '', []
+
+
+@pytest.fixture
+def garage(monkeypatch):
+    def make(keys, buckets, stuck=()):
+        fake = FakeGarage(keys, buckets, stuck)
+        monkeypatch.setattr(shared, 'garage_cli', fake.cli)
+        monkeypatch.setattr(garage_client, 'run', fake.run)
+        monkeypatch.setattr(garage_client, 'client', lambda: __import__('contextlib').nullcontext('garage-client-1'))
+        monkeypatch.setattr(shared.common, 'log', lambda *a, **k: None)
+        return fake
+    return make
+
+
+ZONE_A_KEYS = {'GKa': 'zone-a', 'GKab': 'zone-a-mcp-browser', 'GKb': 'zone-b', 'GKx': 'zone-ab'}
+ZONE_A_BUCKETS = {'zone-a-system': '', 'zone-a-exports': '', 'zone-a-c-new': 'GKa', 'zone-b-system': '', 'zone-ab-system': '',
+                  'zone-b-c-new': 'GKb'}
+
+
+def test_each_garage_pod_has_the_s3_client_of_the_operator_tools():
+    site = remote('{nodes: [server-a, worker-b]}')
+    statefulset = by(shared.objects(site, config.store_plan(site), 1, {}), 'StatefulSet', 'garage')
+    client = next(c for c in statefulset['spec']['template']['spec']['containers'] if c['name'] == 's3')
+    assert client['image'] == garage_client.IMAGE and 'volumeMounts' not in client and 'ports' not in client
+    assert client['securityContext']['runAsNonRoot'] and client['securityContext']['capabilities'] == {'drop': ['ALL']}
+    assert client['resources']['limits']['memory'] == '128Mi'
+    # The client reaches Garage inside its own pod, so no network policy names it.
+    assert garage_client.ENDPOINT == '127.0.0.1:3900'
+
+
+def test_the_garage_tenant_holds_only_the_keys_and_buckets_of_the_zone(garage):
+    garage(ZONE_A_KEYS, ZONE_A_BUCKETS)
+    keys, buckets = shared.garage_tenant('zone-a')
+    assert keys == {'GKa': 'zone-a', 'GKab': 'zone-a-mcp-browser'}
+    assert buckets == {'zone-a-system': '', 'zone-a-exports': '', 'zone-a-c-new': 'GKa'}
+
+
+def test_the_garage_removal_needs_no_pod_of_the_zone(garage):
+    fake = garage(ZONE_A_KEYS, ZONE_A_BUCKETS)
+    shared.remove_garage('zone-a')
+    s3 = [c for c in fake.calls if c[0] == 's3']
+    # The owner key empties and deletes the collection bucket. A purge key with all rights empties the global buckets.
+    assert s3 == [('s3', 'GKa', 'purge', 'zone-a-c-new'), ('s3', 'GKpurge', 'purge', 'zone-a-exports', 'zone-a-system')]
+    assert ('bucket', 'allow', '--read', '--write', '--owner', 'zone-a-system', '--key', 'GKpurge') in fake.calls
+    assert set(fake.keys) == {'GKb', 'GKx'} and set(fake.buckets) == {'zone-b-system', 'zone-ab-system', 'zone-b-c-new'}
+
+
+def test_a_garage_bucket_that_stays_keeps_the_zone_keys_and_fails(garage):
+    fake = garage(ZONE_A_KEYS, ZONE_A_BUCKETS, stuck={'zone-a-c-new'})
+    with pytest.raises(SystemExit, match='zone-a-c-new stay'):
+        shared.remove_garage('zone-a')
+    assert {'GKa', 'GKab'} <= set(fake.keys) and 'GKpurge' not in fake.keys
+
+
+def setup_module_for(monkeypatch, zone='zone-a'):
+    """../hoover/setup.py reads the zone from its arguments at import."""
+    monkeypatch.setattr(sys, 'argv', ['setup.py', zone])
+    spec = importlib.util.spec_from_file_location('hoover_setup', shared.common.SOURCE / 'hoover' / 'setup.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_new_zone_with_objects_of_an_earlier_zone_is_refused_with_their_names(monkeypatch):
+    setup = setup_module_for(monkeypatch)
+    secrets = {('zone-a', 'garage-tenants'): {}}
+    monkeypatch.setattr(setup, 'secret', lambda ns, name: secrets.get((ns, name), {}))
+    left = {'garage': ['bucket zone-a-system', 'key zone-a'], 'clickhouse': ['database zone_a_Processing'],
+            'temporal': ['namespace zone-a']}
+    monkeypatch.setattr(setup.shared, 'leftovers', lambda zone: left)
+    with pytest.raises(SystemExit) as error:
+        setup.refuse_leftovers()
+    message = str(error.value)
+    for name in ('bucket zone-a-system', 'key zone-a', 'database zone_a_Processing', 'namespace zone-a',
+                 'shared.py remove zone-a'):
+        assert name in message
+    # A new zone without objects of an earlier zone passes.
+    left = {}
+    setup.refuse_leftovers()
+    # An existing zone has its key in garage-tenants, and its own objects are no reason to stop.
+    secrets[('zone-a', 'garage-tenants')] = {'tenants.json': json.dumps({'zone-a': {'access_key': 'GKa'}})}
+    monkeypatch.setattr(setup.shared, 'leftovers', lambda zone: pytest.fail('an existing zone is not checked'))
+    setup.refuse_leftovers()
+
+
+def test_the_schema_password_moves_out_of_the_zone_namespace(monkeypatch):
+    import creds
+    assert 'manticore-schema' not in creds.KEYS and {'manticore-read', 'manticore-write'} <= set(creds.KEYS)
+    setup = setup_module_for(monkeypatch)
+    stores = {k: f'v-{k}' for k in creds.KEYS}
+    stores['manticore-schema'] = 'legacy'
+    secrets = {('zone-a', 'hoover-stores'): stores, ('zone-a', 'garage-tenants'): {'tenants.json': json.dumps(
+        {name: {'access_key': f'a-{name}', 'secret_key': f's-{name}'} for name in
+         {'zone-a'} | {service_users.garage_key('zone-a', s) for s in service_users.using('garage')}})}}
+    written, patched = {}, []
+    monkeypatch.setattr(setup, 'secret', lambda ns, name: dict(secrets.get((ns, name), {})))
+    monkeypatch.setattr(setup, 'ensure_secret', lambda name, wanted, follow=(), drop=(): written.setdefault(name, (wanted, follow)) and wanted)
+    monkeypatch.setattr(setup, 'kubectl', lambda *a, **k: patched.append(a))
+    monkeypatch.setattr(setup, 'ZONES', type('P', (), {'read_text': lambda self: json.dumps({'zone-a': {'hoover_oidc_secret': 'x'}})})())
+    monkeypatch.setattr(setup.site_temporal, 'token', lambda zone: 'jwt')
+    monkeypatch.setattr(setup.gpu, 'token', lambda zone: 'gpu')
+    setup.runtime_secrets()
+    wanted, follow = written['manticore-schema']
+    # A zone of an earlier version keeps its schema password, which leaves hoover-stores of the zone namespace.
+    assert wanted['password'] == 'legacy' and 'password' not in follow
+    assert patched == [('-n', 'zone-a', 'patch', 'secret', 'hoover-stores', '--type=json',
+                        '-p', json.dumps([{'op': 'remove', 'path': '/data/manticore-schema'}]))]
+    assert 'manticore-schema' not in written['hoover-runtime'][0]
+    # A new zone gets a random schema password, and no patch is needed.
+    del stores['manticore-schema']
+    written.clear(), patched.clear()
+    setup.runtime_secrets()
+    assert len(written['manticore-schema'][0]['password']) == 48 and patched == []

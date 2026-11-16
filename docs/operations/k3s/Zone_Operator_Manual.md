@@ -97,7 +97,7 @@ A site upgrade with `k3s/deploy-k3s up` also upgrades every zone. [The operation
 ## Back up and restore a zone
 
 A zone copy holds the openDesk databases and volumes of the zone and the volumes of its Hoover installation.
-The ClickHouse databases, Manticore tables and Garage buckets of a zone are in the shared stores of the site, so the zone copy does not hold them. The collection copies of the backup settings hold them. The export writes the ClickHouse part into the bucket `<zone>-exports` of the zone, and the collection copy takes it from there. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse. The workflow history of the zone is in the Temporal of the site, and no copy holds it.
+The ClickHouse databases, Manticore tables and Garage buckets of a zone are in the shared stores of the site. The zone copy holds the zone databases (users, groups, chats, boards, settings and operation history) and the objects of the system bucket of the zone. The collection copies of the backup settings hold the databases, tables and buckets of the collections. The export writes the ClickHouse part into the bucket `<zone>-exports` of the zone, and the collection copy takes it from there. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse. The workflow history of the zone is in the Temporal of the site, and no copy holds it.
 
 1. Turn on `backup.opendesk.enabled` and set `backup.opendesk.copies` in the settings of the zone, and Apply.
 2. The runner makes one copy each week. The zone closes during the copy and opens again with its earlier replicas.
@@ -108,7 +108,8 @@ The ClickHouse databases, Manticore tables and Garage buckets of a zone are in t
 ## Delete a zone
 
 A delete removes the ClickHouse databases, users, Garage buckets and keys of the zone from the shared stores of the site, and the Temporal namespace of the zone from the Temporal of the site. It then removes the zone namespaces with all their volumes. No copy remains in the cluster.
-The Hoover operations pod of the zone empties the Garage buckets. A disabled zone has no such pod, so its non-empty buckets and its Garage keys stay, and the operation log names them. Turn the zone on before the delete to remove them.
+A disabled zone is deleted the same way. When a store does not answer, or an object of the zone stays, the delete fails and keeps the zone. The operation log names the store or the objects. Repair the store, then delete the zone again.
+A new zone with the id of a deleted zone fails at create while the stores hold an object of the deleted zone. The operation log names the objects and the command that removes them.
 
 1. Make a zone copy first when the data must stay available.
 2. Select **Delete the zone** in the zone list.

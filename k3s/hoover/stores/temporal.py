@@ -39,7 +39,8 @@ of its commands keeps present data, so the Job can run again.
 
 Usage: temporal.py show               print the objects
        temporal.py register <zone>    create or update the namespace of a zone with the retention of its setting
-       temporal.py remove <zone>      delete the namespace of a zone
+       temporal.py remove <zone>      delete the namespace of a zone. A failure gives exit status 1. Only the answer
+                                      "not found" counts as an absent namespace. <zone> must be a full zone id.
 """
 import base64, hashlib, json, math, os, subprocess, sys, time
 import common, hoover
@@ -511,7 +512,7 @@ def apply(s, plan, zones, placed=None):
 def register(zone, retention):
     """Create the namespace of a zone with its retention, or set the retention of the present namespace, and add the
     search attributes. Each command keeps present workflows."""
-    if cli('operator', 'namespace', 'describe', '-n', zone, check=False).returncode:
+    if not namespace_present(zone):
         cli('operator', 'namespace', 'create', '-n', zone, '--retention', retention, '--description', f'Hoover {zone}')
     else:
         cli('operator', 'namespace', 'update', '-n', zone, '--retention', retention)
@@ -529,12 +530,28 @@ def register(zone, retention):
     common.log('stores.jsonl', step='temporal-namespace', zone=zone, retention=retention, attributes_added=missing)
 
 
+def namespace_present(zone):
+    """True when the Temporal of the site has the namespace of a zone. Only the answer "not found" counts as absent.
+    Another failure, for example a Temporal without a ready pod, is a SystemExit."""
+    r = cli('operator', 'namespace', 'describe', '-n', zone, check=False)
+    if r.returncode == 0:
+        return True
+    if 'not found' in (r.stderr + r.stdout).lower():
+        return False
+    raise SystemExit(f'temporal operator namespace describe {zone} failed: {(r.stderr or r.stdout).strip()[-400:]}')
+
+
 def remove(zone):
-    """Delete the namespace of a zone. Temporal deletes its workflows in the background."""
-    if cli('operator', 'namespace', 'describe', '-n', zone, check=False).returncode:
+    """Delete the namespace of a zone. Temporal renames it at once and deletes its workflows in the background."""
+    if not namespace_present(zone):
         common.log('stores.jsonl', step='temporal-namespace-removed', zone=zone, present=False)
         return
     cli('operator', 'namespace', 'delete', '-n', zone, '--yes')
+    deadline = time.monotonic() + 120
+    while namespace_present(zone):
+        if time.monotonic() >= deadline:
+            raise SystemExit(f'the Temporal namespace {zone} stays 120 s after its delete')
+        time.sleep(3)
     common.log('stores.jsonl', step='temporal-namespace-removed', zone=zone, present=True)
 
 
@@ -551,7 +568,8 @@ def main(argv):
             raise SystemExit(f'the zone state has no zone {zone}')
         register(zone, retention_of(zone))
     else:
-        remove(argv[1])
+        import shared
+        remove(shared.zone_argument(argv[1]))
 
 
 def retention_of(zone):

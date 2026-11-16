@@ -43,8 +43,10 @@ The steps of apply, in order:
      stores = zone, or with stores = site and temporal = zone or manticore = zone, is from an earlier version and is
      refused: delete it and create it again.
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
-and profile, its Garage buckets and keys, its Manticore tables and users, and its Temporal namespace. The operations pod of the zone empties the
-buckets. A disabled zone has no such pod, so its non-empty buckets and its Garage keys stay, and the log names them.
+and profile, its Garage buckets and keys, its Manticore tables and users, and its Temporal namespace
+(../hoover/stores/shared.py remove). The S3 client in a Garage pod empties the buckets, so a disabled zone is removed
+the same way. When a part fails or an object stays, the delete stops with the message of shared.py, and the
+zone keeps its namespaces and its zone state entry. Repair the store and delete the zone again.
 The two namespaces of the zone are then deleted at the same time.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
@@ -617,8 +619,8 @@ def delete(zone):
     if zone not in state['zones']:
         raise SystemExit(f'the zone state has no zone {zone}')
     if state['zones'][zone].get('stores') == 'site':
-        # The tenant of the zone in the shared stores goes first, while the operations pod of the zone can still
-        # empty the zone buckets.
+        # The tenant of the zone in the shared stores goes first. A failed removal stops the delete here, so the zone
+        # state keeps the zone and a new zone cannot take its id while its objects remain.
         run(sys.executable, STORES / 'shared.py', 'remove', zone)
         step('shared-stores', zone=zone, change='tenant removed')
     # The namespaces go at the same time. TopoLVM removes the logical volume of each claim when its namespace goes.

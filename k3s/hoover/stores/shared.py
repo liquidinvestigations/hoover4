@@ -7,6 +7,7 @@ tenant of a zone: in ClickHouse a settings profile, the zone user and a user for
 databases of the zone prefix only, in Garage the zone key, the service keys and the zone buckets, and in both Manticore
 daemons the users <prefix>_read, <prefix>_write and <prefix>_schema with rights on the tables <prefix>_* only
 (service_users.py MANTICORE_GRANTS). remove takes them away when the zone goes, with the Manticore tables of the zone.
+../setup.py refuses a new zone while the stores hold an object of an earlier zone with the same id (leftovers()).
 A Manticore user with the right schema can create a distributed table that names a table of another user, and then
 read that table. Only the schema proxy of the zone (../manifests.py) holds the schema user, and the proxy has no
 operation for a distributed table. The Temporal of the site, with
@@ -36,7 +37,8 @@ zone is added. A claim never becomes smaller. A store pod sees a grown claim at 
 value (part site of ../../zones/cpu-requests.json, hoover.site_cpu()). Each zone user of ClickHouse has the profile of its zone,
 which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
-ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. The Garage RPC port takes connections only from the Garage pods, and
+ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. Each Garage pod has the container s3, the S3
+client of the operator tools (garage_client.py), which reaches Garage inside the pod. The Garage RPC port takes connections only from the Garage pods, and
 the admin port takes none. ClickHouse reaches only DNS and the S3 port of Garage, where it writes and reads the
 ClickHouse part of the collection exports in the bucket <zone>-exports with the zone key. The server allows no
 BACKUP to a file of its own volume (config/clickhouse/server.xml).
@@ -55,13 +57,14 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py plan              print the placement plan of the store pods and the problems of vars.replicas as JSON
        shared.py remove <zone>     delete the ClickHouse databases, users, profile and row policy, the Manticore tables,
                                    users and import folder, the Garage buckets and keys and the Temporal namespace of a
-                                   zone.
-                                   The operations pod of the zone empties the buckets. Without it, a non-empty bucket
-                                   and the zone keys stay, and the log names them.
+                                   zone, then check that none stays. The S3 client in a Garage pod
+                                   (garage_client.py) empties the buckets, so the command needs no pod of the zone. A failed part or a remaining
+                                   object gives exit status 1 and a message that names them. <zone> must be a full
+                                   zone id (../../zones/zones.py ZONE_NAME).
 """
 import base64, hashlib, json, math, re, secrets, subprocess, sys, time
 from pathlib import Path
-import common, creds, hoover, podspec, service_users, temporal
+import common, creds, garage_client, hoover, podspec, service_users, temporal
 import config  # noqa: E402  (common puts the k3s folder on the path)
 import zonestate  # noqa: E402
 
@@ -84,23 +87,6 @@ FILES_SCRIPT = (Path(__file__).resolve().parent / 'manticore_file_service.py').r
 # The schema proxies of the zones, the only clients of the file service (../manifests.py SCHEMA_PROXY).
 SCHEMA_PROXY_LABEL = {'app.kubernetes.io/name': 'manticore-schema'}
 GARAGE_CONFIG = (common.LAB / 'config' / 'garage' / 'garage.toml').read_text()
-# The Python of the operations image, which has an S3 client (../../platform/backups/backups.py PYTHON).
-OPS_PYTHON = '/opt/pysetup/.venv/bin/python3'
-PURGE = """
-import os, sys
-from minio import Minio
-from minio.deleteobjects import DeleteObject
-client = Minio(os.environ['S3_ENDPOINT'].split('://')[-1], os.environ['S3_ACCESS_KEY'], os.environ['S3_SECRET_KEY'], secure=False)
-for bucket in sys.argv[1:]:
-    errors = list(client.remove_objects(bucket, (DeleteObject(o.object_name) for o in client.list_objects(bucket, recursive=True))))
-    # A bucket that Hoover created has a local alias of the zone key, which owns it, so the key deletes it. The
-    # admin deletes a bucket with a global alias.
-    try:
-        client.remove_bucket(bucket)
-    except Exception:
-        pass
-    print(bucket, len(errors))
-"""
 
 
 def site():
@@ -186,13 +172,16 @@ def garage(s, plan, zones, peers, placed=None):
         'resources': hoover.resources('garage')}
     name, nodes = tier(s, plan['nodes'], 'garage', plan['garage'])
     nodes = (placed or {}).get('garage', nodes)
+    statefulset = hoover.statefulset('garage', 'garage', NS, container, ['/garage', 'server'], '/var/lib/garage',
+                                     name, size('garage', zones), replicas=plan['garage'],
+                                     service_name=PEERS, affinity=affinity(nodes, 'garage', True),
+                                     extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])
+    # The S3 client of the operator tools (garage_client.py), which empties and copies the zone buckets.
+    statefulset['spec']['template']['spec']['containers'].append(garage_client.sidecar())
     return [configmap('garage-config', {'garage.toml': garage_toml(peers)}),
             hoover.service('garage', NS, [('s3', 3900)], {'app.kubernetes.io/name': 'garage'}),
             hoover.service(PEERS, NS, [('rpc', 3901)], {'app.kubernetes.io/name': 'garage'}, headless=True),
-            hoover.statefulset('garage', 'garage', NS, container, ['/garage', 'server'], '/var/lib/garage',
-                               name, size('garage', zones), replicas=plan['garage'],
-                               service_name=PEERS, affinity=affinity(nodes, 'garage', True),
-                               extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])]
+            statefulset]
 
 
 def manticore(s, plan, zones, name, placed=None):
@@ -534,96 +523,166 @@ def grow():
         hoover.grow_claims(NS, json.loads(current), wanted)
 
 
-# Runs in the container files of the text daemon pod. It asks the file service to remove import/<schema user>/ of the
-# data folder, with the schema user of the zone. The credentials come through stdin.
+# Runs in the container files of the text daemon pod, which mounts the data folder of the daemon. It removes
+# import/<schema user>/ of a zone, where the file service stages the files of a restore. Argument: the schema user.
 REMOVE_IMPORT = """
-import base64, json, sys, urllib.request
-user, password = json.load(sys.stdin)
-request = urllib.request.Request('http://127.0.0.1:%d/import', method='DELETE', headers={
-    'Authorization': 'Basic ' + base64.b64encode(f'{user}:{password}'.encode()).decode()})
-print(urllib.request.urlopen(request, timeout=60).read().decode())
-""" % FILES_PORT
+import os, shutil, sys
+data = '/var/lib/manticore'
+if not any(line.split()[1:2] == [data] for line in open('/proc/mounts')):
+    raise SystemExit('the data folder of the daemon is not mounted')
+folder = os.path.join(data, 'import', sys.argv[1])
+present = os.path.isdir(folder)
+if present:
+    shutil.rmtree(folder)
+print('removed' if present else 'absent')
+"""
 
 
-def remove_import_folder(zone):
-    """Remove the import folder import/<schema user>/ of a zone from the data folder of the text daemon, through the
-    file service with the schema user of the zone. A failure goes to the log and does not stop the removal."""
+def remove_import_folder(zone, pod):
+    """Remove the import folder import/<schema user>/ of a zone from the data folder of the text daemon pod."""
     user = service_users.manticore_user(zone, 'schema')
-    found = common.kubectl('-n', zone, 'get', 'secret', 'hoover-stores', '-o', 'jsonpath={.data.manticore-schema}',
-                           check=False).strip()
-    pod = next((p['metadata']['name'] for p in pods('manticore') if is_ready(p)), '')
-    if not found or not pod:
-        common.log('stores.jsonl', step='manticore-import-folder-kept', zone=zone,
-                   reason='no schema credential' if not found else 'no ready pod')
-        return
-    r = subprocess.run(common.K + ['-n', NS, 'exec', '-i', pod, '-c', 'files', '--', 'python3', '-I', '-c', REMOVE_IMPORT],
-                       input=json.dumps([user, base64.b64decode(found).decode()]), capture_output=True, text=True)
-    common.log('stores.jsonl', step='manticore-import-folder-removed' if r.returncode == 0 else 'manticore-import-folder-kept',
-               zone=zone, user=user, detail=(r.stdout if r.returncode == 0 else r.stderr).strip()[-200:])
+    r = subprocess.run(common.K + ['-n', NS, 'exec', pod, '-c', 'files', '--', 'python3', '-I', '-c', REMOVE_IMPORT, user],
+                       capture_output=True, text=True, timeout=300)
+    if r.returncode:
+        raise SystemExit(f'the import folder of {user} stays: {r.stderr.strip()[-300:]}')
+    common.log('stores.jsonl', step='manticore-import-folder-removed', zone=zone, user=user, detail=r.stdout.strip())
 
 
-def remove(zone):
-    """Delete the tenant of a zone from ClickHouse, Garage and Temporal. A bucket that the zone cannot empty stays, and
-    the log names it."""
-    prefix = zone.replace('-', '_')
+def clickhouse_tenant(zone):
+    """[(kind, name)] of the ClickHouse objects of a zone: its databases, users, settings profile and row policy."""
+    prefix = service_users.prefix(zone)
     rows = clickhouse_sql(
         f"SELECT 'database', name FROM system.databases WHERE name = '{prefix}' OR startsWith(name, '{prefix}_') "
         f"UNION ALL SELECT 'user', name FROM system.users WHERE name = '{prefix}' OR startsWith(name, '{prefix}_') "
-        "FORMAT TSV\n")
-    found = [line.split('\t') for line in rows.splitlines() if line.strip()]
+        f"UNION ALL SELECT 'profile', name FROM system.settings_profiles WHERE name = '{prefix}' "
+        f"UNION ALL SELECT 'row policy', short_name FROM system.row_policies "
+        f"WHERE short_name = '{service_users.backup_policy(zone)}' FORMAT TSV\n")
+    return [tuple(line.split('\t')) for line in rows.splitlines() if line.strip()]
+
+
+def manticore_tenant(zone, store):
+    """(tables, users) of a zone in a Manticore daemon. A zone id has no _, so the table prefix <prefix>_ of one zone
+    never starts the table names of another zone."""
+    prefix = service_users.prefix(zone)
+    tables = [row[0] for row in manticore_rows(manticore_sql(store, 'SHOW TABLES\n')) if row and row[0].startswith(f'{prefix}_')]
+    users = sorted({service_users.manticore_user(zone, r) for r in service_users.MANTICORE_ROLES} & manticore_users(store))
+    return tables, users
+
+
+def garage_tenant(zone):
+    """({key id: name} of the zone keys, {bucket name: owner key id, or '' for a global alias} of the zone buckets).
+
+    The zone keys have the name <zone> or <zone>-<service>. A zone bucket has a global alias <zone>-* or a local alias
+    of a zone key. Hoover creates each collection bucket through S3, which gives it a local alias of the zone key.
+    """
+    keys = {row[0]: row[2] for row in table(garage_cli('key', 'list')) if len(row) > 2 and (row[2] == zone or row[2].startswith(f'{zone}-'))}
+    buckets = {}
+    for row in table(garage_cli('bucket', 'list')):
+        for alias in row[2:]:
+            key, _, name = alias.rpartition(':')
+            if (key in keys) if key else alias.startswith(f'{zone}-'):
+                buckets[name] = key
+    return keys, buckets
+
+
+def leftovers(zone):
+    """{store: [object names]} of a zone that the shared stores still hold. Each store must answer, else SystemExit."""
+    found = {'clickhouse': [f'{kind} {name}' for kind, name in clickhouse_tenant(zone)], 'manticore': []}
+    for store in MANTICORE:
+        tables, users = manticore_tenant(zone, store)
+        found['manticore'] += [f'{store} table {t}' for t in tables] + [f'{store} user {u}' for u in users]
+    keys, buckets = garage_tenant(zone)
+    found['garage'] = [f'key {name}' for name in sorted(keys.values())] + [f'bucket {name}' for name in sorted(buckets)]
+    found['temporal'] = [f'namespace {zone}'] if temporal.namespace_present(zone) else []
+    return {store: names for store, names in found.items() if names}
+
+
+def remove_clickhouse(zone):
+    found = clickhouse_tenant(zone)
     sql = [f'DROP DATABASE IF EXISTS `{name}` SYNC;' for kind, name in found if kind == 'database']
     sql += [f'DROP USER IF EXISTS `{name}`;' for kind, name in found if kind == 'user']
-    sql += [f'DROP SETTINGS PROFILE IF EXISTS `{prefix}`;',
+    sql += [f'DROP SETTINGS PROFILE IF EXISTS `{service_users.prefix(zone)}`;',
             f'DROP ROW POLICY IF EXISTS `{service_users.backup_policy(zone)}` ON system.backups;']
     clickhouse_sql('\n'.join(sql) + '\n')
     common.log('stores.jsonl', step='clickhouse-tenant-removed', zone=zone, databases=sum(k == 'database' for k, _ in found),
                users=sum(k == 'user' for k, _ in found))
-    for store in MANTICORE:
-        # The table prefix of a zone is <prefix>_, and a zone id has no _, so the prefix of one zone never starts the
-        # table names of another zone. Manticore 29.9 stops searchd on a DROP USER of an unknown user, so only the
-        # present users are dropped. Without a ready daemon the tables and users of the zone stay, and the log names
-        # the daemon.
-        if not any(is_ready(p) for p in pods(store)):
-            common.log('stores.jsonl', step='manticore-tenant-kept', zone=zone, store=store, reason='no ready pod')
-            continue
-        if store == 'manticore':
-            remove_import_folder(zone)
-        tables = [row[0] for row in manticore_rows(manticore_sql(store, 'SHOW TABLES\n')) if row]
-        tables = [t for t in tables if t.startswith(f'{prefix}_')]
-        users = sorted({service_users.manticore_user(zone, r) for r in service_users.MANTICORE_ROLES} & manticore_users(store))
-        sql = [f'DROP TABLE IF EXISTS {t};' for t in tables] + [f"DROP USER '{u}';" for u in users]
-        if sql:
-            manticore_sql(store, '\n'.join(sql) + '\n')
-        common.log('stores.jsonl', step='manticore-tenant-removed', zone=zone, store=store, tables=len(tables), users=len(users))
-    keys = {row[0]: row[2] for row in table(garage_cli('key', 'list')) if len(row) > 2 and (row[2] == zone or row[2].startswith(f'{zone}-'))}
 
-    def zone_buckets():
-        """{name: global}: the buckets with a global alias <zone>-*, and the buckets with a local alias of a zone key.
-        Hoover creates each collection bucket through S3, which gives it a local alias of the zone key."""
-        out = {}
-        for row in table(garage_cli('bucket', 'list')):
-            for alias in row[2:]:
-                key, _, name = alias.rpartition(':')
-                if (key in keys) if key else alias.startswith(f'{zone}-'):
-                    out[name] = not key
-        return out
-    buckets = zone_buckets()
-    ops = common.kubectl('-n', f'hoover-{zone}', 'get', 'pods', '-l', 'app.kubernetes.io/name=hoover-operations',
-                         '--field-selector=status.phase=Running', '-o', 'jsonpath={.items[0].metadata.name}', check=False).strip()
-    if buckets and ops:
-        # The operations pod holds the zone key, which reaches every bucket of the zone.
-        common.kubectl('-n', f'hoover-{zone}', 'exec', ops, '--', OPS_PYTHON, '-c', PURGE, *sorted(buckets))
-    for bucket, is_global in zone_buckets().items():
-        if is_global:
+
+def remove_manticore(zone, store):
+    """Drop the tables and the users of a zone in one daemon. Manticore 29.9 stops searchd on a DROP USER of an unknown
+    user, so only the present users are dropped. The text daemon also loses the import folder of the zone."""
+    pod = ready_pod(store)
+    if store == 'manticore':
+        remove_import_folder(zone, pod)
+    tables, users = manticore_tenant(zone, store)
+    sql = [f'DROP TABLE IF EXISTS {t};' for t in tables] + [f"DROP USER '{u}';" for u in users]
+    if sql:
+        manticore_sql(store, '\n'.join(sql) + '\n')
+    common.log('stores.jsonl', step='manticore-tenant-removed', zone=zone, store=store, tables=len(tables), users=len(users))
+
+
+def remove_garage(zone):
+    """Empty and delete the zone buckets with the S3 client of a Garage pod (garage_client.py), then delete the keys.
+
+    The owner key empties and deletes a bucket with a local alias. The key <zone>-purge empties and deletes a bucket
+    with a global alias. This step creates that key with all rights on those buckets and deletes it after the purge.
+    The zone keys stay while a bucket stays, because a bucket loses its local alias with its key.
+    """
+    keys, buckets = garage_tenant(zone)
+    owners = sorted({k for k in buckets.values() if k})
+    shared_buckets = sorted(b for b, k in buckets.items() if not k)
+    if buckets:
+        purge = None
+        try:
+            if shared_buckets:
+                purge = garage_client.parse_key(garage_cli('key', 'create', f'{zone}-purge'))
+                for bucket in shared_buckets:
+                    garage_cli('bucket', 'allow', '--read', '--write', '--owner', bucket, '--key', purge['access_key'])
+            with garage_client.client() as pod:
+                for owner in owners:
+                    garage_client.run(pod, garage_client.parse_key(garage_cli('key', 'info', '--show-secret', owner)), 'purge', *sorted(b for b, k in buckets.items() if k == owner))
+                if purge:
+                    garage_client.run(pod, purge, 'purge', *shared_buckets)
+        finally:
+            if purge:
+                garage_cli('key', 'delete', '--yes', purge['access_key'], check=False)
+    for bucket, key in garage_tenant(zone)[1].items():
+        if not key:
             garage_cli('bucket', 'cleanup-incomplete-uploads', '--older-than', '0s', bucket, check=False)
             garage_cli('bucket', 'delete', '--yes', bucket, check=False)
-    kept = sorted(zone_buckets())
-    # A kept bucket keeps the zone keys, because a bucket loses its local alias with its key, and then no name reaches it.
-    for key_id in ([] if kept else keys):
+    keys, kept = garage_tenant(zone)
+    if kept:
+        raise SystemExit(f'the Garage buckets {", ".join(sorted(kept))} stay, and the zone keys stay with them')
+    for key_id in keys:
         garage_cli('key', 'delete', '--yes', key_id)
-    common.log('stores.jsonl', step='garage-tenant-removed', zone=zone, buckets=len(buckets) - len(kept), kept=kept,
-               keys_kept=sorted(keys.values()) if kept else [])
-    temporal.remove(zone)
+    common.log('stores.jsonl', step='garage-tenant-removed', zone=zone, buckets=len(buckets), keys=len(keys))
+
+
+def remove(zone):
+    """Delete the tenant of a zone from ClickHouse, Manticore, Garage and Temporal, then check that no object of the
+    zone stays. Each part runs also after a failure of another part. A part that fails or an object that stays ends the
+    command with a SystemExit that names them, and zone.py delete then keeps the zone. The command can run again."""
+    problems = []
+    parts = [('clickhouse', lambda: remove_clickhouse(zone))]
+    parts += [(store, lambda store=store: remove_manticore(zone, store)) for store in MANTICORE]
+    parts += [('garage', lambda: remove_garage(zone)), ('temporal', lambda: temporal.remove(zone))]
+    for name, function in parts:
+        try:
+            function()
+        except (SystemExit, subprocess.SubprocessError, OSError) as error:
+            problems.append(f'{name}: {str(error).strip()[-400:]}')
+            common.log('stores.jsonl', step='tenant-part-failed', zone=zone, part=name, error=str(error).strip()[-400:])
+    try:
+        left = leftovers(zone)
+    except (SystemExit, subprocess.SubprocessError, OSError) as error:
+        problems.append(f'check: {str(error).strip()[-400:]}')
+        left = {}
+    problems += [f'{store} keeps {", ".join(names)}' for store, names in left.items()]
+    if problems:
+        common.log('stores.jsonl', step='tenant-kept', zone=zone, problems=problems)
+        raise SystemExit(f'the tenant of {zone} is not removed completely. ' + '. '.join(problems) +
+                         f'. Repair the store, then run shared.py remove {zone} again.')
+    common.log('stores.jsonl', step='tenant-removed', zone=zone)
 
 
 def main(argv):
@@ -653,7 +712,16 @@ def main(argv):
             out, found = {}, [str(error)]
         print(json.dumps({'placement': out, 'problems': found}, sort_keys=True))
     else:
-        remove(argv[1])
+        remove(zone_argument(argv[1]))
+
+
+def zone_argument(name):
+    """name when the zone id pattern (../../zones/zones.py ZONE_NAME) matches it in full, else SystemExit. A partial
+    name such as zone would match the objects of every zone."""
+    import zones
+    if not zones.ZONE_NAME.fullmatch(name):
+        raise SystemExit(f'{name!r} is not a zone id. A zone id is zone- and 1 to 12 lower-case letters or digits.')
+    return name
 
 
 if __name__ == '__main__':
