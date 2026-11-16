@@ -14,14 +14,18 @@ platform apart from the platform copies.
 
 Jobs:
 - zone:<zone>: the complete zone, which is its openDesk namespace and its complete Hoover installation. The copy holds
-  a SQL dump of each database server of the zone namespace, a tar file of each other claim, and the Secrets and
-  ConfigMaps of the namespace. The folder hoover/<installation>/ holds the same parts of the Hoover namespace: its
-  claims, Secrets and ConfigMaps. The tar files keep the owners and modes. A file system claim is read through a short
-  pod in its namespace. The pod does not ask for a read-only mount of the claim, because the kernel refuses a second
-  mount of a mounted ext4 device with other options. Its container mount is read-only. A Block claim holds the file
-  system of a Kata store, which only the guest of the store pod mounts, so the copy reads it through the store
-  container with the busybox of ../../hoover/stores/podspec.py. A claim that a pod owns (a generic ephemeral volume)
-  holds temporary files and is not copied. The earlier job key opendesk:<zone> reads as zone:<zone>.
+  a SQL dump of each database server of the zone namespace, the objects of the openDesk object store, a tar file of
+  each other claim, and the Secrets and ConfigMaps of the namespace. The folder hoover/<installation>/ holds the same
+  parts of the Hoover namespace: its claims, Secrets and ConfigMaps. The tar files keep the owners and modes. A file
+  system claim is read with tar in a running container that mounts it (mount_source()), so the copy needs no free
+  memory on its node. A claim that no running container with tar mounts is read through a short pod in its namespace.
+  That pod does not ask for a read-only mount of the claim, because the kernel refuses a second mount of a mounted
+  ext4 device with other options. Its container mount is read-only. A Block claim holds the file system of a Kata store, which only the guest of the store pod mounts, so the
+  copy reads it through the store container with the busybox of ../../hoover/stores/podspec.py. A claim that a pod
+  owns (a generic ephemeral volume) holds temporary files and is not copied. The earlier job key opendesk:<zone> reads
+  as zone:<zone>.
+  The job copies a running zone (online_parts()): no application stops. The parts of the copy are read one after the
+  other, so each part holds its own moment. moments.json of the copy names the start and the end of each part.
   A zone of the store layout site keeps its ClickHouse databases, Manticore tables and Garage buckets in the shared
   stores of the site (../../hoover/stores/shared.py). The folder hoover/<installation>/shared/ of the zone copy holds
   the ClickHouse databases <prefix> and <prefix>_Processing (users, groups, chats, boards, settings, operation history)
@@ -46,14 +50,14 @@ The copy then gets copy-manifest.json with the size and SHA-256 of every file. I
 is read again there against the manifest, and is renamed. Only then does retention remove older copies. A failed transfer
 or check leaves the older copies. The capacity check, the marker check, the check of the copy and retention run on the
 backup node.
-The zone job closes intake first: it scales the applications of the zone and of its Hoover installation to zero and
-suspends their CronJobs, and records the earlier replicas and suspensions in the state file. The stores keep running,
-because the dumps and the Block copies need them. After the copy the job restores the recorded values. A runner that
-finds a recorded closure without a running job restores it.
+The zone job records the replicas of each workload of the zone in workloads.json, which restore-zone applies. It stops
+and scales no workload. A job of an earlier version closed the zone during the copy. A runner that finds such a
+recorded closure without a running job restores it.
 The zone and platform jobs hold the site operation lock (../../oplock.py), so no deployment, Apply or Compose import
 changes the site during the copy.
-restore-zone restores a complete zone copy into an installed zone: the Secrets, the claims and the database dumps of
-the zone namespace and of its Hoover installation, with the applications and the other stores stopped. For a site
+restore-zone restores a complete zone copy into an installed zone: the Secrets, the claims, the objects of the
+object store and the database dumps of the zone namespace and of its Hoover installation, with the applications and
+the other stores stopped. For a site
 zone it also replaces the zone databases and the objects of the system bucket with the shared/ part of the copy, and
 it keeps the tenant credentials of the target zone (TENANT_SECRETS). --from names
 the zone of the copy when it differs. On a failure the zone stays closed, and the state file names the step.
@@ -513,6 +517,18 @@ def verify(folder):
     return {'files': len(wanted['files']), 'bytes': sum(r['bytes'] for r in wanted['files']), 'differences': differences}
 
 
+# GNU tar ends with status 1 and these messages when a file of a running application changed or went away while it
+# read it. The archive is complete, and the copy of a running zone accepts that (online_parts()).
+TAR_CHANGED = (b'file changed as we read it', b'File removed before we read it')
+
+
+def tar_status_ok(code, stderr):
+    if code == 0:
+        return True
+    lines = [line for line in (stderr or b'').splitlines() if line.strip()]
+    return code == 1 and bool(lines) and all(any(m in line for m in TAR_CHANGED) or line.endswith(b'Exiting with failure status due to previous errors') for line in lines)
+
+
 def tar_command(ns, pod, container, folder, tar=('tar',)):
     return ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', ns, 'exec', pod,
             *(['-c', container] if container else []), '--', *tar, '-C', folder, '-cf', '-', '.']
@@ -563,19 +579,21 @@ def tar_complete(path):
     return True
 
 
-def tar_out(ns, pod, container, folder, target, tar=('tar',)):
+def tar_out(ns, pod, container, folder, target, tar=('tar',), settled=None):
     """Write a folder of a pod into one host tar file, with its owners and modes.
 
     kubectl exec can end with status 0 after a stream reset, so the file is read to its end. An incomplete file is
-    written again, up to three times.
+    written again, up to three times. settled() gives a value before and after the read. When the two differ, a file
+    changed during the read, and the file is written again (lmdb_meta()).
     """
     target.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(3):
+        before = settled() if settled else None
         with open(target, 'wb') as out:
-            code = subprocess.run(tar_command(ns, pod, container, folder, tar), stdout=out).returncode
-        if code == 0 and tar_complete(target):
+            result = subprocess.run(tar_command(ns, pod, container, folder, tar), stdout=out, stderr=subprocess.PIPE)
+        if tar_status_ok(result.returncode, result.stderr) and tar_complete(target) and (settled is None or settled() == before):
             return
-    raise SystemExit(f'the copy of {pod}:{folder} failed or stayed incomplete after three attempts.')
+    raise SystemExit(f'the copy of {pod}:{folder} failed, stayed incomplete or changed during the read after three attempts.')
 
 
 def block_source(claim, pods):
@@ -622,10 +640,25 @@ def run_hoover(s, zone, collection, generation, partial):
 # <prefix> and <prefix>_Processing (clickhouse.tar), the objects of the bucket <zone>-system (system-bucket.tar) and
 # stores.json. The shared ClickHouse writes the archive with BACKUP ... TO S3 into the export bucket of the zone with
 # the zone key, as the collection export does. The S3 client of ../../hoover/stores/garage_client.py copies the
-# archive and the bucket out and deletes the archive object. The collection buckets and the Manticore tables are in
+# archive and the bucket out and deletes the archive object. It runs in a short pod of the Hoover namespace
+# (garage_s3()), not in the Garage pod: kubectl exec with standard input into a Kata pod stopped its output after
+# 32 KiB on the test site. The collection buckets and the Manticore tables are in
 # the collection copies (job hoover:<zone>:<collection>).
 SHARED_PART = 'shared'
-GARAGE_S3 = 'http://garage.hoover-stores.svc.cluster.local:3900'
+GARAGE_ENDPOINT = 'garage.hoover-stores.svc.cluster.local:3900'
+GARAGE_S3 = f'http://{GARAGE_ENDPOINT}'
+
+
+@contextlib.contextmanager
+def garage_s3(hoover, zone_key):
+    """Yield run(command, *args, data=None, out=None) of the S3 client with the zone key against the shared Garage,
+    in a short pod of the Hoover namespace of the zone, which the network policies of the stores admit."""
+    first = {'endpoint': GARAGE_ENDPOINT, **{k: zone_key[k] for k in ('access_key', 'secret_key')}}
+    pod = s3_pod(hoover.namespace)
+    try:
+        yield lambda command, *args, data=None, out=None: s3_run(hoover.namespace, pod, first, command, *args, data=data, out=out)
+    finally:
+        kubectl('-n', hoover.namespace, 'delete', 'pod', pod, '--wait=false', check=False)
 
 
 def zone_databases(hoover):
@@ -651,16 +684,15 @@ def clickhouse_with_key(hoover, sql, zone_key):
 
 
 @contextlib.contextmanager
-def archive_object(pod, zone_key, bucket, key):
+def archive_object(run, bucket, key):
     """Delete the archive object after the block. After a failure in the block, a failed delete does not hide it."""
-    import garage_client
     try:
         yield
     except BaseException:
         with contextlib.suppress(SystemExit):
-            garage_client.run(pod, zone_key, 'delete', bucket, key)
+            run('delete', bucket, key)
         raise
-    garage_client.run(pod, zone_key, 'delete', bucket, key)
+    run('delete', bucket, key)
 
 
 def clickhouse_status(output, wanted):
@@ -687,20 +719,20 @@ def copy_shared_stores(hoover, target):
     zone_key = garage_client.zone_key(hoover.zone)
     info = {'zone': hoover.zone, 'prefix': hoover.clickhouse_database_prefix, 'databases': databases,
             'system_bucket': hoover.system_bucket}
-    with garage_client.client() as pod:
+    with garage_s3(hoover, zone_key) as run:
         if databases:
-            with archive_object(pod, zone_key, bucket, key):
+            with archive_object(run, bucket, key):
                 answer = clickhouse_with_key(hoover, f"BACKUP {', '.join(f'DATABASE `{n}`' for n in databases)} TO "
                                                      f"{s3_target(bucket, key, zone_key)} SETTINGS id='{info['prefix']}-zone-{run_id}'",
                                              zone_key)
                 clickhouse_status(answer, 'BACKUP_CREATED')
-                _, got = garage_client.run(pod, zone_key, 'get', bucket, key, out=target / 'clickhouse.tar')
+                _, got = run('get', bucket, key, out=target / 'clickhouse.tar')
             # The copy must have the size of the object and the tar end marker.
             info['clickhouse_bytes'] = (target / 'clickhouse.tar').stat().st_size
             if (info['clickhouse_bytes'] != next((r['bytes'] for r in got if 'bytes' in r), -1)
                     or not tar_complete(target / 'clickhouse.tar')):
                 raise SystemExit(f'the copy of the ClickHouse archive of {hoover.zone} is incomplete. Run the job again.')
-        _, reports = garage_client.run(pod, zone_key, 'tar', hoover.system_bucket, out=target / 'system-bucket.tar')
+        _, reports = run('tar', hoover.system_bucket, out=target / 'system-bucket.tar')
     if not tar_complete(target / 'system-bucket.tar'):
         raise SystemExit(f'the copy of {hoover.system_bucket} has no tar end. Run the job again.')
     info['system_objects'] = next((r['objects'] for r in reports if 'objects' in r), 0)
@@ -718,19 +750,19 @@ def restore_shared_stores(folder, hoover):
     bucket = f'{hoover.zone}-exports'
     key = f'imports/zone-restore-{int(time.time())}-{os.urandom(3).hex()}/clickhouse.tar'
     zone_key = garage_client.zone_key(hoover.zone)
-    with garage_client.client() as pod:
+    with garage_s3(hoover, zone_key) as run:
         if names:
             archive = folder / 'clickhouse.tar'
-            with archive_object(pod, zone_key, bucket, key):
-                garage_client.run(pod, zone_key, 'put', bucket, key, str(archive.stat().st_size), data=archive)
+            with archive_object(run, bucket, key):
+                run('put', bucket, key, str(archive.stat().st_size), data=archive)
                 for _, name in names:
                     clickhouse(hoover, f'DROP DATABASE IF EXISTS `{name}` SYNC')
                 answer = clickhouse_with_key(hoover, f"RESTORE {', '.join(f'DATABASE `{a}` AS `{b}`' for a, b in names)} FROM "
                                                      f"{s3_target(bucket, key, zone_key)} SETTINGS id='{prefix}-zone-restore-{key.split('/')[1]}'",
                                              zone_key)
                 clickhouse_status(answer, 'RESTORED')
-        garage_client.run(pod, zone_key, 'empty', hoover.system_bucket)
-        garage_client.run(pod, zone_key, 'untar', hoover.system_bucket, data=folder / 'system-bucket.tar')
+        run('empty', hoover.system_bucket)
+        run('untar', hoover.system_bucket, data=folder / 'system-bucket.tar')
 
 
 def helper_pod(ns, claim, node):
@@ -743,7 +775,12 @@ def helper_pod(ns, claim, node):
                                     'volumeMounts': [{'name': 'data', 'mountPath': '/data', 'readOnly': True}]}],
                     'volumes': [{'name': 'data', 'persistentVolumeClaim': {'claimName': claim}}]}}
     kubectl('apply', '-f', '-', input=json.dumps(pod))
-    kubectl('-n', ns, 'wait', '--for=condition=Ready', f'pod/{name}', '--timeout=300s')
+    try:
+        kubectl('-n', ns, 'wait', '--for=condition=Ready', f'pod/{name}', '--timeout=300s')
+    except SystemExit:
+        # A reader that did not start, for example without free memory on the node of the claim, does not stay.
+        kubectl('-n', ns, 'delete', 'pod', name, '--wait=false', check=False)
+        raise
     return name
 
 
@@ -757,10 +794,9 @@ def tier_of(namespace, name):
 
 
 def close_zone(s, zone):
-    """Close the intake and the writers of a zone and its Hoover installation. Return the record of the earlier values.
-
-    The applications, gates and workers scale to zero and the CronJobs are suspended. The stores keep running.
-    """
+    """The record of the replicas of the applications, gates and workers of a zone and its Hoover installation, and of
+    the suspension of their CronJobs. apply_closure() closes the zone with it, and reopen() restores it. The stores are
+    not in it."""
     namespaces = [zone] + [h.namespace for h in site_config.hoovers(s).values() if h.zone == zone]
     record = {'namespaces': namespaces, 'workloads': {}, 'cronjobs': {}}
     for ns in namespaces:
@@ -806,26 +842,53 @@ def reopen(record):
                 '-p', json.dumps({'spec': {'suspend': suspended}}), check=False)
 
 
+# The parts of an online zone copy and the moment of each. The copy reads a running zone, so the parts hold different
+# moments. The order puts each database before the files and objects that its rows name: an object that a row names
+# was written before the row, so the later object copy holds it, unless the application deleted it in between. The
+# copy then holds objects without a row, which the applications ignore.
+#   postgresql.sql, mariadb.sql  pg_dumpall and mariadb-dump --single-transaction: each database at one moment.
+#   claims/                      a tar file of each claim. A file can change while tar reads it. An LMDB file of
+#                                OpenLDAP is read again until no write committed during its read (lmdb_meta()). A
+#                                Block claim of Redis or NATS holds their append files: both stores read a file with a
+#                                cut last record at their start.
+#   objects/                     the objects of each bucket of the openDesk object store, through its S3 API.
+#   hoover/<name>/shared/        BACKUP of the zone databases in ClickHouse (each table at one moment), then the objects
+#                                of the system bucket.
+# restore-zone writes every part while the zone is closed, then opens it. Each application starts from the restored
+# parts.
+def online_parts():
+    return ['postgresql.sql', 'mariadb.sql', 'claims/', 'objects/', 'hoover/<name>/claims/', 'hoover/<name>/shared/']
+
+
+class Moments:
+    """The start and the end of each part of a copy, in Unix seconds, for moments.json."""
+
+    def __init__(self):
+        self.parts = {}
+
+    @contextlib.contextmanager
+    def part(self, name):
+        started = time.time()
+        yield
+        self.parts[name] = {'started': round(started, 1), 'finished': round(time.time(), 1)}
+
+
 def run_zone(s, zone, partial, key=None):
-    """Copy a complete zone: its namespace into partial, and each Hoover installation into partial/hoover/<name>/."""
+    """Copy a running zone: its namespace into partial, and each Hoover installation into partial/hoover/<name>/.
+
+    No workload stops. workloads.json records the replicas, and moments.json the time of each part.
+    """
     partial.mkdir(parents=True, exist_ok=True)
-    closed = close_zone(s, zone)
-    if key:
-        data = load_state(s)
-        data['jobs'].setdefault(key, {'copies': []})['closed'] = closed
-        save_state(s, data)
-    apply_closure(closed)
-    copy_namespace(zone, partial)
+    moments = Moments()
+    workloads = close_zone(s, zone)
+    copy_namespace(zone, partial, moments)
     for hoover in (h for h in site_config.hoovers(s).values() if h.zone == zone):
-        copy_namespace(hoover.namespace, partial / 'hoover' / hoover.name)
+        copy_namespace(hoover.namespace, partial / 'hoover' / hoover.name, moments, f'hoover/{hoover.name}/')
         if hoover.stores == 'site':
-            copy_shared_stores(hoover, partial / 'hoover' / hoover.name / SHARED_PART)
-    reopen(closed)
-    if key:
-        data = load_state(s)
-        data['jobs'][key].pop('closed', None)
-        save_state(s, data)
-    (partial / 'closure.json').write_text(json.dumps(closed, indent=1))
+            with moments.part(f'hoover/{hoover.name}/{SHARED_PART}'):
+                copy_shared_stores(hoover, partial / 'hoover' / hoover.name / SHARED_PART)
+    (partial / 'workloads.json').write_text(json.dumps(workloads, indent=1))
+    (partial / 'moments.json').write_text(json.dumps({'online': True, 'parts': moments.parts}, indent=1))
 
 
 # The last line that each dump tool writes. A dump without it ended early, for example after a stream reset of
@@ -851,44 +914,229 @@ def dump_out(ns, exec_args, target):
     raise SystemExit(f'the dump {target.name} of {ns} stayed incomplete after three attempts.')
 
 
-def copy_namespace(ns, partial):
-    """Copy the database dumps, the claims, the Secrets and the ConfigMaps of one namespace into partial."""
+def copy_namespace(ns, partial, moments=None, label=''):
+    """Copy the database dumps, the claims, the object store, the Secrets and the ConfigMaps of one running namespace
+    into partial, in the order of online_parts()."""
+    moments = moments or Moments()
     partial.mkdir(parents=True, exist_ok=True)
     pods = json.loads(kubectl('-n', ns, 'get', 'pods', '-o', 'json'))['items']
-    names = {p['metadata']['name'] for p in pods}
+    names = {p['metadata']['name'] for p in pods if p['status'].get('phase') == 'Running'}
     if 'postgresql-0' in names:
         # --clean lets restore-zone replace the databases of a zone that the installer created.
-        dump_out(ns, ['postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists'],
-                 partial / 'postgresql.sql')
+        with moments.part(label + 'postgresql.sql'):
+            dump_out(ns, ['postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists'],
+                     partial / 'postgresql.sql')
     if 'mariadb-0' in names:
-        dump_out(ns, ['mariadb-0', '--', 'sh', '-c',
-                      'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"'],
-                 partial / 'mariadb.sql')
+        with moments.part(label + 'mariadb.sql'):
+            dump_out(ns, ['mariadb-0', '--', 'sh', '-c',
+                          'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"'],
+                     partial / 'mariadb.sql')
+    store = object_store(ns, pods)
     claims = json.loads(kubectl('-n', ns, 'get', 'pvc', '-o', 'json'))['items']
     rows = []
-    for item in claims:
-        claim = item['metadata']['name']
-        if any(d in claim for d in DATABASES) or any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', [])):
-            continue
-        mode = item['spec'].get('volumeMode') or 'Filesystem'
-        target = partial / 'claims' / f'{claim}.tar'
-        if mode == 'Block':
-            source = block_source(claim, pods)
-            if source is None:
-                raise SystemExit(f'no running store pod mounts the Block claim {ns}/{claim}. Start the zone and run the job again.')
-            tar_out(ns, *source, target, tar=('/tools/busybox', 'tar'))
-        else:
-            node = (item['metadata'].get('annotations') or {}).get('volume.kubernetes.io/selected-node')
-            pod = helper_pod(ns, claim, node)
-            try:
-                tar_out(ns, pod, None, '/data', target)
-            finally:
-                kubectl('-n', ns, 'delete', 'pod', pod, '--wait=false')
-        rows.append({'claim': claim, 'size': item['spec']['resources']['requests']['storage'],
-                     'storage_class': item['spec'].get('storageClassName'), 'volume_mode': mode})
+    with moments.part(label + 'claims/'):
+        for item in claims:
+            claim = item['metadata']['name']
+            if any(d in claim for d in DATABASES) or any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', [])):
+                continue
+            if store and claim in store['claims']:
+                # The object store is copied through its S3 API (copy_objects()). Its files change while it runs.
+                continue
+            mode = item['spec'].get('volumeMode') or 'Filesystem'
+            target = partial / 'claims' / f'{claim}.tar'
+            if mode == 'Block':
+                source = block_source(claim, pods)
+                if source is None:
+                    raise SystemExit(f'no running store pod mounts the Block claim {ns}/{claim}. Start the zone and run the job again.')
+                tar_out(ns, *source, target, tar=('/tools/busybox', 'tar'))
+            elif mounted := mount_source(ns, claim, pods):
+                # The running pod of the claim reads it with its own tar, so the copy needs no free memory on the
+                # node of the claim.
+                tar_out(ns, *mounted, target, settled=lambda m=mounted: lmdb_meta(ns, *m))
+            else:
+                node = (item['metadata'].get('annotations') or {}).get('volume.kubernetes.io/selected-node')
+                pod = helper_pod(ns, claim, node)
+                try:
+                    tar_out(ns, pod, None, '/data', target, settled=lambda pod=pod: lmdb_meta(ns, pod, None, '/data'))
+                finally:
+                    kubectl('-n', ns, 'delete', 'pod', pod, '--wait=false')
+            rows.append({'claim': claim, 'size': item['spec']['resources']['requests']['storage'],
+                         'storage_class': item['spec'].get('storageClassName'), 'volume_mode': mode})
     (partial / 'claims.json').write_text(json.dumps(rows, indent=1))
+    if store:
+        with moments.part(label + 'objects/'):
+            copy_objects(ns, store, partial / 'objects')
     (partial / 'objects.json').write_text(kubectl('-n', ns, 'get', 'secrets,configmaps', '-o', 'json'))
     os.chmod(partial / 'objects.json', 0o600)
+
+
+# The check of the LMDB files of a claim: the SHA-256 of the two meta pages of each data.mdb below the folder. LMDB
+# writes one meta page at each commit, so equal values before and after a read show that no write committed during the
+# read, and the copy of the file is one state of the database. It uses find, head and sha256sum of the container.
+LMDB_META = 'find "$0" -name data.mdb -type f | sort | while read -r f; do printf "%s " "$f"; head -c 8192 "$f" | sha256sum; done'
+
+
+def lmdb_meta(ns, pod, container, folder):
+    return kubectl('-n', ns, 'exec', pod, *(['-c', container] if container else []), '--', 'sh', '-c', LMDB_META,
+                   folder).strip()
+
+
+def mount_source(ns, claim, pods):
+    """(pod, container, folder) of a running pod whose container mounts the file system claim and has tar, or None."""
+    for pod in pods:
+        if pod['status'].get('phase') != 'Running' or pod['metadata'].get('deletionTimestamp'):
+            continue
+        volumes = [v['name'] for v in pod['spec'].get('volumes', []) if (v.get('persistentVolumeClaim') or {}).get('claimName') == claim]
+        for c in pod['spec'].get('containers', []) if volumes else []:
+            for mount in c.get('volumeMounts', []):
+                if mount['name'] in volumes and not mount.get('subPath'):
+                    found = kubectl('-n', ns, 'exec', pod['metadata']['name'], '-c', c['name'], '--', 'sh', '-c',
+                                    'command -v tar >/dev/null && echo yes', check=False)
+                    if (found or '').strip() == 'yes':
+                        return pod['metadata']['name'], c['name'], mount['mountPath']
+    return None
+
+
+# The openDesk object store: the SeaweedFS pod of a zone (pod label hoover.dev/store=seaweedfs). Its S3 configuration
+# (the Secret OBJECT_STORE_CONFIG) has the identity admin, which reads and writes every bucket. A bucket whose
+# application encrypts its objects with a customer key (SSE-C) names the Secret and the item of that key.
+OBJECT_STORE_CONFIG = ('seaweedfs-config', 'seaweedfs_s3_config')
+OBJECT_STORE_PORT = 8333
+CUSTOMER_KEYS = {'synapse': ('synapse-s3-encryption-customer-key', 's3EncryptionCustomerKey')}
+
+
+def object_store(ns, pods):
+    """{'pod', 'claims', 'endpoint'} of the running object store of a namespace, or None."""
+    for pod in pods:
+        labels = pod['metadata'].get('labels') or {}
+        if labels.get('hoover.dev/store') != 'seaweedfs' or pod['status'].get('phase') != 'Running':
+            continue
+        claims = [v['persistentVolumeClaim']['claimName'] for v in pod['spec'].get('volumes', []) if 'persistentVolumeClaim' in v]
+        services = json.loads(kubectl('-n', ns, 'get', 'services', '-o', 'json'))['items']
+        service = next((s['metadata']['name'] for s in services
+                        if any(p.get('port') == OBJECT_STORE_PORT for p in s['spec'].get('ports', []))
+                        and matches(s['spec'].get('selector') or {}, labels)), None)
+        if service is None:
+            raise SystemExit(f'no Service of {ns} reaches the S3 port {OBJECT_STORE_PORT} of {pod["metadata"]["name"]}.')
+        return {'pod': pod['metadata']['name'], 'claims': claims, 'endpoint': f'{service}.{ns}.svc.cluster.local:{OBJECT_STORE_PORT}'}
+    return None
+
+
+def matches(selector, labels):
+    return bool(selector) and all(labels.get(k) == v for k, v in selector.items())
+
+
+def secret_item(ns, name, item):
+    raw = kubectl('-n', ns, 'get', 'secret', name, '--ignore-not-found', '-o', 'json').strip()
+    value = (json.loads(raw).get('data') or {}).get(item, '') if raw else ''
+    return base64.b64decode(value) if value else b''
+
+
+def object_store_key(ns, store):
+    """The first line of the S3 client: the endpoint, the admin key and the customer keys of the buckets."""
+    config = json.loads(secret_item(ns, *OBJECT_STORE_CONFIG) or b'{}')
+    admin = next((i for i in config.get('identities', []) if i.get('name') == 'admin' and i.get('credentials')), None)
+    if admin is None:
+        raise SystemExit(f'the S3 configuration {ns}/{OBJECT_STORE_CONFIG[0]} has no identity admin.')
+    sse = {}
+    for bucket, (name, item) in CUSTOMER_KEYS.items():
+        key = secret_item(ns, name, item)
+        if key:
+            sse[bucket] = base64.b64encode(key).decode()
+    credential = admin['credentials'][0]
+    return {'endpoint': store['endpoint'], 'access_key': credential['accessKey'], 'secret_key': credential['secretKey'],
+            'sse_c': sse}
+
+
+def s3_pod(ns):
+    """A short pod in ns that runs the S3 client of ../../hoover/stores/garage_client.py. It mounts nothing."""
+    name = 'backup-s3'
+    pod = {'apiVersion': 'v1', 'kind': 'Pod', 'metadata': {'name': name, 'namespace': ns, 'labels': {'app.kubernetes.io/name': 'backup-reader'}},
+           'spec': {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
+                    'containers': [{'name': 'read', 'image': HELPER_IMAGE, 'command': ['sleep', '3600'],
+                                    'resources': {'limits': {'memory': '256Mi'}}}]}}
+    kubectl('-n', ns, 'delete', 'pod', name, '--ignore-not-found', '--wait=true')
+    kubectl('apply', '-f', '-', input=json.dumps(pod))
+    try:
+        kubectl('-n', ns, 'wait', '--for=condition=Ready', f'pod/{name}', '--timeout=300s')
+    except SystemExit:
+        kubectl('-n', ns, 'delete', 'pod', name, '--wait=false', check=False)
+        raise
+    return name
+
+
+def s3_run(ns, pod, first, *args, data=None, out=None):
+    """Run one command of the S3 client in pod. Return (standard output, report lines). A secret of first does not
+    appear in an error."""
+    import tempfile
+    import garage_client
+    argv = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', ns, 'exec', '-i', pod, '--', 'python3', '-I', '-c',
+            garage_client.SCRIPT, *args]
+    with tempfile.TemporaryFile() as errors, (open(out, 'wb') if out else tempfile.TemporaryFile()) as output:
+        process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=output, stderr=errors)
+        try:
+            process.stdin.write(json.dumps(first).encode() + b'\n')
+            if data is not None:
+                with open(data, 'rb') as source:
+                    shutil.copyfileobj(source, process.stdin, 1 << 20)
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        code = process.wait()
+        errors.seek(0)
+        text = errors.read().decode(errors='replace')
+        for secret in [first['secret_key'], *first.get('sse_c', {}).values()]:
+            text = text.replace(secret, '[HIDDEN]')
+        if code:
+            raise SystemExit(f'the object store command {args[0]} {" ".join(args[1:2])} in {ns} failed: {text.strip()[-400:]}')
+        output.seek(0)
+        return (None if out else output.read().decode()), [json.loads(l) for l in text.splitlines() if l.startswith('{')]
+
+
+def copy_objects(ns, store, target):
+    """Copy every bucket of the object store of ns into target/<bucket>.tar, and the bucket list into
+    target/buckets.json."""
+    target.mkdir(parents=True, exist_ok=True)
+    first = object_store_key(ns, store)
+    pod = s3_pod(ns)
+    try:
+        listed, _ = s3_run(ns, pod, first, 'buckets')
+        buckets = json.loads(listed.strip().splitlines()[-1])
+        rows = []
+        for bucket in buckets:
+            name_arg(bucket, 'bucket')
+            path = target / f'{bucket}.tar'
+            for attempt in range(3):
+                _, reports = s3_run(ns, pod, first, 'tar', bucket, out=path)
+                if tar_complete(path):
+                    break
+            else:
+                raise SystemExit(f'the copy of the bucket {bucket} of {ns} stayed incomplete after three attempts.')
+            report = next((r for r in reports if 'objects' in r), {})
+            rows.append({'bucket': bucket, 'objects': report.get('objects', 0),
+                         'customer_key_objects': report.get('customer_key_objects', 0)})
+        (target / 'buckets.json').write_text(json.dumps(rows, indent=1))
+    finally:
+        kubectl('-n', ns, 'delete', 'pod', pod, '--wait=false')
+
+
+def restore_objects(folder, ns):
+    """Replace the objects of each bucket of the copy in the running object store of ns. Other buckets stay."""
+    rows = json.loads((folder / 'objects' / 'buckets.json').read_text())
+    pods = json.loads(kubectl('-n', ns, 'get', 'pods', '-o', 'json'))['items']
+    store = object_store(ns, pods)
+    if store is None:
+        raise SystemExit(f'{ns} has no running object store, which the restore of the objects needs. The zone stays closed.')
+    first = object_store_key(ns, store)
+    pod = s3_pod(ns)
+    try:
+        for row in rows:
+            bucket = name_arg(row['bucket'], 'bucket')
+            s3_run(ns, pod, first, 'mkbucket', bucket)
+            s3_run(ns, pod, first, 'empty', bucket)
+            s3_run(ns, pod, first, 'untar', bucket, data=folder / 'objects' / f'{bucket}.tar')
+    finally:
+        kubectl('-n', ns, 'delete', 'pod', pod, '--wait=false')
 
 
 RECOVERY_FORMAT = 'hoover4-platform-recovery'
@@ -1180,9 +1428,9 @@ def restore_zone(zone, generation, source_zone=None):
     """Restore a complete zone copy into an installed zone.
 
     The zone must exist, for example after zone.py apply. The steps: fetch and verify the copy, close the zone and its
-    Hoover installation and stop their stores except the zone databases, apply the Secrets of each part, replace the
-    content of each claim, import the database dumps, restart the databases, and open the zone with the replicas of the
-    copy. Each step is recorded in <operator state>/backups/restore-<zone>.json. A failure leaves the zone closed.
+    Hoover installation and stop their stores except the zone databases and the object store, replace the objects of
+    the object store, apply the Secrets of each part, replace the content of each claim, import the database dumps,
+    restart the databases and the object store, and open the zone with the replicas of the copy. Each step is recorded in <operator state>/backups/restore-<zone>.json. A failure leaves the zone closed.
     """
     s = site()
     name_arg(zone, 'zone')
@@ -1216,7 +1464,9 @@ def restore_zone(zone, generation, source_zone=None):
     lock = oplock.site_lock(s.operator_state())
     lock.acquire('restore', f'restore-{zone}')
     try:
-        source = json.loads((folder / 'closure.json').read_text()) if (folder / 'closure.json').exists() else None
+        # An online copy names its replicas in workloads.json, a copy of an earlier version in closure.json.
+        recorded = next((folder / n for n in ('workloads.json', 'closure.json') if (folder / n).exists()), None)
+        source = json.loads(recorded.read_text()) if recorded else None
         if 'closed' not in progress:
             closed = close_zone(s, zone)
             # The stores stop too, except the zone databases, which import the dumps.
@@ -1233,12 +1483,19 @@ def restore_zone(zone, generation, source_zone=None):
         site_zone = target is not None and target.stores == 'site'
         for part, ns in parts:
             label = '' if ns == zone else f':{ns}'
+            if (part / 'objects' / 'buckets.json').exists():
+                # The object store keeps running in a closed zone. The objects go in with its current admin key,
+                # before the Secrets of the copy replace that key.
+                step('objects' + label, lambda part=part, ns=ns: restore_objects(part, ns))
             step('secrets' + label, lambda part=part, ns=ns: restore_secrets(part, ns, TENANT_SECRETS if site_zone else {}))
             restore_claims(part, ns, step)
             if site_zone and ns != zone and (part / SHARED_PART / 'stores.json').exists():
                 hoover = next(h for h in site_config.hoovers(s).values() if h.namespace == ns)
                 step('shared-stores' + label, lambda part=part, hoover=hoover: restore_shared_stores(part / SHARED_PART, hoover))
         step('databases', lambda: restore_databases(folder, zone))
+        if (folder / 'objects' / 'buckets.json').exists():
+            # The object store reads the S3 configuration of the restored Secrets at its start.
+            step('object-store-restart', lambda: restart_object_store(zone))
         # The replicas of the source zone apply when the copy names them. Otherwise the zone keeps its own.
         opened = dict(progress['closed'])
         if source:
@@ -1375,6 +1632,16 @@ def restore_databases(folder, zone):
     for name in ('postgresql', 'mariadb'):
         if kubectl('-n', zone, 'get', 'statefulset', name, '--ignore-not-found', '-o', 'name').strip():
             kubectl('-n', zone, 'rollout', 'status', f'statefulset/{name}', '--timeout=600s')
+
+
+def restart_object_store(ns):
+    for item in json.loads(kubectl('-n', ns, 'get', 'deployments', '-o', 'json'))['items']:
+        labels = (item['spec']['template'].get('metadata') or {}).get('labels') or {}
+        if labels.get('hoover.dev/store') != 'seaweedfs':
+            continue
+        name = item['metadata']['name']
+        kubectl('-n', ns, 'rollout', 'restart', f'deployment/{name}')
+        kubectl('-n', ns, 'rollout', 'status', f'deployment/{name}', '--timeout=600s')
 
 
 def option(argv, name):

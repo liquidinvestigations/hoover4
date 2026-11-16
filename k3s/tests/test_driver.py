@@ -952,3 +952,68 @@ def test_the_pull_pod_requests_nothing_so_a_full_node_admits_it():
     spec = pod['spec']
     assert spec['nodeName'] == 'edge'
     assert all(c['resources']['requests'] == {'cpu': '0', 'memory': '0'} for c in spec['initContainers'] + spec['containers'])
+
+
+def kubelet_inputs(requested_memory):
+    """One node with 10000Mi allocatable, a reserve of 1000Mi memory, and pods that request requested_memory."""
+    nodes = {'items': [{'metadata': {'name': 'n1'}, 'status': {'allocatable': {'memory': '10000Mi', 'cpu': '4000m'}}}]}
+    pods = {'items': [{'spec': {'nodeName': 'n1', 'containers': [{'resources': {'requests': {'memory': f'{requested_memory}Mi', 'cpu': '1'}}}]},
+                       'status': {'phase': 'Running'}},
+                      {'spec': {'nodeName': 'n1', 'containers': [{'resources': {'requests': {'memory': '5000Mi'}}}]},
+                       'status': {'phase': 'Succeeded'}}]}
+    return nodes, pods, {'n1': {'cpu': '200m', 'memory': '1000Mi'}}
+
+
+def test_a_kubelet_reserve_that_would_refuse_running_pods_is_kept():
+    import kubelet
+    nodes, pods, configz = kubelet_inputs(9500)
+    rows = kubelet.changes({'n1': 'memory=2000Mi,cpu=200m'}, nodes, pods, configz, overhead={})
+    row = rows['n1']
+    assert row['allocatable'] == {'memory': [10000, 9000], 'cpu': [4000, 4000]}
+    assert row['requested'] == {'memory': 9500, 'cpu': 1000}
+    assert row['lowered'] and not row['fits']
+    # The kept value has the keys of the new value in their order and the values of the running kubelet.
+    assert kubelet.hold(rows) == {'n1': 'memory=1000Mi,cpu=200m'}
+    # The placement plan uses the allocatable after the change.
+    assert kubelet.target_nodes(nodes, rows)['items'][0]['status']['allocatable'] == {'memory': '9000Mi', 'cpu': '4000m'}
+    # Pods that fit the new allocatable, or a reserve that rises the allocatable, need no kept value.
+    nodes, pods, configz = kubelet_inputs(8000)
+    assert kubelet.hold(kubelet.changes({'n1': 'memory=2000Mi,cpu=200m'}, nodes, pods, configz, overhead={})) == {}
+    nodes, pods, configz = kubelet_inputs(9900)
+    rows = kubelet.changes({'n1': 'memory=500Mi,cpu=200m'}, nodes, pods, configz, overhead={})
+    assert not rows['n1']['lowered'] and kubelet.hold(rows) == {}
+    # A kubelet without a memory reserve keeps only its CPU value, as the earlier file had it.
+    assert kubelet.held('memory=2000Mi,cpu=300m', {'cpu': '200m'}) == 'cpu=200m'
+
+
+def test_a_kept_kubelet_reserve_is_applied_after_the_zones_and_before_the_descheduler(env):
+    ctx = env.make()
+    ctx.kubelet_hold = {'dev': 'cpu=200m'}
+    steps = list(deploy.plan(ctx, 'up', ['dev']))
+    assert steps[-2:] == ['hosts:kubelet', 'descheduler']
+    needs = deploy.prerequisites(steps)
+    assert {'zone:zone-a', 'stores', 'placement', 'calls'} <= set(needs['hosts:kubelet'])
+    assert 'hosts:kubelet' in needs['descheduler']
+    assert list(deploy.select(deploy.plan(ctx, 'up', ['dev']), ['hosts:k3s'])) == ['hosts:k3s', 'hosts:kubelet']
+    ctx.kubelet_hold = {}
+    assert 'hosts:kubelet' not in deploy.plan(ctx, 'up', ['dev'])
+
+
+def test_the_k3s_play_gets_the_kept_reserve_and_the_kubelet_step_checks_the_requests_first(env, monkeypatch):
+    ctx = env.make()
+    argv = deploy.Ansible(ctx).argv('hoover4-k3s.yml', ['dev'], reserved={'dev': 'cpu=100m'})
+    variables = json.loads(argv[argv.index('-e') + 1])
+    assert variables['hoover4_nodes']['dev']['kubelet_reserved'] == 'cpu=100m'
+    ctx.record = {'kubelet_hold': {'dev': 'cpu=100m'}}
+    played = []
+    monkeypatch.setattr(deploy.Ansible, 'run', lambda self, playbook, targets, **kw: played.append((playbook, targets)))
+    row = {'fits': False, 'requested': {'memory': 9500, 'cpu': 1000},
+           'allocatable': {'memory': [10000, 9000], 'cpu': [4000, 4000]}}
+    monkeypatch.setattr(deploy, 'kubelet_rows', lambda ctx, names=None: {'dev': row})
+    with pytest.raises(deploy.StepFailed, match='would make these nodes refuse running pods: dev'):
+        deploy.step_kubelet(ctx)
+    assert played == []
+    row['fits'] = True
+    monkeypatch.setattr(deploy, 'node_problems', lambda ctx, name: [])
+    assert deploy.step_kubelet(ctx)['nodes'] == ['dev']
+    assert played == [('hoover4-k3s.yml', ['dev'])]

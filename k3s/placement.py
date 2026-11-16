@@ -3,7 +3,8 @@
 
 The step placement of deploy-k3s up, and deploy-k3s check, compute the plan before the stores and the zones change:
 - Inputs: the allocatable memory and CPU of each schedulable node without the role gpu (the kubelet reserve is already
-  subtracted, and the CPU counts threads of the fastest node, config.py kubelet_reserved()). The pods that this
+  subtracted, and the CPU counts threads of the fastest node, config.py kubelet_reserved()). When the reserve of the
+  site differs from the reserve of the running kubelet, the plan uses the allocatable after the change (kubelet.py). The pods that this
   plan does not render stay on their nodes at their requests: the platform pods, the DaemonSet pods and the Job pods.
   The site workloads come from a new render at the scale factor 1: the shared stores (hoover/stores/shared.py,
   temporal.py), and for each enabled zone of the zone state the Hoover installation (hoover/manifests.py), the zone
@@ -888,7 +889,13 @@ def compute(write=False, act=False):
     private = config.state_folder(site_path)
     rendered, zones, planned = render_site(site, site_path, private)
     eligible = {n.name for n in site.nodes.values() if not n.has('gpu')}
-    nodes, pods, live = inputs(kubectl_json('get', 'nodes'), kubectl_json('get', 'pods', '-A'),
+    import kubelet
+    nodes_json, pods_json = kubectl_json('get', 'nodes'), kubectl_json('get', 'pods', '-A')
+    # The plan fits the allocatable of each node after the change of its kubelet reserve, which up can apply after
+    # the zone steps (kubelet.py).
+    reserved = {n: v['kubelet_reserved'] for n, v in config.ansible_variables(site, private)['hoover4_nodes'].items()}
+    rows = kubelet.changes(reserved, nodes_json, pods_json, kubelet.configz(lambda *a: kubectl(*a).stdout, list(reserved)))
+    nodes, pods, live = inputs(kubelet.target_nodes(nodes_json, rows), pods_json,
                                kubectl_json('get', 'pvc', '-A'), rendered, eligible, zones, planned)
     plan = solve(nodes, pods)
     order_name, waits = order(plan, live, zones)
@@ -902,7 +909,8 @@ def compute(write=False, act=False):
         path = private / PLAN_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(out, indent=1, sort_keys=True) + '\n')
-    result = {'placement': out, 'problems': problems, 'kept_factor': before.get('factor'), 'plan_changed': before != out}
+    result = {'placement': out, 'problems': problems, 'kept_factor': before.get('factor'), 'plan_changed': before != out,
+              'kubelet': rows}
     if act:
         result['applied'] = apply(out)
     return result

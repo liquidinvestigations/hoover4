@@ -17,8 +17,8 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
   limits. memory_requests.py sets the memory request of each workload of memory-requests.json from its measured peak
   under load, so the scheduler places each pod by its real load. Jobs keep the chart values, because a Job template
   cannot change after its creation.
-- Rollout: a single-replica Deployment that requests MAX_SURGE_MEMORY or more replaces its pod with maxSurge 0 and
-  maxUnavailable 1 (rollout()), so an update does not need the memory of a second pod on a full site.
+- Rollout: a single-replica Deployment that requests MAX_SURGE_MEMORY or more, or that NO_SURGE names, replaces its pod
+  with maxSurge 0 and maxUnavailable 1 (rollout()), so an update does not need the memory of a second pod on a full site.
 - Patches: Synapse loads synapse/hoover_e2ee.py, the user verification service logs at warn, Jitsi web uses the UDP
   TURN server for the bridge connection, and the OpenProject worker loads openproject/zz-hoover-cron.rb. The
   docstrings of the functions below give the reasons.
@@ -59,6 +59,9 @@ MEMORY = MEMORY_FILE['zone']
 # A single-replica Deployment whose pod requests this many MiB or more starts its new pod only after the old one
 # stopped (rollout()).
 MAX_SURGE_MEMORY = 512
+# The smaller single-replica Deployments that also start their new pod only after the old one stopped. The second pod
+# of the UDM REST API (448 MiB) found no node on the full test site (2026-11-16), and its rollout waited without end.
+NO_SURGE = ('ums-udm-rest-api',)
 # The workloads of each openDesk application, by name pattern. A disabled application (operator setting app.<name>)
 # renders zero replicas and keeps its claims, so an enable restores it with its data.
 APP_WORKLOADS = {
@@ -177,24 +180,30 @@ REVISION_JOBS = ('openproject-seeder', 'opendesk-nextcloud-management', 'opendes
 # The CronJobs of the openDesk charts. periodic() replaces each with a container that stays running. The container
 # runs the command of the CronJob with its image, environment, volumes and service account, at the times of its
 # schedule, and also once at its start.
-#   pod        the workload whose pod gets the container (a sidecar). None: the container runs in its own Deployment
-#              with the name of the CronJob. A sidecar needs the service account of that pod.
+#   pod        the workload whose pod gets the container (a sidecar). None: the container runs in its own Deployment.
+#              A sidecar needs the service account of that pod. A sidecar restarts the pod of its workload at each
+#              change of the task, so a task of a service that other pods need runs in its own Deployment.
+#   deployment the name of that Deployment, when pod is None. The default is the name of the CronJob. The tasks of one
+#              Deployment need the same service account and pod security context.
 #   container  the name of the container.
 #   command    the command of the run when the CronJob container names none: the entrypoint and the command of the
 #              image.
 #   memory     the memory request: the highest working set of the pod cgroup in one run of the CronJob pod, of both zones
 #              (load of 2026-11-16), rounded up to 32 MiB. It holds the gVisor sentry of that pod, so it is the upper
 #              value for a sidecar.
+UDM_PERIODIC = 'ums-udm-rest-api-periodic'
 PERIODIC = {
     # cron.php runs the Nextcloud background jobs. Peaks 126 and 91 MiB.
     'opendesk-nextcloud-aio-cron': {'pod': 'deployment/opendesk-nextcloud-aio', 'container': 'cron', 'memory': '128Mi',
                                     'command': ['/docker-entrypoint.sh', '/usr/bin/php',
                                                 '/usr/local/bin/entrypoint/entrypoint.php']},
     # Counts the users, servers and clients, and writes the counts into the license object of the directory, where UMC
-    # and the UDM REST API read them. Peaks 86 and 74 MiB.
-    'ums-udm-rest-api-license-cache': {'pod': 'deployment/ums-udm-rest-api', 'container': 'license-cache', 'memory': '96Mi'},
+    # and the UDM REST API read them. Peaks 86 and 74 MiB. The two UDM tasks share one Deployment. As sidecars, a
+    # change of a task restarted the UDM REST API, and the provisioning transformer then lost its connection.
+    'ums-udm-rest-api-license-cache': {'pod': None, 'deployment': UDM_PERIODIC, 'container': 'license-cache',
+                                       'memory': '96Mi'},
     # Removes the expired entries of the UDM blocklist. Peaks 61 and 47 MiB.
-    'ums-udm-rest-api-blocklist-cleanup': {'pod': 'deployment/ums-udm-rest-api', 'container': 'blocklist-cleanup',
+    'ums-udm-rest-api-blocklist-cleanup': {'pod': None, 'deployment': UDM_PERIODIC, 'container': 'blocklist-cleanup',
                                            'memory': '64Mi', 'command': ['/bin/blocklist_clean_expired.py']},
     # Moves old Matrix media into the object store. It runs kubectl exec in the Synapse media pod with its own service
     # account, so it runs in its own Deployment. Peaks 99 and 50 MiB.
@@ -318,8 +327,8 @@ def memory(doc):
 
 
 def rollout(doc):
-    """Give a single-replica Deployment that requests MAX_SURGE_MEMORY or more the rolling update maxSurge 0 and
-    maxUnavailable 1. The old pod stops before the new pod starts, so an update needs no free memory for a second pod.
+    """Give a single-replica Deployment that requests MAX_SURGE_MEMORY or more, or that NO_SURGE names, the rolling
+    update maxSurge 0 and maxUnavailable 1. The old pod stops before the new pod starts, so an update needs no free memory for a second pod.
     A Recreate strategy of the chart stays, because it also starts no second pod."""
     if doc['kind'] != 'Deployment' or doc['spec'].get('replicas', 1) != 1:
         return
@@ -328,7 +337,7 @@ def rollout(doc):
     spec = pod_spec(doc)
     requested = sum(mebibytes(((c.get('resources') or {}).get('requests') or {}).get('memory', '0'))
                     for c in spec.get('containers') or [])
-    if requested >= MAX_SURGE_MEMORY:
+    if requested >= MAX_SURGE_MEMORY or doc['metadata']['name'] in NO_SURGE:
         doc['spec']['strategy'] = {'type': 'RollingUpdate', 'rollingUpdate': {'maxSurge': 0, 'maxUnavailable': 1}}
 
 
@@ -431,14 +440,31 @@ def periodic_container(doc, rule):
     return c, volumes
 
 
+def own_labels(labels, selectors):
+    """The labels of a CronJob pod without the labels that make a selector of the render match it. A CronJob of a
+    chart has the labels of its service, so without this a selector of that Service or Deployment, or kubectl exec
+    deploy/<name>, would also find the pod of the task."""
+    out = dict(labels)
+    for selector in selectors:
+        while selector and all(out.get(k) == v for k, v in selector.items()):
+            out.pop(next(k for k in selector if k in out))
+    return out
+
+
 def periodic(documents, disabled=False, values=None):
     """Replace each CronJob with the container of its PERIODIC rule: a sidecar in the pod of rule['pod'], or a
-    Deployment with the name of the CronJob. A CronJob without a rule stops the render. The containers keep the CPU
+    container of the Deployment rule['deployment'] (default: the name of the CronJob). A CronJob without a rule stops
+    the render. The containers keep the CPU
     values that overlay() gave the CronJob. A pod that gets a sidecar gets rollout() again, because its request grew."""
-    out, targets = [], {}
+    out, targets, groups, selectors = [], {}, {}, []
     for doc in documents:
         if isinstance(doc, dict) and doc.get('kind') in ('Deployment', 'StatefulSet'):
             targets[ref(doc)] = doc
+        if isinstance(doc, dict) and doc.get('kind') in ('Deployment', 'StatefulSet', 'DaemonSet', 'Service'):
+            spec = doc.get('spec') or {}
+            found = spec.get('selector') if doc['kind'] == 'Service' else (spec.get('selector') or {}).get('matchLabels')
+            if found:
+                selectors.append(found)
     for doc in documents:
         if not isinstance(doc, dict) or doc.get('kind') != 'CronJob':
             out.append(doc)
@@ -464,15 +490,27 @@ def periodic(documents, disabled=False, values=None):
             pod['volumes'] = [v for v in pod.get('volumes') or [] if v['name'] not in kept] + volumes
             rollout(target)
             continue
-        labels = dict(template['metadata'].get('labels') or {}, **{PERIODIC_LABEL: name})
+        deployment = rule.get('deployment') or name
+        own = groups.get(deployment)
+        if own is not None:
+            pod = own['spec']['template']['spec']
+            for field in ('serviceAccountName', 'securityContext'):
+                if spec.get(field) != pod.get(field):
+                    raise RuntimeError(f'the CronJob {name} and the other tasks of {deployment} differ in {field}')
+            pod['containers'].append(c)
+            pod['volumes'].extend(volumes)
+            continue
+        labels = own_labels(template['metadata'].get('labels') or {}, selectors)
+        labels[PERIODIC_LABEL] = deployment
         spec = dict(spec, containers=[c], volumes=volumes, restartPolicy='Always')
         replicas = 0 if disabled or disabled_app(name, values or {}) else 1
-        out.append({'apiVersion': 'apps/v1', 'kind': 'Deployment',
-                    'metadata': {'name': name, 'namespace': doc['metadata'].get('namespace'),
-                                 'labels': doc['metadata'].get('labels') or {}},
-                    'spec': {'replicas': replicas, 'strategy': {'type': 'Recreate'},
-                             'selector': {'matchLabels': {PERIODIC_LABEL: name}},
-                             'template': {'metadata': dict(template['metadata'], labels=labels), 'spec': spec}}})
+        groups[deployment] = {'apiVersion': 'apps/v1', 'kind': 'Deployment',
+                              'metadata': {'name': deployment, 'namespace': doc['metadata'].get('namespace'),
+                                           'labels': doc['metadata'].get('labels') or {}},
+                              'spec': {'replicas': replicas, 'strategy': {'type': 'Recreate'},
+                                       'selector': {'matchLabels': {PERIODIC_LABEL: deployment}},
+                                       'template': {'metadata': dict(template['metadata'], labels=labels), 'spec': spec}}}
+        out.append(groups[deployment])
     return out
 
 

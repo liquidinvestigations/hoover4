@@ -332,9 +332,13 @@ class Ansible:
                                     '-o StrictHostKeyChecking=accept-new '
                                     f'-o "UserKnownHostsFile={known} ~/.ssh/known_hosts"'}
 
-    def argv(self, playbook, targets, extra=None, tags=()):
+    def argv(self, playbook, targets, extra=None, tags=(), reserved=None):
+        """reserved: {node: system-reserved value} that replaces the value of the site for that node (kubelet.py)."""
+        variables = config.ansible_variables(self.ctx.site, self.ctx.private)
+        for name, value in (reserved or {}).items():
+            variables['hoover4_nodes'][name]['kubelet_reserved'] = value
         argv = ['ansible-playbook', '-i', self.ctx.site_path, '--limit', ','.join(targets), ANSIBLE / 'playbooks' / playbook,
-                '-e', json.dumps(config.ansible_variables(self.ctx.site, self.ctx.private))]
+                '-e', json.dumps(variables)]
         if self.ctx.become_password_file:
             argv += ['--become-password-file', self.ctx.become_password_file]
         if extra:
@@ -343,7 +347,7 @@ class Ansible:
             argv += ['--tags', ','.join(tags)]
         return argv
 
-    def run(self, playbook, targets, extra=None, tags=()):
+    def run(self, playbook, targets, extra=None, tags=(), reserved=None):
         """Run a playbook. Raise StepFailed with the recap when a task failed or a node was unreachable."""
         (self.ctx.private / 'facts').mkdir(parents=True, exist_ok=True)
         if 'speed' in tags or not tags:
@@ -351,7 +355,7 @@ class Ansible:
             (self.ctx.private / 'speed').mkdir(parents=True, exist_ok=True)
         # The facts play of this version writes no cpu_speed, so the value of an earlier version moves to speed/ first.
         config.adopt_facts_speed(self.ctx.private)
-        code, out = self.ctx.run(self.argv(playbook, targets, extra, tags), env=self.env(), check=False)
+        code, out = self.ctx.run(self.argv(playbook, targets, extra, tags, reserved), env=self.env(), check=False)
         if code:
             failed = [name.split(' -> ')[0] for name in re.findall(r'(?m)^\s*fatal: \[([^\]]+)\]', out)]
             recap = [line.strip() for line in out.splitlines() if re.search(r'(unreachable|failed)=[1-9]', line)]
@@ -368,14 +372,71 @@ def step_hosts(ctx):
 
 
 def step_k3s(ctx):
-    """The k3s play of the targets: the server, then the agents (playbooks/hoover4-k3s.yml)."""
+    """The k3s play of the targets: the server, then the agents (playbooks/hoover4-k3s.yml).
+
+    A node of kubelet_hold of the record keeps the reserve of its running kubelet. The step hosts:kubelet applies the
+    new reserve after the zone steps (../kubelet.py).
+    """
     if ctx.site.control_plane in ctx.record['targets'] and 'etcd_before' not in ctx.record:
         # verify compares the etcd role after the step with this value, to find a conversion from SQLite.
         ctx.record['etcd_before'] = (node_label(ctx, ctx.site.control_plane, 'node-role.kubernetes.io/etcd')
                                      if node_ready(ctx, ctx.site.control_plane) else 'absent')
         ctx.records.save(ctx.record)
-    Ansible(ctx).run('hoover4-k3s.yml', ctx.record['targets'])
-    return {'kubeconfig': str(ctx.kubeconfig)}
+    hold = ctx.record.get('kubelet_hold') or {}
+    Ansible(ctx).run('hoover4-k3s.yml', ctx.record['targets'], reserved=hold)
+    return {'kubeconfig': str(ctx.kubeconfig), **({'kubelet_held': sorted(hold)} if hold else {})}
+
+
+def kubelet_rows(ctx, names=None):
+    """The rows of kubelet.changes() for the nodes, or {} when the cluster does not answer, for example before the
+    first k3s step."""
+    import kubelet
+
+    def kubectl(*args):
+        return subprocess.run(['kubectl', '--kubeconfig', str(ctx.kubeconfig), *args], capture_output=True, text=True,
+                              timeout=120).stdout
+    if not ctx.kubeconfig.exists():
+        return {}
+    try:
+        return kubelet.read(ctx.site, ctx.private, kubectl, names)
+    except (ValueError, KeyError, subprocess.SubprocessError):
+        return {}
+
+
+def kubelet_hold(ctx, targets):
+    """{node: kept system-reserved value} for each target whose new reserve would make its kubelet refuse running
+    pods (../kubelet.py). up then applies the new reserve in the step hosts:kubelet."""
+    import kubelet
+    return kubelet.hold(kubelet_rows(ctx, targets))
+
+
+def step_kubelet(ctx):
+    """Apply the kubelet reserve that the step hosts:k3s kept (kubelet_hold of the record), after the steps that lower
+    the requests. The step checks first that the requests of the pods of each node fit its new allocatable, and fails
+    without a change when they do not, so the restarted kubelet refuses no running pod."""
+    hold = ctx.record.get('kubelet_hold') or {}
+    if not hold:
+        return {}
+    rows = kubelet_rows(ctx, sorted(hold))
+    missing = [n for n in hold if n not in rows]
+    if missing:
+        raise StepFailed(f'the kubelet of {", ".join(missing)} does not give its reserve. Check the nodes, then resume.')
+    full = {n: r for n, r in rows.items() if not r['fits']}
+    if full:
+        raise StepFailed('the new kubelet reserve would make these nodes refuse running pods: ' + '; '.join(
+            f'{n}: the pods request {r["requested"]["memory"]} MiB and {r["requested"]["cpu"]}m, the new allocatable is '
+            f'{r["allocatable"]["memory"][1]} MiB and {r["allocatable"]["cpu"][1]}m' for n, r in full.items())
+            + '. Lower the requests or free the nodes, then resume.')
+    Ansible(ctx).run('hoover4-k3s.yml', sorted(hold))
+    found = {}
+    for attempt in range(24):
+        found = {name: node_problems(ctx, name) for name in hold}
+        if not any(found.values()):
+            break
+        time.sleep(5)
+    else:
+        raise StepFailed('; '.join(f'node {n}: {", ".join(p)}' for n, p in found.items() if p) + '.')
+    return {'nodes': sorted(hold), 'allocatable': {n: rows[n]['allocatable'] for n in hold}}
 
 
 def node_problems(ctx, name, k3s_args=None):
@@ -1196,6 +1257,12 @@ def plan(ctx, command, targets, start=False):
         steps.update(HOST_STEPS)
         if control:
             steps.update(cluster_steps(ctx))
+        if getattr(ctx, 'kubelet_hold', None):
+            # The kept kubelet reserve follows every step that lowers requests, and the descheduler follows it.
+            last = steps.pop('descheduler', None)
+            steps['hosts:kubelet'] = step_kubelet
+            if last:
+                steps['descheduler'] = last
         return steps
     if command == 'down':
         if control:
@@ -1217,7 +1284,11 @@ def select(steps, only):
     unknown = [o for o in only if not any(matches(k, o) for k in steps)]
     if unknown:
         raise StepFailed(f'the plan has no step {", ".join(unknown)}. The steps are: {", ".join(steps)}')
-    return {k: v for k, v in steps.items() if any(matches(k, o) for o in only)}
+    # A kept kubelet reserve belongs to the step hosts:k3s that keeps it.
+    chosen = {k for k in steps if any(matches(k, o) for o in only)}
+    if 'hosts:k3s' in chosen and 'hosts:kubelet' in steps:
+        chosen.add('hosts:kubelet')
+    return {k: v for k, v in steps.items() if k in chosen}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1555,6 +1626,12 @@ def check(ctx, targets):
                 answer = json.loads(text.strip().splitlines()[-1])
                 state['placement'] = answer['placement']
                 state['placement_kept_factor'] = answer.get('kept_factor')
+                # The kubelet reserve of each node: a change that would refuse running pods follows the zone steps
+                # (../kubelet.py).
+                rows = answer.get('kubelet') or {}
+                held = sorted(n for n, r in rows.items() if r['lowered'] and not r['fits'])
+                state['kubelet'] = {'nodes': rows, 'order': 'requests-first' if held else 'kubelet-first',
+                                    'held': held}
                 problems += answer['problems']
             except (ValueError, IndexError, KeyError):
                 problems.append(f'the placement plan failed with code {code}: {text.strip()[-400:]}')

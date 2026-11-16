@@ -138,7 +138,8 @@ def test_a_large_single_replica_deployment_rolls_without_a_second_pod():
 
 
 def test_the_measured_large_opendesk_deployments_roll_with_max_surge_0():
-    """The openDesk Deployments whose measured request is 512 MiB or more. The list names them."""
+    """The openDesk Deployments whose measured request is 512 MiB or more, and the Deployments of NO_SURGE. The list
+    names them."""
     table = memory_requests.load()
     large = []
     for key, entry in sorted(table['zone'].items()):
@@ -148,7 +149,7 @@ def test_the_measured_large_opendesk_deployments_roll_with_max_surge_0():
         doc = deployment(name, [box(name, '16Mi', '64Gi')])
         memory_requests.apply(doc, key, 'zone', table=table)
         postrender.rollout(doc)
-        if memory_requests.mebibytes(request_of(doc, name)) >= postrender.MAX_SURGE_MEMORY:
+        if memory_requests.mebibytes(request_of(doc, name)) >= postrender.MAX_SURGE_MEMORY or name in postrender.NO_SURGE:
             large.append(name)
             assert doc['spec']['strategy']['rollingUpdate'] == {'maxSurge': 0, 'maxUnavailable': 1}, name
         else:

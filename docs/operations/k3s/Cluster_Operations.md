@@ -155,8 +155,9 @@ A restore replaces the data of an installed zone with a zone copy.
 
 4. Sign in to the zone, and check the files, the chats and boards, and the collections.
 
-The restore closes the zone and its Hoover installation and stops their stores, except the zone databases.
-It applies the Secrets of the copy, replaces each claim, imports the database dumps, and opens the zone.
+The zone copy reads the running zone and stops no application, so its parts hold different moments. The restore writes all parts before an application starts.
+The restore closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store.
+It replaces the objects of the object store, applies the Secrets of the copy, replaces each claim, imports the database dumps, restarts the databases and the object store, and opens the zone.
 For a zone with `stores = site` it also replaces the ClickHouse databases `<prefix>` and `<prefix>_Processing` and the objects of the bucket `<zone>-system` with the copy. The target keeps its own store credentials: the Secrets `hoover-stores`, `garage-tenants` and `manticore-schema` and the store items of `hoover-runtime` are not restored. Restore the collections with `restore-hoover`.
 A database dump without the end line of its dump tool stops the restore before it changes the zone. Restore another copy.
 A database error during the import stops the restore and shows the error.

@@ -1,8 +1,9 @@
 """An S3 client of the shared Garage for the operator tools. It runs in the container s3 of a Garage pod.
 
-The removal of a zone (shared.py remove) empties the zone buckets with it. The zone backup job
-(../../platform/backups/backups.py) copies the system bucket of a zone and the ClickHouse archive of the zone
-databases with it. Neither needs a pod of the zone, so a disabled zone needs no other steps.
+The removal of a zone (shared.py remove) empties the zone buckets with it, and needs no pod of the zone, so a disabled
+zone needs no other steps. The zone backup job (../../platform/backups/backups.py) runs SCRIPT in a short pod of the
+Hoover namespace instead, for the system bucket of a zone and the ClickHouse archive of the zone databases: kubectl exec
+with standard input into a Kata pod, such as a Garage pod, stopped its output after 32 KiB on the test site.
 
 Each Garage pod of shared.py garage() has the container s3 (sidecar()): the image of the Manticore file service with
 the standard library of Python only, and no command of its own. It reaches the S3 port of Garage on 127.0.0.1, so no
@@ -11,11 +12,18 @@ client needs no right to create a pod. The container holds no credential. The to
 Garage admin (key()), and each command gets one JSON line with the endpoint and the key on its standard input, then
 the data of the command.
 
+The zone backup job also runs SCRIPT in a short pod of a zone namespace against the openDesk object store, with its admin
+key. The first line can then name a key for server-side encryption with a customer key (SSE-C) for each bucket
+(sse_c, base64). tar reads an object without the key first, and with the key when the store refuses that. It marks
+such a member with the PAX field HOOVER.sse-c, and untar writes that member with the key again.
+
 Commands of SCRIPT (each prints one JSON line on standard error, and get and tar write the data on standard output):
   purge <bucket>...         delete the incomplete uploads and the objects, then the bucket when the key owns it
   empty <bucket>            delete the incomplete uploads and the objects, and keep the bucket
   tar <bucket>              write every object as a tar stream. A member name is the object key
   untar <bucket>            put each file of a tar stream as an object with the member name as key
+  buckets                   print the names of the buckets that the key lists, as one JSON line
+  mkbucket <bucket>         create a bucket, when it does not exist
   get <bucket> <key>        write one object
   put <bucket> <key> <size> put the next size bytes as one object
   delete <bucket> <key>     delete one object
@@ -44,6 +52,8 @@ import datetime, hashlib, hmac, http.client, json, sys, tarfile, urllib.parse
 import xml.etree.ElementTree as ET
 first = json.loads(sys.stdin.buffer.readline())
 ENDPOINT, ACCESS, SECRET = first['endpoint'], first['access_key'], first['secret_key']
+SSE_C = first.get('sse_c') or {}
+SSE_FIELD = 'HOOVER.sse-c'
 REGION = 'us-east-1'
 XMLNS = '{http://s3.amazonaws.com/doc/2006-03-01/}'
 
@@ -52,12 +62,22 @@ def quote(text):
     return urllib.parse.quote(text, safe='-_.~')
 
 
-def call(method, bucket, key='', query=None, body=None, length=None, ok=(200, 204)):
-    """One signed request (AWS signature version 4 with an unsigned payload). Return the open response."""
+def sse_headers(bucket):
+    """The SSE-C headers of the customer key of a bucket."""
+    import base64
+    key = SSE_C[bucket]
+    return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
+            'x-amz-server-side-encryption-customer-key': key,
+            'x-amz-server-side-encryption-customer-key-md5': base64.b64encode(hashlib.md5(base64.b64decode(key)).digest()).decode()}
+
+
+def call(method, bucket, key='', query=None, body=None, length=None, ok=(200, 204), extra=None):
+    """One signed request (AWS signature version 4 with an unsigned payload). Return the open response. extra holds
+    more x-amz headers, which the signature covers."""
     path = '/' + quote(bucket) + ('/' + '/'.join(quote(p) for p in key.split('/')) if key else '')
     qs = '&'.join(f'{quote(k)}={quote(v)}' for k, v in sorted((query or {}).items()))
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    headers = {'host': ENDPOINT, 'x-amz-content-sha256': 'UNSIGNED-PAYLOAD', 'x-amz-date': stamp}
+    headers = {'host': ENDPOINT, 'x-amz-content-sha256': 'UNSIGNED-PAYLOAD', 'x-amz-date': stamp, **(extra or {})}
     names = ';'.join(sorted(headers))
     canonical = '\n'.join([method, path, qs, ''.join(f'{h}:{headers[h]}\n' for h in sorted(headers)), names, 'UNSIGNED-PAYLOAD'])
     scope = f'{stamp[:8]}/{REGION}/s3/aws4_request'
@@ -124,22 +144,36 @@ elif command == 'count':
     found = list(listing(args[0]))
     print(json.dumps({'bucket': args[0], 'objects': len(found), 'bytes': sum(s for _, s in found)}))
 elif command == 'tar':
-    count = 0
+    count = encrypted = 0
     with tarfile.open(fileobj=sys.stdout.buffer, mode='w|', format=tarfile.PAX_FORMAT) as tar:
         for key, size in list(listing(args[0])):
             info = tarfile.TarInfo(key)
-            info.size, info.mode = size, 0o600
-            tar.addfile(info, call('GET', args[0], key))
+            response = call('GET', args[0], key, ok=(200, 400, 403) if args[0] in SSE_C else (200,))
+            if response.status != 200:
+                response.read()
+                response = call('GET', args[0], key, extra=sse_headers(args[0]))
+                info.pax_headers = {SSE_FIELD: '1'}
+                encrypted += 1
+            # The length of the answer: an object with a customer key can list another size.
+            info.size, info.mode = int(response.getheader('content-length', size)), 0o600
+            tar.addfile(info, response)
             count += 1
-    report(bucket=args[0], objects=count)
+    report(bucket=args[0], objects=count, customer_key_objects=encrypted)
 elif command == 'untar':
     count = 0
     with tarfile.open(fileobj=sys.stdin.buffer, mode='r|') as tar:
         for member in tar:
             if member.isfile():
-                call('PUT', args[0], member.name, body=tar.extractfile(member), length=member.size).read()
+                extra = sse_headers(args[0]) if member.pax_headers.get(SSE_FIELD) == '1' else None
+                call('PUT', args[0], member.name, body=tar.extractfile(member), length=member.size, extra=extra).read()
                 count += 1
     report(bucket=args[0], objects=count)
+elif command == 'buckets':
+    root = ET.fromstring(call('GET', '').read())
+    print(json.dumps(sorted(b.findtext(XMLNS + 'Name') for b in root.iter(XMLNS + 'Bucket'))))
+elif command == 'mkbucket':
+    call('PUT', args[0], ok=(200, 409)).read()
+    report(bucket=args[0], created=True)
 elif command == 'get':
     response = call('GET', args[0], args[1])
     size, length = 0, int(response.getheader('content-length'))

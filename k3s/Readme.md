@@ -300,7 +300,24 @@ A pod stops or moves on a running site only in a deployment: `deploy-k3s up`, a 
 | Periodic tasks and Jobs | A zone has no CronJob. Each periodic openDesk task runs in a container that stays running ([Run the periodic tasks](#run-the-periodic-tasks)). The install and migration Jobs start their own pods, only in a deployment. These pods have the default priority, so they preempt no pod. |
 | Rollout | A large single-replica Deployment stops its old pod before the new pod starts (`rollout()` of [zones/postrender.py](zones/postrender.py), `Recreate` in the Hoover render), so an update needs no free memory for a second pod. |
 | Node restart | A node that returns within 300 s restarts its pods in place. After 300 s the taint `node.kubernetes.io/unreachable` evicts its pods, and their controllers start them on other nodes. The pods of the class `hoover-node-bound` wait for their node. |
-| Zone backup | The scheduled zone copy scales the applications of the zone to zero and back ([Back up and restore](#back-up-and-restore)). |
+| Zone backup | No. The scheduled zone copy reads the running zone and stops no workload ([Back up and restore](#back-up-and-restore)). |
+| Kubelet reserve change | No running pod is refused. When a new `system-reserved` value would make the restarted kubelet of a node refuse its running pods, `up` keeps the current value in `hosts:k3s` and applies the new value in the step `hosts:kubelet` after the zone steps ([Change the kubelet reserve](#change-the-kubelet-reserve)). |
+
+### Change one zone without the others.
+
+A zone create, apply, upgrade or delete changes the namespaces `<zone>` and `hoover-<zone>`. These actions also change
+objects outside them:
+
+| Action | Object outside the zone | Effect on the pods of another zone |
+|---|---|---|
+| `zone.py` cluster step | the zone pod policy `hoover-zone-pods` and the XWiki extension repository in `extensions` | None. They change only with the source, and the policy acts on new pods only. |
+| `shared.py grow` | the claims of the shared stores in `hoover-stores` grow with the zone count | None. The claim template and the pods stay. |
+| `creds.py`, `setup.py`, `shared.py remove` | the tenant of the zone in the shared stores: ClickHouse and Manticore users and databases, Garage keys and buckets, the Temporal namespace, the Secrets `hoover-stores` and `garage-tenants` | None. The stores apply these changes while they run. |
+| Ingress objects of the zone | the routes of the ingress controller | None. The controller reloads its configuration and keeps its pod. |
+| Step `calls` of the zone runner ([platform/calls/install-calls.py](platform/calls/install-calls.py)) | the configuration of coturn, LiveKit and the JVB, which holds each zone | The three call services restart, and the calls of every zone end. |
+| Step `placement` of `up` | the ConfigMap `kube-system/hoover-placement` and the CPU requests of the running pods | A new CPU scale factor resizes the pods of every zone in place, without a restart. A zone operation of the portal does not run this step. |
+
+A zone backup reads the zone and stops no pod of any zone.
 
 ### Run the periodic tasks.
 
@@ -312,8 +329,8 @@ and then at each time of the CronJob schedule, in UTC.
 | Task | Container | Interval |
 |---|---|---|
 | Nextcloud background jobs (`cron.php`) | sidecar `cron` in the pod of `opendesk-nextcloud-aio` | 5 minutes |
-| UDM license cache | sidecar `license-cache` in the pod of `ums-udm-rest-api` | 1 hour |
-| UDM blocklist cleanup | sidecar `blocklist-cleanup` in the pod of `ums-udm-rest-api` | 1 day, at 08:00 |
+| UDM license cache | container `license-cache` of the Deployment `ums-udm-rest-api-periodic` | 1 hour |
+| UDM blocklist cleanup | container `blocklist-cleanup` of the Deployment `ums-udm-rest-api-periodic` | 1 day, at 08:00 |
 | Matrix media cleanup | Deployment `opendesk-element-customization-media-cleanup` | 1 hour |
 
 - Each run writes the line `periodic task <name>: exit <code> after <seconds> s` into the log of its container.
@@ -323,9 +340,32 @@ and then at each time of the CronJob schedule, in UTC.
 - The memory request of the container is the peak of one run. The pod requests its measured peak plus its sidecars.
 - The media cleanup runs `kubectl exec` in the Synapse media pod with its own service account, so it has its own
   Deployment.
+- The two UDM tasks share the Deployment `ums-udm-rest-api-periodic`. As sidecars, each change of a task restarted the
+  UDM REST API, and the provisioning transformer then restarted too. The UDM REST API keeps `maxSurge: 0`
+  (`NO_SURGE`), because its second pod found no node on the full test site.
+- The pod of a task Deployment keeps the labels of its CronJob, except the labels with which a Service or workload
+  selector of the render would also select it (`own_labels()`).
 - A chart that renders a CronJob without a rule in `PERIODIC` stops the zone install. A new rule names the pod or
-  `None`, the container name and the memory of one run. It also names the command when the CronJob uses the entrypoint
+  `None` with an optional Deployment name, the container name and the memory of one run. It also names the command when the CronJob uses the entrypoint
   of its image.
+
+### Change the kubelet reserve.
+
+The step `hosts:k3s` writes the `system-reserved` value of each node ([config.py](config.py) `kubelet_reserved()`) and
+restarts k3s when it changes. The restarted kubelet admits its running pods again against the new allocatable memory
+and CPU, and it refuses a pod that does not fit (`OutOfmemory`, `OutOfcpu`). [kubelet.py](kubelet.py) prevents this:
+
+- `deploy-k3s check` and `up` read the reserve of each running kubelet (its `configz`) and compute the new allocatable
+  of each node: the current allocatable plus the current reserve minus the new reserve.
+- A node is held when its new allocatable memory or CPU is lower and the requests of its pods, with the RuntimeClass
+  overhead, are above it. `check` prints the nodes in `state.kubelet` with the order `kubelet-first` or
+  `requests-first`.
+- With held nodes, `up` gives the k3s play the current value of each held node in `hosts:k3s`, so k3s does not restart
+  there. The record keeps the held values in `kubelet_hold`. The step `hosts:kubelet` follows the zone steps and the
+  calls step, and comes before the descheduler. It checks the requests again and then runs the k3s play with the new
+  values. When the requests still do not fit, it fails and changes nothing. `--steps hosts:k3s` also selects
+  `hosts:kubelet`.
+- The placement plan uses the allocatable after the change, so the plan fits the nodes after `hosts:kubelet`.
 
 ### Size the memory.
 
@@ -864,19 +904,33 @@ python3 k3s/platform/backups/backups.py restore-platform <generation>
 - Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
 - The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
   The snapshot runs `k3s-datastore.py snapshot <name>` with `sudo -n` on the server, which writes `~/hoover4-snapshots/<name>/` of the operator user. The operator user needs sudo without a password on the control plane.
-- The zone copy closes the zone first. The applications, gates and workers of the zone and its Hoover installation scale to zero.
-  Their CronJobs are suspended, and the stores keep running. After the copy, the recorded replicas and suspensions return.
-  The next runner tick restores a closure that a stopped job left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
+- The zone copy reads the running zone. No workload stops or scales. `workloads.json` of the copy records the replicas
+  of the applications, gates and workers, which `restore-zone` applies. The next runner tick restores a closure that a
+  job of an earlier version left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
+- The parts of a zone copy hold different moments. `moments.json` names the start and the end of each part. The copy
+  reads them in this order (`online_parts()` of [backups.py](platform/backups/backups.py)):
+
+  | Part | Moment |
+  |---|---|
+  | `postgresql.sql`, `mariadb.sql` | `pg_dumpall` and `mariadb-dump --single-transaction`. Each database is at one moment. |
+  | `claims/` | A tar file of each claim. A file can change while tar reads it. The LMDB files of OpenLDAP are read again until no write committed during the read. Redis and NATS read a file with a cut last record at their start. |
+  | `objects/` | The objects of each bucket of the openDesk object store, through its S3 API with its `admin` identity. A bucket with a customer key (SSE-C) is read and written with that key. |
+  | `hoover/<installation>/shared/` | ClickHouse `BACKUP` of the zone databases (each table at one moment), then the objects of the system bucket. |
+
+  A database comes before the files and objects that its rows name. An object that a row names was written before the
+  row, so the later copy holds it, unless the application deleted it in between. Objects without a row stay unused.
+- The object store claim is not copied as a file, because its files change while it runs.
 - The receipt queries use the ClickHouse of the store layout. The site layout uses the admin of the shared ClickHouse. The local layout uses the Compose credentials.
 - The collection export reads each small frozen Manticore file whole, and a `.meta` file must be JSON. The archive entry gets the size of the bytes that the export read.
 - Make sure that the destination is on another site. The system cannot check this.
 - Each copy has `copy-manifest.json` with the SHA-256 of every file. A collection copy also holds the `manifest.json` of the export, which the import reads.
 - A collection copy fails when the JSON metadata of a Manticore table in the export does not parse, because the import refuses it.
-- A zone copy keeps the dumps of the zone databases and one tar file for each claim of the zone namespace, with the owners and modes, and the same parts of the Hoover namespace in `hoover/<installation>/`.
-  A Block claim of a Kata store is read through its store container, so the store must run. A claim that a pod owns holds temporary files and is not copied.
+- A zone copy keeps the dumps of the zone databases, the objects of the object store, and one tar file for each other claim of the zone namespace, with the owners and modes, and the same parts of the Hoover namespace in `hoover/<installation>/`.
+  A Block claim of a Kata store is read through its store container, so the store must run. A file system claim is read with `tar` in a running container that mounts it, else through a short reader pod on the node of the claim. A claim that a pod owns holds temporary files and is not copied.
 - `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
-- `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases.
-  It then applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and opens the zone.
+- `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store.
+  It then replaces the objects of each bucket of the copy, applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and the object store, and opens the zone with the replicas of `workloads.json` (`closure.json` in a copy of an earlier version).
+  All parts are in place before an application starts.
   A dump without its end line stops the restore before any change. `psql` and the MariaDB client stop at the first error, and the restore fails with that error.
   A copy part `hoover/<installation>/` restores into the installation of that name, or into the one installation of the zone.
   A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps.

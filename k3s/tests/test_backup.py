@@ -614,8 +614,11 @@ def shared_stores_fakes(backups, monkeypatch, tmp_path, databases=('zone_a', 'zo
             return None, [{'objects': 2}]
         return '', []
     monkeypatch.setattr(backups, 'clickhouse', clickhouse)
-    monkeypatch.setattr(garage_client, 'run', run)
-    monkeypatch.setattr(garage_client, 'client', lambda: contextlib.nullcontext('garage-client-1'))
+
+    @contextlib.contextmanager
+    def garage_s3(hoover, key):
+        yield lambda command, *args, data=None, out=None: run('backup-s3', key, command, *args, data=data, out=out)
+    monkeypatch.setattr(backups, 'garage_s3', garage_s3)
     monkeypatch.setattr(garage_client, 'zone_key', lambda zone: {'access_key': f'GK-{zone}', 'secret_key': 'very-secret'})
     return calls
 
@@ -680,15 +683,124 @@ def test_the_zone_job_copies_the_shared_stores_of_a_site_zone_only(tmp_path, mon
     backups = backups_module()
     hoovers = {'zone-a': site_hoover('zone-a'), 'zone-c': config.Hoover(zone='zone-c', stores='local')}
     monkeypatch.setattr(backups.site_config, 'hoovers', lambda _s: hoovers)
-    monkeypatch.setattr(backups, 'close_zone', lambda s, zone: {'namespaces': [], 'workloads': {}, 'cronjobs': {}})
-    monkeypatch.setattr(backups, 'apply_closure', lambda record: None)
-    monkeypatch.setattr(backups, 'reopen', lambda record: None)
+    monkeypatch.setattr(backups, 'close_zone', lambda s, zone: {'namespaces': [], 'workloads': {'zone-a/deployment/x': 1}, 'cronjobs': {}})
     copied = []
-    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial: copied.append(ns))
+    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial, moments, label='': copied.append(ns))
     monkeypatch.setattr(backups, 'copy_shared_stores', lambda hoover, target: copied.append(str(target.relative_to(tmp_path))))
     backups.run_zone(None, 'zone-a', tmp_path / 'a')
     backups.run_zone(None, 'zone-c', tmp_path / 'c')
     assert copied == ['zone-a', 'hoover-zone-a', 'a/hoover/zone-a/shared', 'zone-c', 'hoover-zone-c']
+    assert json.loads((tmp_path / 'a' / 'workloads.json').read_text())['workloads'] == {'zone-a/deployment/x': 1}
+    moments = json.loads((tmp_path / 'a' / 'moments.json').read_text())
+    assert moments['online'] is True and list(moments['parts']) == ['hoover/zone-a/shared']
+
+
+def test_the_zone_job_stops_no_workload(tmp_path, monkeypatch):
+    backups = backups_module()
+    monkeypatch.setattr(backups.site_config, 'hoovers', lambda _s: {'zone-a': site_hoover('zone-a')})
+    calls = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        calls.append(args)
+        if 'deployments,statefulsets,cronjobs' in args:
+            return json.dumps({'items': [{'kind': 'Deployment', 'metadata': {'name': 'nextcloud'}, 'spec': {'replicas': 1}}]})
+        return ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial, moments, label='': None)
+    monkeypatch.setattr(backups, 'copy_shared_stores', lambda hoover, target: None)
+    backups.run_zone(None, 'zone-a', tmp_path / 'a', key='zone:zone-a')
+    assert not [a for a in calls if 'scale' in a or 'patch' in a]
+
+
+def namespace_objects(store=True):
+    pods = [{'metadata': {'name': 'postgresql-0', 'labels': {}}, 'status': {'phase': 'Running'}, 'spec': {}},
+            {'metadata': {'name': 'seaweedfs-1', 'labels': {'hoover.dev/store': 'seaweedfs', 'app': 's'}},
+             'status': {'phase': 'Running' if store else 'Pending'},
+             'spec': {'volumes': [{'name': 'data', 'persistentVolumeClaim': {'claimName': 'seaweedfs-data'}}]}}]
+    claims = [{'metadata': {'name': n, 'annotations': {}}, 'spec': {'volumeMode': 'Filesystem', 'resources': {'requests': {'storage': '1Gi'}}}}
+              for n in ('seaweedfs-data', 'shared-data-ldap-0', 'data-postgresql-0')]
+    services = [{'metadata': {'name': 'other'}, 'spec': {'selector': {'app': 's'}, 'ports': [{'port': 80}]}},
+                {'metadata': {'name': 'seaweedfs'}, 'spec': {'selector': {'app': 's'}, 'ports': [{'port': 8333}]}}]
+    return pods, claims, services
+
+
+def test_the_online_copy_reads_the_databases_first_and_the_object_store_through_s3(tmp_path, monkeypatch):
+    backups = backups_module()
+    pods, claims, services = namespace_objects()
+    order = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        if args[-3:] == ('pods', '-o', 'json'):
+            return json.dumps({'items': pods})
+        if args[-3:] == ('pvc', '-o', 'json'):
+            return json.dumps({'items': claims})
+        if args[-3:] == ('services', '-o', 'json'):
+            return json.dumps({'items': services})
+        return '{"items": []}'
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    monkeypatch.setattr(backups, 'dump_out', lambda ns, args, target: order.append(target.name))
+    monkeypatch.setattr(backups, 'helper_pod', lambda ns, claim, node: f'reader-{claim}')
+    monkeypatch.setattr(backups, 'tar_out', lambda ns, pod, c, folder, target, tar=('tar',), settled=None:
+                        order.append((target.name, settled is not None)))
+    monkeypatch.setattr(backups, 'copy_objects', lambda ns, store, target: order.append(('objects', store['endpoint'])))
+    moments = backups.Moments()
+    backups.copy_namespace('zone-a', tmp_path, moments)
+    assert order == ['postgresql.sql', ('shared-data-ldap-0.tar', True),
+                     ('objects', 'seaweedfs.zone-a.svc.cluster.local:8333')]
+    assert [r['claim'] for r in json.loads((tmp_path / 'claims.json').read_text())] == ['shared-data-ldap-0']
+    assert list(moments.parts) == ['postgresql.sql', 'claims/', 'objects/']
+
+
+def test_a_claim_is_read_again_while_its_lmdb_meta_pages_change(tmp_path, monkeypatch):
+    backups = backups_module()
+    data, _ = tar_bytes([('a', b'x')])
+    monkeypatch.setattr(backups, 'tar_command', lambda *a: ['sh', '-c', 'cat "$0"', str(tmp_path / 'src.tar')])
+    (tmp_path / 'src.tar').write_bytes(data)
+    values = iter(['1', '2', '2', '2'])
+    backups.tar_out('zone-a', 'pod', None, '/data', tmp_path / 'out.tar', settled=lambda: next(values))
+    assert next(values, 'none') == 'none'
+    changing = iter(range(10))
+    with pytest.raises(SystemExit, match='changed during the read'):
+        backups.tar_out('zone-a', 'pod', None, '/data', tmp_path / 'out.tar', settled=lambda: next(changing))
+
+
+def test_the_object_store_key_uses_the_admin_identity_and_the_customer_keys(monkeypatch):
+    import base64
+    backups = backups_module()
+    config = {'identities': [{'name': 'nextcloud', 'credentials': [{'accessKey': 'n', 'secretKey': 'ns'}]},
+                             {'name': 'admin', 'credentials': [{'accessKey': 'a', 'secretKey': 'as'}]}]}
+    secrets = {('seaweedfs-config', 'seaweedfs_s3_config'): json.dumps(config).encode(),
+               ('synapse-s3-encryption-customer-key', 's3EncryptionCustomerKey'): b'k' * 32}
+    monkeypatch.setattr(backups, 'secret_item', lambda ns, name, item: secrets.get((name, item), b''))
+    first = backups.object_store_key('zone-a', {'endpoint': 'e:8333'})
+    assert first == {'endpoint': 'e:8333', 'access_key': 'a', 'secret_key': 'as',
+                     'sse_c': {'synapse': base64.b64encode(b'k' * 32).decode()}}
+    secrets[('synapse-s3-encryption-customer-key', 's3EncryptionCustomerKey')] = b''
+    assert backups.object_store_key('zone-a', {'endpoint': 'e:8333'})['sse_c'] == {}
+
+
+def test_the_restore_of_an_online_copy_puts_the_objects_and_reads_its_replicas(tmp_path, monkeypatch):
+    backups = backups_module()
+    (tmp_path / 'objects').mkdir()
+    (tmp_path / 'objects' / 'buckets.json').write_text(json.dumps([{'bucket': 'nextcloud', 'objects': 2}]))
+    pods, _, services = namespace_objects()
+    ran = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        if args[-3:] == ('pods', '-o', 'json'):
+            return json.dumps({'items': pods})
+        if args[-3:] == ('services', '-o', 'json'):
+            return json.dumps({'items': services})
+        return ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    monkeypatch.setattr(backups, 'object_store_key', lambda ns, store: {'secret_key': 's'})
+    monkeypatch.setattr(backups, 's3_pod', lambda ns: 'backup-s3')
+    monkeypatch.setattr(backups, 's3_run', lambda ns, pod, first, *args, data=None, out=None: ran.append(args) or ('', []))
+    backups.restore_objects(tmp_path, 'zone-a')
+    assert ran == [('mkbucket', 'nextcloud'), ('empty', 'nextcloud'), ('untar', 'nextcloud')]
+    pods[1]['status']['phase'] = 'Pending'
+    with pytest.raises(SystemExit, match='no running object store'):
+        backups.restore_objects(tmp_path, 'zone-a')
 
 
 def test_a_restored_site_zone_keeps_its_own_tenant_credentials(tmp_path, monkeypatch):
@@ -709,3 +821,75 @@ def test_a_restored_site_zone_keeps_its_own_tenant_credentials(tmp_path, monkeyp
     backups.restore_secrets(tmp_path, 'hoover-zone-a', backups.TENANT_SECRETS)
     assert [a['metadata']['name'] for a in applied] == ['hoover-runtime', 'oauth2-proxy']
     assert applied[0]['data'] == {'clickhouse-worker': 'bmV3', 'temporal-api-key': 'bmV3', 'proxy-secret': 'Y29weQ=='}
+
+
+def test_a_file_system_claim_is_read_in_the_running_pod_that_mounts_it(monkeypatch):
+    backups = backups_module()
+    pods = [{'metadata': {'name': 'xwiki-0'}, 'status': {'phase': 'Running'},
+             'spec': {'volumes': [{'name': 'data', 'persistentVolumeClaim': {'claimName': 'xwiki-data'}}],
+                      'containers': [{'name': 'xwiki', 'volumeMounts': [{'name': 'data', 'mountPath': '/usr/local/xwiki'}]}]}}]
+    answers = {'xwiki': 'yes\n'}
+    monkeypatch.setattr(backups, 'kubectl', lambda *a, input=None, check=True, stdout=None: answers.get(a[a.index('-c') + 1], ''))
+    assert backups.mount_source('zone-a', 'xwiki-data', pods) == ('xwiki-0', 'xwiki', '/usr/local/xwiki')
+    assert backups.mount_source('zone-a', 'other', pods) is None
+    answers['xwiki'] = ''
+    assert backups.mount_source('zone-a', 'xwiki-data', pods) is None
+
+
+def test_gnu_tar_may_report_a_changed_file_of_a_running_application():
+    backups = backups_module()
+    assert backups.tar_status_ok(0, b'')
+    assert backups.tar_status_ok(1, b'tar: ./log/x.log: file changed as we read it\ntar: Exiting with failure status due to previous errors\n')
+    assert not backups.tar_status_ok(1, b'')
+    assert not backups.tar_status_ok(1, b'tar: ./a: File shrank by 10 bytes; padding with zeros\n')
+    assert not backups.tar_status_ok(2, b'tar: ./log/x.log: file changed as we read it\n')
+
+
+def test_the_s3_client_reads_and_writes_an_object_with_a_customer_key(tmp_path):
+    import base64
+    import http.server
+    import subprocess
+    import threading
+    sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
+    import garage_client
+    key = base64.b64encode(b'k' * 32).decode()
+    stored, puts = {'plain': b'one', 'locked': b'two'}, []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def reply(self, code, body=b''):
+            self.send_response(code)
+            self.send_header('content-length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if '?' in self.path:
+                items = ''.join(f'<Contents><Key>{k}</Key><Size>{len(v)}</Size></Contents>' for k, v in stored.items())
+                return self.reply(200, f'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">{items}'
+                                       '<IsTruncated>false</IsTruncated></ListBucketResult>'.encode())
+            name = self.path.rsplit('/', 1)[1]
+            given = self.headers.get('x-amz-server-side-encryption-customer-key')
+            if name == 'locked' and given != key:
+                return self.reply(400)
+            self.reply(200, stored[name])
+
+        def do_PUT(self):
+            body = self.rfile.read(int(self.headers['content-length']))
+            puts.append((self.path, body, self.headers.get('x-amz-server-side-encryption-customer-key')))
+            self.reply(200)
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    first = json.dumps({'endpoint': f'127.0.0.1:{server.server_port}', 'access_key': 'a', 'secret_key': 's',
+                        'sse_c': {'synapse': key}}).encode() + b'\n'
+    try:
+        tar = subprocess.run([sys.executable, '-I', '-c', garage_client.SCRIPT, 'tar', 'synapse'], input=first,
+                             capture_output=True, check=True)
+        assert json.loads(tar.stderr.decode().strip().splitlines()[-1]) == {'bucket': 'synapse', 'objects': 2, 'customer_key_objects': 1}
+        subprocess.run([sys.executable, '-I', '-c', garage_client.SCRIPT, 'untar', 'synapse'], input=first + tar.stdout,
+                       capture_output=True, check=True)
+    finally:
+        server.shutdown()
+    assert sorted(puts) == [('/synapse/locked', b'two', key), ('/synapse/plain', b'one', None)]

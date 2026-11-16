@@ -296,6 +296,7 @@ def main(argv):
         # The plan names the zones of the zone state, so the state folder first gets the cluster copy.
         deploy.sync_state(ctx, 'pull')
         if args.resume:
+            ctx.kubelet_hold = record.get('kubelet_hold') or {}
             steps = deploy.plan(ctx, record['command'], targets, start=record.get('start', False))
             names = [s['name'] for s in record['steps']]
             missing = [n for n in names if n not in steps]
@@ -303,9 +304,16 @@ def main(argv):
                 raise SystemExit(f'deploy-k3s: the plan of this checkout has no step {", ".join(missing)}. '
                                  f'Start a new {record["command"]}.')
         else:
+            # A kubelet reserve that would refuse running pods waits for the steps that lower the requests
+            # (../kubelet.py).
+            ctx.kubelet_hold = deploy.kubelet_hold(ctx, targets) if args.command == 'up' and not args.start else {}
             steps = deploy.select(deploy.plan(ctx, args.command, targets, start=args.start), args.steps)
+            if 'hosts:k3s' not in steps:
+                ctx.kubelet_hold = {}
+                steps.pop('hosts:kubelet', None)
             complete = not args.steps and not args.start and set(targets) == set(site.nodes)
             record = ctx.records.new(args.command, targets, revision, list(steps), start=args.start, complete=complete,
+                                     kubelet_hold=ctx.kubelet_hold,
                                      checkout=str(ctx.repo), checkout_changes=deploy.dirty_files(ctx.repo),
                                      applied_before=(ctx.records.applied() or {}).get('revision'),
                                      inputs=deploy.pinned_inputs(ctx))

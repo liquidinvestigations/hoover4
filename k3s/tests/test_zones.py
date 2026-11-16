@@ -259,16 +259,17 @@ def test_the_post_renderer_removes_no_op_probes_and_lengthens_short_periods():
         {'tcpSocket': {'port': 11211}, 'periodSeconds': 10}
 
 
-def cronjob(name, schedule, container, account='a', security=None, volumes=()):
+def cronjob(name, schedule, container, account='a', security=None, volumes=(), labels=None):
     spec = {'serviceAccountName': account, 'securityContext': security or {}, 'restartPolicy': 'Never',
             'containers': [container], 'volumes': list(volumes)}
     return {'kind': 'CronJob', 'metadata': {'name': name, 'namespace': 'zone-a', 'labels': {'app': name}},
             'spec': {'schedule': schedule, 'jobTemplate': {'spec': {'template': {
-                'metadata': {'labels': {'app': name}, 'annotations': {'note': 'x'}}, 'spec': spec}}}}}
+                'metadata': {'labels': labels or {'app': name}, 'annotations': {'note': 'x'}}, 'spec': spec}}}}}
 
 
 def pod_workload(name, containers, account, memory, security=None, volumes=()):
-    return {'kind': 'Deployment', 'metadata': {'name': name}, 'spec': {'replicas': 1, 'template': {'metadata': {}, 'spec': {
+    return {'kind': 'Deployment', 'metadata': {'name': name}, 'spec': {'replicas': 1, 'selector': {'matchLabels': {'app': account}},
+                                                                        'template': {'metadata': {}, 'spec': {
         'serviceAccountName': account, 'securityContext': security or {}, 'volumes': list(volumes),
         'containers': [{'name': c, 'resources': {'requests': {'memory': memory}}} for c in containers]}}}}
 
@@ -292,10 +293,11 @@ def opendesk_cronjobs():
         pod_workload('ums-udm-rest-api', ['main'], 'ums-udm-rest-api', '448Mi', {'fsGroup': 1000}, [ldap]),
         cronjob('opendesk-nextcloud-aio-cron', '*/5 * * * *', task('cron', mounts=['nextcloud-config']),
                 'opendesk-nextcloud-aio', {'fsGroup': 101}, [empty]),
+        # The CronJobs of the UDM chart carry the labels of the UDM REST API, which its selector matches.
         cronjob('ums-udm-rest-api-license-cache', '0 * * * *', task('main', ['/usr/share/update-license-cache'], ['secret-ldap']),
-                'ums-udm-rest-api', {'fsGroup': 1000}, [ldap]),
+                'ums-udm-rest-api', {'fsGroup': 1000}, [ldap], labels={'app': 'ums-udm-rest-api'}),
         cronjob('ums-udm-rest-api-blocklist-cleanup', '0 8 * * *', task('main', mounts=['secret-ldap']), 'ums-udm-rest-api',
-                {'fsGroup': 1000}, [ldap]),
+                {'fsGroup': 1000}, [ldap], labels={'app': 'ums-udm-rest-api'}),
         cronjob('opendesk-element-customization-media-cleanup', '0 * * * *',
                 task('media-cleanup', ['/bin/bash', '/usr/local/bin/media-cleanup.sh']), 'media-cleanup'),
     ]
@@ -317,14 +319,24 @@ def test_each_cronjob_of_the_charts_becomes_a_container_that_stays_running():
     assert cron['volumeMounts'] == [{'name': 'cron-nextcloud-config', 'mountPath': '/nextcloud-config'}]
     assert {'name': 'cron-nextcloud-config', 'emptyDir': {'medium': 'Memory'}} in aio['volumes']
     assert {'name': 'nextcloud-config', 'emptyDir': {}} in aio['volumes']
+    # The UDM REST API keeps its pod: a change of its tasks does not restart it, and it keeps the chart rollout.
     udm = by_name['ums-udm-rest-api']
-    names = [c['name'] for c in udm['spec']['template']['spec']['containers']]
-    assert names == ['main', 'license-cache', 'blocklist-cleanup']
-    license, blocklist = udm['spec']['template']['spec']['containers'][1:]
+    assert [c['name'] for c in udm['spec']['template']['spec']['containers']] == ['main']
+    # The second pod of a rolling update found no node on the full test site, so it keeps maxSurge 0.
+    postrender.rollout(udm)
+    assert udm['spec']['strategy'] == {'type': 'RollingUpdate', 'rollingUpdate': {'maxSurge': 0, 'maxUnavailable': 1}}
+    tasks = by_name['ums-udm-rest-api-periodic']
+    spec = tasks['spec']['template']['spec']
+    # The selector of the UDM REST API does not find the pod of the tasks.
+    assert tasks['spec']['template']['metadata']['labels'] == {'hoover.dev/periodic': 'ums-udm-rest-api-periodic'}
+    assert tasks['kind'] == 'Deployment' and tasks['spec']['strategy'] == {'type': 'Recreate'}
+    assert tasks['spec']['selector'] == {'matchLabels': {'hoover.dev/periodic': 'ums-udm-rest-api-periodic'}}
+    assert [c['name'] for c in spec['containers']] == ['license-cache', 'blocklist-cleanup']
+    assert spec['serviceAccountName'] == 'ums-udm-rest-api' and spec['restartPolicy'] == 'Always'
+    license, blocklist = spec['containers']
     assert license['command'][4:] == ['3600', '0', '60', '/usr/share/update-license-cache']
     assert blocklist['command'][4:] == ['86400', '28800', '60', '/bin/blocklist_clean_expired.py']
-    # 448 + 96 + 64 MiB: the pod now starts its new pod only after the old one stopped.
-    assert udm['spec']['strategy'] == {'type': 'RollingUpdate', 'rollingUpdate': {'maxSurge': 0, 'maxUnavailable': 1}}
+    assert [v['name'] for v in spec['volumes']] == ['license-cache-secret-ldap', 'blocklist-cleanup-secret-ldap']
     media = by_name['opendesk-element-customization-media-cleanup']
     spec = media['spec']['template']['spec']
     assert media['kind'] == 'Deployment' and media['spec']['replicas'] == 1 and media['spec']['strategy'] == {'type': 'Recreate'}
@@ -357,6 +369,10 @@ def test_a_cronjob_without_a_rule_stops_the_render():
     cron = opendesk_cronjobs()
     cron[2]['spec']['jobTemplate']['spec']['template']['spec']['serviceAccountName'] = 'other'
     with pytest.raises(RuntimeError, match='differ in serviceAccountName'):
+        postrender.periodic(cron)
+    cron = opendesk_cronjobs()
+    cron[4]['spec']['jobTemplate']['spec']['template']['spec']['serviceAccountName'] = 'other'
+    with pytest.raises(RuntimeError, match='the other tasks of ums-udm-rest-api-periodic differ in serviceAccountName'):
         postrender.periodic(cron)
     with pytest.raises(RuntimeError, match='needs deployment/opendesk-nextcloud-aio'):
         postrender.periodic(opendesk_cronjobs()[2:])
