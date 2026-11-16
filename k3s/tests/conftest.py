@@ -1,5 +1,6 @@
 """Shared helpers of the cluster test suites. The tests import the modules of k3s/ from the repository."""
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -49,3 +50,12 @@ def site_file(tmp_path):
     def write(name, text=None):
         return write_site(tmp_path, name, text)
     return write
+
+
+@pytest.fixture(autouse=True)
+def image_tags(monkeypatch):
+    """The render tests use a revision that is no commit of the checkout, so every test gets the image tags in
+    HOOVER4_IMAGE_TAGS, as deploy-k3s gives them to its steps."""
+    keys = ('website', 'processing', 'regex', 'tesseract', 'ocr-pdf', 'clamav', 'pdf-search', 'garage-init', 'mcp-collections',
+            'mcp-todo', 'mcp-whois', 'mcp-metasearch', 'mcp-browser', 'web-tor', 'research-agent', 'ai-server', 'easyocr', 'vllm')
+    monkeypatch.setenv('HOOVER4_IMAGE_TAGS', json.dumps({k: f'tag-{k}' for k in keys}))

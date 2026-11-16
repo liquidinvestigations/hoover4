@@ -247,14 +247,9 @@ python3 k3s/zones/zone.py delete zone-x
   Deployments start them again on another node. A pod of the default priority preempts no pod, and two pods of the class
   do not preempt each other, so preemption does not repeat. The Hoover render, the post-renderer of openDesk
   ([zones/postrender.py](zones/postrender.py)) and the store installers set the class. A chart value stays.
-- The descheduler ([cluster/descheduler.yaml](cluster/descheduler.yaml)) runs once in the last step `descheduler` of
-  `deploy-k3s up`, as a Job with a deadline of 300 s ([cluster/deschedule.py](cluster/deschedule.py)). The step deletes
-  the Job when it ends, and fails when the Job does not complete. No descheduler runs between deployments. It moves a
-  pod that started away from its planned node to that node when the node has room (`RemovePodsViolatingNodeAffinity`
-  for the preferred node affinity). A pod on its planned node and a pod without a planned node never move, so a second
-  `up` moves nothing. It never moves a pod with a claim, a store pod, a Job pod, a pod without a controller, a pod of
-  the class `hoover-node-bound`, or a pod of the platform namespaces. The PodDisruptionBudgets of openDesk apply to its
-  evictions. The scheduler respects them in a preemption when another victim is possible.
+- A normal `deploy-k3s up` moves no running pod. `deploy-k3s up --rebalance` adds the last step `rebalance`
+  ([placement.py](placement.py) `rebalance()`), see [Move the pods to their planned nodes](#move-the-pods-to-their-planned-nodes).
+  `cluster/setup.sh` deletes the descheduler of an earlier version.
 - The zone pod policy ([zones/manifests/zone-pods.yaml](zones/manifests/zone-pods.yaml)) keeps the runtime rule. It adds
   no topology spread.
 - A claim takes the first tier of its tier list that a node of the site has ([zones/zonestate.py](zones/zonestate.py)). The
@@ -292,7 +287,7 @@ A pod stops or moves on a running site only in a deployment: `deploy-k3s up`, a 
 
 | Source | Between deployments |
 |---|---|
-| Descheduler | No. It runs only in the last step of `up` ([cluster/deschedule.py](cluster/deschedule.py)). |
+| Rebalance | No. Only `up --rebalance` moves running pods, one at a time ([Move the pods to their planned nodes](#move-the-pods-to-their-planned-nodes)). |
 | Site placement | No. The step `placement` runs only in `up`. A new CPU scale factor resizes the CPU requests of the running pods in place and restarts no container. A new plan changes no pod template ([Place the pods of the site](#place-the-pods-of-the-site)). |
 | Preemption | No. Only a new pod of the class `hoover-node-bound` preempts. The renders give the class only to Deployments, StatefulSets, the operator portal and the coturn probe pod of the calls step, so no Job or CronJob creates such a pod. |
 | Node-pressure eviction | No, while each pod stays at its measured peak: the requests hold the peaks and the kubelet reserves the memory of k3s and the system ([Size the memory](#size-the-memory)). |
@@ -362,7 +357,7 @@ and CPU, and it refuses a pod that does not fit (`OutOfmemory`, `OutOfcpu`). [ku
   `requests-first`.
 - With held nodes, `up` gives the k3s play the current value of each held node in `hosts:k3s`, so k3s does not restart
   there. The record keeps the held values in `kubelet_hold`. The step `hosts:kubelet` follows the zone steps and the
-  calls step, and comes before the descheduler. It checks the requests again and then runs the k3s play with the new
+  calls step, and comes before the step `rebalance` of `up --rebalance`. It checks the requests again and then runs the k3s play with the new
   values. When the requests still do not fit, it fails and changes nothing. `--steps hosts:k3s` also selects
   `hosts:kubelet`.
 - The placement plan uses the allocatable after the change, so the plan fits the nodes after `hosts:kubelet`.
@@ -454,6 +449,12 @@ k3s/deploy-k3s measure-speed --site <file> --target <node>   # see "Measure the 
 - A failed step ends the run. A failed play names the nodes of its failed tasks, and the log of the record holds the output of each task.
 - A zone step waits until the zone and its Hoover installation have ready workloads, and then records their settings scopes as applied with the pinned revision.
 - A zone step then starts a check pod with the OIDC egress label of oauth2-proxy. The pod sends an invalid sign-in code with the client secret of the proxy to Keycloak. The step fails when Keycloak does not answer `invalid_grant`, for example when a NetworkPolicy or a DNS answer blocks the token exchange.
+  The step records a digest of the objects that the sign-in depends on: the workloads, NetworkPolicies, Services, Secrets, ConfigMaps and Ingresses of the zone and its Hoover namespace, and the CoreDNS configuration. When the digest equals the one of the last complete `up`, the check pod does not run.
+- A second `up` without a change of its inputs changes no object, starts, deletes or restarts no pod, builds no image and restarts no service:
+  the image tags are digests of the image inputs (see [Render a Hoover installation](#render-a-hoover-installation)), the operator step restarts a pod of `operator-portal` only when the configuration that it reads at start changed,
+  a zone apply restarts the portal server only at the first install of the zone, the prepull step starts no pull pod when the Hoover images, the openDesk release and the nodes are those of the last complete `up`,
+  the probe of the calls step runs again only when its inputs changed, the ingress and monitoring steps upgrade a Helm release only when its chart version or values changed ([platform/helm-release.sh](platform/helm-release.sh)), and the registry step starts no pod on the nodes, because the host play writes the registry mirror file.
+  The record of the deployment changes. The cluster copy of the state changes only when a file of the state changed, for example the placement plan after pods moved.
 - A finished `up` of every node, without `--steps`, becomes `deploy/applied.json`. Its image references are digests in the registry.
   The earlier applied record moves to `deploy/previous.json`. Check out its commit and run `up` to return to it.
 - `down` scales the zone gates and the login proxy of each Hoover installation to zero, then the applications and workers, then Temporal, then the stores, and then stops the HTTPS frontend and k3s.
@@ -603,10 +604,31 @@ new factor changes no template and restarts no pod. The plan reaches the pods in
 | New pods | The ConfigMap `hoover-placement` of `kube-system` holds the factor and the planned nodes of each workload. The MutatingAdmissionPolicy `hoover-site-placement` ([cluster/placement-policy.yaml](cluster/placement-policy.yaml)) reads it when a pod of `hoover-stores` or of a zone is created. It multiplies each CPU request by the factor, rounded up to 1m, and adds a preferred node affinity of weight 100 for the planned nodes. The annotations `hoover.dev/cpu-scale` and `hoover.dev/planned-nodes` record both. |
 | Running pods | The step resizes the CPU requests of each running pod of a Deployment or StatefulSet of the site in place (the `resize` subresource) to the request of its template times the factor. A CPU resize restarts no container in gVisor and in Kata. The annotation `hoover.dev/cpu-scale` gets the factor. |
 | Store volumes | The stores step writes the planned nodes of each store pod with a local volume into the required node affinity of its StatefulSet. The ConfigMap `shared-stores` records them under `placement`. |
-| Pods away from their planned node | The descheduler pass at the end of `up` moves them when the planned node has room. |
+| Pods away from their planned node | They stay. `up --rebalance` moves them ([Move the pods to their planned nodes](#move-the-pods-to-their-planned-nodes)). |
 
 The step writes the ConfigMap and resizes a pod only when a value differs, so a second `up` changes nothing. The plan
 is kept in `placement/plan.json` of the state folder, and the cluster copy of the state holds it.
+
+### Move the pods to their planned nodes.
+
+```sh
+k3s/deploy-k3s up --target all --rebalance
+k3s/deploy-k3s up --target all --rebalance --steps rebalance
+```
+
+A normal `up` keeps each running pod on its node. The CPU shares of the nodes can therefore stay uneven, for example
+after a zone create. Run `--rebalance` in a maintenance window, because each moved pod restarts.
+
+- The plan of the step `rebalance` starts from the current places. It moves a running pod only when the move makes
+  the CPU shares of the nodes more even, and it keeps memory as the hard limit. It plans single moves, each of which
+  fits the nodes after the moves before it. It plans no swap, because a swap needs room for both pods at once. A pod with a claim or a node
+  selector, and a pod that is placed together with another workload, do not move. `plan.json` gets the list `moves`.
+- The step writes the planned nodes into the ConfigMap of the admission policy, then moves one pod at a time: the
+  next pod whose planned node has room now. It evicts the pod through the eviction API, so a PodDisruptionBudget
+  applies, and waits up to 600 s until the new pod of its workload is ready.
+- The step stops at the first failure: no planned node has room for the next move, the API refuses the eviction, the
+  new pod starts on another node, or it is not ready in time. The pods that moved stay on their new nodes, and every
+  other pod stays where it is. The record names the moved pods.
 
 The stores step runs before the zones. When the new store pods fit only after the zones have their new requests, the
 plan says `zones-first`, and `up` runs the stores step after the zone steps.
@@ -716,7 +738,12 @@ python3 k3s/images/build-hoover.py --revision <commit>
 
 `show` prints the objects and changes nothing.
 The argument is the zone. The render reads the addresses of the NFS servers of `platform/hoover-data/` from the cluster.
-The image tag is the first 12 characters of the commit. The build exports the commit, so local changes stay out of the images.
+The tag of each image is a digest of its inputs at the commit: its Containerfile and its context, and for the
+website image also `docs/user-manual/` ([hoover/compose.py](hoover/compose.py) `image_tags()`). A commit that
+changes no input of an image keeps its tag, so `up` builds no image and restarts no pod for it. `deploy-k3s` computes
+the tags once for each deployment, keeps them in the record and gives them to every step in `HOOVER4_IMAGE_TAGS`.
+The build skips an image whose tag the registry has. It exports the commit for the other images, so local changes stay
+out of the images.
 The website image holds the manuals of `docs/user-manual/` for the `/docs` page. The build copies them into the `website/` context of the exported tree.
 
 ## Keep the state in the cluster.
@@ -846,7 +873,7 @@ The installation has one GPU key. The operator step generates it once and keeps 
 ## Place the call services.
 
 The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
-A site without a zone runs only coturn, because LiveKit needs the key of a zone, and the JVB copies its template from a zone.
+A site without a zone runs only coturn, because only a zone uses LiveKit, and the JVB copies its template from a zone.
 A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
 coturn relays UDP only, so a TURN user reaches no store of a zone, which all serve TCP.
 It relays to the pods of the media node and, on a media node with a public address, to that address for a client that can only use TURN.
@@ -856,6 +883,20 @@ The steps `operator` and `calls` of `deploy-k3s up` check that chain with a prob
 They record the result in the ConfigMap `coturn-peer-check` of `calls`.
 The pod admission policy of `calls` refuses a host network pod other than coturn, so the probe pod runs in `kube-system` with the admin kubeconfig.
 The probe pod and the call services must run on the media node, so they have the PriorityClass `hoover-node-bound`. On a full media node they preempt a pod of the default priority. The probe requests 16 MiB for each of its two containers.
+The record names a digest of the inputs of the chain (the media node, its public address, `turn_peers.py` and the files of the role). The probe runs again only when that digest changed. `install-calls.py --probe --force` runs it at once.
+
+A zone create or delete restarts no call service, so the calls of the other zones continue
+([platform/calls/install-calls.py](platform/calls/install-calls.py)):
+
+| Service | Zone keys | Change of a zone |
+|---|---|---|
+| coturn | one TURN secret for each zone, and one for LiveKit, in the SQLite database of coturn | The Secret `coturn-secrets` lists the secrets. The sidecar `secrets` copies them into the database when the mounted file changes. coturn reads the secrets from the database at each request. |
+| LiveKit | one key `hoover-calls` for all zones | Nothing changes in LiveKit. LiveKit reads its keys only at start, so a key for each zone would restart it. |
+| JVB | one XMPP password for all zones | The Secret `jvb-zones` lists the Prosody of each zone. The sidecar `zones` adds and removes the XMPP connection of each zone through the REST API of the bridge (`/colibri/muc-client/add` and `remove`). It adds all connections again when the bridge restarts. |
+
+The kubelet updates a mounted Secret within about one minute, so a new zone reaches coturn and the JVB in that time.
+The shared LiveKit key is an access boundary change: the token service (`lk-jwt`) of each zone holds the key, so the
+service of one zone can sign a token for a room of another zone. The Matrix room of a call names the LiveKit room.
 The step `calls`, also in a portal zone operation, adds the public address only when that record names the media node and its address.
 Without the record, the step stops and names `deploy-k3s up --steps operator`.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.

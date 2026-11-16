@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Build the Hoover images of compose.IMAGES from one commit of this repository and push them to the cluster registry.
 
-The script exports the commit with `git archive` into a temporary folder build-<commit>.tmp of the state folder, so
-local changes of the checkout stay out of the images, and removes the folder after the builds. The image tag is the
-first 12 characters of the commit.
-../hoover/manifests.py names the images with the same tag (image_tag()).
+The image tag is a digest of the inputs of the image at the commit (../hoover/compose.py image_tags()), so a commit that
+changes no input of an image keeps its tag. ../hoover/manifests.py names the images with the same tag (image_tag()).
+An image whose tag the registry has is not built. For the other images the script exports the commit with `git archive`
+into a temporary folder build-<commit>.tmp of the state folder, so local changes of the checkout stay out of the
+images, and removes the folder after the builds.
 The website image is the release Dockerfile. Its context is website/, so prepare() copies docs/user-manual/ to
 website/docs/user-manual/ of the exported tree, for the manual pages. The processing image starts the installed interpreter.
 The builds run at the same time, up to the CPU count of this host. The output of each build follows its end.
@@ -69,15 +70,30 @@ def main():
     parser.add_argument('names', nargs='*')
     args = parser.parse_args()
     sha = commit(args.revision)
-    tree = prepare(sha)
-    try:
-        build(args, sha, tree)
-    finally:
-        shutil.rmtree(tree, ignore_errors=True)
+    tags = compose.image_tags(sha, settings.HOOVER4)
+    images = compose.GPU_IMAGES if args.gpu else IMAGES
+    names = [n for n in (args.names or list(images)) if not present(n, tags[n])]
+    for name in sorted(set(args.names or images) - set(names)):
+        print(f'present registry.hoover.internal/hoover/hoover-{name}:{tags[name]}', flush=True)
+    if names:
+        tree = prepare(sha)
+        try:
+            build(args, sha, tree, names, tags)
+        finally:
+            shutil.rmtree(tree, ignore_errors=True)
     print(sha)
 
 
-def build(args, sha, tree):
+def present(name, tag):
+    """True when the registry has the image hoover/hoover-<name>:<tag>."""
+    endpoint = settings.HOST['registry_endpoint']
+    return subprocess.run(['curl', '-fs', '-o', '/dev/null', '-I', '-H',
+                           'Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,'
+                           'application/vnd.docker.distribution.manifest.v2+json',
+                           f'http://{endpoint}/v2/hoover/hoover-{name}/manifests/{tag}']).returncode == 0
+
+
+def build(args, sha, tree, names, tags):
     images = compose.GPU_IMAGES if args.gpu else IMAGES
     env = dict(__import__('os').environ)
     if args.gpu:
@@ -97,8 +113,8 @@ def build(args, sha, tree):
         if args.gpu and name == 'vllm' and base:
             step_env['BUILD_ARGS'] = f'BASE_IMAGE={base}'
         if args.builder:
-            remote_build(settings.SITE.nodes[args.builder], tree, sha, name, context, dockerfile, step_env)
-        result = subprocess.run(['bash', str(HERE / 'build-image.sh'), str(tree / context), f'hoover/hoover-{name}:{sha[:12]}',
+            remote_build(settings.SITE.nodes[args.builder], tree, sha, name, tags[name], context, dockerfile, step_env)
+        result = subprocess.run(['bash', str(HERE / 'build-image.sh'), str(tree / context), f'hoover/hoover-{name}:{tags[name]}',
                                  str(tree / dockerfile)], env=step_env, capture_output=True, text=True)
         # The output of each build comes in one piece, so the builds that run at the same time stay apart.
         sys.stdout.write(result.stdout + result.stderr)
@@ -106,7 +122,6 @@ def build(args, sha, tree):
         if result.returncode:
             raise SystemExit(f'the build of {name} failed with exit code {result.returncode}')
 
-    names = args.names or list(images)
     # A build over SSH (--builder) runs one image at a time on its node. A local build runs up to one image per CPU.
     workers = 1 if args.builder else max(1, min(len(names), os.cpu_count() or 1))
     failures = []
@@ -119,17 +134,13 @@ def build(args, sha, tree):
     if failures:
         raise SystemExit('; '.join(failures))
 
-def remote_build(node, tree, sha, name, context, dockerfile, env):
+def remote_build(node, tree, sha, name, tag, context, dockerfile, env):
     """Build one image on a node over SSH and load it into the local Podman store, unless the registry has it.
 
     build-image.sh then finds the local image and pushes it without a build.
     """
-    local_name = f'registry.hoover.internal/hoover/hoover-{name}:{sha[:12]}'
-    endpoint = settings.HOST['registry_endpoint']
-    present = subprocess.run(['curl', '-fs', '-o', '/dev/null', '-I', '-H',
-                              'Accept: application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json',
-                              f'http://{endpoint}/v2/hoover/hoover-{name}/manifests/{sha[:12]}']).returncode == 0
-    if present or subprocess.run(['podman', 'image', 'exists', local_name]).returncode == 0:
+    local_name = f'registry.hoover.internal/hoover/hoover-{name}:{tag}'
+    if present(name, tag) or subprocess.run(['podman', 'image', 'exists', local_name]).returncode == 0:
         return
     ssh = ['ssh', '-o', 'BatchMode=yes', settings.config.ssh_host(node), '--']
     folder = f'hoover4-build/{sha}'

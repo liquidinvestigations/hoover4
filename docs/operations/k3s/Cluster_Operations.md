@@ -44,9 +44,9 @@ An upgrade installs the scripts and the images of the commit of the checkout.
 5. Check the result with `k3s/deploy-k3s status`. The applied revision is the commit of the last complete run.
 
 The record of a run pins the commit, the uncommitted changes of the checkout, the site file, the saved settings revision and the cluster.
-A resume refuses a change of these inputs. A second `up` of the same commit changes no object.
+A resume refuses a change of these inputs. A second `up` of the same commit changes no object, starts or restarts no pod and builds no image. A commit that changes no input of an image keeps its tag.
 A waiting or failed step stops every step that depends on it.
-The step `placement` lowers the CPU requests of the site by one factor when the pods do not fit, and resizes the running pods in place. The last step `descheduler` moves a stateless pod that started away from its planned node to that node.
+The step `placement` lowers the CPU requests of the site by one factor when the pods do not fit, and resizes the running pods in place. A normal `up` moves no running pod. `up --rebalance` moves running pods to their planned nodes one at a time, so run it in a maintenance window.
 Between two runs no pod moves, except in the cases of [Keep the pods in place](../../../k3s/Readme.md#keep-the-pods-in-place).
 
 One site operation runs at a time. The driver, the settings Apply, the zone operations, the Compose import and the zone and platform backups share one lock.

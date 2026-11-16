@@ -1593,21 +1593,21 @@ POSTGRES_SKIPPED = {b'DROP ROLE IF EXISTS postgres;\n', b'CREATE ROLE postgres;\
 
 
 def import_dump(zone, exec_args, path, skipped=frozenset()):
-    """Send the dump at path to a database client in a pod of the zone. A client error fails the restore."""
+    """Send the dump at path to a database client in a pod of the zone. A client error fails the restore.
+
+    exec_args are the pod, the container option and, after '--', the client command. The standard input stays open until
+    the client ends (../../podexec.py), because the output of a Kata container stops after 32 KiB once kubectl closes it."""
+    import podexec
     import tempfile
-    argv = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', *exec_args]
+    at = exec_args.index('--')
+    argv = ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', zone, 'exec', '-i', *exec_args[:at]]
+    with open(path, 'rb') as dump:
+        size = sum(len(line) for line in dump if line not in skipped)
     # The client writes a notice for each object that the dump drops and that does not exist. A file holds them, so a
     # full pipe cannot stop the client.
     with open(path, 'rb') as dump, tempfile.TemporaryFile() as errors:
-        process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors)
-        try:
-            for line in dump:
-                if line not in skipped:
-                    process.stdin.write(line)
-            process.stdin.close()
-        except BrokenPipeError:
-            pass
-        code = process.wait()
+        code = podexec.run(argv, exec_args[at + 1:], (line for line in dump if line not in skipped), stderr=errors,
+                           size=size)
         errors.seek(0)
         text = errors.read().decode(errors='replace')
     if code:

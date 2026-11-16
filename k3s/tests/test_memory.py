@@ -1,5 +1,5 @@
 """The memory requests from the load measurement, the Kata overhead, the rollout of the large Deployments and the
-descheduler that runs only in a deployment."""
+removal of the descheduler."""
 import json
 import sys
 
@@ -10,7 +10,6 @@ from conftest import K3S
 sys.path.insert(0, str(K3S / 'zones'))
 sys.path.insert(0, str(K3S / 'cluster'))
 import cpu_requests  # noqa: E402
-import deschedule  # noqa: E402
 import memory_requests  # noqa: E402
 import postrender  # noqa: E402
 
@@ -158,16 +157,10 @@ def test_the_measured_large_opendesk_deployments_roll_with_max_surge_0():
     assert 'openproject-web' in large and 'collabora' in large
 
 
-def test_the_descheduler_runs_once_in_a_deployment_and_never_between_deployments():
-    docs = [d for d in yaml.safe_load_all((K3S / 'cluster/descheduler.yaml').read_text()) if d]
-    assert {d['kind'] for d in docs} == {'ServiceAccount', 'ClusterRole', 'ClusterRoleBinding', 'ConfigMap'}
-    job = deschedule.job('descheduler-1', 300)
-    spec = job['spec']['template']['spec']
-    assert job['kind'] == 'Job' and job['spec']['activeDeadlineSeconds'] == 300 and job['spec']['backoffLimit'] == 0
-    assert spec['restartPolicy'] == 'Never'
-    assert not any(a.startswith('--descheduling-interval') for a in spec['containers'][0]['args'])
+def test_no_descheduler_runs_and_setup_removes_the_one_of_an_earlier_version():
+    assert not (K3S / 'cluster/deschedule.py').exists()
     setup = (K3S / 'cluster/setup.sh').read_text()
-    assert 'kubectl -n kube-system delete deployment descheduler --ignore-not-found' in setup
+    assert 'serviceaccount/descheduler configmap/descheduler-policy deployment/descheduler --ignore-not-found' in setup
     assert 'SOURCE_HASH' not in setup
 
 

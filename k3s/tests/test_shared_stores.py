@@ -116,10 +116,10 @@ def test_only_hoover_namespaces_reach_the_client_ports():
     items = shared.objects(site, config.store_plan(site), 1, {})
     closed = by(items, 'NetworkPolicy', 'closed')['spec']
     assert closed['podSelector'] == {'matchExpressions': [{'key': 'hoover.dev/store', 'operator': 'NotIn', 'values': ['clickhouse']}]}
-    assert closed['ingress'] == [] and set(closed['policyTypes']) == {'Ingress', 'Egress'}
+    assert 'ingress' not in closed and set(closed['policyTypes']) == {'Ingress', 'Egress'}
     # ClickHouse reaches DNS and the S3 port of Garage only, so a BACKUP or RESTORE cannot name another address.
     own = by(items, 'NetworkPolicy', 'clickhouse-closed')['spec']
-    assert own['podSelector'] == {'matchLabels': {'hoover.dev/store': 'clickhouse'}} and own['ingress'] == []
+    assert own['podSelector'] == {'matchLabels': {'hoover.dev/store': 'clickhouse'}} and 'ingress' not in own
     assert own['egress'][1] == {'to': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}], 'ports': [{'port': 3900}]}
     assert [p['port'] for p in own['egress'][0]['ports']] == [53, 53]
     clickhouse = by(items, 'NetworkPolicy', 'clickhouse-clients')['spec']['ingress']

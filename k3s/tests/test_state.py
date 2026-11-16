@@ -447,6 +447,12 @@ def test_scope_records_never_go_back(state):
     # A deployment that pinned an older revision does not undo a later Apply.
     state.record_all(1, 'deploy:d', 'abc')
     assert state.applied()['revision'] == 2 and state.applied()['operation'] == 'deploy:c'
+    # A second deployment of the same revisions writes nothing, so the file and its cluster copy stay unchanged.
+    before = (state.folder / 'applied.json').read_bytes()
+    state.record_all(2, 'deploy:e', 'abc')
+    assert (state.folder / 'applied.json').read_bytes() == before
+    state.record_all(2, 'deploy:f', 'def')
+    assert state.applied()['operation'] == 'deploy:f'
 
 
 def test_fixed_settings_use_the_applied_revision_of_their_scope(state):

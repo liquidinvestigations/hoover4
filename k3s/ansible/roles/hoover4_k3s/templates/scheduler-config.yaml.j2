@@ -14,8 +14,8 @@
 # without a plan, and a node that joins with no requests takes the new pods first. The other plugins keep their
 # defaults.
 # The allocatable CPU of a node counts threads of the fastest node (../../../../config.py kubelet_reserved()).
-# The descheduler pass of deploy-k3s up (../../../../cluster/descheduler.yaml) moves a pod that started away from its
-# planned node to that node when it has room.
+# A pod that started away from its planned node stays there. deploy-k3s up --rebalance moves running pods to their
+# planned nodes (../../../../placement.py).
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 clientConnection:

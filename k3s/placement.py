@@ -16,7 +16,8 @@ The step placement of deploy-k3s up, and deploy-k3s check, compute the plan befo
   node affinity uses only those nodes. The pods of a workload with a required pod anti-affinity against itself use
   different nodes. Two workloads with a required pod affinity of one host are placed together.
 - A running pod keeps its node when its new requests fit there. No plan moves a running pod, so a zone create, a zone
-  delete or a new factor moves and restarts no pod of another zone.
+  delete or a new factor moves and restarts no pod of another zone. Only deploy-k3s up --rebalance moves running pods,
+  in a maintenance window that the operator chooses (rebalance()).
 - Factor: the largest value of 1, 1 - STEP, 1 - 2 x STEP, ... at which a plan fits. Memory requests never scale. When
   no factor fits, the message names the free memory of each node and the pods that do not fit (NoFit).
 - Goal for the pods without a node: an even share of requested CPU per allocatable CPU on every node. pack() places
@@ -46,8 +47,10 @@ requests, the plan says zones-first, and up runs the stores step after the zone 
 The render for the plan sets HOOVER4_PLACEMENT_RENDER=1. The openDesk render of a zone is kept in
 placement/render-<zone>.json with a digest of its inputs, and a later plan with the same inputs uses it.
 
-Usage: placement.py plan [--write] [--apply]   print the plan and the problems as JSON. --write keeps the plan in the
-                                              state folder, --apply writes the ConfigMap and resizes the running pods.
+Usage: placement.py plan [--write] [--apply] [--rebalance]
+    print the plan and the problems as JSON. --write keeps the plan in the state folder, --apply writes the ConfigMap
+    and resizes the running pods. --rebalance (deploy-k3s up --rebalance) lets the plan move running pods when that
+    makes the CPU shares more even, and with --apply moves them one at a time (rebalance()).
 """
 import hashlib
 import json
@@ -186,6 +189,7 @@ class Pod:
     steer: bool = True          # False: counted, but the plan names no node for it
     step: str = ''              # the up step that renders it
     named: bool = False         # True: fixed by a node selector, not by a claim
+    names: tuple = ()           # the names of its running pods
 
     @property
     def key(self):
@@ -313,9 +317,12 @@ def pack(nodes, pods, factor, keep=True):
     return where, stay
 
 
-def improve(nodes, pods, where, factor, movable, rounds=400):
+def improve(nodes, pods, where, factor, movable, rounds=400, swaps=True):
     """Move and swap the pods of movable while the sum of (requested CPU)^2 / allocatable CPU falls. A move that keeps
-    that sum and separates a pair of SEPARATE also counts."""
+    that sum and separates a pair of SEPARATE also counts.
+
+    Without swaps each step is one move that fits the nodes after the steps before it, so the moves can run one after
+    the other on a full site (rebalance())."""
     where = list(where)
     cap_m = {n.name: n.memory for n in nodes}
     cap_c = {n.name: n.cpu for n in nodes}
@@ -354,7 +361,7 @@ def improve(nodes, pods, where, factor, movable, rounds=400):
                         shared(i, b) - shared(i, a))
                 if (gain[0] < -eps or (abs(gain[0]) <= eps and gain[1] < 0)) and (best is None or gain < best[0]):
                     best = (gain, ('move', i, b))
-        if best is None:
+        if best is None and swaps:
             for x, i in enumerate(movable):
                 for j in movable[x + 1:]:
                     a, b = where[i], where[j]
@@ -398,15 +405,25 @@ def factors():
     return out
 
 
-def solve(nodes, pods):
+def solve(nodes, pods, rebalance=False):
     """The Plan: the largest factor at which a plan fits with the running pods on their nodes, and the most even
-    places for the other pods. Raise NoFit when no factor fits."""
+    places for the other pods. Raise NoFit when no factor fits.
+
+    rebalance (up --rebalance) also moves running pods: it starts from the same places and lets improve() move every
+    pod that has no fixed node and belongs to one workload, so it moves a running pod only when the move makes the CPU
+    shares more even. It uses single moves and no swaps: a swap needs free room for both pods at once, which a full
+    site does not have. The step rebalance then moves these pods one at a time (rebalance())."""
     for factor in factors():
         found = pack(nodes, pods, factor)
+        if found is None and rebalance:
+            found = pack(nodes, pods, factor, keep=False)
         if found is None:
             continue
         where, stay = found
-        where = improve(nodes, pods, where, factor, [i for i in range(len(pods)) if i not in stay])
+        movable = [i for i in range(len(pods)) if i not in stay]
+        if rebalance:
+            movable = [i for i, p in enumerate(pods) if not p.fixed and p.steer and len(p.keys) == 1]
+        where = improve(nodes, pods, where, factor, movable, swaps=not rebalance)
         return Plan(factor=factor, where=where, nodes=nodes, pods=pods)
     moved = next((f for f in factors() if pack(nodes, pods, f, keep=False) is not None), None)
     hint = (f' A plan that moves running pods fits at the factor {moved:.2f}. No step moves a running pod. Stop or '
@@ -558,7 +575,8 @@ def inputs(nodes_json, pods_json, claims_json, rendered, eligible, zones=(), pla
                     if 'persistentVolumeClaim' in v:
                         fixed = fixed or selected.get((ns, v['persistentVolumeClaim']['claimName']), '')
             mine.append(Pod(((key, i),), memory, cpu, fixed_cpu, allowed, fixed, now[i][1] if i < len(now) else '',
-                            apart, step=step_of(ns, zones), named=bool(named)))
+                            apart, step=step_of(ns, zones), named=bool(named),
+                            names=(now[i][0],) if i < len(now) else ()))
         groups[key] = (doc, labels, mine)
         pods.extend(mine)
     pods = together(pods, groups)
@@ -603,6 +621,7 @@ def together(pods, groups):
         b.cpu_fixed += a.cpu_fixed
         b.fixed = b.fixed or a.fixed
         b.current = b.current or a.current
+        b.names = b.names + a.names
         b.allowed = tuple(n for n in b.allowed if not a.allowed or n in a.allowed) or a.allowed
         absorbed.add(id(a))
     return [p for p in pods if id(p) not in absorbed]
@@ -782,6 +801,104 @@ def apply(plan):
     return {'configmap_changed': changed, 'resized_pods': resized, 'annotated_pods': annotated, 'resize_failures': failed}
 
 
+def moves(plan):
+    """[(namespace, pod, workload key, from node, to node)] of the running pods that the plan puts on another node, in
+    the order of the plan."""
+    out = []
+    for pod, node in zip(plan.pods, plan.where):
+        if pod.current and node != pod.current and pod.names and len(pod.keys) == 1 and not pod.fixed:
+            out.append((pod.key.split('/')[0], pod.names[0], pod.key, pod.current, node))
+    return out
+
+
+def free_room(nodes_json, pods_json):
+    """{node: [free MiB, free millicores]} after the requests of the pods that run or wait on each node."""
+    overhead = runtime_overhead()
+    room = {i['metadata']['name']: [mem_mi(i['status']['allocatable']['memory']), cpu_m(i['status']['allocatable']['cpu'])]
+            for i in nodes_json['items']}
+    for pod in pods_json['items']:
+        node = pod['spec'].get('nodeName')
+        if node in room and (pod.get('status') or {}).get('phase') not in ('Succeeded', 'Failed'):
+            memory, cpu, fixed = pod_request(pod['spec'], overhead)
+            room[node][0] -= memory
+            room[node][1] -= cpu + fixed
+    return room
+
+
+def workload_pods(key):
+    """The pods of the workload key that are not being deleted."""
+    namespace = key.split('/')[0]
+    return [p for p in kubectl_json('-n', namespace, 'get', 'pods')['items']
+            if owner_key(p) == key and not p['metadata'].get('deletionTimestamp')]
+
+
+def ready(pod):
+    return any(c['type'] == 'Ready' and c['status'] == 'True' for c in (pod.get('status') or {}).get('conditions') or [])
+
+
+def rebalance(plan, timeout=600, pause=3):
+    """Move the running pods of moves(plan) to their planned nodes, one at a time (up --rebalance).
+
+    Each move takes the next pod whose planned node has room for its requests now, evicts it through the eviction API
+    (which keeps a PodDisruptionBudget), and waits until the new pod of its workload is ready. The admission policy
+    gives the new pod a preferred affinity for its planned node. The first failure stops the moves: a move that no
+    node has room for, an eviction that the API refuses, a new pod on another node, or a pod that is not ready after
+    timeout seconds. Return the summary, with the failure in 'error'.
+    """
+    import time
+    overhead = runtime_overhead()
+    pending, done = moves(plan), []
+    while pending:
+        pods_json = kubectl_json('get', 'pods', '-A')
+        live = {(p['metadata']['namespace'], p['metadata']['name']): p for p in pods_json['items']}
+        room = free_room(kubectl_json('get', 'nodes'), pods_json)
+        chosen = None
+        for move in pending:
+            pod = live.get(move[:2])
+            if pod is None or pod['spec'].get('nodeName') != move[3]:
+                chosen = (move, None)
+                break
+            memory, cpu, fixed = pod_request(pod['spec'], overhead)
+            if room.get(move[4], [0, 0])[0] >= memory and room[move[4]][1] >= cpu + fixed:
+                chosen = (move, pod)
+                break
+        if chosen is None:
+            return {'moved': done, 'pending': [f'{m[0]}/{m[1]} to {m[4]}' for m in pending],
+                    'error': 'no planned node has room for the next move: ' + ', '.join(
+                        f'{m[0]}/{m[1]} to {m[4]}' for m in pending[:5])}
+        move, pod = chosen
+        pending.remove(move)
+        namespace, name, key, source, target = move
+        if pod is None:
+            # The pod is gone or on another node since the plan, so it does not move.
+            continue
+        before = {p['metadata']['uid'] for p in workload_pods(key)}
+        eviction = {'apiVersion': 'policy/v1', 'kind': 'Eviction', 'metadata': {'name': name, 'namespace': namespace}}
+        result = kubectl('create', '--raw', f'/api/v1/namespaces/{namespace}/pods/{name}/eviction', '-f', '-',
+                         input_text=json.dumps(eviction), check=False)
+        if result.returncode:
+            return {'moved': done, 'error': f'the eviction of {namespace}/{name} failed: '
+                                            f'{(result.stderr or result.stdout).strip()[-300:]}'}
+        deadline = time.monotonic() + timeout
+        while True:
+            new = [p for p in workload_pods(key) if p['metadata']['uid'] not in before]
+            if new and all(ready(p) for p in new) and all(p['metadata']['uid'] not in (pod['metadata']['uid'],)
+                                                          for p in workload_pods(key)):
+                break
+            if time.monotonic() > deadline:
+                return {'moved': done, 'error': f'the new pod of {key} was not ready {timeout} s after the eviction of '
+                                                f'{namespace}/{name}'}
+            time.sleep(pause)
+        nodes = sorted({p['spec'].get('nodeName') for p in new})
+        if nodes != [target]:
+            return {'moved': done, 'error': f'the new pod of {key} started on {", ".join(nodes)}, not on its planned '
+                                            f'node {target}'}
+        done.append({'pod': f'{namespace}/{name}', 'workload': key, 'from': source, 'to': target,
+                     'new_pod': new[0]['metadata']['name']})
+        print(json.dumps({'moved': done[-1]}), file=sys.stderr, flush=True)
+    return {'moved': done}
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # The render of the site at the factor 1
 # ----------------------------------------------------------------------------------------------------------------------
@@ -871,16 +988,17 @@ def render_site(site, site_path, private):
     # The render reads the NFS address of each data node. The address does not change a request.
     nfs = {n.name: '10.43.0.1' for n in site.nodes.values()}
     for zone in zones:
-        target = manifests.target_from_site(str(site_path), zone, revision=os.environ.get('HOOVER4_REVISION') or '0' * 40,
+        target = manifests.target_from_site(str(site_path), zone, revision=os.environ.get('HOOVER4_REVISION') or manifests.NO_REVISION,
                                             nfs=nfs)
         out += manifests.objects(target) + gate.objects(zone)['items'] + opendesk_render(zone, private)
     workloads = [slim(d) for d in out if d.get('kind') in CONTROLLERS]
     return workloads, zones, max(plan['zones'], len(zones))
 
 
-def compute(write=False, act=False):
+def compute(write=False, act=False, move=False):
     """The result of the command: the plan of the site, the problems as messages, and with act the summary of
-    apply(). write keeps a changed plan in the state folder."""
+    apply(). write keeps a changed plan in the state folder. move plans moves of running pods and, with act, runs them
+    (rebalance())."""
     if str(K3S) not in sys.path:
         sys.path.insert(0, str(K3S))
     import config
@@ -897,9 +1015,11 @@ def compute(write=False, act=False):
     rows = kubelet.changes(reserved, nodes_json, pods_json, kubelet.configz(lambda *a: kubectl(*a).stdout, list(reserved)))
     nodes, pods, live = inputs(kubelet.target_nodes(nodes_json, rows), pods_json,
                                kubectl_json('get', 'pvc', '-A'), rendered, eligible, zones, planned)
-    plan = solve(nodes, pods)
+    plan = solve(nodes, pods, rebalance=move)
     order_name, waits = order(plan, live, zones)
     out = report(plan, order_name, waits)
+    if move:
+        out['moves'] = [f'{m[0]}/{m[1]}: {m[3]} to {m[4]}' for m in moves(plan)]
     before = read_json(private / PLAN_FILE) or {}
     problems = []
     if waits:
@@ -913,18 +1033,21 @@ def compute(write=False, act=False):
               'kubelet': rows}
     if act:
         result['applied'] = apply(out)
+        if move:
+            result['rebalance'] = rebalance(plan)
     return result
 
 
 def main(argv):
-    if not argv or argv[0] != 'plan' or any(a not in ('--write', '--apply') for a in argv[1:]):
+    if not argv or argv[0] != 'plan' or any(a not in ('--write', '--apply', '--rebalance') for a in argv[1:]):
         raise SystemExit(__doc__)
     try:
-        result = compute(write='--write' in argv, act='--apply' in argv)
+        result = compute(write='--write' in argv, act='--apply' in argv, move='--rebalance' in argv)
     except NoFit as error:
         result = {'placement': {}, 'problems': [str(error)]}
     print(json.dumps(result, sort_keys=True))
-    if '--apply' in argv and (not result['placement'] or (result.get('applied') or {}).get('resize_failures')):
+    if '--apply' in argv and (not result['placement'] or (result.get('applied') or {}).get('resize_failures')
+                              or (result.get('rebalance') or {}).get('error')):
         sys.exit(1)
 
 

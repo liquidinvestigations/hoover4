@@ -533,11 +533,17 @@ class State:
             write_json(self.folder / 'applied.json', data)
 
     def record_all(self, revision, operation, source_revision):
-        """Record that every scope runs a revision. A scope with a later revision keeps its own record."""
+        """Record that every scope runs a revision. A scope with a later revision keeps its own record.
+
+        A record of the same revision and source revision without scope records stays as it is, with the operation that
+        applied it first, so a second deployment without a change writes nothing."""
         with self._lock():
             previous = self.applied()
             if revision < previous['revision']:
                 # A later revision already runs in every scope, for example after an Apply during a deployment.
+                return
+            if (revision == previous['revision'] and source_revision == previous.get('source_revision')
+                    and not previous['scopes']):
                 return
             data = {'revision': revision, 'source_revision': source_revision, 'operation': operation, 'applied': now(),
                     'scopes': {k: v for k, v in previous['scopes'].items() if v['revision'] > revision}}

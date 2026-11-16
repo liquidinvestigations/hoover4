@@ -208,10 +208,13 @@ spec:
         apiVersions: [v1]
         operations: [CREATE, UPDATE, DELETE]
         resources: [namespaces]
+        # The API server adds this default. Without it a second apply sends a patch that changes nothing.
+        scope: '*'
       - apiGroups: [rbac.authorization.k8s.io]
         apiVersions: [v1]
         operations: [CREATE, UPDATE, DELETE]
         resources: [rolebindings]
+        scope: '*'
   matchConditions:
     - name: zone-runner
       expression: request.userInfo.username == 'system:serviceaccount:operator-portal:zone-runner'

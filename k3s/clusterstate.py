@@ -165,11 +165,14 @@ class Kubectl:
         self.run('delete', kind, object_name(path), '--ignore-not-found', '--wait=false')
 
     def ensure_namespace(self):
-        text = subprocess.run(['kubectl', *(['--kubeconfig', self.kubeconfig] if self.kubeconfig else []), 'create',
-                               'namespace', self.namespace, '--dry-run=client', '-o', 'json'],
-                              capture_output=True, text=True, check=True).stdout
-        subprocess.run(['kubectl', *(['--kubeconfig', self.kubeconfig] if self.kubeconfig else []), 'apply', '-f', '-'],
-                       input=text, capture_output=True, text=True, check=True)
+        """Create the namespace when it is missing. An apply would replace the last applied configuration that the
+        operator manifest gives the namespace, so each push would write the namespace again."""
+        base = ['kubectl', *(['--kubeconfig', self.kubeconfig] if self.kubeconfig else [])]
+        if subprocess.run(base + ['get', 'namespace', self.namespace], capture_output=True).returncode == 0:
+            return
+        made = subprocess.run(base + ['create', 'namespace', self.namespace], capture_output=True, text=True)
+        if made.returncode and 'AlreadyExists' not in made.stderr:
+            raise subprocess.CalledProcessError(made.returncode, made.args, made.stdout, made.stderr)
 
 
 @contextlib.contextmanager

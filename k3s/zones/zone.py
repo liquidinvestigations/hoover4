@@ -157,15 +157,18 @@ def register(zone, home=None, values=None):
 
 
 def images():
-    """Check that the registry has every image of a zone for the revision. The step images of deploy-k3s up builds them.
+    """Check that the registry has every image of a zone. The step images of deploy-k3s up builds them.
 
-    The revision is HOOVER4_REVISION, which deploy-k3s and the operator pod set, else HEAD of the checkout.
+    The Hoover image tags are HOOVER4_IMAGE_TAGS, which deploy-k3s and the operator pod set, else the tags of the
+    commit HOOVER4_REVISION or HEAD of the checkout (../hoover/manifests.py image_tags()).
     """
     sys.path.insert(0, str(SOURCE / 'driver'))
+    sys.path.insert(0, str(SOURCE / 'hoover'))
     import deploy
-    revision = os.environ.get('HOOVER4_REVISION') or deploy.resolve_revision(deploy.REPO, 'HEAD')
+    import manifests
+    revision = manifests.resolve_revision()
     try:
-        deploy.registry_references(settings.SITE, deploy.revision_image_names(revision))
+        deploy.registry_references(settings.SITE, deploy.zone_image_names(manifests.image_tags(revision)))
     except deploy.StepFailed as error:
         raise SystemExit(f'{error}. Run deploy-k3s up --steps images on the operator workstation for the revision '
                          f'{revision[:12]}.') from None
@@ -545,6 +548,7 @@ def opendesk(zone):
     The helper thread login_flow() sets the login flow and checks Nextcloud while the waves run.
     """
     check_waves()
+    first = first_bootstrap(zone)
     stop = threading.Event()
     errors = []
     refresh_statefulsets(zone)
@@ -575,10 +579,13 @@ def opendesk(zone):
     if errors:
         raise errors[0]
     mark_bootstrapped(zone)
-    # The portal server reads the portal data once at its start. On a new zone it can start before the portal
-    # consumer wrote the data, and then it answers every page with an error until it restarts.
-    kubectl('-n', zone, 'rollout', 'restart', 'deployment/ums-portal-server')
-    kubectl('-n', zone, 'rollout', 'status', 'deployment/ums-portal-server', '--timeout=300s')
+    if first:
+        # The portal server reads the portal data once at its start. On a new zone it can start before the portal
+        # consumer wrote the data, and then it answers every page with an error until it restarts. A later apply
+        # finds the data, so it does not restart the portal server.
+        kubectl('-n', zone, 'rollout', 'restart', 'deployment/ums-portal-server')
+        kubectl('-n', zone, 'rollout', 'status', 'deployment/ums-portal-server', '--timeout=300s')
+        step('portal-server-restart', zone=zone, reason='first install')
 
 
 def hoover(zone):

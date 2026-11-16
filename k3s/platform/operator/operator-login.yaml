@@ -244,7 +244,7 @@ spec:
         paths: [{path: /, pathType: Prefix, backend: {service: {name: gateway, port: {name: http}}}}]
 ---
 # The operator pod: the portal and the zone runner (pod.py) from the operator image of the registry, which the step
-# images of deploy-k3s builds from the checkout. start-web-tools.sh sets the image, the revision and the node.
+# images of deploy-k3s builds from the checkout. start-web-tools.sh sets the image, the image tags and the node.
 # The portal page reads cluster slice usage from the host cgroup files, so the pod runs on the control-plane node.
 # The pod mounts no checkout and no state folder of a host. The state folder of /site/site.json is /site/site, a
 # folder of the pod that both containers share. The cluster holds the authoritative copy of the state
@@ -284,7 +284,11 @@ spec:
             - {name: PORTAL_CGROUP, value: /host-cgroup}
             - {name: PORTAL_REPO, value: /opt/hoover4}
             - {name: HOOVER4_SITE, value: /site/site.json}
-            - {name: HOOVER4_REVISION, value: OPERATOR_REVISION}
+            # The commit of the last operator step. A new value does not restart the pod, so the pod keeps the commit
+            # of its start. The image tags are in the template, so a new tag restarts the pod.
+            - name: HOOVER4_REVISION
+              valueFrom: {configMapKeyRef: {name: operator-revision, key: revision}}
+            - {name: HOOVER4_IMAGE_TAGS, value: OPERATOR_IMAGE_TAGS}
             - {name: PYTHONPATH, value: /opt/hoover4/k3s/platform/operator}
             - {name: HOME, value: /tmp/home}
             - name: PORTAL_PROXY_SECRET
@@ -305,7 +309,9 @@ spec:
           args: [runner]
           env:
             - {name: HOOVER4_SITE, value: /site/site.json}
-            - {name: HOOVER4_REVISION, value: OPERATOR_REVISION}
+            - name: HOOVER4_REVISION
+              valueFrom: {configMapKeyRef: {name: operator-revision, key: revision}}
+            - {name: HOOVER4_IMAGE_TAGS, value: OPERATOR_IMAGE_TAGS}
             - {name: HOME, value: /tmp/home}
           # A zone install runs up to ten helmfile processes at the same time (../../zones/zone.py OPENDESK_WAVES).
           resources:

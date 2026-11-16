@@ -15,6 +15,17 @@ node=$(python3 ../../settings.py get ingress_node '')
 [ -n "$address" ] && [ -n "$node" ] || { echo "settings.json needs ingress_address and ingress_node" >&2; exit 1; }
 "$helm" repo add haproxy-ingress https://haproxy-ingress.github.io/charts >/dev/null
 "$helm" repo update haproxy-ingress >/dev/null
-"$helm" upgrade --install haproxy-ingress haproxy-ingress/haproxy-ingress --version 0.16.2 --namespace ingress --create-namespace \
-  -f haproxy-ingress-values.yaml --set "controller.service.clusterIP=$address" --set "controller.nodeSelector.kubernetes\.io/hostname=$node" \
-  --wait --timeout 5m
+# The values of the site go into one values file, so helm_release compares every value of the release and upgrades it
+# only on a change.
+values=$(mktemp --suffix=.yaml)
+trap 'rm -f "$values"' EXIT
+python3 - "$address" "$node" > "$values" <<'PY'
+import json, sys, yaml
+data = yaml.safe_load(open('haproxy-ingress-values.yaml')) or {}
+controller = data.setdefault('controller', {})
+controller.setdefault('service', {})['clusterIP'] = sys.argv[1]
+controller.setdefault('nodeSelector', {})['kubernetes.io/hostname'] = sys.argv[2]
+print(json.dumps(data))
+PY
+source ../helm-release.sh
+helm_release "$helm" haproxy-ingress ingress haproxy-ingress/haproxy-ingress 0.16.2 "$values" --wait --timeout 5m

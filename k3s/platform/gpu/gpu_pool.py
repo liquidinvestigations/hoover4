@@ -105,7 +105,7 @@ def service_objects(node, name, service_def, runtime, revision):
     env.setdefault('NVIDIA_VISIBLE_DEVICES', 'all')
     env.setdefault('NVIDIA_DRIVER_CAPABILITIES', 'compute,utility')
     port = container_port(service_def)
-    c = {'name': key, 'image': f'{manifests.REGISTRY}/hoover-{key}:{manifests.image_tag(revision)}', 'imagePullPolicy': 'IfNotPresent',
+    c = {'name': key, 'image': f'{manifests.REGISTRY}/hoover-{key}:{manifests.image_tag(revision, key)}', 'imagePullPolicy': 'IfNotPresent',
          'env': [{'name': k, 'value': str(v)} for k, v in sorted(env.items())]
                 + [{'name': 'HOOVER4_GPU_API_KEY', 'valueFrom': {'secretKeyRef': {'name': 'gpu-pool', 'key': 'pool-key'}}}],
          'ports': [{'name': 'http', 'containerPort': port}],

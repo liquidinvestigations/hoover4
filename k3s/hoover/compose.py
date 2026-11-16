@@ -49,6 +49,41 @@ GPU_IMAGES = {
     'easyocr': ('ai_services/easyocr_server/Dockerfile', 'ai_services/easyocr_server'),
     'vllm': ('ai_services/qwen_flash/Dockerfile', 'ai_services/qwen_flash'),
 }
+# The files outside the context of an image that its build reads: build-hoover.py copies the user manuals into the
+# website context, and the model server image takes its base image from deploy.py.
+EXTRA_INPUTS = {'website': ('docs/user-manual',), 'vllm': ('deploy.py',)}
+
+
+def image_inputs(key):
+    """The paths of the tree that make up the image key: its Containerfile, its context and EXTRA_INPUTS."""
+    dockerfile, context = {**IMAGES, **GPU_IMAGES}[key]
+    return (dockerfile, context, *EXTRA_INPUTS.get(key, ()))
+
+
+def image_tags(revision, tree=TREE):
+    """{image key: tag} of the images of IMAGES and GPU_IMAGES at a commit of the tree.
+
+    The tag is a digest of the Git object ids of the inputs of the image (image_inputs()). A commit that changes no
+    input of an image keeps its tag, so the image is not built again and its pods do not restart.
+    """
+    import hashlib
+    import subprocess
+    keys = sorted({**IMAGES, **GPU_IMAGES})
+    paths = sorted({p for k in keys for p in image_inputs(k)})
+    result = subprocess.run(['git', '--no-optional-locks', '-C', str(tree), 'rev-parse', *[f'{revision}:{p}' for p in paths]],
+                            capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError(f'the commit {revision} of {tree} lacks an image input: {result.stderr.strip()[-300:]}')
+    ids = dict(zip(paths, result.stdout.split()))
+    tags = {}
+    for key in keys:
+        digest = hashlib.sha256(key.encode())
+        for path in image_inputs(key):
+            digest.update(f'\0{path}\0{ids[path]}'.encode())
+        tags[key] = digest.hexdigest()[:16]
+    return tags
+
+
 VARIABLE = re.compile(r'\$(?:\$|\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?])([^}]*))?\}|([A-Za-z_][A-Za-z0-9_]*))')
 
 

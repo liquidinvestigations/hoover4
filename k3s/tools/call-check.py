@@ -42,10 +42,10 @@ def http(method,url,body=None,token=None):
  request=urllib.request.Request(url,method=method,data=json.dumps(body).encode() if body is not None else None,headers=headers)
  with urllib.request.urlopen(request,timeout=60) as r:return json.loads(r.read() or b'{}')
 def livekit_rooms():
- # Each zone key of LiveKit may list the rooms.
- key=secrets[zone]['livekit_secret']
+ # The shared LiveKit key of the zones may list the rooms (../platform/calls/install-calls.py).
+ key=secrets['calls']['livekit_secret']
  def part(v):return base64.urlsafe_b64encode(json.dumps(v,separators=(',',':')).encode()).rstrip(b'=')
- now=int(time.time());head=part({'alg':'HS256','typ':'JWT'})+b'.'+part({'iss':zone,'nbf':now-5,'exp':now+60,'video':{'roomList':True}})
+ now=int(time.time());head=part({'alg':'HS256','typ':'JWT'})+b'.'+part({'iss':'hoover-calls','nbf':now-5,'exp':now+60,'video':{'roomList':True}})
  token=(head+b'.'+base64.urlsafe_b64encode(hmac.new(key.encode(),head,hashlib.sha256).digest()).rstrip(b'=')).decode()
  out=kubectl('-n','calls','exec','deploy/livekit','--','wget','-qO-','--header','Content-Type: application/json',
   '--header',f'Authorization: Bearer {token}','--post-data','{}','http://127.0.0.1:7880/twirp/livekit.RoomService/ListRooms')

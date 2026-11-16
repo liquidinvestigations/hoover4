@@ -38,6 +38,8 @@ def zone_names():
   return []
 ZONES=zone_names()
 NEXTCLOUD_IMAGE_TAG='33.0.9-2'
+# The key name of the one LiveKit key of all zones (load_secrets()).
+LIVEKIT_KEY='hoover-calls'
 XWIKI_EXTENSIONS_TAG='llm-0.11'
 SUFFIX=settings.SUFFIX
 # Pods name the images of the cluster registry with this host name. Each node maps it to the registry endpoint.
@@ -75,14 +77,16 @@ def load_secrets():
  data=json.loads(path.read_text()) if path.exists() else {}
  # The shared JVB uses one XMPP password in every zone Prosody.
  calls=data.setdefault('calls',{})
- for key in ('jvb_password','livekit_turn_secret'):calls.setdefault(key,secrets.token_hex(24))
+ # LiveKit reads its keys only at start, so every zone signs its tokens with the one key LIVEKIT_KEY, and a new zone
+ # does not restart LiveKit (../platform/calls/install-calls.py).
+ for key in ('jvb_password','livekit_turn_secret','livekit_secret'):calls.setdefault(key,secrets.token_hex(24))
  for zone in ZONES:
   z=data.setdefault(zone,{})
   # An installed zone keeps the Administrator password that openDesk derived from its master password.
   if 'master_password' not in z:z['administrator_password']=udm_password()
   z.setdefault('master_password',secrets.token_hex(24))
-  # Each zone has its own TURN secret and LiveKit key, because coturn and LiveKit serve every zone.
-  z.setdefault('turn_secret',secrets.token_hex(24));z.setdefault('livekit_secret',secrets.token_hex(24))
+  # Each zone has its own TURN secret, because coturn serves every zone. livekit_secret of an earlier version stays unused.
+  z.setdefault('turn_secret',secrets.token_hex(24))
   # The Keycloak client of Hoover and its oauth2-proxy share this secret (hoover_oidc).
   z.setdefault('hoover_oidc_secret',secrets.token_hex(24))
   # The Keycloak client of the zone gate and its oauth2-proxy share this secret (gate_oidc). The cookie secret has 32 bytes.
@@ -145,7 +149,7 @@ def zone_values(zone,data,storage_class):
   'images':{'nextcloud':{'registry':REGISTRY,'repository':'hoover/nextcloud-ai','tag':NEXTCLOUD_IMAGE_TAG}},
   # Calls use the shared coturn, LiveKit and JVB in the namespace calls (../platform/calls/install-calls.py).
   'turn':{'transport':'udp','server':{'host':f'turn.{SUFFIX}','port':'3478'},'tls':{'host':'','port':'5349'}},
-  'secrets':{'turn':{'sharedSecret':{'value':z['turn_secret']}},'matrixRTC':{'livekitAuthSecret':{'value':z['livekit_secret']}},
+  'secrets':{'turn':{'sharedSecret':{'value':z['turn_secret']}},'matrixRTC':{'livekitAuthSecret':{'value':data['calls']['livekit_secret']}},
    'jitsi':{'jvbAuthPassword':{'value':data['calls']['jvb_password']}},
    **({'nubus':{'systemAccounts':{'administratorPassword':{'value':z['administrator_password']}}}} if 'administrator_password' in z else {})},
   # Notes and Collabora use the private LLM in private/ai.json. zone-ai.py applies the same values to running zones.
@@ -265,9 +269,9 @@ def main():
   # from the fixed host names id and portal, so the zone gives them in full.
   put(folder/'intercom.yaml',yaml.safe_dump({'ics':{'originRegex':origin_regex(zone),
    'keycloak':{'url':f"https://{settings.zone_host(zone,'id')}"},'portal':{'url':f"https://{settings.zone_host(zone,'portal')}"}}}))
-  # lk-jwt of each zone signs tokens with the zone key for the shared LiveKit. Without its own SFU, the chart does not
+  # lk-jwt of each zone signs tokens with the shared key LIVEKIT_KEY for the shared LiveKit. Without its own SFU, the chart does not
   # set LIVEKIT_URL. lk-jwt polls the SFU for gone participants, because the shared SFU sends no webhooks.
-  put(folder/'calls-matrix.yaml',yaml.safe_dump({'matrixRTC':{'sfu':{'enabled':False},'livekitAuth':{'key':zone},
+  put(folder/'calls-matrix.yaml',yaml.safe_dump({'matrixRTC':{'sfu':{'enabled':False},'livekitAuth':{'key':LIVEKIT_KEY},
    'extraEnv':[{'name':'LIVEKIT_URL','value':f"wss://{settings.zone_host(zone,'sfu')}"},{'name':'LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS','value':'10'},
     # lk-jwt logs each health probe at info, so the level is warn to keep the log writes low.
     {'name':'LIVEKIT_LOG_LEVEL','value':'warn'}],

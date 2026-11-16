@@ -168,11 +168,13 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
     for before, after in (('hosts:verify', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
                           ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator'),
                           ('operator', 'stores'), ('placement', 'stores'), ('stores', 'zone:zone-a'),
-                          ('zone:zone-a', 'calls'), ('zone:zone-a', 'mcp-relay'), ('calls', 'descheduler'),
-                          ('mcp-relay', 'descheduler')):
+                          ('zone:zone-a', 'calls'), ('zone:zone-a', 'mcp-relay')):
         assert steps.index(before) < steps.index(after)
-    # The descheduler runs once, as the last step, so pods move only during a deployment.
-    assert steps[-1] == 'descheduler'
+    # A normal up moves no running pod. Only up --rebalance adds the step that moves pods, as the last step.
+    assert 'rebalance' not in steps and 'descheduler' not in steps
+    ctx.rebalance = True
+    steps = list(deploy.plan(ctx, 'up', ['dev']))
+    assert steps[-1] == 'rebalance'
 
 
 def test_remote_plan_puts_the_control_plane_first_and_gpu_nodes_last(env):
@@ -244,7 +246,7 @@ def test_a_partial_up_is_not_an_applied_deployment(env):
 def test_the_up_steps_wait_only_for_their_prerequisites():
     names = ['hosts:prepare', 'hosts:k3s', 'hosts:verify', 'tools', 'cluster', 'registry', 'images', 'ingress', 'frontend',
              'monitoring', 'operator', 'hoover-data', 'placement', 'stores', 'prepull', 'zone:zone-a', 'zone:zone-b', 'calls',
-             'descheduler']
+             'rebalance']
     needs = deploy.prerequisites(names)
     assert needs['registry'] == names[:5]
     for name in ('images', 'ingress', 'frontend', 'monitoring', 'hoover-data'):
@@ -257,7 +259,7 @@ def test_the_up_steps_wait_only_for_their_prerequisites():
     platform = {'images', 'ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'placement', 'stores'}
     assert set(needs['zone:zone-a']) == set(needs['zone:zone-b']) == set(names[:6]) | platform
     assert set(needs['calls']) == set(names[:6]) | (platform - {'images'}) | {'zone:zone-a', 'zone:zone-b'}
-    assert set(needs['descheduler']) == set(names[:6]) | (platform - {'images'}) | {'zone:zone-a', 'zone:zone-b', 'calls', 'prepull'}
+    assert set(needs['rebalance']) == set(names[:6]) | (platform - {'images'}) | {'zone:zone-a', 'zone:zone-b', 'calls', 'prepull'}
     # A plan that says zones-first lets the zones start before the stores step, which then waits for them.
     turned = deploy.reorder({k: list(v) for k, v in needs.items()}, 'zones-first')
     assert 'stores' not in turned['zone:zone-a'] and {'zone:zone-a', 'zone:zone-b'} <= set(turned['stores'])
@@ -641,10 +643,18 @@ def test_a_zone_step_records_its_scopes_after_the_workloads_are_ready(env, monke
     # The zone is registered before zone.py applies it. The frontend serves every zone host, so no frontend step runs.
     # A zone has no home node, so neither call names one.
     assert 'zone.register' in ran[0][0][2] and ran[0][0][4:] == ['zone-a']
-    assert ran[-1][0][2:] == ['apply', 'zone-a']
+    zone = [r for r in ran if r[0][1].endswith('zones/zone.py')]
+    assert len(zone) == 1 and zone[0][0][2:] == ['apply', 'zone-a']
     assert not any('frontend' in arg for command, _ in ran for arg in command)
     # zone.py and its nested renders get the pinned settings revision.
-    assert ran[-1][0][1].endswith('zones/zone.py') and ran[-1][1]['HOOVER4_SETTINGS_REVISION'] == '1'
+    assert zone[0][1]['HOOVER4_SETTINGS_REVISION'] == '1'
+    # The step keeps the digest of the objects of the sign-in. The same digest in the applied record skips the check.
+    fields = ctx.records.load(record['id'])['steps'][0]
+    assert set(fields['sign_in']) == {'zone-a'} and fields['sign_in_checked'] == ['zone-a']
+    monkeypatch.setattr(deploy, 'applied_fields', lambda ctx, step: {'sign_in': fields['sign_in']})
+    record = ctx.records.new('up', ['dev'], rev, list(steps), complete=False, inputs=deploy.pinned_inputs(ctx))
+    assert deploy.execute(ctx, record, steps) == 0
+    assert checked == ['hoover-zone-a']
 
 
 @pytest.mark.parametrize('phase, logs, passes', [
@@ -986,14 +996,16 @@ def test_a_kubelet_reserve_that_would_refuse_running_pods_is_kept():
     assert kubelet.held('memory=2000Mi,cpu=300m', {'cpu': '200m'}) == 'cpu=200m'
 
 
-def test_a_kept_kubelet_reserve_is_applied_after_the_zones_and_before_the_descheduler(env):
+def test_a_kept_kubelet_reserve_is_applied_after_the_zones_and_before_the_rebalance(env):
     ctx = env.make()
     ctx.kubelet_hold = {'dev': 'cpu=200m'}
+    ctx.rebalance = True
     steps = list(deploy.plan(ctx, 'up', ['dev']))
-    assert steps[-2:] == ['hosts:kubelet', 'descheduler']
+    assert steps[-2:] == ['hosts:kubelet', 'rebalance']
     needs = deploy.prerequisites(steps)
     assert {'zone:zone-a', 'stores', 'placement', 'calls'} <= set(needs['hosts:kubelet'])
-    assert 'hosts:kubelet' in needs['descheduler']
+    assert 'hosts:kubelet' in needs['rebalance']
+    ctx.rebalance = False
     assert list(deploy.select(deploy.plan(ctx, 'up', ['dev']), ['hosts:k3s'])) == ['hosts:k3s', 'hosts:kubelet']
     ctx.kubelet_hold = {}
     assert 'hosts:kubelet' not in deploy.plan(ctx, 'up', ['dev'])

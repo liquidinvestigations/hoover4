@@ -313,10 +313,16 @@ class Target:
 def resolve_revision(tree=site_config.REPO):
     """The commit of the images. ../deploy-k3s resolves it once per deployment and passes it in HOOVER4_REVISION.
     Without the variable it is the commit of the source tree. The images hold this commit, without the local changes
-    of the checkout."""
+    of the checkout. The operator pod has no Git history, so there it is the revision of the applied deployment."""
     if os.environ.get('HOOVER4_REVISION'):
         return os.environ['HOOVER4_REVISION']
-    return subprocess.run(['git', '-C', str(tree), 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
+    found = subprocess.run(['git', '-C', str(tree), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+    if found.returncode == 0:
+        return found.stdout.strip()
+    applied = k3s_settings.PRIVATE / 'operator' / 'deploy' / 'applied.json'
+    if applied.exists():
+        return json.loads(applied.read_text())['revision']
+    raise RenderError(f'{tree} has no Git history and the state has no applied deployment. Set HOOVER4_REVISION.')
 
 
 def find_hoover(site, name):
@@ -792,7 +798,7 @@ def limits(service_def, default='512Mi'):
 def image_of(target, name, service_def):
     key = SERVICES[name].get('image')
     if key:
-        return f'{REGISTRY}/hoover-{key}:{image_tag(target.revision)}'
+        return f'{REGISTRY}/hoover-{key}:{image_tag(target.revision, key)}'
     ref = service_def.get('image')
     if not ref:
         raise RenderError(f'the Compose service {name} has no image and no image key in SERVICES.')
@@ -800,9 +806,35 @@ def image_of(target, name, service_def):
     return ref if '/' in ref and '.' in first else f'docker.io/{ref if "/" in ref else "library/" + ref}'
 
 
-def image_tag(revision):
-    """The image tag of a source commit. ../images/build-hoover.py tags each image with it."""
-    return revision[:12]
+# The revision of a render that names no built image, for example the render of the placement plan (../placement.py),
+# which reads only the requests. Its images have the tag NO_REVISION.
+NO_REVISION = '0' * 40
+
+
+def image_tags(revision):
+    """{image key: tag} of the Hoover images of a source commit (compose.image_tags()).
+
+    deploy-k3s computes the tags once per deployment and gives them in HOOVER4_IMAGE_TAGS, also to the operator pod,
+    which has no Git history. ../images/build-hoover.py tags each image with the same value.
+    """
+    if os.environ.get('HOOVER4_IMAGE_TAGS'):
+        return json.loads(os.environ['HOOVER4_IMAGE_TAGS'])
+    if revision == NO_REVISION:
+        return {}
+    if revision not in _TAGS:
+        try:
+            _TAGS[revision] = compose.image_tags(revision)
+        except ValueError as error:
+            raise RenderError(f'{error}. Give the image tags of the deployment in HOOVER4_IMAGE_TAGS.') from None
+    return _TAGS[revision]
+
+
+_TAGS = {}
+
+
+def image_tag(revision, key):
+    """The tag of the image key for a source commit (image_tags())."""
+    return image_tags(revision).get(key, NO_REVISION[:16])
 
 
 def owner_init(target, store, image, claim_name, mount_path, deploy, mounts_config):
@@ -952,7 +984,7 @@ def translated(target, services, mounts, deploy):
             # The template of a Job cannot change, and a setting such as volume.garage-data changes its environment, so
             # the name holds a hash of the pod spec. A new value starts a new Job, which sets the new layout.
             digest = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:8]
-            items.append({'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': {'name': f'garage-init-{image_tag(target.revision)[:12]}-{digest}', 'namespace': target.ns,
+            items.append({'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': {'name': f'garage-init-{image_tag(target.revision, "garage-init")[:12]}-{digest}', 'namespace': target.ns,
                                                                               'labels': {'app.kubernetes.io/name': 'garage-init', PART: 'garage-init'}},
                           'spec': {'backoffLimit': 6, 'ttlSecondsAfterFinished': 86400,
                                    'template': {'metadata': {'labels': {'app.kubernetes.io/name': 'garage-init', **group_labels(group)}},

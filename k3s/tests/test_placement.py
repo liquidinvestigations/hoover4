@@ -406,18 +406,13 @@ def test_the_opendesk_pods_with_a_claim_or_a_named_node_get_the_priority():
         assert (d['spec']['template']['spec'].get('priorityClassName') == 'hoover-node-bound') == expected
 
 
-def test_the_priority_class_stays_below_topolvm_and_the_descheduler_keeps_its_pods():
+def test_the_priority_class_stays_below_topolvm_and_no_descheduler_remains():
     found = [d for d in yaml.safe_load_all((K3S / 'cluster/priorityclasses.yaml').read_text()) if d]
     assert [d['metadata']['name'] for d in found] == ['hoover-node-bound']
-    assert 0 < found[0]['value'] < 1000000 and found[0]['globalDefault'] is False
+    # globalDefault false is the default of the API server. Named in the file, it makes each apply send a patch.
+    assert 0 < found[0]['value'] < 1000000 and 'globalDefault' not in found[0]
     assert found[0]['preemptionPolicy'] == 'PreemptLowerPriority'
-    policy = next(d for d in yaml.safe_load_all((K3S / 'cluster/descheduler.yaml').read_text())
-                  if d and d['kind'] == 'ConfigMap')
-    profile = yaml.safe_load(policy['data']['policy.yaml'])['profiles'][0]
-    evictor = next(p for p in profile['pluginConfig'] if p['name'] == 'DefaultEvictor')
-    assert evictor['args']['priorityThreshold'] == {'name': 'hoover-node-bound'}
-    # The pass moves only a pod that started away from its planned node (a preferred node affinity).
-    assert profile['plugins'] == {'deschedule': {'enabled': ['RemovePodsViolatingNodeAffinity']}}
-    affinity = next(p for p in profile['pluginConfig'] if p['name'] == 'RemovePodsViolatingNodeAffinity')
-    assert affinity['args']['nodeAffinityType'] == ['preferredDuringSchedulingIgnoredDuringExecution']
-    assert 'kubectl apply -f priorityclasses.yaml' in (K3S / 'cluster/setup.sh').read_text()
+    setup = (K3S / 'cluster/setup.sh').read_text()
+    assert 'kubectl apply -f priorityclasses.yaml' in setup
+    # up --rebalance moves pods (placement.py rebalance()), so setup.sh removes the descheduler of earlier versions.
+    assert not (K3S / 'cluster/descheduler.yaml').exists() and 'kubectl delete clusterrolebinding/descheduler' in setup

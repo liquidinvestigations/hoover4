@@ -163,6 +163,7 @@ class Context:
         self.become_password_file = ''
         # Steps that run at the same time hold it while they write the cluster copy or the operator state.
         self.state_lock = threading.RLock()
+        self._tags = {}
 
     def ask_become_pass(self):
         """Ask once for the sudo password of the nodes and keep it in a private file of this process for Ansible."""
@@ -183,6 +184,9 @@ class Context:
                'PATH': f"{self.private / 'bin'}:{os.environ.get('PATH', '')}", 'HOOVER4_CLUSTER_STATE': '1'}
         if self.revision:
             env['HOOVER4_REVISION'] = self.revision
+            tags = self.image_tags(required=False)
+            if tags:
+                env['HOOVER4_IMAGE_TAGS'] = json.dumps(tags, sort_keys=True)
         if self.settings_revision is not None:
             env['HOOVER4_SETTINGS_REVISION'] = str(self.settings_revision)
         return env
@@ -197,6 +201,21 @@ class Context:
         except ValueError as error:
             raise StepFailed(f'the zone state {path} is unreadable: {error}') from None
         return config.hoovers(self.site, data)
+
+    def image_tags(self, required=True):
+        """{image key: tag} of the Hoover images of the revision: the tags that the record keeps, else the tags of the
+        commit (../hoover/compose.py image_tags()). Without required, a commit without the image inputs gives {}, and
+        the steps that name an image fail later with the reason."""
+        if self.record and self.record.get('image_tags') and self.record.get('revision') == self.revision:
+            return self.record['image_tags']
+        if self.revision not in self._tags:
+            try:
+                self._tags[self.revision] = source_image_tags(self.repo, self.revision)
+            except StepFailed:
+                if required:
+                    raise
+                return {}
+        return self._tags[self.revision]
 
     def operator_state(self):
         """The operator settings State of the site, or None before the first save."""
@@ -384,7 +403,33 @@ def step_k3s(ctx):
         ctx.records.save(ctx.record)
     hold = ctx.record.get('kubelet_hold') or {}
     Ansible(ctx).run('hoover4-k3s.yml', ctx.record['targets'], reserved=hold)
-    return {'kubeconfig': str(ctx.kubeconfig), **({'kubelet_held': sorted(hold)} if hold else {})}
+    rejected = delete_rejected_pods(ctx)
+    return {'kubeconfig': str(ctx.kubeconfig), **({'kubelet_held': sorted(hold)} if hold else {}),
+            **({'rejected_pods_deleted': rejected} if rejected else {})}
+
+
+# The reasons of a pod that the kubelet refused at its admission, for example after a restart with a smaller
+# allocatable. The controller of such a pod starts a new pod, and the refused pod stays in the phase Failed.
+REJECTED = ('OutOfmemory', 'OutOfcpu', 'OutOfpods', 'OutOfephemeral-storage', 'UnexpectedAdmissionError')
+
+
+def delete_rejected_pods(ctx):
+    """Delete the pods that a kubelet refused at admission and that a ReplicaSet or StatefulSet replaced. Return their
+    names. Without this they stay in the phase Failed until the garbage collection threshold of the cluster."""
+    if not ctx.kubeconfig.exists():
+        return []
+    code, text = read(['kubectl', '--kubeconfig', ctx.kubeconfig, 'get', 'pods', '-A', '--field-selector',
+                       'status.phase=Failed', '-o', 'json'])
+    if code:
+        return []
+    names = []
+    for pod in json.loads(text or '{"items": []}')['items']:
+        owners = {r.get('kind') for r in pod['metadata'].get('ownerReferences') or []}
+        if (pod.get('status') or {}).get('reason') in REJECTED and owners & {'ReplicaSet', 'StatefulSet'}:
+            ctx.kubectl('-n', pod['metadata']['namespace'], 'delete', 'pod', pod['metadata']['name'], '--ignore-not-found',
+                        '--wait=false')
+            names.append(f"{pod['metadata']['namespace']}/{pod['metadata']['name']}")
+    return names
 
 
 def kubelet_rows(ctx, names=None):
@@ -436,7 +481,8 @@ def step_kubelet(ctx):
         time.sleep(5)
     else:
         raise StepFailed('; '.join(f'node {n}: {", ".join(p)}' for n, p in found.items() if p) + '.')
-    return {'nodes': sorted(hold), 'allocatable': {n: rows[n]['allocatable'] for n in hold}}
+    return {'nodes': sorted(hold), 'allocatable': {n: rows[n]['allocatable'] for n in hold},
+            'rejected_pods_deleted': delete_rejected_pods(ctx)}
 
 
 def node_problems(ctx, name, k3s_args=None):
@@ -647,18 +693,27 @@ def step_script(*argv):
     return run
 
 
+def source_image_tags(repo, revision):
+    """{image key: tag} of the Hoover images of a commit (../hoover/compose.py image_tags())."""
+    sys.path.insert(0, str(SOURCE / 'hoover'))
+    import compose
+    try:
+        return compose.image_tags(revision, repo)
+    except ValueError as error:
+        raise StepFailed(str(error)) from None
+
+
 def image_names(ctx):
-    return revision_image_names(ctx.revision)
+    return zone_image_names(ctx.image_tags())
 
 
-def revision_image_names(revision):
-    """The images of the zones for a revision: the Hoover images and the images of ../images/."""
+def zone_image_names(tags):
+    """The images of the zones: the Hoover images with their tags ({image key: tag}) and the images of ../images/."""
     sys.path.insert(0, str(SOURCE / 'hoover'))
     sys.path.insert(0, str(SOURCE / 'zones'))
     import compose
     import zones
-    tag = revision[:12]
-    return ([f'hoover/hoover-{n}:{tag}' for n in compose.IMAGES] +
+    return ([f'hoover/hoover-{n}:{tags[n]}' for n in compose.IMAGES] +
             [f'hoover/nextcloud-ai:{zones.NEXTCLOUD_IMAGE_TAG}', f'hoover/xwiki-extensions:{zones.XWIKI_EXTENSIONS_TAG}',
              'hoover/blockmount:8'])
 
@@ -739,14 +794,16 @@ OPERATOR_TREE = ('k3s', 'deploy.py', 'hoover4.ini.release', 'main_services/proce
                  'main_services/processing/tasks/signal_calibration.json', 'website/backend/src/temporal_ready.rs',
                  'main_services/ops/docker', 'ai_services/compose', 'ai_services/docker-compose.yaml')
 OPERATOR_EXCLUDED = ('k3s/private/', 'k3s/tests/')
+# No part of the operator pod reads the Markdown files, so a change of the documentation keeps the image tag.
+OPERATOR_EXCLUDED_SUFFIXES = ('.md',)
 
 
 def operator_tree(repo=REPO):
     """The files of the checkout that the operator image holds: tracked and new files, with their local changes."""
     out = subprocess.run(['git', '--no-optional-locks', '-C', str(repo), 'ls-files', '-co', '--exclude-standard', '-z',
                           '--', *OPERATOR_TREE], capture_output=True, check=True).stdout.decode().split('\0')
-    return sorted(f for f in out if f and not f.startswith(OPERATOR_EXCLUDED) and '__pycache__' not in f
-                  and (Path(repo) / f).is_file())
+    return sorted(f for f in out if f and not f.startswith(OPERATOR_EXCLUDED) and not f.endswith(OPERATOR_EXCLUDED_SUFFIXES)
+                  and '__pycache__' not in f and (Path(repo) / f).is_file())
 
 
 def operator_image_tag(ctx, base, files):
@@ -818,7 +875,8 @@ def step_operator_image(ctx):
 def gpu_image_names(ctx):
     sys.path.insert(0, str(SOURCE / 'hoover'))
     import compose
-    return [f'hoover/hoover-{n}:{ctx.revision[:12]}' for n in compose.GPU_IMAGES]
+    tags = ctx.image_tags()
+    return [f'hoover/hoover-{n}:{tags[n]}' for n in compose.GPU_IMAGES]
 
 
 def node_architecture(ctx, name):
@@ -983,6 +1041,31 @@ def check_sign_in(ctx, hoover, timeout=300):
         raise StepFailed(f'the sign-in check of {ns} ended in phase {phase or "unknown"}: {(logs or events)[-500:]}')
 
 
+def applied_fields(ctx, step):
+    """The result fields of a step in the applied record (the last complete up), or {}."""
+    applied = ctx.records.applied() or {}
+    return next((dict(s) for s in applied.get('steps') or [] if s.get('name') == step and s.get('state') == 'done'), {})
+
+
+def sign_in_inputs(ctx, hoover):
+    """A digest of the objects that the sign-in of the proxy depends on: the generations of the workloads and the
+    versions of the NetworkPolicies, Services, Secrets and ConfigMaps of the zone and its Hoover namespace, and the
+    CoreDNS configuration. The same digest as in the last check means that nothing that the check covers changed."""
+    import hashlib
+    parts = []
+    for ns in (hoover.zone, hoover.namespace):
+        found = json.loads(ctx.kubectl('-n', ns, 'get', 'deployments,statefulsets,networkpolicies,services,secrets,'
+                                       'configmaps,ingresses', '-o', 'json', check=False) or '{"items": []}')
+        for item in found['items']:
+            meta = item['metadata']
+            value = meta.get('generation') if item['kind'] in ('Deployment', 'StatefulSet') else meta.get('resourceVersion')
+            parts.append(f"{ns}/{item['kind']}/{meta['name']}/{meta.get('uid')}/{value}")
+    dns = ctx.kubectl('-n', 'kube-system', 'get', 'configmap', 'coredns', '-o', 'jsonpath={.metadata.resourceVersion}',
+                      check=False).strip()
+    parts.append(f'coredns/{dns}')
+    return hashlib.sha256('\n'.join(sorted(parts)).encode()).hexdigest()[:16]
+
+
 def step_zone(zone):
     def run(ctx):
         # As the runner does for create-zone: the zone state gets the zone first. The frontend serves every zone host
@@ -993,10 +1076,17 @@ def step_zone(zone):
         hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)
+        # The check pod runs again only when an object that the sign-in depends on changed since the last complete
+        # up, so a second up starts no pod.
+        checked = applied_fields(ctx, f'zone:{zone}').get('sign_in') or {}
+        sign_in = {}
         for hoover in hoovers:
-            check_sign_in(ctx, hoover)
+            sign_in[hoover.name] = sign_in_inputs(ctx, hoover)
+            if checked.get(hoover.name) != sign_in[hoover.name]:
+                check_sign_in(ctx, hoover)
         scopes = record_settings(ctx, [f'zone:{zone}'] + [f'hoover:{h.name}' for h in hoovers])
-        return {'settings_revision': ctx.settings_revision, 'scopes': scopes}
+        return {'settings_revision': ctx.settings_revision, 'scopes': scopes, 'sign_in': sign_in,
+                'sign_in_checked': sorted(h for h in sign_in if checked.get(h) != sign_in[h])}
     return run
 
 
@@ -1019,7 +1109,8 @@ def step_operator(ctx):
     ctx.run([sys.executable, SOURCE / 'platform/calls/install-calls.py', '--probe'])
     ctx.run(['bash', SOURCE / 'platform/operator/install-runner.sh'])
     ctx.run(['bash', SOURCE / 'platform/operator/start-web-tools.sh'],
-            env={'OPERATOR_IMAGE': image, 'OPERATOR_REVISION': ctx.revision})
+            env={'OPERATOR_IMAGE': image, 'OPERATOR_REVISION': ctx.revision,
+                 'OPERATOR_IMAGE_TAGS': json.dumps(ctx.image_tags(required=False), sort_keys=True)})
     return {'operator_image': image}
 
 
@@ -1067,9 +1158,10 @@ def cluster_steps(ctx):
         steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', relayed.name, 'apply')
     # The call services join the Jitsi of every zone, so they follow the zones.
     steps['calls'] = step_calls
-    # The descheduler runs once, after every step that starts pods, so pods move only during a deployment
-    # (../cluster/deschedule.py).
-    steps['descheduler'] = step_script(sys.executable, '@cluster/deschedule.py')
+    # A normal up moves no running pod. up --rebalance moves the running pods to the nodes of a new plan, one at a
+    # time, after every step that starts pods (../placement.py rebalance()).
+    if getattr(ctx, 'rebalance', False):
+        steps['rebalance'] = step_rebalance
     return steps
 
 
@@ -1093,11 +1185,40 @@ def step_placement(ctx):
             'resized_pods': applied.get('resized_pods'), 'problems': answer.get('problems') or []}
 
 
+def step_rebalance(ctx):
+    """Move the running pods of the site to the nodes of a plan that may move them, one at a time, and stop at the first
+    failure (../placement.py plan --write --apply --rebalance). Only up --rebalance runs it."""
+    code, out = ctx.run([sys.executable, SOURCE / 'placement.py', 'plan', '--write', '--apply', '--rebalance'],
+                        capture=True, check=False)
+    try:
+        answer = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise StepFailed(f'the rebalance failed with code {code}: {out.strip()[-400:]}') from None
+    plan, moved = answer.get('placement') or {}, answer.get('rebalance') or {}
+    if not plan:
+        raise StepFailed('; '.join(answer.get('problems') or ['the rebalance plan is empty']))
+    if (answer.get('applied') or {}).get('resize_failures'):
+        raise StepFailed('the in-place resize of these pods failed: ' + '; '.join(answer['applied']['resize_failures'][:5]))
+    if moved.get('error'):
+        raise StepFailed(f'{moved["error"]}. {len(moved.get("moved") or [])} pods moved before. Every other pod '
+                         'stays on its node. Fix the cause, then run deploy-k3s up --rebalance --steps rebalance.')
+    return {'factor': plan['factor'], 'moved': moved.get('moved') or [], 'planned_moves': len(plan.get('moves') or [])}
+
+
 def step_prepull(ctx):
-    """Pull the Hoover images of the revision and the images of the zone pods on every eligible node."""
+    """Pull the Hoover images of the revision and the images of the zone pods on every eligible node.
+
+    The images of the zone pods follow from the openDesk release. When the Hoover images, the openDesk release and the
+    nodes are those of the last complete up, the nodes have the images already, so the step starts no pull pod."""
+    import hashlib
     names = [f'registry.hoover.internal/{n}' for n in image_names(ctx)]
+    release = sorted(p.name for p in (ctx.private / 'downloads').glob('opendesk-*'))
+    nodes = sorted(n.name for n in ctx.site.nodes.values() if not n.has('gpu'))
+    digest = hashlib.sha256(json.dumps([names, release, nodes]).encode()).hexdigest()[:16]
+    if applied_fields(ctx, 'prepull').get('digest') == digest:
+        return {'digest': digest, 'pulled': False}
     code, out = ctx.run([sys.executable, SOURCE / 'images/prepull.py', *names], capture=True)
-    return json.loads(out.strip().splitlines()[-1])
+    return {**json.loads(out.strip().splitlines()[-1]), 'digest': digest, 'pulled': True}
 
 
 def step_calls(ctx):
@@ -1258,11 +1379,11 @@ def plan(ctx, command, targets, start=False):
         if control:
             steps.update(cluster_steps(ctx))
         if getattr(ctx, 'kubelet_hold', None):
-            # The kept kubelet reserve follows every step that lowers requests, and the descheduler follows it.
-            last = steps.pop('descheduler', None)
+            # The kept kubelet reserve follows every step that lowers requests, and the rebalance follows it.
+            last = steps.pop('rebalance', None)
             steps['hosts:kubelet'] = step_kubelet
             if last:
-                steps['descheduler'] = last
+                steps['rebalance'] = last
         return steps
     if command == 'down':
         if control:
@@ -1309,7 +1430,7 @@ def independent(step, other):
 # The images of the revision come before every step that starts them, and the operator pod reads the monitoring
 # Services. A zone needs every platform step except prepull, which pulls the zone images on the nodes while the zones
 # apply. The call services join the Jitsi of every zone, and the relay serves a zone, so both follow the zones.
-# The descheduler moves pods after every step that starts them.
+# The rebalance of up --rebalance moves pods after every step that starts them.
 # The plan of the step placement can say zones-first: then the stores step waits for the zone steps, and the zone steps
 # do not wait for it (reorder()).
 # A step that this table does not name, for example a host step or a step of down, waits for every earlier step that
@@ -1332,7 +1453,7 @@ PREREQUISITES = {
     'zone:': ('registry', 'images') + PLATFORM,
     'mcp-relay': ('zone:',) + PLATFORM,
     'calls': ('zone:',) + PLATFORM,
-    'descheduler': ('zone:', 'mcp-relay', 'calls', 'prepull') + PLATFORM,
+    'rebalance': ('zone:', 'mcp-relay', 'calls', 'prepull', 'hosts:kubelet') + PLATFORM,
 }
 # The steps before the registry form a chain: each one waits for every earlier step.
 CHAIN = ('hosts:', 'tools', 'cluster', 'registry')

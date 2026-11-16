@@ -464,12 +464,14 @@ def test_a_database_dump_without_its_trailer_is_written_again_and_then_refused(t
 
 
 def fake_kubectl(tmp_path, monkeypatch, status):
-    """A kubectl on PATH that saves its arguments and its input and ends with status."""
+    """A kubectl on PATH that saves its arguments and its input and ends with status. The input stays open
+    (../podexec.py), so the fake reads the byte count that follows the wrapper name podexec, as the wrapper does."""
     import os
     bin_dir = tmp_path / 'bin'
     bin_dir.mkdir()
     script = bin_dir / 'kubectl'
-    script.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {tmp_path}/argv\ncat > {tmp_path}/input\n'
+    script.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {tmp_path}/argv\n'
+                      'size=$(sed -n "/^podexec$/{n;p;}" ' f'{tmp_path}/argv)\nhead -c "$size" > {tmp_path}/input\n'
                       f'echo "psql:<stdin>:3: ERROR:  example failure" >&2\nexit {status}\n')
     script.chmod(0o755)
     monkeypatch.setenv('PATH', f'{bin_dir}{os.pathsep}{os.environ["PATH"]}')

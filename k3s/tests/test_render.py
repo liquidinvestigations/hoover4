@@ -13,6 +13,7 @@ import config
 import manifests
 
 REVISION = '0123456789abcdef0123456789abcdef01234567'
+
 NFS = {'server-a': '10.43.0.10', 'worker-b': '10.43.0.11'}
 # The Compose development values of the store credentials and the shared secrets. No render may hold them.
 COMPOSE_SECRETS = ('hoover4-garage-blob-secret-key-0', 'cbc5a1dbd1c832a3bdcb0abff4e5ffc950035febf867de39e9b079cec8863e1d',
@@ -312,7 +313,8 @@ def test_second_render_is_equal(tmp_path):
     second = manifests.render(target('single-node.yml', 'zone-a', tmp_path))
     assert first == second
     images = sorted(set(re.findall(r'"image": "([^"]+)"', first)))
-    assert all(':0123456789ab' in i for i in images if i.startswith(manifests.REGISTRY))
+    # The tags come from HOOVER4_IMAGE_TAGS (the fixture image_tags of conftest.py), as deploy-k3s gives them.
+    assert all(re.search(r':tag-[a-z-]+$', i) for i in images if i.startswith(manifests.REGISTRY))
 
 
 # The remote topology ------------------------------------------------------------------------------------------------

@@ -23,6 +23,8 @@ spec:
         apiVersions: ["v1"]
         operations: ["CREATE"]
         resources: ["pods"]
+        # The API server adds this default. Without it a second apply sends a patch that changes nothing.
+        scope: "*"
   matchConditions:
     - name: site-namespace
       expression: request.namespace == 'hoover-stores' || request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')

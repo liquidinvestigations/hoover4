@@ -8,12 +8,15 @@
   changed_when: false
   check_mode: false
 
+# The check saves and removes an etcd snapshot, and k3s keeps a record object of each snapshot, so it runs only after
+# this play installed or restarted k3s. A second run without a change creates no object.
 - name: Verify etcd
   ansible.builtin.script:
     cmd: k3s-datastore.py verify-etcd
     executable: python3
   changed_when: false
   check_mode: false
+  when: hoover4_k3s_install | bool
 
 - name: Read the admin kubeconfig
   ansible.builtin.slurp:

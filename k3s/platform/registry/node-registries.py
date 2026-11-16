@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Write /etc/rancher/k3s/registries.yaml on each node and restart k3s on a node whose file changed.
 
+The host play of deploy-k3s up writes the same file, so up does not run this tool. Run it by hand for a node that
+the host play does not manage.
+
 The file makes containerd pull registry.hoover.internal/<name:tag> from registry_endpoint of settings.json over HTTP.
 A privileged pod with the host PID namespace does the change on each node, because the operator user has no root
 login on every host. The pod compares the file first, so a second run changes and restarts nothing.

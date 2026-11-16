@@ -252,14 +252,16 @@ def network():
     clickhouse_pod = {'matchLabels': {'hoover.dev/store': 'clickhouse'}}
     return [
         # Every pod takes only the connections that a later policy admits, and reaches only DNS and the namespace.
+        # The policy type Ingress without ingress rules admits no connection. An empty list here would make each
+        # apply write the object again, because the API server stores no empty list.
         # ClickHouse has a policy of its own.
         policy('closed', {'podSelector': {'matchExpressions': [{'key': 'hoover.dev/store', 'operator': 'NotIn', 'values': ['clickhouse']}]},
-                          'policyTypes': ['Ingress', 'Egress'], 'ingress': [],
+                          'policyTypes': ['Ingress', 'Egress'],
                           'egress': [dns, {'to': [{'podSelector': {}}]}]}),
         # ClickHouse reaches DNS and the S3 port of Garage only. A zone user names the S3 address of a BACKUP or a
         # RESTORE, and ClickHouse 25.8 has no setting that limits that address (remote_url_allow_hosts does not apply
         # to BACKUP). Garage refuses each bucket of another zone to the zone key.
-        policy('clickhouse-closed', {'podSelector': clickhouse_pod, 'policyTypes': ['Ingress', 'Egress'], 'ingress': [],
+        policy('clickhouse-closed', {'podSelector': clickhouse_pod, 'policyTypes': ['Ingress', 'Egress'],
                                      'egress': [dns, {'to': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
                                                       'ports': [{'port': 3900}]}]}),
         policy('clickhouse-clients', {'podSelector': clickhouse_pod, 'policyTypes': ['Ingress'],

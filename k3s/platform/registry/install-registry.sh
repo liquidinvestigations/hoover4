@@ -19,7 +19,8 @@ password_file=$private/registry-push-password
 password=$(cat "$password_file")
 # A salt from the password keeps the htpasswd line the same at each run, so a second run changes nothing.
 salt=$(printf '%s' "$password" | sha256sum | cut -c1-8)
-kubectl create namespace registry --dry-run=client -o yaml | kubectl apply -f -
+# The namespace is created only when it is missing, so a second run changes no object.
+kubectl get namespace registry >/dev/null 2>&1 || kubectl create namespace registry
 printf 'push:%s\n' "$(printf '%s' "$password" | openssl passwd -apr1 -salt "$salt" -stdin)" |
   kubectl -n registry create secret generic registry-push --from-file=htpasswd=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -
 (umask 077; printf '{"auths": {"%s": {"auth": "%s"}}}\n' "$endpoint" "$(printf 'push:%s' "$password" | base64 -w0)" > "$private/registry-auth.json")
@@ -34,4 +35,5 @@ class_rule=''
 sed -e "s/NODE/$node/; s/HOST_IP/${endpoint%:*}/; s/CONFIG_HASH/$hash/" -e "$class_rule" registry.yaml |
   kubectl apply --server-side --force-conflicts --field-manager=hoover4-registry -f -
 kubectl -n registry rollout status deployment/registry --timeout=300s
-python3 node-registries.py
+# The host play (hosts:k3s of deploy-k3s up) writes /etc/rancher/k3s/registries.yaml on each node before this step, so
+# this step starts no pod on the nodes. node-registries.py writes the file on a node that the host play does not manage.

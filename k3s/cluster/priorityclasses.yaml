@@ -5,13 +5,12 @@
 # When the node of such a pod is full, the scheduler preempts pods of the default priority (0) on that node. A preempted
 # pod of a Deployment returns as a new pod, and the scheduler places it on another node. A pod of the default priority
 # never preempts another pod, and two pods of this class do not preempt each other, so preemption cannot repeat.
-# The descheduler (descheduler.yaml) evicts no pod of this class. The value stays below the PriorityClass of TopoLVM
-# (1000000), so the volume pods of a node keep their place.
+# The value stays below the PriorityClass of TopoLVM (1000000), so the volume pods of a node keep their place.
+# The file names only the fields that differ from the defaults of the API server, so a second apply sends no patch.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: hoover-node-bound
 value: 10000
-globalDefault: false
 preemptionPolicy: PreemptLowerPriority
 description: A pod that can run on one node only. It preempts a pod of the default priority on that node.

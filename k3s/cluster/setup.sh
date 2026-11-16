@@ -1,6 +1,6 @@
 #!/bin/bash
 # Set up the cluster on the k3s nodes: node labels, RuntimeClasses, the PriorityClass, the admission policy of the site
-# placement, cert-manager, TopoLVM and the policy of the descheduler.
+# placement, cert-manager and TopoLVM.
 # Run it on a host with kubectl, helm, python3 and the admin kubeconfig. A second run changes nothing.
 # KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 # The site file (settings.py) gives the storage tiers of each node. The facts of each node in facts/<node>.json of the
@@ -96,14 +96,16 @@ repo_url() {
 helm_install cert-manager cert-manager jetstack/cert-manager "$CERT_MANAGER_VERSION" cert-manager-values.yaml
 
 # The TopoLVM webhook ignores these namespaces, as the TopoLVM install guide says.
-kubectl create namespace topolvm-system --dry-run=client -o yaml | kubectl apply -f -
+# The namespace is created only when it is missing, so a second run changes no object.
+kubectl get namespace topolvm-system >/dev/null 2>&1 || kubectl create namespace topolvm-system
 kubectl label namespace kube-system topolvm-system topolvm.io/webhook=ignore --overwrite
 helm_install topolvm topolvm-system topolvm/topolvm "$TOPOLVM_CHART_VERSION" "$values"
 
-# The account, the rights and the policy of the descheduler (descheduler.yaml). The last step of deploy-k3s up runs
-# it once (deschedule.py). The Deployment of an earlier version ran it every 10 minutes, so this step deletes it.
-kubectl apply -f descheduler.yaml
-kubectl -n kube-system delete deployment descheduler --ignore-not-found
+# An earlier version moved pods with a descheduler. deploy-k3s up --rebalance moves them now (../placement.py), so
+# this step deletes the objects of the descheduler.
+kubectl -n kube-system delete deployment,job,serviceaccount,configmap -l app.kubernetes.io/name=descheduler --ignore-not-found
+kubectl -n kube-system delete serviceaccount/descheduler configmap/descheduler-policy deployment/descheduler --ignore-not-found
+kubectl delete clusterrolebinding/descheduler clusterrole/descheduler --ignore-not-found
 
 kubectl get nodes -L storage.hoover/enrolled,storage.hoover/lvmd,cpu.hoover/avx2,gpu.hoover/count,gpu.hoover/memory-mib
 kubectl get runtimeclass,storageclass

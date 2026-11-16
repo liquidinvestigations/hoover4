@@ -265,22 +265,15 @@ def client():
 
 def run(name, key, *args, data=None, out=None):
     """Run one command of SCRIPT in the container s3 of the Garage pod name with key. data is a path or bytes for the standard input after
-    the key line. out is a path for the standard output. Return (standard output text when out is None, report lines)."""
+    the key line. out is a path for the standard output. Return (standard output text when out is None, report lines).
+
+    The standard input stays open until the command ends (../../podexec.py), because the output of a Kata container
+    stops after 32 KiB once kubectl closes it."""
+    import podexec
     first = json.dumps({'endpoint': ENDPOINT, **{k: key[k] for k in ('access_key', 'secret_key')}}).encode() + b'\n'
     with tempfile.TemporaryFile() as errors, (open(out, 'wb') if out else tempfile.TemporaryFile()) as output:
-        process = subprocess.Popen(K + ['-n', NS, 'exec', '-i', name, '-c', CONTAINER, '--', 'python3', '-I', '-c', SCRIPT, *args],
-                                   stdin=subprocess.PIPE, stdout=output, stderr=errors)
-        try:
-            process.stdin.write(first)
-            if isinstance(data, (bytes, bytearray)):
-                process.stdin.write(data)
-            elif data is not None:
-                with open(data, 'rb') as source:
-                    shutil.copyfileobj(source, process.stdin, 1 << 20)
-            process.stdin.close()
-        except BrokenPipeError:
-            pass
-        code = process.wait()
+        code = podexec.run(K + ['-n', NS, 'exec', '-i', name, '-c', CONTAINER], ['python3', '-I', '-c', SCRIPT, *args],
+                           [first] + ([] if data is None else [data]), stdout=output, stderr=errors)
         errors.seek(0)
         text = errors.read().decode(errors='replace')
         if code:
