@@ -53,7 +53,7 @@ def livekit_rooms():
 def jitsi_stats():
  pod=json.loads(kubectl('-n',zone,'get','pods','-l','app.kubernetes.io/component=jicofo','-o','json'))['items'][0]['metadata']['name']
  jicofo=json.loads(kubectl('-n',zone,'exec',pod,'--','curl','-s','http://127.0.0.1:8888/stats'))
- jvb=json.loads(kubectl('-n','calls','exec','deploy/jvb','--','curl','-s','http://127.0.0.1:8080/colibri/stats'))
+ jvb=json.loads(kubectl('-n','calls','exec','deploy/jvb','-c','jitsi','--','curl','-s','http://127.0.0.1:8080/colibri/stats'))
  return {'jicofo_conferences':jicofo.get('conferences'),'jicofo_participants':jicofo.get('participants'),
   'jicofo_bridges':(jicofo.get('bridge_selector') or {}).get('operational_bridge_count'),
   'jvb_conferences':jvb.get('conferences'),'jvb_participants':jvb.get('participants')}
