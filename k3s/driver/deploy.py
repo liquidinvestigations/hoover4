@@ -987,6 +987,9 @@ def cluster_steps(ctx):
     if ctx.site.single:
         # The Hoover pods of a single-node site share one node, so their dataset folders are claims and need no NFS.
         del steps['hoover-data']
+    # The placement of every pod of the site (../placement.py): the CPU scale factor and the planned nodes, written
+    # into the ConfigMap of the admission policy, and the running pods resized to the factor in place.
+    steps['placement'] = step_placement
     # The shared ClickHouse and Garage of the site (../hoover/stores/shared.py). Each zone of the store layout site
     # adds its tenant to them.
     steps['stores'] = step_script(sys.executable, '@hoover/stores/shared.py', 'apply')
@@ -1007,6 +1010,26 @@ def cluster_steps(ctx):
     # (../cluster/deschedule.py).
     steps['descheduler'] = step_script(sys.executable, '@cluster/deschedule.py')
     return steps
+
+
+def step_placement(ctx):
+    """Compute the site placement, keep it in the state folder and apply it (../placement.py plan --write --apply).
+
+    The result names the factor and the order of the stores and zone steps. A plan that does not fit, or a pod that
+    refuses its resize, fails the step.
+    """
+    code, out = ctx.run([sys.executable, SOURCE / 'placement.py', 'plan', '--write', '--apply'], capture=True, check=False)
+    try:
+        answer = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise StepFailed(f'the placement plan failed with code {code}: {out.strip()[-400:]}') from None
+    plan, applied = answer.get('placement') or {}, answer.get('applied') or {}
+    if not plan:
+        raise StepFailed('; '.join(answer.get('problems') or ['the placement plan is empty']))
+    if applied.get('resize_failures'):
+        raise StepFailed('the in-place resize of these pods failed: ' + '; '.join(applied['resize_failures'][:5]))
+    return {'factor': plan['factor'], 'order': plan['order'], 'plan_changed': answer.get('plan_changed'),
+            'resized_pods': applied.get('resized_pods'), 'problems': answer.get('problems') or []}
 
 
 def step_prepull(ctx):
@@ -1216,9 +1239,12 @@ def independent(step, other):
 # Services. A zone needs every platform step except prepull, which pulls the zone images on the nodes while the zones
 # apply. The call services join the Jitsi of every zone, and the relay serves a zone, so both follow the zones.
 # The descheduler moves pods after every step that starts them.
+# The plan of the step placement can say zones-first: then the stores step waits for the zone steps, and the zone steps
+# do not wait for it (reorder()).
 # A step that this table does not name, for example a host step or a step of down, waits for every earlier step that
 # is not independent() of it.
-PLATFORM = ('ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'stores', 'gpu-images', 'gpu-pool', 'gpu-proxy')
+PLATFORM = ('ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'placement', 'stores', 'gpu-images', 'gpu-pool',
+            'gpu-proxy')
 PREREQUISITES = {
     'images': ('registry',),
     'gpu-images': ('registry',),
@@ -1227,7 +1253,8 @@ PREREQUISITES = {
     'monitoring': ('registry',),
     'hoover-data': ('registry',),
     'operator': ('images', 'monitoring'),
-    'stores': ('images',),
+    'placement': (),
+    'stores': ('images', 'placement'),
     'prepull': ('images',),
     'gpu-pool': ('gpu-images', 'images'),
     'gpu-proxy': ('gpu-pool', 'images'),
@@ -1254,6 +1281,18 @@ def prerequisites(names):
         wanted += [e for e in earlier if e.startswith(CHAIN) and e not in wanted]
         out[name] = wanted
     return out
+
+
+def reorder(needs, order):
+    """Change the prerequisites for the order of the placement plan. With zones-first the stores step waits for the
+    zone steps, and the zone steps and the steps after them do not wait for the stores step."""
+    if order != 'zones-first' or 'stores' not in needs:
+        return needs
+    zones = [n for n in needs if n.startswith('zone:')]
+    for name in zones:
+        needs[name] = [w for w in needs[name] if w != 'stores']
+    needs['stores'] = list(dict.fromkeys(needs['stores'] + zones))
+    return needs
 
 
 def execute(ctx, record, steps):
@@ -1327,8 +1366,11 @@ def execute(ctx, record, steps):
                 error = future.exception()
                 if error is None:
                     record['steps'][names.index(name)].pop('blocked_by', None)
-                    ctx.records.mark(record, name, 'done', **future.result())
+                    fields = future.result()
+                    ctx.records.mark(record, name, 'done', **fields)
                     done.add(name)
+                    if name == 'placement':
+                        needs = reorder(needs, fields.get('order'))
                 elif isinstance(error, KeyboardInterrupt):
                     raise KeyboardInterrupt
                 elif isinstance(error, StepWaiting):
@@ -1506,13 +1548,14 @@ def check(ctx, targets):
             except (ValueError, KeyError):
                 before = None
             problems += config.store_change_problems(before, config.store_plan(ctx.site))
-            # The placement plan of the store pods and the fit of vars.replicas (../hoover/stores/placement.py). The
-            # last line of the command is its JSON answer.
-            code, text = ctx.run([sys.executable, SOURCE / 'hoover/stores/shared.py', 'plan'], capture=True, check=False)
+            # The placement plan of every pod of the site, with its CPU scale factor (../placement.py). The last line
+            # of the command is its JSON answer. check changes nothing on the cluster.
+            code, text = ctx.run([sys.executable, SOURCE / 'placement.py', 'plan'], capture=True, check=False)
             try:
                 answer = json.loads(text.strip().splitlines()[-1])
-                state['store_placement'] = answer['placement']
+                state['placement'] = answer['placement']
+                state['placement_kept_factor'] = answer.get('kept_factor')
                 problems += answer['problems']
             except (ValueError, IndexError, KeyError):
-                problems.append(f'the placement plan of the stores failed with code {code}: {text.strip()[-400:]}')
+                problems.append(f'the placement plan failed with code {code}: {text.strip()[-400:]}')
     return problems, state

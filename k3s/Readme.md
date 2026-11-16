@@ -189,11 +189,14 @@ python3 k3s/zones/zone.py delete zone-x
 
 - A zone has no home node. The k3s scheduler configuration of the server
   ([ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2](ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2))
-  scores the nodes with two plugins of weight 10. `NodeResourcesFit` `LeastAllocated` prefers the node with the lowest
-  requested share of its allocatable CPU and memory (weight 1 each). `NodeResourcesBalancedAllocation` prefers the node
-  whose requested CPU share and memory share are nearest after the pod (weight 1 each). So a pod with much memory and
-  little CPU prefers a node with free memory and little free CPU, and the reverse. A node that joins has no requests,
-  so it takes the new pods first, without a deployment step.
+  scores the nodes with three plugins. `NodeAffinity` (weight 50) prefers the planned node of the pod, which the
+  [site placement](#place-the-pods-of-the-site) gives each new pod of the stores and the zones. 50 x 100 is above the
+  sum of the two resource plugins, so a pod starts on its planned node when that node has room.
+  `NodeResourcesFit` `LeastAllocated` (weight 10) prefers the node with the lowest requested share of its allocatable
+  CPU and memory (weight 1 each). `NodeResourcesBalancedAllocation` (weight 10) prefers the node whose requested CPU
+  share and memory share are nearest after the pod (weight 1 each). These two decide the node of a pod without a
+  planned node, or of a pod whose planned node is full. A node that joins has no requests, so it takes such pods
+  first.
 - The allocatable CPU of a node counts threads of the fastest node of the site. The speed factor of a node is its
   stored `cpu_speed` divided by the highest one, in steps of 0.05 (`config.py` `speed_factors()`). A node without a
   stored value has the factor 1. The k3s role gives the kubelet the `system-reserved` CPU
@@ -246,12 +249,12 @@ python3 k3s/zones/zone.py delete zone-x
   ([zones/postrender.py](zones/postrender.py)) and the store installers set the class. A chart value stays.
 - The descheduler ([cluster/descheduler.yaml](cluster/descheduler.yaml)) runs once in the last step `descheduler` of
   `deploy-k3s up`, as a Job with a deadline of 300 s ([cluster/deschedule.py](cluster/deschedule.py)). The step deletes
-  the Job when it ends, and fails when the Job does not complete. No descheduler runs between deployments. It moves
-  running stateless pods with `LowNodeUtilization` on the requests: from a node more than 15 points above the mean
-  requested CPU or memory to a node more than 15 points below the mean in both. It never moves a pod with a claim, a store pod, a Job pod, a pod
-  without a controller, a pod of the class `hoover-node-bound`, a pod younger than 15 minutes, or a pod of the platform
-  namespaces. The band of 30 points around the mean keeps a moved pod from moving back. The PodDisruptionBudgets of
-  openDesk apply to its evictions. The scheduler respects them in a preemption when another victim is possible.
+  the Job when it ends, and fails when the Job does not complete. No descheduler runs between deployments. It moves a
+  pod that started away from its planned node to that node when the node has room (`RemovePodsViolatingNodeAffinity`
+  for the preferred node affinity). A pod on its planned node and a pod without a planned node never move, so a second
+  `up` moves nothing. It never moves a pod with a claim, a store pod, a Job pod, a pod without a controller, a pod of
+  the class `hoover-node-bound`, or a pod of the platform namespaces. The PodDisruptionBudgets of openDesk apply to its
+  evictions. The scheduler respects them in a preemption when another victim is possible.
 - The zone pod policy ([zones/manifests/zone-pods.yaml](zones/manifests/zone-pods.yaml)) keeps the runtime rule. It adds
   no topology spread.
 - A claim takes the first tier of its tier list that a node of the site has ([zones/zonestate.py](zones/zonestate.py)). The
@@ -290,6 +293,7 @@ A pod stops or moves on a running site only in a deployment: `deploy-k3s up`, a 
 | Source | Between deployments |
 |---|---|
 | Descheduler | No. It runs only in the last step of `up` ([cluster/deschedule.py](cluster/deschedule.py)). |
+| Site placement | No. The step `placement` runs only in `up`. A new CPU scale factor resizes the CPU requests of the running pods in place and restarts no container. A new plan changes no pod template ([Place the pods of the site](#place-the-pods-of-the-site)). |
 | Preemption | No. Only a new pod of the class `hoover-node-bound` preempts. The renders give the class only to Deployments, StatefulSets, the operator portal and the coturn probe pod of the calls step, so no Job or CronJob creates such a pod. |
 | Node-pressure eviction | No, while each pod stays at its measured peak: the requests hold the peaks and the kubelet reserves the memory of k3s and the system ([Size the memory](#size-the-memory)). |
 | OOM kill | A container above its limit restarts in its pod, on its node. The limits stay above the measured peaks. |
@@ -496,7 +500,7 @@ Each store keeps one copy of each part of its data. No store has replication or 
 - Garage runs one pod on each of its `garage.nodes` nodes, with the replication factor 1. The layout gives each node a part of the objects. The client Service selects every ready Garage pod, and each pod forwards a request to the node that holds the object.
 - A store node count cannot become smaller than at the last apply, because each node holds a part of the data. `deploy-k3s check` and the stores step refuse it. A larger count adds nodes, and the store moves a part of the data to them.
 - Each pod of a store needs a storage tier on its own node. The step takes the first preferred tier that enough nodes have.
-- The stores step chooses the node of each store pod before its volume exists. See [Place the store pods](#place-the-store-pods).
+- The stores step takes the node of each store pod from the site placement before its volume exists. See [Place the pods of the site](#place-the-pods-of-the-site).
 - A claim holds the size of one zone store for each zone with `stores = site`, at least one zone: 20 GiB for ClickHouse and for each Garage pod, 16 GiB for Manticore text and 10 GiB for Manticore vectors. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace. The password of the Manticore schema user is only in the Secret `manticore-schema` of the Hoover namespace, because openDesk service accounts can list the Secrets of the zone namespace.
 - Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection. ClickHouse reaches only DNS and Garage on 3900.
@@ -520,40 +524,55 @@ The shared ClickHouse mounts no folder of a zone. A collection export of a zone 
 
 A zone delete removes the bucket with its objects. An export that fails after the ClickHouse part leaves its object in the bucket until the zone delete.
 
-### Place the store pods.
+### Place the pods of the site.
 
-A store pod with a local volume stays on the node of its first start, because TopoLVM binds its volume there. These are
-ClickHouse, both Manticore daemons, each Garage, Cassandra and OpenSearch pod. The stores step therefore computes a
-plan for them before it creates them ([hoover/stores/placement.py](hoover/stores/placement.py)), and writes the nodes
-of the plan into the node affinity of each StatefulSet. A sharded store gets a set of nodes and a required pod
-anti-affinity, so each pod takes one node of the set. The default scheduler places all other pods.
+The step `placement` of `deploy-k3s up` computes the node of every pod of the site and one CPU scale factor
+([placement.py](placement.py)). It runs before the stores and the zones. `deploy-k3s check` computes the same plan and
+prints it in `placement` of its state. It changes nothing on the cluster.
 
 | Input | Source |
 |---|---|
-| Node capacity | The allocatable memory and CPU of each schedulable node without the role `gpu`. The CPU already counts the speed factor of the node. |
-| Bound pods | The requests of the pods that stay on their node: the platform pods, the zone pods with a claim, and the zone pods that name a node. |
-| Store pods | The requests of each store pod, with the overhead of its RuntimeClass, and the storage tier of the store. |
-| Zone load | The requests of the running zones, and of the zones that `vars.stores zones` plans beyond them, with the `vars.replicas` count of each stateless service. A planned zone has the mean requests of the running zones, or `ZONE_ESTIMATE` when no zone runs. |
+| Node capacity | The allocatable memory and CPU of each schedulable node without the role `gpu`. The kubelet reserve is already subtracted, and the CPU counts threads of the fastest node ([Measure the node speed](#measure-the-node-speed)). |
+| Pods of other installers | The platform pods, the DaemonSet pods and the Job pods, at their requests on their nodes. |
+| Site pods | A new render at the factor 1: the shared stores, and for each enabled zone the Hoover installation, the zone gate and openDesk (`helmfile template` with the post-renderer, all openDesk entries at the same time). The openDesk render of a zone is kept in `placement/render-<zone>.json` of the state folder with a digest of its inputs, and a plan with the same inputs uses it. |
+| Planned zones | `vars.stores zones` beyond the zone state count as copies of the first zone. They are only counted. |
 
-The plan keeps three rules. Each new store pod fits the free memory and CPU of its node, each pod of a sharded store has
-its own node, and each pod has the storage tier of its store. Among the plans that keep them, the search compares these
-goals in order:
+Rules:
 
-1. The highest share of requested memory on a node, after the zone pods fill the nodes from the lowest share up.
-2. ClickHouse and each Manticore daemon on different nodes.
-3. Three goals for equal plans: the CPU share in the form of goal 1, then the highest memory share and CPU share of a
-   node without the zone pods.
+- Memory is a hard limit. The memory requests on a node stay at most its allocatable memory, and they never scale.
+- CPU is a soft limit. When no plan fits with the full CPU requests, the plan lowers every CPU request of the site
+  pods by one factor: the largest of 1, 0.95, 0.90 and so on at which a plan fits. This replaces a CPU scale that an
+  operator sets by hand. The factor moves in steps of 0.05, because each change resizes every running pod.
+- A pod with a bound local claim, or with a node selector of one host, stays on that node. A required node affinity,
+  a required pod anti-affinity against its own pods and a required pod affinity to another workload are kept.
+- A running pod keeps its node when its new requests fit there. A plan never moves a running pod, so a zone create, a
+  zone delete or a new factor restarts and moves no pod of another zone.
+- The other pods take the node with the lowest share of requested CPU per allocatable CPU, and the plan then moves and
+  swaps them while the CPU shares become more even. ClickHouse and each Manticore daemon on different nodes is the
+  lowest goal.
+- The same inputs give the same plan.
 
-The search tries every choice of nodes and drops a partial plan that cannot be better than the best plan found. It
-places 12 store pods on 10 nodes in less than one second.
-When no plan fits a new store pod, the stores step stops with the free capacity of each node and the need of each store.
+When memory does not fit at any factor, the step and the check fail. The message names the free memory of each node
+and the pods without room. When a plan fits only with a move of running pods, the message says so.
 
-- A store pod with a claim keeps the node of its claim. The step never moves data. When a plan without the claims has a
-  better result in goal 1 or 2, the plan lists the stores that it would place on other nodes under `changes`, and the step does not
-  apply it.
-- `deploy-k3s check` prints the plan in `store_placement` of its state, and the stores step logs it. The ConfigMap
-  `shared-stores` records the applied nodes under `placement`.
-- `python3 k3s/hoover/stores/shared.py plan` prints the plan and the problems of `vars.replicas` as JSON.
+The pod templates of the renders keep the CPU requests at the factor 1 and name no planned node. So a new plan or a
+new factor changes no template and restarts no pod. The plan reaches the pods in these ways:
+
+| Part | Mechanism |
+|---|---|
+| New pods | The ConfigMap `hoover-placement` of `kube-system` holds the factor and the planned nodes of each workload. The MutatingAdmissionPolicy `hoover-site-placement` ([cluster/placement-policy.yaml](cluster/placement-policy.yaml)) reads it when a pod of `hoover-stores` or of a zone is created. It multiplies each CPU request by the factor, rounded up to 1m, and adds a preferred node affinity of weight 100 for the planned nodes. The annotations `hoover.dev/cpu-scale` and `hoover.dev/planned-nodes` record both. |
+| Running pods | The step resizes the CPU requests of each running pod of a Deployment or StatefulSet of the site in place (the `resize` subresource) to the request of its template times the factor. A CPU resize restarts no container in gVisor and in Kata. The annotation `hoover.dev/cpu-scale` gets the factor. |
+| Store volumes | The stores step writes the planned nodes of each store pod with a local volume into the required node affinity of its StatefulSet. The ConfigMap `shared-stores` records them under `placement`. |
+| Pods away from their planned node | The descheduler pass at the end of `up` moves them when the planned node has room. |
+
+The step writes the ConfigMap and resizes a pod only when a value differs, so a second `up` changes nothing. The plan
+is kept in `placement/plan.json` of the state folder, and the cluster copy of the state holds it.
+
+The stores step runs before the zones. When the new store pods fit only after the zones have their new requests, the
+plan says `zones-first`, and `up` runs the stores step after the zone steps.
+
+A zone operation of the portal uses the factor and the plan of the last `up`. Its new pods get the factor and no
+planned node. Run `deploy-k3s up` after a zone create on a full site to compute a new factor.
 
 ### Isolate the zones in Manticore.
 
@@ -610,9 +629,9 @@ The stores of an earlier version kept several copies (`vars.stores replicas` and
 ## Scale the stateless services.
 
 `vars.replicas` of the site file sets the pod count of each stateless processing service in every zone. The Service of
-the service spreads the connections over its ready pods. A count above 1 adds the requests of the extra pods to the
-zone load of the [store plan](#place-the-store-pods). `deploy-k3s check` refuses the counts when the zones and stores
-then request more memory or CPU than the nodes have, or when the ClamAV pods do not fit the public node.
+the service spreads the connections over its ready pods. The [site placement](#place-the-pods-of-the-site) counts
+every pod of the count. `deploy-k3s check` and `up` fail when the memory requests then do not fit the nodes. A CPU
+shortage lowers the CPU scale factor.
 
 ```yaml
 hoover4:

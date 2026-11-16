@@ -16,9 +16,10 @@ other stores, ready and grow include it, and remove deletes the Temporal namespa
 
 The site file gives the plan (vars.stores, ../../config.py store_plan()): the nodes that can run a store pod and the
 Garage node count. Each store keeps one copy of its data, and the Service of each store selects every ready pod.
-apply chooses the node of each store pod with a local volume before its first start (placement.py) and writes it into
-the node affinity of its StatefulSet. A pod with a claim keeps the node of its claim. The ConfigMap shared-stores
-records the plan, and plan prints it. Each store pod has the PriorityClass hoover-node-bound.
+apply writes the planned nodes of each store pod with a local volume, from the site placement plan
+(../../placement.py), into the required node affinity of its StatefulSet. The plan keeps a pod with a claim on the
+node of its claim. Without a plan each store may use every store node with its tier. The ConfigMap shared-stores
+records the nodes. Each store pod has the PriorityClass hoover-node-bound.
 - ClickHouse runs one pod.
 - Manticore runs one pod for text (manticore) and one for vectors (manticore-vectors). Hoover refuses one host for
   both. Each daemon listens on 9306 (MySQL) and 9308 (HTTP), and on the read-only listeners 9307 (MySQL) and 9309
@@ -54,7 +55,6 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py grow              make the claims large enough for the zones of the zone state
        shared.py ready             exit 1 when a store or Temporal has no ready pod
        shared.py check             print the problems of the plan against the cluster as JSON
-       shared.py plan              print the placement plan of the store pods and the problems of vars.replicas as JSON
        shared.py remove <zone>     delete the ClickHouse databases, users, profile and row policy, the Manticore tables,
                                    users and import folder, the Garage buckets and keys and the Temporal namespace of a
                                    zone, then check that none stays. The S3 client in a Garage pod
@@ -287,52 +287,12 @@ def objects(s, plan, zones, peers, placed=None):
                             *garage(s, plan, zones, peers, placed)])
 
 
-def store_counts(plan):
-    """{store: pod count} of the stores that keep a local volume (placement.VOLUME_STORES)."""
-    return {'clickhouse': 1, 'manticore': 1, 'manticore-vectors': 1, 'garage': plan['garage'],
-            'temporal-cassandra': plan['cassandra'], 'temporal-opensearch': plan['opensearch']}
-
-
-def placement_report(s, plan):
-    """The placement plan of the store pods (placement.py) for the cluster and the site file, as a dict. Raise
-    placement.NoFit when a new store pod fits no node."""
-    import manifests, placement
-    zones = len(site_zones())
-    rendered = objects(s, plan, zones, {}) + temporal.objects(s, plan, zones, '{"keys": []}')
-    requests = placement.store_requests(rendered, placement.runtime_overhead())
-    stores_found = common.kubectl('get', 'namespace', NS, '--ignore-not-found', '-o', 'name').strip()
-    claims = common.kubectl_json('-n', NS, 'get', 'pvc') if stores_found else {'items': []}
-    planned = max(plan['zones'], zones, 1)
-    replicas = {f'hoover4-{k}': v for k, v in s.replicas.items()}
-    nodes, fixed, zone_memory, zone_cpu, details = placement.inputs(
-        s, common.kubectl_json('get', 'nodes'), common.kubectl_json('get', 'pods', '-A'), claims, planned, replicas,
-        manifests.scaled_pods(), s.with_role('public')[0].name)
-    stores = [placement.Store(store, count, *requests[store], candidates=tier(s, plan['nodes'], store, count)[1],
-                              fixed=fixed.get(store, ())) for store, count in store_counts(plan).items()]
-    out = placement.report(nodes, stores, zone_memory, zone_cpu)
-    out['inputs'] = dict(details, store_requests={k: {'memory': round(v[0]), 'cpu': round(v[1])} for k, v in requests.items()},
-                         claims={k: list(v) for k, v in fixed.items()})
-    return out
-
-
-def placement_problems(s, out):
-    """The problems of the replica counts of vars.replicas against a placement report, as messages."""
-    scaled = {k: v for k, v in s.replicas.items() if v > 1}
-    if not scaled:
-        return []
-    asked = ', '.join(f'{k} {v}' for k, v in sorted(scaled.items()))
-    problems = []
-    if not out['zones_fit']:
-        share = out['requested_share']
-        problems.append(f'vars.replicas ({asked}) does not fit: the zones and stores request {share["memory"]:.0%} of the '
-                        f'memory and {share["cpu"]:.0%} of the CPU of the nodes. Lower the counts or add a node.')
-    public = s.with_role('public')[0].name
-    node = out['nodes'].get(public)
-    if 'clamav' in scaled and node and any(node['base_and_stores'][k] > node['capacity'][k] for k in ('memory', 'cpu')):
-        problems.append(f'vars.replicas clamav {scaled["clamav"]} does not fit the public node {public}: its pods, the '
-                        f'stores and the pods bound to it request {node["base_and_stores"]["memory"]}Mi and '
-                        f'{node["base_and_stores"]["cpu"]}m of {node["capacity"]["memory"]}Mi and {node["capacity"]["cpu"]}m.')
-    return problems
+def placed_nodes():
+    """{store: nodes} of the volume stores in the site placement plan (../../placement.py), or None without a plan.
+    The step placement of deploy-k3s up writes the plan before the stores step."""
+    import placement
+    plan = placement.read_json(common.settings.PRIVATE / placement.PLAN_FILE)
+    return placement.store_nodes(plan) if plan else None
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -488,10 +448,8 @@ def apply():
         raise SystemExit('; '.join(refused))
     zones = len(site_zones())
     peers = (before or {}).get('garage_nodes', {})
-    report = placement_report(s, plan)
-    placed = report['stores']
-    common.log('stores.jsonl', step='placement', stores=placed, score=report['score'], changes=report['changes'],
-               zones_fit=report['zones_fit'])
+    placed = placed_nodes()
+    common.log('stores.jsonl', step='placement', stores=placed)
     items = objects(s, plan, zones, peers, placed)
     common.apply(items[0])
     credentials()
@@ -694,7 +652,7 @@ def remove(zone):
 
 
 def main(argv):
-    if not argv or argv[0] not in ('apply', 'show', 'grow', 'ready', 'check', 'plan', 'remove') or (argv[0] == 'remove') != (len(argv) == 2):
+    if not argv or argv[0] not in ('apply', 'show', 'grow', 'ready', 'check', 'remove') or (argv[0] == 'remove') != (len(argv) == 2):
         sys.exit(__doc__)
     if argv[0] == 'show':
         s = site()
@@ -710,15 +668,6 @@ def main(argv):
         found = problems()
         print(json.dumps({'problems': found}))
         sys.exit(1 if found else 0)
-    elif argv[0] == 'plan':
-        import placement
-        s = site()
-        try:
-            out = placement_report(s, config.store_plan(s))
-            found = placement_problems(s, out)
-        except placement.NoFit as error:
-            out, found = {}, [str(error)]
-        print(json.dumps({'placement': out, 'problems': found}, sort_keys=True))
     else:
         remove(zone_argument(argv[1]))
 

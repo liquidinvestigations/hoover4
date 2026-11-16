@@ -3338,7 +3338,8 @@
     {
       "id": "F-admin-61",
       "source": [
-        "k3s/hoover/stores/placement.py",
+        "k3s/placement.py",
+        "k3s/cluster/placement-policy.yaml",
         "k3s/hoover/stores/shared.py",
         "k3s/cluster/priorityclasses.yaml",
         "k3s/zones/postrender.py",
@@ -3346,12 +3347,12 @@
       ],
       "docs": [
         "docs/technical-specification/Features.md",
-        "k3s/Readme.md#place-the-store-pods",
+        "k3s/Readme.md#place-the-pods-of-the-site",
         "k3s/Readme.md#scale-the-stateless-services",
         "docs/operations/k3s/Cluster_Installation.md"
       ],
       "audience": "operator",
-      "no_screenshot_reason": "The capability changes the node of the store pods, the pod priority and the site file. No page of the portal or of a zone application changes."
+      "no_screenshot_reason": "The capability changes the node and the CPU requests of the pods, the pod priority and the site file. No page of the portal or of a zone application changes."
     },
     {
       "id": "F-admin-62",

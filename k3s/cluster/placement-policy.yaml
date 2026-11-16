@@ -1,0 +1,103 @@
+# The site placement plan (../placement.py) at the creation of each pod of the shared stores and of the zones. The pod
+# templates of the renders keep the requests at the CPU scale factor 1 and name no planned node, so a new plan or a
+# new factor changes no template and restarts no pod. The policy changes each new pod instead:
+# - Each CPU request of a container and an init container is multiplied by the factor, rounded up to 1m.
+# - A pod of a Deployment or StatefulSet of the plan gets a preferred node affinity of weight 100 for its planned
+#   nodes. A pod that names its node by a node selector keeps it.
+# - The annotations hoover.dev/cpu-scale and hoover.dev/planned-nodes record both.
+# The parameter is the ConfigMap hoover-placement of kube-system, which the step placement of deploy-k3s up writes:
+# factor, and one key <namespace>.<kind>.<name> with the planned nodes of each workload, separated by commas. Without
+# the ConfigMap the policy changes nothing. The running pods get a new factor through an in-place resize of their CPU
+# requests (placement.py resize), which restarts no container.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: hoover-site-placement
+spec:
+  paramKind:
+    apiVersion: v1
+    kind: ConfigMap
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: site-namespace
+      expression: request.namespace == 'hoover-stores' || request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')
+  failurePolicy: Fail
+  reinvocationPolicy: Never
+  variables:
+    - name: factor
+      expression: "params != null && has(params.data) && 'factor' in params.data ? double(params.data['factor']) : 1.0"
+    - name: labels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+    - name: annotations
+      expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+    - name: owner
+      expression: >
+        has(object.metadata.ownerReferences) && size(object.metadata.ownerReferences) > 0
+          ? object.metadata.ownerReferences[0] : {'kind': '', 'name': ''}
+    - name: workload
+      expression: >
+        variables.owner.kind == 'StatefulSet' ? 'statefulset.' + variables.owner.name
+          : (variables.owner.kind == 'ReplicaSet' && 'pod-template-hash' in variables.labels
+             && variables.owner.name.endsWith('-' + variables.labels['pod-template-hash'])
+            ? 'deployment.' + variables.owner.name.substring(0, size(variables.owner.name) - size(variables.labels['pod-template-hash']) - 1)
+            : '')
+    - name: key
+      expression: "request.namespace + '.' + variables.workload"
+    - name: nodes
+      expression: >
+        params != null && has(params.data) && variables.workload != '' && variables.key in params.data
+          ? params.data[variables.key].split(',') : []
+    - name: named
+      expression: "has(object.spec.nodeSelector) && 'kubernetes.io/hostname' in object.spec.nodeSelector"
+    - name: term
+      expression: >
+        {'weight': dyn(100), 'preference': dyn({'matchExpressions': [{'key': dyn('kubernetes.io/hostname'),
+          'operator': dyn('In'), 'values': dyn(variables.nodes.map(n, string(n)))}]})}
+  mutations:
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >
+          params == null || 'hoover.dev/cpu-scale' in variables.annotations ? [] :
+          object.spec.containers.filter(c, has(c.resources) && has(c.resources.requests) && 'cpu' in c.resources.requests)
+            .map(c, JSONPatch{op: 'replace',
+              path: '/spec/containers/' + string(object.spec.containers.indexOf(c)) + '/resources/requests/cpu',
+              value: string(int(quantity(string(c.resources.requests['cpu'])).asApproximateFloat() * 1000.0 * variables.factor + 0.999)) + 'm'})
+          + (has(object.spec.initContainers) ? object.spec.initContainers
+              .filter(c, has(c.resources) && has(c.resources.requests) && 'cpu' in c.resources.requests)
+              .map(c, JSONPatch{op: 'replace',
+                path: '/spec/initContainers/' + string(object.spec.initContainers.indexOf(c)) + '/resources/requests/cpu',
+                value: string(int(quantity(string(c.resources.requests['cpu'])).asApproximateFloat() * 1000.0 * variables.factor + 0.999)) + 'm'})
+            : [])
+          + [has(object.metadata.annotations)
+              ? JSONPatch{op: 'add', path: '/metadata/annotations/hoover.dev~1cpu-scale', value: params.data['factor']}
+              : JSONPatch{op: 'add', path: '/metadata/annotations', value: {'hoover.dev/cpu-scale': params.data['factor']}}]
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >
+          size(variables.nodes) == 0 || variables.named ? [] :
+          (!has(object.spec.affinity)
+            ? [JSONPatch{op: 'add', path: '/spec/affinity', value: {'nodeAffinity': {'preferredDuringSchedulingIgnoredDuringExecution': [variables.term]}}}]
+            : !has(object.spec.affinity.nodeAffinity)
+              ? [JSONPatch{op: 'add', path: '/spec/affinity/nodeAffinity', value: {'preferredDuringSchedulingIgnoredDuringExecution': [variables.term]}}]
+              : !has(object.spec.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                ? [JSONPatch{op: 'add', path: '/spec/affinity/nodeAffinity/preferredDuringSchedulingIgnoredDuringExecution', value: [variables.term]}]
+                : [JSONPatch{op: 'add', path: '/spec/affinity/nodeAffinity/preferredDuringSchedulingIgnoredDuringExecution/-', value: variables.term}])
+          + [has(object.metadata.annotations)
+              ? JSONPatch{op: 'add', path: '/metadata/annotations/hoover.dev~1planned-nodes', value: variables.nodes.join(',')}
+              : JSONPatch{op: 'add', path: '/metadata/annotations', value: {'hoover.dev/planned-nodes': variables.nodes.join(',')}}]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: hoover-site-placement
+spec:
+  policyName: hoover-site-placement
+  paramRef:
+    name: hoover-placement
+    namespace: kube-system
+    parameterNotFoundAction: Allow

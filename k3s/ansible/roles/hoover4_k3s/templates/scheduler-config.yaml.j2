@@ -1,14 +1,21 @@
-# The configuration of the kube-scheduler of the k3s server. Two score plugins with the weight 10 decide the node:
+# The configuration of the kube-scheduler of the k3s server. Three score plugins decide the node:
 # - NodeResourcesFit with the strategy LeastAllocated gives the highest score to the node with the lowest requested
 #   share of its allocatable CPU and memory. CPU and memory have the same weight, because either one can be the
 #   resource that a site lacks.
 # - NodeResourcesBalancedAllocation gives the highest score to the node whose requested CPU share and memory share are
 #   nearest after the pod. A pod with much memory and little CPU therefore prefers a node with free memory and little
 #   free CPU, and the reverse.
-# The weight 10 is above the weights of the other score plugins (at most 3), so the requests decide the node, and a
-# node that joins with no requests takes the new pods first. The other plugins keep their defaults.
+# - NodeAffinity with the weight 50 gives the highest score to the node of a preferred node affinity. The admission
+#   policy of the site placement (../../../../cluster/placement-policy.yaml) gives each new pod of the stores and the
+#   zones a preferred node affinity for its planned node (../../../../placement.py). 50 x 100 is above the sum of the
+#   resource scores (2 x 10 x 100), so a pod starts on its planned node when that node has room. A pod without a
+#   planned node, or whose planned node is full, goes to the node of the resource scores.
+# The weight 10 is above the weights of the other score plugins (at most 3), so the requests decide the node of a pod
+# without a plan, and a node that joins with no requests takes the new pods first. The other plugins keep their
+# defaults.
 # The allocatable CPU of a node counts threads of the fastest node (../../../../config.py kubelet_reserved()).
-# The descheduler (../../../../cluster/descheduler.yaml) moves running stateless pods with the requested shares.
+# The descheduler pass of deploy-k3s up (../../../../cluster/descheduler.yaml) moves a pod that started away from its
+# planned node to that node when it has room.
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 clientConnection:
@@ -22,6 +29,8 @@ profiles:
             weight: 10
           - name: NodeResourcesBalancedAllocation
             weight: 10
+          - name: NodeAffinity
+            weight: 50
     pluginConfig:
       - name: NodeResourcesFit
         args:

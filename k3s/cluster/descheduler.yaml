@@ -1,15 +1,16 @@
-# The Kubernetes descheduler moves running stateless pods off nodes with a high requested share, for example after a
-# node joins. It runs only during a deployment: deschedule.py runs it once as a Job in the last step of deploy-k3s up,
-# after the zones and the call services, and deletes the Job when it ends. No descheduler runs between deployments,
-# so no pod moves outside a deployment. setup.sh applies the account, the rights and the policy of this file.
-# The scheduler then places each evicted pod by the requested CPU and memory
-# shares of the nodes (the scheduler configuration of ../ansible/roles/hoover4_k3s/templates/scheduler-config.yaml.j2).
-# LowNodeUtilization compares the requests of each node with the mean of all nodes (useDeviationThresholds):
-# - A node is underused when its requested CPU and its requested memory are both more than 15 points below the mean.
-# - A node is overused when its requested CPU or its requested memory is more than 15 points above the mean.
-# The descheduler evicts pods only when the site has both kinds, and only until the overused node is inside the band.
-# Nodes inside the band of 30 points around the mean never lose pods, so a moved pod does not move back.
-# A node that joins has no requests, so it is underused until it takes its share of the pods.
+# The Kubernetes descheduler moves a running pod to its planned node. It runs only during a deployment: deschedule.py
+# runs it once as a Job in the last step of deploy-k3s up, after the zones and the call services, and deletes the Job
+# when it ends. No descheduler runs between deployments, so no pod moves outside a deployment. setup.sh applies the
+# account, the rights and the policy of this file.
+# The admission policy of the site placement (placement-policy.yaml) gives each new pod of the stores and the zones a
+# preferred node affinity for its planned node (../placement.py). A pod starts on another node when its planned node
+# has no room at that time, for example while an earlier pod of the same deployment still runs.
+# RemovePodsViolatingNodeAffinity with the type preferredDuringSchedulingIgnoredDuringExecution evicts such a pod
+# when its planned node now has room, and the scheduler starts it there. The pass has no minimum pod age, because
+# these pods started in the same deployment. A pod on its planned node is never evicted,
+# and a pod without a planned node is never evicted, so a second run evicts nothing.
+# The plan keeps each running pod on its node, so this pass does not balance the nodes. The plan does that for the
+# pods it places.
 # A run evicts at most 5 pods of a node and 10 pods in total, so the moves are gradual.
 # The evictor never evicts:
 # - a pod with a claim (PodsWithPVC). TopoLVM claims are local volumes on one node, and the store pods have claims.
@@ -18,7 +19,6 @@
 # - a pod of the PriorityClass hoover-node-bound or a higher priority (priorityThreshold). These pods can run on one
 #   node only (priorityclasses.yaml).
 # - a pod without a controller, a DaemonSet pod and a system-critical pod (the default protections).
-# - a pod that is younger than 15 minutes, so a pod that starts in a zone create stays where it started.
 # - a pod in the excluded namespaces: the platform, the operator pod, the shared stores and the calls services, whose
 #   media pods name the public node.
 # It allows a pod with an emptyDir volume (PodsWithLocalStorage), because that volume holds only scratch data.
@@ -88,14 +88,13 @@ data:
     maxNoOfPodsToEvictPerNode: 5
     maxNoOfPodsToEvictTotal: 10
     profiles:
-      - name: requested-cpu-spread
+      - name: planned-nodes
         pluginConfig:
           - name: DefaultEvictor
             args:
               nodeFit: true
               priorityThreshold:
                 name: hoover-node-bound
-              minPodAge: 15m
               podProtections:
                 defaultDisabled: [PodsWithLocalStorage]
                 extraEnabled: [PodsWithPVC]
@@ -103,14 +102,12 @@ data:
                 matchExpressions:
                   - {key: hoover.dev/store, operator: DoesNotExist}
                   - {key: batch.kubernetes.io/job-name, operator: DoesNotExist}
-          - name: LowNodeUtilization
+          - name: RemovePodsViolatingNodeAffinity
             args:
-              useDeviationThresholds: true
-              thresholds: {cpu: 15, memory: 15}
-              targetThresholds: {cpu: 15, memory: 15}
-              evictableNamespaces:
+              nodeAffinityType: [preferredDuringSchedulingIgnoredDuringExecution]
+              namespaces:
                 exclude: [kube-system, kube-public, kube-node-lease, operator-portal, hoover-stores, hoover-data, registry,
                           topolvm-system, cert-manager, ingress, calls]
         plugins:
-          balance:
-            enabled: [LowNodeUtilization]
+          deschedule:
+            enabled: [RemovePodsViolatingNodeAffinity]

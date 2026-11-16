@@ -1,10 +1,9 @@
-"""The placement of the shared store pods (k3s/hoover/stores/placement.py), the PriorityClass of the pods that can run on
-one node only, and the replica count of the stateless processing services."""
-import itertools
+"""The placement of every pod of the site (k3s/placement.py) with its CPU scale factor, the admission policy and the
+in-place resize that apply it, the PriorityClass of the pods that can run on one node only, and the replica count of
+the stateless processing services."""
 import json
 import random
 import sys
-import time
 
 import pytest
 import yaml
@@ -17,207 +16,293 @@ import shared  # noqa: E402
 
 sys.path.insert(0, str(K3S / 'zones'))
 
-ALL = ('a', 'b', 'c')
-
-
-def three(base=(0, 0, 0)):
-    return [placement.Node(n, 32000, 8000, base_memory=m) for n, m in zip(ALL, base)]
-
-
-def oracle(nodes, stores, zone_memory, zone_cpu):
-    """The best score of every plan, by a search of all plans without pruning."""
-    caps = {n.name: n for n in nodes}
-    choices = [list(itertools.combinations(s.candidates, s.count)) for s in stores]
-    best = None
-    for combo in itertools.product(*choices):
-        mem = {n.name: n.base_memory for n in nodes}
-        cpu = {n.name: n.base_cpu for n in nodes}
-        fits = True
-        for s, picked in zip(stores, combo):
-            for n in picked:
-                mem[n] += s.memory
-                cpu[n] += s.cpu
-                fits = fits and mem[n] <= caps[n].memory and cpu[n] <= caps[n].cpu
-        if not fits:
-            continue
-        m, c = [mem[n.name] for n in nodes], [cpu[n.name] for n in nodes]
-        cm, cc = [n.memory for n in nodes], [n.cpu for n in nodes]
-        assign = {s.name: list(picked) for s, picked in zip(stores, combo)}
-        score = (placement.per_mille(placement.level(m, cm, zone_memory)), placement.shared_pairs(assign),
-                 placement.per_mille(placement.level(c, cc, zone_cpu)), placement.per_mille(placement.level(m, cm, 0)),
-                 placement.per_mille(placement.level(c, cc, 0)))
-        best = score if best is None or score < best else best
-    return best
-
-
-def test_the_zone_load_fills_the_nodes_from_the_lowest_share_up():
-    assert placement.level([0, 0], [100, 100], 100) == 0.5
-    # The fuller node keeps its share. The free one takes the zone load until both are equal.
-    assert placement.level([60, 0], [100, 100], 40) == 0.6
-    assert placement.level([60, 0], [100, 100], 100) == 0.8
-    assert placement.level([30, 10], [100, 100], 0) == 0.3
-
-
-def test_a_store_pod_that_fits_no_node_is_refused_with_the_free_capacity():
-    nodes = three(base=(30000, 31000, 31500))
-    with pytest.raises(placement.NoFit, match=r'no node plan fits the new store pods.*a 2000Mi.*clickhouse 1 x \(4000Mi'):
-        placement.solve(nodes, [placement.Store('clickhouse', 1, 4000, 100, ALL)])
-    # One pod of a sharded store on each node: three pods do not fit two nodes.
-    with pytest.raises(placement.NoFit):
-        placement.solve(three(), [placement.Store('garage', 3, 100, 10, ('a', 'b'))])
-
-
-def test_each_new_pod_fits_its_node_and_a_sharded_store_uses_separate_nodes():
-    nodes = three(base=(29000, 0, 0))
-    plan = placement.solve(nodes, [placement.Store('garage', 2, 4000, 10, ALL), placement.Store('clickhouse', 1, 4000, 10, ('a', 'b'))])
-    assert 'a' not in plan.nodes['garage'] and len(set(plan.nodes['garage'])) == 2
-    assert plan.nodes['clickhouse'] == ['b']
-
-
-def test_memory_balance_comes_before_the_separation_of_clickhouse_and_manticore():
-    two = [placement.Node(n, 32000, 8000) for n in ('a', 'b')]
-    stores = [placement.Store('clickhouse', 1, 2000, 10, ('a', 'b')), placement.Store('manticore', 1, 8000, 10, ('a', 'b')),
-              placement.Store('manticore-vectors', 1, 8000, 10, ('a', 'b'))]
-    # The two Manticore daemons on separate nodes give the best memory balance, so ClickHouse shares a node with one.
-    plan = placement.solve(two, stores)
-    assert plan.score[:2] == (313, 1) and plan.nodes['manticore'] != plan.nodes['manticore-vectors']
-    assert plan.score == oracle(two, stores, 0, 0)
-    # When the zone pods fill both nodes to the same share, memory balance is equal for every plan, and the
-    # separation decides.
-    plan = placement.solve(two, stores, zone_memory=40000)
-    assert plan.score[1] == 0 and plan.nodes['manticore'] == plan.nodes['manticore-vectors']
-    assert plan.score == oracle(two, stores, 40000, 0)
-
-
-def test_an_existing_store_keeps_the_node_of_its_claim_and_a_better_plan_is_only_reported():
-    stores = [placement.Store('clickhouse', 1, 6000, 10, ALL, fixed=('a',)), placement.Store('manticore', 1, 6000, 10, ALL, fixed=('a',)),
-              placement.Store('garage', 3, 500, 10, ALL, fixed=('a', 'b'))]
-    out = placement.report(three(), stores, 0, 0)
-    assert out['stores']['clickhouse'] == ['a'] and out['stores']['manticore'] == ['a']
-    assert out['stores']['garage'] == ['a', 'b', 'c']
-    # A plan without the claims separates ClickHouse and Manticore. The report names the moves, and applies none.
-    assert out['changes'] and {c['store'] for c in out['changes']} <= {'clickhouse', 'manticore'}
-    assert all(c['nodes'] == ['a'] and c['better'] != ['a'] for c in out['changes'])
-    # A claim on a full node stays. The search only checks the fit of new pods.
-    full = three(base=(31000, 0, 0))
-    plan = placement.solve(full, [placement.Store('clickhouse', 1, 6000, 10, ALL, fixed=('a',))])
-    assert plan.nodes['clickhouse'] == ['a']
-
-
-def test_the_search_finds_the_best_score_of_every_plan():
-    rng = random.Random(7)
-    for _ in range(40):
-        nodes = [placement.Node(n, rng.choice([16000, 32000]), rng.choice([4000, 12000]), rng.randint(0, 9000),
-                                rng.randint(0, 1500)) for n in ('a', 'b', 'c', 'd')[:rng.randint(2, 4)]]
-        names = tuple(n.name for n in nodes)
-        stores = [placement.Store('clickhouse', 1, rng.randint(1000, 8000), rng.randint(10, 800), names),
-                  placement.Store('manticore', 1, rng.randint(1000, 8000), rng.randint(10, 800), names[:max(1, len(names) - 1)]),
-                  placement.Store('manticore-vectors', 1, rng.randint(1000, 8000), 50, names),
-                  placement.Store('garage', rng.randint(1, len(names)), 1500, 20, names)]
-        zone_memory, zone_cpu = rng.choice([0, 20000, 60000]), rng.choice([0, 6000])
-        best = oracle(nodes, stores, zone_memory, zone_cpu)
-        if best is None:
-            with pytest.raises(placement.NoFit):
-                placement.solve(nodes, stores, zone_memory, zone_cpu)
-        else:
-            assert placement.solve(nodes, stores, zone_memory, zone_cpu).score == best
-
-
-def test_ten_nodes_and_twelve_store_pods_take_less_than_two_seconds():
-    rng = random.Random(3)
-    nodes = [placement.Node(f'n{i}', rng.choice([32768, 65536, 131072]), rng.choice([4000, 8000, 16000]),
-                            rng.randint(0, 3000), rng.randint(0, 500)) for i in range(10)]
-    names = tuple(n.name for n in nodes)
-    stores = [placement.Store('clickhouse', 1, 8000, 500, names), placement.Store('manticore', 1, 9000, 300, names),
-              placement.Store('manticore-vectors', 1, 7000, 300, names), placement.Store('garage', 3, 1500, 50, names),
-              placement.Store('temporal-cassandra', 3, 4000, 700, names), placement.Store('temporal-opensearch', 3, 2000, 200, names)]
-    for zone_memory in (0, 100000, 300000):
-        started = time.monotonic()
-        placement.solve(nodes, stores, zone_memory, 20000)
-        assert time.monotonic() - started < 2
-
-
-# Cluster inputs --------------------------------------------------------------------------------------------------------
-
-def pod(ns, name, node, memory, cpu='10m', labels=None, selector=None, claim=False, phase='Running', runtime=None):
-    spec = {'containers': [{'name': 'c', 'resources': {'requests': {'memory': memory, 'cpu': cpu}}}]}
-    if node:
-        spec['nodeName'] = node
-    if selector:
-        spec['nodeSelector'] = {'kubernetes.io/hostname': selector}
-    if claim:
-        spec['volumes'] = [{'name': 'data', 'persistentVolumeClaim': {'claimName': 'data'}}]
-    if runtime:
-        spec['overhead'] = {'memory': '32Mi', 'cpu': '10m'}
-    return {'metadata': {'namespace': ns, 'name': name, 'labels': labels or {}}, 'spec': spec, 'status': {'phase': phase}}
+Pod, Node = placement.Pod, placement.Node
 
 
 def remote(extra=''):
     return config.parse(site_text('remote.yml').replace('    gpu_pool:\n', f'{extra}    gpu_pool:\n'))
 
 
-def test_the_inputs_separate_bound_pods_from_the_zone_load_and_add_planned_zones_and_replicas():
-    site = remote()
-    nodes = {'items': [{'metadata': {'name': n}, 'spec': {}, 'status': {'allocatable': {'memory': '32000Mi', 'cpu': '8'}}}
-                       for n in ('server-a', 'worker-b', 'edge', 'gpu-1')]}
+def site_nodes():
+    """The three nodes of the test site of 2026-11-16: one slow node with 2 threads of allocatable CPU and two fast
+    nodes, about 29 GiB each."""
+    return [Node('slow', 29583, 2000), Node('fast-1', 29867, 11800), Node('fast-2', 28875, 11700)]
+
+
+def running(memory, cpu, node, name):
+    return Pod(((f'zone-a/deployment/{name}', 0),), memory, cpu, current=node, step='zone:zone-a')
+
+
+def new(memory, cpu, name, **kw):
+    return Pod(((f'zone-b/deployment/{name}', 0),), memory, cpu, step='zone:zone-b', **kw)
+
+
+def full_site(extra):
+    """The requests of the test site after the zone steps of 2026-11-16 (memory MiB, CPU millicores), as one running
+    pod on each node, and the pods of extra."""
+    return [running(20514, 1767, 'slow', 'on-slow'), running(29125, 5199, 'fast-1', 'on-fast-1'),
+            running(28660, 5161, 'fast-2', 'on-fast-2')] + extra
+
+
+# Solver ---------------------------------------------------------------------------------------------------------------
+
+def test_a_site_that_fits_keeps_the_factor_1_and_the_running_pods_on_their_nodes():
+    plan = placement.solve(site_nodes(), full_site([new(2592, 200, 'openproject-web')]))
+    assert plan.factor == 1.0
+    assert plan.where[:3] == ['slow', 'fast-1', 'fast-2']
+    # Only the slow node has the memory, and 200m fits its free CPU.
+    assert plan.where[3] == 'slow'
+
+
+def test_the_numbers_of_the_test_site_need_the_factor_095():
+    # The pod that stayed Pending: 2592 MiB and 277m. The slow node has the memory and 233m of CPU, the fast nodes
+    # have the CPU and less than 1 GiB of memory.
+    pods = full_site([new(2592, 277, 'openproject-web')])
+    assert placement.pack(site_nodes(), pods, 1.0) is None
+    plan = placement.solve(site_nodes(), pods)
+    # 0.95 x (1767m + 277m) = 1942m fits the 2000m of the slow node. The factor stops at the first step that fits.
+    assert plan.factor == 0.95 and plan.where[3] == 'slow'
+    report = placement.report(plan)
+    assert report['nodes']['slow']['cpu']['requested'] <= 2000
+    assert report['new_pods'] == ['zone-b/deployment/openproject-web']
+
+
+def test_memory_that_does_not_fit_fails_with_the_free_memory_of_each_node():
+    with pytest.raises(placement.NoFit) as found:
+        placement.solve(site_nodes(), full_site([new(10000, 10, 'large')]))
+    text = str(found.value)
+    assert 'Free memory per node' in text and 'slow 9069Mi' in text and 'fast-1 742Mi' in text
+    assert 'zone-b/deployment/large 10000Mi' in text
+
+
+def test_a_plan_never_moves_a_running_pod_and_says_when_a_move_would_fit():
+    # Two nodes. A running pod fills most of node a, and the new pod fits only on a, where a move of the running pod
+    # to b would make room.
+    nodes = [Node('a', 1000, 1000), Node('b', 600, 1000)]
+    pods = [Pod((('zone-a/deployment/x', 0),), 500, 10, current='a'), Pod((('zone-b/deployment/y', 0),), 700, 10)]
+    with pytest.raises(placement.NoFit, match='A plan that moves running pods fits at the factor 1.00'):
+        placement.solve(nodes, pods)
+
+
+def test_a_joined_node_takes_the_new_pods_and_the_running_pods_stay():
+    nodes = site_nodes() + [Node('fast-3', 30000, 11800)]
+    plan = placement.solve(nodes, full_site([new(2592, 277, 'openproject-web'), new(1000, 300, 'other')]))
+    assert plan.factor == 1.0
+    assert plan.where == ['slow', 'fast-1', 'fast-2', 'fast-3', 'fast-3']
+
+
+def test_the_new_pods_spread_their_cpu_evenly_over_the_capacity_of_the_nodes():
+    nodes = [Node('small', 64000, 4000), Node('large', 64000, 12000)]
+    pods = [Pod(((f'zone-a/deployment/p{i}', 0),), 1000, 500) for i in range(16)]
+    plan = placement.solve(nodes, pods)
+    report = placement.report(plan)
+    # 8000m over 16000m: both nodes at 50 %.
+    assert report['nodes']['small']['cpu']['share'] == report['nodes']['large']['cpu']['share'] == 0.5
+    assert report['cpu_spread_points'] == 0
+
+
+def test_improve_moves_new_pods_to_a_more_even_spread():
+    nodes = [Node('a', 10000, 1000), Node('b', 10000, 1000)]
+    pods = [Pod((('n/deployment/big', 0),), 100, 600), Pod((('n/deployment/s1', 0),), 100, 300),
+            Pod((('n/deployment/s2', 0),), 100, 300)]
+    where = placement.improve(nodes, pods, ['a', 'a', 'b'], 1.0, [0, 1, 2])
+    assert sorted(where[1:]) == ['b', 'b'] and where[0] == 'a'
+
+
+def test_the_same_inputs_give_the_same_plan_in_any_order():
+    rng = random.Random(7)
+    nodes = [Node(f'n{i}', rng.choice([16000, 32000]), rng.choice([4000, 12000])) for i in range(4)]
+    pods = [Pod(((f'z/deployment/w{i}', 0),), rng.randint(100, 3000), rng.randint(10, 800),
+                current=rng.choice(['', 'n0', 'n1'])) for i in range(40)]
+    first = placement.solve(nodes, pods)
+    shuffled = pods[:]
+    rng.shuffle(shuffled)
+    second = placement.solve(nodes, shuffled)
+    assert first.factor == second.factor
+    assert first.workloads() == second.workloads()
+    assert placement.report(first) == placement.report(placement.solve(nodes, pods))
+
+
+def test_clickhouse_and_manticore_take_different_nodes_when_the_cpu_spread_allows_it():
+    nodes = [Node('a', 32000, 8000), Node('b', 32000, 8000)]
+    pods = [Pod((('hoover-stores/statefulset/clickhouse', 0),), 2000, 100),
+            Pod((('hoover-stores/statefulset/manticore', 0),), 2000, 100)]
+    plan = placement.solve(nodes, pods)
+    assert plan.where[0] != plan.where[1] and placement.pairs(plan.pods, plan.where) == 0
+
+
+def test_a_site_of_10_nodes_and_400_pods_takes_a_few_seconds():
+    import time
+    rng = random.Random(3)
+    nodes = [Node(f'n{i}', rng.choice([32768, 65536]), rng.choice([4000, 12000, 24000])) for i in range(10)]
+    pods = [Pod(((f'z{i % 8}/deployment/w{i}', 0),), rng.randint(64, 1000), rng.randint(10, 300),
+                current=f'n{rng.randint(0, 9)}' if i % 2 else '') for i in range(400)]
+    started = time.monotonic()
+    placement.solve(nodes, pods)
+    assert time.monotonic() - started < 20
+
+
+# Inputs ---------------------------------------------------------------------------------------------------------------
+
+def workload(ns, kind, name, memory, cpu, replicas=1, labels=None, spec=None, claims=()):
+    pod = {'containers': [{'name': 'c', 'resources': {'requests': {'memory': memory, 'cpu': cpu}}}], **(spec or {})}
+    body = {'replicas': replicas, 'template': {'metadata': {'labels': labels or {'app': name}}, 'spec': pod}}
+    if claims:
+        body['volumeClaimTemplates'] = [{'metadata': {'name': c}} for c in claims]
+    return {'kind': kind, 'metadata': {'name': name, 'namespace': ns}, 'spec': body}
+
+
+def live_pod(ns, name, node, memory, cpu, owner=None, phase='Running'):
+    meta = {'namespace': ns, 'name': name}
+    if owner:
+        meta['ownerReferences'] = [{'kind': owner[0], 'name': owner[1]}]
+    spec = {'containers': [{'name': 'c', 'resources': {'requests': {'memory': memory, 'cpu': cpu}}}]}
+    if node:
+        spec['nodeName'] = node
+    return {'metadata': meta, 'spec': spec, 'status': {'phase': phase}}
+
+
+def cluster_nodes(*names, unschedulable=()):
+    return {'items': [{'metadata': {'name': n}, 'spec': {'unschedulable': n in unschedulable},
+                       'status': {'allocatable': {'memory': '32000Mi', 'cpu': '8'}}} for n in names]}
+
+
+def test_the_inputs_pin_claims_and_named_nodes_and_count_the_other_pods_where_they_run():
+    rendered = [
+        workload('zone-a', 'StatefulSet', 'postgresql', '1000Mi', '50m', claims=('data',)),
+        workload('zone-a', 'Deployment', 'web', '500Mi', '100m', replicas=2),
+        workload('hoover-zone-a', 'Deployment', 'clamav', '2048Mi', '50m',
+                 spec={'nodeSelector': {'kubernetes.io/hostname': 'edge'}}),
+        workload('hoover-stores', 'StatefulSet', 'garage', '600Mi', '20m', replicas=2, labels={'s': 'garage'},
+                 spec={'affinity': {'podAntiAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': [
+                     {'labelSelector': {'matchLabels': {'s': 'garage'}}, 'topologyKey': 'kubernetes.io/hostname'}]},
+                     'nodeAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': {'nodeSelectorTerms': [
+                         {'matchExpressions': [{'key': 'kubernetes.io/hostname', 'operator': 'In',
+                                                'values': ['a', 'b', 'gpu']}]}]}}}}),
+        workload('zone-a', 'Deployment', 'idle', '100Mi', '10m', replicas=0),
+    ]
     pods = {'items': [
-        pod('monitoring', 'alloy-1', 'server-a', '100Mi', '20m'),
-        pod('hoover-stores', 'clickhouse-0', 'server-a', '640Mi', labels={'hoover.dev/store': 'clickhouse'}),
-        pod('hoover-stores', 'temporal-x', 'worker-b', '448Mi', '290m', labels={'hoover.dev/store': 'temporal'}),
-        pod('zone-a', 'postgresql-0', 'worker-b', '1000Mi', claim=True),
-        pod('zone-a', 'xwiki-x', 'edge', '2000Mi', '100m'),
-        pod('hoover-zone-a', 'hoover4-clamav-x', 'edge', '2048Mi', '50m', selector='edge',
-            labels={'app.kubernetes.io/name': 'hoover4-clamav'}),
-        pod('hoover-zone-a', 'hoover4-tika-x', 'server-a', '640Mi', '90m', labels={'app.kubernetes.io/name': 'hoover4-tika'}),
-        pod('zone-a', 'job-x', 'edge', '5000Mi', phase='Succeeded'),
+        live_pod('monitoring', 'alloy-1', 'a', '100Mi', '20m', owner=('DaemonSet', 'alloy')),
+        live_pod('zone-a', 'postgresql-0', 'b', '900Mi', '50m', owner=('StatefulSet', 'postgresql')),
+        live_pod('zone-a', 'web-5f9c-x1', 'a', '500Mi', '100m', owner=('ReplicaSet', 'web-5f9c')),
+        live_pod('zone-a', 'job-x', 'edge', '5000Mi', '10m', phase='Succeeded'),
+        live_pod('zone-a', 'check', 'edge', '64Mi', '10m'),
     ]}
-    claims = {'items': [{'metadata': {'name': 'data-clickhouse-0', 'annotations': {'volume.kubernetes.io/selected-node': 'server-a'}}},
-                        {'metadata': {'name': 'data-garage-1', 'annotations': {'volume.kubernetes.io/selected-node': 'edge'}}},
-                        {'metadata': {'name': 'data-garage-0', 'annotations': {'volume.kubernetes.io/selected-node': 'worker-b'}}}]}
-    scalable = {'hoover4-tika': (672, 100, False), 'hoover4-clamav': (2080, 60, True)}
-    found, fixed, zone_memory, zone_cpu, details = placement.inputs(site, nodes, pods, claims, 2, {'hoover4-tika': 3}, scalable, 'edge')
-    by = {n.name: n for n in found}
-    # The GPU node runs no zone pod. A store pod with a volume is an item of the plan, not a base load.
-    assert set(by) == {'server-a', 'worker-b', 'edge'}
-    assert by['server-a'].base_memory == 100
-    # Temporal holds no data and stays on its node. The claim of postgresql binds it.
-    assert by['worker-b'].base_memory == 448 + 1000
-    # The running zone keeps its ClamAV pod on the public node, and the planned second zone adds the estimate of the
-    # public pods of zone-a: its ClamAV at its replica count.
-    assert by['edge'].base_memory == 2080 + 2080
-    # Over the nodes: the stateless pods of zone-a, its three Tika pods, and the second zone with the mean of zone-a
-    # without its scaled pods, plus three Tika pods.
-    assert zone_memory == 2000 + 3 * 672 + (1000 + 2000) + 3 * 672
-    assert fixed == {'clickhouse': ('server-a',), 'garage': ('worker-b', 'edge')}
-    assert details['running_zones'] == ['zone-a'] and details['planned_zones'] == 2
+    claims = {'items': [{'metadata': {'namespace': 'zone-a', 'name': 'data-postgresql-0',
+                                      'annotations': {'volume.kubernetes.io/selected-node': 'b'}}}]}
+    nodes, found, live = placement.inputs(cluster_nodes('a', 'b', 'edge', 'gpu'), pods, claims, rendered,
+                                          {'a', 'b', 'edge'}, zones=['zone-a'])
+    by = {n.name: n for n in nodes}
+    assert set(by) == {'a', 'b', 'edge'}
+    # Pods of other installers stay where they run. A finished Job pod counts nothing.
+    assert by['a'].fixed_memory == 100 and by['edge'].fixed_memory == 64 and by['b'].fixed_memory == 0
+    pod = {p.keys[0]: p for p in found}
+    assert pod[('zone-a/statefulset/postgresql', 0)].fixed == 'b'
+    # A zone pod without a RuntimeClass runs in gVisor (the zone pod policy), so it counts the gVisor overhead. A store
+    # pod of hoover-stores without a RuntimeClass runs with runc.
+    gvisor = placement.runtime_overhead()['gvisor']
+    assert pod[('zone-a/statefulset/postgresql', 0)].memory == 1000 + gvisor['memory']
+    assert pod[('zone-a/statefulset/postgresql', 0)].cpu_fixed == gvisor['cpu']
+    assert pod[('hoover-stores/statefulset/garage', 0)].memory == 600
+    assert pod[('hoover-zone-a/deployment/clamav', 0)].fixed == 'edge'
+    assert pod[('zone-a/deployment/web', 0)].current == 'a' and pod[('zone-a/deployment/web', 1)].current == ''
+    garage = pod[('hoover-stores/statefulset/garage', 0)]
+    assert garage.apart == 'hoover-stores/statefulset/garage' and garage.allowed == ('a', 'b')
+    assert not any(k[0].endswith('/idle') for k in pod)
+    assert sorted(s for s, *_ in live) == ['zone:zone-a', 'zone:zone-a']
 
 
-def test_a_site_without_zones_plans_with_the_zone_estimate():
-    site = remote()
-    nodes = {'items': [{'metadata': {'name': 'edge'}, 'spec': {}, 'status': {'allocatable': {'memory': '64Gi', 'cpu': '8'}}},
-                       {'metadata': {'name': 'server-a'}, 'spec': {'unschedulable': True},
-                        'status': {'allocatable': {'memory': '64Gi', 'cpu': '8'}}}]}
-    scalable = {'hoover4-tika': (672, 100, False), 'hoover4-clamav': (2080, 60, True)}
-    found, _, zone_memory, _, _ = placement.inputs(site, nodes, {'items': []}, {'items': []}, 1, {}, scalable, 'edge')
-    # A cordoned node takes no pod.
-    assert [n.name for n in found] == ['edge']
-    estimate = placement.ZONE_ESTIMATE
-    assert found[0].base_memory == estimate['public']['memory']
-    assert zone_memory == estimate['memory'] - estimate['public']['memory']
+def test_a_required_pod_affinity_joins_two_workloads_and_planned_zones_are_counted_only():
+    rendered = [workload('hoover-zone-a', 'Deployment', 'operations', '1000Mi', '100m', labels={'n': 'ops'}),
+                workload('hoover-zone-a', 'Deployment', 'schema', '200Mi', '20m', labels={'n': 'schema'},
+                         spec={'affinity': {'podAffinity': {'requiredDuringSchedulingIgnoredDuringExecution': [
+                             {'labelSelector': {'matchLabels': {'n': 'ops'}}, 'topologyKey': 'kubernetes.io/hostname'}]}}})]
+    nodes, found, _ = placement.inputs(cluster_nodes('a', 'b'), {'items': []}, {'items': []}, rendered, {'a', 'b'},
+                                       zones=['zone-a'], planned=2)
+    steered = [p for p in found if p.steer]
+    # Two gVisor pods of the zone: their requests and two gVisor overheads.
+    assert len(steered) == 1 and steered[0].memory == 1200 + 2 * placement.runtime_overhead()['gvisor']['memory']
+    assert {k for k, _ in steered[0].keys} == {'hoover-zone-a/deployment/operations', 'hoover-zone-a/deployment/schema'}
+    copies = [p for p in found if not p.steer]
+    assert len(copies) == 1 and copies[0].key.startswith('planned-2:')
+    plan = placement.solve(nodes, found)
+    assert set(plan.workloads()) == {'hoover-zone-a/deployment/operations', 'hoover-zone-a/deployment/schema'}
 
 
-def test_the_store_pod_request_counts_the_runtime_overhead_and_the_init_containers():
+def test_the_pod_request_splits_the_runtime_overhead_from_the_container_cpu():
     overhead = placement.runtime_overhead()
     assert overhead['kata']['memory'] == 640 and overhead['gvisor']['memory'] == 32
-    s = remote('    stores: {nodes: [server-a, worker-b]}\n')
-    plan = config.store_plan(s)
-    items = shared.objects(s, plan, 1, {})
-    requests = placement.store_requests(items, overhead)
-    # ClickHouse: the container request and the Kata overhead, together the measured peak with the margin
-    # (../zones/memory-requests.json). The blockmount init container is smaller.
-    import memory_requests
-    measured = memory_requests.mebibytes(memory_requests.load()['site']['statefulset/clickhouse']['request'])
-    assert requests['clickhouse'][0] == max(measured, 640 + memory_requests.FLOOR)
+    spec = {'runtimeClassName': 'kata', 'containers': [{'name': 'c', 'resources': {'requests': {'memory': '1Gi', 'cpu': '100m'}}}],
+            'initContainers': [{'name': 'i', 'resources': {'requests': {'memory': '2Gi', 'cpu': '10m'}}},
+                               {'name': 's', 'restartPolicy': 'Always', 'resources': {'requests': {'memory': '64Mi', 'cpu': '20m'}}}]}
+    memory, cpu, fixed = placement.pod_request(spec, overhead)
+    # The plain init container is larger than the containers and the sidecar together.
+    assert memory == 2048 + 640 and cpu == 120 and fixed == overhead['kata']['cpu']
+
+
+# Order of the steps ---------------------------------------------------------------------------------------------------
+
+def test_stores_that_fit_only_after_the_zones_shrink_run_after_the_zones():
+    nodes = [Node('a', 4000, 4000)]
+    # The zone pod shrinks from 3000 to 1000 MiB in its step. The new store pod needs 1500 MiB.
+    pods = [Pod((('zone-a/deployment/web', 0),), 1000, 10, current='a', step='zone:zone-a'),
+            Pod((('hoover-stores/deployment/temporal', 0),), 1500, 10, current='a', step='stores')]
+    live = [('zone:zone-a', 'a', 3000, 10, 0), ('stores', 'a', 500, 10, 0)]
+    plan = placement.Plan(1.0, ['a', 'a'], nodes, pods)
+    assert placement.order(plan, live, ['zone-a']) == ('zones-first', [])
+    live[0] = ('zone:zone-a', 'a', 1000, 10, 0)
+    assert placement.order(plan, live, ['zone-a']) == ('stores-first', [])
+
+
+# Application ----------------------------------------------------------------------------------------------------------
+
+def plan_dict(factor, workloads):
+    return {'factor': factor, 'workloads': workloads}
+
+
+def test_the_configmap_holds_the_factor_and_the_planned_nodes_by_workload():
+    cm = placement.configmap(plan_dict(0.85, {'zone-a/deployment/web': ['b', 'a', 'b'],
+                                               'hoover-stores/statefulset/garage': ['a', 'b']}))
+    assert cm['metadata'] == {'name': 'hoover-placement', 'namespace': 'kube-system',
+                              'labels': {'app.kubernetes.io/name': 'hoover-placement'}}
+    assert cm['data'] == {'factor': '0.85', 'zone-a.deployment.web': 'a,b', 'hoover-stores.statefulset.garage': 'a,b'}
+    assert placement.store_nodes(plan_dict(1.0, {'hoover-stores/statefulset/garage': ['b', 'a']})) == {'garage': ['a', 'b']}
+
+
+def test_the_resize_follows_the_template_times_the_factor_and_a_second_pass_changes_nothing():
+    templates = placement.template_requests({'items': [
+        {'kind': 'ReplicaSet', 'metadata': {'namespace': 'zone-a', 'name': 'web-5f9c'},
+         'spec': {'template': {'spec': {'containers': [{'name': 'c', 'resources': {'requests': {'cpu': '100m'}}}],
+                                        'initContainers': [{'name': 's', 'restartPolicy': 'Always',
+                                                            'resources': {'requests': {'cpu': '33m'}}}]}}}}]})
+    pod = live_pod('zone-a', 'web-5f9c-x1', 'a', '500Mi', '100m', owner=('ReplicaSet', 'web-5f9c'))
+    pod['spec']['initContainers'] = [{'name': 's', 'restartPolicy': 'Always', 'resources': {'requests': {'cpu': '33m'}}}]
+    other = live_pod('monitoring', 'x-1', 'a', '1Mi', '100m', owner=('ReplicaSet', 'x'))
+    found = placement.resizes({'items': [pod, other]}, templates, 0.85)
+    assert found == [('zone-a', 'web-5f9c-x1', {'containers': [{'name': 'c', 'resources': {'requests': {'cpu': '85m'}}}],
+                                                 'initContainers': [{'name': 's', 'resources': {'requests': {'cpu': '29m'}}}]},
+                      True)]
+    pod['spec']['containers'][0]['resources']['requests']['cpu'] = '85m'
+    pod['spec']['initContainers'][0]['resources']['requests']['cpu'] = '29m'
+    pod['metadata']['annotations'] = {'hoover.dev/cpu-scale': '0.85'}
+    assert placement.resizes({'items': [pod]}, templates, 0.85) == []
+    # The admission policy rounds up to 1m in the same way.
+    assert placement.scaled('33m', 0.85) == 29 and placement.scaled('1', 0.85) == 850
+
+
+def test_the_admission_policy_reads_the_configmap_of_the_plan():
+    docs = [d for d in yaml.safe_load_all((K3S / 'cluster/placement-policy.yaml').read_text()) if d]
+    policy, binding = docs
+    assert policy['kind'] == 'MutatingAdmissionPolicy' and policy['spec']['paramKind'] == {'apiVersion': 'v1', 'kind': 'ConfigMap'}
+    assert binding['spec']['paramRef'] == {'name': 'hoover-placement', 'namespace': 'kube-system',
+                                           'parameterNotFoundAction': 'Allow'}
+    assert policy['spec']['matchConstraints']['resourceRules'][0]['operations'] == ['CREATE']
+    assert 'kubectl apply -f placement-policy.yaml' in (K3S / 'cluster/setup.sh').read_text()
+
+
+def test_the_plan_file_is_part_of_the_cluster_copy_of_the_state():
+    import clusterstate
+    assert 'placement/plan.json' in clusterstate.KINDS['configmap'][1]
 
 
 # Placement in the render ----------------------------------------------------------------------------------------------
@@ -260,17 +345,6 @@ def test_the_zones_key_of_the_stores_and_the_replica_keys_are_read_and_checked()
             remote(f'    replicas: {text}\n')
 
 
-def test_a_replica_count_that_does_not_fit_is_a_problem_of_the_deploy_check():
-    s = remote('    replicas: {tika: 4, clamav: 2}\n')
-    out = {'zones_fit': False, 'requested_share': {'memory': 1.08, 'cpu': 0.5},
-           'nodes': {'edge': {'capacity': {'memory': 4000, 'cpu': 8000}, 'base_and_stores': {'memory': 4200, 'cpu': 100}}}}
-    problems = shared.placement_problems(s, out)
-    assert problems[0].startswith('vars.replicas (clamav 2, tika 4) does not fit: the zones and stores request 108% of the memory')
-    assert 'does not fit the public node edge' in problems[1]
-    # Without a count above 1 the same overcommit is no problem of vars.replicas.
-    assert shared.placement_problems(remote(), out) == []
-
-
 def render(tmp_path, replicas=None):
     import manifests
     path = write_site(tmp_path, 'remote.yml')
@@ -306,11 +380,6 @@ def test_clamav_tika_and_tesseract_request_their_measured_use(tmp_path):
     measured = memory_requests.load()['hoover']
     for name in ('hoover4-clamav', 'hoover4-tika', 'hoover4-tesseract-cpu'):
         assert requests[name] == measured[f'deployment/{name}']['request'], name
-    import manifests
-    pods = manifests.scaled_pods()
-    clamav = memory_requests.mebibytes(measured['deployment/hoover4-clamav']['request'])
-    assert pods['hoover4-clamav'] == (clamav + 32, pods['hoover4-clamav'][1], True)
-    assert set(pods) == {f'hoover4-{k}' for k in config.REPLICA_SERVICES}
 
 
 def test_the_worker_gets_the_qpdf_cap_of_the_zone_ini(tmp_path):
@@ -347,4 +416,8 @@ def test_the_priority_class_stays_below_topolvm_and_the_descheduler_keeps_its_po
     profile = yaml.safe_load(policy['data']['policy.yaml'])['profiles'][0]
     evictor = next(p for p in profile['pluginConfig'] if p['name'] == 'DefaultEvictor')
     assert evictor['args']['priorityThreshold'] == {'name': 'hoover-node-bound'}
+    # The pass moves only a pod that started away from its planned node (a preferred node affinity).
+    assert profile['plugins'] == {'deschedule': {'enabled': ['RemovePodsViolatingNodeAffinity']}}
+    affinity = next(p for p in profile['pluginConfig'] if p['name'] == 'RemovePodsViolatingNodeAffinity')
+    assert affinity['args']['nodeAffinityType'] == ['preferredDuringSchedulingIgnoredDuringExecution']
     assert 'kubectl apply -f priorityclasses.yaml' in (K3S / 'cluster/setup.sh').read_text()

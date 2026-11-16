@@ -167,7 +167,7 @@ def test_up_plan_puts_hosts_registry_images_and_zones_in_order(env):
     assert steps[:3] == ['hosts:prepare', 'hosts:k3s', 'hosts:verify']
     for before, after in (('hosts:verify', 'cluster'), ('tools', 'registry'), ('registry', 'images'),
                           ('images', 'zone:zone-a'), ('ingress', 'frontend'), ('monitoring', 'operator'),
-                          ('operator', 'stores'), ('stores', 'zone:zone-a'),
+                          ('operator', 'stores'), ('placement', 'stores'), ('stores', 'zone:zone-a'),
                           ('zone:zone-a', 'calls'), ('zone:zone-a', 'mcp-relay'), ('calls', 'descheduler'),
                           ('mcp-relay', 'descheduler')):
         assert steps.index(before) < steps.index(after)
@@ -243,18 +243,25 @@ def test_a_partial_up_is_not_an_applied_deployment(env):
 
 def test_the_up_steps_wait_only_for_their_prerequisites():
     names = ['hosts:prepare', 'hosts:k3s', 'hosts:verify', 'tools', 'cluster', 'registry', 'images', 'ingress', 'frontend',
-             'monitoring', 'operator', 'hoover-data', 'stores', 'prepull', 'zone:zone-a', 'zone:zone-b', 'calls',
+             'monitoring', 'operator', 'hoover-data', 'placement', 'stores', 'prepull', 'zone:zone-a', 'zone:zone-b', 'calls',
              'descheduler']
     needs = deploy.prerequisites(names)
     assert needs['registry'] == names[:5]
     for name in ('images', 'ingress', 'frontend', 'monitoring', 'hoover-data'):
         assert set(needs[name]) == set(names[:6]), name
     assert set(needs['operator']) == set(names[:6]) | {'images', 'monitoring'}
-    assert set(needs['stores']) == set(needs['prepull']) == set(names[:6]) | {'images'}
-    platform = {'images', 'ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'stores'}
+    # The placement plan comes before the stores and the zones, and needs only the steps up to the registry.
+    assert set(needs['placement']) == set(names[:6])
+    assert set(needs['stores']) == set(names[:6]) | {'images', 'placement'}
+    assert set(needs['prepull']) == set(names[:6]) | {'images'}
+    platform = {'images', 'ingress', 'frontend', 'monitoring', 'operator', 'hoover-data', 'placement', 'stores'}
     assert set(needs['zone:zone-a']) == set(needs['zone:zone-b']) == set(names[:6]) | platform
     assert set(needs['calls']) == set(names[:6]) | (platform - {'images'}) | {'zone:zone-a', 'zone:zone-b'}
     assert set(needs['descheduler']) == set(names[:6]) | (platform - {'images'}) | {'zone:zone-a', 'zone:zone-b', 'calls', 'prepull'}
+    # A plan that says zones-first lets the zones start before the stores step, which then waits for them.
+    turned = deploy.reorder({k: list(v) for k, v in needs.items()}, 'zones-first')
+    assert 'stores' not in turned['zone:zone-a'] and {'zone:zone-a', 'zone:zone-b'} <= set(turned['stores'])
+    assert deploy.reorder({k: list(v) for k, v in needs.items()}, 'stores-first') == needs
     # A step that the table does not name waits for every earlier step, except a step on another node.
     assert deploy.prerequisites(['a', 'b', 'c'])['c'] == ['a', 'b']
     assert deploy.prerequisites(['start:k3s:a', 'start:k3s:b', 'start:stores'])['start:k3s:b'] == []

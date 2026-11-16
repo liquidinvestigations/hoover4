@@ -334,6 +334,34 @@ def run_entry(zone, entry, command):
         shutil.rmtree(home, ignore_errors=True)
 
 
+def template_entries(zone):
+    """The helmfile template output of every openDesk entry of OPENDESK_WAVES, each in its own process, all at the same
+    time. The output passes the post-renderer. The deploy-time placement (../placement.py) reads the requests from it.
+    Nothing is applied."""
+    import shutil
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+    check_waves()
+
+    def one(entry):
+        home = Path(tempfile.mkdtemp(prefix=f'helmfile-{entry}-'))
+        try:
+            if (TOOLS / 'config').exists():
+                shutil.copytree(TOOLS / 'config', home / 'helm-config')
+            wrapper = home / 'helmfile.yaml.gotmpl'
+            wrapper.write_text(WRAPPER.replace('PATH', str(OPENDESK / 'helmfile/apps' / entry / 'helmfile-defaults.yaml.gotmpl')))
+            result = subprocess.run([str(a) for a in helmfile_args(zone, 'template', '-f', wrapper, '--quiet')],
+                                    env=helmfile_env(zone, home), cwd=OPENDESK, text=True, capture_output=True)
+            if result.returncode:
+                raise SystemExit(f'helmfile template of the openDesk part {entry} of {zone} failed: {result.stderr.strip()[-600:]}')
+            return result.stdout
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+    entries = [e for wave in OPENDESK_WAVES for e in wave]
+    with ThreadPoolExecutor(max_workers=len(entries)) as pool:
+        return list(pool.map(one, entries))
+
+
 def failure_cause(output):
     """The last error lines of a helmfile output, for the log of a retry."""
     lines = [line.strip() for line in output.splitlines() if 'Error' in line or 'error' in line or 'timed out' in line]

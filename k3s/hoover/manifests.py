@@ -461,23 +461,6 @@ def workload(target, kind, name, spec, replicas=1, labels=None, spread=False, cl
     return item
 
 
-def scaled_pods():
-    """{name: (MiB, millicores, public)} of one pod of each service of SCALABLE: its memory request of
-    ../zones/memory-requests.json (else REQUESTS), its CPU request of ../zones/cpu-requests.json and the overhead of
-    gVisor. public is True for a service on the public node."""
-    import placement
-    overhead = placement.runtime_overhead()['gvisor']
-    table = cpu_requests().load().get('hoover', {})
-    memory = memory_requests().load().get('hoover', {})
-    out = {}
-    for name in SCALABLE:
-        cpu = table.get(f'deployment/{name}', {}).get('request', '50m')
-        wanted = memory.get(f'deployment/{name}', {}).get('request') or REQUESTS.get(name, DEFAULT_REQUEST)
-        out[name] = (placement.mem_mi(wanted) + overhead['memory'],
-                     placement.cpu_m(cpu) + overhead['cpu'], name in INTERNET)
-    return out
-
-
 def memory_requests():
     if 'memory_requests' not in sys.modules:
         cpu_requests()

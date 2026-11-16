@@ -1,6 +1,6 @@
 #!/bin/bash
-# Set up the cluster on the k3s nodes: node labels, RuntimeClasses, the PriorityClass, cert-manager, TopoLVM and the
-# policy of the descheduler.
+# Set up the cluster on the k3s nodes: node labels, RuntimeClasses, the PriorityClass, the admission policy of the site
+# placement, cert-manager, TopoLVM and the policy of the descheduler.
 # Run it on a host with kubectl, helm, python3 and the admin kubeconfig. A second run changes nothing.
 # KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 # The site file (settings.py) gives the storage tiers of each node. The facts of each node in facts/<node>.json of the
@@ -62,6 +62,9 @@ python3 topolvm_values.py "$SITE" > "$values"
 kubectl apply -f runtimeclasses.yaml
 # The pods that can run on one node only preempt stateless pods on a full node (priorityclasses.yaml).
 kubectl apply -f priorityclasses.yaml
+# Each new pod of the stores and the zones gets the CPU scale factor and the planned nodes of the site placement
+# (placement-policy.yaml, ../placement.py).
+kubectl apply -f placement-policy.yaml
 
 # helm_install <release> <namespace> <repo/chart> <version> <values file>
 # Install or upgrade the release only when its chart version, its status or its values differ.

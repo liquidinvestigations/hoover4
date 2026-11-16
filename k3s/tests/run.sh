@@ -2,7 +2,7 @@
 # Run the test suites of the cluster deployment code in containers. Usage: k3s/tests/run.sh [suite ...]
 # Without a suite it runs render, state and driver.
 #   render   the site file, the Hoover render, the shared stores, Temporal, the openDesk waves, the CPU and memory
-#            requests, the descheduler and the store placement (test_config.py, test_render.py, test_shared_stores.py,
+#            requests, the descheduler and the site placement (test_config.py, test_render.py, test_shared_stores.py,
 #            test_temporal.py, test_zones.py, test_placement.py, test_memory.py)
 #   state    the operator settings registry, revisions, apply operations, portal routes, the cluster copy of the state
 #            and the site lock Lease (test_state.py, test_portal.py, test_clusterstate.py)

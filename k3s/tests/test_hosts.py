@@ -466,8 +466,10 @@ def test_the_containerd_statistics_period_is_ten_seconds():
 def test_the_scheduler_scores_the_fit_and_the_balance_of_cpu_and_memory():
     text = (ROLES / 'hoover4_k3s/templates/scheduler-config.yaml.j2').read_text()
     profile = yaml.safe_load(text)['profiles'][0]
-    assert {p['name']: p['weight'] for p in profile['plugins']['score']['enabled']} == \
-        {'NodeResourcesFit': 10, 'NodeResourcesBalancedAllocation': 10}
+    weights = {p['name']: p['weight'] for p in profile['plugins']['score']['enabled']}
+    assert weights == {'NodeResourcesFit': 10, 'NodeResourcesBalancedAllocation': 10, 'NodeAffinity': 50}
+    # The planned node of the site placement (a preferred node affinity) wins over the sum of the resource scores.
+    assert weights['NodeAffinity'] * 100 > (weights['NodeResourcesFit'] + weights['NodeResourcesBalancedAllocation']) * 100
     args = {c['name']: c['args'] for c in profile['pluginConfig']}
     assert args['NodeResourcesFit']['scoringStrategy']['resources'] == [{'name': 'cpu', 'weight': 1}, {'name': 'memory', 'weight': 1}]
     assert args['NodeResourcesBalancedAllocation']['resources'] == [{'name': 'cpu', 'weight': 1}, {'name': 'memory', 'weight': 1}]

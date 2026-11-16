@@ -132,8 +132,8 @@ PARALLEL_ZONES = 2
 #   nodes     the nodes that can run a store pod. Default: every node with the role worker and a storage tier.
 #   history_shards  the history shard count of the Temporal of the site. Default: HISTORY_SHARDS. Temporal keeps the
 #             count of its creation, so a change is refused (deploy check).
-#   zones     the zone count that the placement of the store pods reserves memory and CPU for
-#             (../hoover/stores/placement.py). Default: the zones of the zone state, at least 1.
+#   zones     the zone count that the site placement reserves memory and CPU for, as copies of the first zone
+#             (placement.py). Default: the zones of the zone state.
 #   garage.nodes      the Garage node count. Default: the store node count, at most 3.
 #   cassandra.nodes   the Cassandra node count. Default: 1.
 #   cassandra.data_gib  the live data of Cassandra in GiB, which sets its heap (../hoover/stores/temporal.py). Default: 2.
@@ -145,9 +145,10 @@ STORES_KEYS = {'nodes': (False, 'names'), 'history_shards': (False, 'count'), 'z
 STORE_PARTS = {'garage': {'nodes': (False, 'count')}, 'cassandra': {'nodes': (False, 'count'), 'data_gib': (False, 'count')},
                'opensearch': {'nodes': (False, 'count')}, 'temporal': {'pods': (False, 'count')}}
 # The replica count of each stateless processing service of every zone: vars.replicas.<service>. Default: 1. Each
-# service runs its pods behind its Service, which spreads the connections over the ready pods. The deploy check refuses
-# counts whose requests do not fit the nodes (../hoover/stores/shared.py plan). The other services of a zone run one
-# pod, or scale by their own setting (budget.worker_pods of the workers), see ../hoover/manifests.py SCALABLE.
+# service runs its pods behind its Service, which spreads the connections over the ready pods. The site placement
+# (placement.py) counts their pods, and the deploy check fails when the memory requests do not fit the nodes. The
+# other services of a zone run one pod, or scale by their own setting (budget.worker_pods of the workers), see
+# ../hoover/manifests.py SCALABLE.
 REPLICA_SERVICES = ('tika', 'tesseract-cpu', 'ocr-pdf', 'pdf-search', 'regex-entity-scanner', 'clamav')
 REPLICA_KEYS = {k: (False, 'count') for k in REPLICA_SERVICES}
 # The history shard count of a new site Temporal. The Compose default (deploy.py temporal_history_shards) is the same.
