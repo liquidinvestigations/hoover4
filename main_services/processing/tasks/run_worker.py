@@ -1304,12 +1304,17 @@ async def run_operations_worker():
     for queue, slots in OPERATIONS_QUEUE_SLOTS.items():
       if queue == "operations-queue":
         continue
+      # A cancel reaches an activity only with a heartbeat reply. The Manticore export and import
+      # beat every 5 s, so a cancel reaches them, and the schema proxy, within about 10 s.
+      throttle = ({"max_heartbeat_throttle_interval": STEP_HEARTBEAT_THROTTLE}
+                  if queue == "operations-manticore-queue" else {})
       workers.append(Worker(
         client,
         interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
         workflow_runner=sandboxed_runner(),
         task_queue=queue,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        **throttle,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
         activities=[record_operation_state, *store_activities[queue]],

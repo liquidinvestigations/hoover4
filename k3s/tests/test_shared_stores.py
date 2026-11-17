@@ -198,11 +198,43 @@ def test_each_zone_has_three_manticore_users_and_only_the_schema_user_can_change
     assert roles == {'website': 'read', 'worker': 'write', 'ops': 'write', 'mcp-collections': 'read'}
 
 
-def test_mysql_answers_are_read_with_and_without_borders():
-    assert shared.manticore_rows('zone_a_read\nhoover_admin\n') == [['zone_a_read'], ['hoover_admin']]
-    bordered = '+----+----+\n| username | action |\n+----+----+\n| zone_a_read | read |\n+----+----+\n'
-    assert shared.manticore_rows(bordered) == [['username', 'action'], ['zone_a_read', 'read']]
-    assert shared.manticore_rows('zone_a_read\tread\tzone_a_*\t1\t\n')[0][:4] == ['zone_a_read', 'read', 'zone_a_*', '1']
+USERS_XML = """<?xml version="1.0"?>
+
+<resultset statement="SHOW USERS" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <row>
+	<field name="username">hoover_admin</field>
+  </row>
+
+  <row>
+	<field name="username">zone_a_read</field>
+  </row>
+</resultset>
+"""
+
+
+def test_manticore_listings_must_be_complete():
+    assert shared.manticore_xml_rows(USERS_XML, 'SHOW USERS') == [{'username': 'hoover_admin'}, {'username': 'zone_a_read'}]
+    empty = '<?xml version="1.0"?>\n\n<resultset statement="SHOW TABLES" xmlns:xsi="x"></resultset>\n'
+    assert shared.manticore_xml_rows(empty, 'SHOW TABLES') == []
+    # An answer that kubectl exec cut, an empty answer and the answer to another statement are errors.
+    for text, statement in ((USERS_XML[:-40], 'SHOW USERS'), (USERS_XML[:150], 'SHOW USERS'), ('', 'SHOW USERS'),
+                            ('username\nzone_a_read\n', 'SHOW USERS'), (USERS_XML, 'SHOW TABLES')):
+        with pytest.raises(SystemExit):
+            shared.manticore_xml_rows(text, statement)
+
+
+def test_manticore_tenant_reads_the_xml_answers(monkeypatch):
+    answers = {'SHOW TABLES': [{'Table': 'zone_a_demo_vfs', 'Type': 'rt'}, {'Table': 'zone_ab_x_vfs', 'Type': 'rt'},
+                               {'Table': 'zone_b_demo_vfs', 'Type': 'rt'}],
+               'SHOW USERS': [{'username': 'zone_a_read'}, {'username': 'zone_a_schema'}, {'username': 'zone_b_read'}]}
+    monkeypatch.setattr(shared, 'manticore_list', lambda store, statement: answers[statement])
+    assert shared.manticore_tenant('zone-a', 'manticore') == (['zone_a_demo_vfs'], ['zone_a_read', 'zone_a_schema'])
+
+    def cut(store, statement):
+        raise SystemExit('Manticore manticore gave an incomplete answer to SHOW TABLES')
+    monkeypatch.setattr(shared, 'manticore_list', cut)
+    with pytest.raises(SystemExit):
+        shared.manticore_tenant('zone-a', 'manticore')
 
 
 def test_the_text_daemon_pod_runs_the_file_service_on_its_volume():

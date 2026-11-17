@@ -45,9 +45,24 @@ the JSON body ``{"operation": ..., "arguments": {...}}`` and the header
 ``Authorization: Bearer <token>``. ``MANTICORE_SCHEMA_TOKEN`` allows every operation.
 ``MANTICORE_STATUS_TOKEN``, when set, allows ``status`` only: the website holds it. The
 proxy answers ``{"result": ...}``, or ``{"error": ...}`` with status 400 for refused
-arguments, 401 for a wrong token, 403 for an operation that the token does not allow and
-502 for a Manticore error. ``GET /ready`` answers 200. The proxy refuses to start without
-a token or a table prefix.
+arguments, 401 for a wrong token, 403 for an operation that the token does not allow, 409
+for a cancelled operation or an operation id that runs already, and 502 for a Manticore
+error. ``GET /ready`` answers 200. The proxy refuses to start without a token or a table
+prefix.
+
+The body of ``export_tables`` and ``import_tables`` can also hold ``"id"``: 1 to 64
+lowercase letters and digits that the caller chooses. The proxy keeps its running exports
+and imports in memory by this id, and keeps no file or table about them.
+``POST /cancel`` with the body ``{"id": ...}`` and the schema token stops that operation
+before its next table or file, waits until it has removed what it wrote (:mod:`database.manticore_files`),
+and answers ``{"result": {"id": ..., "state": "stopped"}}``. The cancel of an id that runs
+no operation, also of an operation that ended, answers the state ``absent`` with status 200.
+When the operation has not stopped after ``CANCEL_WAIT_SECONDS``, the state is ``stopping``.
+
+A restart of the proxy loses the table of operations. Before it takes requests, the proxy
+therefore removes the import stages of its Manticore user and drops the partial tables of
+its prefix (:func:`remove_leftovers`). It runs as one pod for each zone, so no other
+operation of the prefix runs at that time.
 """
 
 from __future__ import annotations
@@ -57,6 +72,9 @@ import json
 import logging
 import os
 import re
+import secrets
+import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +83,11 @@ MAX_BODY = 1 << 20
 #: The largest shard index and the largest shard count of one collection in a request.
 MAX_SHARD = 1_000_000
 MAX_SHARDS = 100_000
+#: The longest wait of a cancel for the end of its operation. A started ``IMPORT TABLE`` cannot be stopped.
+CANCEL_WAIT_SECONDS = 1800
+#: How often, and how many seconds apart, the proxy tries to remove the leftovers of earlier operations at its start.
+START_CLEANUP_ATTEMPTS = 12
+START_CLEANUP_PAUSE = 5
 
 
 class Refused(ValueError):
@@ -244,26 +267,43 @@ def _export_folder(arguments) -> str:
         raise Refused(str(error)) from None
 
 
-def export_tables(arguments, progress=None):
+def export_tables(arguments, progress=None, cancelled=None):
     from database import manticore_files
 
     collection = _collection(arguments)
     folder = _export_folder(arguments)
     try:
-        return manticore_files.export_tables(collection, folder, manticore_files.backend(), progress)
+        return manticore_files.export_tables(collection, folder, manticore_files.backend(), progress, cancelled)
     except manticore_files.FilesRefused as error:
         raise Refused(str(error)) from None
 
 
-def import_tables(arguments, progress=None):
+def import_tables(arguments, progress=None, cancelled=None):
     from database import manticore_files
 
     collection = _collection(arguments)
     folder = _export_folder(arguments)
     try:
-        return manticore_files.import_tables(collection, folder, manticore_files.backend(), progress)
+        return manticore_files.import_tables(collection, folder, manticore_files.backend(), progress, cancelled)
     except manticore_files.FilesRefused as error:
         raise Refused(str(error)) from None
+
+
+def remove_leftovers() -> dict:
+    """Remove the import stages of this process and drop the partial tables of its prefix.
+
+    Only for a time when no export or import of the prefix runs: the start of the proxy.
+    """
+    from database import manticore, manticore_files
+
+    prefix = manticore.table_prefix()
+    manticore_files.backend().remove_all()
+    dropped = []
+    for table in manticore._list_all_tables(manticore.TEXT):
+        if table.startswith(prefix) and manticore_files.is_partial_table(table):
+            manticore._execute_ddl(f"DROP TABLE IF EXISTS {_own_table(table)}", manticore.TEXT)
+            dropped.append(table)
+    return {"dropped": dropped}
 
 
 #: The counters of ``SHOW STATUS`` that ``status`` returns: the ones the admin load panel shows.
@@ -300,14 +340,19 @@ OPERATIONS = {
     "import_tables": (import_tables, {"collection", "export"}),
     "status": (status, set()),
 }
-#: The operations that report the bytes of their work to an in-process caller.
+#: The operations that report the bytes of their work to an in-process caller, and that a caller can cancel.
 WITH_PROGRESS = {"export_tables", "import_tables"}
 #: The operations that the status token allows.
 STATUS_OPERATIONS = {"status"}
+#: An operation id of a caller.
+_ID_RE = re.compile(r"^[a-z0-9]{1,64}$")
 
 
-def run(operation, arguments, progress=None):
-    """Check and run one operation in this process. Raise :class:`Refused` for a refused request."""
+def run(operation, arguments, progress=None, cancelled=None):
+    """Check and run one operation in this process. Raise :class:`Refused` for a refused request.
+
+    ``cancelled()`` stops an export or an import before its next table or file.
+    """
     if not isinstance(operation, str):
         raise Refused("the operation must be a name")
     if operation not in OPERATIONS:
@@ -316,8 +361,62 @@ def run(operation, arguments, progress=None):
     if not isinstance(arguments, dict) or set(arguments) != names:
         raise Refused(f"{operation} takes the arguments {', '.join(sorted(names)) or 'none'}")
     if operation in WITH_PROGRESS:
-        return function(arguments, progress)
+        return function(arguments, progress, cancelled)
     return function(arguments)
+
+
+class _Running:
+    """An export or import that the proxy runs: its cancel request and its end."""
+
+    def __init__(self, operation):
+        self.operation = operation
+        self.stop = threading.Event()
+        self.ended = threading.Event()
+
+
+#: The running exports and imports of this proxy by operation id. Only memory holds them.
+_RUNNING: dict[str, _Running] = {}
+_RUNNING_LOCK = threading.Lock()
+
+
+def cancel(operation_id: str, wait: float = CANCEL_WAIT_SECONDS) -> dict:
+    """Stop the operation ``operation_id`` and wait for its end. An id without an operation is ``absent``."""
+    with _RUNNING_LOCK:
+        running = _RUNNING.get(operation_id)
+    if running is None:
+        return {"id": operation_id, "state": "absent"}
+    log.info("operation %s (%s): cancel requested", operation_id, running.operation)
+    running.stop.set()
+    return {"id": operation_id, "state": "stopped" if running.ended.wait(wait) else "stopping"}
+
+
+def _run_registered(operation_id, operation, arguments):
+    running = _Running(operation)
+    with _RUNNING_LOCK:
+        if operation_id in _RUNNING:
+            raise _Conflict(f"the operation {operation_id} runs already")
+        _RUNNING[operation_id] = running
+    log.info("operation %s (%s): started", operation_id, operation)
+    state = "failed"
+    try:
+        result = run(operation, arguments, cancelled=running.stop.is_set)
+        state = "finished"
+        return result
+    except Exception as error:
+        from database import manticore_files
+
+        if isinstance(error, manticore_files.Cancelled):
+            state = "cancelled"
+        raise
+    finally:
+        with _RUNNING_LOCK:
+            _RUNNING.pop(operation_id, None)
+        running.ended.set()
+        log.info("operation %s (%s): %s", operation_id, operation, state)
+
+
+class _Conflict(Exception):
+    """An operation id that runs already."""
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -335,18 +434,57 @@ def handle(token: str, authorization: str, body: bytes, status_token: str = "") 
     limited = bool(status_token) and hmac.compare_digest(given, f"Bearer {status_token}".encode())
     if not full and not limited:
         return 401, {"error": "the proxy credential is not valid"}
+    from database import manticore_files
+
     try:
         request = json.loads(body)
-        if not isinstance(request, dict) or set(request) != {"operation", "arguments"}:
-            raise Refused("the request must hold operation and arguments only")
+        if not isinstance(request, dict) or set(request) - {"id"} != {"operation", "arguments"}:
+            raise Refused("the request must hold operation and arguments, and an id for an export or an import")
         if not full and (not isinstance(request["operation"], str) or request["operation"] not in STATUS_OPERATIONS):
             return 403, {"error": "this credential allows the status operation only"}
+        if request["operation"] in WITH_PROGRESS:
+            operation_id = request.get("id", secrets.token_hex(8))
+            if not isinstance(operation_id, str) or not _ID_RE.match(operation_id):
+                raise Refused("the id must hold 1 to 64 lowercase letters and digits")
+            return 200, {"result": _run_registered(operation_id, request["operation"], request["arguments"])}
+        if "id" in request:
+            raise Refused("only an export or an import takes an id")
         return 200, {"result": run(request["operation"], request["arguments"])}
     except (Refused, json.JSONDecodeError, UnicodeDecodeError) as error:
         return 400, {"error": str(error)}
+    except manticore_files.Cancelled:
+        return 409, {"error": "the operation was cancelled"}
+    except _Conflict as error:
+        return 409, {"error": str(error)}
     except Exception as error:  # a Manticore error
         log.exception("schema operation failed")
         return 502, {"error": f"Manticore refused the statement: {str(error)[:300]}"}
+
+
+def handle_cancel(token: str, authorization: str, body: bytes, wait: float = CANCEL_WAIT_SECONDS) -> tuple[int, dict]:
+    """The status and the JSON answer of one request to ``POST /cancel``. Only ``token`` allows it."""
+    if not hmac.compare_digest(authorization.encode(), f"Bearer {token}".encode()):
+        return 401, {"error": "the proxy credential is not valid"}
+    try:
+        request = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        request = None
+    if not isinstance(request, dict) or set(request) != {"id"} or not isinstance(request["id"], str) \
+            or not _ID_RE.match(request["id"]):
+        return 400, {"error": "the request must hold the id of an operation only"}
+    return 200, {"result": cancel(request["id"], wait)}
+
+
+def start_cleanup(attempts: int = START_CLEANUP_ATTEMPTS, pause: float = START_CLEANUP_PAUSE) -> dict:
+    """Run :func:`remove_leftovers`, and try again while Manticore or the file service does not answer."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return remove_leftovers()
+        except Exception:
+            log.exception("the removal of the leftovers of earlier operations failed (attempt %d of %d)", attempt, attempts)
+            if attempt < attempts:
+                time.sleep(pause)
+    raise SystemExit("The proxy could not remove the import stages and partial tables of earlier operations.")
 
 
 def serve(port: int = 8080) -> None:
@@ -377,17 +515,22 @@ def serve(port: int = 8080) -> None:
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)
-            if self.path != "/operation":
+            if self.path not in ("/operation", "/cancel"):
                 return self.answer(404, {"error": "not found"})
             if length > MAX_BODY:
                 return self.answer(413, {"error": "the request is too large"})
-            status, payload = handle(token, self.headers.get("Authorization", ""), self.rfile.read(length), status_token)
-            log.info("operation status %s", status)
+            authorization, body = self.headers.get("Authorization", ""), self.rfile.read(length)
+            if self.path == "/cancel":
+                status, payload = handle_cancel(token, authorization, body)
+            else:
+                status, payload = handle(token, authorization, body, status_token)
+            log.info("%s status %s", self.path[1:], status)
             self.answer(status, payload)
 
         def log_message(self, *args):
             return None
 
+    log.info("Removed the leftovers of earlier operations: %s", start_cleanup())
     log.info("Manticore schema proxy for the prefix %s on port %d", manticore.table_prefix(), port)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 

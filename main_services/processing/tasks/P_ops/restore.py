@@ -42,7 +42,7 @@ from temporalio import activity
 
 from ..heartbeat import with_heartbeat
 from .backup import (
-    BACKUP_ROOT, CLICKHOUSE_BACKUP_S3_URL, CLICKHOUSE_POLL_SECONDS, FORMAT, FORMAT_VERSION, _Phase,
+    BACKUP_ROOT, CANCEL_HEARTBEAT_SECONDS, CLICKHOUSE_BACKUP_S3_URL, CLICKHOUSE_POLL_SECONDS, FORMAT, FORMAT_VERSION, _Phase,
     clickhouse_operation_id, clickhouse_s3, export_bucket, validate_destination,
 )
 from .params import ExportStoreResult, ImportParams
@@ -457,7 +457,7 @@ def import_clickhouse(params: ImportParams) -> ExportStoreResult:
 
 
 @activity.defn
-@with_heartbeat
+@with_heartbeat(interval_seconds=CANCEL_HEARTBEAT_SECONDS)
 def import_manticore(params: ImportParams) -> ExportStoreResult:
     """Import the text tables of the backup into the live daemon, one table at a time.
 

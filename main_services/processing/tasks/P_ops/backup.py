@@ -74,6 +74,9 @@ BACKUP_BANDWIDTH = int(os.environ.get("HOOVER4_BACKUP_BANDWIDTH_BYTES", "0") or 
 OBJECT_VOLUME_BYTES = int(os.environ.get("HOOVER4_BACKUP_OBJECT_VOLUME_BYTES", "")
                           or 8 * 1024 * 1024 * 1024)
 
+#: The heartbeat interval of the Manticore export and import, so a cancel reaches the schema proxy soon.
+CANCEL_HEARTBEAT_SECONDS = 5
+
 #: How often a running ClickHouse backup is asked how far it has got.
 CLICKHOUSE_POLL_SECONDS = 5
 
@@ -529,7 +532,7 @@ def export_clickhouse(params: ExportParams) -> ExportStoreResult:
 
 
 @activity.defn
-@with_heartbeat
+@with_heartbeat(interval_seconds=CANCEL_HEARTBEAT_SECONDS)
 def export_manticore(params: ExportParams) -> ExportStoreResult:
     """Freeze each text table of the collection in turn and copy it out compressed.
 

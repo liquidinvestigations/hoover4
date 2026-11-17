@@ -538,41 +538,57 @@ def temporal_record(cli):
 
 
 def clickhouse_counts(query):
+    """{database.table: row count} of ClickHouse. The answer is one JSON document whose row count must match its rows, so
+    an answer that a remote command cut stops the step."""
     text = query("SELECT database, name, total_rows FROM system.tables WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', "
-                 "'information_schema') AND engine NOT IN ('View', 'MaterializedView') ORDER BY database, name FORMAT JSONEachRow")
-    return {f"{row['database']}.{row['name']}": int(row['total_rows'] or 0) for row in map(json.loads, text.splitlines()) if row}
+                 "'information_schema') AND engine NOT IN ('View', 'MaterializedView') ORDER BY database, name FORMAT JSON")
+    try:
+        answer = json.loads(text)
+        rows = answer['data']
+        complete = answer['rows'] == len(rows)
+    except (ValueError, KeyError, TypeError):
+        complete = False
+    if not complete:
+        raise StepFailed(f'ClickHouse gave an incomplete answer to the table list: {text.strip()[-200:]!r}')
+    return {f"{row['database']}.{row['name']}": int(row['total_rows'] or 0) for row in rows}
 
 
 def source_clickhouse(sql):
     return src(engine('exec', '-i', 'clickhouse', 'clickhouse-client', '--user', 'hoover4', '--password', 'hoover4'), input=sql)
 
 
-def cells(text):
-    """The rows of a mysql client answer of Manticore, which prints a table with borders or tab-separated lines."""
-    rows = []
-    for line in text.splitlines():
-        if line.startswith('+') or not line.strip() or line.startswith('mysql:'):
-            continue
-        parts = [c.strip() for c in (line.strip('|').split('|') if line.startswith('|') else line.split('\t'))]
-        rows.append(parts)
-    return rows
+def manticore_listing(text, statement):
+    """The rows of the XML answer of the mysql client to one statement, as {column: value}.
+
+    An answer that a remote command cut, or an empty answer, does not parse, so it stops the step and is never read as a
+    list without the rest of its rows (stores/shared.py manticore_list() reads the shared daemons the same way)."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(text.strip())
+    except ET.ParseError:
+        raise StepFailed(f'Manticore gave an incomplete answer to {statement}: {text.strip()[-200:]!r}') from None
+    if root.tag != 'resultset' or root.get('statement', '').strip().rstrip(';').strip() != statement:
+        raise StepFailed(f'Manticore answered another statement than {statement}: {text.strip()[:200]!r}')
+    return [{field.get('name'): field.text or '' for field in row.findall('field')} for row in root.findall('row')]
 
 
-def manticore_tables(query):
+def manticore_tables(listing):
+    """{table: row count} of a Manticore daemon. ``listing(statement)`` returns the complete rows of one statement."""
     out = {}
-    for row in cells(query('SHOW TABLES')):
-        name = row[0]
-        if name in ('Table', 'Index', ''):
-            continue
-        count = [r[0] for r in cells(query(f'SELECT COUNT(*) FROM {name}')) if r and r[0].isdigit()]
-        out[name] = int(count[0]) if count else None
+    for row in listing('SHOW TABLES'):
+        name = row['Table']
+        counts = listing(f'SELECT COUNT(*) AS n FROM {name}')
+        if len(counts) != 1 or not counts[0].get('n', '').isdigit():
+            raise StepFailed(f'Manticore gave no row count for the table {name}: {counts!r}')
+        out[name] = int(counts[0]['n'])
     return out
 
 
-def source_manticore(container):
-    def query(sql):
-        return src(engine('exec', container, 'mysql', '-h0', '-P9306', '-umanticore', '-pmanticore', '--batch', '-e', sql), check=False)
-    return query
+def source_manticore_listing(container):
+    def listing(statement):
+        return manticore_listing(src(engine('exec', container, 'mysql', '-h0', '-P9306', '-umanticore', '-pmanticore',
+                                            '--xml', '-e', statement)), statement)
+    return listing
 
 
 def garage_buckets(call):
@@ -593,8 +609,8 @@ def record(r):
         ns, wid = key.split('/', 1)
         (histories / f'{ns}--{wid}.json').write_text(temporal('workflow', 'show', '-n', ns, '-w', wid, '-r', w['run_id'], '-o', 'json'))
     state['clickhouse'] = clickhouse_counts(source_clickhouse)
-    state['manticore'] = manticore_tables(source_manticore('manticore'))
-    state['manticore_vectors'] = manticore_tables(source_manticore('manticore-vectors'))
+    state['manticore'] = manticore_tables(source_manticore_listing('manticore'))
+    state['manticore_vectors'] = manticore_tables(source_manticore_listing('manticore-vectors'))
     state['garage_buckets'] = garage_buckets(source_garage)
     r.write('record.json', state)
     return {'namespaces': len(state['namespaces']), 'open': len(state['open']), 'tables': len(state['clickhouse']),
@@ -855,6 +871,13 @@ def target_manticore(ns, pod):
     return query
 
 
+def target_manticore_listing(ns, pod):
+    def listing(statement):
+        return manticore_listing(kubectl('-n', ns, 'exec', pod, '--', 'mysql', '-h0', '-P9306', '-umanticore', '-pmanticore',
+                                         '--xml', '-e', statement), statement)
+    return listing
+
+
 def target_garage(ns):
     def call(endpoint, payload=None):
         return kubectl('-n', ns, 'exec', 'garage-0', '--', '/garage', 'json-api', endpoint,
@@ -878,8 +901,8 @@ def manifests_part():
 
 def found_stores(ns):
     return {'clickhouse': clickhouse_counts(target_clickhouse(ns)),
-            'manticore': manticore_tables(target_manticore(ns, 'manticore-0')),
-            'manticore_vectors': manticore_tables(target_manticore(ns, 'manticore-vectors-0')),
+            'manticore': manticore_tables(target_manticore_listing(ns, 'manticore-0')),
+            'manticore_vectors': manticore_tables(target_manticore_listing(ns, 'manticore-vectors-0')),
             'garage_buckets': renames.bucket_aliases(garage_buckets(target_garage(ns)))}
 
 
@@ -951,8 +974,8 @@ def rename_databases(query, databases):
             raise StepFailed(f'the database {old} of the record does not exist, and {new} neither.')
 
 
-def rename_tables(query, tables, label):
-    present = {row[0] for row in cells(query('SHOW TABLES')) if row and row[0] not in ('Table', 'Index', '')}
+def rename_tables(query, listing, tables, label):
+    present = {row['Table'] for row in listing('SHOW TABLES')}
     for old, new in tables:
         if old in present and new in present:
             raise StepFailed(f'the {label} tables {old} and {new} both exist. Inspect them before you continue.')
@@ -980,8 +1003,10 @@ def rename_stores(r):
     planned = r.read('renames.json') or rename_plan(r)
     r.write('renames.json', planned)
     rename_databases(target_clickhouse(ns), planned['databases'])
-    rename_tables(target_manticore(ns, 'manticore-0'), planned['manticore'], 'Manticore')
-    rename_tables(target_manticore(ns, 'manticore-vectors-0'), planned['manticore_vectors'], 'Manticore vectors')
+    rename_tables(target_manticore(ns, 'manticore-0'), target_manticore_listing(ns, 'manticore-0'), planned['manticore'],
+                  'Manticore')
+    rename_tables(target_manticore(ns, 'manticore-vectors-0'), target_manticore_listing(ns, 'manticore-vectors-0'),
+                  planned['manticore_vectors'], 'Manticore vectors')
     rename_buckets(target_garage(ns), planned['buckets'])
     # The UPDATE statements wait for their mutations (mutations_sync = 2), so the check below reads the new values.
     query = target_clickhouse(ns, ('--mutations_sync', '2'))

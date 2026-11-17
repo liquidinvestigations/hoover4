@@ -390,19 +390,43 @@ def manticore_sql(store, sql, check=True):
     return r.stdout
 
 
-def manticore_rows(text):
-    """The rows of a mysql client answer, which prints tab-separated lines or a table with borders."""
-    rows = []
-    for line in text.splitlines():
-        if not line.strip() or line.startswith('+'):
-            continue
-        rows.append([c.strip() for c in (line.strip().strip('|').split('|') if line.startswith('|') else line.split('\t'))])
-    return rows
+def manticore_list(store, statement):
+    """The rows of one SHOW statement in a daemon of MANTICORE, as {column: value}.
+
+    The mysql client writes the answer as one XML document. The standard input stays open until the command ends
+    (../../podexec.py), because the output of a Kata container stops once kubectl closes it: SHOW PERMISSIONS of two
+    zones then arrived cut at 4096 bytes. An answer that is still cut, or an empty answer, does not parse, so it is an
+    error and never a list without the rest of its rows."""
+    import tempfile
+    import podexec
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        code = podexec.run(common.K + ['-n', NS, 'exec', '-i', ready_pod(store), '-c', 'manticore'],
+                           ['sh', '-c', 'exec mysql -h0 -P9306 -uhoover_admin -p"$MT_ADMIN_PASSWORD" --xml'],
+                           [statement.encode() + b';\n'], stdout=output, stderr=errors)
+        output.seek(0)
+        errors.seek(0)
+        text, err = output.read().decode(errors='replace'), errors.read().decode(errors='replace')
+    if code:
+        err = '\n'.join(l for l in err.splitlines() if 'Using a password' not in l)
+        raise SystemExit(f'Manticore {store} refused {statement}: {err.strip()[-600:]}')
+    return manticore_xml_rows(text, statement, store)
+
+
+def manticore_xml_rows(text, statement, store='manticore'):
+    """The rows of the XML answer of the mysql client to one statement. SystemExit when the answer is not complete."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(text.strip())
+    except ET.ParseError:
+        raise SystemExit(f'Manticore {store} gave an incomplete answer to {statement}: {text.strip()[-200:]!r}') from None
+    if root.tag != 'resultset' or root.get('statement', '').strip().rstrip(';').strip() != statement:
+        raise SystemExit(f'Manticore {store} answered another statement than {statement}: {text.strip()[:200]!r}')
+    return [{field.get('name'): field.text or '' for field in row.findall('field')} for row in root.findall('row')]
 
 
 def manticore_users(store):
     """The user names of a Manticore daemon."""
-    return {row[0] for row in manticore_rows(manticore_sql(store, 'SHOW USERS\n')) if row and row[0] != 'username'}
+    return {row['username'] for row in manticore_list(store, 'SHOW USERS')}
 
 
 def garage_cli(*args, pod=None, check=True):
@@ -532,7 +556,7 @@ def manticore_tenant(zone, store):
     """(tables, users) of a zone in a Manticore daemon. A zone id has no _, so the table prefix <prefix>_ of one zone
     never starts the table names of another zone."""
     prefix = service_users.prefix(zone)
-    tables = [row[0] for row in manticore_rows(manticore_sql(store, 'SHOW TABLES\n')) if row and row[0].startswith(f'{prefix}_')]
+    tables = [row['Table'] for row in manticore_list(store, 'SHOW TABLES') if row['Table'].startswith(f'{prefix}_')]
     users = sorted({service_users.manticore_user(zone, r) for r in service_users.MANTICORE_ROLES} & manticore_users(store))
     return tables, users
 

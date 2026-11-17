@@ -232,6 +232,12 @@ the schema proxy of the zone runs them: only the proxy holds the user that can i
 and only the file service in the daemon pod can read and write the data folder. The proxy
 mounts the backup claim of the zone, so the export folder is the same on both sides.
 
+A cancel of the operation reaches a running Manticore export or import. The Temporal SDK
+raises the cancel in the activity thread. In Compose the operation itself then removes its
+artifacts, its import stage and its partial tables. In the site layout the activity sends
+the cancel of its operation id to the proxy and waits until the proxy has stopped the
+operation and removed the same things.
+
 **Order is object store, then ClickHouse, then Manticore.** No two stores can be snapshotted
 together, so the order decides what a backup taken during ingestion leaves behind: an
 orphaned blob rather than a row pointing at a blob that was never copied.

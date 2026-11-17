@@ -20,6 +20,18 @@ Two backends read and write the table files:
 the source files in place, also from another file system. The import removes its stage
 after the last table.
 
+An import fills each table under a partial name (:func:`partial_table`), and renames the
+partial tables onto their targets only after the last ``IMPORT TABLE``. A partial name ends
+in ``_partial`` and 16 hexadecimal digits. A complete table of Hoover ends in ``_vfs``,
+``_entities``, ``_pages`` or ``_vectors``, so a cleanup that drops the partial tables of a
+prefix (:func:`is_partial_table`) cannot drop a complete table.
+
+Both operations take ``cancelled``, a function that returns true when the caller cancelled
+the operation. They check it before each table and each file. A cancelled or failed export
+removes the ``manticore`` folder that it wrote in the export folder, and a cancelled or failed
+import drops its partial tables and removes its stage. A started ``IMPORT TABLE`` cannot be
+stopped: ``KILL`` waits for the end of the statement, so a cancel waits for it too.
+
 The export folder and the restore source are subfolders of the backup root
 (``HOOVER4_BACKUP_ROOT``). A caller names a subfolder, never a path.
 """
@@ -33,6 +45,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import tarfile
 import time
 
@@ -59,6 +72,32 @@ _FILE_RE = re.compile(r"^[a-z0-9_]+(\.[a-z0-9_]+)+$")
 
 class FilesRefused(ValueError):
     """A folder, table or file name that this module does not accept."""
+
+
+class Cancelled(Exception):
+    """The caller cancelled the export or the import."""
+
+
+#: The end of the name of a partial table: ``_partial`` and the 16 hexadecimal digits of the import stage.
+_PARTIAL_RE = re.compile(r"^[a-z0-9_]+_partial[0-9a-f]{16}$")
+
+
+def partial_table(table: str, stage: str) -> str:
+    """The name under which an import fills ``table`` before it renames the table onto ``table``."""
+    name = f"{table}_partial{stage}"
+    if not _PARTIAL_RE.match(name):
+        raise FilesRefused(f"{name!r} is not a partial table name")
+    return name
+
+
+def is_partial_table(name: str) -> bool:
+    """Whether ``name`` is the name of a partial table of an import."""
+    return bool(_PARTIAL_RE.match(name or ""))
+
+
+def _check(cancelled) -> None:
+    if cancelled is not None and cancelled():
+        raise Cancelled("the operation was cancelled")
 
 
 def backup_folder(name) -> str:
@@ -117,9 +156,15 @@ class LocalFiles:
         return f"{DAEMON_DATA_ROOT}/{LOCAL_STAGE_PREFIX}{stage}/{table}/{table}"
 
     def remove(self, stage):
-        import shutil
-
         shutil.rmtree(os.path.join(self.restore_root, LOCAL_STAGE_PREFIX + stage), ignore_errors=True)
+
+    def remove_all(self):
+        """Remove every import stage of this process from the data folder."""
+        if not os.path.isdir(self.restore_root):
+            return
+        for entry in os.scandir(self.restore_root):
+            if entry.name.startswith(LOCAL_STAGE_PREFIX) and entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path)
 
 
 class ServiceFiles:
@@ -176,6 +221,12 @@ class ServiceFiles:
             connection.close()
         except (OSError, RuntimeError):
             pass
+
+    def remove_all(self):
+        """Remove every import stage of the Manticore user of this process. Raise when the service refuses."""
+        connection, response = self._request("DELETE", "/import")
+        response.read()
+        connection.close()
 
 
 class _Closing:
@@ -309,12 +360,14 @@ def add_file(tar, files, table, name) -> int:
     return len(data)
 
 
-def export_tables(collection, folder, files, progress=None) -> dict:
+def export_tables(collection, folder, files, progress=None, cancelled=None) -> dict:
     """Write ``manticore/<table>.tar.zst`` of each text table of a collection into the export folder ``folder``.
 
     ``FREEZE`` flushes the RAM chunk of a table, holds its files unchanged and names them.
     Every freeze is released, also after a failure, because a frozen table takes no more
-    writes. ``progress(done, total)`` receives the bytes copied.
+    writes. ``progress(done, total)`` receives the bytes copied. ``cancelled()`` is checked
+    before each table and each file. After a failure or a cancel the ``manticore`` folder of
+    the export folder is removed.
     """
     import zstandard
 
@@ -323,32 +376,41 @@ def export_tables(collection, folder, files, progress=None) -> dict:
     tables = list(dict.fromkeys(t for t in list_collection_tables(collection) if endpoint_for_table(t) == TEXT))
     target = os.path.join(folder, "manticore")
     os.makedirs(target, exist_ok=True)
-    total = sum(files.table_bytes(t) for t in tables) if progress else 0
-    if progress:
-        progress(0, total)
-    artifacts, done = [], 0
-    with get_manticore_client() as cnx:
-        cursor = cnx.cursor()
-        for table in tables:
-            cursor.execute(f"FREEZE {table}")
-            names = sorted({file_name(table, row[0]) for row in cursor.fetchall()})
-            try:
-                path = os.path.join(target, f"{table}.tar.zst")
-                raw = 0
-                with open(path, "wb") as handle:
-                    writer = _HashingWriter(handle)
-                    with zstandard.ZstdCompressor(level=3).stream_writer(writer, closefd=False) as stream:
-                        with tarfile.open(fileobj=stream, mode="w|", format=tarfile.PAX_FORMAT) as tar:
-                            for name in names:
-                                size = add_file(tar, files, table, name)
-                                raw += size
-                                done += size
-                                if progress:
-                                    progress(done, max(total, done))
-            finally:
-                cursor.execute(f"UNFREEZE {table}")
-            artifacts.append({"table": table, "path": f"manticore/{table}.tar.zst", "source_bytes": raw,
-                              "bytes": writer.bytes_written, "sha256": writer.hexdigest})
+    try:
+        total = sum(files.table_bytes(t) for t in tables) if progress else 0
+        if progress:
+            progress(0, total)
+        artifacts, done = [], 0
+        with get_manticore_client() as cnx:
+            cursor = cnx.cursor()
+            for table in tables:
+                _check(cancelled)
+                frozen = False
+                try:
+                    cursor.execute(f"FREEZE {table}")
+                    frozen = True
+                    names = sorted({file_name(table, row[0]) for row in cursor.fetchall()})
+                    path = os.path.join(target, f"{table}.tar.zst")
+                    raw = 0
+                    with open(path, "wb") as handle:
+                        writer = _HashingWriter(handle)
+                        with zstandard.ZstdCompressor(level=3).stream_writer(writer, closefd=False) as stream:
+                            with tarfile.open(fileobj=stream, mode="w|", format=tarfile.PAX_FORMAT) as tar:
+                                for name in names:
+                                    _check(cancelled)
+                                    size = add_file(tar, files, table, name)
+                                    raw += size
+                                    done += size
+                                    if progress:
+                                        progress(done, max(total, done))
+                finally:
+                    if frozen:
+                        cursor.execute(f"UNFREEZE {table}")
+                artifacts.append({"table": table, "path": f"manticore/{table}.tar.zst", "source_bytes": raw,
+                                  "bytes": writer.bytes_written, "sha256": writer.hexdigest})
+    except BaseException:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
     return {"tables": artifacts, "source_bytes": done}
 
 
@@ -377,13 +439,16 @@ def _artifact_path(folder, path) -> str:
     return full
 
 
-def import_tables(collection, folder, files, progress=None) -> dict:
+def import_tables(collection, folder, files, progress=None, cancelled=None) -> dict:
     """Import the text tables of the export folder ``folder`` into the tables of this installation.
 
     Each artifact is checked against its SHA-256 in the manifest while it is read. Its
-    files are renamed to the target table and staged, the target table is dropped when it
-    exists, and ``IMPORT TABLE`` copies the staged files into the data folder. The vectors
-    tables are not in an export. ``progress(done, total)`` receives the bytes staged.
+    files are renamed to the partial table of the target and staged, and ``IMPORT TABLE``
+    copies the staged files into the data folder. After the last table each target is
+    dropped when it exists, and its partial table is renamed onto it. The vectors tables are
+    not in an export. ``progress(done, total)`` receives the bytes staged. ``cancelled()`` is
+    checked before each table, each file and the renames. After a failure or a cancel the
+    partial tables are dropped. The stage is removed in every case.
     """
     import zstandard
 
@@ -398,32 +463,49 @@ def import_tables(collection, folder, files, progress=None) -> dict:
     plan = [(a, target_table(collection, str(a["table"])), _artifact_path(folder, a.get("path"))) for a in artifacts]
     total = sum(int(a.get("source_bytes") or 0) for a in artifacts)
     stage = secrets.token_hex(8)
-    restored, done = [], 0
+    imported, restored, done = [], [], 0
     if progress:
         progress(0, total)
     try:
         for artifact, table, path in plan:
+            _check(cancelled)
+            partial = partial_table(table, stage)
             source = str(artifact["table"])
             with open(path, "rb") as raw:
                 reader = _HashingReader(raw, artifact.get("sha256", ""), artifact["path"])
                 with zstandard.ZstdDecompressor().stream_reader(reader) as stream:
                     with tarfile.open(fileobj=stream, mode="r|") as tar:
                         for member in tar:
+                            _check(cancelled)
                             if not member.isfile() or "/" in member.name or not member.name.startswith(source + "."):
                                 raise FilesRefused(f"{artifact['path']} holds {member.name!r}, which is not a file of {source}")
-                            name = table + member.name[len(source):]
+                            name = partial + member.name[len(source):]
                             if not _FILE_RE.match(name):
                                 raise FilesRefused(f"{artifact['path']} holds the file name {member.name!r}")
-                            files.write(stage, table, name, tar.extractfile(member), member.size)
+                            files.write(stage, partial, name, tar.extractfile(member), member.size)
                             done += member.size
                             if progress:
                                 progress(done, max(total, done))
                     while stream.read(CHUNK):
                         pass
                 reader.verify()
+            _check(cancelled)
+            imported.append((partial, table))
+            _execute_ddl(f"IMPORT TABLE {partial} FROM '{files.daemon_path(stage, partial)}'")
+        _check(cancelled)
+        while imported:
+            partial, table = imported[0]
             _execute_ddl(f"DROP TABLE IF EXISTS {table}")
-            _execute_ddl(f"IMPORT TABLE {table} FROM '{files.daemon_path(stage, table)}'")
+            _execute_ddl(f"ALTER TABLE {partial} RENAME {table}")
+            imported.pop(0)
             restored.append(table)
+    except BaseException:
+        for partial, _ in imported:
+            try:
+                _execute_ddl(f"DROP TABLE IF EXISTS {partial}")
+            except Exception:  # the next start of the schema proxy drops it
+                pass
+        raise
     finally:
         files.remove(stage)
     return {"tables": restored, "skipped_vectors": len(listed) - len(artifacts)}

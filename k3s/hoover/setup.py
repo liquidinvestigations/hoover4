@@ -196,8 +196,8 @@ def manticore():
                        f"CREATE USER '{name}' IDENTIFIED BY '{password}';")
         shared.manticore_sql(store, '\n'.join(sql) + '\n')
         users = {service_users.manticore_user(ZONE, r): r for r in service_users.MANTICORE_ROLES}
-        rights = {(row[0], row[1], row[2]) for row in shared.manticore_rows(shared.manticore_sql(store, 'SHOW PERMISSIONS\n'))
-                  if len(row) >= 4 and row[0] in users and row[3] == '1'}
+        rights = {(row['username'], row['action'], row['target']) for row in shared.manticore_list(store, 'SHOW PERMISSIONS')
+                  if row['username'] in users and row['allow'] == '1'}
         wanted = {(name, action, target) for name, role in users.items() for action in service_users.MANTICORE_GRANTS[role]}
         sql = [f"GRANT {a} ON '{t}' TO '{u}';" for u, a, t in sorted(wanted - rights)]
         sql += [f"REVOKE {a} ON '{t}' FROM '{u}';" for u, a, t in sorted(rights - wanted)]

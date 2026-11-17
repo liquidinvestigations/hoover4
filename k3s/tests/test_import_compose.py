@@ -333,10 +333,35 @@ def test_image_references_and_manticore_answers():
     assert module.full_reference('cassandra:3.11.9') == 'docker.io/library/cassandra:3.11.9'
     assert module.full_reference('docker.io/library/cassandra:3.11.9') == 'docker.io/library/cassandra:3.11.9'
     assert module.full_reference('temporalio/auto-setup:1.23.1') == 'docker.io/temporalio/auto-setup:1.23.1'
-    table = '+-------+------+\n| Table | Type |\n+-------+------+\n| a_vfs | rt   |\n+-------+------+\n'
-    assert module.cells(table) == [['Table', 'Type'], ['a_vfs', 'rt']]
-    assert module.cells('Table\tType\na_vfs\trt\n') == [['Table', 'Type'], ['a_vfs', 'rt']]
+    tables = ('<?xml version="1.0"?>\n\n<resultset statement="SHOW TABLES" xmlns:xsi="x">\n  <row>\n'
+              '\t<field name="Table">a_vfs</field>\n\t<field name="Type">rt</field>\n  </row>\n</resultset>\n')
+    assert module.manticore_listing(tables, 'SHOW TABLES') == [{'Table': 'a_vfs', 'Type': 'rt'}]
     assert module.parse_size('20Gi') == 20 * 2**30
+
+
+def test_store_listings_fail_on_a_cut_answer():
+    module = importer()
+    answers = {'SHOW TABLES': ('<?xml version="1.0"?>\n<resultset statement="SHOW TABLES">\n<row><field name="Table">a_vfs</field>'
+                               '</row>\n<row><field name="Table">b_vfs</field></row>\n</resultset>\n'),
+               'SELECT COUNT(*) AS n FROM a_vfs': '<resultset statement="SELECT COUNT(*) AS n FROM a_vfs\n"><row><field name="n">3</field></row></resultset>',
+               'SELECT COUNT(*) AS n FROM b_vfs': '<resultset statement="SELECT COUNT(*) AS n FROM b_vfs"><row><field name="n">0</field></row></resultset>'}
+    listing = lambda statement: module.manticore_listing(answers[statement], statement)  # noqa: E731
+    assert module.manticore_tables(listing) == {'a_vfs': 3, 'b_vfs': 0}
+    full = answers['SHOW TABLES']
+    for cut in (full[:-30], full[:60], '', 'Table\tType\na_vfs\trt\n'):
+        answers['SHOW TABLES'] = cut
+        with pytest.raises(module.StepFailed):
+            module.manticore_tables(listing)
+    answers['SHOW TABLES'] = full
+    answers['SELECT COUNT(*) AS n FROM b_vfs'] = '<resultset statement="SELECT COUNT(*) AS n FROM b_vfs"></resultset>'
+    with pytest.raises(module.StepFailed):
+        module.manticore_tables(listing)
+    document = {'meta': [], 'data': [{'database': 'd', 'name': 't', 'total_rows': 5}], 'rows': 1}
+    assert module.clickhouse_counts(lambda sql: json.dumps(document)) == {'d.t': 5}
+    for text in (json.dumps(document)[:-20], '', json.dumps({**document, 'rows': 2}),
+                 '{"database": "d", "name": "t", "total_rows": 5}\n'):
+        with pytest.raises(module.StepFailed):
+            module.clickhouse_counts(lambda sql, text=text: text)
 
 
 def test_rootful_docker_keeps_the_owners_and_rootless_docker_is_refused(monkeypatch, tmp_path):

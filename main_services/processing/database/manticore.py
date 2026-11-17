@@ -250,23 +250,63 @@ def schema_operation(operation: str, progress=None, **arguments):
     create, alter or drop a table. Without it (Compose) this process runs it with its own
     Manticore user, and ``progress(done, total)`` receives the bytes of an export or an
     import. The proxy reports no progress.
+
+    An export or an import through the proxy carries an operation id. Another thread sends
+    the request, and this thread waits for it. When an exception stops the wait, for example
+    the cancel of a Temporal activity, this thread sends the cancel of the id to the proxy,
+    waits for the answer, and raises the exception again. In this process an exception of
+    the operation removes what the operation wrote (:mod:`database.manticore_files`).
     """
     url = os.getenv("MANTICORE_SCHEMA_URL", "")
     if not url:
         from database import manticore_schema
         return manticore_schema.run(operation, arguments, progress=progress)
+    if operation not in DATA_OPERATIONS:
+        return _proxy_request(url, "/operation", {"operation": operation, "arguments": arguments},
+                              SCHEMA_PROXY_TIMEOUT, operation)
+    import secrets
+    import threading
+
+    operation_id = secrets.token_hex(8)
+    outcome = {}
+
+    def send():
+        try:
+            outcome["result"] = _proxy_request(
+                url, "/operation", {"operation": operation, "arguments": arguments, "id": operation_id},
+                DATA_OPERATION_TIMEOUT, operation)
+        except BaseException as error:  # handed to the waiting thread
+            outcome["error"] = error
+
+    sender = threading.Thread(target=send, name=f"manticore-{operation}", daemon=True)
+    try:
+        sender.start()
+        while sender.is_alive():
+            sender.join(CANCEL_POLL_SECONDS)
+    except BaseException:
+        try:
+            answer = _proxy_request(url, "/cancel", {"id": operation_id}, CANCEL_TIMEOUT, "cancel")
+            log.info("The schema proxy answered the cancel of %s %s: %s", operation, operation_id, answer)
+        except Exception:
+            log.exception("The cancel of %s %s at the schema proxy failed", operation, operation_id)
+        raise
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["result"]
+
+
+def _proxy_request(url, path, payload, timeout, name):
     import json
     import urllib.error
     import urllib.request
 
     request = urllib.request.Request(
-        url.rstrip("/") + "/operation",
-        data=json.dumps({"operation": operation, "arguments": arguments}).encode(),
+        url.rstrip("/") + path,
+        data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json",
                  "Authorization": f"Bearer {os.getenv('MANTICORE_SCHEMA_TOKEN', '')}"},
     )
     try:
-        timeout = DATA_OPERATION_TIMEOUT if operation in ("export_tables", "import_tables") else SCHEMA_PROXY_TIMEOUT
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read())["result"]
     except urllib.error.HTTPError as error:
@@ -274,7 +314,7 @@ def schema_operation(operation: str, progress=None, **arguments):
             message = json.loads(error.read()).get("error", "")
         except ValueError:
             message = ""
-        raise RuntimeError(f"The Manticore schema proxy refused {operation} with status {error.code}: {message}") from None
+        raise RuntimeError(f"The Manticore schema proxy refused {name} with status {error.code}: {message}") from None
 
 
 #: Seconds that one schema proxy request may take. A migration of a large site creates
@@ -283,6 +323,13 @@ SCHEMA_PROXY_TIMEOUT = 600
 #: Seconds that the export or the import of the tables of one collection may take, the
 #: time limit of the store activities of an export (tasks/P_ops/workflows.py).
 DATA_OPERATION_TIMEOUT = 24 * 3600
+#: The operations that the proxy runs under an operation id, which a cancel names.
+DATA_OPERATIONS = ("export_tables", "import_tables")
+#: Seconds between two checks of the waiting thread. An exception of the thread, such as
+#: the cancel of an activity, arrives at the next check.
+CANCEL_POLL_SECONDS = 1
+#: Seconds that a cancel waits for the proxy. The proxy waits up to 1800 s for the end of the operation.
+CANCEL_TIMEOUT = 1900
 
 
 def table_prefix() -> str:

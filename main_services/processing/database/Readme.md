@@ -102,6 +102,13 @@ The collection export and restore are the operations `export_tables` and `import
 They take a collection and one folder of the backup root, never a path, and they read and write the table files of the text daemon.
 With `MANTICORE_FILES_URL` (the schema proxy of k3s) the file service in the daemon pod reads and writes the files with the schema user of the zone.
 Without it the process uses its mounts of the daemon data folder, as in Compose.
+An import fills each table under a partial name (`<table>_partial<16 hex digits>`) and renames the partial tables onto their targets after the last `IMPORT TABLE`.
+A cancelled or failed export removes its `manticore` folder of the export folder, and a cancelled or failed import drops its partial tables and removes its stage.
+Through the proxy each export and import has an operation id, and `POST /cancel` with the id stops it before its next table or file.
+The cancel waits for a started `IMPORT TABLE`, because `KILL` does not stop that statement in Manticore 29.9.
+The cancel of an unknown or ended id succeeds. The proxy keeps its running operations in memory only.
+At its start the proxy removes the import stages of its user and drops the partial tables of its prefix.
+In Compose the cancel of the activity raises an exception in the operation, and the operation removes what it wrote in the same way.
 The operation `status` returns the load counters of `SHOW STATUS` of both daemons and changes nothing.
 `MANTICORE_STATUS_TOKEN` of the proxy allows only `status`, so the website can read the counters and cannot change a table.
 
