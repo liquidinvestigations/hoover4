@@ -131,7 +131,7 @@ The operator pod runs on the backup node, and its runner container writes the co
 
 The commands take names only. A zone copy reads the running zone and stops no application.
 A copy replaces an older copy only after its check against its manifest. A failed job keeps the older copies.
-The platform job reads the etcd snapshot over SSH from the control plane. The runner container has no SSH access, so that job does not finish there.
+The platform job copies the newest scheduled etcd snapshot of k3s through a short pod on the control plane. k3s saves a snapshot every 12 hours. When the newest snapshot is older than 24 hours, the job fails and its error names the age. Then read `journalctl -u k3s` on the control plane.
 
 The settings page shows the backup folder and the backup policies of the selected scope.
 
@@ -167,7 +167,7 @@ Restore a single collection with `$run restore-hoover <zone> <collection> <gener
 
 ## Restore the platform
 
-The platform copy holds an etcd snapshot of the server, its token and k3s configuration, the private files of the site and `recovery.json`.
+The platform copy holds the newest scheduled etcd snapshot of the server, its token and k3s configuration, the private files of the site and `recovery.json`. `recovery.json` names the time of the snapshot.
 An etcd snapshot holds no volume data, so a complete recovery also restores the zone copies that `recovery.json` names.
 
 1. Print the recovery set and the root steps of a copy:

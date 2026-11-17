@@ -926,14 +926,27 @@ def slim(doc):
             'spec': body}
 
 
+def zone_installer():
+    if str(K3S / 'zones') not in sys.path:
+        sys.path.insert(0, str(K3S / 'zones'))
+    import zone as installer
+    return installer
+
+
 def opendesk_digest(zone, private):
-    """The digest of the inputs of the openDesk render of a zone: its values, its zone state entry, the operator
-    settings, the openDesk release and the files of zones/ and cluster/runtimeclasses.yaml."""
+    """The digest of the inputs of the openDesk render of a zone: its values, its zone state entry, the effective
+    operator settings that the post-renderer reads, the openDesk release and the files of zones/ and
+    cluster/runtimeclasses.yaml.
+
+    The settings are the values of zones/zone.py operator_effective(), as in the input digest of the openDesk waves. A
+    saved setting that changes no value there, for example a backup policy, does not render openDesk again.
+    """
     h = hashlib.sha256()
-    for path in [private / 'zones' / zone / 'values.yaml', private / 'operator' / 'desired.json',
-                 K3S / 'cluster' / 'runtimeclasses.yaml']:
+    for path in [private / 'zones' / zone / 'values.yaml', K3S / 'cluster' / 'runtimeclasses.yaml']:
         h.update(path.name.encode())
         h.update(path.read_bytes() if path.exists() else b'')
+    h.update(b'operator-settings')
+    h.update(json.dumps(zone_installer().operator_effective(zone), sort_keys=True).encode())
     entry = ((read_json(private / 'zone-state.json') or {}).get('zones') or {}).get(zone)
     h.update(json.dumps(entry, sort_keys=True).encode())
     for path in sorted(p for p in (K3S / 'zones').rglob('*') if p.is_file() and '__pycache__' not in p.parts):
@@ -953,9 +966,7 @@ def opendesk_render(zone, private):
     data = read_json(kept) or {}
     if data.get('digest') == digest:
         return data['workloads']
-    if str(K3S / 'zones') not in sys.path:
-        sys.path.insert(0, str(K3S / 'zones'))
-    import zone as installer
+    installer = zone_installer()
     workloads = []
     for text in installer.template_entries(zone):
         for doc in yaml.safe_load_all(text):

@@ -416,3 +416,25 @@ def test_the_priority_class_stays_below_topolvm_and_no_descheduler_remains():
     assert 'kubectl apply -f priorityclasses.yaml' in setup
     # up --rebalance moves pods (placement.py rebalance()), so setup.sh removes the descheduler of earlier versions.
     assert not (K3S / 'cluster/descheduler.yaml').exists() and 'kubectl delete clusterrolebinding/descheduler' in setup
+
+
+def test_the_opendesk_render_digest_follows_only_settings_that_change_a_request(tmp_path, monkeypatch):
+    import types
+    import zone as installer
+    from conftest import operator_settings
+    operator_settings = operator_settings()
+    private = tmp_path / 'private'
+    folder = private / 'operator'
+    folder.mkdir(parents=True)
+    monkeypatch.setattr(installer.settings, 'SITE', types.SimpleNamespace(operator_state=lambda: folder))
+    monkeypatch.delenv('HOOVER4_SETTINGS_REVISION', raising=False)
+    first = placement.opendesk_digest('zone-a', private)
+    state = operator_settings.State(folder)
+    state.save(0, {'zone:zone-a': {'backup.opendesk.enabled': 'true', 'backup.opendesk.copies': '2'},
+                   'cluster': {'backup.platform.enabled': 'true'}})
+    # A saved backup policy changes desired.json, but no value of the render.
+    assert (folder / 'desired.json').exists() and placement.opendesk_digest('zone-a', private) == first
+    assert not any(k.startswith('backup.') for values in installer.operator_effective('zone-a').values() for k in values)
+    memory = next(k for k, s in operator_settings.REGISTRY.items() if k.startswith('memory.') and s.scope == 'zone')
+    state.save(1, {'zone:zone-a': {memory: '9Gi'}})
+    assert placement.opendesk_digest('zone-a', private) != first

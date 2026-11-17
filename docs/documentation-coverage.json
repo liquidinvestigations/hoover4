@@ -3245,6 +3245,7 @@
         "k3s/platform/backups/backups.py",
         "k3s/platform/backups/schedule.py",
         "k3s/platform/operator/backup-mount.py",
+        "k3s/platform/operator/runner-rights.yaml",
         "k3s/ansible/roles/hoover4_host/tasks/backup.yml"
       ],
       "docs": [

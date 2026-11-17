@@ -359,7 +359,11 @@ def tree_digest(root):
 
 def operator_effective(zone):
     """The effective operator settings that the post-renderer reads: cluster (cpu_policy.py) and the zone
-    (postrender.py operator_values()), at HOOVER4_SETTINGS_REVISION, else the newest saved revision."""
+    (postrender.py operator_values()), at HOOVER4_SETTINGS_REVISION, else the newest saved revision.
+
+    The settings of the apply mode schedule (the backup policies) are left out. Only the backup scheduler reads them,
+    so a change of a backup policy changes no openDesk object and no request. The placement step
+    (../placement.py opendesk_digest()) reads the same settings."""
     import importlib.util
     spec = importlib.util.spec_from_file_location('operator_settings', SOURCE / 'platform/operator/settings.py')
     module = importlib.util.module_from_spec(spec)
@@ -369,7 +373,11 @@ def operator_effective(zone):
     if folder and (folder / 'desired.json').exists():
         revision = os.environ.get('HOOVER4_SETTINGS_REVISION')
         overrides = module.State(folder).overrides(int(revision) if revision else None)
-    return {scope: module.effective(scope, overrides.get(scope, {})) for scope in ('cluster', f'zone:{zone}')}
+    out = {}
+    for scope in ('cluster', f'zone:{zone}'):
+        values = module.effective(scope, overrides.get(scope, {}))
+        out[scope] = {k: v for k, v in values.items() if getattr(module.REGISTRY.get(k), 'apply', '') != 'schedule'}
+    return out
 
 
 def opendesk_inputs(zone):

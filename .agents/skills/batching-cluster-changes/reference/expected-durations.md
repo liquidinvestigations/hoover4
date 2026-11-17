@@ -25,6 +25,7 @@ A larger site must not be slower.
 | Zone create | 1036 to 1178 s | 25 min |
 | Zone delete | 146 to 187 s | 5 min |
 | ClickHouse export of a small collection | under 1 min | 3 min |
+| Platform backup job with a 197 MB etcd snapshot, reader pod included | 6 s | 3 min |
 | Compose website, first `dx serve` build | about 400 s | 10 min |
 
 A pod that reports `FailedScheduling` (for example `Insufficient cpu` or `Insufficient memory`) does not start by

@@ -3,7 +3,8 @@
 
 Each case runs one kubectl command as the ServiceAccount zone-runner (<state folder>/operator-runner/kubeconfig). A
 write runs with --dry-run=server, so the API server checks the rights and the admission policies, and stores nothing.
-The pod cases check the pod limits of the zone pod policy. The cases for calls run with the admin kubeconfig, because
+The pod cases check the pod limits of the zone pod policy and the policy k3s-snapshot-reader of the reader pod of
+the platform backup. The cases for calls run with the admin kubeconfig, because
 the runner creates no pod there itself, and the ReplicaSet controller would create the pods of its Deployments.
 The check prints one JSON line for each case and exits with 1 when a case has another result than expected.
 """
@@ -44,6 +45,38 @@ HOST_PATH = {'volumes': [{'name': 'host', 'hostPath': {'path': '/'}}]}
 RUNC = {'hoover.dev/runtime': 'runc'}
 
 
+def reader(change=None):
+    """The reader pod of the platform backup (../platform/backups/backups.py snapshot_reader()), changed by change()."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('backups', Path(__file__).resolve().parents[1] / 'platform/backups/backups.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    body = module.snapshot_reader(settings.SITE.control_plane)
+    if change:
+        change(body['spec'])
+    return json.dumps(body)
+
+
+def set_path(spec, path):
+    spec['volumes'][0]['hostPath']['path'] = path
+
+
+def set_writable(spec):
+    spec['containers'][0]['volumeMounts'][0]['readOnly'] = False
+
+
+def set_image(spec):
+    spec['containers'][0]['image'] = 'docker.io/library/alpine:3.22'
+
+
+def set_capability(spec):
+    spec['containers'][0]['securityContext']['capabilities']['add'] = ['SYS_ADMIN']
+
+
+def set_token(spec):
+    spec['automountServiceAccountToken'] = True
+
+
 def cases(zone):
     dry = ['--dry-run=server']
     return [
@@ -77,6 +110,13 @@ def cases(zone):
          pod(zone, 'ums-ldap-notifier-9', labels=RUNC, security={'capabilities': {'add': ['SYS_ADMIN']}})),
         ('change the zone pod policy', False, ['annotate', 'mutatingadmissionpolicy', 'hoover-zone-pods', 'hoover.dev/scope-check=1', *dry]),
         ('change the zone pod policy binding', False, ['annotate', 'mutatingadmissionpolicybinding', 'hoover-zone-pods', 'hoover.dev/scope-check=1', *dry]),
+        ('create the k3s snapshot reader pod', True, ['create', '-f', '-', *dry], reader()),
+        ('create the reader with another host path', False, ['create', '-f', '-', *dry], reader(lambda s: set_path(s, '/'))),
+        ('create the reader with a writable mount', False, ['create', '-f', '-', *dry], reader(set_writable)),
+        ('create the reader with another image', False, ['create', '-f', '-', *dry], reader(set_image)),
+        ('create the reader with a capability', False, ['create', '-f', '-', *dry], reader(set_capability)),
+        ('create the reader with an API token', False, ['create', '-f', '-', *dry], reader(set_token)),
+        ('read the Secrets of platform-backup', False, ['-n', 'platform-backup', 'get', 'secrets', '-o', 'name']),
         ('admin: a pod with a host path in calls', False, ['create', '-f', '-', *dry], pod('calls', spec=HOST_PATH), 'admin'),
         ('admin: a host network pod in calls that is not coturn', False, ['create', '-f', '-', *dry], pod('calls', spec={'hostNetwork': True}), 'admin'),
         ('admin: a coturn pod with the host network in calls', True, ['create', '-f', '-', *dry],

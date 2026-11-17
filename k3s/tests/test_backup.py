@@ -385,7 +385,7 @@ def test_the_recovery_set_names_etcd_and_reads_the_earlier_format(tmp_path):
     (earlier / 'k3s-state.db').write_bytes(b'sqlite')
     assert backups.read_recovery(earlier)['datastore'] == 'sqlite'
     assert 'convert it to etcd' in backups.platform_steps(earlier, 'week-0')[0]
-    (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 3}))
+    (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 4}))
     with pytest.raises(SystemExit, match='does not read'):
         backups.read_recovery(current)
     assert 'staging/tokens' not in backups.PRIVATE_EXCLUDED and 'build' in backups.PRIVATE_EXCLUDED
@@ -911,3 +911,116 @@ def test_the_s3_client_reads_and_writes_an_object_with_a_customer_key(tmp_path):
     finally:
         server.shutdown()
     assert sorted(puts) == [('/synapse/locked', b'two', key), ('/synapse/plain', b'one', None)]
+
+
+def test_the_newest_scheduled_snapshot_is_chosen_and_an_old_one_stops_the_job():
+    backups = backups_module()
+    names = ['etcd-snapshot-cp-1-1799990000', 'etcd-snapshot-cp-1-1799950000', 'etcd-snapshot-cp-1-1799999000.part',
+             'on-demand-cp-1-1799999500', 'etcd-snapshot-cp-1-1799960000.zip', 'notes.txt']
+    assert backups.newest_snapshot(names, 1800000000) == ('etcd-snapshot-cp-1-1799990000', 1799990000)
+    with pytest.raises(SystemExit, match=r'is 25\.0 hours old, and the limit is 24 hours'):
+        backups.newest_snapshot(['etcd-snapshot-cp-1-1799910000'], 1800000000)
+    with pytest.raises(SystemExit, match='has no scheduled etcd snapshot'):
+        backups.newest_snapshot(['on-demand-cp-1-1799999500', 'etcd-snapshot-cp-1-1799999000.part'], 1800000000)
+
+
+def runner_rights():
+    import yaml
+    return list(yaml.safe_load_all((K3S / 'platform/operator/runner-rights.yaml').read_text()))
+
+
+def test_the_reader_pod_has_the_form_that_the_policy_admits():
+    backups = backups_module()
+    pod = backups.snapshot_reader('cp-1')
+    spec = pod['spec']
+    assert pod['metadata']['namespace'] == backups.READER_NAMESPACE == 'platform-backup'
+    assert spec['nodeSelector'] == {'kubernetes.io/hostname': 'cp-1'}
+    assert spec['serviceAccountName'] == backups.READER_ACCOUNT and spec['automountServiceAccountToken'] is False
+    assert {v['hostPath']['path'] for v in spec['volumes']} == {backups.SNAPSHOT_DIR, backups.TOKEN_FILE, backups.K3S_CONFIG}
+    [container] = spec['containers']
+    assert all(m['readOnly'] for m in container['volumeMounts'])
+    assert container['securityContext']['capabilities'] == {'drop': ['ALL']}
+    assert container['securityContext']['allowPrivilegeEscalation'] is False
+    assert not any(spec.get(k) for k in ('hostNetwork', 'hostPID', 'hostIPC'))
+    docs = runner_rights()
+    policy = next(d for d in docs if d['kind'] == 'ValidatingAdmissionPolicy' and d['metadata']['name'] == 'k3s-snapshot-reader')
+    text = json.dumps(policy)
+    assert container['image'] == backups.HELPER_IMAGE and backups.HELPER_IMAGE in text
+    paths = next(v['expression'] for v in policy['spec']['variables'] if v['name'] == 'paths')
+    assert all(f"'{p}'" in paths for p in (backups.SNAPSHOT_DIR, backups.TOKEN_FILE, backups.K3S_CONFIG))
+    assert policy['spec']['matchConditions'][0]['expression'] == "request.namespace == 'platform-backup'"
+    account = next(d for d in docs if d['kind'] == 'ServiceAccount' and d['metadata']['name'] == backups.READER_ACCOUNT)
+    assert account['automountServiceAccountToken'] is False
+    assert not any(d['kind'] in ('RoleBinding', 'ClusterRoleBinding') and any(
+        s.get('name') == backups.READER_ACCOUNT for s in d.get('subjects') or []) for d in docs)
+    role = next(d for d in docs if d['kind'] == 'Role' and d['metadata']['namespace'] == 'platform-backup')
+    assert {r for rule in role['rules'] for r in rule['resources']} == {'pods', 'pods/exec'}
+    assert 'platform-backup' in (K3S / 'platform/operator/install-runner.sh').read_text()
+
+
+def fake_reader(backups, tmp_path, monkeypatch, name, changed=False):
+    """The reader pod as fake kubectl calls, and a tar stream of its three files. Return the list of calls."""
+    import hashlib
+    files = {f'snapshots/{name}': b'etcd-data', 'token': b'K10::server:secret', 'config.yaml': b'cluster-init: true\n'}
+    calls = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        calls.append(args)
+        if 'ls' in args:
+            return f'{name}\netcd-snapshot-cp-1-1700000000\n'
+        if 'sha256sum' in args:
+            return ''.join(f'{hashlib.sha256(files[m]).hexdigest()}  {backups.READER_ROOT}/{m}\n' for m in files)
+        if args[:2] == ('get', 'node'):
+            return 'v1.36.5+k3s1'
+        return ''
+
+    def tar_out(ns, pod, container, folder, target, members=('.',), changed_ok=True, **kw):
+        calls.append(('tar', ns, pod, folder, tuple(members), changed_ok))
+        sent = dict(files)
+        if changed:
+            sent['token'] = b'other'
+        target.write_bytes(tar_bytes(sorted(sent.items()))[0])
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    monkeypatch.setattr(backups, 'tar_out', tar_out)
+    return calls
+
+
+def test_the_platform_copy_reads_the_scheduled_snapshot_through_the_reader_pod(local_destination, tmp_path, monkeypatch):
+    backups, s, _ = local_destination
+    name = 'etcd-snapshot-cp-1-1799990000'
+    calls = fake_reader(backups, tmp_path, monkeypatch, name)
+    private = tmp_path / 'private'
+    (private / 'zones').mkdir(parents=True)
+    (private / 'zones' / 'secret.yaml').write_text('x')
+    monkeypatch.setattr(backups.k3s_settings, 'PRIVATE', private)
+    monkeypatch.setattr(backups, 'state_path', lambda site: tmp_path / 'state.json')
+    partial = tmp_path / 'partial'
+    backups.run_platform(s, partial, now=1800000000)
+    create = next(c for c in calls if c[:1] == ('create',))
+    assert create == ('create', '-f', '-')
+    assert ('tar', 'platform-backup', 'k3s-snapshot-read', '/k3s', (f'snapshots/{name}', 'token', 'config.yaml'), False) in calls
+    # The pod goes away after the read.
+    assert calls[-2][-4:] == ('delete', 'pod', 'k3s-snapshot-read', '--wait=false')
+    etcd = partial / 'etcd'
+    assert sorted(p.name for p in etcd.iterdir()) == sorted(['config.yaml', 'host.json', name, 'token'])
+    host = json.loads((etcd / 'host.json').read_text())
+    assert host['snapshot'] == name and host['created'] == '2027-01-15T05:13:20Z' and host['k3s_version'] == 'v1.36.5+k3s1'
+    assert (etcd / 'token').stat().st_mode & 0o777 == 0o600 and not (partial / 'etcd.stream.tar').exists()
+    recovery = backups.read_recovery(partial)
+    assert recovery['format_version'] == 3 and recovery['snapshot'] == f'etcd/{name}'
+    assert recovery['snapshot_created'] == host['created'] and recovery['route'] == 'reader-pod'
+    steps = backups.platform_steps(partial, 'week-9')
+    assert 'Copy the folder etcd/ of the copy into ~/hoover4-snapshots/restore-week-9/' in steps[0]
+    assert not any('nodeshell' in str(c) or 'ssh' in str(c) for c in calls)
+
+
+def test_a_snapshot_that_changed_in_the_transfer_stops_the_platform_copy(local_destination, tmp_path, monkeypatch):
+    backups, s, _ = local_destination
+    calls = fake_reader(backups, tmp_path, monkeypatch, 'etcd-snapshot-cp-1-1799990000', changed=True)
+    with pytest.raises(SystemExit, match='token changed in the transfer'):
+        backups.run_platform(s, tmp_path / 'partial', now=1800000000)
+    assert any(c[-4:] == ('delete', 'pod', 'k3s-snapshot-read', '--wait=false') for c in calls)
+    old = fake_reader(backups, tmp_path, monkeypatch, 'etcd-snapshot-cp-1-1799900000')
+    with pytest.raises(SystemExit, match='hours old'):
+        backups.run_platform(s, tmp_path / 'partial-2', now=1800000000)
+    assert not any(c[0] == 'tar' for c in old) and old[-1][-4:] == ('delete', 'pod', 'k3s-snapshot-read', '--wait=false')

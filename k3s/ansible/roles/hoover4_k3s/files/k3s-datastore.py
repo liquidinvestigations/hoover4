@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The datastore actions of a k3s server of a hoover4 site. Run it as root on the server.
 
-The role hoover4_k3s runs it with the script module. ../../../../platform/backups/backups.py, ../../../../tools/
-local-retirement.py and the restore steps run it over SSH with `sudo -n python3 - <command> < k3s-datastore.py`.
+The role hoover4_k3s runs it with the script module. The steps that ../../../../tools/local-retirement.py and
+../../../../platform/backups/backups.py print run it on the server with `sudo python3 - <command> < k3s-datastore.py`.
 Arguments are names. No argument holds a host path. The snapshot folders are ~<user>/hoover4-snapshots/<name> of the
 user that runs sudo (SUDO_USER). The script refuses a name with '/', a name that starts with '.', and a symbolic link
 in that path.
@@ -12,12 +12,11 @@ Commands:
   verify-etcd          Verify that the running server uses etcd: the member folder exists and a snapshot save succeeds.
   preserve-sqlite      Stop k3s and copy the SQLite datastore, the token and the configuration into a new folder below
                        /var/lib/hoover4-recovery with SHA256SUMS. The copy is read again. k3s stays stopped.
-  snapshot NAME        Save an etcd snapshot with the token and the configuration into the snapshot folder NAME, for
-                       the platform backup. The sudo user owns the files.
   preserve NAME        Stop k3s and copy the datastore (SQLite or etcd), the token and the configuration into a new
                        folder below the snapshot folder NAME, for the retirement of a server. k3s stays stopped.
   restore NAME         On a stopped server, restore the etcd snapshot of the snapshot folder NAME (k3s --cluster-reset)
-                       with its token, then start k3s. Use it on an isolated server.
+                       with its token, then start k3s. Use it on an isolated server. The folder holds the folder etcd/
+                       of a platform copy: host.json names the snapshot file, and token is the token of the server.
 The script runs with Python 3.9, the version of RHEL 9.
 """
 import hashlib
@@ -187,48 +186,12 @@ def verify_etcd():
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def k3s_version():
-    if not os.path.exists('/usr/local/bin/k3s'):
-        return ''
-    return subprocess.run(['/usr/local/bin/k3s', '--version'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                          text=True).stdout.split('\n')[0]
-
-
-def snapshot(name):
-    require_server()
-    user = operator()
-    if datastore() != 'etcd':
-        fail('the server does not use etcd, so it has no snapshot. Run the k3s play of deploy-k3s up first.')
-    folder = snapshot_folder(user, name)
-    os.makedirs(folder, mode=0o700, exist_ok=True)
-    os.chmod(folder, 0o700)
-    if os.listdir(folder):
-        fail(f'{folder} is not empty')
-    label = 'hoover4-platform'
-    out = subprocess.run(['/usr/local/bin/k3s', 'etcd-snapshot', 'save', '--name', label, '--dir', folder],
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    files = [f for f in os.listdir(folder) if f.startswith(label)]
-    if out.returncode or len(files) != 1:
-        fail('the etcd snapshot failed: ' + (out.stdout.strip().splitlines() or ['no output'])[-1])
-    # The token decrypts the bootstrap data of the snapshot, so a restore needs the token of the same server.
-    shutil.copy2(os.path.join(SERVER_DIR, 'token'), os.path.join(folder, 'token'))
-    os.chmod(os.path.join(folder, 'token'), 0o600)
-    shutil.copy2(f'{K3S_DIR}/config.yaml', os.path.join(folder, 'config.yaml'))
-    info = {'node': os.uname().nodename, 'snapshot': files[0], 'k3s_version': k3s_version(), 'datastore': 'etcd',
-            'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-            'sha256': {f: sha(os.path.join(folder, f)) for f in sorted(os.listdir(folder))}}
-    with open(os.path.join(folder, 'host.json'), 'w') as f:
-        f.write(json.dumps(info, indent=1, sort_keys=True) + '\n')
-    owned_by(folder, user)
-    say(json.dumps({'snapshot': os.path.join(folder, files[0]), 'files': len(info['sha256']) + 1}))
-
-
 def restore(name):
     require_server()
     folder = snapshot_folder(operator(), name)
     info = os.path.join(folder, 'host.json')
     if not os.path.isfile(info) or os.path.islink(info):
-        fail(f'{info} does not exist. The folder holds no snapshot of the snapshot command.')
+        fail(f'{info} does not exist. Copy the files of the folder etcd/ of a platform copy into this folder first.')
     data = json.load(open(info))
     path = os.path.join(folder, name_arg(data['snapshot'], 'snapshot file'))
     token = os.path.join(folder, 'token')
@@ -259,7 +222,7 @@ def main(argv):
     if os.geteuid() != 0:
         fail('run the script as root')
     if not argv:
-        fail('name a command: datastore, verify-etcd, preserve-sqlite, snapshot, preserve or restore')
+        fail('name a command: datastore, verify-etcd, preserve-sqlite, preserve or restore')
     command, rest = argv[0], argv[1:]
     if command == 'datastore':
         print(datastore())
@@ -268,10 +231,8 @@ def main(argv):
     elif command == 'preserve-sqlite':
         require_server()
         print(json.dumps({'copy': preserve(RECOVERY_DIR)}))
-    elif command in ('snapshot', 'preserve', 'restore') and len(rest) == 1:
-        if command == 'snapshot':
-            snapshot(rest[0])
-        elif command == 'restore':
+    elif command in ('preserve', 'restore') and len(rest) == 1:
+        if command == 'restore':
             restore(rest[0])
         else:
             require_server()

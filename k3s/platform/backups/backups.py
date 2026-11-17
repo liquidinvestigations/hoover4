@@ -40,16 +40,18 @@ Jobs:
   of the claim ops-backups. In a zone of the store layout site the ClickHouse archive of the export is an object of the
   export bucket of the zone, and the job first copies it into the export directory. The export directory in the claim
   and the object are removed after the copy, so no second archive stays.
-- platform: an etcd snapshot of the control-plane server with its token and k3s configuration (the snapshot command of
-  ../../ansible/roles/hoover4_k3s/files/k3s-datastore.py with sudo -n on that node), the operator state and the
-  private files
-  of the site (credentials included), and recovery.json. recovery.json has format_version 2, the datastore etcd, the
-  execution host, the control plane, the destination node, the k3s version, the applied source and settings
-  revisions, the pinned tool versions and the application copies that a complete recovery needs. An etcd snapshot holds
-  no claim data, so the application copies are part of the recovery set. read_recovery() also reads a copy of the
-  earlier format, with the SQLite file k3s-state.db, for the conversion of an earlier installation. No new copy uses
-  SQLite. The snapshot command and the read of the snapshot use the user shell of the control plane over SSH
-  (../../driver/nodeshell.py). The runner container has no SSH user and no key, so this job does not finish there.
+- platform: the newest scheduled etcd snapshot of the control-plane server with its token and k3s configuration, the
+  operator state and the private files of the site (credentials included), and recovery.json. k3s saves a snapshot
+  every 12 hours and keeps 5. The job starts a short pod on the control plane (snapshot_reader()), which mounts the
+  snapshot folder, the token and the configuration read-only, reads the files with tar through kubectl exec and
+  deletes the pod. The runner needs no SSH and no access to a host. A newest snapshot older than SNAPSHOT_MAX_AGE
+  stops the job with a message that names its age. The snapshot is normally up to 12 hours older than the private files,
+  and recovery.json names its time. recovery.json has format_version 3, the datastore etcd, the execution host, the
+  control plane, the destination node, the k3s version, the applied source and settings revisions, the pinned tool
+  versions and the application copies that a complete recovery needs. An etcd snapshot holds no claim data, so the
+  application copies are part of the recovery set. read_recovery() also reads format_version 2, whose snapshot the
+  job saved over SSH, and a copy of the earlier format with the SQLite file k3s-state.db, for the conversion of an
+  earlier installation. No new copy uses SQLite.
 A job writes its copy into <folder>/staging/<job>/<generation>.partial, on the volume of the copies. Each tar stream
 of a pod must reach its end-of-archive marker and each database dump must end with the trailer line of its dump tool,
 or the part is read again. The copy then gets copy-manifest.json with the size and SHA-256 of every file, is read
@@ -103,7 +105,6 @@ sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(K3S / 'driver'))
 import config as site_config  # noqa: E402
-import nodeshell  # noqa: E402
 import oplock  # noqa: E402
 import podspec  # noqa: E402
 import settings as k3s_settings  # noqa: E402
@@ -487,9 +488,9 @@ def tar_status_ok(code, stderr):
     return code == 1 and bool(lines) and all(any(m in line for m in TAR_CHANGED) or line.endswith(b'Exiting with failure status due to previous errors') for line in lines)
 
 
-def tar_command(ns, pod, container, folder, tar=('tar',)):
+def tar_command(ns, pod, container, folder, tar=('tar',), members=('.',)):
     return ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', ns, 'exec', pod,
-            *(['-c', container] if container else []), '--', *tar, '-C', folder, '-cf', '-', '.']
+            *(['-c', container] if container else []), '--', *tar, '-C', folder, '-cf', '-', *members]
 
 
 def stream_out(ns, pod, container, folder, target):
@@ -537,19 +538,21 @@ def tar_complete(path):
     return True
 
 
-def tar_out(ns, pod, container, folder, target, tar=('tar',), settled=None):
-    """Write a folder of a pod into one host tar file, with its owners and modes.
+def tar_out(ns, pod, container, folder, target, tar=('tar',), settled=None, members=('.',), changed_ok=True):
+    """Write a folder of a pod, or the members of the folder, into one host tar file, with their owners and modes.
 
     kubectl exec can end with status 0 after a stream reset, so the file is read to its end. An incomplete file is
     written again, up to three times. settled() gives a value before and after the read. When the two differ, a file
-    changed during the read, and the file is written again (lmdb_meta()).
+    changed during the read, and the file is written again (lmdb_meta()). Without changed_ok, a file that changed or
+    went away during the read also makes the file written again.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(3):
         before = settled() if settled else None
         with open(target, 'wb') as out:
-            result = subprocess.run(tar_command(ns, pod, container, folder, tar), stdout=out, stderr=subprocess.PIPE)
-        if tar_status_ok(result.returncode, result.stderr) and tar_complete(target) and (settled is None or settled() == before):
+            result = subprocess.run(tar_command(ns, pod, container, folder, tar, members), stdout=out, stderr=subprocess.PIPE)
+        status = tar_status_ok(result.returncode, result.stderr) if changed_ok else result.returncode == 0
+        if status and tar_complete(target) and (settled is None or settled() == before):
             return
     raise SystemExit(f'the copy of {pod}:{folder} failed, stayed incomplete or changed during the read after three attempts.')
 
@@ -1098,6 +1101,9 @@ def restore_objects(folder, ns):
 
 
 RECOVERY_FORMAT = 'hoover4-platform-recovery'
+# Version 2 holds a snapshot that the job saved over SSH. Version 3 holds the newest scheduled snapshot of k3s with its
+# time (snapshot_created). Both hold etcd/ in the same form, so the restore steps are the same.
+RECOVERY_VERSIONS = (2, 3)
 # The private folders that hold no recovery input: builds, downloads, tool binaries, the staged k3s files of each
 # architecture of earlier installers, the node facts and the generated Ansible inventory. staging/tokens holds the site
 # tokens and is part of the copy.
@@ -1105,18 +1111,120 @@ PRIVATE_EXCLUDED = ['build', 'bin', 'browser-venv', 'checks', 'downloads', 'oper
                     'staging/amd64', 'staging/arm64', 'deploy/remote', 'facts', 'ansible']
 
 
-def snapshot_root(s, name):
-    """Run the snapshot command of the k3s datastore script on the control plane with sudo -n.
+# The platform job reads the newest scheduled etcd snapshot of the k3s server. k3s saves one every 12 hours with its
+# default schedule (etcd-snapshot-schedule-cron "0 */12 * * *") and keeps 5 (etcd-snapshot-retention) in SNAPSHOT_DIR.
+# A newest snapshot older than SNAPSHOT_MAX_AGE, two schedule intervals, shows that the schedule does not run, and the
+# job fails. k3s saves a snapshot as <name>.part and renames it when it is complete, so SNAPSHOT_FILE does not match an
+# incomplete file. The optional .zip is the form of etcd-snapshot-compress.
+SNAPSHOT_DIR = '/var/lib/rancher/k3s/server/db/snapshots'
+TOKEN_FILE = '/var/lib/rancher/k3s/server/token'
+K3S_CONFIG = '/etc/rancher/k3s/config.yaml'
+SNAPSHOT_FILE = __import__('re').compile(r'etcd-snapshot-.+-([0-9]{9,})(\.zip)?')
+SNAPSHOT_MAX_AGE = 24 * 3600
+# The short pod that reads the snapshot on the control plane. The namespace, its ServiceAccount without rights, the
+# rights of the runner there and the policy that admits only this pod form are in ../operator/runner-rights.yaml.
+READER_NAMESPACE = 'platform-backup'
+READER_ACCOUNT = 'k3s-snapshot-reader'
+READER_POD = 'k3s-snapshot-read'
+READER_ROOT = '/k3s'
 
-    The script writes ~<operator>/hoover4-snapshots/<name>/ there. Its argument is a name. The operator user needs sudo
-    without a password on the control plane.
+
+def snapshot_reader(node):
+    """The pod that mounts the snapshot folder, the token and the k3s configuration of the server read-only.
+
+    It runs as root, because the files belong to root with mode 0600, but with no capability, no privilege escalation
+    and a read-only root file system. It has no API token. The runner streams the files out with tar and deletes the
+    pod. A weekly job of under a minute needs no pod that stays running, and such a pod would keep the token mounted
+    and hold memory on the control plane all the time.
     """
-    node = s.nodes[s.control_plane]
-    code, out = nodeshell.Shell(node).datastore('snapshot', name_arg(name, 'snapshot'))
-    if code:
-        raise SystemExit(f'the etcd snapshot on {node.name} failed: {out[-300:]}. The operator user needs sudo without '
-                         'a password on the control plane.')
-    return 'sudo'
+    mounts = [('snapshots', SNAPSHOT_DIR, 'Directory', f'{READER_ROOT}/snapshots'),
+              ('token', TOKEN_FILE, 'File', f'{READER_ROOT}/token'),
+              ('config', K3S_CONFIG, 'File', f'{READER_ROOT}/config.yaml')]
+    return {'apiVersion': 'v1', 'kind': 'Pod',
+            'metadata': {'name': READER_POD, 'namespace': READER_NAMESPACE,
+                         'labels': {'app.kubernetes.io/name': 'k3s-snapshot-reader'}},
+            'spec': {'restartPolicy': 'Never', 'serviceAccountName': READER_ACCOUNT,
+                     'automountServiceAccountToken': False, 'enableServiceLinks': False,
+                     'activeDeadlineSeconds': 3600, 'nodeSelector': {'kubernetes.io/hostname': node},
+                     'tolerations': [{'key': 'node-role.kubernetes.io/control-plane', 'operator': 'Exists',
+                                      'effect': 'NoSchedule'}],
+                     'securityContext': {'runAsUser': 0, 'runAsGroup': 0, 'seccompProfile': {'type': 'RuntimeDefault'}},
+                     'containers': [{'name': 'read', 'image': HELPER_IMAGE, 'command': ['sleep', '3600'],
+                                     'resources': {'requests': {'cpu': '10m', 'memory': '32Mi'},
+                                                   'limits': {'memory': '256Mi'}},
+                                     'securityContext': {'allowPrivilegeEscalation': False, 'privileged': False,
+                                                         'readOnlyRootFilesystem': True,
+                                                         'capabilities': {'drop': ['ALL']}},
+                                     'volumeMounts': [{'name': n, 'mountPath': m, 'readOnly': True}
+                                                      for n, _, _, m in mounts]}],
+                     'volumes': [{'name': n, 'hostPath': {'path': p, 'type': kind}} for n, p, kind, _ in mounts]}}
+
+
+def newest_snapshot(names, now):
+    """(file name, creation time) of the newest scheduled snapshot of names. The time is in the name."""
+    found = sorted((int(m.group(1)), name) for name in names if (m := SNAPSHOT_FILE.fullmatch(name)))
+    if not found:
+        raise SystemExit(f'the control plane has no scheduled etcd snapshot in {SNAPSHOT_DIR}. k3s saves one every 12 '
+                         'hours. Check that the server uses etcd and that etcd-disable-snapshots is not set.')
+    created, name = found[-1]
+    age = now - created
+    if age > SNAPSHOT_MAX_AGE:
+        raise SystemExit(f'the newest scheduled etcd snapshot {name} is {age / 3600:.1f} hours old, and the limit is '
+                         f'{SNAPSHOT_MAX_AGE // 3600} hours. Check the snapshot schedule in journalctl -u k3s on the '
+                         'control plane.')
+    return name, created
+
+
+def reader_exec(*args):
+    return kubectl('-n', READER_NAMESPACE, 'exec', READER_POD, '-c', 'read', '--', *args)
+
+
+def start_snapshot_reader(node):
+    """Create the reader pod on the control plane and wait until it runs. A reader of an earlier job goes first."""
+    kubectl('-n', READER_NAMESPACE, 'delete', 'pod', READER_POD, '--ignore-not-found', '--wait=true')
+    kubectl('create', '-f', '-', input=json.dumps(snapshot_reader(node)))
+    try:
+        kubectl('-n', READER_NAMESPACE, 'wait', '--for=condition=Ready', f'pod/{READER_POD}', '--timeout=300s')
+    except SystemExit:
+        kubectl('-n', READER_NAMESPACE, 'delete', 'pod', READER_POD, '--wait=false', check=False)
+        raise
+
+
+def read_snapshot(node, etcd, now):
+    """Copy the newest scheduled snapshot, the token and the k3s configuration of the server into the folder etcd.
+
+    The files come as one tar stream that must reach its end-of-archive marker, as the claims of a zone copy do. Each
+    file must then have the SHA-256 that the pod computed. etcd/host.json names the snapshot in the form that the restore
+    command of k3s-datastore.py reads. The function returns the content of host.json.
+    """
+    start_snapshot_reader(node)
+    try:
+        name, created = newest_snapshot(reader_exec('ls', '-1', f'{READER_ROOT}/snapshots').split(), now)
+        members = [f'snapshots/{name}', 'token', 'config.yaml']
+        digests = {}
+        for line in reader_exec('sha256sum', *[f'{READER_ROOT}/{m}' for m in members]).splitlines():
+            digest, path = line.split(None, 1)
+            digests[Path(path).name] = digest
+        archive = etcd.parent / 'etcd.stream.tar'
+        tar_out(READER_NAMESPACE, READER_POD, 'read', READER_ROOT, archive, members=members, changed_ok=False)
+    finally:
+        kubectl('-n', READER_NAMESPACE, 'delete', 'pod', READER_POD, '--wait=false', check=False)
+    etcd.mkdir(mode=0o700)
+    try:
+        subprocess.run(['tar', '-C', str(etcd), '-xf', str(archive), '--no-same-owner'], check=True)
+    finally:
+        archive.unlink(missing_ok=True)
+    (etcd / 'snapshots' / name).rename(etcd / name)
+    (etcd / 'snapshots').rmdir()
+    for file, digest in digests.items():
+        if hashlib.sha256((etcd / file).read_bytes()).hexdigest() != digest:
+            raise SystemExit(f'the snapshot file {file} changed in the transfer.')
+        os.chmod(etcd / file, 0o600)
+    version = kubectl('get', 'node', node, '-o', 'jsonpath={.status.nodeInfo.kubeletVersion}').strip()
+    host = {'node': node, 'snapshot': name, 'k3s_version': version, 'datastore': 'etcd',
+            'created': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(created)), 'sha256': digests}
+    (etcd / 'host.json').write_text(json.dumps(host, indent=1, sort_keys=True) + '\n')
+    return host
 
 
 def application_copies(data):
@@ -1131,30 +1239,12 @@ def application_copies(data):
     return out
 
 
-def run_platform(s, partial):
-    """An etcd snapshot of the control plane with its token, the private files and recovery.json."""
+def run_platform(s, partial, now=None):
+    """The newest scheduled etcd snapshot of the control plane with its token and configuration, the private files and
+    recovery.json."""
     partial.mkdir(parents=True, exist_ok=True)
-    node = s.nodes[s.control_plane]
-    shell = nodeshell.Shell(node)
-    name = f'platform-{int(time.time())}'
-    remote = f'hoover4-snapshots/{name}'
-    route = snapshot_root(s, name)
-    try:
-        etcd = partial / 'etcd'
-        etcd.mkdir()
-        reader = subprocess.Popen(shell.command(f'tar -C ~/{remote} -cf - .'), stdout=subprocess.PIPE)
-        subprocess.run(['tar', '-C', str(etcd), '-xf', '-'], stdin=reader.stdout, check=True)
-        reader.stdout.close()
-        if reader.wait():
-            raise SystemExit(f'the snapshot folder {remote} on {node.name} cannot be read.')
-    finally:
-        shell.run(f'rm -rf ~/{remote}')
-    os.chmod(etcd, 0o700)
-    host = json.loads((etcd / 'host.json').read_text())
-    for name, digest in host['sha256'].items():
-        actual = hashlib.sha256((etcd / name).read_bytes()).hexdigest()
-        if actual != digest:
-            raise SystemExit(f'the snapshot file {name} changed in the transfer.')
+    node = s.control_plane
+    host = read_snapshot(node, partial / 'etcd', now or time.time())
     private = k3s_settings.PRIVATE
     subprocess.run(['tar', '-C', str(private), '-cf', str(partial / 'private.tar'),
                     *[f'--exclude=./{e}' for e in PRIVATE_EXCLUDED], '.'], check=True)
@@ -1163,11 +1253,13 @@ def run_platform(s, partial):
     applied = json.loads((state / 'deploy' / 'applied.json').read_text()) if (state / 'deploy' / 'applied.json').exists() else {}
     settings_applied = json.loads((state / 'applied.json').read_text()) if (state / 'applied.json').exists() else {}
     recovery = {
-        'format': RECOVERY_FORMAT, 'format_version': 2, 'datastore': 'etcd', 'route': route,
-        'execution_host': socket.gethostname(), 'control_plane': node.name, 'destination_node': s.backup.get('node'),
+        'format': RECOVERY_FORMAT, 'format_version': 3, 'datastore': 'etcd', 'route': 'reader-pod',
+        'snapshot_source': 'k3s-schedule', 'snapshot_created': host['created'],
+        'execution_host': socket.gethostname(), 'control_plane': node, 'destination_node': s.backup.get('node'),
         'k3s_version': host['k3s_version'], 'snapshot': f'etcd/{host["snapshot"]}', 'token': 'etcd/token',
         'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.id,
-        'source_revision': applied.get('revision', ''), 'settings_revision': settings_applied.get('revision', 0),
+        'source_revision': applied.get('revision') or os.environ.get('HOOVER4_REVISION', ''),
+        'settings_revision': settings_applied.get('revision', 0),
         'settings_scopes': settings_applied.get('scopes', {}),
         'artifacts': json.loads((K3S / 'driver' / 'artifacts.json').read_text()),
         'application_copies': application_copies(load_state(s)),
@@ -1181,7 +1273,7 @@ def read_recovery(folder):
     path = folder / 'recovery.json'
     if path.exists():
         data = json.loads(path.read_text())
-        if data.get('format') != RECOVERY_FORMAT or data.get('format_version') != 2:
+        if data.get('format') != RECOVERY_FORMAT or data.get('format_version') not in RECOVERY_VERSIONS:
             raise SystemExit(f'{path} has the format {data.get("format")} {data.get("format_version")}, which this '
                              'version does not read.')
         return data

@@ -7,7 +7,6 @@ The host steps of a deployment use Ansible instead (../ansible).
 import shlex
 import subprocess
 import time
-from pathlib import Path
 
 SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=accept-new']
 # sshd drops new connections before authentication when it holds MaxStartups unauthenticated ones, for example while
@@ -16,8 +15,6 @@ SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHo
 SSH_REFUSED = ('kex_exchange_identification', 'Connection closed by', 'Connection reset by')
 SSH_ATTEMPTS = 5
 SSH_PAUSE = 6
-# The root script of the k3s datastore actions: snapshot, preserve and restore (../ansible/roles/hoover4_k3s).
-DATASTORE_SCRIPT = Path(__file__).resolve().parents[1] / 'ansible/roles/hoover4_k3s/files/k3s-datastore.py'
 
 
 class RouteError(RuntimeError):
@@ -53,11 +50,6 @@ class Shell:
             if not refused_before_start(self.node, code, out) or attempt == SSH_ATTEMPTS - 1:
                 return code, out
             time.sleep(SSH_PAUSE)
-
-    def datastore(self, *args, timeout=3600):
-        """Run the k3s datastore script as root with sudo -n. The script goes to Python on standard input."""
-        command = 'sudo -n python3 - ' + ' '.join(shlex.quote(a) for a in args)
-        return self.run(command, input=DATASTORE_SCRIPT.read_text(), timeout=timeout)
 
     def send_tree(self, folder, destination, timeout=600):
         """Copy a local folder into a private folder of the node, through tar on standard input."""

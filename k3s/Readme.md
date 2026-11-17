@@ -272,7 +272,7 @@ python3 k3s/zones/zone.py delete zone-x
     the application state
   - the openDesk values and the other files of the zone folder, the shared value files, the zone user passwords and
     `ai.json`
-  - the zone state entry, the effective operator settings and the site settings
+  - the zone state entry, the effective operator settings without the backup policies, and the site settings
   - the environment of helmfile, the Kubernetes version and the storage tiers
 
   The Helm releases must have the recorded names, revisions and charts, and the status `deployed`. The log line
@@ -491,8 +491,8 @@ k3s/deploy-k3s measure-speed --site <file> --target <node>   # see "Measure the 
 - The stores step creates and updates the shared stores of the site ([hoover/stores/shared.py](hoover/stores/shared.py)) before the zone steps. `down` and `up --start` stop and start them with the stores tier.
 - After the conversion of the server from SQLite to etcd, `hosts:verify` restarts the Deployments and DaemonSets of `kube-system`, `ingress`, `cert-manager`, `topolvm-system`, `monitoring` and `operator-portal`.
   Without the restart, CoreDNS, the ingress controller, cert-manager, TopoLVM and the monitoring operators did not see objects that were created after the conversion.
-- The etcd snapshot of the platform backup, the restore of a snapshot and the copy of a retired server run [ansible/roles/hoover4_k3s/files/k3s-datastore.py](ansible/roles/hoover4_k3s/files/k3s-datastore.py) with `sudo -n` over SSH ([driver/nodeshell.py](driver/nodeshell.py)).
-  The script writes `~/hoover4-snapshots/<name>/` of the user that runs sudo, and takes names only.
+- The restore of a platform copy and the copy of a retired server run [ansible/roles/hoover4_k3s/files/k3s-datastore.py](ansible/roles/hoover4_k3s/files/k3s-datastore.py) with sudo on the server.
+  The script reads and writes `~/hoover4-snapshots/<name>/` of the user that runs sudo, and takes names only.
 
 The local node of a single-node site gets the dummy link `hoover4` with the address `10.254.54.1`, a dnsmasq for the names below the domain, and the units `hoover4-address`, `hoover4-dns` and `hoover4-frontend`.
 k3s and every pod run in `hoover4.slice`. The node value `reserved` sets the memory and CPU that stay with the rest of the host, for example a Compose stack.
@@ -597,7 +597,7 @@ prints it in `placement` of its state. It changes nothing on the cluster.
 |---|---|
 | Node capacity | The allocatable memory and CPU of each schedulable node without the role `gpu`. The kubelet reserve is already subtracted, and the CPU counts threads of the fastest node ([Measure the node speed](#measure-the-node-speed)). |
 | Pods of other installers | The platform pods, the DaemonSet pods and the Job pods, at their requests on their nodes. |
-| Site pods | A new render at the factor 1: the shared stores, and for each enabled zone the Hoover installation, the zone gate and openDesk (`helmfile template` with the post-renderer, all openDesk entries at the same time). The openDesk render of a zone is kept in `placement/render-<zone>.json` of the state folder with a digest of its inputs, and a plan with the same inputs uses it. |
+| Site pods | A new render at the factor 1: the shared stores, and for each enabled zone the Hoover installation, the zone gate and openDesk (`helmfile template` with the post-renderer, all openDesk entries at the same time). The openDesk render of a zone is kept in `placement/render-<zone>.json` of the state folder with a digest of its inputs, and a plan with the same inputs uses it. The inputs are the zone values, the zone state entry, the effective operator settings that the post-renderer reads (`operator_effective()` of [zones/zone.py](zones/zone.py)), the openDesk release and the files of `zones/`. A saved backup policy changes no input. |
 | Planned zones | `vars.stores zones` beyond the zone state count as copies of the first zone. They are only counted. |
 
 Rules:
@@ -971,9 +971,11 @@ $run restore-platform <generation>
 - A copy is made in `staging/<job>/<generation>.partial` of the backup folder, checked against its manifest and renamed into its folder. The rename moves no data. A failed job or check keeps the older copies.
 - A restore reads a copy in place, after a check of every file against its manifest.
 - Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
-- The platform copy holds an etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 2). `recovery.json` names the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads a copy of the earlier SQLite format.
-  The snapshot runs `k3s-datastore.py snapshot <name>` with `sudo -n` on the server, which writes `~/hoover4-snapshots/<name>/` of the operator user. The operator user needs sudo without a password on the control plane.
-  The snapshot and its read use SSH to the control plane. The runner container has no SSH user and no key, so the platform job does not finish there.
+- The platform copy holds the newest scheduled etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 3). `recovery.json` names the snapshot time and the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads format version 2 and a copy of the earlier SQLite format.
+  k3s saves an etcd snapshot every 12 hours and keeps 5 in `/var/lib/rancher/k3s/server/db/snapshots` (the k3s defaults). When the newest snapshot is older than 24 hours, the job fails with a message that names its age.
+  The job starts the pod `k3s-snapshot-read` in the namespace `platform-backup` on the control plane. The pod mounts the snapshot folder, the token and the k3s configuration read-only, and the runner reads the files with tar through `kubectl exec` and checks their SHA-256. The job then deletes the pod. The runner needs no SSH and no access to a host.
+  The pod runs as root without a capability and without an API token. The policy `k3s-snapshot-reader` ([platform/operator/runner-rights.yaml](platform/operator/runner-rights.yaml)) admits only this pod form in `platform-backup`, and the runner can only create, read and delete pods there.
+  A pod that stays running is not necessary for a weekly job of under a minute. It would keep the token mounted and hold memory on the control plane all the time.
 - The zone copy reads the running zone. No workload stops or scales. `workloads.json` of the copy records the replicas
   of the applications, gates and workers, which `restore-zone` applies. The next runner tick restores a closure that a
   job of an earlier version left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
