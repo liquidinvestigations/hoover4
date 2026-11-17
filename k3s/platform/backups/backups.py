@@ -233,9 +233,15 @@ def clickhouse_command(hoover):
 
 
 def clickhouse(hoover, sql):
+    """The output of sql in the ClickHouse of the installation. The standard input stays open until the client ends
+    (../../podexec.py), because the output of a Kata pod stops after 32 KiB once kubectl closes it."""
+    import podexec
     ns, pod, container, command = clickhouse_command(hoover)
-    return kubectl('-n', ns, 'exec', '-i', pod, *(['-c', container] if container else []), '--', 'sh', '-c', command,
-                   input=sql)
+    r = podexec.call(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', ns, 'exec', '-i', pod,
+                      *(['-c', container] if container else [])], ['sh', '-c', command], sql, timeout=3600)
+    if r.returncode:
+        raise SystemExit(f'ClickHouse of {hoover.name} refused the query: {r.stderr.strip()[-500:]}')
+    return r.stdout
 
 
 def receipts(hoover, collection):

@@ -10,9 +10,9 @@ See [the k3s Readme](Readme.md) for the zone state.
 
 - The local layout runs the Compose stores, and Temporal on Cassandra and Elasticsearch, in the Hoover namespace on
   claims of one node, as Compose runs them.
-- The site layout (column "Zone layout") uses the shared ClickHouse, Garage and Temporal of the site
+- The site layout (column "Zone layout") uses the shared ClickHouse, Garage, Manticore and Temporal of the site
   ([hoover/stores/shared.py](hoover/stores/shared.py), [hoover/stores/temporal.py](hoover/stores/temporal.py)), and
-  runs Manticore in Kata on block volumes in the zone namespace.
+  the processing pools of the site ([hoover/pools.py](hoover/pools.py)).
 
 ## Services
 
@@ -21,12 +21,12 @@ See [the k3s Readme](Readme.md) for the zone state.
 | `hoover4-website` | app | `docker-compose.yaml`, `website-release.yaml` | Deployment `hoover-website` | Deployment `hoover-website` | Release image, `/app/server`. oauth2-proxy sends the browser requests with the proxy secret. The workers, the collections server and the research agents call the agent API at `AGENT_API_BASE_URL`, which the render sets to `http://hoover-website:8080`. Upload space on the claim `upload-tmp`. |
 | `hoover4-worker` | app | `docker-compose.yaml` | StatefulSet `hoover-workers` on the node of the store claims, and Deployment `hoover-singletons` | Deployment `hoover-workers` spread over the nodes, and Deployment `hoover-singletons` | Plan files on one claim for each worker pod in the local layout. `hoover-singletons` runs the migrations, the index planner, the email graph and the chat worker once. |
 | `hoover4-ops` | app | `docker-compose.yaml` | Deployment `hoover-operations` with `/backups` and the store claims | Deployment `hoover-operations` with `/backups` | The zone layout has no `/stores` mounts. The site layout writes the ClickHouse part of a collection export into the bucket `<zone>-exports`, and the schema proxy reads and writes the Manticore part. |
-| `hoover4-pdf-search` | app | `docker-compose.yaml` | Deployment and Service on port 13500 | Same | |
-| `hoover4-tika` | app | `tika.yaml` | Deployment, ConfigMap `tika-config` | Same | The tika configuration comes from deploy.py. |
-| `hoover4-regex-entity-scanner` | app | `regex-entity-scanner.yaml` | Deployment | Same | |
-| `hoover4-tesseract-cpu` | app | `tesseract-cpu.yaml` | Deployment when `tesseract_cpu_enabled` | Same | |
-| `hoover4-ocr-pdf` | app | `ocr-pdf.yaml` | Deployment when `ocr_pdf_enabled` | Same | |
-| `hoover4-clamav` | app | `clamav.yaml` | Deployment on a public node when `clamav_enabled` | Same | It loads its signatures from the internet. |
+| `hoover4-pdf-search` | app | `docker-compose.yaml` | Deployment and Service on port 13500 | ExternalName to the pool of the site in `hoover-pools` | |
+| `hoover4-tika` | app | `tika.yaml` | Deployment, ConfigMap `tika-config` | ExternalName to the pool of the site in `hoover-pools`, which has the ConfigMap | The tika configuration comes from deploy.py. |
+| `hoover4-regex-entity-scanner` | app | `regex-entity-scanner.yaml` | Deployment | ExternalName to the pool of the site in `hoover-pools` | |
+| `hoover4-tesseract-cpu` | app | `tesseract-cpu.yaml` | Deployment when `tesseract_cpu_enabled` | ExternalName to the pool of the site in `hoover-pools` when `tesseract_cpu_enabled` | |
+| `hoover4-ocr-pdf` | app | `ocr-pdf.yaml` | Deployment when `ocr_pdf_enabled` | ExternalName to the pool of the site in `hoover-pools` when `ocr_pdf_enabled` | The pool holds no object store key. The workers send the source and write the answer (`OCR_PDF_TRANSFER=inline`). |
+| `hoover4-clamav` | app | `clamav.yaml` | Deployment on a public node when `clamav_enabled` | ExternalName to the pool of the site in `hoover-pools`, on a public node, when `clamav_enabled` | It loads its signatures from the internet. |
 | `hoover4-mcp-collections` | app | `agents.yaml` | Deployment | Same | The shared secret comes from the Secret `hoover-runtime`. |
 | `hoover4-mcp-todo` | app | `agents.yaml` | Deployment | Same | Same as above. |
 | `hoover4-mcp-whois` | app | `internet-tools.yaml` | Deployment on a public node when `internet_tools_enabled` | Same | |

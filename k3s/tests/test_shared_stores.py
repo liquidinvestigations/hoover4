@@ -556,3 +556,30 @@ def test_the_clickhouse_tenant_is_one_answer_row_and_a_cut_answer_is_an_error(mo
     monkeypatch.setattr(shared, 'clickhouse_sql', lambda sql: json.dumps(row)[:30])
     with pytest.raises(SystemExit, match='incomplete answer'):
         shared.clickhouse_tenant('zone-a')
+
+
+def test_podexec_call_keeps_the_input_open_and_returns_the_complete_output(tmp_path):
+    import podexec
+    # A local stand-in for kubectl exec: the argv after `--` runs on this host.
+    fake = tmp_path / 'kubectl'
+    fake.write_text('#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n')
+    fake.chmod(0o755)
+    r = podexec.call([str(fake), 'exec', '-i', 'pod'], ['sh', '-c', 'wc -c; head -c 2000000 /dev/zero | tr "\\000" a'],
+                     'SELECT 1;\n')
+    assert r.returncode == 0 and r.stdout.startswith('10\n') and len(r.stdout) == 3 + 2000000
+    with pytest.raises(__import__('subprocess').TimeoutExpired):
+        podexec.call([str(fake), 'exec', '-i', 'pod'], ['sleep', '5'], timeout=0.5)
+
+
+def test_the_store_sql_readers_keep_the_input_open(monkeypatch):
+    import podexec
+    import subprocess as sp
+    calls = []
+    monkeypatch.setattr(shared, 'ready_pod', lambda store: f'{store}-0')
+    monkeypatch.setattr(podexec, 'call', lambda argv, command, data=b'', timeout=None:
+                        calls.append((argv, command, data)) or sp.CompletedProcess(argv, 0, 'x' * 100000, ''))
+    assert len(shared.clickhouse_sql('SELECT 1\n')) == 100000
+    assert len(shared.manticore_sql('manticore', 'SHOW TABLES;\n')) == 100000
+    assert [c[0][-5:] for c in calls] == [['exec', '-i', 'clickhouse-0', '-c', 'clickhouse'],
+                                          ['exec', '-i', 'manticore-0', '-c', 'manticore']]
+    assert [c[2] for c in calls] == ['SELECT 1\n', 'SHOW TABLES;\n']

@@ -319,6 +319,12 @@ def main():
     table = load()
     parts = [('site', SITE_NAMESPACE)] if args.site else [('zone', args.zone), ('hoover', f'hoover-{args.zone}')]
     measured = measure(parts, *times, table['factor'])
+    if 'hoover' in measured:
+        # A zone create starts no processing pool (../hoover/pools.py), so the pools keep their earlier values.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import config
+        pools = {f'deployment/hoover4-{k}' for k in config.REPLICA_SERVICES}
+        measured['hoover'] = {**{k: v for k, v in table.get('hoover', {}).items() if k in pools}, **measured['hoover']}
     if not args.write:
         print(json.dumps(measured, indent=1))
         return

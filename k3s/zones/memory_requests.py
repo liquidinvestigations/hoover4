@@ -2,8 +2,8 @@
 """The memory requests of the zone and site workloads from a load measurement, and the tool that measures them.
 
 memory-requests.json holds, for each workload <kind>/<name> of a zone (part zone: openDesk, part hoover: the Hoover
-installation) and of the shared stores of the site (part site: the namespace hoover-stores), the numbers of a measured
-load:
+installation and the processing pools of the site in hoover-pools) and of the shared stores of the site (part site:
+the namespace hoover-stores), the numbers of a measured load:
   peak     the highest working set of the pod cgroup on the host in the load period and the quiet period after it.
            The pod cgroup holds every container of the pod. It also holds the gVisor sentry, and for Kata the VM with
            its guest kernel, the agent, Cloud Hypervisor, virtiofsd and the shim (sandbox_cgroup_only).
@@ -44,6 +44,7 @@ ROUND = 32
 # The smallest request of a main container in MiB.
 FLOOR = 16
 SITE_NAMESPACE = 'hoover-stores'
+POOLS_NAMESPACE = 'hoover-pools'
 RECORDS = {'zone': 'measured', 'hoover': 'measured', 'site': 'measuredSite'}
 PEAK = 'hoover.dev/memory-peak'
 BASIS = 'hoover.dev/memory-request-basis'
@@ -252,8 +253,10 @@ def main():
     import cpu_requests
     start, end = cpu_requests.parse_time(args.start), cpu_requests.parse_time(args.end)
     table = load()
+    # The processing pools of the site (../hoover/pools.py) belong to the part hoover. A zone load measures them with
+    # the zones.
     parts = [('site', SITE_NAMESPACE)] if args.site else \
-        [p for z in args.zone for p in (('zone', z), ('hoover', f'hoover-{z}'))]
+        [p for z in args.zone for p in (('zone', z), ('hoover', f'hoover-{z}'))] + [('hoover', POOLS_NAMESPACE)]
     measured, low = measure(parts, start, end, table['margin'], args.guest)
     if not args.write:
         node = node_reserve(args.guest, start, end, table['margin'], control_planes()) if args.guest else {}

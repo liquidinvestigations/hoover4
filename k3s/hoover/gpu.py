@@ -13,6 +13,7 @@ and a Compose GPU host needs the same key in its [ai_services] vllm_api_key_file
   zone of each request.
 - The Deployment gpu in each Hoover namespace adds the headers of its zone and forwards to gpu-proxy. Hoover names gpu
   as its GPU host (zone_ini.py), so the installation needs no change of the Hoover clients and never holds the key.
+  The processing pools of the site (pools.py) have their own forwarder with the name hoover-pools in place of a zone.
 The proxy derives each token from the zone name, so a new zone needs no change of the proxy. A new GPU key changes
 every token: run gpu.py install, ../platform/gpu/gpu_pool.py apply and ../zones/zone.py apply of each zone after it.
 Usage: gpu.py token <zone>             prints the token of a zone
@@ -180,7 +181,7 @@ const crypto = require('crypto');
 function zone_ok(r) {
   const zone = r.headersIn['X-Hoover-Zone'] || '';
   const given = r.headersIn['X-Hoover-Zone-Token'] || '';
-  if (!/^zone-[a-z0-9]{1,12}$/.test(zone)) return 'no';
+  if (!/^(zone-[a-z0-9]{1,12}|hoover-pools)$/.test(zone)) return 'no';
   const want = crypto.createHmac('sha256', '${GPU_KEY}').update(zone).digest('hex');
   return given.length === want.length && given === want ? 'yes' : 'no';
 }
@@ -203,10 +204,13 @@ access_log /dev/stdout zone;{servers}
     secret = {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'gpu-proxy', 'namespace': NS}, 'type': 'Opaque',
               'stringData': {'gpu-key': gpu_key}}
     items[1]['spec']['template']['metadata']['annotations']['hoover.dev/key'] = hashlib.sha256(gpu_key.encode()).hexdigest()[:12]
-    # Only the zone forwarders reach the proxy, and the proxy reaches only the GPU box and the cluster DNS.
+    # Only the zone forwarders and the forwarder of the processing pools (pools.py) reach the proxy, and the proxy
+    # reaches only the GPU box and the cluster DNS.
     policy = {'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': 'gpu-proxy', 'namespace': NS},
               'spec': {'podSelector': {}, 'policyTypes': ['Ingress', 'Egress'],
                        'ingress': [{'from': [{'namespaceSelector': {'matchLabels': {'hoover.dev/zone': 'true'}},
+                                              'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'gpu'}}},
+                                             {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'hoover-pools'}},
                                               'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'gpu'}}}]}],
                        'egress': [{'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'gpu-pool'}}}
                                           if box.get('gateway') else {'ipBlock': {'cidr': f'{box["address"]}/32'}}],

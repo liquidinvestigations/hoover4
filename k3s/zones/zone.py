@@ -47,8 +47,10 @@ The steps of apply, in order:
   7. The Hoover stores, their users and buckets, and the Hoover deployment follow (../hoover/). A zone with
      stores = site (every new zone, with temporal = site and manticore = site) gets a tenant in the shared ClickHouse,
      Garage, Manticore and Temporal of the site, which deploy-k3s up creates (step stores, ../hoover/stores/shared.py
-     and temporal.py). A zone with stores = local in the zone state gets its Secrets from setup.py local-secrets and
-     its objects from manifests.py, with the Compose stores and Temporal in its Hoover namespace. A zone with
+     and temporal.py). Such a zone uses the processing pools of the site (../hoover/pools.py): the zone creates them
+     when the site has none and changes no running pool. A zone with stores = local in the zone state gets its Secrets
+     from setup.py local-secrets and its objects from manifests.py, with the Compose stores and Temporal in its Hoover
+     namespace. A zone with
      stores = zone, or with stores = site and temporal = zone or manticore = zone, is from an earlier version and is
      refused: delete it and create it again.
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
@@ -56,7 +58,8 @@ and profile, its Garage buckets and keys, its Manticore tables and users, and it
 (../hoover/stores/shared.py remove). The S3 client in a Garage pod empties the buckets, so a disabled zone is removed
 the same way. When a part fails or an object stays, the delete stops with the message of shared.py, and the
 zone keeps its namespaces and its zone state entry. Repair the store and delete the zone again.
-The two namespaces of the zone are then deleted at the same time.
+The two namespaces of the zone are then deleted at the same time. The delete of the last zone with stores = site
+removes the processing pools.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -760,6 +763,15 @@ def hoover(zone):
     run(sys.executable, STORES / 'creds.py', zone)
     run(sys.executable, SOURCE / 'hoover' / 'setup.py', zone)
     run(sys.executable, SOURCE / 'hoover' / 'manifests.py', zone, 'apply')
+    pools()
+
+
+def pools():
+    """Create the processing pools of the site when it has none (../hoover/pools.py ensure), and remove them when no
+    zone of the store layout site remains. A running pool stays as it is, so a zone create or delete changes no pool
+    pod. In deploy-k3s up the step stores applies the pools (HOOVER4_POOLS_STEP), so the zone step leaves them to it."""
+    if os.environ.get('HOOVER4_POOLS_STEP') != '1':
+        run(sys.executable, SOURCE / 'hoover' / 'pools.py', 'ensure')
 
 
 def apply(zone, home=None, values=None, full=False):
@@ -826,6 +838,8 @@ def delete(zone):
         step('namespace-deleted', zone=zone, namespace=namespace)
     del state['zones'][zone]
     zonestate.save(state)
+    # The last zone of the store layout site takes the processing pools with it.
+    pools()
     secrets_file = PRIVATE / 'zones' / 'secrets.json'
     if secrets_file.exists():
         data = json.loads(secrets_file.read_text())

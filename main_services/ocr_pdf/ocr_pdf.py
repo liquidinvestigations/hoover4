@@ -100,6 +100,9 @@ class OcrPdfRequest(BaseModel):
     ocr_pages: Optional[list[StrictInt]] = Field(None, description="Selected local pages, numbered from one. Omitted means all pages")
     words: list[dict[str, Any]] = Field(default_factory=list, description="Stored OCR word boxes for image mode")
     dest_key: str = Field(..., description="Object key to write, must start with derived/")
+    #: The answer carries the PDF, and the service reads and writes no object. A shared service of several
+    #: installations (the processing pools of a k3s site) holds no key of an object store.
+    inline: bool = Field(False, description="Answer with the PDF in pdf_b64 and write no object")
     engine: str = Field("tesseract", description="OCR engine: tesseract | easyocr")
     languages: str = Field("eng", description="+-joined language codes for one pass")
     dpi: int = Field(DEFAULT_DPI, ge=72, le=MAX_DPI)
@@ -115,6 +118,8 @@ class OcrPdfResponse(BaseModel):
     dest_key: str
     run_time_ms: int
     pages: list[dict[str, Any]] = Field(default_factory=list)
+    #: The PDF of an inline request. Empty when the service wrote the object.
+    pdf_b64: str = ""
 
 
 def _s3():
@@ -259,9 +264,11 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
         if request.engine not in OCR_ENDPOINTS:
             raise HTTPException(status_code=400, detail=f"unknown OCR engine {request.engine!r}")
 
+        if request.inline and request.source_key and not (request.source_b64 or request.pdf_b64):
+            raise HTTPException(400, "an inline request sends its source in source_b64 or pdf_b64")
         bucket = (request.bucket or "").strip() or S3_BUCKET
         started = time.time()
-        client = _s3()
+        client = None if request.inline else _s3()
 
         with tempfile.TemporaryDirectory(prefix="ocr-pdf-") as folder:
             source = os.path.join(folder, "source")
@@ -293,8 +300,13 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
                 for block in iter(lambda: handle.read(1024 * 1024), b""):
                     digest.update(block)
             size_bytes = os.path.getsize(destination)
-            # Upload the object before the caller records its result row.
-            client.fput_object(bucket, dest_key, destination, content_type="application/pdf")
+            encoded = ""
+            if request.inline:
+                with open(destination, "rb") as handle:
+                    encoded = base64.b64encode(handle.read()).decode("ascii")
+            else:
+                # Upload the object before the caller records its result row.
+                client.fput_object(bucket, dest_key, destination, content_type="application/pdf")
             run_time_ms = max(int((time.time() - started) * 1000), 0)
             log.info("[ocr-pdf] %s: %d pages (%d with text), %d bytes in %d ms",
                      dest_key, result["page_count"], result["pages_with_text"], size_bytes, run_time_ms)
@@ -302,7 +314,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
                 page_count=result["page_count"], pages_with_text=result["pages_with_text"],
                 pages=result["pages"], size_bytes=size_bytes, blob_hash=digest.hexdigest(),
                 engine=request.engine, languages=request.languages, dest_key=dest_key,
-                run_time_ms=run_time_ms,
+                run_time_ms=run_time_ms, pdf_b64=encoded,
             )
     finally:
         _inflight.release()

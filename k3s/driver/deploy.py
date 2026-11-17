@@ -1102,7 +1102,9 @@ def step_zone(zone):
         ctx.run([sys.executable, '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import zone; zone.register(sys.argv[2])',
                  SOURCE / 'zones', zone])
         # zone.py runs the openDesk waves only when an input of the zone changed. up --full runs them in every zone.
-        ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone] + (['--full'] if getattr(ctx, 'full', False) else []))
+        # The step stores applies the processing pools of the site (../hoover/pools.py), so the zone leaves them.
+        ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone] + (['--full'] if getattr(ctx, 'full', False) else []),
+                env={'HOOVER4_POOLS_STEP': '1'})
         hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)
@@ -1172,9 +1174,9 @@ def cluster_steps(ctx):
     # The placement of every pod of the site (../placement.py): the CPU scale factor and the planned nodes, written
     # into the ConfigMap of the admission policy, and the running pods resized to the factor in place.
     steps['placement'] = step_placement
-    # The shared ClickHouse and Garage of the site (../hoover/stores/shared.py). Each zone of the store layout site
-    # adds its tenant to them.
-    steps['stores'] = step_script(sys.executable, '@hoover/stores/shared.py', 'apply')
+    # The shared ClickHouse and Garage of the site (../hoover/stores/shared.py), then the processing pools
+    # (../hoover/pools.py). Each zone of the store layout site adds its tenant to the stores and uses the pools.
+    steps['stores'] = step_stores
     # The scheduler can place a zone pod on any node, so every eligible node pulls the zone images while the zones
     # apply (../images/prepull.py).
     steps['prepull'] = step_prepull
@@ -1193,6 +1195,17 @@ def cluster_steps(ctx):
     if getattr(ctx, 'rebalance', False):
         steps['rebalance'] = step_rebalance
     return steps
+
+
+def step_stores(ctx):
+    """The shared stores and Temporal of the site, then the processing pools. Without a zone of the store layout site
+    the pools step removes the pools."""
+    ctx.run([sys.executable, SOURCE / 'hoover/stores/shared.py', 'apply'])
+    code, out = ctx.run([sys.executable, SOURCE / 'hoover/pools.py', 'apply'], capture=True)
+    try:
+        return json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {}
 
 
 def step_placement(ctx):

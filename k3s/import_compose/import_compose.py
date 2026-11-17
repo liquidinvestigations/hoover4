@@ -859,9 +859,15 @@ def wait_ready(ns, kind, name, timeout=1200):
 
 
 def target_clickhouse(ns, settings=()):
+    """The query function of the ClickHouse of the target. The standard input stays open until the client ends
+    (../podexec.py), because the output of the Kata store pod stops after 32 KiB once kubectl closes it."""
     def query(sql):
-        return kubectl('-n', ns, 'exec', '-i', 'clickhouse-0', '--', 'clickhouse-client', '--user', 'hoover4', '--password',
-                       'hoover4', *settings, input=sql)
+        import podexec
+        argv = ['kubectl', '--kubeconfig', kubeconfig(), '-n', ns, 'exec', '-i', 'clickhouse-0']
+        r = podexec.call(argv, ['clickhouse-client', '--user', 'hoover4', '--password', 'hoover4', *settings], sql)
+        if r.returncode:
+            raise StepFailed(f'the ClickHouse of {ns} refused the query: {(r.stderr or r.stdout).strip()[-800:]}')
+        return r.stdout
     return query
 
 

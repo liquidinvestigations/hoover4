@@ -40,8 +40,14 @@ def report(**row):
 
 
 def psql(zone, sql, database='postgres', check=True):
-    return kubectl('-n', zone, 'exec', '-i', 'postgresql-0', '-c', 'postgresql', '--', 'psql', '-U', 'postgres', '-d', database,
-                   '-v', 'ON_ERROR_STOP=1', '-Atq', input=sql, check=check)
+    # The standard input stays open until psql ends (../podexec.py), because the output of the Kata pod postgresql-0
+    # stops after 32 KiB once kubectl closes it.
+    import podexec
+    r = podexec.call(K + ['-n', zone, 'exec', '-i', 'postgresql-0', '-c', 'postgresql'],
+                     ['psql', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1', '-Atq'], sql, timeout=900)
+    if check and r.returncode:
+        raise SystemExit(f'psql in {zone}: {r.stderr.strip()[-500:]}')
+    return r.stdout
 
 
 def t1(zone):

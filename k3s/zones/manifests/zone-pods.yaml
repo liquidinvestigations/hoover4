@@ -6,8 +6,8 @@
 # zone.py and the Hoover render label each zone namespace with hoover.dev/zone=true. A pod that names a RuntimeClass
 # keeps it, for example a Kata store. A pod with the label hoover.dev/runtime=runc keeps the default runtime: this is
 # the record of a runtime exception.
-# The ValidatingAdmissionPolicy hoover-pod-limits refuses host access in the zone namespaces and in the namespaces calls
-# and extensions, where the zone runner can create workloads. It matches the namespace by its name, so a label change
+# The ValidatingAdmissionPolicy hoover-pod-limits refuses host access in the zone namespaces and in the namespaces calls,
+# extensions and hoover-pools, where the zone runner can create workloads. It matches the namespace by its name, so a label change
 # does not remove it. It refuses a host path, the host PID and IPC namespaces, a privileged container, and a
 # capability in a pod without a RuntimeClass. Only coturn in calls may use the host network and NET_BIND_SERVICE. Only
 # coturn, the JVB and LiveKit in calls may publish a host port: the media ports of a public media node. In a
@@ -65,7 +65,7 @@ spec:
         scope: "*"
   matchConditions:
     - name: limited-namespace
-      expression: request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$') || request.namespace in ['calls', 'extensions']
+      expression: request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$') || request.namespace in ['calls', 'extensions', 'hoover-pools']
   variables:
     - name: zone
       expression: request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')

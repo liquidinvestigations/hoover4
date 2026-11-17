@@ -370,20 +370,25 @@ def wait_current(store, timeout=900):
 
 
 def clickhouse_sql(sql, check=True):
-    """Run SQL from stdin as the ClickHouse admin. The password stays in the pod environment."""
-    r = subprocess.run(common.K + ['-n', NS, 'exec', '-i', ready_pod('clickhouse'), '-c', 'clickhouse', '--', 'sh', '-c',
-                                   'exec clickhouse-client --user hoover_admin --password "$CH_ADMIN_PASSWORD" --multiquery'],
-                       input=sql, capture_output=True, text=True, timeout=3600)
+    """Run SQL from stdin as the ClickHouse admin. The password stays in the pod environment. The standard input stays
+    open until the client ends (../../podexec.py), because the output of the Kata pod stops after 32 KiB once kubectl
+    closes it."""
+    import podexec
+    r = podexec.call(common.K + ['-n', NS, 'exec', '-i', ready_pod('clickhouse'), '-c', 'clickhouse'],
+                     ['sh', '-c', 'exec clickhouse-client --user hoover_admin --password "$CH_ADMIN_PASSWORD" --multiquery'],
+                     sql, timeout=3600)
     if check and r.returncode:
         raise SystemExit(f'ClickHouse refused the statements: {r.stderr.strip()[-600:]}')
     return r.stdout
 
 
 def manticore_sql(store, sql, check=True):
-    """Run SQL from stdin as the Manticore admin in a daemon of MANTICORE. The password stays in the pod environment."""
-    r = subprocess.run(common.K + ['-n', NS, 'exec', '-i', ready_pod(store), '-c', 'manticore', '--', 'sh', '-c',
-                                   'exec mysql -h0 -P9306 -uhoover_admin -p"$MT_ADMIN_PASSWORD" --batch --skip-column-names'],
-                       input=sql, capture_output=True, text=True, timeout=3600)
+    """Run SQL from stdin as the Manticore admin in a daemon of MANTICORE. The password stays in the pod environment.
+    The standard input stays open until the client ends (../../podexec.py)."""
+    import podexec
+    r = podexec.call(common.K + ['-n', NS, 'exec', '-i', ready_pod(store), '-c', 'manticore'],
+                     ['sh', '-c', 'exec mysql -h0 -P9306 -uhoover_admin -p"$MT_ADMIN_PASSWORD" --batch --skip-column-names'],
+                     sql, timeout=3600)
     err = '\n'.join(l for l in r.stderr.splitlines() if 'Using a password' not in l)
     if check and r.returncode:
         raise SystemExit(f'Manticore {store} refused the statements: {err.strip()[-600:]}')

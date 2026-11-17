@@ -9,6 +9,7 @@ the command ends. The same function works in gVisor and runc containers.
 import os
 import shutil
 import subprocess
+import tempfile
 
 # The wrapper reads the size from its first argument, and runs the command of the other arguments with exactly that
 # many bytes on its standard input.
@@ -20,10 +21,11 @@ def size_of(parts):
     return sum(len(p) if isinstance(p, (bytes, bytearray)) else os.path.getsize(p) for p in parts)
 
 
-def run(kubectl_exec, command, parts=(), stdout=None, stderr=None, size=None):
+def run(kubectl_exec, command, parts=(), stdout=None, stderr=None, size=None, timeout=None):
     """Run command (argv in the container) through kubectl_exec (the kubectl argv up to and without `--`, with -i) and
     write parts to its standard input. parts are bytes or paths of files, or an iterable of byte chunks when size
-    gives their total. stdout and stderr are open files or None for no output. Return the exit code."""
+    gives their total. stdout and stderr are open files or None for no output. Return the exit code. After timeout
+    seconds the kubectl process stops, and subprocess.TimeoutExpired follows."""
     total = size_of(parts) if size is None else size
     argv = [*kubectl_exec, '--', 'sh', '-c', WRAPPER, 'podexec', str(total), *command]
     process = subprocess.Popen([str(a) for a in argv], stdin=subprocess.PIPE,
@@ -39,9 +41,28 @@ def run(kubectl_exec, command, parts=(), stdout=None, stderr=None, size=None):
         process.stdin.flush()
     except BrokenPipeError:
         pass
-    code = process.wait()
     try:
-        process.stdin.close()
-    except BrokenPipeError:
-        pass
+        code = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        try:
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
     return code
+
+
+def call(kubectl_exec, command, data=b'', timeout=None):
+    """run() with data (bytes or text) on the standard input. Return a subprocess.CompletedProcess with the complete
+    standard output and standard error as text."""
+    if isinstance(data, str):
+        data = data.encode()
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        code = run(kubectl_exec, command, [data] if data else [], stdout=out, stderr=err, timeout=timeout)
+        out.seek(0)
+        err.seek(0)
+        return subprocess.CompletedProcess([*kubectl_exec, '--', *command], code,
+                                           out.read().decode(errors='replace'), err.read().decode(errors='replace'))

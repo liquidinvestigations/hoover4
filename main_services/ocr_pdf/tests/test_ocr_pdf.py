@@ -560,3 +560,32 @@ def test_only_an_easyocr_call_sends_the_gpu_key(monkeypatch, tmp_path):
     render_worker._ocr_page("easyocr", "en", b"x")
     render_worker._ocr_page("tesseract", "en", b"x")
     assert sent == {"http://gpu.test/ocr": {"Authorization": "Bearer k123"}, "http://cpu.test/ocr": None}
+
+
+def test_inline_request_answers_the_pdf_and_writes_no_object(monkeypatch):
+    def no_store():
+        raise AssertionError("an inline request opens no object store client")
+    monkeypatch.setattr(ocr_pdf, "_s3", no_store)
+    source = native_pdf()
+    created = []
+    real = ocr_pdf.tempfile.TemporaryDirectory
+
+    def tracked(*args, **kwargs):
+        folder = real(*args, **kwargs)
+        created.append(folder.name)
+        return folder
+    monkeypatch.setattr(ocr_pdf.tempfile, "TemporaryDirectory", tracked)
+    result = ocr_pdf.ocr_pdf(ocr_pdf.OcrPdfRequest(
+        source_b64=base64.b64encode(source).decode(), dest_key="derived/inline.pdf", ocr_pages=[], inline=True), Response())
+    pdf = base64.b64decode(result.pdf_b64)
+    assert result.blob_hash == hashlib.sha3_256(pdf).hexdigest()
+    assert result.size_bytes == len(pdf) and result.page_count == 2
+    # The request folder with the source and the result is gone after the answer.
+    assert created and all(not Path(folder).exists() for folder in created)
+
+
+def test_inline_request_refuses_an_object_source(monkeypatch):
+    monkeypatch.setattr(ocr_pdf, "_s3", lambda: (_ for _ in ()).throw(AssertionError("no store")))
+    with pytest.raises(HTTPException) as exc:
+        ocr_pdf.ocr_pdf(ocr_pdf.OcrPdfRequest(source_key="input.pdf", dest_key="derived/x.pdf", inline=True), Response())
+    assert exc.value.status_code == 400

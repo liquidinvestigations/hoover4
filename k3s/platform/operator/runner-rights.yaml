@@ -16,7 +16,9 @@
 # - The ValidatingAdmissionPolicy zone-runner-scope refuses a namespace or a RoleBinding outside the zone namespaces,
 #   and a RoleBinding to a ClusterRole other than zone-admin.
 # - The ValidatingAdmissionPolicy hoover-pod-limits (../../zones/manifests/zone-pods.yaml) refuses host access in the
-#   pods of the zone namespaces, calls and extensions. The admin kubeconfig applies it, and the runner cannot change it.
+#   pods of the zone namespaces, calls, extensions and hoover-pools. The admin kubeconfig applies it, and the runner
+#   cannot change it.
+# - In hoover-pools it creates, changes and deletes the processing pools of the site (../../hoover/pools.py ensure).
 # - In platform-backup it creates, reads and deletes the reader pod of the platform backup
 #   (../backups/backups.py snapshot_reader()). The pod reads the k3s etcd snapshots, the token and the k3s
 #   configuration on the control plane. The ValidatingAdmissionPolicy k3s-snapshot-reader admits only that pod form.
@@ -177,6 +179,30 @@ kind: RoleBinding
 metadata:
   name: zone-runner
   namespace: hoover-stores
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
+subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
+---
+# The processing pools of the site (../../hoover/pools.py ensure): a zone create makes them when the site has none, and
+# the delete of the last zone of the store layout site removes them. deploy-k3s up applies them with the admin
+# kubeconfig.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zone-runner
+  namespace: hoover-pools
+rules:
+  - apiGroups: ['', apps, batch, networking.k8s.io]
+    resources: [deployments, replicasets, statefulsets, jobs, services, configmaps, secrets, networkpolicies, ingresses]
+    verbs: [get, list, watch, create, patch, update, delete]
+  - apiGroups: ['']
+    resources: [pods]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zone-runner
+  namespace: hoover-pools
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: zone-runner}
 subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}]
 ---

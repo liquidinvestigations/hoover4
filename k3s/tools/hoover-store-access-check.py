@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'hoover' / 'stores'))
+import podexec  # noqa: E402
 import settings  # noqa: E402
 import service_users  # noqa: E402
 
@@ -104,8 +105,10 @@ def main():
             values['S3_ACCESS_KEY'] = base64.b64decode(secret['s3-access-key-website']).decode()
             values['S3_SECRET_KEY'] = base64.b64decode(secret['s3-secret-key-website']).decode()
         # python -c reads the program from its argument and the values from stdin.
-        r = kubectl('-n', ns, 'exec', '-i', f'deploy/{target}', '-c', spec['containers'][0]['name'] if target == deployment else 'hoover-workers',
-                    '--', python, '-c', PROBE, input=json.dumps(values) + '\n')
+        # The workers run in Kata, so the standard input stays open until the probe ends (../podexec.py).
+        r = podexec.call(K + ['-n', ns, 'exec', '-i', f'deploy/{target}', '-c',
+                              spec['containers'][0]['name'] if target == deployment else 'hoover-workers'],
+                         [python, '-c', PROBE], json.dumps(values) + '\n', timeout=300)
         line = (r.stdout.strip().splitlines() or [''])[-1]
         try:
             result = json.loads(line)

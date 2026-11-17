@@ -24,6 +24,7 @@ The service does not write source, document, or text rows.
 | `dpi` | PDF render resolution defaults to 200. The accepted range starts at 72 and ends at `OCR_PDF_MAX_DPI`. |
 | `ocr_pages` | Local page numbers start at one. Omitted or null selects all pages. An empty list selects no pages. |
 | `words` | Image mode accepts stored word boxes with `text`, `left`, `top`, `width`, and `height`. Coordinates use source-image pixels. |
+| `inline` | `true` returns the PDF in the response field `pdf_b64` and writes no object. The source must be `source_b64` or `pdf_b64`. A request with only `source_key` gets 400. The default is `false`. |
 
 `source_b64` takes precedence over `pdf_b64`, which takes precedence over `source_key`.
 Selected page numbers must be unique integers within the source page range.
@@ -43,6 +44,9 @@ The builder processes them in source order.
 
 The response retains `page_count`, `pages_with_text`, `size_bytes`, `blob_hash`, `engine`, `languages`, `dest_key`, and `run_time_ms`.
 `blob_hash` uses SHA3-256 over the uploaded PDF.
+An inline request gets the PDF as base64 in `pdf_b64`, and `blob_hash` covers those bytes.
+The caller then uploads the PDF to `bucket` and `dest_key` itself.
+The processing pools of a k3s site use this form, because a pool serves several installations and holds no object store key.
 `pages_with_text` counts pages with at least one valid overlay word.
 The response adds `pages`, with one entry per selected page, including successful empty OCR.
 

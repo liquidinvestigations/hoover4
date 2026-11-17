@@ -25,6 +25,15 @@ log = logging.getLogger(__name__)
 #: Keep the read timeout at least 60 seconds below the minimum file try budget.
 OCR_PDF_READ_TIMEOUT = min(3540.0, float(os.getenv("OCR_PDF_READ_TIMEOUT_SECONDS", "3540")))
 
+#: `OCR_PDF_TRANSFER=inline`: the client reads the source object, sends it in the request, gets the PDF in the
+#: answer and writes the object itself. The searchable-PDF builder then holds no object store key. A k3s site sets it,
+#: because one builder of the processing pools (k3s/hoover/pools.py) serves every installation of the site. Compose
+#: keeps the default `store`: its builder reads and writes the bucket of its one installation.
+INLINE = (os.getenv("OCR_PDF_TRANSFER") or "store").strip().lower() == "inline"
+#: The input limit of the builder (`OCR_PDF_MAX_INPUT_BYTES` of `main_services/ocr_pdf`). An inline request with a
+#: larger source is refused before the client reads it.
+MAX_INPUT_BYTES = int(os.getenv("OCR_PDF_MAX_INPUT_BYTES", str(512 * 1024 * 1024)))
+
 #: The one prefix a derived object may live under. Mirrors `DERIVED_PREFIX` in
 #: `main_services/ocr_pdf/ocr_pdf.py`, which refuses anything else. The duplication is
 #: deliberate, like `collectionname` validation: the caller must not be able to ask for a
@@ -128,14 +137,20 @@ def build_ocr_pdf(
         payload["words"] = words
     if source_b64:
         payload["source_b64"] = source_b64
+    elif source_key and INLINE:
+        payload["source_b64"] = _read_source(source_bucket or payload["bucket"], source_key)
     elif source_key:
         payload["source_key"] = source_key
     else:
         payload["pdf_b64"] = pdf_b64
+    if INLINE:
+        payload["inline"] = True
 
     result = post_json(_endpoints(), payload, read_timeout=OCR_PDF_READ_TIMEOUT,
                        service="ocr_pdf")
     data = result.data if isinstance(result.data, dict) else {}
+    if INLINE:
+        _write_result(payload["bucket"], dest_key, data)
 
     return OcrPdfOutcome(
         dest_key=data.get("dest_key") or dest_key,
@@ -151,6 +166,43 @@ def build_ocr_pdf(
         provider=result.provider,
         pages=data.get("pages") or [],
     )
+
+
+def _read_source(bucket: str, key: str) -> str:
+    """The source object as base64, for an inline request."""
+    import base64
+
+    from database.s3 import get_s3_client
+
+    client = get_s3_client()
+    size = client.stat_object(bucket, key).size
+    if size > MAX_INPUT_BYTES:
+        raise RuntimeError("PDF source exceeds the input limit of the PDF builder")
+    response = client.get_object(bucket, key)
+    try:
+        data = response.read()
+    finally:
+        response.close()
+        response.release_conn()
+    if len(data) != size:
+        raise RuntimeError(f"the object {key} gave {len(data)} of {size} bytes")
+    return base64.b64encode(data).decode("ascii")
+
+
+def _write_result(bucket: str, dest_key: str, data: dict) -> None:
+    """Write the PDF of an inline answer to the destination object, after a check of its hash and size."""
+    import base64
+    import hashlib
+    import io
+
+    from database.s3 import get_s3_client
+
+    pdf = base64.b64decode(data.get("pdf_b64") or "", validate=True)
+    if not pdf or hashlib.sha3_256(pdf).hexdigest() != data.get("blob_hash") \
+            or len(pdf) != int(data.get("size_bytes") or -1):
+        raise RuntimeError("the PDF builder answered an incomplete PDF")
+    key = data.get("dest_key") or dest_key
+    get_s3_client().put_object(bucket, key, io.BytesIO(pdf), len(pdf), content_type="application/pdf")
 
 
 __all__ = [

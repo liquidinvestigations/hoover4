@@ -525,3 +525,16 @@ def test_a_zone_apply_without_a_change_runs_only_the_discovery_check(monkeypatch
         assert 'waves' not in names and 'record' not in names
         assert ['zone-patches.py', 'zone-a', '--discovery'] in calls
         assert 'zone-users.py' not in names and 'zone-login-no-mfa.sh' not in names
+
+
+def test_a_zone_operation_outside_up_ensures_the_pools(monkeypatch):
+    import zone
+    ran = []
+    monkeypatch.setattr(zone, 'run', lambda *argv, **kw: ran.append([str(a) for a in argv]))
+    monkeypatch.delenv('HOOVER4_POOLS_STEP', raising=False)
+    zone.pools()
+    assert ran and ran[0][-2:] == [str(zone.SOURCE / 'hoover' / 'pools.py'), 'ensure']
+    ran.clear()
+    monkeypatch.setenv('HOOVER4_POOLS_STEP', '1')
+    zone.pools()
+    assert ran == []

@@ -239,10 +239,21 @@ def test_the_clickhouse_client_follows_the_store_layout_and_names_no_password(tm
     ns, pod, container, command = backups.clickhouse_command(zones['zone-c'])
     assert (ns, pod, container) == ('hoover-zone-c', 'clickhouse-0', None) and '${CLICKHOUSE_PASSWORD:-hoover4}' in command
     calls = []
-    backups.kubectl = lambda *args, **kw: calls.append(args) or ''
-    backups.clickhouse(zones['zone-a'], 'SELECT 1')
-    assert calls[0][:8] == ('-n', 'hoover-stores', 'exec', '-i', 'clickhouse-0', '-c', 'clickhouse', '--')
-    assert not any('hoover4' == a for a in calls[0])
+    import podexec
+    import subprocess
+
+    def call(argv, command, data=b'', timeout=None):
+        calls.append((argv, command, data))
+        return subprocess.CompletedProcess(argv, 0, '{"a":1}\n', '')
+    original, podexec.call = podexec.call, call
+    try:
+        assert backups.clickhouse(zones['zone-a'], 'SELECT 1') == '{"a":1}\n'
+    finally:
+        podexec.call = original
+    # The standard input stays open until the client ends (podexec.py), because the Kata pod cuts the output.
+    argv, command, data = calls[0]
+    assert argv[-7:] == ['-n', 'hoover-stores', 'exec', '-i', 'clickhouse-0', '-c', 'clickhouse'] and data == 'SELECT 1'
+    assert not any('hoover4' == a for a in argv + command)
 
 
 @pytest.fixture

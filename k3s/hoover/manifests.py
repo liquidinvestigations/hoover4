@@ -52,7 +52,11 @@ Placement and runtimes:
 - A pod that can run on one node only (a pod with a claim, a pod that names a node, and a pod of the local layout that
   follows the claims) has the PriorityClass NODE_BOUND. When its node is full, it preempts a pod of the default
   priority, and the scheduler places that pod on another node.
-- The stateless processing services of SCALABLE run the vars.replicas count of the site file behind their Service.
+- The stateless processing services of SCALABLE run the vars.replicas count of the site file behind their Service. In
+  the site layout they are the processing pools of the site in the namespace hoover-pools (pools.py): the
+  installation renders no copy, and each Compose name is an ExternalName Service of its pool (pool_service()). The
+  workers and the singletons send the source of a searchable PDF in the request and write the answer themselves
+  (OCR_PDF_TRANSFER=inline), because a pool holds no key of the installation. The local layout runs its own copies.
 - The claims of the local layout are shared by more than one pod, for example the store claims of the operations
   worker, and a local volume serves only its own node. Each pod with a claim therefore carries the label of LOCAL_GROUP
   and a required pod affinity to that label, so these pods share one node: the node of the first bound claim. The
@@ -167,6 +171,9 @@ SERVICES = {
 # worker are single writers, the website keeps the open chat streams and polls of its users in its memory, and the
 # schema proxy, oauth2-proxy and the agent services are not processing services.
 SCALABLE = {f'hoover4-{key}': key for key in site_config.REPLICA_SERVICES}
+# The namespace of the processing pools of the site layout (pools.py), and the pods of an installation that call them.
+POOLS_NS = 'hoover-pools'
+POOL_CALLERS = ['hoover-workers', 'hoover-singletons', 'hoover-website']
 # The PriorityClass of the pods that can run on one node only: a pod with a claim, which stays on the node of its local
 # volume, and a pod that names a node (../cluster/priorityclasses.yaml). Such a pod preempts a pod of the default
 # priority when its node is full, and the scheduler places the preempted pod on another node.
@@ -504,6 +511,12 @@ def external(target, name):
     namespace = SHARED_NS if name in SHARED_PORTS else target.zone
     return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': name, 'namespace': target.ns},
             'spec': {'type': 'ExternalName', 'externalName': f'{name}.{namespace}.svc.cluster.local'}}
+
+
+def pool_service(target, name):
+    """The Service of a Compose name that resolves to the processing pool of the site (pools.py)."""
+    return {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': name, 'namespace': target.ns},
+            'spec': {'type': 'ExternalName', 'externalName': f'{name}.{POOLS_NS}.svc.cluster.local'}}
 
 
 def config_map(target, name, data):
@@ -890,6 +903,10 @@ def translated(target, services, mounts, deploy):
         if role in ('temporal', 'temporal-store') and not target.local:
             # The site layout uses the Temporal of the site (stores/temporal.py).
             continue
+        if name in SCALABLE and not target.local:
+            # The site layout uses the processing pool of the site (pools.py).
+            items.append(pool_service(target, name))
+            continue
         svc = services[name]
         app = role in ('app', 'ui') or name == 'temporal'
         env = {k: renamed_hosts(v) for k, v in svc.get('environment', {}).items()}
@@ -933,6 +950,9 @@ def translated(target, services, mounts, deploy):
             sandbox = target.values['workers.parser_sandbox']
             tuner = target.values['workers.slot_tuner']
             pod_env = [value('HOOVER4_WORKERS', WORKERS)]
+            # The searchable-PDF builder of the site pool holds no key of this installation (pools.py).
+            transfer = [] if target.local else [value('OCR_PDF_TRANSFER', 'inline')]
+            pod_env += transfer
             if target.budget['worker_pods'] > 1:
                 pod_env.append({'name': 'HOOVER4_HOST_QUEUE', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.name'}}})
             if sandbox != 'off':
@@ -950,7 +970,7 @@ def translated(target, services, mounts, deploy):
                 [{'name': 'worker-temp-files', 'emptyDir': {}}]
             single_mounts.append({'name': 'worker-temp-files', 'mountPath': '/tmp/hoover4'})
             singles = container('hoover-singletons', svc, img, env, '3Gi', single_mounts, cpu=2, command=python + ['worker'],
-                                extra_env=[*credentials, value('HOOVER4_WORKERS', SINGLETONS)])
+                                extra_env=[*credentials, value('HOOVER4_WORKERS', SINGLETONS), *transfer])
             singles['workingDir'] = '/app'
             sandbox_env = [value('HOOVER4_PARSER_SANDBOX', sandbox)] if sandbox != 'off' else []
             singles['env'] += sandbox_env
@@ -1138,7 +1158,7 @@ def schema_proxy(target):
     return [workload(target, 'Deployment', SCHEMA_PROXY, spec), service(target, SCHEMA_PROXY, [SCHEMA_PROXY_PORT])]
 
 
-def network(target):
+def network(target, pools=None):
     """The ingress and egress policies of the Hoover namespace.
 
     Egress is closed by default. Every pod reaches the cluster DNS and the pods of its namespace. In the site layout
@@ -1149,7 +1169,8 @@ def network(target):
     and the internet services reach no store pod except the browser server, which reaches ClickHouse and Garage.
     oauth2-proxy and the sign-in check of the deploy driver reach the frontend addresses on 443 for the OIDC issuer.
     The forwarder gpu, when the site has a GPU pool, reaches the GPU proxy. The internet services reach public addresses
-    otherwise.
+    otherwise. In the site layout the pods of POOL_CALLERS reach the ports of the processing pools of the site
+    ({name: ports} of pools, pools.py), which admit the same pods.
     """
     ns = target.ns
 
@@ -1210,6 +1231,13 @@ def network(target):
             policy('egress-manticore-files', {'podSelector': {'matchLabels': {'app.kubernetes.io/name': SCHEMA_PROXY}},
                                               'policyTypes': ['Egress'], 'egress': [shared('manticore', (MANTICORE_FILES_PORT,))]}),
         ]
+        if pools:
+            items.append(policy('egress-pools', {
+                'podSelector': {'matchExpressions': [{'key': 'app.kubernetes.io/name', 'operator': 'In', 'values': POOL_CALLERS}]},
+                'policyTypes': ['Egress'],
+                'egress': [{'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': POOLS_NS}},
+                                    'podSelector': {'matchLabels': {'app.kubernetes.io/name': name}}}],
+                            'ports': [{'port': p} for p in found]} for name, found in sorted(pools.items())]}))
     items += [
         policy('egress-oidc', {'podSelector': {'matchLabels': OIDC_CLIENT}, 'policyTypes': ['Egress'],
                                'egress': [{'to': [{'ipBlock': {'cidr': f'{a}/32'}} for a in frontend], 'ports': [{'port': 443}]}]}),
@@ -1281,9 +1309,12 @@ def objects(target):
         temporal_image = next(c['image'] for i in items if i['metadata']['name'] == 'temporal' and i['kind'] == 'Deployment'
                               for c in i['spec']['template']['spec']['containers'])
         extra.append(temporal_retention(target, cfg, temporal_image))
-    return [namespace, *stores, *claims, *config_maps(target, deploy, cfg, configs | {'tika-config', 'mirror'}),
+    # The site layout has no Tika of its own, so it has no Tika configuration.
+    pools = {} if target.local else {n: ports(n, services[n]) for n in SCALABLE if n in services}
+    always = {'mirror'} | ({'tika-config'} if target.local else set())
+    return [namespace, *stores, *claims, *config_maps(target, deploy, cfg, configs | always),
             *extra, *proxy(target), *([] if target.local else schema_proxy(target)), *(gpu.forwarder(target.zone, target.ns) if target.site.gpu_pool else []), *items,
-            *network(target)]
+            *network(target, pools)]
 
 
 def render(target):

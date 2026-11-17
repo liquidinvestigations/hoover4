@@ -16,6 +16,8 @@ A larger site must not be slower.
 | `up` step `monitoring` | 23 to 34 s | 2 min |
 | `up` step `stores`, no store change | 5 to 36 s | 2 min |
 | `up` step `stores`, new stores | 228 to 270 s | 7 min |
+| `up` step `stores` that creates the processing pools, pools ready included | 7 s, then about 20 s until the pools are ready | 2 min |
+| `up --target all` that moves the processing services of two zones to the pools (zone waves included) | 316 s | 10 min |
 | `up` step `prepull` | about 77 s | 3 min |
 | `up` step `placement` | 2 to 3 s, 78 s with a new render and an empty chart cache | 3 min |
 | `up --target all` without a zone change | about 243 s | 7 min |

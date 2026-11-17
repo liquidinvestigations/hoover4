@@ -4,8 +4,8 @@
 Each case runs one kubectl command as the ServiceAccount zone-runner (<state folder>/operator-runner/kubeconfig). A
 write runs with --dry-run=server, so the API server checks the rights and the admission policies, and stores nothing.
 The pod cases check the pod limits of the zone pod policy and the policy k3s-snapshot-reader of the reader pod of
-the platform backup. The cases for calls run with the admin kubeconfig, because
-the runner creates no pod there itself, and the ReplicaSet controller would create the pods of its Deployments.
+the platform backup. The cases for calls and hoover-pools run with the admin kubeconfig, because the runner creates no
+pod there itself, and the ReplicaSet controller would create the pods of its Deployments.
 The check prints one JSON line for each case and exits with 1 when a case has another result than expected.
 """
 import json
@@ -117,7 +117,10 @@ def cases(zone):
         ('create the reader with a capability', False, ['create', '-f', '-', *dry], reader(set_capability)),
         ('create the reader with an API token', False, ['create', '-f', '-', *dry], reader(set_token)),
         ('read the Secrets of platform-backup', False, ['-n', 'platform-backup', 'get', 'secrets', '-o', 'name']),
+        ('change a processing pool', True, ['-n', 'hoover-pools', 'annotate', 'deployment', 'hoover4-tika', 'hoover.dev/scope-check=1', *dry]),
         ('admin: a pod with a host path in calls', False, ['create', '-f', '-', *dry], pod('calls', spec=HOST_PATH), 'admin'),
+        ('admin: a pod with a host path in hoover-pools', False, ['create', '-f', '-', *dry], pod('hoover-pools', runtime='gvisor', spec=HOST_PATH), 'admin'),
+        ('admin: a privileged pod in hoover-pools', False, ['create', '-f', '-', *dry], pod('hoover-pools', runtime='gvisor', security={'privileged': True}), 'admin'),
         ('admin: a host network pod in calls that is not coturn', False, ['create', '-f', '-', *dry], pod('calls', spec={'hostNetwork': True}), 'admin'),
         ('admin: a coturn pod with the host network in calls', True, ['create', '-f', '-', *dry],
          pod('calls', labels={'app.kubernetes.io/name': 'coturn'}, spec={'hostNetwork': True},

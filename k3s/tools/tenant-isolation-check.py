@@ -36,6 +36,11 @@ user) and the schema proxy (Manticore schema user). Both zones need the collecti
 - Garage bucket names: a key that can create buckets can create a bucket with the name prefix of another zone. Garage
   gives such a bucket a local alias of the creating key, so the names of the other zone stay free. The case reports
   the result without a pass or fail, and the probe deletes the bucket at once.
+- Processing pools of the site (../hoover/pools.py): no pool pod has a store credential, a store address, a zone
+  identity, a claim, an NFS or a host folder, and the namespace hoover-pools holds no Secret except the GPU token of
+  the pools. The searchable-PDF builder, called from a worker of the zone with an object key of the other zone, reads
+  no object. After the requests of an ingest end, no pool keeps a file in its temporary folders (TEMP_FOLDERS) that is
+  younger than the start of its container (START_SECONDS).
 Each line of the output is JSON. The check prints no credential. It exits with 1 when a case has another result than
 expected.
 Usage: tenant-isolation-check.py <zone> <other zone>
@@ -377,11 +382,98 @@ for store, case, expected, (result, detail) in cases:
 '''
 
 
+# The temporary folders of each pool. A file written in the first START_SECONDS of the container is a file of the
+# start, for example the merged configuration of Tika, and no file of a request.
+TEMP_FOLDERS = ('/tmp', '/var/tmp')
+START_SECONDS = 60
+# Tika writes the arguments of each forked parser JVM (/tmp/pipes-server-<n>-<id>/jvm-args.txt) when the first
+# request starts that JVM. The file holds the class path and the options of the JVM, no request data.
+NOT_REQUEST_FILES = ('/jvm-args.txt',)
+# The variables of an installation that a pool must not hold.
+ZONE_VARIABLES = ('CLICKHOUSE', 'MANTICORE', 'S3_', 'TEMPORAL', 'HOOVER4_CLICKHOUSE_DB_PREFIX', 'HOOVER4_MANTICORE_TABLE_PREFIX',
+                  'HOOVER4_DATASET_MOUNTS', 'AGENT_API_BASE_URL')
+POOL_PROBE = r'''
+import json, sys, urllib.request, urllib.error
+other = sys.argv[1]
+body = json.dumps({'bucket': other + '-system', 'source_key': 'probe.pdf', 'dest_key': 'derived/probe.pdf'}).encode()
+try:
+    urllib.request.urlopen(urllib.request.Request('http://hoover4-ocr-pdf:8000/ocr-pdf', data=body,
+                                                  headers={'Content-Type': 'application/json'}), timeout=60)
+    print('allowed')
+except urllib.error.HTTPError as e:
+    print('refused', e.code, e.read().decode()[:160])
+except Exception as e:
+    print('error', type(e).__name__, str(e)[:160])
+'''
+
+
+def kubectl_json(*args):
+    r = subprocess.run(K + list(args) + ['-o', 'json'], capture_output=True, text=True, timeout=120)
+    if r.returncode:
+        raise SystemExit(f'kubectl {" ".join(args)} failed: {r.stderr.strip()[-300:]}')
+    return json.loads(r.stdout)
+
+
+def pool_cases(zone, other):
+    """[(case, expected, result, detail)] of the processing pools."""
+    out = []
+    pods = [p for p in kubectl_json('-n', 'hoover-pools', 'get', 'pods')['items'] if p['status'].get('phase') == 'Running']
+    names = {zone, other, zone.replace('-', '_'), other.replace('-', '_')}
+    found = []
+    for pod in pods:
+        spec = pod['spec']
+        for v in spec.get('volumes') or []:
+            if {'persistentVolumeClaim', 'nfs', 'hostPath'} & set(v):
+                found.append(f"{pod['metadata']['name']} volume {v['name']}")
+        for c in spec['containers']:
+            for e in c.get('env') or []:
+                if e['name'].startswith(ZONE_VARIABLES) or any(n in str(e.get('value', '')) for n in names):
+                    found.append(f"{pod['metadata']['name']} {e['name']}")
+    out.append(('no pool pod holds a store credential, a store address, a zone identity or a volume of data', 'refused',
+                'refused' if pods and not found else 'allowed', ', '.join(found[:6]) or f'{len(pods)} pods'))
+    secrets = {s['metadata']['name']: sorted(s.get('data') or {}) for s in kubectl_json('-n', 'hoover-pools', 'get', 'secrets')['items']
+               if s.get('type') != 'kubernetes.io/service-account-token'}
+    extra = {n: k for n, k in secrets.items() if (n, k) != ('hoover-runtime', ['gpu-token'])}
+    out.append(('the pools namespace holds no Secret except the GPU token of the pools', 'refused',
+                'allowed' if extra else 'refused', json.dumps(extra)[:160] or 'none'))
+    r = subprocess.run(K + ['-n', f'hoover-{zone}', 'exec', 'deploy/hoover-workers', '-c', 'hoover-workers', '--', PYTHON, '-c',
+                            POOL_PROBE, other], capture_output=True, text=True, timeout=120)
+    answer = (r.stdout.strip().splitlines() or [r.stderr.strip()[-160:]])[-1]
+    out.append(('the searchable-PDF builder reads an object of the other zone', 'refused',
+                'allowed' if answer.startswith('allowed') else 'refused', answer[:160]))
+    import calendar
+    import time
+    kept, unread = [], []
+    for pod in pods:
+        name = pod['metadata']['name']
+        container = pod['spec']['containers'][0]['name']
+        status = next(c for c in pod['status']['containerStatuses'] if c['name'] == container)
+        started = calendar.timegm(time.strptime(status['state']['running']['startedAt'], '%Y-%m-%dT%H:%M:%SZ'))
+        r = subprocess.run(K + ['-n', 'hoover-pools', 'exec', name, '-c', container, '--', 'sh', '-c',
+                                'find ' + ' '.join(TEMP_FOLDERS) + " -xdev -type f -exec stat -c '%Y %s %n' {} + 2>/dev/null; echo end"],
+                           capture_output=True, text=True, timeout=120)
+        if not r.stdout.strip().endswith('end'):
+            unread.append(name)
+            continue
+        for line in r.stdout.strip().splitlines()[:-1]:
+            mtime, size, path = line.split(' ', 2)
+            if int(mtime) > started + START_SECONDS and not path.endswith(NOT_REQUEST_FILES):
+                kept.append(f'{name}:{path} ({size} bytes)')
+    out.append(('a pool keeps a file of a request in its temporary folders', 'refused',
+                'allowed' if kept else 'error' if unread else 'refused',
+                ', '.join(kept[:6]) or (f'unreadable: {", ".join(unread)}' if unread else f'{len(pods)} pods')))
+    return out
+
+
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
     zone, other = sys.argv[1:]
     ok = True
+    for case, expected, result, detail in pool_cases(zone, other):
+        ok &= result == expected
+        print(json.dumps({'zone': zone, 'other': other, 'from': 'hoover-pools', 'store': 'pools', 'case': case,
+                          'expected': expected, 'result': result, 'detail': detail, 'pass': result == expected}), flush=True)
     for deployment, python, probe in (('hoover-operations', PYTHON, PROBE), ('hoover4-mcp-collections', 'python3', READ_PROBE),
                                       ('manticore-schema', PYTHON, SCHEMA_PROBE), ('hoover-website', 'bash', WEB_PROBE)):
         r = subprocess.run(K + ['-n', f'hoover-{zone}', 'exec', f'deploy/{deployment}', '--', python, '-c', probe, zone, other],

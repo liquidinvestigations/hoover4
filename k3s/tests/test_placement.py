@@ -354,9 +354,18 @@ def render(tmp_path, replicas=None):
     return json.loads(manifests.render(t))['items']
 
 
+def pools_render(tmp_path, replicas=None):
+    import manifests
+    import pools
+    path = write_site(tmp_path, 'remote.yml')
+    site = config.read(path)
+    site.replicas = replicas or {}
+    return pools.objects(site, revision='0' * 40, tree=manifests.site_config.REPO)
+
+
 def test_the_stateless_services_run_their_replica_count_and_the_node_bound_pods_get_the_priority(tmp_path):
-    items = render(tmp_path, {'tika': 3, 'clamav': 2})
-    deployments = {i['metadata']['name']: i for i in items if i['kind'] == 'Deployment'}
+    items = render(tmp_path, {'tika': 3, 'clamav': 2}) + pools_render(tmp_path, {'tika': 3, 'clamav': 2})
+    deployments = {i['metadata']['name']: i for i in items if i['kind'] == 'Deployment' and i['metadata']['name'] != 'gpu'}
     assert deployments['hoover4-tika']['spec']['replicas'] == 3
     assert deployments['hoover4-clamav']['spec']['replicas'] == 2
     assert deployments['hoover4-tesseract-cpu']['spec']['replicas'] == 1
@@ -373,7 +382,7 @@ def test_the_stateless_services_run_their_replica_count_and_the_node_bound_pods_
 
 
 def test_clamav_tika_and_tesseract_request_their_measured_use(tmp_path):
-    items = render(tmp_path)
+    items = pools_render(tmp_path)
     requests = {i['metadata']['name']: i['spec']['template']['spec']['containers'][0]['resources']['requests']['memory']
                 for i in items if i['kind'] == 'Deployment'}
     import memory_requests
@@ -438,3 +447,30 @@ def test_the_opendesk_render_digest_follows_only_settings_that_change_a_request(
     memory = next(k for k, s in operator_settings.REGISTRY.items() if k.startswith('memory.') and s.scope == 'zone')
     state.save(1, {'zone:zone-a': {memory: '9Gi'}})
     assert placement.opendesk_digest('zone-a', private) != first
+
+
+def test_a_workload_that_moved_to_the_pools_leaves_with_the_step_of_its_hoover_namespace():
+    # The zone copy of Tika runs in hoover-zone-a, and the render has the pool of hoover-pools instead.
+    rendered = [workload('hoover-pools', 'Deployment', 'hoover4-tika', '672Mi', '91m', spec={'runtimeClassName': 'gvisor'})]
+    pods = {'items': [
+        live_pod('hoover-zone-a', 'hoover4-tika-5f9c-x1', 'a', '672Mi', '91m', owner=('ReplicaSet', 'hoover4-tika-5f9c')),
+        # A Deployment pod of the openDesk namespace that the render does not name stays where it runs.
+        live_pod('zone-a', 'other-5f9c-x1', 'b', '300Mi', '10m', owner=('ReplicaSet', 'other-5f9c')),
+    ]}
+    nodes, found, live = placement.inputs(cluster_nodes('a', 'b'), pods, {'items': []}, rendered, {'a', 'b'},
+                                          zones=['zone-a'])
+    by = {n.name: n for n in nodes}
+    assert by['a'].fixed_memory == 0 and by['b'].fixed_memory == 300
+    assert [s for s, *_ in live] == ['zone:zone-a']
+    pool = next(p for p in found if p.key == 'hoover-pools/deployment/hoover4-tika')
+    assert pool.step == 'stores' and not pool.current
+    assert placement.step_of('hoover-pools', ['zone-a']) == 'stores'
+
+
+def test_a_full_site_starts_the_pools_after_the_zone_copies_leave():
+    # One node with room for the zone copy or the pool, not both: the zone step removes the copy, then the pool starts.
+    nodes = [Node('a', 1000, 4000)]
+    pods = [Pod((('hoover-pools/deployment/hoover4-tika', 0),), 700, 50, step='stores')]
+    plan = placement.solve(nodes, pods)
+    live = [('zone:zone-a', 'a', 700, 50, 0)]
+    assert placement.order(plan, live, ['zone-a']) == ('zones-first', [])

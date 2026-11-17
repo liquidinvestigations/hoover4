@@ -73,7 +73,7 @@ hoover4:
 | `hoover4.vars.gpu_pool` | `nodes` or `address` |
 | `hoover4.vars.backup` | `node` and `path` of the backup destination |
 | `hoover4.vars.deploy` | optional `parallel_zones`: the zone steps that `deploy-k3s up` runs at the same time (default 2) |
-| `hoover4.vars.replicas` | optional pod count of each stateless processing service of every zone: `tika`, `tesseract-cpu`, `ocr-pdf`, `pdf-search`, `regex-entity-scanner`, `clamav` (default 1 each, see [Scale the stateless services](#scale-the-stateless-services)) |
+| `hoover4.vars.replicas` | optional pod count of each processing pool of the site: `tika`, `tesseract-cpu`, `ocr-pdf`, `pdf-search`, `regex-entity-scanner`, `clamav` (default 1 each, see [Scale the stateless services](#scale-the-stateless-services)) |
 
 The site id is the domain with each `.` replaced by `-`, for example `k8-example-org`. Each command prints it with the site file and the state folder.
 A list value is a YAML list or a text with commas. Ansible reserves the variable name `roles`, so the node roles have the key `node_roles`.
@@ -692,6 +692,8 @@ The proxy keeps its running exports and imports in memory by an operation id of 
 An import fills each table under the name `<table>_partial<16 hex digits>` and renames it onto its target after the last table. No complete Hoover table has that end. At its start the proxy removes `import/<schema user>/` through the file service and drops the partial tables of its prefix, because a restart loses its table of operations. The Deployment has one replica with the strategy `Recreate`, so no other operation of the zone runs at that time.
 Dropped Manticore tables leave an empty folder with a `.lock` file in the data folder. Neither the proxy nor the zone delete removes it.
 The zone delete and the zone create read `SHOW TABLES`, `SHOW USERS` and `SHOW PERMISSIONS` as one XML answer of the mysql client (`shared.py manticore_list()`). An answer that `kubectl exec` cut, or an empty answer, stops the step, so a cut answer never reads as an empty tenant.
+
+`kubectl exec -i` into a Kata pod stops the output after 16 to 32 KiB when the client closes the standard input, and the command then waits. `kubectl exec` without `-i`, and every gVisor pod, give the complete output. Each tool that sends input to a command in a Kata pod and reads its output keeps the standard input open until the command ends ([podexec.py](podexec.py) `run()` and `call()`): the SQL of the shared ClickHouse and Manticore (`shared.py`, `ch.py`), the ClickHouse reads of the backups, the ClickHouse of a Compose import, and the probes of `tools/storage-checks.py` and `tools/hoover-store-access-check.py`.
 The import gives each table the prefix of the zone and the name after the prefix in the export, so a copy of another zone imports into the tables of this zone.
 
 Manticore 29.9 stops `searchd` on a `GRANT` to an unknown user and on a `DROP USER` of an unknown user. The setup and the zone delete therefore read the users first.
@@ -714,12 +716,44 @@ A store pod keeps its data on the volume of its node. When a node stops, the par
 
 The stores of an earlier version kept several copies (`vars.stores replicas` and `failover`). The stores step and `deploy-k3s check` refuse them. Delete every zone, delete the namespace `hoover-stores` (`kubectl delete namespace hoover-stores`, which deletes its claims), run `deploy-k3s up --steps stores`, and create the zones again. The data of the zones does not move.
 
+## Run the processing pools of the site.
+
+ClamAV and the stateless file processors (Tika, Tesseract, the searchable-PDF builder, the PDF search and the regex
+scanner) run once for every zone of a site, in the namespace `hoover-pools` ([hoover/pools.py](hoover/pools.py)). The
+step `stores` of `deploy-k3s up` applies them after the shared stores. A site without a zone of the store layout `site`
+runs no pool. A zone of the local store layout keeps its own copies.
+
+- The Hoover installation of a zone renders no copy of these services. Each Compose name, for example `hoover4-tika`,
+  is an ExternalName Service of the pool, so the Hoover services keep their addresses.
+- A pool holds no zone identity and no store credential, and reaches no store. Its settings are the default values of
+  the Hoover settings. A zone override of a setting of a pooled service, for example `budget.tika_cpus`, changes the
+  slots of the workers of that zone and does not change the pool.
+- The searchable-PDF builder holds no object store key. The workers send the source in the request and write the PDF of
+  the answer into the collection bucket with their own key (`OCR_PDF_TRANSFER=inline`). Compose keeps the object form.
+- A zone create makes the pools when the site has none, and the delete of the last zone removes them (`pools.py
+  ensure`). A running pool stays as it is, so a zone create, apply or delete changes no pool pod.
+- Network: each pool takes connections on its own ports from the workers, the singletons and the website of the Hoover
+  namespaces. The searchable-PDF builder reaches Tesseract. ClamAV reaches the internet for its signature updates. A
+  pool reaches no store, no zone namespace and no other pool. With a GPU pool, the searchable-PDF builder reaches
+  EasyOCR through the forwarder `gpu` of `hoover-pools`, whose token has the name `hoover-pools`.
+- No pool keeps a file of a request. Tika, Tesseract, the searchable-PDF builder and the PDF search write each request
+  into a temporary file or folder that they remove before the answer. clamd scans the stream in a temporary file and
+  removes it. [tools/tenant-isolation-check.py](tools/tenant-isolation-check.py) lists the temporary folders of every
+  pool pod, and [tools/hoover-network-check.py](tools/hoover-network-check.py) checks the connections.
+- The memory request of each pool is the measured peak of its workload in the part `hoover` of
+  [zones/memory-requests.json](zones/memory-requests.json). The concurrency settings of a service limit the requests that
+  one pod works on, so more zones give a pool more waiting requests and no more working memory. A zone load measurement
+  (`memory_requests.py measure --zone`) also measures `hoover-pools`.
+- A site of an earlier version moves to the pools in one `up`. The placement plan runs the stores step after the zone
+  steps when the pools fit only after the zone copies leave. The ingest of a zone then waits for the pools: the
+  activities that call a pool fail and Temporal runs them again.
+
 ## Scale the stateless services.
 
-`vars.replicas` of the site file sets the pod count of each stateless processing service in every zone. The Service of
-the service spreads the connections over its ready pods. The [site placement](#place-the-pods-of-the-site) counts
-every pod of the count. `deploy-k3s check` and `up` fail when the memory requests then do not fit the nodes. A CPU
-shortage lowers the CPU scale factor.
+`vars.replicas` of the site file sets the pod count of each processing pool. The Service of the service spreads the
+connections over its ready pods. The [site placement](#place-the-pods-of-the-site) counts every pod of the count.
+`deploy-k3s check` and `up` fail when the memory requests then do not fit the nodes. A CPU shortage lowers the CPU
+scale factor.
 
 ```yaml
 hoover4:
@@ -736,9 +770,8 @@ hoover4:
 | Website | none | No. It keeps the open chat streams and polls of its users in its memory. |
 
 The concurrency settings of the workers (for example `tika_concurrency`) stay operator settings. A larger count gives the
-service more capacity, and these settings decide how much of it the workers use.
-The memory request of ClamAV, Tika and Tesseract is the largest working set of their pods, measured in zone creates and
-ingests: 2048, 640 and 512 MiB ([hoover/manifests.py](hoover/manifests.py) `REQUESTS`).
+service more capacity, and these settings decide how much of it the workers use. A pool answers 503 when its queue is
+full, and the worker runs the activity again later.
 
 ## Share Temporal in a site.
 

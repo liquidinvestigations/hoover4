@@ -1074,3 +1074,18 @@ def test_the_k3s_play_gets_the_kept_reserve_and_the_kubelet_step_checks_the_requ
     monkeypatch.setattr(deploy, 'node_problems', lambda ctx, name: [])
     assert deploy.step_kubelet(ctx)['nodes'] == ['dev']
     assert played == [('hoover4-k3s.yml', ['dev'])]
+
+
+def test_the_stores_step_applies_the_stores_then_the_pools_and_the_zone_step_leaves_the_pools_to_it():
+    calls = []
+
+    class Ctx:
+        def run(self, argv, env=None, capture=False, check=True):
+            calls.append(([str(a).rsplit('/', 2)[-2:] for a in argv[1:2]][0] + [str(a) for a in argv[2:]], env))
+            return 0, '{"pools": ["hoover4-tika"], "zones": 2}\n'
+    assert deploy.step_stores(Ctx()) == {'pools': ['hoover4-tika'], 'zones': 2}
+    assert [c[0] for c in calls] == [['stores', 'shared.py', 'apply'], ['hoover', 'pools.py', 'apply']]
+    assert deploy.cluster_steps.__code__.co_names.count('step_stores') == 1
+    import inspect
+    source = inspect.getsource(deploy.step_zone)
+    assert "'HOOVER4_POOLS_STEP': '1'" in source

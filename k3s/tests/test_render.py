@@ -33,6 +33,12 @@ def items_of(t):
     return json.loads(manifests.render(t))['items']
 
 
+def pool_items(t):
+    """The processing pools of the site of a Target (../hoover/pools.py)."""
+    import pools
+    return pools.objects(t.site, revision=REVISION, tree=REPO)
+
+
 def get(items, kind, name):
     found = [i for i in items if i['kind'] == kind and i['metadata']['name'] == name]
     assert found, f'{kind} {name} is missing'
@@ -333,7 +339,8 @@ def test_site_zone_uses_the_shared_stores_and_temporal(tmp_path):
     assert e['CLICKHOUSE_USER'] == 'zone_a_worker'
     assert e['HOOVER4_MANTICORE_TABLE_PREFIX'] == 'zone_a_'
     assert workers['spec']['template']['spec'].get('topologySpreadConstraints')
-    clamav = get(items, 'Deployment', 'hoover4-clamav')['spec']['template']['spec']
+    # The processing services are the pools of the site. ClamAV keeps the public node there.
+    clamav = get(pool_items(target('remote.yml', 'zone-a', tmp_path)), 'Deployment', 'hoover4-clamav')['spec']['template']['spec']
     assert clamav['nodeSelector'] == {'kubernetes.io/hostname': 'edge'}
 
 
@@ -451,10 +458,11 @@ def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
     measured = manifests.memory_requests().load()['hoover']
     web = containers(get(items, 'Deployment', 'hoover-website'))[0]['resources']
     assert web['requests']['memory'] == measured['deployment/hoover-website']['request'] and web['limits']['memory'] == '2048Mi'
-    clamav = containers(get(items, 'Deployment', 'hoover4-clamav'))[0]['resources']
+    pooled = pool_items(target('remote.yml', 'zone-a', tmp_path))
+    clamav = containers(get(pooled, 'Deployment', 'hoover4-clamav'))[0]['resources']
     assert clamav['requests']['memory'] == measured['deployment/hoover4-clamav']['request']
     assert clamav['limits']['memory'] == '3456Mi'
-    annotations = get(items, 'Deployment', 'hoover4-clamav')['spec']['template']['metadata']['annotations']
+    annotations = get(pooled, 'Deployment', 'hoover4-clamav')['spec']['template']['metadata']['annotations']
     assert annotations['hoover.dev/memory-peak'] == measured['deployment/hoover4-clamav']['peak']
     # A Kata pod requests the measured peak: the container gets it minus the RuntimeClass overhead.
     import memory_requests
@@ -469,7 +477,7 @@ def test_a_zone_pod_names_no_node_and_requests_its_measured_memory(tmp_path):
                 assert item['spec']['strategy'] == {'type': 'Recreate'}, item['metadata']['name']
     import zone_ini
     assert zone_ini.derive(zone_ini.BUDGET)[('main_services', 'mcp_browser_mem_limit')] == '10240M'
-    tika = containers(get(items, 'Deployment', 'hoover4-tika'))[0]['resources']
+    tika = containers(get(pooled, 'Deployment', 'hoover4-tika'))[0]['resources']
     assert tika['limits']['memory'] == '4096Mi'
     # A service without a Compose limit gets the measured value of UNLIMITED_IN_COMPOSE, and a request never exceeds
     # the limit.
@@ -920,3 +928,83 @@ def test_a_compose_check_that_fetches_one_local_url_becomes_an_http_probe(tmp_pa
     probes = {i['metadata']['name']: c.get('readinessProbe') for i in rendered if i['kind'] in ('Deployment', 'StatefulSet')
               for c in i['spec']['template']['spec']['containers']}
     assert 'httpGet' in probes['hoover4-clamav'] and 'httpGet' in probes['hoover4-tesseract-cpu']
+
+
+# The processing pools of the site ------------------------------------------------------------------------------------
+
+def test_a_site_zone_renders_no_processing_service_and_reaches_the_pools(tmp_path):
+    t = target('remote.yml', 'zone-a', tmp_path)
+    items = items_of(t)
+    for name in manifests.SCALABLE:
+        assert not [i for i in items if i['kind'] == 'Deployment' and i['metadata']['name'] == name], name
+        assert get(items, 'Service', name)['spec'] == {'type': 'ExternalName',
+                                                       'externalName': f'{name}.hoover-pools.svc.cluster.local'}
+    assert not [i for i in items if i['kind'] == 'ConfigMap' and i['metadata']['name'] == 'tika-config']
+    # Only the callers reach the pool pods, on the ports of the pools.
+    policy = get(items, 'NetworkPolicy', 'egress-pools')['spec']
+    assert policy['podSelector']['matchExpressions'][0]['values'] == manifests.POOL_CALLERS
+    targets = {r['to'][0]['podSelector']['matchLabels']['app.kubernetes.io/name']: [p['port'] for p in r['ports']]
+               for r in policy['egress']}
+    assert targets['hoover4-tika'] == [9998] and targets['hoover4-clamav'] == [8000]
+    assert all(r['to'][0]['namespaceSelector'] == {'matchLabels': {'kubernetes.io/metadata.name': 'hoover-pools'}}
+               for r in policy['egress'])
+    # The workers and the singletons send the source of a searchable PDF and write the answer themselves.
+    for name in ('hoover-workers', 'hoover-singletons'):
+        assert env(containers(get(items, 'Deployment', name))[-1])['OCR_PDF_TRANSFER'] == 'inline'
+
+
+def test_a_local_zone_keeps_its_processing_services(single):
+    for name in manifests.SCALABLE:
+        assert get(single, 'Deployment', name)['metadata']['namespace'] == 'hoover-zone-a'
+    get(single, 'ConfigMap', 'tika-config')
+    assert 'OCR_PDF_TRANSFER' not in env(containers(get(single, 'StatefulSet', 'hoover-workers'))[0])
+
+
+def test_the_pools_hold_no_zone_identity_and_no_store_credential(tmp_path):
+    t = target('remote.yml', 'zone-a', tmp_path)
+    t.site.replicas = {'tika': 3}
+    pooled = pool_items(t)
+    assert get(pooled, 'Namespace', 'hoover-pools')['metadata']['labels'] == {'hoover.dev/pool': 'true'}
+    deployments = {i['metadata']['name']: i for i in pooled if i['kind'] == 'Deployment' and i['metadata']['name'] != 'gpu'}
+    assert set(deployments) == set(manifests.SCALABLE)
+    assert deployments['hoover4-tika']['spec']['replicas'] == 3 and deployments['hoover4-clamav']['spec']['replicas'] == 1
+    zone_names = ('CLICKHOUSE', 'MANTICORE', 'S3_', 'TEMPORAL', 'HOOVER4_CLICKHOUSE_DB_PREFIX',
+                  'HOOVER4_MANTICORE_TABLE_PREFIX', 'HOOVER4_DATASET_MOUNTS', 'AGENT_API')
+    for name, item in deployments.items():
+        spec = item['spec']['template']['spec']
+        assert spec['runtimeClassName'] == 'gvisor' and item['metadata']['namespace'] == 'hoover-pools'
+        assert not any('persistentVolumeClaim' in v or 'nfs' in v for v in spec.get('volumes', [])), name
+        for c in spec['containers']:
+            assert not [k for k in env(c) if k.startswith(zone_names)], name
+            assert not [e for e in c['env'] if 'valueFrom' in e], name
+    text = json.dumps(pooled)
+    assert 'zone-a' not in text and 'zone_a' not in text
+    assert not [s for s in COMPOSE_SECRETS if s in text]
+    # ClamAV runs on the public node and reaches the internet. The other pools reach only DNS.
+    policies = {i['metadata']['name']: i['spec'] for i in pooled if i['kind'] == 'NetworkPolicy'}
+    assert policies['closed']['podSelector'] == {} and policies['closed']['policyTypes'] == ['Ingress', 'Egress']
+    assert policies['egress-internet']['podSelector'] == {'matchLabels': {'hoover.dev/egress': 'internet'}}
+    labels = {n: d['spec']['template']['metadata']['labels'] for n, d in deployments.items()}
+    assert [n for n, l in labels.items() if l.get('hoover.dev/egress') == 'internet'] == ['hoover4-clamav']
+    clients = policies['hoover4-tika-clients']['ingress'][0]
+    assert clients['ports'] == [{'port': 9998}]
+    assert clients['from'][0]['namespaceSelector'] == {'matchLabels': {'hoover.dev/hoover': 'true'}}
+    assert clients['from'][0]['podSelector']['matchExpressions'][0]['values'] == manifests.POOL_CALLERS
+    assert policies['ocr-pdf-to-tesseract']['egress'][0]['ports'] == [{'port': 8000}]
+
+
+def test_the_pools_get_the_gpu_forwarder_of_their_own_name(tmp_path):
+    t = target('remote.yml', 'zone-a', tmp_path)
+    pooled = pool_items(t)
+    if not t.site.gpu_pool:
+        assert not [i for i in pooled if i['metadata']['name'] == 'gpu']
+        return
+    forwarder = get(pooled, 'ConfigMap', 'gpu')['data']['default.conf.template']
+    assert 'X-Hoover-Zone hoover-pools' in forwarder
+    names = {i['metadata']['name'] for i in pooled if i['kind'] == 'NetworkPolicy'}
+    assert {'gpu-from-ocr-pdf', 'ocr-pdf-to-gpu', 'gpu-to-proxy'} <= names
+
+
+def test_a_site_without_a_zone_runs_no_pool(tmp_path):
+    import pools
+    assert pools.objects(target('remote.yml', 'zone-a', tmp_path).site, revision=REVISION, tree=REPO, zones=[]) == []

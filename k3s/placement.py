@@ -73,6 +73,8 @@ SEPARATE = (('hoover-stores/statefulset/clickhouse', 'hoover-stores/statefulset/
 # The stores of hoover-stores whose pods keep a local volume. The stores step pins them to their planned nodes.
 VOLUME_STORES = ('clickhouse', 'manticore', 'manticore-vectors', 'garage', 'temporal-cassandra', 'temporal-opensearch')
 STORES_NAMESPACE = 'hoover-stores'
+# The processing pools of the site (hoover/pools.py). The stores step applies them, so they belong to that step.
+POOLS_NAMESPACE = 'hoover-pools'
 ZONE_NAMESPACE = re.compile(r'(hoover-)?zone-[a-z0-9]{1,12}')
 PLAN_FILE = 'placement/plan.json'
 RENDER_ENV = 'HOOVER4_PLACEMENT_RENDER'
@@ -474,12 +476,18 @@ def owner_key(pod):
 
 
 def step_of(namespace, zones):
-    if namespace == STORES_NAMESPACE:
+    if namespace in (STORES_NAMESPACE, POOLS_NAMESPACE):
         return 'stores'
     for zone in zones:
         if namespace in (zone, f'hoover-{zone}'):
             return f'zone:{zone}'
     return ''
+
+
+def leaving(namespace, zones):
+    """True for a namespace whose step deletes every Deployment and StatefulSet that the render does not name: the
+    Hoover namespace of a zone and the pools. The openDesk namespace of a zone keeps objects of other installers."""
+    return namespace == POOLS_NAMESPACE or any(namespace == f'hoover-{zone}' for zone in zones)
 
 
 def required_hosts(spec):
@@ -536,6 +544,11 @@ def inputs(nodes_json, pods_json, claims_json, rendered, eligible, zones=(), pla
             if node:
                 running.setdefault(key, []).append((meta['name'], node))
                 live.append((step_of(meta['namespace'], zones), node, memory, cpu, fixed_cpu))
+            continue
+        if key and node and leaving(meta['namespace'], zones):
+            # A workload of a Hoover namespace or of the pools that the render no longer has. Its step deletes it
+            # (hoover/manifests.py prune()), for example the copy of a processing service that moved to the pools.
+            live.append((step_of(meta['namespace'], zones), node, memory, cpu, fixed_cpu))
             continue
         if node in nodes:
             nodes[node].fixed_memory += memory
@@ -735,7 +748,7 @@ def resizes(pods_json, templates, factor):
     for pod in sorted(pods_json['items'], key=lambda p: (p['metadata']['namespace'], p['metadata']['name'])):
         meta, spec = pod['metadata'], pod['spec']
         ns = meta['namespace']
-        if not (ns == STORES_NAMESPACE or ZONE_NAMESPACE.fullmatch(ns)) or meta.get('deletionTimestamp'):
+        if not (ns in (STORES_NAMESPACE, POOLS_NAMESPACE) or ZONE_NAMESPACE.fullmatch(ns)) or meta.get('deletionTimestamp'):
             continue
         if (pod.get('status') or {}).get('phase') != 'Running':
             continue
@@ -995,6 +1008,9 @@ def render_site(site, site_path, private):
     state = read_json(private / 'zone-state.json') or {'zones': {}}
     count = sum(1 for e in state['zones'].values() if e.get('stores') == 'site')
     out = shared.objects(site, plan, count, {}) + temporal.objects(site, plan, count, '{"keys": []}')
+    if count:
+        import pools
+        out += pools.objects(site, revision=os.environ.get('HOOVER4_REVISION') or manifests.NO_REVISION)
     zones = [z for z, e in state['zones'].items() if e.get('enabled')]
     # The render reads the NFS address of each data node. The address does not change a request.
     nfs = {n.name: '10.43.0.1' for n in site.nodes.values()}

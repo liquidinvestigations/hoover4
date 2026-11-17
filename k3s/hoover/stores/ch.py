@@ -5,8 +5,9 @@ The admin password stays in the pod environment. The zone password comes from th
 namespace and goes to the client through stdin, so no password is on a command line.
 Usage: KATA_NS=<zone> ch.py <admin|zone> [database] [extra clickhouse-client arguments]
 """
-import base64, os, subprocess, sys
+import base64, os, sys
 import common, shared
+import podexec  # noqa: E402  (common puts the k3s folder on the path)
 
 # KATA_NS names the zone.
 NS = os.environ['KATA_NS']
@@ -21,8 +22,10 @@ def run(who, sql, database=None, extra=(), check=True):
         password = base64.b64decode(found).decode()
         command = f'read -r P; exec clickhouse-client --user {NS.replace("-", "_")} --password "$P" {args}'
         text = password + '\n' + sql
-    r = subprocess.run(common.K + ['-n', shared.NS, 'exec', '-i', shared.ready_pod('clickhouse'), '-c', 'clickhouse', '--',
-                                   'sh', '-c', command], input=text, capture_output=True, text=True, timeout=3600)
+    # The standard input stays open until the client ends (../../podexec.py), because the output of the Kata pod stops
+    # after 32 KiB once kubectl closes it.
+    r = podexec.call(common.K + ['-n', shared.NS, 'exec', '-i', shared.ready_pod('clickhouse'), '-c', 'clickhouse'],
+                     ['sh', '-c', command], text, timeout=3600)
     if check and r.returncode:
         raise RuntimeError(r.stderr.strip()[-600:])
     return r

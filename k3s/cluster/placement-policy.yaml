@@ -1,6 +1,6 @@
-# The site placement plan (../placement.py) at the creation of each pod of the shared stores and of the zones. The pod
-# templates of the renders keep the requests at the CPU scale factor 1 and name no planned node, so a new plan or a
-# new factor changes no template and restarts no pod. The policy changes each new pod instead:
+# The site placement plan (../placement.py) at the creation of each pod of the shared stores, the processing pools and
+# the zones. The pod templates of the renders keep the requests at the CPU scale factor 1 and name no planned node, so
+# a new plan or a new factor changes no template and restarts no pod. The policy changes each new pod instead:
 # - Each CPU request of a container and an init container is multiplied by the factor, rounded up to 1m.
 # - A pod of a Deployment or StatefulSet of the plan gets a preferred node affinity of weight 100 for its planned
 #   nodes. A pod that names its node by a node selector keeps it.
@@ -27,7 +27,7 @@ spec:
         scope: "*"
   matchConditions:
     - name: site-namespace
-      expression: request.namespace == 'hoover-stores' || request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')
+      expression: request.namespace in ['hoover-stores', 'hoover-pools'] || request.namespace.matches('^(hoover-)?zone-[a-z0-9]{1,12}$')
   failurePolicy: Fail
   reinvocationPolicy: Never
   variables:
