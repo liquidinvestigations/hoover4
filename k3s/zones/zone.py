@@ -21,7 +21,12 @@ The steps of apply, in order:
      runner cannot change the pod policy, so with its kubeconfig the step only checks that the cluster has the policy
      of the source.
   4. The zone namespaces get their labels, the RoleBinding of the zone runner, the network policy and the Hoover and
-     gate client Secrets.
+     gate client Secrets. A zone of the store layout site gets its openDesk buckets and key in the shared Garage, and
+     the Ingress of its object storage host (objectstore.py ensure()). A zone of an earlier version moves its objects
+     from SeaweedFS to Garage first (objectstore.py move()), when the kubeconfig may keep the SeaweedFS volume. The
+     waves of step 5 then switch the applications, and Helm removes SeaweedFS. The entries of objectstore.py
+     SECOND_PASS run once more after a move. After step 5 the applications that hold the key restart once
+     (objectstore.py finish()).
   5. helmfile installs openDesk wave by wave (OPENDESK_WAVES), with postrender.py as the Helm post-renderer. The
      entries of one wave (the sub-helmfiles of the release) run at the same time, each in its own helmfile process with
      its own Helm configuration. They share the chart cache <state folder>/opendesk-charts (CHART_CACHE): helmfile
@@ -55,11 +60,12 @@ The steps of apply, in order:
      refused: delete it and create it again.
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
 and profile, its Garage buckets and keys, its Manticore tables and users, and its Temporal namespace
-(../hoover/stores/shared.py remove). The S3 client in a Garage pod empties the buckets, so a disabled zone is removed
-the same way. When a part fails or an object stays, the delete stops with the message of shared.py, and the
+(../hoover/stores/shared.py remove), with the openDesk buckets, the openDesk key and the Ingress of the object storage
+host. The S3 client in a Garage pod empties the buckets, so a disabled zone is removed the same way. When a part fails or an object stays, the delete stops with the message of shared.py, and the
 zone keeps its namespaces and its zone state entry. Repair the store and delete the zone again.
 The two namespaces of the zone are then deleted at the same time. The delete of the last zone with stores = site
-removes the processing pools.
+removes the processing pools. A SeaweedFS volume that a move kept is deleted with the admin kubeconfig. The zone
+runner prints its name instead.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -176,6 +182,8 @@ def register(zone, home=None, values=None):
         if entry['stores'] == 'site':
             entry['temporal'] = 'site'
             entry['manticore'] = 'site'
+            # The openDesk objects of the zone are in the shared Garage (objectstore.py).
+            entry['objectstore'] = 'garage'
         problems = config.zone_problems(zone, entry, settings.SITE)
         if problems:
             raise SystemExit('; '.join(problems))
@@ -401,8 +409,9 @@ def opendesk_inputs(zone):
     for path in sorted(folder.glob('*.yaml')) + [settings.ZONE_USER_PASSWORDS, PRIVATE / 'ai.json']:
         if path.is_file():
             out[f'state/{path.relative_to(PRIVATE).as_posix()}'] = sha(path.read_bytes())
+    import objectstore
     for path in sorted((folder / zone).iterdir()):
-        if path.is_file() and path.name != RECORD_NAME and not path.name.startswith('.'):
+        if path.is_file() and path.name not in (RECORD_NAME, objectstore.RECORD) and not path.name.startswith('.'):
             out[f'state/zones/{zone}/{path.name}'] = sha(path.read_bytes())
     entry = dict(zonestate.load()['zones'][zone])
     entry.pop('bootstrapped', None)
@@ -774,6 +783,39 @@ def pools():
         run(sys.executable, SOURCE / 'hoover' / 'pools.py', 'ensure')
 
 
+def objects(zone):
+    """Create the openDesk buckets and key of a zone of the store layout site in Garage, and apply the Ingress of its
+    object storage host. A zone of an earlier version moves its objects from SeaweedFS first (objectstore.py move()),
+    gets objectstore = garage and new values. Return True after a move.
+
+    The zone runner cannot keep the SeaweedFS volume of a move (Retain). With its kubeconfig the zone stays on
+    SeaweedFS, and the next deploy-k3s up moves it."""
+    import objectstore
+    entry = zonestate.load()['zones'][zone]
+    if entry.get('stores') != 'site':
+        return False
+    key = json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['objectstore_key']
+    changed = objectstore.ensure(zone, key)
+    if changed:
+        step('objectstore', zone=zone, changed=changed)
+    if objectstore.on_garage(entry):
+        apply_manifest(json.dumps(objectstore.ingress(zone)), objectstore.STORES_NS)
+        return False
+    if objectstore.seaweedfs_installed(zone):
+        if not objectstore.can_keep_volumes():
+            step('objectstore', zone=zone, result='the zone stays on SeaweedFS until deploy-k3s up moves its objects')
+            return False
+        objectstore.move(zone, key)
+    state = zonestate.load()
+    state['zones'][zone]['objectstore'] = 'garage'
+    zonestate.save(state)
+    clusterstate.checkpoint(PRIVATE)
+    step('zone-state', zone=zone, change='objectstore garage')
+    run(sys.executable, HERE / 'zones.py', quiet=True)
+    apply_manifest(json.dumps(objectstore.ingress(zone)), objectstore.STORES_NS)
+    return True
+
+
 def apply(zone, home=None, values=None, full=False):
     register(zone, home, values)
     run(sys.executable, HERE / 'zones.py', quiet=True)
@@ -794,11 +836,16 @@ def apply(zone, home=None, values=None, full=False):
     cluster()
     namespaces(zone)
     step('namespaces', zone=zone)
+    moved = objects(zone)
     inputs = opendesk_inputs(zone)
     reasons = ['--full'] if full else opendesk_changes(zone, inputs, helm_revisions(zone))
     if reasons:
         step('opendesk-check', zone=zone, result='run', reasons=reasons[:12])
         opendesk(zone)
+        if moved:
+            import objectstore
+            for entry in objectstore.SECOND_PASS:
+                install_entry(zone, entry)
         step('opendesk', zone=zone)
         run('bash', HERE / 'zone-login-no-mfa.sh', zone, quiet=True)
         run(sys.executable, HERE / 'zone-users.py', zone)
@@ -812,11 +859,19 @@ def apply(zone, home=None, values=None, full=False):
     if reasons:
         # The inputs again, because the steps can write a zone file, for example the password of a new test.user.
         write_record(zone, opendesk_inputs(zone))
+    finish_move(zone)
     step('zone-state-of-apps', zone=zone)
     hoover(zone)
     step('hoover', zone=zone)
     run(sys.executable, SOURCE / 'tools' / 'write-password-table.py')
     step('done', zone=zone)
+
+
+def finish_move(zone):
+    """Restart the applications that hold the object store key after the waves of a move (objectstore.py finish())."""
+    import objectstore
+    if objectstore.on_garage(zonestate.load()['zones'][zone]) and objectstore.read_record(zone):
+        objectstore.finish(zone, json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['objectstore_key'])
 
 
 def delete(zone):
@@ -836,6 +891,13 @@ def delete(zone):
         if kubectl('get', 'namespace', namespace, '--ignore-not-found', '-o', 'name').strip():
             raise SystemExit(f'the namespace {namespace} still exists 900 s after its delete')
         step('namespace-deleted', zone=zone, namespace=namespace)
+    # The SeaweedFS volume that a move kept goes with the zone. The zone runner cannot read or delete a volume.
+    import objectstore
+    if objectstore.can_keep_volumes():
+        objectstore.drop_kept(zone)
+    elif objectstore.read_record(zone):
+        step('objectstore', zone=zone, result=f'a SeaweedFS volume with the label {objectstore.LABEL}={zone} can stay. '
+             'Delete it with the admin kubeconfig.')
     del state['zones'][zone]
     zonestate.save(state)
     # The last zone of the store layout site takes the processing pools with it.

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check one zone after a Helm upgrade or a replica restore.
 
-The chart controllers run their stores in Kata. Their Services select the same pod labels.
+The chart controllers run their stores in Kata. Their Services select the same pod labels. A zone on Garage
+(objectstore.py) has no SeaweedFS.
 The Manticore daemons of the zone also run in Kata, with one StatefulSet for each daemon. ClickHouse and Garage are the
 shared stores of the site (../hoover/stores/shared.py) and have no StatefulSet in the zone.
 A disabled zone must have no running workload in any of its namespaces: every controller has zero replicas, every
@@ -11,6 +12,7 @@ Usage: zone-reconcile.py <zone>
 import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'hoover' / 'stores'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
 STORE_LABEL = 'hoover.dev/store'
@@ -72,7 +74,12 @@ def main():
     errors = []
     if not common.namespace_enabled(zone):
         return check_disabled(zone, errors)
+    import objectstore
+    import zonestate
+    garage = objectstore.on_garage(zonestate.load()['zones'].get(zone, {}))
     for store, (kind, name, services) in STORES.items():
+        if store == 'seaweedfs' and garage:
+            continue
         item = replicas(zone, kind, name)
         if not item:
             fail(errors, f'{kind}/{name} does not exist')

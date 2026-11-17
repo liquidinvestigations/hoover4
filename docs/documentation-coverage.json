@@ -3378,6 +3378,23 @@
       "no_screenshot_reason": "The capability changes the host steps, the kubelet reserve, the pod requests and the probes. No page of the portal or of a zone application changes."
     },
     {
+      "id": "F-admin-63",
+      "source": [
+        "k3s/zones/objectstore.py",
+        "k3s/zones/zones.py",
+        "k3s/zones/zone.py",
+        "k3s/hoover/stores/shared.py",
+        "k3s/platform/backups/backups.py",
+        "k3s/tools/tenant-isolation-check.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#keep-the-opendesk-objects-in-garage"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability changes where the openDesk applications store their objects. No page of the portal or of a zone application changes."
+    },
+    {
       "id": "F-docs-01",
       "source": [
         "website/backend/src/api/manual.rs",

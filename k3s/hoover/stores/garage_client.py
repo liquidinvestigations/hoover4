@@ -12,8 +12,9 @@ client needs no right to create a pod. The container holds no credential. The to
 Garage admin (key()), and each command gets one JSON line with the endpoint and the key on its standard input, then
 the data of the command.
 
-The zone backup job also runs SCRIPT in a short pod of a zone namespace against the openDesk object store, with its admin
-key. The first line can then name a key for server-side encryption with a customer key (SSE-C) for each bucket
+The zone backup job reads the openDesk buckets of a zone on Garage with this client and the key <zone>-opendesk
+(../../zones/objectstore.py). It runs SCRIPT in a short pod of a zone namespace against the SeaweedFS of a zone that has
+not moved, with its admin key. The first line can then name a key for server-side encryption with a customer key (SSE-C) for each bucket
 (sse_c, base64). tar reads an object without the key first, and with the key when the store refuses that. It marks
 such a member with the PAX field HOOVER.sse-c, and untar writes that member with the key again.
 
@@ -263,14 +264,17 @@ def client():
     yield ready_garage()
 
 
-def run(name, key, *args, data=None, out=None):
+def run(name, key, *args, data=None, out=None, sse_c=None):
     """Run one command of SCRIPT in the container s3 of the Garage pod name with key. data is a path or bytes for the standard input after
-    the key line. out is a path for the standard output. Return (standard output text when out is None, report lines).
+    the key line. out is a path for the standard output. sse_c gives the customer key of a bucket ({bucket: base64}),
+    which tar and untar use for a member with the field HOOVER.sse-c. Return (standard output text when out is None,
+    report lines).
 
     The standard input stays open until the command ends (../../podexec.py), because the output of a Kata container
     stops after 32 KiB once kubectl closes it."""
     import podexec
-    first = json.dumps({'endpoint': ENDPOINT, **{k: key[k] for k in ('access_key', 'secret_key')}}).encode() + b'\n'
+    first = json.dumps({'endpoint': ENDPOINT, **{k: key[k] for k in ('access_key', 'secret_key')},
+                        **({'sse_c': sse_c} if sse_c else {})}).encode() + b'\n'
     with tempfile.TemporaryFile() as errors, (open(out, 'wb') if out else tempfile.TemporaryFile()) as output:
         code = podexec.run(K + ['-n', NS, 'exec', '-i', name, '-c', CONTAINER], ['python3', '-I', '-c', SCRIPT, *args],
                            [first] + ([] if data is None else [data]), stdout=output, stderr=errors)

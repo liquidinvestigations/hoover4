@@ -500,7 +500,7 @@ def test_the_waves_skip_only_with_the_same_inputs_and_the_same_releases(recorded
 @pytest.mark.parametrize('full, changes, waves', [(False, [], False), (False, ['x changed'], True), (True, [], True)])
 def test_a_zone_apply_without_a_change_runs_only_the_discovery_check(monkeypatch, full, changes, waves):
     calls = []
-    for name in ('register', 'images', 'cluster', 'namespaces', 'hoover'):
+    for name in ('register', 'images', 'cluster', 'namespaces', 'objects', 'finish_move', 'hoover'):
         monkeypatch.setattr(zone, name, lambda *a, **kw: None)
     monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)
     monkeypatch.setattr(zone.zonestate, 'enabled', lambda z: True)

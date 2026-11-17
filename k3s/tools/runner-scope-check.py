@@ -77,6 +77,12 @@ def set_token(spec):
     spec['automountServiceAccountToken'] = True
 
 
+def ingress(name):
+    return json.dumps({'apiVersion': 'networking.k8s.io/v1', 'kind': 'Ingress', 'metadata': {'name': name, 'namespace': 'hoover-stores'},
+                       'spec': {'ingressClassName': 'haproxy', 'rules': [{'host': f'{name}.example', 'http': {'paths': [
+                           {'path': '/nextcloud', 'pathType': 'Prefix', 'backend': {'service': {'name': 'garage', 'port': {'number': 3900}}}}]}}]}})
+
+
 def cases(zone):
     dry = ['--dry-run=server']
     return [
@@ -118,6 +124,9 @@ def cases(zone):
         ('create the reader with an API token', False, ['create', '-f', '-', *dry], reader(set_token)),
         ('read the Secrets of platform-backup', False, ['-n', 'platform-backup', 'get', 'secrets', '-o', 'name']),
         ('change a processing pool', True, ['-n', 'hoover-pools', 'annotate', 'deployment', 'hoover4-tika', 'hoover.dev/scope-check=1', *dry]),
+        ('create the Ingress of an object storage host', True, ['create', '-f', '-', *dry], ingress('opendesk-zone-scopecheck')),
+        ('change a volume', False, ['auth', 'can-i', 'patch', 'persistentvolumes']),
+        ('change the Garage StatefulSet', False, ['-n', 'hoover-stores', 'annotate', 'statefulset', 'garage', 'hoover.dev/scope-check=1', *dry]),
         ('admin: a pod with a host path in calls', False, ['create', '-f', '-', *dry], pod('calls', spec=HOST_PATH), 'admin'),
         ('admin: a pod with a host path in hoover-pools', False, ['create', '-f', '-', *dry], pod('hoover-pools', runtime='gvisor', spec=HOST_PATH), 'admin'),
         ('admin: a privileged pod in hoover-pools', False, ['create', '-f', '-', *dry], pod('hoover-pools', runtime='gvisor', security={'privileged': True}), 'admin'),

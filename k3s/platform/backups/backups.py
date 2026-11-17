@@ -19,8 +19,8 @@ destination stops with a message.
 
 Jobs:
 - zone:<zone>: the complete zone, which is its openDesk namespace and its complete Hoover installation. The copy holds
-  a SQL dump of each database server of the zone namespace, the objects of the openDesk object store, a tar file of
-  each other claim, and the Secrets and ConfigMaps of the namespace. The folder hoover/<installation>/ holds the same
+  a SQL dump of each database server of the zone namespace, the objects of the openDesk object store (the openDesk
+  buckets of the zone in the shared Garage, or the SeaweedFS of a zone that has not moved), a tar file of each other claim, and the Secrets and ConfigMaps of the namespace. The folder hoover/<installation>/ holds the same
   parts of the Hoover namespace: its claims, Secrets and ConfigMaps. The tar files keep the owners and modes. A file
   system claim is read with tar in a running container that mounts it (mount_source()), so the copy needs no free
   memory on its node. A claim that no running container with tar mounts is read through a short pod in its namespace.
@@ -818,7 +818,8 @@ def reopen(record):
 #                                OpenLDAP is read again until no write committed during its read (lmdb_meta()). A
 #                                Block claim of Redis or NATS holds their append files: both stores read a file with a
 #                                cut last record at their start.
-#   objects/                     the objects of each bucket of the openDesk object store, through its S3 API.
+#   objects/                     the objects of each bucket of the openDesk object store, through its S3 API: the
+#                                openDesk buckets of the zone in Garage, or SeaweedFS in a zone that has not moved.
 #   hoover/<name>/shared/        BACKUP of the zone databases in ClickHouse (each table at one moment), then the objects
 #                                of the system bucket.
 # restore-zone writes every part while the zone is closed, then opens it. Each application starts from the restored
@@ -899,6 +900,7 @@ def copy_namespace(ns, partial, moments=None, label=''):
                           'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"'],
                      partial / 'mariadb.sql')
     store = object_store(ns, pods)
+    garage_key = None if store else opendesk_garage_key(ns)
     claims = json.loads(kubectl('-n', ns, 'get', 'pvc', '-o', 'json'))['items']
     rows = []
     with moments.part(label + 'claims/'):
@@ -933,6 +935,9 @@ def copy_namespace(ns, partial, moments=None, label=''):
     if store:
         with moments.part(label + 'objects/'):
             copy_objects(ns, store, partial / 'objects')
+    elif garage_key:
+        with moments.part(label + 'objects/'):
+            copy_garage_objects(ns, garage_key, partial / 'objects')
     (partial / 'objects.json').write_text(kubectl('-n', ns, 'get', 'secrets,configmaps', '-o', 'json'))
     os.chmod(partial / 'objects.json', 0o600)
 
@@ -964,8 +969,10 @@ def mount_source(ns, claim, pods):
     return None
 
 
-# The openDesk object store: the SeaweedFS pod of a zone (pod label hoover.dev/store=seaweedfs). Its S3 configuration
-# (the Secret OBJECT_STORE_CONFIG) has the identity admin, which reads and writes every bucket. A bucket whose
+# The openDesk object store of a zone that has not moved to Garage: the SeaweedFS pod of the zone (pod label
+# hoover.dev/store=seaweedfs). Its S3 configuration (the Secret OBJECT_STORE_CONFIG) has the identity admin, which reads
+# and writes every bucket. A zone on Garage keeps its openDesk buckets in the shared Garage with the key <zone>-opendesk
+# (../../zones/objectstore.py), and the S3 client of a Garage pod copies them (copy_garage_objects()). A bucket whose
 # application encrypts its objects with a customer key (SSE-C) names the Secret and the item of that key.
 OBJECT_STORE_CONFIG = ('seaweedfs-config', 'seaweedfs_s3_config')
 OBJECT_STORE_PORT = 8333
@@ -999,20 +1006,61 @@ def secret_item(ns, name, item):
     return base64.b64decode(value) if value else b''
 
 
+def customer_keys(ns):
+    """{bucket: base64 customer key} of the buckets of ns whose application encrypts with a customer key."""
+    sse = {}
+    for bucket, (name, item) in CUSTOMER_KEYS.items():
+        key = secret_item(ns, name, item)
+        if key:
+            sse[bucket] = base64.b64encode(key).decode()
+    return sse
+
+
 def object_store_key(ns, store):
     """The first line of the S3 client: the endpoint, the admin key and the customer keys of the buckets."""
     config = json.loads(secret_item(ns, *OBJECT_STORE_CONFIG) or b'{}')
     admin = next((i for i in config.get('identities', []) if i.get('name') == 'admin' and i.get('credentials')), None)
     if admin is None:
         raise SystemExit(f'the S3 configuration {ns}/{OBJECT_STORE_CONFIG[0]} has no identity admin.')
-    sse = {}
-    for bucket, (name, item) in CUSTOMER_KEYS.items():
-        key = secret_item(ns, name, item)
-        if key:
-            sse[bucket] = base64.b64encode(key).decode()
     credential = admin['credentials'][0]
     return {'endpoint': store['endpoint'], 'access_key': credential['accessKey'], 'secret_key': credential['secretKey'],
-            'sse_c': sse}
+            'sse_c': customer_keys(ns)}
+
+
+def opendesk_garage_key(ns):
+    """The Garage key of the openDesk buckets of the zone ns, read from the Garage admin, or None. The local zone
+    state can be older than the cluster copy, so the key comes from Garage."""
+    import garage_client
+    found = [key_id for key_id, name in garage_client.keys().items() if name == f'{ns}-opendesk']
+    return garage_client.key(found[0]) if found else None
+
+
+def opendesk_buckets():
+    sys.path.insert(0, str(K3S / 'zones'))
+    import objectstore
+    return sorted(objectstore.BUCKETS.values())
+
+
+def copy_garage_objects(ns, key, target):
+    """Copy each openDesk bucket of the zone ns from Garage into target/<bucket>.tar, and the bucket list into
+    target/buckets.json, in the form of copy_objects()."""
+    import garage_client
+    target.mkdir(parents=True, exist_ok=True)
+    sse = customer_keys(ns)
+    rows = []
+    with garage_client.client() as pod:
+        for bucket in opendesk_buckets():
+            path = target / f'{bucket}.tar'
+            for attempt in range(3):
+                _, reports = garage_client.run(pod, key, 'tar', bucket, out=path, sse_c={bucket: sse[bucket]} if bucket in sse else None)
+                if tar_complete(path):
+                    break
+            else:
+                raise SystemExit(f'the copy of the bucket {bucket} of {ns} in Garage stayed incomplete after three attempts.')
+            report = next((r for r in reports if 'objects' in r), {})
+            rows.append({'bucket': bucket, 'objects': report.get('objects', 0),
+                         'customer_key_objects': report.get('customer_key_objects', 0)})
+    (target / 'buckets.json').write_text(json.dumps(rows, indent=1))
 
 
 def s3_pod(ns):
@@ -1088,10 +1136,25 @@ def copy_objects(ns, store, target):
 
 
 def restore_objects(folder, ns):
-    """Replace the objects of each bucket of the copy in the running object store of ns. Other buckets stay."""
+    """Replace the objects of each bucket of the copy in the running object store of ns, or in the openDesk buckets of
+    the zone in Garage. Other buckets stay. A copy of SeaweedFS and a copy of Garage have the same form."""
     rows = json.loads((folder / 'objects' / 'buckets.json').read_text())
     pods = json.loads(kubectl('-n', ns, 'get', 'pods', '-o', 'json'))['items']
     store = object_store(ns, pods)
+    key = None if store else opendesk_garage_key(ns)
+    if key:
+        import garage_client
+        unknown = sorted({row['bucket'] for row in rows} - set(opendesk_buckets()))
+        if unknown:
+            raise SystemExit(f'the copy has the buckets {", ".join(unknown)}, which the zone has not in Garage. The zone stays closed.')
+        sse = customer_keys(ns)
+        with garage_client.client() as pod:
+            for row in rows:
+                bucket = row['bucket']
+                garage_client.run(pod, key, 'empty', bucket)
+                garage_client.run(pod, key, 'untar', bucket, data=folder / 'objects' / f'{bucket}.tar',
+                                  sse_c={bucket: sse[bucket]} if bucket in sse else None)
+        return
     if store is None:
         raise SystemExit(f'{ns} has no running object store, which the restore of the objects needs. The zone stays closed.')
     first = object_store_key(ns, store)

@@ -825,6 +825,8 @@ def test_the_restore_of_an_online_copy_puts_the_objects_and_reads_its_replicas(t
     monkeypatch.setattr(backups, 'object_store_key', lambda ns, store: {'secret_key': 's'})
     monkeypatch.setattr(backups, 's3_pod', lambda ns: 'backup-s3')
     monkeypatch.setattr(backups, 's3_run', lambda ns, pod, first, *args, data=None, out=None: ran.append(args) or ('', []))
+    # A zone without SeaweedFS and without an openDesk key in Garage has no object store.
+    monkeypatch.setattr(backups, 'opendesk_garage_key', lambda ns: None)
     backups.restore_objects(tmp_path, 'zone-a')
     assert ran == [('mkbucket', 'nextcloud'), ('empty', 'nextcloud'), ('untar', 'nextcloud')]
     pods[1]['status']['phase'] = 'Pending'

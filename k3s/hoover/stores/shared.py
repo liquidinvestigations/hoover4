@@ -38,7 +38,8 @@ zone is added. A claim never becomes smaller. A store pod sees a grown claim at 
 value (part site of ../../zones/cpu-requests.json, hoover.site_cpu()). Each zone user of ClickHouse has the profile of its zone,
 which limits the memory of one user to half of the ClickHouse limit.
 The network policies of the namespace admit the Hoover namespaces (label hoover.dev/hoover) on the client ports of
-ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. Each Garage pod has the container s3, the S3
+ClickHouse (8123, 9000), Manticore (9306 to 9309) and Garage (3900) only. The ingress controller also reaches Garage on
+3900: the Ingress opendesk-<zone> sends the openDesk buckets of a zone to it (../../zones/objectstore.py). Each Garage pod has the container s3, the S3
 client of the operator tools (garage_client.py), which reaches Garage inside the pod. The Garage RPC port takes connections only from the Garage pods, and
 the admin port takes none. ClickHouse reaches only DNS and the S3 port of Garage, where it writes and reads the
 ClickHouse part of the collection exports in the bucket <zone>-exports with the zone key. The server allows no
@@ -56,7 +57,8 @@ Usage: shared.py apply             create or update the stores and Temporal, wai
        shared.py ready             exit 1 when a store or Temporal has no ready pod
        shared.py check             print the problems of the plan against the cluster as JSON
        shared.py remove <zone>     delete the ClickHouse databases, users, profile and row policy, the Manticore tables,
-                                   users and import folder, the Garage buckets and keys and the Temporal namespace of a
+                                   users and import folder, the Garage buckets and keys (with the openDesk buckets, the
+                                   openDesk key and the Ingress opendesk-<zone>) and the Temporal namespace of a
                                    zone, then check that none stays. The S3 client in a Garage pod
                                    (garage_client.py) empties the buckets, so the command needs no pod of the zone. A failed part or a remaining
                                    object gives exit status 1 and a message that names them. <zone> must be a full
@@ -74,6 +76,8 @@ STATE = 'shared-stores'
 PEERS = 'garage-peers'
 # The label of a Hoover namespace (../manifests.py objects()). Only these namespaces reach the stores.
 HOOVER_LABEL = 'hoover.dev/hoover'
+# The namespace of the ingress controller (../../platform/ingress/install-ingress.sh).
+INGRESS_NS = {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ingress'}}}
 # The Manticore daemons, and the ports of each daemon: MySQL and HTTP, and the read-only MySQL and HTTP listeners.
 MANTICORE = ('manticore', 'manticore-vectors')
 MANTICORE_PORTS = (('sql', 9306), ('http', 9308), ('sql-ro', 9307), ('http-ro', 9309))
@@ -273,8 +277,10 @@ def network():
         policy('manticore-files-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'manticore'}}, 'policyTypes': ['Ingress'],
                                            'ingress': [{'from': [{**hoover_ns, 'podSelector': {'matchLabels': SCHEMA_PROXY_LABEL}}],
                                                         'ports': [{'port': FILES_PORT}]}]}),
+        # The ingress controller sends the requests of the object storage host of each zone to Garage
+        # (../../zones/objectstore.py ingress()): the openDesk applications and the browsers of the zone users.
         policy('garage-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}, 'policyTypes': ['Ingress'],
-                                  'ingress': [{'from': [hoover_ns, {'podSelector': clickhouse_pod}], 'ports': [{'port': 3900}]},
+                                  'ingress': [{'from': [hoover_ns, {'podSelector': clickhouse_pod}, INGRESS_NS], 'ports': [{'port': 3900}]},
                                               {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
                                                'ports': [{'port': 3901}]}]}),
     ]
@@ -571,15 +577,27 @@ def garage_tenant(zone):
 
     The zone keys have the name <zone> or <zone>-<service>. A zone bucket has a global alias <zone>-* or a local alias
     of a zone key. Hoover creates each collection bucket through S3, which gives it a local alias of the zone key.
+    An openDesk bucket has a global alias <zone>-opendesk-* and a local alias of the key <zone>-opendesk
+    (../../zones/objectstore.py). It counts once, by its global alias.
     """
     keys = {row[0]: row[2] for row in table(garage_cli('key', 'list')) if len(row) > 2 and (row[2] == zone or row[2].startswith(f'{zone}-'))}
     buckets = {}
     for row in table(garage_cli('bucket', 'list')):
+        named = [alias for alias in row[2:] if ':' not in alias and alias.startswith(f'{zone}-')]
+        if named:
+            buckets.update(dict.fromkeys(named, ''))
+            continue
         for alias in row[2:]:
             key, _, name = alias.rpartition(':')
-            if (key in keys) if key else alias.startswith(f'{zone}-'):
+            if key in keys:
                 buckets[name] = key
     return keys, buckets
+
+
+def opendesk_ingress(zone):
+    """The name of the Ingress of the object storage host of a zone, when it exists (../../zones/objectstore.py)."""
+    name = f'opendesk-{zone}'
+    return name if common.kubectl('-n', NS, 'get', 'ingress', name, '--ignore-not-found', '-o', 'name').strip() else None
 
 
 def leftovers(zone):
@@ -591,6 +609,7 @@ def leftovers(zone):
     keys, buckets = garage_tenant(zone)
     found['garage'] = [f'key {name}' for name in sorted(keys.values())] + [f'bucket {name}' for name in sorted(buckets)]
     found['temporal'] = [f'namespace {zone}'] if temporal.namespace_present(zone) else []
+    found['ingress'] = [f'ingress opendesk-{zone}'] if opendesk_ingress(zone) else []
     return {store: names for store, names in found.items() if names}
 
 
@@ -623,8 +642,12 @@ def remove_garage(zone):
 
     The owner key empties and deletes a bucket with a local alias. The key <zone>-purge empties and deletes a bucket
     with a global alias. This step creates that key with all rights on those buckets and deletes it after the purge.
-    The zone keys stay while a bucket stays, because a bucket loses its local alias with its key.
+    The zone keys stay while a bucket stays, because a bucket loses its local alias with its key. The key
+    <zone>-opendesk goes first: its buckets have a global alias, and Garage deletes no bucket with a local alias.
     """
+    keys, buckets = garage_tenant(zone)
+    for key_id in [k for k, name in keys.items() if name == f'{zone}-opendesk']:
+        garage_cli('key', 'delete', '--yes', key_id)
     keys, buckets = garage_tenant(zone)
     owners = sorted({k for k in buckets.values() if k})
     shared_buckets = sorted(b for b, k in buckets.items() if not k)
@@ -655,6 +678,11 @@ def remove_garage(zone):
     common.log('stores.jsonl', step='garage-tenant-removed', zone=zone, buckets=len(buckets), keys=len(keys))
 
 
+def remove_ingress(zone):
+    """Delete the Ingress of the object storage host of a zone (../../zones/objectstore.py)."""
+    common.kubectl('-n', NS, 'delete', 'ingress', f'opendesk-{zone}', '--ignore-not-found')
+
+
 def remove(zone):
     """Delete the tenant of a zone from ClickHouse, Manticore, Garage and Temporal, then check that no object of the
     zone stays. Each part runs also after a failure of another part. A part that fails or an object that stays ends the
@@ -662,7 +690,8 @@ def remove(zone):
     problems = []
     parts = [('clickhouse', lambda: remove_clickhouse(zone))]
     parts += [(store, lambda store=store: remove_manticore(zone, store)) for store in MANTICORE]
-    parts += [('garage', lambda: remove_garage(zone)), ('temporal', lambda: temporal.remove(zone))]
+    parts += [('garage', lambda: remove_garage(zone)), ('temporal', lambda: temporal.remove(zone)),
+              ('ingress', lambda: remove_ingress(zone))]
     for name, function in parts:
         try:
             function()

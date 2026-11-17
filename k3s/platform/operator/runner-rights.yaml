@@ -8,7 +8,9 @@
 #   read the Services of the Hoover NFS servers, update the operation ConfigMaps of the portal and read the GPU key.
 # - In hoover-stores, the namespace of the shared ClickHouse, Garage and Temporal (../../hoover/stores/shared.py,
 #   temporal.py), it runs the store clients and the Temporal CLI in the store and Temporal pods to add and remove the
-#   tenant of a zone, grows the store claims, and reads the Secret temporal-auth to sign the Temporal key of a zone.
+#   tenant of a zone, grows the store claims, reads the Secret temporal-auth to sign the Temporal key of a zone, and
+#   creates and deletes the Ingress of the object storage host of a zone (../../zones/objectstore.py). The network
+#   policy garage-clients admits the ingress controller only on the S3 port of Garage.
 #   deploy-k3s up creates and changes the stores and Temporal with the admin kubeconfig.
 # - In operator-portal it reads and writes the ConfigMaps and Secrets of the cluster copy of the state
 #   (../../clusterstate.py) and the Lease site-operation of the site lock (../../oplock.py). The Secret rights cover
@@ -173,6 +175,9 @@ rules:
     resources: [secrets]
     resourceNames: [temporal-auth]
     verbs: [get]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, create, patch, update, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

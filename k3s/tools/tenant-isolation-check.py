@@ -13,7 +13,12 @@ user) and the schema proxy (Manticore schema user). Both zones need the collecti
   restore into a database of the other zone. It reads no row of system.backups with another prefix. The probe removes
   its archive.
 - Garage: the key lists its own system bucket. It cannot list, read or write the system bucket of the other zone, or
-  list its export bucket, and the bucket list holds no bucket of the other zone.
+  list its export bucket, and the bucket list holds no bucket of the other zone. It cannot list an openDesk bucket of
+  its own zone or of the other zone.
+- Garage, openDesk key <zone>-opendesk (../zones/objectstore.py), in the S3 client of a Garage pod: it lists and
+  writes its own openDesk buckets by their openDesk names. It cannot list, read or write an openDesk bucket of the
+  other zone, or list a Hoover bucket of either zone. It cannot create a bucket or delete its own bucket. Its bucket
+  list holds only its own openDesk buckets. A zone without the key is reported as absent.
 - Manticore, write user: it reads and changes rows of its own tables. It cannot read or change a table of the other
   zone, and it cannot create, alter or drop a table, also not a distributed table that names a table of the other zone.
 - Manticore, read user on the read-only listener 9309 and on 9308: it reads its own tables. It cannot read a table
@@ -218,6 +223,9 @@ cases = [
     ('garage', 'read other object', 'refused', s3(lambda: client.get_object(f'{other}-system', 'p4-probe').read())),
     ('garage', 'bucket list', 'allowed',
      ('allowed' if not any(b.name.startswith(other + '-') for b in client.list_buckets()) else 'refused', 'no bucket of the other zone')),
+    ('garage', 'list own openDesk bucket', 'refused', s3(lambda: len(list(client.list_objects(f'{zone}-opendesk-nextcloud'))))),
+    ('garage', 'list other openDesk bucket', 'refused', s3(lambda: len(list(client.list_objects(f'{other}-opendesk-nextcloud'))))),
+    ('garage', 'list openDesk bucket by its openDesk name', 'refused', s3(lambda: len(list(client.list_objects('nextcloud'))))),
 ]
 # The ClickHouse backup of a collection export: the operations user backs up its own databases into the export bucket
 # of its zone (CLICKHOUSE_BACKUP_S3_URL) with the zone key, and reads only its own rows of system.backups.
@@ -407,6 +415,72 @@ except Exception as e:
 '''
 
 
+# The cases of the openDesk key of a zone. It runs in the container s3 of a Garage pod, which reaches Garage on
+# 127.0.0.1. The first input line holds the key. Each output line: case, expected, result, detail.
+OPENDESK_PROBE = r'''
+import datetime, hashlib, hmac, http.client, json, sys
+first = json.loads(sys.stdin.readline())
+zone, other, region = first['zone'], first['other'], first['region']
+def call(method, path, body=b'', query=''):
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    h = {'host': '127.0.0.1:3900', 'x-amz-content-sha256': 'UNSIGNED-PAYLOAD', 'x-amz-date': stamp}
+    names = ';'.join(sorted(h))
+    can = '\n'.join([method, path, query, ''.join(f'{k}:{h[k]}\n' for k in sorted(h)), names, 'UNSIGNED-PAYLOAD'])
+    scope = f'{stamp[:8]}/{region}/s3/aws4_request'
+    text = '\n'.join(['AWS4-HMAC-SHA256', stamp, scope, hashlib.sha256(can.encode()).hexdigest()])
+    k = ('AWS4' + first['secret_key']).encode()
+    for p in (stamp[:8], region, 's3', 'aws4_request'):
+        k = hmac.new(k, p.encode(), hashlib.sha256).digest()
+    h['authorization'] = (f"AWS4-HMAC-SHA256 Credential={first['access_key']}/{scope}, SignedHeaders={names}, Signature="
+                          + hmac.new(k, text.encode(), hashlib.sha256).hexdigest())
+    c = http.client.HTTPConnection('127.0.0.1', 3900, timeout=30)
+    c.request(method, path + ('?' + query if query else ''), body=body, headers=h)
+    r = c.getresponse()
+    data = r.read()
+    return r.status, data.decode(errors='replace')
+def result(status):
+    return 'allowed' if status in (200, 204) else 'refused' if status in (403, 404) else 'error'
+def row(case, expected, answer):
+    print(json.dumps([case, expected, result(answer[0]), f'{answer[0]} {answer[1][:120]}']), flush=True)
+row('list own openDesk bucket by its openDesk name', 'allowed', call('GET', '/nextcloud', query='list-type=2'))
+row('write own openDesk bucket', 'allowed', call('PUT', '/nextcloud/isolation-probe', b'x'))
+row('delete own probe object', 'allowed', call('DELETE', '/nextcloud/isolation-probe'))
+row('list own openDesk bucket by its Garage name', 'allowed', call('GET', f'/{zone}-opendesk-nextcloud', query='list-type=2'))
+row('list other openDesk bucket', 'refused', call('GET', f'/{other}-opendesk-nextcloud', query='list-type=2'))
+row('read other openDesk object', 'refused', call('GET', f'/{other}-opendesk-nextcloud/isolation-probe'))
+row('write other openDesk bucket', 'refused', call('PUT', f'/{other}-opendesk-ums/isolation-probe', b'x'))
+for bucket in (f'{zone}-system', f'{zone}-exports', f'{zone}-c-demo', f'{other}-system', f'{other}-c-demo'):
+    row(f'list Hoover bucket {bucket}', 'refused', call('GET', f'/{bucket}', query='list-type=2'))
+row('create a bucket', 'refused', call('PUT', f'/{zone}-opendesk-probe'))
+row('delete own openDesk bucket', 'refused', call('DELETE', '/migrations'))
+status, body = call('GET', '/')
+names = sorted(set(__import__('re').findall(r'<Name>([^<]+)</Name>', body)))
+own = {f'{zone}-opendesk-{b}' for b in first['buckets']} | set(first['buckets'])
+print(json.dumps(['bucket list holds only own openDesk buckets', 'allowed',
+                  'allowed' if status == 200 and set(names) <= own else 'refused', ', '.join(n for n in names if n not in own)[:160] or f'{len(names)} names']), flush=True)
+'''
+
+
+def opendesk_cases(zone, other):
+    """[(case, expected, result, detail)] of the openDesk key of zone."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'hoover' / 'stores'))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'zones'))
+    import garage_client
+    import objectstore
+    import podexec
+    found = [key_id for key_id, name in garage_client.keys().items() if name == objectstore.key_name(zone)]
+    if not found:
+        return [('openDesk key of the zone', 'absent', 'absent', f'no Garage key {objectstore.key_name(zone)}')]
+    key = garage_client.key(found[0])
+    first = json.dumps({**key, 'zone': zone, 'other': other, 'region': objectstore.REGION,
+                        'buckets': sorted(objectstore.BUCKETS.values())}) + '\n'
+    r = podexec.call(K + ['-n', 'hoover-stores', 'exec', '-i', garage_client.ready_garage(), '-c', garage_client.CONTAINER],
+                     ['python3', '-I', '-c', OPENDESK_PROBE], first, timeout=300)
+    if r.returncode:
+        raise SystemExit(f'the openDesk probe failed: {r.stderr.strip()[-600:]}')
+    return [tuple(json.loads(line)) for line in r.stdout.splitlines() if line.startswith('[')]
+
+
 def kubectl_json(*args):
     r = subprocess.run(K + list(args) + ['-o', 'json'], capture_output=True, text=True, timeout=120)
     if r.returncode:
@@ -474,6 +548,11 @@ def main():
         ok &= result == expected
         print(json.dumps({'zone': zone, 'other': other, 'from': 'hoover-pools', 'store': 'pools', 'case': case,
                           'expected': expected, 'result': result, 'detail': detail, 'pass': result == expected}), flush=True)
+    for case, expected, result, detail in opendesk_cases(zone, other):
+        passed = None if expected == 'absent' else result == expected
+        ok &= passed is not False
+        print(json.dumps({'zone': zone, 'other': other, 'from': f'{zone}-opendesk', 'store': 'garage', 'case': case,
+                          'expected': expected, 'result': result, 'detail': detail, 'pass': passed}), flush=True)
     for deployment, python, probe in (('hoover-operations', PYTHON, PROBE), ('hoover4-mcp-collections', 'python3', READ_PROBE),
                                       ('manticore-schema', PYTHON, SCHEMA_PROBE), ('hoover-website', 'bash', WEB_PROBE)):
         r = subprocess.run(K + ['-n', f'hoover-{zone}', 'exec', f'deploy/{deployment}', '--', python, '-c', probe, zone, other],

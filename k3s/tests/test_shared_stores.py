@@ -128,7 +128,9 @@ def test_only_hoover_namespaces_reach_the_client_ports():
     garage = by(items, 'NetworkPolicy', 'garage-clients')['spec']['ingress']
     assert garage[0]['ports'] == [{'port': 3900}]
     assert garage[0]['from'][1] == {'podSelector': {'matchLabels': {'hoover.dev/store': 'clickhouse'}}}
-    assert len(garage[0]['from']) == 2
+    # The ingress controller sends the requests of the object storage hosts of the zones (../zones/objectstore.py).
+    assert garage[0]['from'][2] == {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ingress'}}}
+    assert len(garage[0]['from']) == 3
     # The RPC port takes only the Garage pods, and no rule names the admin port 3903.
     assert garage[1] == {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}], 'ports': [{'port': 3901}]}
     assert '3903' not in json.dumps([i for i in items if i['kind'] == 'NetworkPolicy'])
@@ -362,6 +364,7 @@ def remove_parts(monkeypatch, failing=(), left=None):
     monkeypatch.setattr(shared, 'remove_manticore', part('manticore'))
     monkeypatch.setattr(shared, 'remove_garage', part('garage'))
     monkeypatch.setattr(temporal, 'remove', part('temporal'))
+    monkeypatch.setattr(shared, 'remove_ingress', part('ingress'))
     monkeypatch.setattr(shared, 'leftovers', lambda zone: calls.append('check') or (left or {}))
     monkeypatch.setattr(shared.common, 'log', lambda *a, **k: None)
     return calls
@@ -370,7 +373,7 @@ def remove_parts(monkeypatch, failing=(), left=None):
 def test_a_complete_removal_ends_after_the_check(monkeypatch):
     calls = remove_parts(monkeypatch)
     shared.remove('zone-a')
-    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'check']
+    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'ingress', 'check']
 
 
 def test_a_failed_part_or_a_remaining_object_ends_the_removal_with_an_error(monkeypatch):
@@ -378,7 +381,7 @@ def test_a_failed_part_or_a_remaining_object_ends_the_removal_with_an_error(monk
     calls = remove_parts(monkeypatch, failing=('manticore',), left={'manticore': ['manticore table zone_a_demo_vfs']})
     with pytest.raises(SystemExit) as error:
         shared.remove('zone-a')
-    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'check']
+    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'ingress', 'check']
     message = str(error.value)
     assert 'manticore: manticore has no ready pod' in message and 'zone_a_demo_vfs' in message
     assert 'run shared.py remove zone-a again' in message

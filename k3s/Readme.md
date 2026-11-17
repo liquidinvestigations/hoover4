@@ -566,10 +566,42 @@ Each store keeps one copy of each part of its data. No store has replication or 
 - The stores step takes the node of each store pod from the site placement before its volume exists. See [Place the pods of the site](#place-the-pods-of-the-site).
 - A claim holds the size of one zone store for each zone with `stores = site`, at least one zone: 20 GiB for ClickHouse and for each Garage pod, 16 GiB for Manticore text and 10 GiB for Manticore vectors. A zone create grows the claims. The file system in the Kata guest of a store grows at the next start of its pod. The memory limits and requests are those of one zone store ([zones/memory-limits.json](zones/memory-limits.json) `hoover`).
 - Isolation of a zone: in ClickHouse the zone user and one user for each service, with grants on the databases `<prefix>` and `<prefix>_*` only, and the settings profile `<prefix>`, which limits the memory of one user to half of the ClickHouse limit. In Garage the zone key, a key for each service, and the buckets `<zone>-*`. A key reaches only the buckets that it created or that the setup allowed. A bucket that Hoover creates for a collection has a local alias of the zone key, so another zone cannot take its name. The zone credentials are in the Secrets `hoover-stores` and `garage-tenants` of the zone namespace. The password of the Manticore schema user is only in the Secret `manticore-schema` of the Hoover namespace, because openDesk service accounts can list the Secrets of the zone namespace.
-- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The Garage RPC port takes only the Garage pods, and the admin port takes no connection. ClickHouse reaches only DNS and Garage on 3900.
+- Network: only namespaces with the label `hoover.dev/hoover` reach ClickHouse on 8123 and 9000, Manticore on 9306 to 9309 and Garage on 3900. The ingress controller also reaches Garage on 3900 for the object storage host of each zone. See [Keep the openDesk objects in Garage](#keep-the-opendesk-objects-in-garage). The Garage RPC port takes only the Garage pods, and the admin port takes no connection. ClickHouse reaches only DNS and Garage on 3900.
 - The zone copy of the backups holds the ClickHouse databases `<prefix>` and `<prefix>_Processing` and the objects of the bucket `<zone>-system` of a zone with `stores = site`, in `hoover/<zone>/shared/`. ClickHouse writes the archive of the databases into `<zone>-exports` with the zone key. The S3 client copies it and the bucket out. The collection exports hold the collection databases, Manticore tables and buckets. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse.
-- A zone delete removes the tenant (`shared.py remove`) and then checks that no bucket, key, database, user, table or Temporal namespace of the zone stays. Each Garage pod has the container `s3`, the S3 client of the operator tools ([hoover/stores/garage_client.py](hoover/stores/garage_client.py)). It empties the buckets, so the delete needs no pod of the zone. A failed part or a remaining object stops the delete before it removes the namespaces and the zone state entry. Repair the store and delete the zone again. `shared.py remove` and `temporal.py remove` take only a full zone id.
+- A zone delete removes the tenant (`shared.py remove`). It then checks that no bucket, key, database, user, table, Temporal namespace or object storage Ingress of the zone stays. Each Garage pod has the container `s3`, the S3 client of the operator tools ([hoover/stores/garage_client.py](hoover/stores/garage_client.py)). It empties the buckets, so the delete needs no pod of the zone. A failed part or a remaining object stops the delete before it removes the namespaces and the zone state entry. Repair the store and delete the zone again. `shared.py remove` and `temporal.py remove` take only a full zone id.
 - A new zone is refused while the stores hold an object of an earlier zone with the same id. The message names the objects. Remove them with `shared.py remove <zone>` in the operator image, then apply the zone again.
+
+### Keep the openDesk objects in Garage.
+
+A zone with `stores = site` keeps the objects of its openDesk applications in the shared Garage, and runs no SeaweedFS ([zones/objectstore.py](zones/objectstore.py)). A zone of the layout `local` keeps SeaweedFS in its namespace.
+
+- Each openDesk object store of the zone has the bucket `<zone>-opendesk-<bucket>`: `migrations`, `nextcloud`, `notes`, `ums` (Nubus), `openproject`, `openxchange` and `synapse`.
+- The key `<zone>-opendesk` reads and writes these buckets only. It has a local alias with the openDesk name of each bucket, for example `nextcloud`, so the applications keep their bucket names. Nextcloud names its root storage by the bucket name. The key cannot create a bucket, change a bucket setting, or reach a Hoover bucket or a bucket of another zone. Its id and secret are `objectstore_key` of the zone in `zones/secrets.json`, and `zone.py apply` imports it into Garage.
+- The values of the zone name the object storage host `<zone>-objectstorage.<domain>`, the key and the Garage region `us-east-1`. Garage refuses a request that is signed for another region.
+- The applications and the browsers of the users reach Garage at the object storage host, through the HTTPS frontend and the Ingress `opendesk-<zone>` in `hoover-stores`. The Ingress sends only the paths of the zone buckets and the bucket list (`/`) to Garage. Garage answers the bucket list with the buckets of the key. It answers the CORS requests of the OpenProject pages of the zone, because a Garage bucket without a CORS setting refuses them.
+- The S3 features that each application uses, checked against Garage 2.3.0:
+
+  | Application | Bucket | Features | Garage |
+  |---|---|---|---|
+  | Nextcloud (primary storage) | `nextcloud` | GET, PUT, DELETE, multipart upload, copy, head, list | supported |
+  | OpenProject (attachments, fog) | `openproject` | PUT with the streaming signature, presigned GET from the browser | supported. The direct upload from the browser (presigned POST) is off in this OpenProject configuration. |
+  | Synapse (media store) | `synapse` | GET, PUT, DELETE, head. A customer key (SSE-C) when the zone sets one. | supported, SSE-C included |
+  | Notes | `notes` | GET, PUT, DELETE, signed GET through the Notes frontend | supported |
+  | Nubus portal | `ums` | GET, PUT, list | supported |
+  | openDesk migrations | `migrations` | GET, PUT, list | supported |
+  | Open-Xchange | `openxchange` | GET, PUT, DELETE, multipart upload | supported. The zones do not install Open-Xchange. |
+
+  No application uses versioning, object lock, bucket policies, ACLs or a conditional write, which Garage does not support.
+- A zone of an earlier version runs SeaweedFS and has no value `objectstore` in the zone state. `zone.py apply` with the admin kubeconfig moves it, and `deploy-k3s up` runs that apply for each zone:
+  1. The Ingress takes the paths of the zone buckets. The applications then reach Garage with their SeaweedFS key, which Garage refuses, so no application changes an object. The switch starts here.
+  2. Every bucket of SeaweedFS is copied into Garage, and the object count and the byte count of each bucket must be equal in both stores. Else the Ingress goes away, the applications use SeaweedFS again, and the apply stops with the counts.
+  3. The volume of SeaweedFS gets the reclaim policy `Retain` and the label `hoover.dev/seaweedfs-of=<zone>`. The zone state gets `objectstore = garage`, and the openDesk waves switch the applications. Helm removes SeaweedFS, and its volume stays.
+  4. Each workload whose configuration holds the key, and Nextcloud, restart once. The switch ends when they are ready. `zones/<zone>/objectstore-move.json` of the state folder records the counts and the times.
+
+  The zone runner of the portal cannot keep a volume, so a portal Apply leaves such a zone on SeaweedFS until the next `deploy-k3s up`. A move changes no pod of another zone.
+- Check the applications of the zone after a move. Then delete the kept SeaweedFS volume with `zones/objectstore.py drop-seaweedfs <zone>` in the operator image. A zone delete deletes it too.
+- `zones/objectstore.py show <zone>` prints the object and byte count of each bucket. `zones/objectstore.py check <zone>` compares the counts of SeaweedFS and Garage while both run.
+- The zone copy of the backups reads the openDesk buckets from Garage with the zone key. The copy has the form of a SeaweedFS copy. `restore-zone` writes the objects back into the Garage buckets of the zone. A zone delete removes the buckets, the key and the Ingress.
 
 ### Export the ClickHouse part of a collection.
 
@@ -1023,12 +1055,12 @@ $run restore-platform <generation>
   |---|---|
   | `postgresql.sql`, `mariadb.sql` | `pg_dumpall` and `mariadb-dump --single-transaction`. Each database is at one moment. |
   | `claims/` | A tar file of each claim. A file can change while tar reads it. The LMDB files of OpenLDAP are read again until no write committed during the read. Redis and NATS read a file with a cut last record at their start. |
-  | `objects/` | The objects of each bucket of the openDesk object store, through its S3 API with its `admin` identity. A bucket with a customer key (SSE-C) is read and written with that key. |
+  | `objects/` | The objects of each openDesk bucket of the zone in Garage, with the key `<zone>-opendesk`, or of a SeaweedFS that has not moved, with its `admin` identity. Both have the same form. A bucket with a customer key (SSE-C) is read and written with that key. |
   | `hoover/<installation>/shared/` | ClickHouse `BACKUP` of the zone databases (each table at one moment), then the objects of the system bucket. |
 
   A database comes before the files and objects that its rows name. An object that a row names was written before the
   row, so the later copy holds it, unless the application deleted it in between. Objects without a row stay unused.
-- The object store claim is not copied as a file, because its files change while it runs.
+- The claim of a SeaweedFS that has not moved is not copied as a file, because its files change while it runs.
 - The receipt queries use the ClickHouse of the store layout. The site layout uses the admin of the shared ClickHouse. The local layout uses the Compose credentials.
 - The collection export reads each small frozen Manticore file whole, and a `.meta` file must be JSON. The archive entry gets the size of the bytes that the export read.
 - Make sure that the backup folder is on another host. The system cannot check this.
@@ -1037,7 +1069,7 @@ $run restore-platform <generation>
 - A zone copy keeps the dumps of the zone databases, the objects of the object store, and one tar file for each other claim of the zone namespace, with the owners and modes, and the same parts of the Hoover namespace in `hoover/<installation>/`.
   A Block claim of a Kata store is read through its store container, so the store must run. A file system claim is read with `tar` in a running container that mounts it, else through a short reader pod on the node of the claim. A claim that a pod owns holds temporary files and is not copied.
 - `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
-- `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store.
+- `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store. A zone on Garage gets the objects of the copy in its openDesk buckets.
   It then replaces the objects of each bucket of the copy, applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and the object store, and opens the zone with the replicas of `workloads.json` (`closure.json` in a copy of an earlier version).
   All parts are in place before an application starts.
   A dump without its end line stops the restore before any change. `psql` and the MariaDB client stop at the first error, and the restore fails with that error.

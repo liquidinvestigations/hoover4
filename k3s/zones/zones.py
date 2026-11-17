@@ -2,13 +2,16 @@
 """Generate the openDesk values of each zone and the site list of the HTTPS frontend.
 
 The zones come from the zone state (zonestate.py). The secrets file is created once and reused. The other outputs are
-regenerated from it. Each zone has its own PostgreSQL, SeaweedFS, Redis, Memcached and NATS in its namespace: the
-openDesk charts render them, and postrender.py moves them into Kata on TopoLVM block volumes.
-openDesk derives the database and object store passwords from the master password of the zone.
+regenerated from it. Each zone has its own PostgreSQL, Redis, Memcached and NATS in its namespace: the openDesk charts
+render them, and postrender.py moves them into Kata on TopoLVM block volumes. A zone of the store layout site keeps the
+objects of its applications in the shared Garage of the site, with its own buckets and key (objectstore.py). The key is
+objectstore_key of the zone in secrets.json. A zone of the layout local, and a zone of an earlier version before its
+move, run SeaweedFS in the zone namespace.
+openDesk derives the database passwords, and the SeaweedFS passwords, from the master password of the zone.
 """
 import base64,json,pathlib,re,secrets,string,sys,yaml
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
-import zonestate
+import objectstore,zonestate
 out=settings.PRIVATE/'zones'
 # The openDesk release is not in Git. The operator unpacks it into the private folder.
 OPENDESK=settings.PRIVATE/'downloads/opendesk-v1.19.1/src'
@@ -31,12 +34,14 @@ def local_ca():
  ca=config.local_ca(settings.SITE) if settings.SITE else ''
  return {'certificateAuthorities':{'values':{'hoover4-local-ca.crt':ca}}} if ca else {}
 
-def zone_names():
- try:return list(zonestate.load()['zones'])
+def zone_entries():
+ try:return zonestate.load()['zones']
  except zonestate.ZoneStateError:
   if zonestate.PATH.exists():raise
-  return []
-ZONES=zone_names()
+  return {}
+def zone_names():return list(zone_entries())
+ENTRIES=zone_entries()
+ZONES=list(ENTRIES)
 NEXTCLOUD_IMAGE_TAG='33.0.9-2'
 # The key name of the one LiveKit key of all zones (load_secrets()).
 LIVEKIT_KEY='hoover-calls'
@@ -91,6 +96,8 @@ def load_secrets():
   z.setdefault('hoover_oidc_secret',secrets.token_hex(24))
   # The Keycloak client of the zone gate and its oauth2-proxy share this secret (gate_oidc). The cookie secret has 32 bytes.
   z.setdefault('gate_oidc_secret',secrets.token_hex(24));z.setdefault('gate_cookie_secret',secrets.token_hex(16))
+  # The Garage key of the openDesk buckets of a zone of the store layout site (objectstore.py). zone.py imports it.
+  if ENTRIES[zone].get('stores')=='site':z.setdefault('objectstore_key',objectstore.new_key())
  out.mkdir(parents=True,exist_ok=True);put(path,json.dumps(data,indent=1));path.chmod(0o600)
  return data
 def reduced_resources():
@@ -108,12 +115,15 @@ def reduced_resources():
   memory=max(32,int(mebibytes(requests['memory'])*0.4)) if 'memory' in requests else None
   result[name]={'requests':{'cpu':f"{int(min(cores(requests.get('cpu',0.05)),0.05)*1000)}m",**({'memory':f'{memory}Mi'} if memory else {})}}
  return result
-def zone_values(zone,data,storage_class):
+def zone_values(zone,data,storage_class,entry=None):
  z=data[zone]
  # The home chart serves global.domain, which is the domain of the site and of every zone, so no zone installs it.
  apps={name:{'enabled':False} for name in ['oxAppSuite','dovecot','postfix','clamavSimple','mariadb','neoboard','elementAdmin','home']}
  apps['notes']={'enabled':True}
- return {
+ # A zone on Garage runs no SeaweedFS, and its object stores name the Garage key, the host and the region.
+ garage=objectstore.on_garage(entry or {})
+ if garage:apps['seaweedfs']={'enabled':False}
+ return {**(objectstore.values(zone,z['objectstore_key']) if garage else {}),
   # openDesk names each host <global.hosts.x>.<global.domain>. The mail domain and the Matrix server name stay
   # <zone>.<suffix>, so the Matrix IDs and the mail addresses of each zone differ.
   'global':{'domain':SUFFIX,'hosts':zone_hosts(zone),'mailDomain':settings.zone_domain(zone),'matrixDomain':settings.zone_domain(zone)},
@@ -252,7 +262,7 @@ def main():
  put(out/'two-factor-off.yaml','# The MVP has no MFA.\nnubusKeycloakBootstrap:\n  bootstrap:\n    twoFactorAuthentication:\n      enabled: false\n')
  for zone in ZONES:
   folder=out/zone;folder.mkdir(exist_ok=True)
-  put(folder/'values.yaml',yaml.safe_dump(zone_values(zone,data,default_class(zone)),sort_keys=False));(folder/'values.yaml').chmod(0o600)
+  put(folder/'values.yaml',yaml.safe_dump(zone_values(zone,data,default_class(zone),ENTRIES[zone]),sort_keys=False));(folder/'values.yaml').chmod(0o600)
   put(folder/'master-password',data[zone]['master_password']);(folder/'master-password').chmod(0o600)
   # The Keycloak bootstrap reads the Hoover and gate client secrets from these Secrets. zone.py applies them before Helm.
   # data, not stringData: kubectl apply reports a stringData Secret as changed on each run.
