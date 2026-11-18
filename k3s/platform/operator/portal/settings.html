@@ -39,6 +39,7 @@ pre{white-space:pre-wrap;font-size:.8rem;background:#f4f6f8;padding:.5rem;max-he
 <label><span><input id="only-changed" type="checkbox"> Only values that differ from the default</span></label>
 </div>
 <div id="backup"></div>
+<div id="ignored"></div>
 <div id="tables"></div>
 </section>
 
@@ -65,6 +66,7 @@ async function post(path, body) {
 
 function scopeLabel(id) {
  if (id === 'cluster') return 'Cluster';
+ if (id === 'pools') return 'Processing pools of the site';
  const [kind, name] = id.split(':');
  return kind === 'zone' ? `Zone ${name}` : `Hoover installation ${name}`;
 }
@@ -157,9 +159,20 @@ function range(s) {
  return parts.join(', ');
 }
 
+function renderIgnored(scope) {
+ const box = $('ignored');
+ const keys = Object.keys(scope.overrides).filter(k => !scope.keys.includes(k));
+ if (!keys.length) { box.replaceChildren(); return; }
+ const remove = el('button', {type: 'button', textContent: 'Remove these saved values'});
+ remove.onclick = () => { edits[scope.id] = edits[scope.id] || {}; for (const k of keys) edits[scope.id][k] = null; remove.disabled = true; updateBar(); };
+ box.replaceChildren(el('div', {className: 'panel notice'},
+  el('p', {textContent: `These saved values have no effect, because the processing pools of the site set them: ${keys.join(', ')}.`}),
+  remove));
+}
+
 function renderBackup(scope) {
  const box = $('backup');
- if (scope.id.startsWith('hoover:')) { box.replaceChildren(); return; }
+ if (scope.id.startsWith('hoover:') || scope.id === 'pools') { box.replaceChildren(); return; }
  const d = data.backup_destination;
  box.replaceChildren(el('div', {className: 'panel'}, el('h3', {textContent: 'Backup destination'}),
   d ? el('p', {textContent: `Backups go to ${d.path} on node ${d.node}. The site file sets this destination.`})
@@ -170,13 +183,14 @@ function renderBackup(scope) {
 function renderTables() {
  const scope = data.scopes.find(s => s.id === $('scope').value) || data.scopes[0];
  renderBackup(scope);
- const kind = scope.id.split(':')[0];
+ renderIgnored(scope);
+ const keys = new Set(scope.keys);
  const filter = $('filter').value.trim().toLowerCase();
  const group = $('group').value;
  const onlyChanged = $('only-changed').checked;
  const byGroup = {};
  for (const s of data.registry) {
-  if (s.scope !== kind || (group && s.group !== group)) continue;
+  if (!keys.has(s.key) || (group && s.group !== group)) continue;
   if (filter && !s.key.toLowerCase().includes(filter) && !s.services.join(' ').toLowerCase().includes(filter)) continue;
   const pending = (edits[scope.id] || {})[s.key];
   const value = pending !== undefined && pending !== null ? pending : scope.effective[s.key];
@@ -206,7 +220,7 @@ function renderTables() {
     el('td', {textContent: s.default || '(empty)'}),
     el('td', {textContent: suggestion || ''}),
     el('td', {textContent: scope.applied[s.key]}),
-    el('td', {className: 'muted', textContent: `${s.services.join(', ')} (${s.apply})`}),
+    el('td', {className: 'muted', textContent: `${(scope.services[s.key] || s.services).join(', ')} (${s.apply})`}),
     el('td', {}, ...extra));
    if (s.group === 'backup' && !data.backup_destination) row.querySelectorAll('input,select').forEach(i => i.disabled = true);
    return row;

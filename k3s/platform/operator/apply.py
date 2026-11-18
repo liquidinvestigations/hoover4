@@ -10,8 +10,15 @@ changes:
                           wait of the zone and its Hoover namespace
   gpu-pool                ../gpu/gpu_pool.py apply for the cluster setting gpu.runtime, then a rollout wait and an
                           authenticated call to each GPU service (gpu_pool.py verify)
+  pools                   ../../hoover/pools.py apply for a setting of the scope pools, which rolls the changed pools
+                          and waits for them. A pool setting that the installations also read (settings.py
+                          POOL_CLIENT_KEYS) adds the step hoover:<installation> of each installation of the store layout
+                          site after it.
   schedule                the backup policies. The backup scheduler reads the applied revision, and no service changes.
 A revision without a change gets the step record, so Apply still records it as applied.
+The scope pools exists when the site has an installation of the store layout site. The scope hoover:<installation> of
+such an installation has no pool setting. Its saved pool settings of an earlier revision have no effect, and the first
+step of an operation names them once in the operation log.
 plan_scopes() also names the steps of each changed scope. The operation records a scope as applied when all of its
 steps finished, so a failed later step leaves only its own scopes pending.
 Each command gets the deployment revision in HOOVER4_REVISION and the settings revision in HOOVER4_SETTINGS_REVISION.
@@ -53,9 +60,20 @@ def site():
     return config.read(os.environ.get('HOOVER4_SITE'))
 
 
+def pooled(s):
+    """The names of the Hoover installations that use the processing pools of the site (../../hoover/pools.py)."""
+    return sorted(h.name for h in config.hoovers(s).values() if h.stores == 'site')
+
+
 def scopes(s):
-    out = ['cluster'] + [f'zone:{z}' for z in sorted({h.zone for h in config.hoovers(s).values()})]
+    out = ['cluster'] + ([operator_settings.POOLS] if pooled(s) else [])
+    out += [f'zone:{z}' for z in sorted({h.zone for h in config.hoovers(s).values()})]
     return out + [f'hoover:{h}' for h in sorted(config.hoovers(s))]
+
+
+def scope_keys(s, scope):
+    """The settings of a scope on this site. An installation of the store layout site has no pool setting."""
+    return operator_settings.scope_keys(scope, pooled=scope.startswith('hoover:') and scope.split(':', 1)[1] in pooled(s))
 
 
 def changes(state, s, revision=None):
@@ -66,7 +84,7 @@ def changes(state, s, revision=None):
     for scope in scopes(s):
         before = state.effective(scope, state.applied_revision(scope, applied))
         after = state.effective(scope, revision)
-        diff = {k: (before[k], after[k]) for k in after if before[k] != after[k]}
+        diff = {k: (before[k], after[k]) for k in scope_keys(s, scope) if before[k] != after[k]}
         if diff:
             out[scope] = diff
     return out
@@ -80,6 +98,9 @@ def key_steps(s, scope, key):
         return ['schedule']
     if kind == 'hoover':
         return [f'hoover:{name}']
+    if kind == operator_settings.POOLS:
+        clients = [f'hoover:{h}' for h in pooled(s)] if key in operator_settings.POOL_CLIENT_KEYS else []
+        return ['pools'] + clients
     if kind == 'zone' and key in ('app.hoover', 'zone.enabled') and name in zone_of:
         return [f'hoover:{zone_of[name]}'] + ([f'zone:{name}'] if key == 'zone.enabled' else [])
     if kind == 'zone' and key.startswith('app.'):
@@ -105,8 +126,9 @@ def plan_scopes(state, s, revision=None):
                 by_scope.setdefault(scope, [])
                 if step not in by_scope[scope]:
                     by_scope[scope].append(step)
-    # The GPU pool runs before the zones, so the zones find the GPU services with the new runtime.
-    order = {'gpu-pool': 0}
+    # The GPU pool runs before the zones, so the zones find the GPU services with the new runtime. The processing pools
+    # run before the installations, so the workers find a pool that a switch turns on.
+    order = {'gpu-pool': 0, 'pools': 0}
     steps.sort(key=lambda step: order.get(step, 1))
     return (steps or ['record']), by_scope
 
@@ -118,10 +140,19 @@ def plan(state, s, revision=None):
 def services(state, s, revision=None):
     """The services that the saved changes affect, for the portal."""
     out = set()
-    for diff in changes(state, s, revision).values():
+    for scope, diff in changes(state, s, revision).items():
         for key in diff:
-            out.update(operator_settings.REGISTRY[key].services)
+            out.update(key_services(scope, key))
     return sorted(out)
+
+
+def key_services(scope, key):
+    """The services that a change of one key of a scope affects."""
+    found = operator_settings.REGISTRY[key].services
+    if scope == operator_settings.POOLS and key not in operator_settings.POOL_CLIENT_KEYS:
+        # The installations of the store layout site do not read this pool setting.
+        found = tuple(x for x in found if x in operator_settings.POOL_SERVICES)
+    return list(found)
 
 
 def deployment_revision(s):
@@ -197,12 +228,39 @@ def wait_hoover(namespace, timeout=900):
         time.sleep(5)
 
 
+IGNORED = 'Saved pool settings without effect:'
+
+
+def report_ignored(s, overrides, log):
+    """Write the saved pool settings of the installations of the store layout site into the operation log, once.
+    These installations take the values of the scope pools."""
+    ignored = operator_settings.ignored_overrides(overrides, pooled(s))
+    if not ignored:
+        return
+    path = Path(log)
+    if path.exists() and IGNORED in path.read_text(errors='replace'):
+        return
+    with open(path, 'a') as f:
+        for scope, keys in sorted(ignored.items()):
+            f.write(f'{IGNORED} {scope} has {", ".join(keys)}. The installation uses the values of the processing pools '
+                    f'(scope {operator_settings.POOLS}). To remove them, select {scope} on the settings page, then '
+                    f'Remove these saved values.\n')
+
+
 def executors(s, log, wait=wait_hoover, wait_namespaces=None):
     wait_namespaces = wait_namespaces or (lambda names: [wait_rollouts(n) for n in names])
     by_name = {h.name: h for h in config.hoovers(s).values()}
 
     class Steps(dict):
         def __missing__(self, step):
+            run = self.step(step)
+
+            def reported(op, overrides):
+                report_ignored(s, overrides, log)
+                return run(op, overrides)
+            return reported
+
+        def step(self, step):
             kind, _, name = step.partition(':')
             if kind == 'hoover':
                 def run(op, overrides, name=name):
@@ -210,6 +268,12 @@ def executors(s, log, wait=wait_hoover, wait_namespaces=None):
                                  '--settings-revision', str(op.desired_revision)], op, log)
                     wait(by_name[name].namespace)
                     return [f'hoover:{name}']
+                return run
+            if kind == 'pools':
+                def run(op, overrides):
+                    # pools.py apply waits until each pool runs its new template.
+                    run_command([sys.executable, K3S / 'hoover/pools.py', 'apply'], op, log)
+                    return ['pools']
                 return run
             if kind == 'apps':
                 def run(op, overrides, name=name):

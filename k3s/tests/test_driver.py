@@ -1076,14 +1076,44 @@ def test_the_k3s_play_gets_the_kept_reserve_and_the_kubelet_step_checks_the_requ
     assert played == [('hoover4-k3s.yml', ['dev'])]
 
 
+def test_the_stores_step_records_the_pool_settings_and_names_a_saved_value_without_effect(tmp_path):
+    import threading
+    state = deploy.operator_settings_module().State(tmp_path / 'operator')
+    state.save(0, {'pools': {'budget.clamav_memory_mib': '4096'}, 'hoover:zone-a': {'budget.tika_cpus': '3'},
+                   'hoover:zone-c': {'budget.tika_cpus': '3'}})
+
+    class Ctx:
+        settings_revision = 1
+        revision = 'r' * 40
+        record = {'id': 'up-1'}
+        state_lock = threading.RLock()
+
+        def run(self, argv, env=None, capture=False, check=True):
+            return 0, '{"pools": ["hoover4-clamav"], "zones": 1}\n'
+
+        def operator_state(self):
+            return state
+
+        def hoovers(self):
+            return {'zone-a': config.Hoover('zone-a', stores='site'), 'zone-c': config.Hoover('zone-c', stores='local')}
+    result = deploy.step_stores(Ctx())
+    assert result['scopes'] == ['pools'] and result['ignored'] == {'hoover:zone-a': ['budget.tika_cpus']}
+    assert state.applied_revision('pools') == 1 and state.applied_revision('hoover:zone-a') == 0
+
+
 def test_the_stores_step_applies_the_stores_then_the_pools_and_the_zone_step_leaves_the_pools_to_it():
     calls = []
 
     class Ctx:
+        settings_revision = None
+
         def run(self, argv, env=None, capture=False, check=True):
             calls.append(([str(a).rsplit('/', 2)[-2:] for a in argv[1:2]][0] + [str(a) for a in argv[2:]], env))
             return 0, '{"pools": ["hoover4-tika"], "zones": 2}\n'
-    assert deploy.step_stores(Ctx()) == {'pools': ['hoover4-tika'], 'zones': 2}
+
+        def operator_state(self):
+            return None
+    assert deploy.step_stores(Ctx()) == {'pools': ['hoover4-tika'], 'zones': 2, 'scopes': []}
     assert [c[0] for c in calls] == [['stores', 'shared.py', 'apply'], ['hoover', 'pools.py', 'apply']]
     assert deploy.cluster_steps.__code__.co_names.count('step_stores') == 1
     import inspect

@@ -344,12 +344,13 @@ def target_from_site(site_path, name, revision=None, state=None, nfs=None, setti
     """The Target of an installation, with the saved operator settings of its desired revision.
 
     settings_revision names another saved revision, for example the revision that an apply operation pinned.
+    An installation of the store layout site takes its pool settings from the scope pools (pools.py).
     """
     site = site_config.read(site_path)
     hoover = find_hoover(site, name)
     folder = Path(state) if state else site.operator_state()
     overrides = operator_settings.State(folder).overrides(settings_revision) if (folder / 'desired.json').exists() else {}
-    values = operator_settings.effective(f'hoover:{hoover.name}', overrides.get(f'hoover:{hoover.name}', {}))
+    values = operator_settings.installation_values(hoover.name, overrides, pooled=hoover.stores == 'site')
     zone_values = operator_settings.effective(f'zone:{hoover.zone}', overrides.get(f'zone:{hoover.zone}', {}))
     enabled = zone_values['app.hoover'] == 'true' and zone_values['zone.enabled'] == 'true'
     return Target(site=site, hoover=hoover, values=values, revision=revision or resolve_revision(), nfs=nfs or {},

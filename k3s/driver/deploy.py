@@ -1203,9 +1203,20 @@ def step_stores(ctx):
     ctx.run([sys.executable, SOURCE / 'hoover/stores/shared.py', 'apply'])
     code, out = ctx.run([sys.executable, SOURCE / 'hoover/pools.py', 'apply'], capture=True)
     try:
-        return json.loads(out.strip().splitlines()[-1])
+        result = json.loads(out.strip().splitlines()[-1])
     except (ValueError, IndexError):
-        return {}
+        result = {}
+    if result.get('zones'):
+        # The pools run the pool settings of the pinned revision. A saved pool setting of an installation of the store
+        # layout site has no effect, and the step result names it.
+        result['scopes'] = record_settings(ctx, ['pools'])
+        state = ctx.operator_state()
+        if state is not None and ctx.settings_revision is not None:
+            pooled = [h.name for h in ctx.hoovers().values() if h.stores == 'site']
+            ignored = operator_settings_module().ignored_overrides(state.overrides(ctx.settings_revision), pooled)
+            if ignored:
+                result['ignored'] = ignored
+    return result
 
 
 def step_placement(ctx):

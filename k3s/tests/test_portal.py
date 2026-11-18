@@ -218,3 +218,40 @@ def test_the_runner_frontend_step_checks_a_new_zone_and_skips_a_delete(tmp_path,
     monkeypatch.setattr(runner, 'frontend_problem', lambda zone: '')
     assert create.step_frontend() is None
     assert not calls
+
+
+def test_the_settings_page_shows_the_pool_settings_once_for_the_site(tmp_path, monkeypatch):
+    from conftest import REPO, operator_settings, write_site
+    path = write_site(tmp_path, 'remote.yml')
+    monkeypatch.setenv('HOOVER4_SITE', str(path))
+    monkeypatch.setenv('PORTAL_REPO', str(REPO))
+    monkeypatch.delenv('HOOVER4_CLUSTER_STATE', raising=False)
+    spec = importlib.util.spec_from_file_location('portal_settings_test', OPERATOR / 'portal_settings.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    S = operator_settings()
+    # A revision of an earlier version holds a pool setting in the scope of a site installation.
+    S.State(module.site().operator_state()).save(0, {'hoover:zone-a': {'budget.clamav_memory_mib': '4096'}})
+    nodes = {'server-a': {'cpus': 16, 'memory_mib': 65536}, 'worker-b': {'cpus': 16, 'memory_mib': 65536}}
+    view = module.overview(nodes)
+    scopes = {s['id']: s for s in view['scopes']}
+    assert scopes['pools']['keys'] == list(S.POOLED)
+    assert not set(S.POOLED) & set(scopes['hoover:zone-a']['keys'])
+    # zone-c keeps its own copies, so its installation keeps the settings.
+    assert set(S.POOLED) <= set(scopes['hoover:zone-c']['keys'])
+    assert scopes['pools']['services']['budget.clamav_memory_mib'] == ['hoover4-clamav']
+    assert 'budget.tika_cpus' in scopes['pools']['suggestions']
+    assert 'budget.tika_cpus' not in scopes['hoover:zone-a']['suggestions']
+    # The saved value has no effect, so it is no pending change.
+    assert view['pending'] == []
+    with pytest.raises(module.Refused) as refused:
+        module.save('op', {'base': 1, 'changes': {'hoover:zone-a': {'budget.clamav_memory_mib': '5000'}}})
+    assert 'processing pools' in refused.value.problems['hoover:zone-a/budget.clamav_memory_mib']
+    # The page can remove the saved value, and the scope pools takes the change.
+    assert module.save('op', {'base': 1, 'changes': {'hoover:zone-a': {'budget.clamav_memory_mib': None},
+                                                   'pools': {'budget.clamav_memory_mib': '5000'}}}) == {'revision': 2}
+    view = module.overview(nodes)
+    # The budget value suggests the memory limit of ClamAV.
+    assert view['pending'] == [{'scope': 'pools', 'key': 'budget.clamav_memory_mib', 'from': '3456', 'to': '5000'},
+                               {'scope': 'pools', 'key': 'main_services.clamav_mem_limit', 'from': '3456M', 'to': '5000M'}]
+    assert view['steps'] == ['pools'] and view['services'] == ['hoover4-clamav']

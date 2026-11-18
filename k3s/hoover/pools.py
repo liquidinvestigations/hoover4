@@ -7,8 +7,13 @@ installation of that layout reaches them by its Compose names: the render of the
 each name an ExternalName Service <name>.hoover-pools.svc.cluster.local and renders no own copy. The local store layout
 keeps its own copies.
 - Each service runs vars.replicas.<service> pods of the site file (default 1) behind its Service, in gVisor, with the
-  container of its Compose service. The settings of the pools are the default values of the Hoover settings
-  (platform/operator/settings.py, scope hoover). An override of a zone does not change a pool.
+  container of its Compose service.
+- The settings of the pools are the scope pools of the operator settings (platform/operator/settings.py POOLED). The
+  render reads the revision HOOVER4_SETTINGS_REVISION, else the newest saved revision. The operator portal shows them
+  as one group for the site. The installations of the store layout site read the same values, so their worker slots
+  match the pools. A pool setting saved in the scope of such an installation has no effect.
+- The Tika pool mounts the ConfigMap tika-config. Its pod template has the digest of that ConfigMap in the annotation
+  hoover.dev/config, so a changed configuration restarts its pods.
 - A pool holds no zone identity and no store credential. Its environment has no store address and no key, and the
   namespace reaches no store. The searchable-PDF builder gets the source in the request and answers with the PDF
   (main_services/ocr_pdf, field inline). The workers of the installations set OCR_PDF_TRANSFER=inline, so they read
@@ -27,13 +32,16 @@ A site without a zone of the store layout site runs no pool: apply and ensure th
 
 Usage: pools.py show      print the objects
        pools.py apply     apply the objects, delete the objects of an earlier apply that the render no longer has, and
-                          wait until each pool is ready. deploy-k3s up runs it in the step stores.
+                          wait until each pool is ready. deploy-k3s up runs it in the step stores, and an operator
+                          Apply of a pool setting runs it in the step pools (../platform/operator/apply.py).
        pools.py ensure    create the pools only when the namespace has none, and wait until they are ready. A pool that
                           runs stays as it is, so a zone create or delete changes no pool pod. ../zones/zone.py runs it.
        pools.py ready     exit 1 when a pool has no ready pod
 """
 import base64
+import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -52,8 +60,6 @@ import manifests  # noqa: E402
 import zone_ini  # noqa: E402
 
 NS = 'hoover-pools'
-# The settings scope of the pools. The scope has no saved override, so every value is the default.
-SCOPE = 'hoover:pools'
 # The name in the GPU token of the forwarder of this namespace (gpu.py).
 GPU_NAME = 'hoover-pools'
 # The pods of a Hoover namespace that call the pools: the workers, the singletons (the database migrations and the
@@ -85,9 +91,22 @@ def site_zones(state=None):
     return [z for z, e in state['zones'].items() if e.get('stores') == 'site']
 
 
-def services(site, tree=site_config.REPO):
-    """(deploy module, Config, {name: Compose service}) of the pools: the ini of the default Hoover settings."""
-    values = manifests.operator_settings.effective(SCOPE, {})
+def settings_values(site, settings_revision=None):
+    """The effective Hoover settings of the pools: the scope pools of the saved revision settings_revision, else of
+    HOOVER4_SETTINGS_REVISION, else of the newest revision. The other Hoover settings keep their defaults."""
+    operator = manifests.operator_settings
+    folder = site.operator_state()
+    overrides = {}
+    if (folder / 'desired.json').exists():
+        if settings_revision is None and os.environ.get('HOOVER4_SETTINGS_REVISION'):
+            settings_revision = int(os.environ['HOOVER4_SETTINGS_REVISION'])
+        overrides = operator.State(folder).overrides(settings_revision)
+    return operator.installation_values('pools', {operator.POOLS: overrides.get(operator.POOLS, {})}, pooled=True)
+
+
+def services(site, tree=site_config.REPO, values=None):
+    """(deploy module, Config, {name: Compose service}) of the pools: the ini of the pool settings."""
+    values = settings_values(site) if values is None else values
     ini_values = manifests.operator_settings.ini_values(values)
     ini_values[('storage', 'garage_capacity')] = values['volume.garage-data'].removesuffix('i')
     mounts = [{'name': 'testdata', 'path': '/data/testdata', 'writable': False}]
@@ -168,26 +187,33 @@ def network(site, found):
     return items
 
 
-def objects(site, revision=None, tree=site_config.REPO, zones=None):
+def objects(site, revision=None, tree=site_config.REPO, zones=None, values=None):
     """Every object of the pools, in apply order. zones: the zones of the store layout site. Without one, the list is
-    empty."""
+    empty. values: the effective settings (settings_values())."""
     if zones is not None and not zones:
         return []
     revision = revision or manifests.resolve_revision(tree)
-    deploy, cfg, found = services(site, tree)
+    deploy, cfg, found = services(site, tree, values)
     t = target(site, revision, tree)
-    configs = set()
     workloads = []
+    mounted = {}
     for name, svc in found.items():
         items = pool(t, site, name, svc)
         for item in items:
             if item['kind'] == 'Deployment':
-                configs |= {v['configMap']['name'] for v in item['spec']['template']['spec'].get('volumes', [])
-                            if 'configMap' in v}
+                mounted[item['metadata']['name']] = sorted(v['configMap']['name'] for v in item['spec']['template']['spec'].get('volumes', [])
+                                                           if 'configMap' in v)
         workloads += items
+    configs = manifests.config_maps(t, deploy, cfg, {c for names in mounted.values() for c in names})
+    data = {c['metadata']['name']: c['data'] for c in configs}
+    for item in workloads:
+        names = mounted.get(item['metadata']['name']) if item['kind'] == 'Deployment' else None
+        if names:
+            digest = hashlib.sha256(json.dumps([data[n] for n in names], sort_keys=True).encode()).hexdigest()[:12]
+            item['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/config'] = digest
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS, 'labels': {POOL: 'true'}}}
     forwarder = gpu.forwarder(GPU_NAME, NS) if site.gpu_pool and 'hoover4-ocr-pdf' in found else []
-    return [namespace, *manifests.config_maps(t, deploy, cfg, configs), *forwarder, *workloads, *network(site, found)]
+    return [namespace, *configs, *forwarder, *workloads, *network(site, found)]
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -219,6 +245,14 @@ def namespace_present():
     return bool(kubectl('get', 'namespace', NS, '--ignore-not-found', '-o', 'name').strip())
 
 
+def namespace_current(wanted):
+    """True when the namespace exists with the labels of the render. The zone runner cannot change a namespace outside
+    the zones, so an apply of the runner changes the namespace only when install-runner.sh did not create it."""
+    found = kubectl('get', 'namespace', NS, '--ignore-not-found', '-o', 'json').strip()
+    labels = (json.loads(found)['metadata'].get('labels') or {}) if found else None
+    return labels is not None and all(labels.get(k) == v for k, v in wanted['metadata']['labels'].items())
+
+
 def remove():
     """Delete every pool object of the namespace. The namespace stays, because the zone runner has rights in it."""
     for resource in manifests.PRUNED + ('secrets',):
@@ -247,8 +281,7 @@ def apply(only_missing=False):
         print(json.dumps({'pools': deployments(), 'changed': False}))
         return
     items = objects(site, zones=zones)
-    # The zone runner (ensure) cannot change a namespace outside the zones. install-runner.sh creates this one.
-    if not only_missing or not namespace_present():
+    if not namespace_current(items[0]):
         kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover', '-f', '-', input=json.dumps(items[0]))
     runtime_secret()
     kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover', '-f', '-',

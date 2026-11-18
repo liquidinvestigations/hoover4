@@ -1008,3 +1008,96 @@ def test_the_pools_get_the_gpu_forwarder_of_their_own_name(tmp_path):
 def test_a_site_without_a_zone_runs_no_pool(tmp_path):
     import pools
     assert pools.objects(target('remote.yml', 'zone-a', tmp_path).site, revision=REVISION, tree=REPO, zones=[]) == []
+
+
+# The settings of the processing pools ---------------------------------------------------------------------------------
+
+# A valid changed value of each pool setting. The Tika concurrency equals its parser process count, so both change.
+POOL_VALUES = {
+    'budget.clamav_memory_mib': '4096', 'budget.ocr_pdf_slots': '2', 'budget.tesseract_cpus': '3', 'budget.tika_cpus': '3',
+    'main_services.clamav_concurrency': '6', 'main_services.clamav_enabled': 'false', 'main_services.clamav_mem_limit': '5G',
+    'main_services.clamav_update_signatures': 'false', 'main_services.ocr_pdf_concurrency': '2',
+    'main_services.ocr_pdf_enabled': 'false', 'main_services.ocr_pdf_mem_limit': '9000M',
+    'main_services.ocr_pdf_queue_depth': '4', 'main_services.regex_scanner_mem_limit': '5G',
+    'main_services.regex_scanner_queue_depth': '40', 'main_services.regex_scanner_threads': '12',
+    'main_services.tesseract_cpu_concurrency': '3', 'main_services.tesseract_cpu_cpus': '3',
+    'main_services.tesseract_cpu_enabled': 'false', 'main_services.tesseract_cpu_mem_limit': '8G',
+    'main_services.tesseract_threads_per_page': '2', 'main_services.tika_concurrency': '3',
+    'main_services.tika_mem_limit': '8G', 'main_services.tika_parse_heap': '512m', 'main_services.tika_parse_processes': '3',
+}
+TIKA_PAIR = ('main_services.tika_concurrency', 'main_services.tika_parse_processes')
+
+
+def pool_change(key):
+    return {k: POOL_VALUES[k] for k in TIKA_PAIR} if key in TIKA_PAIR else {key: POOL_VALUES[key]}
+
+
+def site_values(t, pools, own=None):
+    S = operator_settings()
+    return S.installation_values(t.hoover.name, {'pools': pools, f'hoover:{t.hoover.name}': own or {}}, pooled=True)
+
+
+def rendered(t, values):
+    t = manifests.Target(site=t.site, hoover=t.hoover, values=values, revision=REVISION, nfs=NFS, tree=t.tree,
+                         enabled=t.enabled, local_ca=t.local_ca)
+    return {(i['kind'], i['metadata']['name']): json.dumps(i, sort_keys=True) for i in manifests.objects(t)}
+
+
+def pools_rendered(t, pools):
+    import pools as pools_module
+    values = operator_settings().installation_values('pools', {'pools': pools}, pooled=True)
+    return {(i['kind'], i['metadata']['name']): json.dumps(i, sort_keys=True)
+            for i in pools_module.objects(t.site, revision=REVISION, tree=REPO, values=values)}
+
+
+def test_every_pool_setting_changes_a_pool_and_only_the_client_keys_change_a_site_installation(tmp_path):
+    S = operator_settings()
+    assert set(POOL_VALUES) == set(S.POOLED)
+    t = target('remote.yml', 'zone-a', tmp_path)
+    base_zone, base_pools = rendered(t, site_values(t, {})), pools_rendered(t, {})
+    for key in S.POOLED:
+        change = pool_change(key)
+        assert pools_rendered(t, change) != base_pools, key
+        zone_changed = rendered(t, site_values(t, change)) != base_zone
+        if key in ('budget.tesseract_cpus', 'main_services.tesseract_cpu_concurrency'):
+            # They reach the workers only when ocr_pdf_concurrency is empty (deploy.py ocr_pdf_slots()).
+            empty = {'main_services.ocr_pdf_concurrency': ''}
+            zone_changed = rendered(t, site_values(t, {**empty, **change})) != rendered(t, site_values(t, empty))
+        assert zone_changed == (key in S.POOL_CLIENT_KEYS), key
+
+
+def test_a_saved_pool_setting_of_a_site_installation_changes_nothing(tmp_path):
+    t = target('remote.yml', 'zone-a', tmp_path)
+    own = {'budget.clamav_memory_mib': '4096', 'main_services.clamav_concurrency': '6'}
+    assert rendered(t, site_values(t, {}, own)) == rendered(t, site_values(t, {}))
+
+
+def test_a_changed_tika_configuration_restarts_the_tika_pool(tmp_path):
+    t = target('remote.yml', 'zone-a', tmp_path)
+    before, after = pools_rendered(t, {}), pools_rendered(t, {'budget.tika_cpus': '3'})
+    assert before[('ConfigMap', 'tika-config')] != after[('ConfigMap', 'tika-config')]
+    annotation = [json.loads(x[('Deployment', 'hoover4-tika')])['spec']['template']['metadata']['annotations']['hoover.dev/config']
+                  for x in (before, after)]
+    assert annotation[0] != annotation[1]
+    # A pool without a configuration file has no annotation, so its template stays as it was.
+    clamav = json.loads(before[('Deployment', 'hoover4-clamav')])['spec']['template']['metadata']
+    assert 'hoover.dev/config' not in clamav['annotations']
+
+
+def test_the_pools_and_the_site_installations_read_the_saved_pool_settings(tmp_path):
+    S = operator_settings()
+    path = write_site(tmp_path, 'remote.yml')
+    site = config.read(path)
+    state = S.State(site.operator_state())
+    state.save(0, {'pools': {'budget.clamav_memory_mib': '4096', 'main_services.clamav_concurrency': '6'},
+                   'hoover:zone-a': {'main_services.clamav_concurrency': '2'}})
+    import pools
+    clamav = get(pools.objects(site, revision=REVISION, tree=REPO), 'Deployment', 'hoover4-clamav')
+    assert containers(clamav)[0]['resources']['limits']['memory'] == '4096Mi'
+    assert env(containers(clamav)[0])['CLAMAV_CONCURRENCY'] == '6'
+    t = manifests.target_from_site(path, 'zone-a', revision=REVISION, nfs=NFS)
+    assert t.values['main_services.clamav_concurrency'] == '6'
+    workers = get(items_of(t), 'Deployment', 'hoover-workers')
+    assert env(containers(workers)[-1])['HOOVER4_CLAMAV_CONCURRENCY'] == '6'
+    # A pinned earlier revision gives the defaults.
+    assert pools.settings_values(site, 0)['budget.clamav_memory_mib'] == '3456'

@@ -77,6 +77,9 @@ After the operation, the page shows its steps and the next saved revision that w
 <a href="img/settings-applied.png"><img src="img/settings-applied.png" alt="A finished Apply operation and a newer saved change that waits for the next Apply" width="100%"></a>
 
 A value that you save during a running operation stays pending for the next Apply.
+Select **Processing pools of the site** in **Applies to** to change ClamAV, Tika, Tesseract, the searchable-PDF builder, the PDF search and the regex scanner for every zone.
+An Apply of these values restarts the changed pools. A concurrency value or a switch also restarts the workers of the zones.
+A zone that keeps its own copies of these services shows them in its own **Hoover installation** settings.
 The setting `gpu.runtime` applies the GPU pool and checks each GPU service with and without the pool key.
 
 ## Stop and start the site

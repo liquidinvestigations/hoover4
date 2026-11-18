@@ -758,13 +758,24 @@ runs no pool. A zone of the local store layout keeps its own copies.
 
 - The Hoover installation of a zone renders no copy of these services. Each Compose name, for example `hoover4-tika`,
   is an ExternalName Service of the pool, so the Hoover services keep their addresses.
-- A pool holds no zone identity and no store credential, and reaches no store. Its settings are the default values of
-  the Hoover settings. A zone override of a setting of a pooled service, for example `budget.tika_cpus`, changes the
-  slots of the workers of that zone and does not change the pool.
+- A pool holds no zone identity and no store credential, and reaches no store.
+- The operator settings have one scope `pools` for the pools of the site (`POOLED` in
+  [platform/operator/settings.py](platform/operator/settings.py)). Examples are `budget.clamav_memory_mib`,
+  `budget.tika_cpus` and the concurrency of each service.
+- The Hoover installations of the store layout `site` read the same values, so their worker slots match the pools.
+  Their own scope does not list these settings.
+- A pool setting that an earlier revision saved in such an installation has no effect. The first step of an Apply
+  names it once in the operation log. The step `stores` of `up` names it in its result. The settings page can remove it.
+- A zone of the local store layout keeps these settings in its own scope.
+- An Apply of a pool setting runs `pools.py apply` in the step `pools`. It restarts only the pods of the changed pools.
+- The workers also read some pool settings (`POOL_CLIENT_KEYS`), for example `main_services.clamav_concurrency`. A
+  change of one of them also renders each installation of the store layout `site` again.
+- A changed Tika configuration changes the annotation `hoover.dev/config` of the Tika pods, so they restart.
 - The searchable-PDF builder holds no object store key. The workers send the source in the request and write the PDF of
   the answer into the collection bucket with their own key (`OCR_PDF_TRANSFER=inline`). Compose keeps the object form.
 - A zone create makes the pools when the site has none, and the delete of the last zone removes them (`pools.py
-  ensure`). A running pool stays as it is, so a zone create, apply or delete changes no pool pod.
+  ensure`). A running pool stays as it is, so a zone create, apply or delete changes no pool pod. `up` applies the saved
+  pool settings in the step `stores`.
 - Network: each pool takes connections on its own ports from the workers, the singletons and the website of the Hoover
   namespaces. The searchable-PDF builder reaches Tesseract. ClamAV reaches the internet for its signature updates. A
   pool reaches no store, no zone namespace and no other pool. With a GPU pool, the searchable-PDF builder reaches
@@ -802,9 +813,10 @@ hoover4:
 | Singletons, operations worker | none | No. They are single writers. |
 | Website | none | No. It keeps the open chat streams and polls of its users in its memory. |
 
-The concurrency settings of the workers (for example `tika_concurrency`) stay operator settings. A larger count gives the
-service more capacity, and these settings decide how much of it the workers use. A pool answers 503 when its queue is
-full, and the worker runs the activity again later.
+On a site with a zone of the store layout `site`, the concurrency settings (for example `tika_concurrency`) belong to
+the scope `pools`. In the local store layout they belong to the installation. They set the slots of each pod of a
+service and the slots of the workers of each zone that call it. A larger `vars.replicas` count gives the service more
+capacity. A pool answers 503 when its queue is full, and the worker runs the activity again later.
 
 ## Share Temporal in a site.
 
@@ -882,6 +894,9 @@ They also hold the openDesk applications and memory limits of each zone, and the
   A failed operation waits for Retry or Abandon. A restarted runner continues a running operation.
   `tools/operator-settings-check.py` drives the page in a browser: an invalid value, a save, Apply, Retry, Abandon and Use default.
   `tools/operator-portal-shots.py` captures a portal page for the manuals at 1400 by 900 pixels, with the host names and addresses replaced.
+- The scope `pools` holds the settings of the processing pools of the site
+  ([Run the processing pools of the site.](#run-the-processing-pools-of-the-site)). It exists when the site has a zone of
+  the store layout `site`.
 - The zone settings `app.<name>` turn openDesk applications and Hoover off and on. An application that is off has zero replicas and keeps its claims.
   The zone memory limits and the cluster CPU policy reach the zone render through [zones/postrender.py](zones/postrender.py).
 - The backup policies are settings: `backup.opendesk.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.

@@ -530,3 +530,92 @@ def test_a_registered_zone_starts_without_a_completed_install(tmp_path, monkeypa
     monkeypatch.setattr(zone, 'kubectl', lambda *args, **kw: '')
     zone.register('zone-b', 'dev')
     assert json.loads(path.read_text())['zones']['zone-b']['bootstrapped'] is False
+
+
+# The settings of the processing pools of the site ----------------------------------------------------------------------
+
+def test_the_pool_settings_are_the_hoover_settings_that_a_pool_reads():
+    assert {'budget.clamav_memory_mib', 'budget.tika_cpus', 'main_services.clamav_concurrency',
+            'main_services.tesseract_cpu_concurrency', 'main_services.ocr_pdf_concurrency',
+            'main_services.regex_scanner_threads', 'main_services.clamav_enabled'} <= set(S.POOLED)
+    assert set(S.POOL_CLIENT_KEYS) <= set(S.POOLED)
+    # The workers alone read these, and the [ai_services] keys stay settings of each installation.
+    assert not {'main_services.pdf_preview_concurrency', 'budget.worker_cpus'} & set(S.POOLED)
+    assert not [k for k in S.POOLED if k.startswith('ai_services.')]
+    assert all(S.REGISTRY[k].scope == 'hoover' for k in S.POOLED)
+    # The scope pools has the same limits and defaults as an installation.
+    assert S.scope_keys('pools') == list(S.POOLED)
+    assert S.effective('pools', {}) == {k: v for k, v in S.effective('hoover:zone-a', {}).items() if k in S.POOLED}
+    assert S.effective('pools', {'budget.tika_cpus': '3'})['main_services.tika_concurrency'] == '3'
+    with pytest.raises(S.SettingsError, match='at least 1024'):
+        S.check_values('pools', {'budget.clamav_memory_mib': '512'})
+    with pytest.raises(S.SettingsError, match='not a setting of the processing pools'):
+        S.check_values('pools', {'budget.worker_cpus': '4'})
+    with pytest.raises(S.SettingsError):
+        S.scope_of('pools:x')
+
+
+def test_an_installation_of_the_site_layout_takes_the_pool_values():
+    overrides = {'hoover:zone-a': {'budget.tika_cpus': '5', 'budget.worker_cpus': '6'},
+                 'pools': {'budget.clamav_memory_mib': '4096', 'budget.tika_cpus': '3'}}
+    site = S.installation_values('zone-a', overrides, pooled=True)
+    assert site['budget.tika_cpus'] == '3' and site['main_services.tika_concurrency'] == '3'
+    assert site['main_services.clamav_mem_limit'] == '4096M' and site['budget.worker_cpus'] == '6'
+    # A zone of the local store layout runs its own copies and keeps its own values.
+    local = S.installation_values('zone-a', overrides, pooled=False)
+    assert local['budget.tika_cpus'] == '5' and local['main_services.clamav_mem_limit'] == '3456M'
+    assert S.ignored_overrides(overrides, ['zone-a', 'zone-b']) == {'hoover:zone-a': ['budget.tika_cpus']}
+
+
+def test_a_pool_setting_applies_the_pools_and_no_installation(state, monkeypatch):
+    A = apply_module()
+    site = remote_site()
+    assert A.scopes(site)[:2] == ['cluster', 'pools'] and A.pooled(site) == ['zone-a']
+    assert 'budget.clamav_memory_mib' not in A.scope_keys(site, 'hoover:zone-a')
+    assert 'budget.clamav_memory_mib' in A.scope_keys(site, 'hoover:zone-c')
+    state.save(0, {'pools': {'budget.clamav_memory_mib': '4096'}})
+    steps, by_scope = A.plan_scopes(state, site)
+    assert steps == ['pools'] and by_scope == {'pools': ['pools']}
+    assert A.services(state, site) == ['hoover4-clamav']
+    commands = []
+    monkeypatch.setattr(A, 'run_command', lambda argv, op, log: commands.append([str(a) for a in argv]))
+    state.start_apply('abc', steps, by_scope)
+    done = state.run(A.executors(site, '/dev/null'))
+    assert done.status == 'succeeded' and done.changed == ['pools']
+    assert [c[1:] for c in commands] == [[str(REPO / 'k3s/hoover/pools.py'), 'apply']]
+    assert A.changes(state, site) == {}
+
+
+def test_a_pool_setting_that_the_workers_read_also_renders_the_site_installations(state):
+    A = apply_module()
+    site = remote_site()
+    state.save(0, {'pools': {'main_services.clamav_concurrency': '6'}})
+    steps, by_scope = A.plan_scopes(state, site)
+    # The pools change first. zone-c keeps its own copies, so it changes nothing.
+    assert steps == ['pools', 'hoover:zone-a'] and by_scope == {'pools': ['pools', 'hoover:zone-a']}
+
+
+def test_a_saved_pool_setting_of_a_site_installation_has_no_effect_and_is_reported_once(state, tmp_path):
+    A = apply_module()
+    site = remote_site()
+    # A revision of an earlier version holds an override of a pool setting in the scope of the installation.
+    state.save(0, {SCOPE: {'budget.clamav_memory_mib': '4096', 'main_services.common_workers': '5'}})
+    assert A.changes(state, site) == {SCOPE: {'main_services.common_workers': ('', '5')}} or \
+        set(A.changes(state, site)[SCOPE]) == {'main_services.common_workers'}
+    log = tmp_path / 'op.log'
+    overrides = state.overrides()
+    A.report_ignored(site, overrides, log)
+    A.report_ignored(site, overrides, log)
+    lines = log.read_text().splitlines()
+    assert len(lines) == 1 and 'hoover:zone-a has budget.clamav_memory_mib.' in lines[0]
+    # A zone of the local store layout keeps the value, so nothing is reported for it.
+    log.unlink()
+    A.report_ignored(site, {'hoover:zone-c': {'budget.clamav_memory_mib': '4096'}}, log)
+    assert not log.exists()
+
+
+def test_a_site_without_a_site_layout_zone_has_no_pool_scope():
+    A = apply_module()
+    site = single_site()
+    assert 'pools' not in A.scopes(site)
+    assert 'budget.clamav_memory_mib' in A.scope_keys(site, 'hoover:zone-a')

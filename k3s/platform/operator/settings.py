@@ -10,7 +10,10 @@ Registry
   cluster and openDesk controls (zone applications, zone memory limits, CPU policy). EXCLUDED names each ini key that
   is not a setting, and why. The default of an ini setting is its value in hoover4.ini.release.
   Scopes: hoover (one value for each Hoover installation of the site file), zone (one value for each zone),
-  cluster (one value). A scope id is `hoover:<name>`, `zone:<zone>` or `cluster`.
+  cluster (one value), pools (one value: the settings of the processing pools of the site, POOLED). A scope id is
+  `hoover:<name>`, `zone:<zone>`, `pools` or `cluster`. An installation of the store layout site takes its pool
+  settings from the scope pools (installation_values()). An installation of the local store layout runs its own copies
+  and keeps them in its scope hoover:<name>.
   Apply modes: restart (the services restart with the new value), reconcile (the set of objects changes),
   expand (a volume grows, never shrinks), fixed (the value cannot change after the first apply), schedule (the
   backup scheduler reads the value, and no service changes).
@@ -363,12 +366,43 @@ def build_registry():
 
 REGISTRY = build_registry()
 
+# The processing pools of a site (../../hoover/pools.py): ClamAV, Tika, Tesseract, the searchable-PDF builder, the PDF
+# search and the regex scanner. A site with a zone of the store layout site runs them once for all such zones.
+POOL_SERVICES = ('hoover4-tika', 'hoover4-tesseract-cpu', 'hoover4-ocr-pdf', 'hoover4-pdf-search',
+                 'hoover4-regex-entity-scanner', 'hoover4-clamav')
+# The Hoover settings of a pooled service that only the workers and the website read.
+POOL_CLIENT_ONLY = ('main_services.ocr_pdf_files_per_batch', 'main_services.pdf_preview_concurrency')
+# The pool settings: the Hoover settings that a pool reads. The [ai_services] keys reach the pools only through the
+# configuration fingerprint, so they stay settings of each installation.
+POOLED = tuple(sorted(k for k, s in REGISTRY.items()
+                      if s.scope == 'hoover' and set(s.services) & set(POOL_SERVICES)
+                      and not k.startswith('ai_services.') and k not in POOL_CLIENT_ONLY))
+# The pool settings that the workers, the singletons or the website of an installation also read, for example the
+# concurrency that sizes the worker slots of a pool. A change of one of them also renders each installation of the store
+# layout site again. The Tesseract keys are in the list because an empty ocr_pdf_concurrency follows them (deploy.py
+# ocr_pdf_slots()). tests/test_render.py checks the list against the render.
+POOL_CLIENT_KEYS = ('budget.ocr_pdf_slots', 'budget.tesseract_cpus', 'budget.tika_cpus', 'main_services.clamav_concurrency',
+                    'main_services.clamav_enabled', 'main_services.ocr_pdf_concurrency', 'main_services.ocr_pdf_enabled',
+                    'main_services.tesseract_cpu_concurrency', 'main_services.tesseract_cpu_enabled',
+                    'main_services.tika_concurrency', 'main_services.tika_parse_processes')
+# The scope id of the pool settings. It has one value for the site, as the scope cluster.
+POOLS = 'pools'
+
 
 def scope_of(scope_id):
     kind = scope_id.split(':', 1)[0]
-    if kind not in ('hoover', 'zone', 'cluster') or (kind != 'cluster') != (':' in scope_id):
-        raise SettingsError(f'{scope_id} is not a scope. Use hoover:<name>, zone:<zone> or cluster.')
+    if kind not in ('hoover', 'zone', 'cluster', POOLS) or (kind not in ('cluster', POOLS)) != (':' in scope_id):
+        raise SettingsError(f'{scope_id} is not a scope. Use hoover:<name>, zone:<zone>, {POOLS} or cluster.')
     return kind
+
+
+def scope_keys(scope_id, pooled=False, registry=REGISTRY):
+    """The keys of a scope. pooled: the Hoover installation uses the pools of the site, so the pool settings belong to
+    the scope pools and not to the installation."""
+    kind = scope_of(scope_id)
+    if kind == POOLS:
+        return [k for k in POOLED if k in registry]
+    return [k for k, s in registry.items() if s.scope == kind and not (pooled and kind == 'hoover' and k in POOLED)]
 
 
 def check_values(scope_id, values, registry=REGISTRY):
@@ -379,7 +413,9 @@ def check_values(scope_id, values, registry=REGISTRY):
         setting = registry.get(key)
         if setting is None:
             problems.append(f'{key} is not a setting.')
-        elif setting.scope != kind:
+        elif kind == POOLS and key not in POOLED:
+            problems.append(f'{key} is not a setting of the processing pools.')
+        elif kind != POOLS and setting.scope != kind:
             problems.append(f'{key} belongs to the {setting.scope} scope, not {scope_id}.')
         elif value is None:
             out[key] = None
@@ -396,6 +432,10 @@ def check_values(scope_id, values, registry=REGISTRY):
 def effective(scope_id, overrides, registry=REGISTRY):
     """The value of every setting of a scope: the override, else the budget suggestion, else the default."""
     kind = scope_of(scope_id)
+    if kind == POOLS:
+        # The pool budget keys suggest the ini values of the pools as they do in an installation.
+        values = effective('hoover:pools', {k: v for k, v in overrides.items() if k in POOLED}, registry)
+        return {k: values[k] for k in scope_keys(POOLS, registry=registry)}
     values = {k: s.default for k, s in registry.items() if s.scope == kind}
     if kind == 'hoover':
         sys.path.insert(0, str(K3S / 'hoover'))
@@ -406,6 +446,28 @@ def effective(scope_id, overrides, registry=REGISTRY):
                 values[f'{section}.{key}'] = value
     values.update(overrides)
     return values
+
+
+def installation_values(name, overrides, pooled, registry=REGISTRY):
+    """The effective Hoover settings of the installation name. overrides holds the saved values of each scope.
+
+    With pooled, the installation uses the pools of the site. Its pool settings then have the values of the scope pools,
+    so its worker slots match the pools. A pool setting saved in hoover:<name> then has no effect (ignored_overrides())."""
+    own = dict(overrides.get(f'hoover:{name}', {}))
+    if pooled:
+        own = {k: v for k, v in own.items() if k not in POOLED}
+        own.update({k: v for k, v in overrides.get(POOLS, {}).items() if k in POOLED})
+    return effective(f'hoover:{name}', own, registry)
+
+
+def ignored_overrides(overrides, pooled_names):
+    """{scope: [keys]} of the saved pool settings of the installations that use the pools. They have no effect."""
+    out = {}
+    for name in pooled_names:
+        keys = sorted(k for k in overrides.get(f'hoover:{name}', {}) if k in POOLED)
+        if keys:
+            out[f'hoover:{name}'] = keys
+    return out
 
 
 def ini_values(values, registry=REGISTRY):

@@ -22,6 +22,8 @@ import oplock  # noqa: E402
 S = apply.operator_settings
 GROUP_TITLES = {'budget': 'Hoover resources', 'switch': 'Switches', 'tuning': 'Tunings', 'volume': 'Volume sizes',
                 'size': 'Memory limits', 'backup': 'Backups'}
+# Each scope of the overview names its settings in keys (apply.scope_keys()). The scope pools holds the settings of the
+# processing pools of the site, and an installation of the store layout site does not list them.
 
 
 class Refused(Exception):
@@ -59,22 +61,27 @@ def state(s):
 
 
 def suggestions(s, nodes):
-    """Hardware suggestions for each Hoover installation, from the allocatable CPU and memory of the largest worker node
-    of the site. A zone has no home node, so the scheduler can put a worker pod on that node."""
+    """Hardware suggestions for each Hoover installation and the processing pools, from the allocatable CPU and memory
+    of the largest worker node of the site. A zone has no home node, so the scheduler can put a worker pod on that node.
+    An installation of the store layout site has no pool setting, so the scope pools gets the Tika and Tesseract
+    suggestions."""
     out = {}
     workers = [nodes[n.name] for n in s.nodes.values() if n.has('worker') and n.name in nodes]
     if not workers:
         return out
     largest = max(workers, key=lambda n: (n['memory_mib'], n['cpus']))
+    cpus, memory_mib = largest['cpus'], largest['memory_mib']
+    processors = {'budget.tika_cpus': str(max(1, cpus // 8)), 'budget.tesseract_cpus': str(max(1, cpus // 8))}
+    pooled = apply.pooled(s)
     for hoover in config.hoovers(s).values():
-        cpus, memory_mib = largest['cpus'], largest['memory_mib']
         out[f'hoover:{hoover.name}'] = {
             'budget.worker_cpus': str(max(2, cpus // 3)),
             'budget.worker_memory_mib': str(max(3072, min(32768, memory_mib // 4 // 512 * 512))),
-            'budget.tika_cpus': str(max(1, cpus // 8)),
-            'budget.tesseract_cpus': str(max(1, cpus // 8)),
+            **({} if hoover.name in pooled else processors),
             'budget.worker_pods': str(max(1, len([n for n in s.nodes.values() if n.has('worker')]))),
         }
+    if pooled:
+        out[S.POOLS] = processors
     return out
 
 
@@ -107,7 +114,9 @@ def overview(nodes):
     scopes = []
     for scope in apply.scopes(s):
         overrides = st.overrides(revision).get(scope, {})
-        scopes.append({'id': scope, 'effective': st.effective(scope, revision),
+        keys = apply.scope_keys(s, scope)
+        scopes.append({'id': scope, 'keys': keys, 'services': {k: apply.key_services(scope, k) for k in keys},
+                       'effective': st.effective(scope, revision),
                        'applied': st.effective(scope, st.applied_revision(scope, applied)),
                        'applied_revision': st.applied_revision(scope, applied), 'overrides': overrides,
                        'suggestions': st.suggestions(scope)})
@@ -137,10 +146,13 @@ def save(actor, body):
     for scope, values in changes.items():
         if scope not in allowed or not isinstance(values, dict):
             raise Refused(f'{scope} is not a scope of this site.')
+        keys = set(apply.scope_keys(s, scope))
         for key, value in values.items():
             setting = S.REGISTRY.get(key)
-            if setting is None or setting.scope != scope.split(':')[0]:
-                problems[f'{scope}/{key}'] = f'{key} is not a setting of this scope.'
+            # A saved pool setting of an installation of the store layout site can only be removed (None).
+            if setting is None or (key not in keys and not (value is None and setting.scope == scope.split(':')[0])):
+                problems[f'{scope}/{key}'] = (f'{key} is a setting of the processing pools. Change it in the processing pools of the site.'
+                                              if key in S.POOLED and scope.startswith('hoover:') else f'{key} is not a setting of this scope.')
                 continue
             if value is not None:
                 try:

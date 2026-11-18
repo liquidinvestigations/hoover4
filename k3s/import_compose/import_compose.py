@@ -334,7 +334,7 @@ def render_target(r, revision, settings_revision=None):
     hoover = r.hoover
     state = operator_settings().State(r.site.operator_state())
     overrides = state.overrides(settings_revision) if (r.site.operator_state() / 'desired.json').exists() else {}
-    values = operator_settings().effective(f'hoover:{hoover.name}', overrides.get(f'hoover:{hoover.name}', {}))
+    values = operator_settings().installation_values(hoover.name, overrides, pooled=hoover.stores == 'site')
     return manifests.Target(site=r.site, hoover=hoover, values=values, revision=revision, enabled=True,
                             local_ca=site_config.local_ca(r.site))
 
