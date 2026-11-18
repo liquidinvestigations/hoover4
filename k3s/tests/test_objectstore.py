@@ -6,6 +6,7 @@ import re
 import sys
 
 import pytest
+import yaml
 
 from conftest import K3S
 
@@ -65,12 +66,25 @@ def test_a_zone_on_garage_renders_its_key_and_host_and_no_seaweedfs(render):
                          'secretKey': {'value': KEY['secret_key']}}
     # The bucket names stay those of openDesk: the key has a local alias for each.
     assert all('bucket' not in s for s in stores.values())
+    # The Notes template of openDesk passes no region to its chart, so a customization file sets it.
+    assert values['customization']['release']['notes'] == [str(zones.out / 'notes-s3-region.yaml')]
 
 
 @pytest.mark.parametrize('entry', [{'stores': 'site'}, {'stores': 'local', 'objectstore': 'garage'}, {}])
 def test_a_zone_before_its_move_or_of_the_layout_local_keeps_seaweedfs(render, entry):
     values = render(entry)
     assert 'seaweedfs' not in values['apps'] and 'objectstores' not in values
+    assert 'notes' not in values['customization']['release']
+
+
+def test_the_notes_region_file_names_the_garage_region(monkeypatch, tmp_path):
+    written = {}
+    monkeypatch.setattr(zones, 'put', lambda path, text: written.update({path.name: text}))
+    monkeypatch.setattr(zones, 'out', tmp_path)
+    monkeypatch.setattr(zones, 'load_secrets', lambda: {'calls': {}})
+    monkeypatch.setattr(zones, 'ZONES', [])
+    zones.main()
+    assert yaml.safe_load(written['notes-s3-region.yaml']) == {'global': {'s3': {'regionName': 'us-east-1'}}}
 
 
 def test_the_ingress_sends_only_the_zone_buckets_to_garage(monkeypatch):

@@ -21,7 +21,8 @@ SECRET = 'hoover-stores'
 NODE_BOUND = 'hoover-node-bound'
 LIMITS = json.loads((common.SOURCE / 'zones' / 'memory-limits.json').read_text())['hoover']
 # The claim of each store, for one zone. The Manticore text claim holds at least the 14.1 GiB of Manticore text data of
-# the 64 GB reference site. The shared stores multiply their size by the zone count (shared.py size()).
+# the 64 GB reference site. The shared stores multiply their size by the zone count (shared.py size()). A Garage claim
+# also holds a share of the openDesk objects of each zone (shared.py OPENDESK_OBJECTS).
 SIZES = {'clickhouse': '20Gi', 'manticore': '16Gi', 'manticore-vectors': '10Gi', 'garage': '20Gi'}
 # The memory request of each store: the current request plus 0.33 times the distance to the largest working set (anon
 # memory) of the 64 GB reference site, rounded up to 64 MiB.

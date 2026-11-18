@@ -84,9 +84,10 @@ def test_garage_shards_one_copy_over_separate_nodes_and_serves_from_every_pod():
     assert anti['topologyKey'] == 'kubernetes.io/hostname' and anti['labelSelector'] == {'matchLabels': {'hoover.dev/store': 'garage'}}
     nodes = spec['affinity']['nodeAffinity']['requiredDuringSchedulingIgnoredDuringExecution']['nodeSelectorTerms'][0]
     assert nodes['matchExpressions'][0]['values'] == ['server-a', 'worker-b']
-    # Both nodes have the tier hdd, the first preferred tier of Garage. The claim grows with the zone count.
+    # Both nodes have the tier hdd, the first preferred tier of Garage. The claim grows with the zone count, and each of
+    # the two pods holds half of the 30 GiB of openDesk objects of each zone: (20 + 15) x 3.
     claim = garage['spec']['volumeClaimTemplates'][0]['spec']
-    assert claim['storageClassName'] == 'hdd-block' and claim['resources']['requests']['storage'] == '60Gi'
+    assert claim['storageClassName'] == 'hdd-block' and claim['resources']['requests']['storage'] == '105Gi'
     toml = by(items, 'ConfigMap', 'garage-config')['data']['garage.toml']
     assert 'replication_factor = 1' in toml
     assert f'"{"a" * 64}@garage-0.garage-peers.hoover-stores.svc.cluster.local:3901"' in toml
@@ -99,8 +100,8 @@ def test_garage_shards_one_copy_over_separate_nodes_and_serves_from_every_pod():
     assert clickhouse['spec']['volumeClaimTemplates'][0]['spec']['resources']['requests']['storage'] == '60Gi'
     one = shared.objects(site, dict(plan, garage=1), 0, {})
     assert by(one, 'StatefulSet', 'garage')['spec']['replicas'] == 1
-    # A site without a zone still sizes the stores for one zone.
-    assert by(one, 'StatefulSet', 'garage')['spec']['volumeClaimTemplates'][0]['spec']['resources']['requests']['storage'] == '20Gi'
+    # A site without a zone still sizes the stores for one zone. One Garage pod holds all openDesk objects: 20 + 30.
+    assert by(one, 'StatefulSet', 'garage')['spec']['volumeClaimTemplates'][0]['spec']['resources']['requests']['storage'] == '50Gi'
     assert 'bootstrap_peers = []' in by(one, 'ConfigMap', 'garage-config')['data']['garage.toml']
 
 
@@ -157,9 +158,29 @@ def test_only_the_operations_user_backs_up_and_reads_its_own_backup_rows():
 
 
 def test_the_store_size_grows_with_the_site_zones():
-    assert shared.size('clickhouse', 0) == '20Gi' and shared.size('garage', 4) == '80Gi'
+    assert shared.size('clickhouse', 0) == '20Gi' and shared.size('clickhouse', 4) == '80Gi'
+    # Each Garage pod also holds its share of the openDesk objects of each zone: the SeaweedFS volume size of a zone
+    # times the replication factor, divided by the Garage pod count. Three pods and two zones: (20 + 30 / 3) x 2.
+    assert shared.OPENDESK_OBJECTS == shared.postrender.STORES['deployment/seaweedfs-all-in-one']['size'] == '30Gi'
+    assert shared.GARAGE_REPLICATION == 1
+    assert shared.size('garage', 2, 3) == '60Gi' and shared.size('garage', 4, 3) == '120Gi'
+    assert shared.size('garage', 1, 2) == '35Gi' and shared.size('garage', 0, 1) == '50Gi'
+    with pytest.raises(ValueError):
+        shared.size('garage', 2)
     data = {'zones': {'zone-a': {'stores': 'site'}, 'zone-b': {}, 'zone-c': {'stores': 'local'}, 'zone-d': {'stores': 'site'}}}
     assert shared.site_zones(data) == ['zone-a', 'zone-d']
+
+
+def test_grow_sizes_the_garage_claims_for_the_garage_pods_of_the_plan(monkeypatch):
+    site = remote('{nodes: [server-a, worker-b], garage: {nodes: 2}}')
+    monkeypatch.setattr(shared, 'site', lambda: site)
+    monkeypatch.setattr(shared, 'site_zones', lambda data=None: ['zone-a', 'zone-b'])
+    monkeypatch.setattr(shared.common, 'kubectl', lambda *a, **k: '{"spec": {}}')
+    grown = []
+    monkeypatch.setattr(shared.hoover, 'grow_claims', lambda ns, current, wanted: grown.append(wanted))
+    shared.grow()
+    # clickhouse, garage, manticore, manticore-vectors, then the Temporal stores. Garage: (20 + 30 / 2) x 2.
+    assert grown[:4] == ['40Gi', '70Gi', '32Gi', '20Gi']
 
 
 def test_the_site_runs_one_manticore_for_text_and_one_for_vectors_with_read_only_listeners():

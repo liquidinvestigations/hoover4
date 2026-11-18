@@ -32,7 +32,9 @@ records the nodes. Each store pod has the PriorityClass hoover-node-bound.
   the cluster forms again after the pods restart with new addresses. A new node gets a role in the layout, and Garage
   moves a part of the data to it. apply refuses fewer nodes than at the last apply.
 Each store pod runs in Kata on a TopoLVM block volume (hoover.py statefulset()). The claim of a store holds the size of
-one zone (hoover.SIZES) times the number of site zones, at least one. apply and grow make the claims larger when a
+one zone (hoover.SIZES) times the number of site zones, at least one. A Garage pod also holds its share of the openDesk
+objects of each site zone (../../zones/objectstore.py): the openDesk object storage of one zone (OPENDESK_OBJECTS)
+times the replication factor, divided by the Garage pod count (size()). apply and grow make the claims larger when a
 zone is added. A claim never becomes smaller. A store pod sees a grown claim at its next start. The memory limits and requests are those of one zone store
 (memory-limits.json and hoover.REQUESTS), the R6 minimums. The CPU request of each store workload is its measured
 value (part site of ../../zones/cpu-requests.json, hoover.site_cpu()). Each zone user of ClickHouse has the profile of its zone,
@@ -68,6 +70,7 @@ import base64, hashlib, json, math, re, secrets, subprocess, sys, time
 from pathlib import Path
 import common, creds, garage_client, hoover, podspec, service_users, temporal
 import config  # noqa: E402  (common puts the k3s folder on the path)
+import postrender  # noqa: E402
 import zonestate  # noqa: E402
 
 NS = 'hoover-stores'
@@ -91,6 +94,11 @@ FILES_SCRIPT = (Path(__file__).resolve().parent / 'manticore_file_service.py').r
 # The schema proxies of the zones, the only clients of the file service (../manifests.py SCHEMA_PROXY).
 SCHEMA_PROXY_LABEL = {'app.kubernetes.io/name': 'manticore-schema'}
 GARAGE_CONFIG = (common.LAB / 'config' / 'garage' / 'garage.toml').read_text()
+# The copies of each object in Garage.
+GARAGE_REPLICATION = 1
+# The openDesk object storage of one zone: the size of the SeaweedFS volume that a zone had before its objects moved to
+# Garage (../../zones/postrender.py STORES).
+OPENDESK_OBJECTS = postrender.STORES['deployment/seaweedfs-all-in-one']['size']
 
 
 def site():
@@ -106,9 +114,19 @@ def site_zones(data=None):
     return [z for z, e in data['zones'].items() if e.get('stores') == 'site']
 
 
-def size(store, zones):
-    """The claim of a store: the size of one zone times the zone count, at least one zone."""
-    return f'{math.ceil(hoover.gibibytes(hoover.SIZES[store]) * max(1, zones))}Gi'
+def size(store, zones, garage_nodes=None):
+    """The claim of a store: the size of one zone times the zone count, at least one zone.
+
+    A Garage pod also holds its share of the openDesk objects of each zone. Garage keeps GARAGE_REPLICATION copies of
+    each object. The layout gives each of the garage_nodes pods an equal part. The claim of a Garage pod is therefore
+    (SIZES['garage'] + OPENDESK_OBJECTS x GARAGE_REPLICATION / garage_nodes) x zones, rounded up to a GiB.
+    """
+    gib = hoover.gibibytes(hoover.SIZES[store])
+    if store == 'garage':
+        if not garage_nodes:
+            raise ValueError('the Garage claim needs the Garage pod count')
+        gib += hoover.gibibytes(OPENDESK_OBJECTS) * GARAGE_REPLICATION / garage_nodes
+    return f'{math.ceil(gib * max(1, zones))}Gi'
 
 
 def tier(s, nodes, store, count=1):
@@ -139,7 +157,7 @@ def configmap(name, files):
 def garage_toml(peers):
     """The Garage configuration: one copy of each object, and the peer names of the recorded node ids."""
     names = [f'"{node_id}@{pod}.{PEERS}.{NS}.svc.cluster.local:3901"' for pod, node_id in sorted(peers.items())]
-    return (GARAGE_CONFIG.replace('REPLICATION_FACTOR', '1')
+    return (GARAGE_CONFIG.replace('REPLICATION_FACTOR', str(GARAGE_REPLICATION))
             .replace('BOOTSTRAP_PEERS', '[' + ', '.join(names) + ']'))
 
 
@@ -177,7 +195,7 @@ def garage(s, plan, zones, peers, placed=None):
     name, nodes = tier(s, plan['nodes'], 'garage', plan['garage'])
     nodes = (placed or {}).get('garage', nodes)
     statefulset = hoover.statefulset('garage', 'garage', NS, container, ['/garage', 'server'], '/var/lib/garage',
-                                     name, size('garage', zones), replicas=plan['garage'],
+                                     name, size('garage', zones, plan['garage']), replicas=plan['garage'],
                                      service_name=PEERS, affinity=affinity(nodes, 'garage', True),
                                      extra_volumes=[{'name': 'config', 'configMap': {'name': 'garage-config'}}])
     # The S3 client of the operator tools (garage_client.py), which empties and copies the zone buckets.
@@ -505,11 +523,11 @@ def apply():
     hoover.apply(items[1:], keep_replicas=False)
     for store in ('clickhouse', *MANTICORE, 'garage'):
         wait_current(store)
-    ids = join_garage(plan, size('garage', zones))
+    ids = join_garage(plan, size('garage', zones, plan['garage']))
     if ids != peers:
         hoover.apply([o for o in garage(s, plan, zones, ids, placed) if o['kind'] == 'ConfigMap'])
     temporal.apply(s, plan, zones, placed)
-    record = {'nodes': list(plan['nodes']), 'placement': placed, 'garage_replication_factor': 1, 'garage_nodes': ids,
+    record = {'nodes': list(plan['nodes']), 'placement': placed, 'garage_replication_factor': GARAGE_REPLICATION, 'garage_nodes': ids,
               'cassandra_nodes': plan['cassandra'], 'opensearch_nodes': plan['opensearch'], 'temporal_pods': plan['temporal'],
               'temporal_history_shards': (before or {}).get('temporal_history_shards', plan['history_shards'])}
     common.apply(configmap(STATE, {'plan': json.dumps(record, sort_keys=True)}))
@@ -520,7 +538,7 @@ def apply():
 def grow():
     """Make the claims of the stores and of the Temporal stores large enough for the zones of the zone state."""
     zones = len(site_zones())
-    sizes = {'clickhouse': size('clickhouse', zones), 'garage': size('garage', zones),
+    sizes = {'clickhouse': size('clickhouse', zones), 'garage': size('garage', zones, config.store_plan(site())['garage']),
              **{store: size(store, zones) for store in MANTICORE},
              **{store: temporal.size(store, zones) for store in temporal.SIZES}}
     for store, wanted in sizes.items():

@@ -8,7 +8,8 @@ the openDesk name for each of them (for example nextcloud), so the applications 
 names its root storage by the bucket name, and a new name would hide its earlier application data. The key cannot
 create a bucket, change a bucket setting, or reach any other bucket. zones.py writes the key into secrets.json and the
 openDesk values of the zone (values()). The values set the region of Garage (REGION), because Garage refuses a
-request signed for another region.
+request signed for another region. The Notes template of openDesk does not pass that value to its chart, so zones.py
+gives Notes the region in a customization file.
 
 The applications reach Garage at the object storage host of the zone, <zone>-objectstorage.<suffix>, through the HTTPS
 frontend. The browser of a user reaches it too, for example when it opens an OpenProject attachment. The Ingress

@@ -154,7 +154,10 @@ def zone_values(zone,data,storage_class,entry=None):
   'customization':{'release':{'opendeskElement':[str(out/'synapse-url-preview.yaml'),str(out/zone/'calls-matrix.yaml')],'jitsi':[str(out/'calls-jitsi.yaml')],
     'ums':[str(out/'two-factor-off.yaml'),str(out/'nats-sync.yaml'),str(out/'nats-probes.yaml')],
     'redis':[str(out/'redis-probes.yaml')],'xwiki':[str(out/'xwiki-group-sync.yaml'),str(out/'xwiki-title.yaml')],
-    'openproject':[str(out/'openproject-title.yaml')],'intercomService':[str(out/zone/'intercom.yaml')]}},
+    'openproject':[str(out/'openproject-title.yaml')],'intercomService':[str(out/zone/'intercom.yaml')],
+    # The openDesk Notes template does not pass objectstores.notes.region to the chart, so Notes signs with an empty
+    # region. Garage refuses that signature (AuthorizationHeaderMalformed), and Notes then cannot read an attachment.
+    **({'notes':[str(out/'notes-s3-region.yaml')]} if garage else {})}},
   # The Nextcloud image adds the Assistant and integration_openai apps. zone.py builds and pushes it.
   'images':{'nextcloud':{'registry':REGISTRY,'repository':'hoover/nextcloud-ai','tag':NEXTCLOUD_IMAGE_TAG}},
   # Calls use the shared coturn, LiveKit and JVB in the namespace calls (../platform/calls/install-calls.py).
@@ -259,6 +262,7 @@ def main():
  put(out/'nats-sync.yaml','# A sync each second limits a host crash to one second of provisioning events.\nnubusProvisioning:\n  nats:\n    config:\n      jetstream:\n        fileStore:\n          sync_interval: 1s\n')
  put(out/'nats-probes.yaml','nubusProvisioning:\n  nats:\n    startupProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 1\n      failureThreshold: 120\n      timeoutSeconds: 5\n    readinessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 2\n      failureThreshold: 3\n      timeoutSeconds: 5\n    livenessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 10\n      failureThreshold: 3\n      timeoutSeconds: 5\n')
  put(out/'redis-probes.yaml','master:\n  readinessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_readiness_local.sh 1"]}\n    initialDelaySeconds: 0\n    periodSeconds: 1\n    failureThreshold: 5\n    timeoutSeconds: 2\n  livenessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_liveness_local.sh 5"]}\n    initialDelaySeconds: 5\n    periodSeconds: 5\n    failureThreshold: 5\n    timeoutSeconds: 6\n')
+ put(out/'notes-s3-region.yaml',yaml.safe_dump({'global':{'s3':{'regionName':objectstore.REGION}}}))
  put(out/'two-factor-off.yaml','# The MVP has no MFA.\nnubusKeycloakBootstrap:\n  bootstrap:\n    twoFactorAuthentication:\n      enabled: false\n')
  for zone in ZONES:
   folder=out/zone;folder.mkdir(exist_ok=True)
