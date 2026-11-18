@@ -201,9 +201,12 @@ def manticore(s, plan, zones, name, placed=None):
     # With authentication on, searchd starts with the users of auth.json in its data folder. A new daemon gets the
     # seed with the user hoover_admin, and ../setup.py adds the users of each zone. searchd writes an auth.json without
     # users when none exists, so that file also gets the seed.
+    # After a power loss, binlog.meta can name binlog files that do not exist, and searchd then refuses to start.
+    # --replay-flags=ignore-open-errors skips a missing file. A damaged binlog file still stops the start.
     start = ('grep -q username /var/lib/manticore/auth.json 2>/dev/null || '
              '{ cp /seed/auth.json /var/lib/manticore/auth.json && chmod 600 /var/lib/manticore/auth.json; }; '
-             'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach')
+             'exec /usr/local/bin/docker-entrypoint.sh searchd -c /etc/manticoresearch/manticore.conf.sh --nodetach '
+             '--replay-flags=ignore-open-errors')
     seed = {'name': 'seed', 'secret': {'secretName': SECRET, 'items': [{'key': 'manticore-seed', 'path': 'auth.json'}]}}
     tier_name, nodes = tier(s, plan['nodes'], name)
     nodes = (placed or {}).get(name, nodes)
