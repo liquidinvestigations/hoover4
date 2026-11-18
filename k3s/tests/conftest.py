@@ -12,7 +12,10 @@ K3S = TESTS.parent
 REPO = K3S.parent
 FIXTURES = TESTS / 'fixtures'
 # ../settings.py needs a site file name. A missing file gives the defaults of an installation without a site file.
-os.environ.setdefault('HOOVER4_SITE', '/nonexistent/site.yml')
+# The tests always use it, and no kubeconfig, because a test that calls a step with its real state folder would change
+# the state of the site that the environment names (a zone delete test removed the secrets of a real zone).
+os.environ['HOOVER4_SITE'] = '/nonexistent/site.yml'
+os.environ.pop('KUBECONFIG', None)
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'hoover'))
 sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
