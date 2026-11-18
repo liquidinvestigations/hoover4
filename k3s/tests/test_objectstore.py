@@ -396,7 +396,7 @@ def test_a_zone_delete_drops_the_kept_volume_with_the_admin_kubeconfig_only(monk
 @pytest.mark.parametrize('moved', [True, False])
 def test_the_element_entry_runs_once_more_after_a_move(monkeypatch, moved):
     calls = []
-    for name in ('register', 'images', 'cluster', 'namespaces', 'databases', 'finish_move', 'hoover'):
+    for name in ('register', 'images', 'cluster', 'namespaces', 'refuse_leftovers', 'databases', 'finish_move', 'hoover'):
         monkeypatch.setattr(zone, name, lambda *a, **kw: None)
     monkeypatch.setattr(zone, 'objects', lambda z: moved)
     monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)

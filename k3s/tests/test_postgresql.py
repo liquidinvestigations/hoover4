@@ -439,3 +439,39 @@ def test_the_server_has_its_measured_cpu_request_and_the_source_of_the_measureme
     annotations = server['spec']['template']['metadata']['annotations']
     assert annotations['hoover.dev/cpu-baseline'] == '54m'
     assert annotations['hoover.dev/cpu-request-basis'].endswith('move of two zones and browser checks of 2026-11-18')
+
+
+def test_a_new_zone_is_refused_for_leftovers_before_its_opendesk_objects_exist(monkeypatch):
+    import objectstore
+    state = {'zones': {'zone-a': {'stores': 'site'}}}
+    monkeypatch.setattr(zone.zonestate, 'load', lambda: json.loads(json.dumps(state)))
+    monkeypatch.setattr(zone, 'step', lambda *a, **kw: None)
+    monkeypatch.setattr(objectstore, 'seaweedfs_installed', lambda z: False)
+    monkeypatch.setattr(postgresql, 'zone_server_installed', lambda z: False)
+    left = {'garage': ['key zone-a-opendesk'], 'postgresql': ['database zone_a_nextcloud']}
+    monkeypatch.setattr(shared, 'leftovers', lambda z, opendesk=True: left if opendesk else {})
+    with pytest.raises(SystemExit) as error:
+        zone.refuse_leftovers('zone-a')
+    assert 'key zone-a-opendesk' in str(error.value) and 'shared.py remove zone-a' in str(error.value)
+    # The zone created its openDesk objects (objectstore = garage) and is not checked again.
+    monkeypatch.setattr(shared, 'leftovers', lambda z, opendesk=True: pytest.fail('a zone with its objects is not checked'))
+    for entry in ({'stores': 'site', 'objectstore': 'garage'}, {'stores': 'site', 'postgresql': 'site'}, {'stores': 'local'}):
+        state['zones']['zone-a'] = entry
+        zone.refuse_leftovers('zone-a')
+    # A zone of an earlier version has its SeaweedFS and is not new.
+    state['zones']['zone-a'] = {'stores': 'site'}
+    monkeypatch.setattr(objectstore, 'seaweedfs_installed', lambda z: True)
+    zone.refuse_leftovers('zone-a')
+
+
+def test_the_hoover_check_leaves_out_the_opendesk_objects_of_the_zone(monkeypatch):
+    monkeypatch.setattr(shared, 'clickhouse_tenant', lambda z: [])
+    monkeypatch.setattr(shared, 'manticore_tenant', lambda z, store: ([], []))
+    monkeypatch.setattr(shared, 'garage_tenant', lambda z: ({'GK1': 'zone-a-opendesk', 'GK2': 'zone-a'},
+                                                             {'zone-a-opendesk-nextcloud': '', 'zone-a-system': 'GK2'}))
+    monkeypatch.setattr(shared.temporal, 'namespace_present', lambda z: False)
+    monkeypatch.setattr(shared, 'opendesk_ingress', lambda z: 'opendesk-zone-a')
+    monkeypatch.setattr(shared, 'postgresql_tenant', lambda z: [('database', 'zone_a_nextcloud')])
+    assert shared.leftovers('zone-a', opendesk=False) == {'garage': ['key zone-a', 'bucket zone-a-system']}
+    assert set(shared.leftovers('zone-a')) == {'garage', 'ingress', 'postgresql'}
+    assert len(shared.leftovers('zone-a')['garage']) == 4

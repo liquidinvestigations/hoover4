@@ -808,6 +808,26 @@ def pools():
         run(sys.executable, SOURCE / 'hoover' / 'pools.py', 'ensure')
 
 
+def refuse_leftovers(zone):
+    """Stop a new zone of the store layout site while the shared stores hold an object of an earlier zone with the same
+    id (../hoover/stores/shared.py leftovers()). objects() and databases() create the openDesk objects of the zone
+    before the Hoover step, and ../hoover/setup.py checks only the other objects. A new zone has neither objectstore
+    nor postgresql in its state entry, and no SeaweedFS or PostgreSQL of an earlier version in its namespace."""
+    import objectstore
+    import postgresql
+    entry = zonestate.load()['zones'][zone]
+    if entry.get('stores') != 'site' or entry.get('objectstore') or entry.get('postgresql'):
+        return
+    if objectstore.seaweedfs_installed(zone) or postgresql.zone_server_installed(zone):
+        return
+    sys.path.insert(0, str(STORES))
+    import shared
+    left = shared.leftovers(zone)
+    if left:
+        raise SystemExit(shared.leftover_message(zone, left))
+    step('leftovers', zone=zone, result='none')
+
+
 def objects(zone):
     """Create the openDesk buckets and key of a zone of the store layout site in Garage, and apply the Ingress of its
     object storage host. A zone of an earlier version moves its objects from SeaweedFS first (objectstore.py move()),
@@ -896,6 +916,7 @@ def apply(zone, home=None, values=None, full=False):
     cluster()
     namespaces(zone)
     step('namespaces', zone=zone)
+    refuse_leftovers(zone)
     moved = objects(zone)
     databases(zone)
     inputs = opendesk_inputs(zone)

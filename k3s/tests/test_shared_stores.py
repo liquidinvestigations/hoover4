@@ -528,7 +528,7 @@ def test_a_new_zone_with_objects_of_an_earlier_zone_is_refused_with_their_names(
     monkeypatch.setattr(setup, 'secret', lambda ns, name: secrets.get((ns, name), {}))
     left = {'garage': ['bucket zone-a-system', 'key zone-a'], 'clickhouse': ['database zone_a_Processing'],
             'temporal': ['namespace zone-a']}
-    monkeypatch.setattr(setup.shared, 'leftovers', lambda zone: left)
+    monkeypatch.setattr(setup.shared, 'leftovers', lambda zone, opendesk=True: left if not opendesk else pytest.fail('setup.py checks without openDesk'))
     with pytest.raises(SystemExit) as error:
         setup.refuse_leftovers()
     message = str(error.value)
@@ -540,7 +540,7 @@ def test_a_new_zone_with_objects_of_an_earlier_zone_is_refused_with_their_names(
     setup.refuse_leftovers()
     # An existing zone has its key in garage-tenants, and its own objects are no reason to stop.
     secrets[('zone-a', 'garage-tenants')] = {'tenants.json': json.dumps({'zone-a': {'access_key': 'GKa'}})}
-    monkeypatch.setattr(setup.shared, 'leftovers', lambda zone: pytest.fail('an existing zone is not checked'))
+    monkeypatch.setattr(setup.shared, 'leftovers', lambda zone, opendesk=True: pytest.fail('an existing zone is not checked'))
     setup.refuse_leftovers()
 
 

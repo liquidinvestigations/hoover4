@@ -31,7 +31,8 @@ The zone credentials are in the Secrets hoover-stores and garage-tenants of the 
   which follows the signing key of the site. Other existing values stay unchanged. The GPU token follows gpu.token, and
   the shared secrets of the MCP servers and of the browser fetch are random.
 A new zone (no key of the zone in garage-tenants) is refused while the shared stores hold buckets, keys, users,
-databases, tables or a Temporal namespace of an earlier zone with the same id (stores/shared.py leftovers()).
+databases, tables or a Temporal namespace of an earlier zone with the same id (stores/shared.py leftovers()). The
+openDesk objects are not part of this check: ../zones/zone.py checks them before it creates them for a new zone.
 The script reads credentials from cluster Secrets and never prints a credential.
 An installation with the local store layout (manifests.py) needs only the Secrets: setup.py <zone> local-secrets.
 Usage: setup.py <zone> [garage] [clickhouse] [secrets] [temporal] [manticore]    Without steps it runs all of them.
@@ -100,17 +101,15 @@ def refuse_leftovers():
 
     A zone without its key in garage-tenants is a new tenant. The zone delete of an earlier version could leave
     buckets, keys, users, tables or a Temporal namespace of a deleted zone. A new zone with the same id would get
-    access to them. The message names them and the step that removes them.
+    access to them. The message names them and the step that removes them. zone.py creates the openDesk objects of
+    the zone before this step, so they are not part of this check.
     """
     tenants = json.loads(secret(STORES, 'garage-tenants').get('tenants.json', '{}'))
     if ZONE in tenants:
         return
-    left = shared.leftovers(ZONE)
+    left = shared.leftovers(ZONE, opendesk=False)
     if left:
-        names = '. '.join(f'{store}: {", ".join(items[:20])}' + (f' and {len(items) - 20} more' if len(items) > 20 else '')
-                          for store, items in left.items())
-        raise SystemExit(f'the shared stores hold objects of an earlier zone {ZONE}. {names}. Remove them with '
-                         f'k3s/hoover/stores/shared.py remove {ZONE} in the operator image, then apply the zone again.')
+        raise SystemExit(shared.leftover_message(ZONE, left))
 
 
 def temporal(runtime):

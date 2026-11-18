@@ -7,7 +7,8 @@ tenant of a zone: in ClickHouse a settings profile, the zone user and a user for
 databases of the zone prefix only, in Garage the zone key, the service keys and the zone buckets, and in both Manticore
 daemons the users <prefix>_read, <prefix>_write and <prefix>_schema with rights on the tables <prefix>_* only
 (service_users.py MANTICORE_GRANTS). remove takes them away when the zone goes, with the Manticore tables of the zone.
-../setup.py refuses a new zone while the stores hold an object of an earlier zone with the same id (leftovers()).
+../setup.py and ../../zones/zone.py refuse a new zone while the stores hold an object of an earlier zone with the same
+id (leftovers()).
 A Manticore user with the right schema can create a distributed table that names a table of another user, and then
 read that table. Only the schema proxy of the zone (../manifests.py) holds the schema user, and the proxy has no
 operation for a distributed table. The Temporal of the site, with
@@ -715,8 +716,10 @@ def opendesk_ingress(zone):
     return name if common.kubectl('-n', NS, 'get', 'ingress', name, '--ignore-not-found', '-o', 'name').strip() else None
 
 
-def leftovers(zone):
-    """{store: [object names]} of a zone that the shared stores still hold. Each store must answer, else SystemExit."""
+def leftovers(zone, opendesk=True):
+    """{store: [object names]} of a zone that the shared stores still hold. Each store must answer, else SystemExit.
+    With opendesk=False the result has no openDesk part (the key <zone>-opendesk, its buckets, the Ingress and the
+    PostgreSQL databases), because ../../zones/zone.py creates them before the Hoover step of a new zone."""
     found = {'clickhouse': [f'{kind} {name}' for kind, name in clickhouse_tenant(zone)], 'manticore': []}
     for store in MANTICORE:
         tables, users = manticore_tenant(zone, store)
@@ -726,7 +729,19 @@ def leftovers(zone):
     found['temporal'] = [f'namespace {zone}'] if temporal.namespace_present(zone) else []
     found['ingress'] = [f'ingress opendesk-{zone}'] if opendesk_ingress(zone) else []
     found['postgresql'] = [f'{kind} {name}' for kind, name in postgresql_tenant(zone)]
+    if not opendesk:
+        found['garage'] = [name for name in found['garage']
+                           if name != f'key {zone}-opendesk' and not name.startswith(f'bucket {zone}-opendesk-')]
+        found['ingress'] = found['postgresql'] = []
     return {store: names for store, names in found.items() if names}
+
+
+def leftover_message(zone, left):
+    """The refusal of a new zone for the leftovers {store: [object names]} of an earlier zone with the same id."""
+    names = '. '.join(f'{store}: {", ".join(items[:20])}' + (f' and {len(items) - 20} more' if len(items) > 20 else '')
+                      for store, items in left.items())
+    return (f'the shared stores hold objects of an earlier zone {zone}. {names}. Remove them with '
+            f'k3s/hoover/stores/shared.py remove {zone} in the operator image, then apply the zone again.')
 
 
 def remove_clickhouse(zone):
