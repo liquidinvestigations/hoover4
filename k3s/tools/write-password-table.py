@@ -38,13 +38,13 @@ for zone in ZONES:
   (f'{zone} Collabora admin console',f'http://collabora.{zone}.svc:9980/browser/dist/admin/admin.html',value(zone,'collabora-admin-password','username'),value(zone,'collabora-admin-password','password'),'In the cluster only. openDesk blocks this page at the ingress.'),
   (f'{zone} LDAP admin',f'ldap://ums-ldap-server-primary.{zone}.svc:389','cn=admin,dc=swp-ldap,dc=internal',value(zone,'ums-ldap-server-admin','password'),'In the cluster only.'),
   (f'{zone} openDesk master password','-','-',(settings.PRIVATE/f'zones/{zone}/master-password').read_text().strip(),'It generates the zone secrets. It is not a login.')]
- # The stores of a zone run in the zone namespace with their own credentials. The openDesk chart gives the
- # PostgreSQL superuser password to the container environment.
+ # A zone of an earlier version runs PostgreSQL in its namespace. The openDesk chart gives the superuser password to
+ # the container environment. A zone on the shared PostgreSQL has no such server (../zones/postgresql.py).
  try:
   env=json.loads(subprocess.check_output(['kubectl','-n',zone,'get','statefulset','postgresql','-o','json'],text=True,stderr=subprocess.DEVNULL))['spec']['template']['spec']['containers'][0]['env']
   pg=next((e.get('value','(from a Secret)') for e in env if e['name']=='POSTGRES_PASSWORD'),'(missing)')
- except subprocess.CalledProcessError:pg='(missing StatefulSet)'
- rows.append((f'{zone} PostgreSQL superuser',f'postgresql.{zone}.svc:5432','postgres',pg,'In the cluster only.'))
+  rows.append((f'{zone} PostgreSQL superuser',f'postgresql.{zone}.svc:5432','postgres',pg,'In the cluster only.'))
+ except subprocess.CalledProcessError:pass
  stores=secret(zone,'hoover-stores')
  if stores:
   rows+=[(f'{zone} Hoover ClickHouse zone user','clickhouse.hoover-stores.svc:8123',zone.replace('-','_'),stores.get('clickhouse-zone','(missing)'),'In the cluster only. It reaches only the databases of the zone.'),
@@ -54,7 +54,8 @@ shared=secret('hoover-stores','hoover-stores')
 if shared:
  rows+=[('Shared ClickHouse admin','clickhouse.hoover-stores.svc:8123','hoover_admin',shared.get('clickhouse-admin','(missing)'),'In the cluster only. It reaches every zone.'),
   ('Shared Manticore admin','manticore.hoover-stores.svc:9306 and manticore-vectors','hoover_admin',shared.get('manticore-admin','(missing)'),'In the cluster only. It reaches every zone.'),
-  ('Shared Garage admin API','garage-0.garage-peers.hoover-stores.svc:3903','-',shared.get('garage-admin-token','(missing)'),'A bearer token. Only the store pods reach the port.')]
+  ('Shared Garage admin API','garage-0.garage-peers.hoover-stores.svc:3903','-',shared.get('garage-admin-token','(missing)'),'A bearer token. Only the store pods reach the port.'),
+  ('Shared PostgreSQL admin','postgresql.hoover-stores.svc:5432','postgres',shared.get('postgresql-admin','(missing)'),'In the cluster only. Only the openDesk namespaces of the site zones reach the port.')]
 USERS_BEGIN='<!-- fixture users begin: write-password-table.py writes this block -->';USERS_END='<!-- fixture users end -->'
 fixture=json.loads((root.parent/'zones/zone-users.json').read_text())['users']
 password_file=settings.ZONE_USER_PASSWORDS

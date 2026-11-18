@@ -26,11 +26,18 @@ LIMITS = json.loads((common.SOURCE / 'zones' / 'memory-limits.json').read_text()
 SIZES = {'clickhouse': '20Gi', 'manticore': '16Gi', 'manticore-vectors': '10Gi', 'garage': '20Gi'}
 # The memory request of each store: the current request plus 0.33 times the distance to the largest working set (anon
 # memory) of the 64 GB reference site, rounded up to 64 MiB.
-REQUESTS = {'clickhouse': '640Mi', 'manticore': '448Mi', 'manticore-vectors': '704Mi', 'garage': '128Mi'}
+REQUESTS = {'clickhouse': '640Mi', 'manticore': '448Mi', 'manticore-vectors': '704Mi', 'garage': '128Mi',
+            # The openDesk PostgreSQL of the site (shared.py postgresql()): the working set of two zone servers in their
+            # Kata guests (zone part of ../../zones/memory-requests.json, peak minus outsidePeak). The site part of the
+            # file holds the measured request of the shared server.
+            'postgresql': '768Mi'}
 IMAGES = {
     'clickhouse': 'docker.io/clickhouse/clickhouse-server:25.8',
     'manticore': 'docker.io/manticoresearch/manticore:29.9.0',
     'garage': 'docker.io/dxflrs/garage:v2.3.0',
+    # The PostgreSQL image of the openDesk release (images.yaml.gotmpl, postgresql), so the databases of a zone move
+    # without a change of the major version.
+    'postgresql': 'docker.io/library/postgres:15.13-alpine3.20@sha256:f7de0e2497b9a3b027d41377606f94bb0140a034ed303f6de690aa77637bfbc9',
 }
 # Manticore reads searchd settings from searchd_* variables. Small caches, no pseudo sharding, memory-mapped attributes.
 MANTICORE_ENV = {'TELEMETRY': '0', 'searchd_auth': '1', 'searchd_rt_flush_period': '900', 'searchd_qcache_max_bytes': '0',

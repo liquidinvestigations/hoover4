@@ -1,5 +1,5 @@
 {
- "about": "CPU requests of the zone and site workloads from telemetry, by <kind>/<name>: part zone (openDesk, postrender.py), part hoover (../hoover/manifests.py) and part site (the shared stores of hoover-stores, ../hoover/stores). startPeak is the highest CPU rate (1 min) of a pod from its start until Ready plus 120 s, in a measured zone create (zone, hoover) or store start (site). baseline is the median CPU rate of the pods in an idle period after it. request = baseline + factor x (startPeak - baseline), rounded up to 10m. cpu_requests.py measure rebuilds the table from Prometheus. measured (zone, hoover) and measuredSite (site) name the measured period and the idle period in Unix seconds. The pod gets the request and the annotations of its basis. A workload without an entry keeps the request of cpu-policy.json or of its installer. Each pod request also gets the runtime cost of its containers and exec probes (runtimeOverhead).",
+ "about": "CPU requests of the zone and site workloads from telemetry, by <kind>/<name>: part zone (openDesk, postrender.py), part hoover (../hoover/manifests.py) and part site (the shared stores of hoover-stores, ../hoover/stores). startPeak is the highest CPU rate (1 min) of a pod from its start until Ready plus 120 s, in a measured zone create (zone, hoover) or store start (site). baseline is the median CPU rate of the pods in an idle period after it. request = baseline + factor x (startPeak - baseline), rounded up to 10m. cpu_requests.py measure rebuilds the table from Prometheus. measured (zone, hoover) and measuredSite (site) name the measured period and the idle period in Unix seconds. An entry with source comes from another measurement, which source names. The pod gets the request and the annotations of its basis. A workload without an entry keeps the request of cpu-policy.json or of its installer. Each pod request also gets the runtime cost of its containers and exec probes (runtimeOverhead).",
  "factor": 0.2,
  "measured": {
   "source": "zone create of 2026-11-14",
@@ -392,6 +392,12 @@
    "startPeak": "35m",
    "baseline": "30m",
    "request": "40m"
+  },
+  "statefulset/postgresql": {
+   "startPeak": "464m",
+   "baseline": "54m",
+   "request": "140m",
+   "source": "move of two zones and browser checks of 2026-11-18"
   },
   "statefulset/temporal-cassandra": {
    "startPeak": "1132m",

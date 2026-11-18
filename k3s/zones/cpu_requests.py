@@ -182,7 +182,9 @@ def apply(doc, key, part, main=None, table=None):
         return False
     annotations[START_PEAK] = entry['startPeak']
     annotations[BASELINE] = entry['baseline']
-    annotations[BASIS] = f"baseline + {table['factor']} x (start peak - baseline), {table.get(RECORDS[part], {}).get('source', 'measured')}"
+    # An entry that a later measurement added names its own source.
+    source = entry.get('source') or table.get(RECORDS[part], {}).get('source', 'measured')
+    annotations[BASIS] = f"baseline + {table['factor']} x (start peak - baseline), {source}"
     if costed:
         annotations[RUNTIME] = quantity(extra)
     if not containers:

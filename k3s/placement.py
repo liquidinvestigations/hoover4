@@ -71,7 +71,8 @@ MIN_FACTOR = 0.05
 SEPARATE = (('hoover-stores/statefulset/clickhouse', 'hoover-stores/statefulset/manticore'),
             ('hoover-stores/statefulset/clickhouse', 'hoover-stores/statefulset/manticore-vectors'))
 # The stores of hoover-stores whose pods keep a local volume. The stores step pins them to their planned nodes.
-VOLUME_STORES = ('clickhouse', 'manticore', 'manticore-vectors', 'garage', 'temporal-cassandra', 'temporal-opensearch')
+VOLUME_STORES = ('clickhouse', 'manticore', 'manticore-vectors', 'garage', 'temporal-cassandra', 'temporal-opensearch',
+                 'postgresql')
 STORES_NAMESPACE = 'hoover-stores'
 # The processing pools of the site (hoover/pools.py). The stores step applies them, so they belong to that step.
 POOLS_NAMESPACE = 'hoover-pools'

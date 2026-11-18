@@ -26,7 +26,11 @@ The steps of apply, in order:
      from SeaweedFS to Garage first (objectstore.py move()), when the kubeconfig may keep the SeaweedFS volume. The
      waves of step 5 then switch the applications, and Helm removes SeaweedFS. The entries of objectstore.py
      SECOND_PASS run once more after a move. After step 5 the applications that hold the key restart once
-     (objectstore.py finish()).
+     (objectstore.py finish()). Such a zone also gets its openDesk databases and users on the shared PostgreSQL of the
+     site (postgresql.py ensure()), and its openDesk namespace gets the label that admits it there. A zone of an
+     earlier version moves its databases from its own PostgreSQL first (postgresql.py move()), with the same rule for
+     the kubeconfig. The waves switch the applications and Helm removes the zone PostgreSQL. After step 5 the
+     applications that name the shared server restart once (postgresql.py finish()).
   5. helmfile installs openDesk wave by wave (OPENDESK_WAVES), with postrender.py as the Helm post-renderer. The
      entries of one wave (the sub-helmfiles of the release) run at the same time, each in its own helmfile process with
      its own Helm configuration. They share the chart cache <state folder>/opendesk-charts (CHART_CACHE): helmfile
@@ -61,11 +65,12 @@ The steps of apply, in order:
 Delete removes the tenant of a zone with stores = site from the shared stores first: its ClickHouse databases, users
 and profile, its Garage buckets and keys, its Manticore tables and users, and its Temporal namespace
 (../hoover/stores/shared.py remove), with the openDesk buckets, the openDesk key and the Ingress of the object storage
-host. The S3 client in a Garage pod empties the buckets, so a disabled zone is removed the same way. When a part fails or an object stays, the delete stops with the message of shared.py, and the
+host, and its databases and users on the shared PostgreSQL. The S3 client in a Garage pod empties the buckets, so a
+disabled zone is removed the same way. When a part fails or an object stays, the delete stops with the message of shared.py, and the
 zone keeps its namespaces and its zone state entry. Repair the store and delete the zone again.
 The two namespaces of the zone are then deleted at the same time. The delete of the last zone with stores = site
-removes the processing pools. A SeaweedFS volume that a move kept is deleted with the admin kubeconfig. The zone
-runner prints its name instead.
+removes the processing pools. A SeaweedFS or PostgreSQL volume that a move kept is deleted with the admin kubeconfig.
+The zone runner prints its name instead.
   8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
@@ -102,6 +107,8 @@ STORES = SOURCE / 'hoover' / 'stores'
 CHART_CACHE = PRIVATE / 'opendesk-charts'
 # The record of the last complete openDesk run of a zone, in the zone folder of the cluster copy of the zone secrets.
 RECORD_NAME = 'opendesk-applied.json'
+# The label of the openDesk namespace of a zone on the shared PostgreSQL (../hoover/stores/shared.py POSTGRESQL_CLIENT_LABEL).
+POSTGRESQL_CLIENT_LABEL = 'hoover.dev/opendesk-postgresql'
 # The files of the checkout, relative to k3s/, that the openDesk waves and the application state steps read: this
 # installer, the post-renderer with the modules and tables that it reads, the pinned tool versions, and the scripts of
 # step 6. test_zones.py checks that the list names every local module of the post-renderer.
@@ -112,7 +119,7 @@ INPUT_SOURCES = (
     'platform/operator/settings.py', 'cluster/runtimeclasses.yaml', 'driver/artifacts.json',
     'zones/zone-login-no-mfa.sh', 'zones/zone-users.py', 'zones/zone-users.json', 'zones/udm.py',
     'zones/zone-patches.py', 'zones/zone-ai.py', 'zones/nextcloud-ai.py', 'zones/xwiki-ai.sh',
-    'zones/xwiki-admin-script.py', 'zones/zone-jobs.py',
+    'zones/xwiki-admin-script.py', 'zones/zone-jobs.py', 'zones/postgresql.py',
 )
 # The environment variables of a helmfile process that the openDesk helmfiles read (env and requiredEnv).
 INPUT_ENV = ('DOMAIN', 'MAIL_DOMAIN', 'MATRIX_DOMAIN', 'MASTER_PASSWORD', 'DEBUG_ENABLED')
@@ -182,8 +189,10 @@ def register(zone, home=None, values=None):
         if entry['stores'] == 'site':
             entry['temporal'] = 'site'
             entry['manticore'] = 'site'
-            # The openDesk objects of the zone are in the shared Garage (objectstore.py).
+            # The openDesk objects of the zone are in the shared Garage (objectstore.py), and its databases on the
+            # shared PostgreSQL (postgresql.py).
             entry['objectstore'] = 'garage'
+            entry['postgresql'] = 'site'
         problems = config.zone_problems(zone, entry, settings.SITE)
         if problems:
             raise SystemExit('; '.join(problems))
@@ -230,10 +239,13 @@ def cluster():
 
 
 def namespaces(zone):
+    site = zonestate.load()['zones'][zone].get('stores') == 'site'
     for name in (zone, f'hoover-{zone}'):
-        # The label hoover.dev/zone selects the namespaces of the zone pod policy (manifests/zone-pods.yaml).
-        apply_manifest(json.dumps({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': name, 'labels': {
-            'hoover.dev/zone': 'true'}}}))
+        # The label hoover.dev/zone selects the namespaces of the zone pod policy (manifests/zone-pods.yaml). The label
+        # of the openDesk namespace of a zone of the store layout site admits its applications on the shared PostgreSQL
+        # (../hoover/stores/shared.py network()).
+        labels = {'hoover.dev/zone': 'true', **({POSTGRESQL_CLIENT_LABEL: 'true'} if site and name == zone else {})}
+        apply_manifest(json.dumps({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': name, 'labels': labels}}))
         # The zone runner of the operator portal has its rights in a zone namespace through this binding
         # (../platform/operator/runner-rights.yaml).
         apply_manifest(json.dumps({'apiVersion': 'rbac.authorization.k8s.io/v1', 'kind': 'RoleBinding',
@@ -410,8 +422,9 @@ def opendesk_inputs(zone):
         if path.is_file():
             out[f'state/{path.relative_to(PRIVATE).as_posix()}'] = sha(path.read_bytes())
     import objectstore
+    import postgresql
     for path in sorted((folder / zone).iterdir()):
-        if path.is_file() and path.name not in (RECORD_NAME, objectstore.RECORD) and not path.name.startswith('.'):
+        if path.is_file() and path.name not in (RECORD_NAME, objectstore.RECORD, postgresql.RECORD) and not path.name.startswith('.'):
             out[f'state/zones/{zone}/{path.name}'] = sha(path.read_bytes())
     entry = dict(zonestate.load()['zones'][zone])
     entry.pop('bootstrapped', None)
@@ -609,10 +622,7 @@ def nextcloud_config(zone, wait=True):
     domain = nextcloud_domain(zone)
     if not kubectl('-n', zone, 'get', 'deployment', 'opendesk-nextcloud-aio', '--ignore-not-found', '-o', 'name').strip():
         return False
-    stored = subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec', 'postgresql-0', '-c',
-                             'postgresql', '--', 'psql', '-U', 'postgres', '-d', 'nextcloud', '-At', '-c',
-                             "SELECT value FROM fs_config_store WHERE name = 'config_php'"],
-                            capture_output=True, text=True).stdout
+    stored = nextcloud_stored(zone)
     if domain not in stored:
         return False
     domains = subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec',
@@ -626,6 +636,21 @@ def nextcloud_config(zone, wait=True):
         kubectl('-n', zone, 'rollout', 'status', 'deployment/opendesk-nextcloud-aio', '--timeout=600s')
     step('nextcloud-restart', zone=zone, reason='the configuration of the management Job was missing')
     return True
+
+
+def nextcloud_stored(zone):
+    """The configuration that the management Job stored in the Nextcloud database, or '' when it cannot be read. A zone
+    on the shared PostgreSQL reads it there (postgresql.py), a zone of an earlier version from its own PostgreSQL."""
+    import postgresql
+    query = "SELECT value FROM fs_config_store WHERE name = 'config_php';\n"
+    if postgresql.on_shared(zonestate.load()['zones'].get(zone, {})):
+        try:
+            return postgresql.server_sql(query, postgresql.database_name(zone, 'nextcloud'), check=False)
+        except SystemExit:
+            return ''
+    return subprocess.run(['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec', 'postgresql-0', '-c',
+                           'postgresql', '--', 'psql', '-U', 'postgres', '-d', 'nextcloud', '-At', '-c', query],
+                          capture_output=True, text=True).stdout
 
 
 def first_bootstrap(zone):
@@ -816,6 +841,41 @@ def objects(zone):
     return True
 
 
+def databases(zone):
+    """Create the openDesk databases and users of a zone of the store layout site on the shared PostgreSQL. A zone of an
+    earlier version moves its databases from its own PostgreSQL first (postgresql.py move()), gets postgresql = site and
+    new values. Return True after a move.
+
+    The zone runner cannot keep the volume of the zone PostgreSQL (Retain). With its kubeconfig the zone stays on its
+    own PostgreSQL, and the next deploy-k3s up moves it."""
+    import postgresql
+    entry = zonestate.load()['zones'][zone]
+    if entry.get('stores') != 'site':
+        return False
+    passwords = json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['postgresql']
+    if postgresql.on_shared(entry):
+        changed = postgresql.ensure(zone, passwords)
+        if changed:
+            step('postgresql', zone=zone, changed=changed)
+        return False
+    if postgresql.zone_server_installed(zone):
+        if not postgresql.can_keep_volumes():
+            step('postgresql', zone=zone, result='the zone stays on its own PostgreSQL until deploy-k3s up moves its databases')
+            return False
+        postgresql.move(zone, passwords)
+    else:
+        changed = postgresql.ensure(zone, passwords)
+        if changed:
+            step('postgresql', zone=zone, changed=changed)
+    state = zonestate.load()
+    state['zones'][zone]['postgresql'] = 'site'
+    zonestate.save(state)
+    clusterstate.checkpoint(PRIVATE)
+    step('zone-state', zone=zone, change='postgresql site')
+    run(sys.executable, HERE / 'zones.py', quiet=True)
+    return True
+
+
 def apply(zone, home=None, values=None, full=False):
     register(zone, home, values)
     run(sys.executable, HERE / 'zones.py', quiet=True)
@@ -837,6 +897,7 @@ def apply(zone, home=None, values=None, full=False):
     namespaces(zone)
     step('namespaces', zone=zone)
     moved = objects(zone)
+    databases(zone)
     inputs = opendesk_inputs(zone)
     reasons = ['--full'] if full else opendesk_changes(zone, inputs, helm_revisions(zone))
     if reasons:
@@ -868,10 +929,15 @@ def apply(zone, home=None, values=None, full=False):
 
 
 def finish_move(zone):
-    """Restart the applications that hold the object store key after the waves of a move (objectstore.py finish())."""
+    """Restart the applications that hold the object store key, or that name the shared PostgreSQL, after the waves of a
+    move (objectstore.py finish(), postgresql.py finish())."""
     import objectstore
-    if objectstore.on_garage(zonestate.load()['zones'][zone]) and objectstore.read_record(zone):
+    import postgresql
+    entry = zonestate.load()['zones'][zone]
+    if objectstore.on_garage(entry) and objectstore.read_record(zone):
         objectstore.finish(zone, json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['objectstore_key'])
+    if postgresql.on_shared(entry) and postgresql.read_record(zone):
+        postgresql.finish(zone)
 
 
 def delete(zone):
@@ -891,13 +957,18 @@ def delete(zone):
         if kubectl('get', 'namespace', namespace, '--ignore-not-found', '-o', 'name').strip():
             raise SystemExit(f'the namespace {namespace} still exists 900 s after its delete')
         step('namespace-deleted', zone=zone, namespace=namespace)
-    # The SeaweedFS volume that a move kept goes with the zone. The zone runner cannot read or delete a volume.
+    # The SeaweedFS and PostgreSQL volumes that a move kept go with the zone. The zone runner cannot read or delete a
+    # volume.
     import objectstore
+    import postgresql
     if objectstore.can_keep_volumes():
         objectstore.drop_kept(zone)
-    elif objectstore.read_record(zone):
-        step('objectstore', zone=zone, result=f'a SeaweedFS volume with the label {objectstore.LABEL}={zone} can stay. '
-             'Delete it with the admin kubeconfig.')
+        objectstore.drop_kept(zone, label=postgresql.LABEL, record=postgresql.RECORD)
+    else:
+        for module in (objectstore, postgresql):
+            if module.read_record(zone):
+                step('kept-volume', zone=zone, result=f'a volume with the label {module.LABEL}={zone} can stay. '
+                     'Delete it with the admin kubeconfig.')
     del state['zones'][zone]
     zonestate.save(state)
     # The last zone of the store layout site takes the processing pools with it.

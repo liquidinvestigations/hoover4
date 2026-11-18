@@ -23,7 +23,11 @@ zone=sys.argv[1]
 def kubectl(*args,data=None):return subprocess.run(['kubectl','-n',zone,*args],input=data,text=True,check=True,capture_output=True).stdout
 def get(ref):return json.loads(kubectl('get',ref,'-o','json'))
 def psql(database,query):
- # The zone PostgreSQL runs in the zone namespace. The superuser connects through the local socket.
+ # A zone of the store layout site keeps its databases on the shared PostgreSQL (postgresql.py). A zone of an earlier
+ # version runs PostgreSQL in its namespace. The superuser connects through the local socket of the server pod.
+ import postgresql,zonestate
+ key=next(k for k,(name,_) in postgresql.DATABASES.items() if name==database)
+ if postgresql.on_shared(zonestate.load()['zones'].get(zone,{})):return postgresql.server_sql(query.rstrip(';')+';\n',postgresql.database_name(zone,key))
  return subprocess.run(['kubectl','-n',zone,'exec','statefulset/postgresql','-c','postgresql','--','psql','-U','postgres','-d',database,'-Atc',query],
   check=True,capture_output=True,text=True).stdout
 def xwiki_admin():

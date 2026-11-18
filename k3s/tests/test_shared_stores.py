@@ -179,8 +179,9 @@ def test_grow_sizes_the_garage_claims_for_the_garage_pods_of_the_plan(monkeypatc
     grown = []
     monkeypatch.setattr(shared.hoover, 'grow_claims', lambda ns, current, wanted: grown.append(wanted))
     shared.grow()
-    # clickhouse, garage, manticore, manticore-vectors, then the Temporal stores. Garage: (20 + 30 / 2) x 2.
-    assert grown[:4] == ['40Gi', '70Gi', '32Gi', '20Gi']
+    # clickhouse, garage, postgresql, manticore, manticore-vectors, then the Temporal stores. Garage: (20 + 30 / 2) x 2.
+    # PostgreSQL: the 20 GiB volume of a zone PostgreSQL x 2.
+    assert grown[:5] == ['40Gi', '70Gi', '40Gi', '32Gi', '20Gi']
 
 
 def test_the_site_runs_one_manticore_for_text_and_one_for_vectors_with_read_only_listeners():
@@ -386,6 +387,7 @@ def remove_parts(monkeypatch, failing=(), left=None):
     monkeypatch.setattr(shared, 'remove_garage', part('garage'))
     monkeypatch.setattr(temporal, 'remove', part('temporal'))
     monkeypatch.setattr(shared, 'remove_ingress', part('ingress'))
+    monkeypatch.setattr(shared, 'remove_postgresql', part('postgresql'))
     monkeypatch.setattr(shared, 'leftovers', lambda zone: calls.append('check') or (left or {}))
     monkeypatch.setattr(shared.common, 'log', lambda *a, **k: None)
     return calls
@@ -394,7 +396,8 @@ def remove_parts(monkeypatch, failing=(), left=None):
 def test_a_complete_removal_ends_after_the_check(monkeypatch):
     calls = remove_parts(monkeypatch)
     shared.remove('zone-a')
-    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'ingress', 'check']
+    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'ingress', 'postgresql',
+                     'check']
 
 
 def test_a_failed_part_or_a_remaining_object_ends_the_removal_with_an_error(monkeypatch):
@@ -402,7 +405,8 @@ def test_a_failed_part_or_a_remaining_object_ends_the_removal_with_an_error(monk
     calls = remove_parts(monkeypatch, failing=('manticore',), left={'manticore': ['manticore table zone_a_demo_vfs']})
     with pytest.raises(SystemExit) as error:
         shared.remove('zone-a')
-    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'ingress', 'check']
+    assert calls == ['clickhouse', 'manticore:manticore', 'manticore:manticore-vectors', 'garage', 'temporal', 'ingress', 'postgresql',
+                     'check']
     message = str(error.value)
     assert 'manticore: manticore has no ready pod' in message and 'zone_a_demo_vfs' in message
     assert 'run shared.py remove zone-a again' in message

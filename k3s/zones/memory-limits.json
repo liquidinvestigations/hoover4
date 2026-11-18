@@ -31,6 +31,7 @@
   "clickhouse": "7424Mi",
   "manticore": "8704Mi",
   "manticore-vectors": "6016Mi",
-  "garage": "1536Mi"
+  "garage": "1536Mi",
+  "postgresql": "2Gi"
  }
 }

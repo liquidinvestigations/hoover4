@@ -266,8 +266,8 @@ def can_keep_volumes():
     return kubectl('auth', 'can-i', 'patch', 'persistentvolumes', check=False).strip() == 'yes'
 
 
-def record_path(zone):
-    return settings.PRIVATE / 'zones' / zone / RECORD
+def record_path(zone, name=RECORD):
+    return settings.PRIVATE / 'zones' / zone / name
 
 
 def write_record(zone, record):
@@ -277,9 +277,9 @@ def write_record(zone, record):
     path.write_text(json.dumps(record, indent=1, sort_keys=True) + '\n')
 
 
-def read_record(zone):
+def read_record(zone, name=RECORD):
     try:
-        return json.loads(record_path(zone).read_text())
+        return json.loads(record_path(zone, name).read_text())
     except (OSError, ValueError):
         return None
 
@@ -371,7 +371,7 @@ def config_names(spec):
 
 
 def consumers(workloads, secrets_, configmaps, key_id):
-    """The workloads (kind/name) whose pod template, Secrets or ConfigMaps hold the key id, and Nextcloud."""
+    """The workloads (kind/name) whose pod template, Secrets or ConfigMaps hold the text key_id, and Nextcloud."""
     def holds(data, decode):
         return any(key_id in (base64.b64decode(v).decode(errors='replace') if decode else v) for v in (data or {}).values())
     holding = {('secret', s['metadata']['name']) for s in secrets_ if holds(s.get('data'), True)}
@@ -389,6 +389,12 @@ def consumers(workloads, secrets_, configmaps, key_id):
 
 def restart_consumers(zone, key, since):
     """Restart each consumer of the key whose pods started before since (Unix seconds), and wait for it (step 6)."""
+    return restart_holders(zone, key['access_key'], since)
+
+
+def restart_holders(zone, text, since):
+    """Restart each workload of consumers() for the text whose pods started before since (Unix seconds), and wait for
+    it. Return the restarted workloads. ../zones/postgresql.py uses it with the host of the shared PostgreSQL."""
     import datetime
     workloads = [dict(i, kind=kind) for kind, plural in (('Deployment', 'deployments'), ('StatefulSet', 'statefulsets'))
                  for i in json.loads(kubectl('-n', zone, 'get', plural, '-o', 'json'))['items'] if i['spec'].get('replicas', 1)]
@@ -401,7 +407,7 @@ def restart_consumers(zone, key, since):
         return datetime.datetime.fromisoformat(text.replace('Z', '+00:00')).timestamp() if text else since
 
     restarted = []
-    for name in consumers(workloads, secrets_, configmaps, key['access_key']):
+    for name in consumers(workloads, secrets_, configmaps, text):
         kind, workload = name.split('/')
         item = next(i for i in workloads if i['kind'].lower() == kind and i['metadata']['name'] == workload)
         selector = item['spec']['selector'].get('matchLabels') or {}
@@ -429,8 +435,8 @@ def finish(zone, key):
     return record
 
 
-def kept_volumes(zone):
-    return [line.split('/', 1)[1] for line in kubectl('get', 'pv', '-l', f'{LABEL}={zone}', '-o', 'name').split()]
+def kept_volumes(zone, label=LABEL):
+    return [line.split('/', 1)[1] for line in kubectl('get', 'pv', '-l', f'{label}={zone}', '-o', 'name').split()]
 
 
 def drop_seaweedfs(zone):
@@ -444,34 +450,34 @@ def drop_seaweedfs(zone):
     return drop_kept(zone)
 
 
-def drop_kept(zone, timeout=300):
+def drop_kept(zone, timeout=300, label=LABEL, record=RECORD):
     """Delete the SeaweedFS volumes with the label LABEL of a zone, with their logical volumes on the node. Return their
-    names.
+    names. ../zones/postgresql.py drops the kept volume of a zone PostgreSQL with its own label and record.
 
     A kept volume has the reclaim policy Retain, and a delete of such a PersistentVolume leaves its logical volume on
     the node. The policy changes to Delete first: the provisioner then deletes the logical volume and the
     PersistentVolume. A LogicalVolume of TopoLVM whose PersistentVolume is already gone (an earlier version deleted
     only the PersistentVolume) is deleted directly, and TopoLVM removes its logical volume."""
-    names = kept_volumes(zone)
+    names = kept_volumes(zone, label)
     for name in names:
         kubectl('patch', 'pv', name, '--type=merge', '-p', json.dumps({'spec': {'persistentVolumeReclaimPolicy': 'Delete'}}))
     deadline = time.monotonic() + timeout
-    while names and set(kept_volumes(zone)) & set(names):
+    while names and set(kept_volumes(zone, label)) & set(names):
         if time.monotonic() >= deadline:
-            raise SystemExit(f'the SeaweedFS volumes of {zone} were not deleted in {timeout} s: {", ".join(names)}')
+            raise SystemExit(f'the kept volumes of {zone} were not deleted in {timeout} s: {", ".join(names)}')
         time.sleep(3)
-    orphans = orphan_logical_volumes(zone)
+    orphans = orphan_logical_volumes(zone, record)
     for name in orphans:
         kubectl('delete', 'logicalvolumes.topolvm.io', name, '--wait=true', f'--timeout={timeout}s')
-    step('objectstore-seaweedfs-dropped', zone=zone, volumes=names, orphan_logical_volumes=orphans)
+    step('kept-volumes-dropped', zone=zone, label=label, volumes=names, orphan_logical_volumes=orphans)
     return names + orphans
 
 
-def orphan_logical_volumes(zone):
-    """The TopoLVM LogicalVolumes of SeaweedFS claims of a zone without a PersistentVolume. TopoLVM names a
+def orphan_logical_volumes(zone, record=RECORD):
+    """The TopoLVM LogicalVolumes of the kept claims of a zone without a PersistentVolume. TopoLVM names a
     LogicalVolume like its PersistentVolume and records the claim in the annotations of the PersistentVolume only, so
     the claim name comes from the earlier record of the move."""
-    volumes = (read_record(zone) or {}).get('volumes') or []
+    volumes = (read_record(zone, record) or {}).get('volumes') or []
     present = set(kubectl('get', 'pv', '-o', 'name').replace('persistentvolume/', '').split())
     logical = set(kubectl('get', 'logicalvolumes.topolvm.io', '-o', 'name', check=False).replace(
         'logicalvolume.topolvm.io/', '').split())

@@ -19,8 +19,10 @@ destination stops with a message.
 
 Jobs:
 - zone:<zone>: the complete zone, which is its openDesk namespace and its complete Hoover installation. The copy holds
-  a SQL dump of each database server of the zone namespace, the objects of the openDesk object store (the openDesk
-  buckets of the zone in the shared Garage, or the SeaweedFS of a zone that has not moved), a tar file of each other claim, and the Secrets and ConfigMaps of the namespace. The folder hoover/<installation>/ holds the same
+  a SQL dump of each database server of the zone namespace, or of each openDesk database of the zone on the shared
+  PostgreSQL of the site (postgresql/<database>.sql, ../../zones/postgresql.py), the objects of the openDesk object
+  store (the openDesk buckets of the zone in the shared Garage, or the SeaweedFS of a zone that has not moved), a tar
+  file of each other claim, and the Secrets and ConfigMaps of the namespace. The folder hoover/<installation>/ holds the same
   parts of the Hoover namespace: its claims, Secrets and ConfigMaps. The tar files keep the owners and modes. A file
   system claim is read with tar in a running container that mounts it (mount_source()), so the copy needs no free
   memory on its node. A claim that no running container with tar mounts is read through a short pod in its namespace.
@@ -814,6 +816,8 @@ def reopen(record):
 # was written before the row, so the later object copy holds it, unless the application deleted it in between. The
 # copy then holds objects without a row, which the applications ignore.
 #   postgresql.sql, mariadb.sql  pg_dumpall and mariadb-dump --single-transaction: each database at one moment.
+#   postgresql/<database>.sql   pg_dump of each openDesk database of a zone on the shared PostgreSQL, without owner
+#                                and rights: each database at one moment.
 #   claims/                      a tar file of each claim. A file can change while tar reads it. An LMDB file of
 #                                OpenLDAP is read again until no write committed during its read (lmdb_meta()). A
 #                                Block claim of Redis or NATS holds their append files: both stores read a file with a
@@ -825,7 +829,7 @@ def reopen(record):
 # restore-zone writes every part while the zone is closed, then opens it. Each application starts from the restored
 # parts.
 def online_parts():
-    return ['postgresql.sql', 'mariadb.sql', 'claims/', 'objects/', 'hoover/<name>/claims/', 'hoover/<name>/shared/']
+    return ['postgresql.sql', 'postgresql/', 'mariadb.sql', 'claims/', 'objects/', 'hoover/<name>/claims/', 'hoover/<name>/shared/']
 
 
 class Moments:
@@ -862,14 +866,41 @@ def run_zone(s, zone, partial, key=None):
 # The last line that each dump tool writes. A dump without it ended early, for example after a stream reset of
 # kubectl exec, which can end with status 0.
 DUMP_TRAILERS = {'postgresql.sql': b'-- PostgreSQL database cluster dump complete', 'mariadb.sql': b'-- Dump completed on '}
+# The folder of the dumps of the openDesk databases of a zone on the shared PostgreSQL, and the trailer of pg_dump.
+SHARED_DUMPS = 'postgresql'
+SHARED_DUMP_TRAILER = b'-- PostgreSQL database dump complete'
 
 
 def dump_complete(path):
     """True when the database dump at path ends with the trailer line of its dump tool."""
     path = Path(path)
+    trailer = SHARED_DUMP_TRAILER if path.parent.name == SHARED_DUMPS else DUMP_TRAILERS[path.name]
     with open(path, 'rb') as f:
         f.seek(max(0, path.stat().st_size - 4096))
-        return DUMP_TRAILERS[path.name] in f.read()
+        return trailer in f.read()
+
+
+def shared_databases(zone):
+    """The postgresql module (../../zones/postgresql.py) when the zone keeps its openDesk databases on the shared
+    PostgreSQL, else None."""
+    sys.path.insert(0, str(K3S / 'zones'))
+    import postgresql
+    import zonestate
+    try:
+        entry = zonestate.load()['zones'].get(zone) or {}
+    except zonestate.ZoneStateError:
+        return None
+    return postgresql if postgresql.on_shared(entry) else None
+
+
+def copy_shared_databases(zone, module, target):
+    """Write a pg_dump of each openDesk database of a zone on the shared PostgreSQL into target/<database>.sql. Each
+    dump holds one moment of its database, without owner and rights, so it restores into the database of any zone."""
+    target.mkdir(parents=True, exist_ok=True)
+    pod = module.shared().ready_pod('postgresql')
+    for key, (name, _) in sorted(module.DATABASES.items()):
+        dump_out(module.STORES_NS, [pod, '-c', 'postgresql', '--', 'pg_dump', '-U', 'postgres', '--no-owner', '--no-acl',
+                                    '-d', module.database_name(zone, key)], target / f'{name}.sql')
 
 
 def dump_out(ns, exec_args, target):
@@ -889,7 +920,11 @@ def copy_namespace(ns, partial, moments=None, label=''):
     partial.mkdir(parents=True, exist_ok=True)
     pods = json.loads(kubectl('-n', ns, 'get', 'pods', '-o', 'json'))['items']
     names = {p['metadata']['name'] for p in pods if p['status'].get('phase') == 'Running'}
-    if 'postgresql-0' in names:
+    module = shared_databases(ns)
+    if module:
+        with moments.part(label + SHARED_DUMPS + '/'):
+            copy_shared_databases(ns, module, partial / SHARED_DUMPS)
+    elif 'postgresql-0' in names:
         # --clean lets restore-zone replace the databases of a zone that the installer created.
         with moments.part(label + 'postgresql.sql'):
             dump_out(ns, ['postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists'],
@@ -1531,10 +1566,18 @@ def restore_zone(zone, generation, source_zone=None):
     if (folder / 'postgresql.sql').exists() and b'DROP DATABASE' not in (folder / 'postgresql.sql').read_bytes()[:1 << 20]:
         raise SystemExit('the PostgreSQL dump of this copy has no DROP statements, because an earlier version made it. '
                          'Restore it into a new database server by hand.')
-    for name in DUMP_TRAILERS:
-        if (folder / name).exists() and not dump_complete(folder / name):
-            raise SystemExit(f'the dump {name} of this copy has no end line of its dump tool, so it is incomplete. '
-                             'Restore another copy.')
+    dumps = [folder / name for name in DUMP_TRAILERS] + sorted((folder / SHARED_DUMPS).glob('*.sql'))
+    for path in dumps:
+        if path.exists() and not dump_complete(path):
+            raise SystemExit(f'the dump {path.relative_to(folder)} of this copy has no end line of its dump tool, so it is '
+                             'incomplete. Restore another copy.')
+    module = shared_databases(zone)
+    if module and (folder / 'postgresql.sql').exists():
+        raise SystemExit(f'this copy holds the PostgreSQL of the zone namespace from before the move of {zone} to the shared '
+                         'PostgreSQL. Restore it into the databases of the zone by hand.')
+    if (folder / SHARED_DUMPS).is_dir() and not module:
+        raise SystemExit(f'this copy holds the databases of the shared PostgreSQL, and {zone} runs its own PostgreSQL. Apply '
+                         'the zone with deploy-k3s up first, which moves its databases.')
     parts = zone_parts(s, folder, zone)
 
     def step(name, function):
@@ -1709,6 +1752,8 @@ def restore_databases(folder, zone):
     if (folder / 'postgresql.sql').exists():
         import_dump(zone, ['postgresql-0', '-c', 'postgresql', '--', 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1',
                            '-q', '-d', 'postgres'], folder / 'postgresql.sql', POSTGRES_SKIPPED)
+    if (folder / SHARED_DUMPS).is_dir():
+        restore_shared_databases(folder / SHARED_DUMPS, zone)
     if (folder / 'mariadb.sql').exists():
         import_dump(zone, ['mariadb-0', '--', 'sh', '-c', 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'], folder / 'mariadb.sql')
     for name in ('postgresql-0', 'mariadb-0'):
@@ -1716,6 +1761,37 @@ def restore_databases(folder, zone):
     for name in ('postgresql', 'mariadb'):
         if kubectl('-n', zone, 'get', 'statefulset', name, '--ignore-not-found', '-o', 'name').strip():
             kubectl('-n', zone, 'rollout', 'status', f'statefulset/{name}', '--timeout=600s')
+
+
+def restore_shared_databases(folder, zone):
+    """Replace each openDesk database of a zone on the shared PostgreSQL with its dump in folder. Each database is
+    dropped with its connections and created again empty with its user and rights (../../zones/postgresql.py ensure()).
+    psql imports the dump as the user of the database, so the user owns every object, and stops at the first error."""
+    import podexec
+    import tempfile
+    module = shared_databases(zone)
+    passwords = module.zone_passwords(zone)
+    keys = {name: key for key, (name, _) in module.DATABASES.items()}
+    dumps = sorted(folder.glob('*.sql'))
+    unknown = [p.name for p in dumps if p.stem not in keys]
+    if unknown:
+        raise SystemExit(f'the copy holds the dumps {", ".join(unknown)}, which name no openDesk database. The zone stays closed.')
+    module.drop_databases(zone, [keys[p.stem] for p in dumps])
+    module.ensure(zone, passwords)
+    for path in dumps:
+        key = keys[path.stem]
+        role = f'SET ROLE {module.quote(module.user_name(zone, key))};\n'.encode()
+        with tempfile.TemporaryFile() as errors:
+            code = podexec.run(module.shared_exec(), ['psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-X', '-q', '-d',
+                                                      module.database_name(zone, key)], [role, path], stdout=None, stderr=errors)
+            errors.seek(0)
+            text = errors.read().decode(errors='replace')
+        if code:
+            raise SystemExit(f'the import of {path.name} into {zone} failed with status {code}: '
+                             f'{" ".join(text.strip().splitlines()[-3:])[-500:]}. The zone stays closed.')
+    # The Nextcloud configuration of a copy of another zone names the database and the user of that zone.
+    if 'nextcloud' in [keys[p.stem] for p in dumps]:
+        module.nextcloud_config(zone, passwords)
 
 
 def restart_object_store(ns):

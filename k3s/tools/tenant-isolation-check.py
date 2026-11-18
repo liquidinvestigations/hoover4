@@ -19,6 +19,13 @@ user) and the schema proxy (Manticore schema user). Both zones need the collecti
   writes its own openDesk buckets by their openDesk names. It cannot list, read or write an openDesk bucket of the
   other zone, or list a Hoover bucket of either zone. It cannot create a bucket or delete its own bucket. Its bucket
   list holds only its own openDesk buckets. A zone without the key is reported as absent.
+- PostgreSQL, openDesk users of the zone (../zones/postgresql.py), with psql in the shared PostgreSQL pod over the
+  pod address, which needs the password: the Nextcloud user of the zone connects to its own database. It cannot
+  connect to the database of the other zone, to another database of its own zone or to a database of the server, and it
+  cannot read the catalogs that name the databases, the roles or the sessions, create a database or a role. A wrong
+  password, and the user of the other zone with the password of this zone, are refused. The Synapse user reads
+  pg_database in its own database, because Synapse reads its collation there at its start: the case reports the
+  result without a pass or fail. A pod of the Hoover namespace cannot reach the PostgreSQL port.
 - Manticore, write user: it reads and changes rows of its own tables. It cannot read or change a table of the other
   zone, and it cannot create, alter or drop a table, also not a distributed table that names a table of the other zone.
 - Manticore, read user on the read-only listener 9309 and on 9308: it reads its own tables. It cannot read a table
@@ -481,6 +488,78 @@ def opendesk_cases(zone, other):
     return [tuple(json.loads(line)) for line in r.stdout.splitlines() if line.startswith('[')]
 
 
+# The PostgreSQL cases: each input line is case|expected|user|password|database|statement. Each output line is
+# case, the exit status of psql and its first output, separated by tabs. Argument: the pod address.
+POSTGRESQL_PROBE = r'''
+while IFS='|' read -r case expected user password database statement; do
+  out=$(PGPASSWORD="$password" PGCONNECT_TIMEOUT=10 psql -h "$1" -U "$user" -d "$database" -X -At -c "$statement" 2>&1)
+  code=$?
+  printf '%s\t%s\t%s\n' "$case" "$code" "$(printf '%s' "$out" | tr '\t\n' '  ' | cut -c1-160)"
+done
+'''
+# A pod of the Hoover namespace tries the PostgreSQL port. Output: allowed, or refused and the error.
+POSTGRESQL_REACH = r'''
+import socket
+try:
+    socket.create_connection(('postgresql.hoover-stores.svc.cluster.local', 5432), timeout=5).close()
+    print('allowed')
+except OSError as error:
+    print('refused', type(error).__name__)
+'''
+
+
+def postgresql_cases(zone, other):
+    """[(case, expected, result, detail)] of the openDesk users of zone on the shared PostgreSQL. A zone without its
+    databases there is reported as absent."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'zones'))
+    import podexec
+    import postgresql
+    import zonestate
+    entry = zonestate.load()['zones'].get(zone, {})
+    if not postgresql.on_shared(entry):
+        return [('openDesk databases of the zone on the shared PostgreSQL', 'absent', 'absent', f'{zone} has no value postgresql = site')]
+    data = json.loads((settings.PRIVATE / 'zones' / 'secrets.json').read_text())
+    mine, theirs = data[zone]['postgresql'], data.get(other, {}).get('postgresql') or {}
+    pod = kubectl_json('-n', 'hoover-stores', 'get', 'pods', '-l', 'hoover.dev/store=postgresql')['items'][0]
+    user, own = postgresql.user_name(zone, 'nextcloud'), postgresql.database_name(zone, 'nextcloud')
+    password = mine['nextcloud']
+    rows = [('own database', 'allowed', user, password, own, 'SELECT 1'),
+            ('database of the other zone', 'refused', user, password, postgresql.database_name(other, 'nextcloud'), 'SELECT 1'),
+            ('another database of the own zone', 'refused', user, password, postgresql.database_name(zone, 'keycloak'), 'SELECT 1'),
+            ('server database postgres', 'refused', user, password, 'postgres', 'SELECT 1'),
+            ('server database template1', 'refused', user, password, 'template1', 'SELECT 1')]
+    rows += [(f'read {catalog}', 'refused', user, password, own, f'SELECT count(*) FROM pg_catalog.{catalog}')
+             for catalog in postgresql.HIDDEN]
+    rows += [('create a database', 'refused', user, password, own, 'CREATE DATABASE isolation_probe'),
+             ('create a role', 'refused', user, password, own, 'CREATE ROLE isolation_probe'),
+             ('wrong password', 'refused', user, 'wrong', own, 'SELECT 1')]
+    if theirs:
+        rows.append(('user of the other zone with the password of this zone', 'refused',
+                     postgresql.user_name(other, 'nextcloud'), password, postgresql.database_name(other, 'nextcloud'), 'SELECT 1'))
+    synapse = postgresql.user_name(zone, 'synapse'), mine['synapse'], postgresql.database_name(zone, 'synapse')
+    rows += [('Synapse user reads pg_database in its own database', 'report', *synapse, 'SELECT count(*) FROM pg_catalog.pg_database'),
+             ('Synapse user reads pg_roles', 'refused', *synapse, 'SELECT count(*) FROM pg_catalog.pg_roles'),
+             ('Synapse user connects to the Nextcloud database of its zone', 'refused', synapse[0], synapse[1], own, 'SELECT 1')]
+    text = ''.join('|'.join(r) + '\n' for r in rows)
+    r = podexec.call(K + ['-n', 'hoover-stores', 'exec', '-i', pod['metadata']['name'], '-c', 'postgresql'],
+                     ['sh', '-c', POSTGRESQL_PROBE, 'probe', pod['status']['podIP']], text, timeout=300)
+    if r.returncode:
+        raise SystemExit(f'the PostgreSQL probe failed: {r.stderr.strip()[-600:]}')
+    answers = {line.split('\t')[0]: line.split('\t', 2)[1:] for line in r.stdout.splitlines() if '\t' in line}
+    out = []
+    for case, expected, *_ in rows:
+        code, detail = answers.get(case, ('missing', 'no answer'))
+        refused = any(w in detail for w in ('permission denied', 'password authentication failed', 'not permitted'))
+        result = 'allowed' if code == '0' else 'refused' if refused else 'error'
+        out.append((case, expected, result, detail[:160]))
+    reach = subprocess.run(K + ['-n', f'hoover-{zone}', 'exec', 'deploy/hoover-operations', '--', PYTHON, '-c', POSTGRESQL_REACH],
+                           capture_output=True, text=True, timeout=120)
+    answer = (reach.stdout.strip().splitlines() or [reach.stderr.strip()[-160:]])[-1]
+    out.append(('a pod of the Hoover namespace reaches the PostgreSQL port', 'refused',
+                'allowed' if answer == 'allowed' else 'refused' if answer.startswith('refused') else 'error', answer[:160]))
+    return out
+
+
 def kubectl_json(*args):
     r = subprocess.run(K + list(args) + ['-o', 'json'], capture_output=True, text=True, timeout=120)
     if r.returncode:
@@ -552,6 +631,11 @@ def main():
         passed = None if expected == 'absent' else result == expected
         ok &= passed is not False
         print(json.dumps({'zone': zone, 'other': other, 'from': f'{zone}-opendesk', 'store': 'garage', 'case': case,
+                          'expected': expected, 'result': result, 'detail': detail, 'pass': passed}), flush=True)
+    for case, expected, result, detail in postgresql_cases(zone, other):
+        passed = None if expected in ('absent', 'report') else result == expected
+        ok &= passed is not False
+        print(json.dumps({'zone': zone, 'other': other, 'from': f'{zone} openDesk users', 'store': 'postgresql', 'case': case,
                           'expected': expected, 'result': result, 'detail': detail, 'pass': passed}), flush=True)
     for deployment, python, probe in (('hoover-operations', PYTHON, PROBE), ('hoover4-mcp-collections', 'python3', READ_PROBE),
                                       ('manticore-schema', PYTHON, SCHEMA_PROBE), ('hoover-website', 'bash', WEB_PROBE)):

@@ -99,6 +99,21 @@ GARAGE_REPLICATION = 1
 # The openDesk object storage of one zone: the size of the SeaweedFS volume that a zone had before its objects moved to
 # Garage (../../zones/postrender.py STORES).
 OPENDESK_OBJECTS = postrender.STORES['deployment/seaweedfs-all-in-one']['size']
+# The openDesk databases of one zone: the size of the PostgreSQL volume of a zone before its databases moved to the
+# shared server (../../zones/postrender.py STORES).
+OPENDESK_DATABASES = postrender.STORES['statefulset/postgresql']['size']
+# The openDesk PostgreSQL of the site (postgresql()): its port, its data folder and its settings.
+POSTGRESQL_PORT = 5432
+POSTGRESQL_DATA = '/var/lib/postgresql/data'
+# One connection slot for each connection that the openDesk users of about 25 zones can open at the same time. Each
+# zone user also has the connection limit of the openDesk release (../../zones/postgresql.py), and a zone opens about
+# 40 connections. A change needs a restart of the server, so the value does not follow the zone count.
+POSTGRESQL_SETTINGS = {'max_connections': '1000', 'shared_buffers': '128MB'}
+# The label of a zone namespace whose openDesk applications reach the shared PostgreSQL (../../zones/zone.py namespaces()).
+POSTGRESQL_CLIENT_LABEL = 'hoover.dev/opendesk-postgresql'
+# The storage tiers of the stores that ../../zones/zonestate.py TIERS does not name. TIERS also sets the tier of the
+# PostgreSQL of a zone, so the shared server has its own entry here.
+STORE_TIERS = {'postgresql': zonestate.FAST}
 
 
 def site():
@@ -121,6 +136,8 @@ def size(store, zones, garage_nodes=None):
     each object. The layout gives each of the garage_nodes pods an equal part. The claim of a Garage pod is therefore
     (SIZES['garage'] + OPENDESK_OBJECTS x GARAGE_REPLICATION / garage_nodes) x zones, rounded up to a GiB.
     """
+    if store == 'postgresql':
+        return f'{math.ceil(hoover.gibibytes(OPENDESK_DATABASES) * max(1, zones))}Gi'
     gib = hoover.gibibytes(hoover.SIZES[store])
     if store == 'garage':
         if not garage_nodes:
@@ -132,7 +149,7 @@ def size(store, zones, garage_nodes=None):
 def tier(s, nodes, store, count=1):
     """(tier, nodes): the first preferred tier of the store (../../zones/zonestate.py TIERS) that at least count store
     nodes have, and the store nodes with that tier. Each pod of a store then gets its volume on its own node."""
-    wanted = zonestate.TIERS.get(store, zonestate.TIERS['default'])
+    wanted = STORE_TIERS.get(store) or zonestate.TIERS.get(store, zonestate.TIERS['default'])
     for name in [t for w in wanted for t in (zonestate.TIER_ORDER if w == '*' else [w])]:
         holders = tuple(n for n in nodes if name in s.nodes[n].tiers)
         if len(holders) >= count:
@@ -203,6 +220,33 @@ def garage(s, plan, zones, peers, placed=None):
     return [configmap('garage-config', {'garage.toml': garage_toml(peers)}),
             hoover.service('garage', NS, [('s3', 3900)], {'app.kubernetes.io/name': 'garage'}),
             hoover.service(PEERS, NS, [('rpc', 3901)], {'app.kubernetes.io/name': 'garage'}, headless=True),
+            statefulset]
+
+
+def postgresql(s, plan, zones, placed=None):
+    """The openDesk PostgreSQL of the site: one server with a database and a user for each openDesk database of each
+    zone (../../zones/postgresql.py). The admin password is postgresql-admin of the Secret of the namespace. The
+    operator tools connect as the admin through the local socket of the pod, which needs no password.
+
+    The major version is the version of the openDesk release. After a power loss the data folder can hold the lock file
+    postmaster.pid of the stopped server, and a process of the new guest can have the same number, which stops the start.
+    Only this pod mounts the volume, so the start removes the lock file. PostgreSQL then replays its write-ahead log."""
+    pgdata = f'{POSTGRESQL_DATA}/pgdata'
+    container = {
+        'name': 'postgresql', 'image': hoover.IMAGES['postgresql'],
+        'env': [{'name': 'POSTGRES_USER', 'value': 'postgres'}, hoover.secret_env('POSTGRES_PASSWORD', 'postgresql-admin'),
+                {'name': 'PGDATA', 'value': pgdata}],
+        'ports': [{'name': 'postgresql', 'containerPort': POSTGRESQL_PORT}],
+        'readinessProbe': {'exec': {'command': ['pg_isready', '-q', '-h', '127.0.0.1', '-p', str(POSTGRESQL_PORT), '-U', 'postgres']},
+                           'periodSeconds': 10, 'timeoutSeconds': 5, 'failureThreshold': 3},
+        'resources': hoover.resources('postgresql')}
+    settings = [a for k, v in sorted(POSTGRESQL_SETTINGS.items()) for a in ('-c', f'{k}={v}')]
+    start = (f'rm -f {pgdata}/postmaster.pid; exec docker-entrypoint.sh postgres ' + ' '.join(settings))
+    tier_name, nodes = tier(s, plan['nodes'], 'postgresql')
+    nodes = (placed or {}).get('postgresql', nodes)
+    statefulset = hoover.statefulset('postgresql', 'postgresql', NS, container, ['sh', '-c', start], POSTGRESQL_DATA, tier_name,
+                                     size('postgresql', zones), affinity=affinity(nodes, 'postgresql', False))
+    return [hoover.service('postgresql', NS, [('postgresql', POSTGRESQL_PORT)], {'app.kubernetes.io/name': 'postgresql'}),
             statefulset]
 
 
@@ -304,6 +348,11 @@ def network():
                                   'ingress': [{'from': [hoover_ns, {'podSelector': clickhouse_pod}, INGRESS_NS], 'ports': [{'port': 3900}]},
                                               {'from': [{'podSelector': {'matchLabels': {'hoover.dev/store': 'garage'}}}],
                                                'ports': [{'port': 3901}]}]}),
+        # The openDesk applications of the site zones reach PostgreSQL. ../../zones/zone.py gives the openDesk namespace
+        # of a zone of the store layout site the label. The Hoover namespaces do not reach it.
+        policy('postgresql-clients', {'podSelector': {'matchLabels': {'hoover.dev/store': 'postgresql'}}, 'policyTypes': ['Ingress'],
+                                      'ingress': [{'from': [{'namespaceSelector': {'matchLabels': {POSTGRESQL_CLIENT_LABEL: 'true'}}}],
+                                                   'ports': [{'port': POSTGRESQL_PORT}]}]}),
     ]
 
 
@@ -313,7 +362,7 @@ def objects(s, plan, zones, peers, placed=None):
     namespace = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': NS}}
     return hoover.site_cpu([namespace, *network(), *clickhouse(s, plan, zones, placed),
                             *[o for name in MANTICORE for o in manticore(s, plan, zones, name, placed)],
-                            *garage(s, plan, zones, peers, placed)])
+                            *garage(s, plan, zones, peers, placed), *postgresql(s, plan, zones, placed)])
 
 
 def placed_nodes():
@@ -349,7 +398,8 @@ def credentials():
     found = common.kubectl('-n', NS, 'get', 'secret', SECRET, '--ignore-not-found', '-o', 'json').strip()
     current = {k: base64.b64decode(v).decode() for k, v in json.loads(found).get('data', {}).items()} if found else {}
     data = {'clickhouse-admin': secrets.token_hex(24), 'manticore-admin': secrets.token_hex(24),
-            'garage-rpc-secret': secrets.token_hex(32), 'garage-admin-token': secrets.token_hex(24), **current}
+            'garage-rpc-secret': secrets.token_hex(32), 'garage-admin-token': secrets.token_hex(24),
+            'postgresql-admin': secrets.token_hex(24), **current}
     data.setdefault('manticore-seed', creds.manticore_seed(data['manticore-admin']))
     if data != current:
         common.apply({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': SECRET, 'namespace': NS, 'labels': {common.LABEL: 'credentials'}},
@@ -428,6 +478,19 @@ def manticore_sql(store, sql, check=True):
     err = '\n'.join(l for l in r.stderr.splitlines() if 'Using a password' not in l)
     if check and r.returncode:
         raise SystemExit(f'Manticore {store} refused the statements: {err.strip()[-600:]}')
+    return r.stdout
+
+
+def postgresql_sql(sql, database='postgres', check=True, timeout=3600):
+    """Run SQL from stdin with psql as the PostgreSQL admin through the local socket of the pod. psql stops at the
+    first error. The output has no header and separates the columns with a tab. The standard input stays open until psql
+    ends (../../podexec.py)."""
+    import podexec
+    r = podexec.call(common.K + ['-n', NS, 'exec', '-i', ready_pod('postgresql'), '-c', 'postgresql'],
+                     ['psql', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1', '-X', '-q', '-At', '-F', '\t'],
+                     sql, timeout=timeout)
+    if check and r.returncode:
+        raise SystemExit(f'PostgreSQL refused the statements: {r.stderr.strip()[-600:]}')
     return r.stdout
 
 
@@ -521,7 +584,7 @@ def apply():
     common.apply(items[0])
     credentials()
     hoover.apply(items[1:], keep_replicas=False)
-    for store in ('clickhouse', *MANTICORE, 'garage'):
+    for store in ('clickhouse', *MANTICORE, 'garage', 'postgresql'):
         wait_current(store)
     ids = join_garage(plan, size('garage', zones, plan['garage']))
     if ids != peers:
@@ -539,6 +602,7 @@ def grow():
     """Make the claims of the stores and of the Temporal stores large enough for the zones of the zone state."""
     zones = len(site_zones())
     sizes = {'clickhouse': size('clickhouse', zones), 'garage': size('garage', zones, config.store_plan(site())['garage']),
+             'postgresql': size('postgresql', zones),
              **{store: size(store, zones) for store in MANTICORE},
              **{store: temporal.size(store, zones) for store in temporal.SIZES}}
     for store, wanted in sizes.items():
@@ -624,6 +688,27 @@ def garage_tenant(zone):
     return keys, buckets
 
 
+def postgresql_tenant(zone):
+    """[(kind, name)] of the databases and the users of a zone in the shared PostgreSQL (../../zones/postgresql.py).
+    The names start with the prefix <zone with _>_, and a zone id has no _, so the prefix of one zone never starts the
+    names of another zone."""
+    prefix = service_users.prefix(zone) + '_'
+    out = postgresql_sql(f"SELECT 'database', datname FROM pg_database WHERE starts_with(datname, '{prefix}') "
+                         f"UNION ALL SELECT 'user', rolname FROM pg_roles WHERE starts_with(rolname, '{prefix}') ORDER BY 1, 2;\n")
+    return [tuple(line.split('\t')) for line in out.splitlines() if line.strip()]
+
+
+def remove_postgresql(zone):
+    """Drop the databases of a zone with their connections, then its users."""
+    found = postgresql_tenant(zone)
+    sql = [f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);' for kind, name in found if kind == 'database']
+    sql += [f'DROP ROLE IF EXISTS "{name}";' for kind, name in found if kind == 'user']
+    if sql:
+        postgresql_sql('\n'.join(sql) + '\n')
+    common.log('stores.jsonl', step='postgresql-tenant-removed', zone=zone, databases=sum(k == 'database' for k, _ in found),
+               users=sum(k == 'user' for k, _ in found))
+
+
 def opendesk_ingress(zone):
     """The name of the Ingress of the object storage host of a zone, when it exists (../../zones/objectstore.py)."""
     name = f'opendesk-{zone}'
@@ -640,6 +725,7 @@ def leftovers(zone):
     found['garage'] = [f'key {name}' for name in sorted(keys.values())] + [f'bucket {name}' for name in sorted(buckets)]
     found['temporal'] = [f'namespace {zone}'] if temporal.namespace_present(zone) else []
     found['ingress'] = [f'ingress opendesk-{zone}'] if opendesk_ingress(zone) else []
+    found['postgresql'] = [f'{kind} {name}' for kind, name in postgresql_tenant(zone)]
     return {store: names for store, names in found.items() if names}
 
 
@@ -721,7 +807,7 @@ def remove(zone):
     parts = [('clickhouse', lambda: remove_clickhouse(zone))]
     parts += [(store, lambda store=store: remove_manticore(zone, store)) for store in MANTICORE]
     parts += [('garage', lambda: remove_garage(zone)), ('temporal', lambda: temporal.remove(zone)),
-              ('ingress', lambda: remove_ingress(zone))]
+              ('ingress', lambda: remove_ingress(zone)), ('postgresql', lambda: remove_postgresql(zone))]
     for name, function in parts:
         try:
             function()
@@ -752,7 +838,7 @@ def main(argv):
     elif argv[0] == 'grow':
         grow()
     elif argv[0] == 'ready':
-        for store in ('clickhouse', *MANTICORE, 'garage', 'temporal-cassandra', 'temporal-opensearch', 'temporal'):
+        for store in ('clickhouse', *MANTICORE, 'garage', 'postgresql', 'temporal-cassandra', 'temporal-opensearch', 'temporal'):
             ready_pod(store)
     elif argv[0] == 'check':
         found = problems()

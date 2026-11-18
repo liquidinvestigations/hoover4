@@ -2,7 +2,7 @@
 """Check one zone after a Helm upgrade or a replica restore.
 
 The chart controllers run their stores in Kata. Their Services select the same pod labels. A zone on Garage
-(objectstore.py) has no SeaweedFS.
+(objectstore.py) has no SeaweedFS, and a zone on the shared PostgreSQL (postgresql.py) has no PostgreSQL.
 The Manticore daemons of the zone also run in Kata, with one StatefulSet for each daemon. ClickHouse and Garage are the
 shared stores of the site (../hoover/stores/shared.py) and have no StatefulSet in the zone.
 A disabled zone must have no running workload in any of its namespaces: every controller has zero replicas, every
@@ -75,10 +75,11 @@ def main():
     if not common.namespace_enabled(zone):
         return check_disabled(zone, errors)
     import objectstore
+    import postgresql
     import zonestate
-    garage = objectstore.on_garage(zonestate.load()['zones'].get(zone, {}))
+    entry = zonestate.load()['zones'].get(zone, {})
     for store, (kind, name, services) in STORES.items():
-        if store == 'seaweedfs' and garage:
+        if (store == 'seaweedfs' and objectstore.on_garage(entry)) or (store == 'postgresql' and postgresql.on_shared(entry)):
             continue
         item = replicas(zone, kind, name)
         if not item:

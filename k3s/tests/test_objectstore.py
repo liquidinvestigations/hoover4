@@ -14,6 +14,7 @@ sys.path.insert(0, str(K3S / 'zones'))
 sys.path.insert(0, str(K3S / 'platform' / 'backups'))
 import backups  # noqa: E402
 import objectstore  # noqa: E402
+import postgresql  # noqa: E402
 import shared  # noqa: E402
 import zone  # noqa: E402
 import zones  # noqa: E402
@@ -297,7 +298,7 @@ def test_a_new_zone_of_the_layout_site_starts_on_garage(monkeypatch):
 
 def test_the_move_record_is_no_input_of_the_waves():
     source = (K3S / 'zones/zone.py').read_text()
-    assert 'path.name not in (RECORD_NAME, objectstore.RECORD)' in source
+    assert 'path.name not in (RECORD_NAME, objectstore.RECORD, postgresql.RECORD)' in source
 
 
 def test_a_failed_copy_check_gives_the_routes_back_to_seaweedfs(monkeypatch, tmp_path):
@@ -378,21 +379,24 @@ def test_a_zone_delete_drops_the_kept_volume_with_the_admin_kubeconfig_only(monk
     monkeypatch.setattr(zone, 'run', lambda *a, **kw: None)
     monkeypatch.setattr(zone, 'pools', lambda: None)
     dropped = []
-    monkeypatch.setattr(objectstore, 'drop_kept', lambda z: dropped.append(z))
-    monkeypatch.setattr(objectstore, 'read_record', lambda z: {'zone': z})
+    monkeypatch.setattr(objectstore, 'drop_kept', lambda z, label=objectstore.LABEL, record=objectstore.RECORD: dropped.append((z, label)))
+    monkeypatch.setattr(objectstore, 'read_record', lambda z, name=objectstore.RECORD: {'zone': z})
+    monkeypatch.setattr(postgresql, 'read_record', lambda z: {'zone': z})
     monkeypatch.setattr(objectstore, 'can_keep_volumes', lambda: True)
     zone.delete('zone-a')
-    assert dropped == ['zone-a']
+    # The SeaweedFS volume and the volume of the zone PostgreSQL.
+    assert dropped == [('zone-a', 'hoover.dev/seaweedfs-of'), ('zone-a', 'hoover.dev/postgresql-of')]
     dropped.clear()
     monkeypatch.setattr(objectstore, 'can_keep_volumes', lambda: False)
     zone.delete('zone-a')
-    assert dropped == [] and 'hoover.dev/seaweedfs-of=zone-a can stay' in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert dropped == [] and 'hoover.dev/seaweedfs-of=zone-a can stay' in out and 'hoover.dev/postgresql-of=zone-a can stay' in out
 
 
 @pytest.mark.parametrize('moved', [True, False])
 def test_the_element_entry_runs_once_more_after_a_move(monkeypatch, moved):
     calls = []
-    for name in ('register', 'images', 'cluster', 'namespaces', 'finish_move', 'hoover'):
+    for name in ('register', 'images', 'cluster', 'namespaces', 'databases', 'finish_move', 'hoover'):
         monkeypatch.setattr(zone, name, lambda *a, **kw: None)
     monkeypatch.setattr(zone, 'objects', lambda z: moved)
     monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)
@@ -431,7 +435,7 @@ def test_a_drop_deletes_the_logical_volumes_of_the_kept_volumes(monkeypatch):
             pvs.discard(args[2])
         return ''
     monkeypatch.setattr(objectstore, 'kubectl', kubectl)
-    monkeypatch.setattr(objectstore, 'read_record', lambda z: {'volumes': ['pv-kept', 'pv-orphan', 'pv-other']})
+    monkeypatch.setattr(objectstore, 'read_record', lambda z, name: {'volumes': ['pv-kept', 'pv-orphan', 'pv-other']})
     monkeypatch.setattr(objectstore, 'step', lambda *a, **k: None)
     monkeypatch.setattr(objectstore.time, 'sleep', lambda s: None)
     assert objectstore.drop_kept('zone-a') == ['pv-kept', 'pv-orphan']

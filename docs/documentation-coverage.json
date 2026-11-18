@@ -3395,6 +3395,23 @@
       "no_screenshot_reason": "The capability changes where the openDesk applications store their objects. No page of the portal or of a zone application changes."
     },
     {
+      "id": "F-admin-64",
+      "source": [
+        "k3s/zones/postgresql.py",
+        "k3s/zones/zones.py",
+        "k3s/zones/zone.py",
+        "k3s/hoover/stores/shared.py",
+        "k3s/platform/backups/backups.py",
+        "k3s/tools/tenant-isolation-check.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Features.md",
+        "k3s/Readme.md#keep-the-opendesk-databases-on-the-shared-postgresql"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The capability changes where the openDesk applications store their databases. No page of the portal or of a zone application changes."
+    },
+    {
       "id": "F-docs-01",
       "source": [
         "website/backend/src/api/manual.rs",

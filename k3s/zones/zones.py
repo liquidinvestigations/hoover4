@@ -2,16 +2,19 @@
 """Generate the openDesk values of each zone and the site list of the HTTPS frontend.
 
 The zones come from the zone state (zonestate.py). The secrets file is created once and reused. The other outputs are
-regenerated from it. Each zone has its own PostgreSQL, Redis, Memcached and NATS in its namespace: the openDesk charts
-render them, and postrender.py moves them into Kata on TopoLVM block volumes. A zone of the store layout site keeps the
-objects of its applications in the shared Garage of the site, with its own buckets and key (objectstore.py). The key is
-objectstore_key of the zone in secrets.json. A zone of the layout local, and a zone of an earlier version before its
-move, run SeaweedFS in the zone namespace.
-openDesk derives the database passwords, and the SeaweedFS passwords, from the master password of the zone.
+regenerated from it. Each zone has its own Redis, Memcached and NATS in its namespace: the openDesk charts render them,
+and postrender.py moves them into Kata on TopoLVM block volumes. A zone of the store layout site keeps the objects of
+its applications in the shared Garage of the site, with its own buckets and key (objectstore.py). The key is
+objectstore_key of the zone in secrets.json. Such a zone also keeps its databases on the shared PostgreSQL of the site,
+with a database and a user for each openDesk database (postgresql.py). The passwords are postgresql of the zone in
+secrets.json. A zone of the layout local, and a zone of an earlier version before its moves, run SeaweedFS and
+PostgreSQL in the zone namespace.
+openDesk derives the database passwords of a zone PostgreSQL, and the SeaweedFS passwords, from the master password of
+the zone.
 """
 import base64,json,pathlib,re,secrets,string,sys,yaml
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
-import objectstore,zonestate
+import objectstore,postgresql,zonestate
 out=settings.PRIVATE/'zones'
 # The openDesk release is not in Git. The operator unpacks it into the private folder.
 OPENDESK=settings.PRIVATE/'downloads/opendesk-v1.19.1/src'
@@ -98,6 +101,8 @@ def load_secrets():
   z.setdefault('gate_oidc_secret',secrets.token_hex(24));z.setdefault('gate_cookie_secret',secrets.token_hex(16))
   # The Garage key of the openDesk buckets of a zone of the store layout site (objectstore.py). zone.py imports it.
   if ENTRIES[zone].get('stores')=='site':z.setdefault('objectstore_key',objectstore.new_key())
+  # The passwords of the database users of a zone of the store layout site on the shared PostgreSQL (postgresql.py).
+  if ENTRIES[zone].get('stores')=='site':z.setdefault('postgresql',postgresql.new_passwords())
  out.mkdir(parents=True,exist_ok=True);put(path,json.dumps(data,indent=1));path.chmod(0o600)
  return data
 def reduced_resources():
@@ -123,7 +128,11 @@ def zone_values(zone,data,storage_class,entry=None):
  # A zone on Garage runs no SeaweedFS, and its object stores name the Garage key, the host and the region.
  garage=objectstore.on_garage(entry or {})
  if garage:apps['seaweedfs']={'enabled':False}
+ # A zone on the shared PostgreSQL runs no PostgreSQL, and its databases name the shared server.
+ shared_db=postgresql.on_shared(entry or {})
+ if shared_db:apps['postgresql']={'enabled':False}
  return {**(objectstore.values(zone,z['objectstore_key']) if garage else {}),
+  **(postgresql.values(zone,z['postgresql']) if shared_db else {}),
   # openDesk names each host <global.hosts.x>.<global.domain>. The mail domain and the Matrix server name stay
   # <zone>.<suffix>, so the Matrix IDs and the mail addresses of each zone differ.
   'global':{'domain':SUFFIX,'hosts':zone_hosts(zone),'mailDomain':settings.zone_domain(zone),'matrixDomain':settings.zone_domain(zone)},
