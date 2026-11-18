@@ -356,7 +356,11 @@ def ready_pod(store):
 
 
 def wait_current(store, timeout=900):
-    """Replace the outdated pods of a store one at a time, and wait until each pod is ready and current."""
+    """Replace the outdated pods of a store one at a time, and wait until each pod is ready and current.
+
+    An outdated pod that is not ready goes first, also while other pods are not ready: it serves nothing, and its new
+    template can be the correction of its failure (for example a start flag after a power loss). A ready outdated pod
+    goes only when every pod is ready, so only the part of one node is out of reach."""
     deadline = time.monotonic() + timeout
     while True:
         controller = common.kubectl_json('-n', NS, 'get', 'statefulset', store)
@@ -365,14 +369,19 @@ def wait_current(store, timeout=900):
         if controller['spec']['replicas'] == 0:
             return
         current = controller.get('status', {}).get('observedGeneration', 0) >= controller['metadata']['generation']
-        if current and len(found) == controller['spec']['replicas'] and all(is_ready(p) for p in found):
-            stale = [p['metadata']['name'] for p in found if p['metadata']['labels'].get('controller-revision-hash') != revision]
-            if not stale:
+        if current and len(found) == controller['spec']['replicas']:
+            stale = [p for p in found if p['metadata']['labels'].get('controller-revision-hash') != revision
+                     and not p['metadata'].get('deletionTimestamp')]
+            broken = [p for p in stale if not is_ready(p)]
+            ready = all(is_ready(p) for p in found)
+            if not stale and ready:
                 return
-            # One pod at a time, so only the part of one node is out of reach.
-            common.kubectl('-n', NS, 'delete', 'pod', stale[0], '--wait=false')
-            common.log('stores.jsonl', step='replace-stale-pod', namespace=NS, pod=stale[0])
-            time.sleep(5)
+            target = broken[0] if broken else (stale[0] if ready else None)
+            if target:
+                name = target['metadata']['name']
+                common.kubectl('-n', NS, 'delete', 'pod', name, '--wait=false')
+                common.log('stores.jsonl', step='replace-stale-pod', namespace=NS, pod=name, ready=is_ready(target))
+                time.sleep(5)
         if time.monotonic() >= deadline:
             raise SystemExit(f'the shared {store} did not become ready with its current template in {timeout} s')
         time.sleep(3)

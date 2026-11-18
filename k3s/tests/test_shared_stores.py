@@ -586,3 +586,38 @@ def test_the_store_sql_readers_keep_the_input_open(monkeypatch):
     assert [c[0][-5:] for c in calls] == [['exec', '-i', 'clickhouse-0', '-c', 'clickhouse'],
                                           ['exec', '-i', 'manticore-0', '-c', 'manticore']]
     assert [c[2] for c in calls] == ['SELECT 1\n', 'SHOW TABLES;\n']
+
+
+def _store_pod(name, revision, ready):
+    return {'metadata': {'name': name, 'labels': {'controller-revision-hash': revision}},
+            'status': {'conditions': [{'type': 'Ready', 'status': 'True' if ready else 'False'}]}}
+
+
+def _fake_rollout(monkeypatch, replicas, pods_by_round):
+    """wait_current() against a StatefulSet at revision new, with the pods of each poll from pods_by_round."""
+    deleted, polls = [], iter(pods_by_round)
+    controller = {'spec': {'replicas': replicas}, 'metadata': {'generation': 2},
+                  'status': {'observedGeneration': 2, 'updateRevision': 'new'}}
+    monkeypatch.setattr(shared.common, 'kubectl_json', lambda *a: controller)
+    monkeypatch.setattr(shared, 'pods', lambda store: next(polls))
+    monkeypatch.setattr(shared.common, 'kubectl', lambda *a, **k: deleted.append(a[-2]))
+    monkeypatch.setattr(shared.common, 'log', lambda *a, **k: None)
+    monkeypatch.setattr(shared.time, 'sleep', lambda s: None)
+    return deleted
+
+
+def test_an_outdated_pod_that_is_not_ready_is_replaced(monkeypatch):
+    # After a power loss the pod crashes with its old template. The new template corrects the start, so the pod is
+    # replaced although no pod of the store is ready.
+    deleted = _fake_rollout(monkeypatch, 1, [[_store_pod('manticore-0', 'old', False)],
+                                             [_store_pod('manticore-0', 'new', True)]])
+    shared.wait_current('manticore', timeout=60)
+    assert deleted == ['manticore-0']
+
+
+def test_a_ready_outdated_pod_waits_while_another_pod_is_not_ready(monkeypatch):
+    waiting = [_store_pod('garage-0', 'new', False), _store_pod('garage-1', 'old', True)]
+    deleted = _fake_rollout(monkeypatch, 2, [waiting, [_store_pod('garage-0', 'new', True), _store_pod('garage-1', 'old', True)],
+                                             [_store_pod('garage-0', 'new', True), _store_pod('garage-1', 'new', True)]])
+    shared.wait_current('garage', timeout=60)
+    assert deleted == ['garage-1']
