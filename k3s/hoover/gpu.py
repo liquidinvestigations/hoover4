@@ -4,8 +4,9 @@
 The GPU pool serves the three GPU services of ai_services: the model server (21960), the NER, embedding and reranker
 server (21961) and EasyOCR (21962). vars.gpu_pool of the site file (../config.py) names the pool: the GPU nodes of the
 site, or the address of a shared pool, for example a Compose GPU host.
-The installation has one GPU key. The script generates it once and keeps it in the Secret gpu-api-key of the namespace
-operator-portal (api_key()). The operator portal shows it. Each GPU service checks it on every port except /health,
+The installation has one GPU key. The script generates it once and keeps it in the path site/gpu of the secret store
+(../secretstore.py), with a copy in the Secret gpu-api-key of the namespace operator-portal (api_key()). The steps
+read the copy. The operator portal shows it. Each GPU service checks it on every port except /health,
 and a Compose GPU host needs the same key in its [ai_services] vllm_api_key_file.
 - The Deployment gpu-proxy in the namespace gpu-proxy is the only cluster workload that reaches the pool. It accepts a
   request with the headers X-Hoover-Zone and X-Hoover-Zone-Token, where the token is the HMAC-SHA256 of the zone name
@@ -31,6 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import secretstore  # noqa: E402
 import settings  # noqa: E402
 
 NS = 'gpu-proxy'
@@ -73,10 +75,12 @@ def secret_object(value):
             'stringData': {'key': value}}
 
 
-def write_key(value):
-    """Store a GPU key in the Secret gpu-api-key. The namespace is created when it is missing."""
+def write_key(value, replace=True):
+    """Store a GPU key in the secret store and in the Secret gpu-api-key. The namespace is created when it is missing.
+    Without replace, a stored key stays and the Secret gets it."""
     if not value or any(c.isspace() for c in value):
         raise SystemExit('a GPU key is one word without spaces.')
+    value = (secretstore.replace('site/gpu', {'key': value}) if replace else secretstore.keep('site/gpu', {'key': value}))['key']
     kubectl('apply', '-f', '-', input=json.dumps({'apiVersion': 'v1', 'kind': 'Namespace',
                                                    'metadata': {'name': KEY_NAMESPACE}}))
     kubectl('apply', '-f', '-', input=json.dumps(secret_object(value)))
@@ -91,8 +95,20 @@ def api_key(create=True):
         return base64.b64decode(found.strip()).decode().strip()
     if not create:
         raise SystemExit(f'the Secret {KEY_SECRET} of {KEY_NAMESPACE} is missing. deploy-k3s up creates it.')
-    write_key(secrets.token_hex(32))
+    write_key(secrets.token_hex(32), replace=False)
     return api_key(create=False)
+
+
+def ensure_key():
+    """Keep the GPU key in the secret store: the copy of an earlier version gives it, else a new key. Then write the
+    Secret from the store."""
+    import base64
+    found = kubectl('-n', KEY_NAMESPACE, 'get', 'secret', KEY_SECRET, '--ignore-not-found', '-o', 'jsonpath={.data.key}').stdout
+    copy = {'key': base64.b64decode(found.strip()).decode().strip()} if found.strip() else {}
+    value = secretstore.keep('site/gpu', {'key': lambda: secrets.token_hex(32)}, copy,
+                             source=f'the Secret {KEY_SECRET} of {KEY_NAMESPACE}')['key']
+    if copy.get('key') != value:
+        write_key(value, replace=False)
 
 
 def zone_token(gpu_key, zone):
@@ -234,7 +250,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == 'token':
         print(token(sys.argv[2]))
     elif sys.argv[1:] == ['ensure-key']:
-        api_key()
+        ensure_key()
         print(json.dumps({'gpu_key': f'Secret {KEY_SECRET} of {KEY_NAMESPACE}'}))
     elif sys.argv[1:] == ['key']:
         print(api_key())

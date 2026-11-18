@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Generate the openDesk values of each zone and the site list of the HTTPS frontend.
 
-The zones come from the zone state (zonestate.py). The secrets file is created once and reused. The other outputs are
-regenerated from it. Each zone has its own Redis, Memcached and NATS in its namespace: the openDesk charts render them,
+The zones come from the zone state (zonestate.py). The secrets of each zone are the path zones/<zone>/secrets of the
+secret store (../secretstore.py). A missing secret is generated once and stored, and a stored value never changes. The
+other outputs are regenerated from the store at each run, so they are copies: the values, the master password, the
+client Secrets, the test.user password and the zone user passwords. With HOOVER4_SECRET_ZONE (a zone step) the run
+reads and writes only that zone. Each zone has its own Redis, Memcached and NATS in its namespace: the openDesk charts render them,
 and postrender.py moves them into Kata on TopoLVM block volumes. A zone of the store layout site keeps the objects of
 its applications in the shared Garage of the site, with its own buckets and key (objectstore.py). The key is
-objectstore_key of the zone in secrets.json. Such a zone also keeps its databases on the shared PostgreSQL of the site,
-with a database and a user for each openDesk database (postgresql.py). The passwords are postgresql of the zone in
-secrets.json. A zone of the layout local, and a zone of an earlier version before its moves, run SeaweedFS and
+objectstore_key of the zone secrets. Such a zone also keeps its databases on the shared PostgreSQL of the site,
+with a database and a user for each openDesk database (postgresql.py). The passwords are postgresql of the zone
+secrets. A zone of the layout local, and a zone of an earlier version before its moves, run SeaweedFS and
 PostgreSQL in the zone namespace.
 openDesk derives the database passwords of a zone PostgreSQL, and the SeaweedFS passwords, from the master password of
 the zone.
 """
-import base64,json,pathlib,re,secrets,string,sys,yaml
-sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import settings
+import base64,json,os,pathlib,re,secrets,string,sys,yaml
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import secretstore,settings
 import objectstore,postgresql,zonestate
 out=settings.PRIVATE/'zones'
 # The openDesk release is not in Git. The operator unpacks it into the private folder.
@@ -23,7 +26,6 @@ ZONE_NAME=re.compile(r'zone-[a-z0-9]{1,12}')
 def put(path,text):
  """Write a private file only when its text changes, through a renamed temporary file, so a helmfile process of
  another zone that reads it at the same time reads the old or the new text."""
- import os
  path=pathlib.Path(path)
  if path.exists() and path.read_text()==text:return
  tmp=path.with_name(f'.{path.name}.{os.getpid()}.tmp')
@@ -80,31 +82,70 @@ def udm_password(length=40):
   value=''.join(secrets.choice(alphabet) for _ in range(length))
   steps=sum(1 for a,b in zip(value,value[1:]) if abs(ord(a)-ord(b))==1)
   if steps<=2 and any(c.isdigit() for c in value) and any(c.isupper() for c in value) and any(c.islower() for c in value):return value
+# The zone of a zone step. Its parent gives it a token that reaches only the secret store paths of this zone
+# (../secretstore.py zone_token()), so the step reads and writes the secrets of this zone only.
+SCOPE=os.environ.get('HOOVER4_SECRET_ZONE','')
+def scoped_zones():
+ """The zones whose secrets and values this process writes: the zone of a zone step, else every zone."""
+ return [z for z in ZONES if not SCOPE or z==SCOPE]
+def user_password():
+ """A password that the Nubus password policy accepts: letters, digits and 20 characters."""
+ alphabet=string.ascii_letters+string.digits
+ while True:
+  value=''.join(secrets.choice(alphabet) for _ in range(20))
+  if any(c.isdigit() for c in value) and any(c.isupper() for c in value) and any(c.islower() for c in value):return value
+def fixture_users():
+ return [u['username'] for u in json.loads((pathlib.Path(__file__).resolve().parent/'zone-users.json').read_text())['users']]
+def site_secrets():
+ """Keep the secrets of the site that every zone reads: the call secrets and the zone user passwords. The step
+ secret-store of deploy-k3s up writes them, because a zone step only reads them."""
+ # The shared JVB uses one XMPP password in every zone Prosody. LiveKit reads its keys only at start, so every zone
+ # signs its tokens with the one key LIVEKIT_KEY, and a new zone does not restart LiveKit (../platform/calls/install-calls.py).
+ calls=secretstore.keep('site/calls',{k:(lambda:secrets.token_hex(24)) for k in ('jvb_password','livekit_turn_secret','livekit_secret')})
+ users=secretstore.keep('site/zone-users',{u:user_password for u in fixture_users()})
+ return calls,users
+def zone_defaults(stored,entry):
+ """The generators of the secrets of a zone that the store lacks."""
+ hex24=lambda:secrets.token_hex(24)
+ wanted={}
+ # An installed zone keeps the Administrator password that openDesk derived from its master password.
+ if 'master_password' not in stored:wanted['administrator_password']=udm_password
+ wanted['master_password']=hex24
+ # Each zone has its own TURN secret, because coturn serves every zone. livekit_secret of an earlier version stays unused.
+ wanted['turn_secret']=hex24
+ # The Keycloak client of Hoover and its oauth2-proxy share this secret (hoover_oidc).
+ wanted['hoover_oidc_secret']=hex24
+ # The Keycloak client of the zone gate and its oauth2-proxy share this secret (gate_oidc). The cookie secret has 32 bytes.
+ wanted['gate_oidc_secret']=hex24;wanted['gate_cookie_secret']=lambda:secrets.token_hex(16)
+ # The Garage key of the openDesk buckets of a zone of the store layout site (objectstore.py). zone.py imports it.
+ if entry.get('stores')=='site':wanted['objectstore_key']=objectstore.new_key
+ # The passwords of the database users of a zone of the store layout site on the shared PostgreSQL (postgresql.py).
+ if entry.get('stores')=='site':wanted['postgresql']=postgresql.new_passwords
+ return wanted
 def load_secrets():
- path=out/'secrets.json'
- data=json.loads(path.read_text()) if path.exists() else {}
- # The shared JVB uses one XMPP password in every zone Prosody.
- calls=data.setdefault('calls',{})
- # LiveKit reads its keys only at start, so every zone signs its tokens with the one key LIVEKIT_KEY, and a new zone
- # does not restart LiveKit (../platform/calls/install-calls.py).
- for key in ('jvb_password','livekit_turn_secret','livekit_secret'):calls.setdefault(key,secrets.token_hex(24))
- for zone in ZONES:
-  z=data.setdefault(zone,{})
-  # An installed zone keeps the Administrator password that openDesk derived from its master password.
-  if 'master_password' not in z:z['administrator_password']=udm_password()
-  z.setdefault('master_password',secrets.token_hex(24))
-  # Each zone has its own TURN secret, because coturn serves every zone. livekit_secret of an earlier version stays unused.
-  z.setdefault('turn_secret',secrets.token_hex(24))
-  # The Keycloak client of Hoover and its oauth2-proxy share this secret (hoover_oidc).
-  z.setdefault('hoover_oidc_secret',secrets.token_hex(24))
-  # The Keycloak client of the zone gate and its oauth2-proxy share this secret (gate_oidc). The cookie secret has 32 bytes.
-  z.setdefault('gate_oidc_secret',secrets.token_hex(24));z.setdefault('gate_cookie_secret',secrets.token_hex(16))
-  # The Garage key of the openDesk buckets of a zone of the store layout site (objectstore.py). zone.py imports it.
-  if ENTRIES[zone].get('stores')=='site':z.setdefault('objectstore_key',objectstore.new_key())
-  # The passwords of the database users of a zone of the store layout site on the shared PostgreSQL (postgresql.py).
-  if ENTRIES[zone].get('stores')=='site':z.setdefault('postgresql',postgresql.new_passwords())
- out.mkdir(parents=True,exist_ok=True);put(path,json.dumps(data,indent=1));path.chmod(0o600)
+ """{'calls': the call secrets, zone: its secrets} for the zones of scoped_zones(), from the secret store. A missing
+ secret of a zone is generated and stored. A stored value never changes."""
+ calls=secretstore.read('site/calls')
+ if not calls:
+  if SCOPE:raise SystemExit('the secret store has no call secrets. Run deploy-k3s up --steps secret-store.')
+  calls,_=site_secrets()
+ data={'calls':calls}
+ for zone in scoped_zones():
+  path=secretstore.zone_path(zone)
+  data[zone]=secretstore.keep(path,zone_defaults(secretstore.read(path),ENTRIES[zone]))
  return data
+def write_user_files(zones):
+ """Write the zone user passwords and the test.user password of each zone of zones from the store into the state
+ folder, where the zone tools read them. The files are copies."""
+ users=secretstore.read('site/zone-users')
+ if users:
+  # The order of zone-users.json, as zone-users.py writes the file.
+  ordered={u:users[u] for u in fixture_users() if u in users}
+  ordered.update({u:v for u,v in users.items() if u not in ordered})
+  put(settings.ZONE_USER_PASSWORDS,json.dumps(ordered,indent=1)+'\n')
+ for zone in zones:
+  test_user=secretstore.read(secretstore.zone_path(zone,'test-user')).get('password')
+  if test_user:put(out/zone/'test-user-password',test_user+'\n')
 def reduced_resources():
  """Lower the requests to 40 % of the openDesk defaults. Limits stay at the openDesk defaults."""
  source=yaml.safe_load((OPENDESK/'helmfile/environments/default/resources.yaml.gotmpl').read_text())['resources']
@@ -273,7 +314,7 @@ def main():
  put(out/'redis-probes.yaml','master:\n  readinessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_readiness_local.sh 1"]}\n    initialDelaySeconds: 0\n    periodSeconds: 1\n    failureThreshold: 5\n    timeoutSeconds: 2\n  livenessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_liveness_local.sh 5"]}\n    initialDelaySeconds: 5\n    periodSeconds: 5\n    failureThreshold: 5\n    timeoutSeconds: 6\n')
  put(out/'notes-s3-region.yaml',yaml.safe_dump({'global':{'s3':{'regionName':objectstore.REGION}}}))
  put(out/'two-factor-off.yaml','# The MVP has no MFA.\nnubusKeycloakBootstrap:\n  bootstrap:\n    twoFactorAuthentication:\n      enabled: false\n')
- for zone in ZONES:
+ for zone in scoped_zones():
   folder=out/zone;folder.mkdir(exist_ok=True)
   put(folder/'values.yaml',yaml.safe_dump(zone_values(zone,data,default_class(zone),ENTRIES[zone]),sort_keys=False));(folder/'values.yaml').chmod(0o600)
   put(folder/'master-password',data[zone]['master_password']);(folder/'master-password').chmod(0o600)
@@ -301,12 +342,13 @@ def main():
    # lk-jwt finds the homeserver through the server well-known over HTTPS, so it needs the frontend CA like the other parts.
    'extraVolumes':[{'name':'trusted-cert-secret-volume','secret':{'secretName':'hoover-ca-bundle','items':[{'key':'ca.crt','path':'ca-certificates.crt'}]}}],
    'extraVolumeMounts':[{'name':'trusted-cert-secret-volume','mountPath':'/etc/ssl/certs/ca-certificates.crt','subPath':'ca-certificates.crt'}]}},sort_keys=False))
+ write_user_files(scoped_zones())
  # install-server-names.sh writes these names into /etc/hosts of the workstation.
  put(out/'frontend.env',f"zones=({' '.join(ZONES)})\nsuffix={SUFFIX}\nhosts=({' '.join(HOSTS)})\nextra_hosts=(operator.{SUFFIX})\nbind_extra=({' '.join(settings.FRONTEND_BIND)})\n")
  print(json.dumps({'zones':ZONES,'output':str(out)}))
 if __name__=='__main__':
  # The zone steps of deploy-k3s up can run at the same time, and each one runs this file. One run at a time writes the
- # secrets and the values.
+ # value files of this state folder. The secret store keeps one writer at a time for each path (check-and-set).
  import fcntl
  out.mkdir(parents=True,exist_ok=True)
  with open(out/'.zones.lock','w') as lock:

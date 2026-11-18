@@ -6,9 +6,10 @@ container mounts (backup-mount.py).
 
 The portal writes each operation as a ConfigMap with the label hoover.dev/operation in the namespace operator-portal.
 The runner is the container runner of the operator pod (operator-login.yaml, pod.py). Its state folder is a folder of
-the pod, and the cluster holds the authoritative copy of the zone state, the zone secrets and the operator state
+the pod, and the cluster holds the authoritative copy of the zone state and the operator state
 (../../clusterstate.py). Before each operation it reads the cluster copy, and after each step it writes its changes
-back. The openDesk release and the Helm tools are in the image.
+back. The secrets are in the secret store (../../secretstore.py), where the runner logs in with the role runner, and
+zone.py gives its own scripts a token of its zone only. The openDesk release and the Helm tools are in the image.
 The runner uses the token of the ServiceAccount zone-runner (runner-rights.yaml). It can change the zone namespaces,
 the shared call services, the operation ConfigMaps and the cluster copy of the state only.
 It also runs the settings Apply operations of the operator state (apply.py), one at a time.

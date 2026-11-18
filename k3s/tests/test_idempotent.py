@@ -95,7 +95,9 @@ def test_the_operator_step_restarts_a_deployment_only_for_a_changed_configuratio
     text = (K3S / 'platform/operator/start-web-tools.sh').read_text()
     assert 'rollout restart' not in text
     # The proxy secret and the bcrypt hash of the admin password stay the same across runs.
-    assert '[ -s "$login/proxy-secret" ] ||' in text and 'admin-password.bcrypt' in text
+    # The secret store keeps them, and a stored value never changes (../secretstore.py keep()).
+    assert 'secretstore.py" files site/operator-login' in text and 'proxy-secret:hex32' in text
+    assert 'admin-password.bcrypt' in text
     spec = importlib.util.spec_from_file_location('config_digest', K3S / 'platform/operator/config-digest.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

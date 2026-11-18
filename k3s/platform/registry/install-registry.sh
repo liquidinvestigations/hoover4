@@ -2,8 +2,8 @@
 # Install the image registry of the cluster and point every node at it.
 # settings.json names the node in registry_node and the address and port in registry_endpoint, for example
 # <VPN address of that node>:5000. The registry runs with runc, because it is a platform service and holds no zone data.
-# The push password is <state folder>/registry-push-password. The script creates it once. It writes the podman
-# credentials for build-image.sh to <state folder>/registry-auth.json.
+# The push password is the path site/registry of the secret store, with a copy in <state folder>/registry-push-password.
+# The script creates it once. It writes the podman credentials for build-image.sh to <state folder>/registry-auth.json.
 # KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 set -euo pipefail
 # A relative KUBECONFIG path starts at the current folder, so it becomes absolute before the cd.
@@ -15,7 +15,9 @@ endpoint=$(python3 ../../settings.py get registry_endpoint '')
 node=$(python3 ../../settings.py get registry_node '')
 [ -n "$endpoint" ] && [ -n "$node" ] || { echo "settings.json needs registry_endpoint and registry_node" >&2; exit 1; }
 password_file=$private/registry-push-password
-[ -s "$password_file" ] || (umask 077; openssl rand -hex 24 > "$password_file")
+# The password is the path site/registry of the secret store (../../secretstore.py), and the file is a copy. A file of an
+# earlier version gives its value to the store.
+python3 ../../secretstore.py files site/registry "$private" registry-push-password:hex24n >/dev/null
 password=$(cat "$password_file")
 # A salt from the password keeps the htpasswd line the same at each run, so a second run changes nothing.
 salt=$(printf '%s' "$password" | sha256sum | cut -c1-8)

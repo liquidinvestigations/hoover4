@@ -5,15 +5,15 @@ The pod runs the operator image of the registry (../../images/operator-pod/), wh
 the operator tools. No container mounts a host folder of a checkout or a state folder. On a site with a backup node the
 runner mounts the backup folder of that node (backup-mount.py).
 HOOVER4_SITE names the site file in its JSON form (the ConfigMap portal-site). Its state folder is a folder of the pod,
-which both containers share. The runner mounts its own folder at zones/ of the state folder, so the portal container
-never sees a zone secret.
+which both containers share. The runner mounts its own memory folder at zones/ of the state folder, so the portal
+container never sees a copy of a zone secret.
 The script:
   1. writes a kubeconfig into /tmp for the token of the container: the token of the ServiceAccount portal for the
      portal, and the token of the ServiceAccount zone-runner (the Secret zone-runner-token) for the runner,
   2. for the runner, links the operator tools of the image into bin/ and copies the openDesk release into downloads/
      of the state folder, where the zone installer reads them,
-  3. reads the cluster copy of the state into the state folder (../../clusterstate.py): the ConfigMaps for both
-     containers, and the zone Secrets for the runner,
+  3. reads the cluster copy of the state into the state folder (../../clusterstate.py). The zone tools of the runner
+     read and write the secrets in the secret store (../../secretstore.py) and keep their copies in zones/,
   4. starts portal-server.py or runner.py with HOOVER4_CLUSTER_STATE=1, so they write their changes into the cluster.
 """
 import os
@@ -75,10 +75,9 @@ def main(argv):
         tools(state)
     sys.path.insert(0, str(K3S))
     import clusterstate
-    kinds = ('configmap', 'secret') if role == 'runner' else ('configmap',)
     for attempt in range(30):
         try:
-            changes = clusterstate.pull(state, kinds)
+            changes = clusterstate.pull(state, ('configmap',))
             break
         except clusterstate.Unavailable as error:
             print(f'pod.py: the cluster copy of the state is unavailable: {error}', file=sys.stderr, flush=True)

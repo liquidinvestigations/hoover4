@@ -919,8 +919,10 @@ def test_the_calls_step_without_a_matching_probe_record_adds_no_public_peer(tmp_
     # The zone runner cannot run the probe pod, so it reads the record of the operator step and stops without it.
     site = write_site(tmp_path, 'remote.yml')
     state = site.with_suffix('')
-    (state / 'zones').mkdir(parents=True)
-    (state / 'zones/secrets.json').write_text(json.dumps({'calls': {'jvb_password': 'x', 'livekit_turn_secret': 'y'}}))
+    import secretstore
+    secretstore.keep('site/calls', {'jvb_password': 'x', 'livekit_turn_secret': 'y'})
+    for zone in json.loads((state / 'zone-state.json').read_text())['zones'] if (state / 'zone-state.json').exists() else []:
+        secretstore.keep(secretstore.zone_path(zone), {'turn_secret': 't'})
     bin_dir = tmp_path / 'bin'
     bin_dir.mkdir()
     (bin_dir / 'kubectl').write_text(FAKE_CALLS_KUBECTL)

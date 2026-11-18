@@ -6,8 +6,8 @@ A zone of the store layout site keeps the objects of its openDesk applications i
 <zone>-opendesk-<bucket>. The Garage key <zone>-opendesk reads and writes only these buckets. It has a local alias with
 the openDesk name for each of them (for example nextcloud), so the applications keep their bucket names. Nextcloud
 names its root storage by the bucket name, and a new name would hide its earlier application data. The key cannot
-create a bucket, change a bucket setting, or reach any other bucket. zones.py writes the key into secrets.json and the
-openDesk values of the zone (values()). The values set the region of Garage (REGION), because Garage refuses a
+create a bucket, change a bucket setting, or reach any other bucket. zones.py keeps the key in the zone secrets of the
+secret store (../secretstore.py) and writes it into the openDesk values of the zone (values()). The values set the region of Garage (REGION), because Garage refuses a
 request signed for another region. The Notes template of openDesk does not pass that value to its chart, so zones.py
 gives Notes the region in a customization file.
 
@@ -27,7 +27,7 @@ such a zone with the admin kubeconfig (move()):
   3. The object count and the byte count of each bucket must be equal in both stores. Else the Ingress goes away, the
      applications use SeaweedFS again, and the command stops with the counts.
   4. The volume of SeaweedFS gets the reclaim policy Retain and the label LABEL, so its data stays when Helm removes
-     SeaweedFS. The record zones/<zone>/objectstore-move.json of the state folder holds the counts and the times.
+     SeaweedFS. The record objectstore-move.json of the zone in the secret store holds the counts and the times.
   5. The zone state gets objectstore = garage. zones.py then writes the values with Garage and without SeaweedFS, and
      the openDesk waves of zone.py apply them. Helm removes SeaweedFS. The entries of SECOND_PASS run once more.
   6. Each workload whose configuration holds the key of the zone, and Nextcloud, which reads its object store
@@ -156,8 +156,8 @@ def ensure(zone, key):
     keys = {row[0]: row[2] for row in table(cli('key', 'list')) if len(row) > 2}
     if key['access_key'] not in keys:
         if key_name(zone) in keys.values():
-            raise SystemExit(f'Garage has a key {key_name(zone)} with another id than zones/secrets.json. Delete the Garage '
-                             'key or restore the zone secrets.')
+            raise SystemExit(f'Garage has a key {key_name(zone)} with another id than the zone secrets of the secret store. '
+                             'Delete the Garage key or restore the zone secrets.')
         cli('key', 'import', '--yes', '-n', key_name(zone), key['access_key'], key['secret_key'])
         changed.append(f'key {key_name(zone)}')
     elif keys[key['access_key']] != key_name(zone):
@@ -270,17 +270,25 @@ def record_path(zone, name=RECORD):
     return settings.PRIVATE / 'zones' / zone / name
 
 
-def write_record(zone, record):
-    path = record_path(zone)
+def write_record(zone, record, name=RECORD):
+    """Write a record of a zone into the secret store (zones/<zone>/records/<name>), and a copy into the zone folder of
+    the state folder."""
+    import secretstore
+    text = json.dumps(record, indent=1, sort_keys=True) + '\n'
+    secretstore.write_record(zone, name, text)
+    path = record_path(zone, name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch(mode=0o600)
-    path.write_text(json.dumps(record, indent=1, sort_keys=True) + '\n')
+    path.write_text(text)
 
 
 def read_record(zone, name=RECORD):
+    """A record of a zone from the secret store, or None."""
+    import secretstore
     try:
-        return json.loads(record_path(zone, name).read_text())
-    except (OSError, ValueError):
+        text = secretstore.record(zone, name)
+        return json.loads(text) if text else None
+    except ValueError:
         return None
 
 
@@ -485,11 +493,11 @@ def orphan_logical_volumes(zone, record=RECORD):
 
 
 def zone_key(zone):
-    data = json.loads((settings.PRIVATE / 'zones' / 'secrets.json').read_text())
-    try:
-        return data[zone]['objectstore_key']
-    except KeyError:
-        raise SystemExit(f'zones/secrets.json has no object store key of {zone}. Run zone.py apply {zone}.') from None
+    import secretstore
+    key = secretstore.zone_secrets(zone).get('objectstore_key')
+    if not key:
+        raise SystemExit(f'the zone secrets have no object store key of {zone}. Run zone.py apply {zone}.')
+    return key
 
 
 def main(argv):

@@ -30,8 +30,9 @@ settings revision after their workloads are ready. A finished complete up record
 The zone state (zone-state.json, ../zones/zonestate.py) names the zones. up applies each zone of it again. zone.py
 and the operator portal create and delete zones.
 
-Cluster copy of the state. The cluster holds the authoritative zone state, zone secrets and operator state
-(../clusterstate.py). The command reads the cluster copy into the state folder after it takes the site lock, and before
+Cluster copy of the state. The cluster holds the authoritative zone state and operator state (../clusterstate.py).
+The secrets are in the secret store of the site (../secretstore.py), which the step secret-store installs after the
+step cluster. Every later step waits for it. The command reads the cluster copy into the state folder after it takes the site lock, and before
 render and check. Each finished or failed step writes the changes of the state folder back. The state folder keeps
 the files that the workstation needs before a cluster exists (the tokens, the kubeconfig, the facts, the records and
 the root certificate of the internal CA) and the export copy of the cluster state.
@@ -178,8 +179,8 @@ class Context:
         self.become_password_file = path
 
     def env(self):
-        # HOOVER4_CLUSTER_STATE makes the zone installer write the zone state and the zone secrets into the cluster copy
-        # as soon as they change (../clusterstate.py).
+        # HOOVER4_CLUSTER_STATE makes the zone installer write the zone state into the cluster copy as soon as it
+        # changes (../clusterstate.py).
         env = {'KUBECONFIG': str(self.kubeconfig), 'HOOVER4_SITE': str(self.site_path), 'HELM': str(self.private / 'bin/helm'),
                'PATH': f"{self.private / 'bin'}:{os.environ.get('PATH', '')}", 'HOOVER4_CLUSTER_STATE': '1'}
         if self.revision:
@@ -1129,8 +1130,24 @@ def step_gpu_pool(ctx):
     return {'settings_revision': ctx.settings_revision}
 
 
+def last_json(out):
+    try:
+        return json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {}
+
+
+def step_secret_store(ctx):
+    """OpenBao, the secret store of the site (../platform/secrets/openbao.py), and the site secrets that the zone steps
+    read. Then the values of the earlier cluster copy of the zone secrets move into the store and are read back. The
+    earlier copy stays until the step operator checks the values again, after the operator pod of this version runs."""
+    applied = last_json(ctx.run([sys.executable, SOURCE / 'platform/secrets/openbao.py', 'apply'], capture=True)[1])
+    return {'changed': applied.get('changed') or [], 'migration': applied.get('migration') or {}}
+
+
 def step_operator(ctx):
-    """The rights of the zone runner, then the operator login, the portal and the runner in the operator pod.
+    """The rights of the zone runner, then the operator login, the portal and the runner in the operator pod. Then the
+    earlier cluster copy of the zone secrets goes, after a second check of its values in the secret store.
 
     The pod runs the operator image of the files of the checkout. The step images builds it, and this step builds it
     only when the registry does not have it, for example after a change of the checkout.
@@ -1143,13 +1160,15 @@ def step_operator(ctx):
     ctx.run(['bash', SOURCE / 'platform/operator/start-web-tools.sh'],
             env={'OPERATOR_IMAGE': image, 'OPERATOR_REVISION': ctx.revision,
                  'OPERATOR_IMAGE_TAGS': json.dumps(ctx.image_tags(required=False), sort_keys=True)})
-    return {'operator_image': image}
+    finished = last_json(ctx.run([sys.executable, SOURCE / 'platform/secrets/openbao.py', 'finish'], capture=True)[1])
+    return {'operator_image': image, 'secret_migration': {k: v for k, v in finished.items() if k != 'step'}}
 
 
 def cluster_steps(ctx):
     steps = {
         'tools': step_tools,
         'cluster': step_script('bash', '@cluster/setup.sh'),
+        'secret-store': step_secret_store,
         'registry': step_script('bash', '@platform/registry/install-registry.sh'),
         'images': step_images,
         'gpu-images': step_gpu_images,
@@ -1510,7 +1529,7 @@ PREREQUISITES = {
     'rebalance': ('zone:', 'mcp-relay', 'calls', 'prepull', 'hosts:kubelet') + PLATFORM,
 }
 # The steps before the registry form a chain: each one waits for every earlier step.
-CHAIN = ('hosts:', 'tools', 'cluster', 'registry')
+CHAIN = ('hosts:', 'tools', 'cluster', 'secret-store', 'registry')
 
 
 def prerequisites(names):

@@ -16,6 +16,9 @@ FIXTURES = TESTS / 'fixtures'
 # the state of the site that the environment names (a zone delete test removed the secrets of a real zone).
 os.environ['HOOVER4_SITE'] = '/nonexistent/site.yml'
 os.environ.pop('KUBECONFIG', None)
+# The secret store of the tests is a JSON file of each test (secret_store()), never the store of a site.
+for name in ('HOOVER4_SECRET_STORE', 'HOOVER4_SECRET_TOKEN', 'HOOVER4_SECRET_ROLE', 'HOOVER4_SECRET_ZONE'):
+    os.environ.pop(name, None)
 sys.path.insert(0, str(K3S))
 sys.path.insert(0, str(K3S / 'hoover'))
 sys.path.insert(0, str(K3S / 'hoover' / 'stores'))
@@ -53,6 +56,20 @@ def site_file(tmp_path):
     def write(name, text=None):
         return write_site(tmp_path, name, text)
     return write
+
+
+@pytest.fixture(autouse=True)
+def secret_store(tmp_path, monkeypatch):
+    """Each test gets its own file store (../secretstore.py FileStore). Return its path."""
+    import secretstore
+    path = tmp_path / 'secret-store.json'
+    monkeypatch.setenv('HOOVER4_SECRET_STORE', f'file://{path}')
+    for name in ('HOOVER4_SECRET_TOKEN', 'HOOVER4_SECRET_ROLE', 'HOOVER4_SECRET_ZONE'):
+        monkeypatch.delenv(name, raising=False)
+    secretstore.reset()
+    secretstore._role = None
+    yield path
+    secretstore.reset()
 
 
 @pytest.fixture(autouse=True)

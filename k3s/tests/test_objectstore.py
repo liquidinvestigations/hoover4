@@ -247,7 +247,8 @@ def zone_state(monkeypatch, tmp_path):
     monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)
     folder = tmp_path / 'zones'
     folder.mkdir()
-    (folder / 'secrets.json').write_text(json.dumps({'zone-a': {'objectstore_key': KEY}}))
+    import secretstore
+    secretstore.keep('zones/zone-a/secrets', {'objectstore_key': KEY})
     monkeypatch.setattr(zone, 'PRIVATE', tmp_path)
     monkeypatch.setattr(objectstore, 'ensure', lambda z, key: [])
     calls = []

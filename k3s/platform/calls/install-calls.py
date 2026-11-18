@@ -33,8 +33,9 @@ advertises the pod addresses, which the host reaches.
 A Deployment restarts only when its own Secret or its template changes (checksum()). The zone lists are in the Secrets
 coturn-secrets and jvb-zones, which the sidecars read while they run. The kubelet updates a mounted Secret within
 about a minute.
-Each zone must be installed first, because the script reads its JVB template. The secrets come from
-<state folder>/zones/secrets.json, which zones.py writes. The script prints no secret.
+Each zone must be installed first, because the script reads its JVB template. The secrets come from the secret store
+(../../secretstore.py): site/calls and the TURN secret of each zone in zones/<zone>/secrets. The script prints no
+secret.
 """
 import base64,copy,hashlib,ipaddress,json,os,pathlib,subprocess,sys,time
 source=pathlib.Path(__file__).resolve().parents[2]
@@ -286,7 +287,9 @@ if subprocess.run(['kubectl','get','namespace',NS],capture_output=True).returnco
  apply([{'apiVersion':'v1','kind':'Namespace','metadata':{'name':NS}}])
 if '--probe' in sys.argv[1:]:
  probe(force='--force' in sys.argv[1:]);sys.exit(0)
-data=json.loads((settings.PRIVATE/'zones/secrets.json').read_text());calls=data['calls']
+import secretstore
+calls=secretstore.read('site/calls')
+data={'calls':calls,**{zone:secretstore.zone_secrets(zone) for zone in ZONES}}
 def checksum(items):
  # Each Deployment carries a hash of its Secret, so a changed config restarts it and an unchanged one does not.
  # A restart of coturn, LiveKit or the JVB ends the calls that run on it.

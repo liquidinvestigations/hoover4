@@ -836,6 +836,10 @@ def secrets(r):
     for item in ('proxy-secret', 'mcp-shared-secret', 'browser-fetch-token'):
         wanted.setdefault(item, data.get(item) or random.token_hex(32))
     data.update(wanted)
+    # The secret store keeps the values (../secretstore.py, zones/<zone>/hoover/hoover-runtime), and the Secret is a copy.
+    # The import replaces the stored values on purpose, because the copied stores hold the Compose values.
+    import secretstore
+    data = secretstore.replace(secretstore.zone_path(r.zone, 'hoover/hoover-runtime'), data)
     kubectl('apply', '-f', '-', input=json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'hoover-runtime', 'namespace': ns},
                                                    'type': 'Opaque', 'stringData': data}))
     return {'secrets': ['hoover-runtime'], 'from_source_files': taken}
@@ -1186,7 +1190,8 @@ def users(r):
 
     The Compose install signed every request in as one header identity, so the owners have no zone account. The user
     gets the same username, so the website finds the owner of the data. An owner that was an administrator in Compose
-    joins Domain Admins, the administrator group of the cluster render (website.admin_groups). The passwords are in
+    joins Domain Admins, the administrator group of the cluster render (website.admin_groups). The passwords are in the
+    path zones/<zone>/imported-users of the secret store (../secretstore.py), with a copy in
     <state folder>/zones/<zone>/imported-users.json. The step prints no password.
     """
     import settings as k3s_settings
@@ -1198,8 +1203,10 @@ def users(r):
     import urllib.parse
     call = udm.client(r.zone)
     base = 'dc=swp-ldap,dc=internal'
+    import secretstore
     path = k3s_settings.PRIVATE / 'zones' / r.zone / 'imported-users.json'
-    stored = json.loads(path.read_text()) if path.exists() else {}
+    store_path = secretstore.zone_path(r.zone, 'imported-users')
+    stored = secretstore.read(store_path)
     flags = {f'opendesk{a}Enabled': True for a in ('Fileshare', 'Projectmanagement', 'Knowledgemanagement', 'Livecollaboration',
                                                    'Notes', 'Videoconference')}
     result = {}
@@ -1215,7 +1222,7 @@ def users(r):
             call('POST', 'users/user/', {'position': f'cn=users,{base}', 'properties': {
                 'username': name, 'firstname': name, 'lastname': 'Imported', 'password': value, 'groups': groups,
                 'mailPrimaryAddress': f'{name}@{site_config.zone_domain(r.zone, r.site.domain)}', **flags}})
-            stored[name] = value
+            stored = secretstore.replace(store_path, {name: value})
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(stored, indent=1) + '\n')
             path.chmod(0o600)

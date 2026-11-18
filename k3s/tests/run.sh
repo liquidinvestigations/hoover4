@@ -5,8 +5,9 @@
 #            requests, the openDesk object storage in Garage, the openDesk databases on the shared PostgreSQL and the
 #            site placement (test_config.py, test_render.py, test_shared_stores.py, test_temporal.py, test_zones.py,
 #            test_objectstore.py, test_postgresql.py, test_placement.py, test_memory.py)
-#   state    the operator settings registry, revisions, apply operations, portal routes, the cluster copy of the state
-#            and the site lock Lease (test_state.py, test_portal.py, test_clusterstate.py)
+#   state    the operator settings registry, revisions, apply operations, portal routes, the cluster copy of the state,
+#            the site lock Lease and the secret store client with the move of the earlier zone secrets (test_state.py,
+#            test_portal.py, test_clusterstate.py, test_secretstore.py)
 #   driver   the deployment driver with fake ssh, sudo, kubectl and ansible-playbook, and the host roles and the watch tools (test_driver.py, test_hosts.py, test_watch.py)
 #   import   the Compose import: the ini reader, the folder checks, the renames, the refusal of a second import, and
 #            the offline copy with its hashes and owner mapping (test_import_compose.py)
@@ -21,7 +22,7 @@ repo_root="$(cd -- "$tests_dir/../.." && pwd)"
 suites=("$@")
 [ ${#suites[@]} -eq 0 ] && suites=(render state driver)
 
-declare -A files=([render]="test_config.py test_render.py test_shared_stores.py test_temporal.py test_zones.py test_objectstore.py test_postgresql.py test_placement.py test_memory.py" [state]="test_state.py test_portal.py test_clusterstate.py" [driver]="test_driver.py test_hosts.py test_watch.py test_idempotent.py"
+declare -A files=([render]="test_config.py test_render.py test_shared_stores.py test_temporal.py test_zones.py test_objectstore.py test_postgresql.py test_placement.py test_memory.py" [state]="test_state.py test_portal.py test_clusterstate.py test_secretstore.py" [driver]="test_driver.py test_hosts.py test_watch.py test_idempotent.py"
                  [import]="test_import_compose.py" [backup]="test_backup.py")
 built=""
 status=0

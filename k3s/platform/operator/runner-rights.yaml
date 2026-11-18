@@ -12,9 +12,11 @@
 #   creates and deletes the Ingress of the object storage host of a zone (../../zones/objectstore.py). The network
 #   policy garage-clients admits the ingress controller only on the S3 port of Garage.
 #   deploy-k3s up creates and changes the stores and Temporal with the admin kubeconfig.
-# - In operator-portal it reads and writes the ConfigMaps and Secrets of the cluster copy of the state
-#   (../../clusterstate.py) and the Lease site-operation of the site lock (../../oplock.py). The Secret rights cover
-#   every Secret of operator-portal, because a Role cannot name the Secrets that the runner creates.
+# - In operator-portal it reads and writes the ConfigMaps of the cluster copy of the state (../../clusterstate.py), the
+#   Secrets of operator-portal and the Lease site-operation of the site lock (../../oplock.py). The Secret rights cover
+#   every Secret of operator-portal, because a Role cannot name a Secret that the runner creates.
+# - It has no right in the namespace openbao, so it cannot read the seal key of the secret store. It reads and writes
+#   the secrets in the store with the roles runner and backup (../secrets/openbao.py).
 # - The ValidatingAdmissionPolicy zone-runner-scope refuses a namespace or a RoleBinding outside the zone namespaces,
 #   and a RoleBinding to a ClusterRole other than zone-admin.
 # - The ValidatingAdmissionPolicy hoover-pod-limits (../../zones/manifests/zone-pods.yaml) refuses host access in the
@@ -88,8 +90,8 @@ rules:
   - apiGroups: ['']
     resources: [configmaps]
     verbs: [get, list, create, patch, update, delete]
-  # The zone secrets of the cluster copy, and the GPU key, from which the zone token of the GPU proxy derives
-  # (../../hoover/gpu.py).
+  # The GPU key, from which the zone token of the GPU proxy derives (../../hoover/gpu.py), and the Secrets of an
+  # earlier cluster copy of the zone secrets, which ../secrets/openbao.py moves into the secret store.
   - apiGroups: ['']
     resources: [secrets]
     verbs: [get, list, create, update, delete]

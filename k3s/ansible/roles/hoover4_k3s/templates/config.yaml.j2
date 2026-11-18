@@ -6,6 +6,8 @@ advertise-address: {{ hoover4_node_address }}
 tls-san:
   - {{ hoover4_node_address }}
 flannel-backend: {{ 'host-gw' if hoover4_single_local | bool else 'vxlan' }}
+# The Secrets are encrypted at rest (tasks/secrets-encryption.yml).
+secrets-encryption: true
 token-file: /etc/rancher/k3s/token
 agent-token-file: /etc/rancher/k3s/agent-token
 write-kubeconfig-mode: "0600"

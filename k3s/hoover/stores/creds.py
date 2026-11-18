@@ -12,7 +12,8 @@ The admin of the shared ClickHouse, the admin of the shared Manticore and the Ga
 hoover-stores of the namespace hoover-stores (shared.py). The password of the schema user is only in the Secret
 manticore-schema of the Hoover namespace (../setup.py), because openDesk service accounts can list the Secrets of the
 zone namespace.
-A present key keeps its value.
+A present key keeps its value. The values are the path zones/<zone>/stores of the secret store
+(../../secretstore.py), and the Secret is a copy. A value of the Secret that the store lacks moves into the store.
 Usage: creds.py <zone>
 """
 import base64, hashlib, json, secrets, sys
@@ -37,9 +38,11 @@ def manticore_seed(password):
 
 
 def main():
+    import secretstore
     found = common.kubectl('-n', NS, 'get', 'secret', NAME, '--ignore-not-found', '-o', 'json').strip()
     current = {k: base64.b64decode(v).decode() for k, v in json.loads(found).get('data', {}).items()} if found else {}
-    data = {**{k: secrets.token_hex(24) for k in KEYS}, **current}
+    data = secretstore.keep(secretstore.zone_path(NS, 'stores'), {k: (lambda: secrets.token_hex(24)) for k in KEYS},
+                            current, drop=('manticore-schema',), source=f'the Secret {NAME} of {NS}')
     if data != current:
         common.apply({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': NAME, 'namespace': NS, 'labels': {common.LABEL: 'credentials'}},
                       'type': 'Opaque', 'stringData': data})

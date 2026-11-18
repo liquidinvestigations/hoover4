@@ -33,7 +33,8 @@ zone=sys.argv[1];parts=sys.argv[2:] or ['jitsi','matrixrtc','turn','matrixrtc-re
 USER=os.environ.get('LAB_USER','test.user')
 PASSWORD_FILE=pathlib.Path(os.environ.get('LAB_PASSWORD_FILE',settings.PRIVATE/f'zones/{zone}/test-user-password'))
 HOLD=int(os.environ.get('JITSI_HOLD','0'));P2P='true' if os.environ.get('JITSI_P2P')=='1' else 'false'
-secrets=json.loads((settings.PRIVATE/'zones/secrets.json').read_text())
+import secretstore
+secrets={'calls':secretstore.read('site/calls'),zone:secretstore.zone_secrets(zone)}
 def kubectl(*args):
  r=subprocess.run(['kubectl',*args],check=True,capture_output=True,text=True);return r.stdout+r.stderr
 def http(method,url,body=None,token=None):

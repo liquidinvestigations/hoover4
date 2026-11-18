@@ -8,6 +8,11 @@
   changed_when: false
   check_mode: false
 
+- name: Finish the secrets encryption
+  ansible.builtin.include_tasks: secrets-encryption.yml
+  vars:
+    hoover4_secrets_phase: finish
+
 # The check saves and removes an etcd snapshot, and k3s keeps a record object of each snapshot, so it runs only after
 # this play installed or restarted k3s. A second run without a change creates no object.
 - name: Verify etcd

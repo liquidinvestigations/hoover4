@@ -277,8 +277,8 @@ python3 k3s/zones/zone.py delete zone-x
 
   The Helm releases must have the recorded names, revisions and charts, and the status `deployed`. The log line
   `opendesk-check` names each changed input. Without a change, only the Collabora discovery check of
-  `zone-patches.py` runs. The record is part of the cluster copy of the zone secrets. The runner of the operator pod
-  and every workstation therefore read the same record.
+  `zone-patches.py` runs. The record is the path `zones/<zone>/records/opendesk-applied.json` of the secret store. The
+  runner of the operator pod and every workstation therefore read the same record.
 - A change by hand of an object or of the application state is not an input. `zone.py apply <zone> --full` and
   `deploy-k3s up --full` run the waves and the application state steps without the check.
 - helmfile keeps each pulled chart version in `opendesk-charts/` of the state folder, with a lock file for each
@@ -438,7 +438,7 @@ k3s/deploy-k3s measure-speed --site <file> --target <node>   # see "Measure the 
 - `deploy-k3s` computes a digest of the inputs of [images/operator/](images/operator) and of [ansible/requirements.yml](ansible/requirements.yml), and builds the image `localhost/hoover4-operator:<digest>` when it is missing.
   It then runs one container with `--rm` for the command. The container mounts the checkout read-only at its own path, the folder of the site file read-write, `~/.ssh` read-only, the SSH agent socket and the runtime folder of the user for the podman service.
   It runs with the UID of the user and the network of the host. `HOME` is `/tmp/home` of the container, so no tool writes into the checkout. Inside it, `HOOVER4_OPERATOR_IMAGE=1` makes `deploy-k3s` run the driver ([driver/deploy.py](driver/deploy.py)).
-- `up` runs the host steps, then the pinned operator tools, the cluster services, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator pod (the portal and the zone runner), the GPU proxy, each zone and the calls services, in this order.
+- `up` runs the host steps, then the pinned operator tools, the cluster services, the secret store, the registry, the images, the ingress, the HTTPS frontend, monitoring, the operator pod (the portal and the zone runner), the GPU proxy, each zone and the calls services, in this order.
   The registry step runs before the image step, so each push has a target.
 - Monitoring ([platform/monitoring/](platform/monitoring)) names no node. Prometheus, Grafana and Loki stay on the nodes of their claims.
   Alloy runs on each node and reads the log files of the pods of its node from `/var/log/pods` with the labels `namespace`, `pod` and `container`. No log stream passes through the API server.
@@ -501,7 +501,7 @@ The local node connects to `localhost` over SSH unless it has `ssh_host`, so the
 The admin kubeconfig is `kubeconfig` of the state folder. k3s writes it as `/etc/rancher/k3s/hoover4-admin.yaml`, because `/etc/rancher/k3s/k3s.yaml` can belong to another k3s user of the host.
 A new Hoover installation of a single-node site keeps its dataset folders `testdata` and `uploads` on claims, so it needs no NFS server.
 The frontend step adds the local CA to the trust store of the host and to the NSS stores of the operator user, so a browser of the host trusts the site.
-`tools/write-password-table.py` writes the logins of the site into `zones/passwords.md` of the state folder.
+`tools/write-password-table.py` prints the logins of the site from the secret store and the live Secrets. Nothing stores the table.
 `tools/local-site-check.py [--restart]` checks the storage, a registry pull and a restart of the host services of a single-node site.
 `tools/zone-data-check.py <zone> write|read` writes one item into each openDesk application of a zone and reads it back.
 
@@ -577,7 +577,7 @@ Each store keeps one copy of each part of its data. No store has replication or 
 A zone with `stores = site` keeps the objects of its openDesk applications in the shared Garage, and runs no SeaweedFS ([zones/objectstore.py](zones/objectstore.py)). A zone of the layout `local` keeps SeaweedFS in its namespace.
 
 - Each openDesk object store of the zone has the bucket `<zone>-opendesk-<bucket>`: `migrations`, `nextcloud`, `notes`, `ums` (Nubus), `openproject`, `openxchange` and `synapse`.
-- The key `<zone>-opendesk` reads and writes these buckets only. It has a local alias with the openDesk name of each bucket, for example `nextcloud`, so the applications keep their bucket names. Nextcloud names its root storage by the bucket name. The key cannot create a bucket, change a bucket setting, or reach a Hoover bucket or a bucket of another zone. Its id and secret are `objectstore_key` of the zone in `zones/secrets.json`, and `zone.py apply` imports it into Garage.
+- The key `<zone>-opendesk` reads and writes these buckets only. It has a local alias with the openDesk name of each bucket, for example `nextcloud`, so the applications keep their bucket names. Nextcloud names its root storage by the bucket name. The key cannot create a bucket, change a bucket setting, or reach a Hoover bucket or a bucket of another zone. Its id and secret are `objectstore_key` of the zone secrets in the secret store, and `zone.py apply` imports it into Garage.
 - The values of the zone name the object storage host `<zone>-objectstorage.<domain>`, the key and the Garage region `us-east-1`. Garage refuses a request that is signed for another region. The openDesk Notes template passes no region to its chart, so the zone gives Notes the region in the customization file `zones/notes-s3-region.yaml` of the state folder. Without it Notes signs with an empty region, and Garage refuses each read of a Notes attachment.
 - The applications and the browsers of the users reach Garage at the object storage host, through the HTTPS frontend and the Ingress `opendesk-<zone>` in `hoover-stores`. The Ingress sends only the paths of the zone buckets and the bucket list (`/`) to Garage. Garage answers the bucket list with the buckets of the key. It answers the CORS requests of the OpenProject pages of the zone, because a Garage bucket without a CORS setting refuses them.
 - The S3 features that each application uses, checked against Garage 2.3.0:
@@ -610,7 +610,7 @@ A zone with `stores = site` keeps the objects of its openDesk applications in th
 A zone with `stores = site` keeps the databases of its openDesk applications on the shared PostgreSQL, and runs no PostgreSQL ([zones/postgresql.py](zones/postgresql.py)). A zone of the layout `local` keeps PostgreSQL in its namespace.
 
 - The server runs the PostgreSQL major version of the openDesk release (15) in Kata on a block volume of a fast tier. Its admin password is `postgresql-admin` of the Secret `hoover-stores`. The operator tools connect as the admin through the local socket of the pod and need no password.
-- Each PostgreSQL database of the openDesk release has the database `<prefix>_<name>` and the user `<prefix>_<user>` of the zone, for example `zone_a_nextcloud` and `zone_a_nextcloud_user`. The user owns its database and has the connection limit of the release. It cannot create a database or a role. The passwords are `postgresql` of the zone in `zones/secrets.json`, and `zone.py apply` creates the users and the databases. The values of the zone name the server `postgresql.hoover-stores.svc.cluster.local`, the names and the passwords, and turn the openDesk PostgreSQL off.
+- Each PostgreSQL database of the openDesk release has the database `<prefix>_<name>` and the user `<prefix>_<user>` of the zone, for example `zone_a_nextcloud` and `zone_a_nextcloud_user`. The user owns its database and has the connection limit of the release. It cannot create a database or a role. The passwords are `postgresql` of the zone secrets in the secret store, and `zone.py apply` creates the users and the databases. The values of the zone name the server `postgresql.hoover-stores.svc.cluster.local`, the names and the passwords, and turn the openDesk PostgreSQL off.
 - No database of a zone, and neither `postgres` nor `template1`, admits a connection of `PUBLIC`. A user connects only to its own database. In each zone database no user reads `pg_database`, `pg_stat_database`, `pg_stat_database_conflicts`, `pg_roles`, `pg_user`, `pg_group`, `pg_auth_members`, `pg_stat_activity` or `pg_shdescription`. Synapse reads the collation of its database from `pg_database` at its start, so the Synapse user reads that catalog in its own database and can see the database names.
 - The extensions of the openDesk databases are `pg_trgm`, `unaccent`, `fuzzystrmatch` and `btree_gist` (Notes, OpenProject and the Matrix authentication service). PostgreSQL 15 lets the owner of a database create them. Synapse needs the collation `C`, and XWiki the encoding `UNICODE`, as in the release. No application needs another server setting. The server allows 1000 connections, and a zone opens about 40.
 - A zone of an earlier version runs PostgreSQL and has no value `postgresql` in the zone state. `zone.py apply` with the admin kubeconfig moves it, and `deploy-k3s up` runs that apply for each zone:
@@ -874,29 +874,68 @@ The website image holds the manuals of `docs/user-manual/` for the `/docs` page.
 
 ## Keep the state in the cluster.
 
-The cluster holds the authoritative zone state, zone secrets and operator state. [clusterstate.py](clusterstate.py) keeps one object for each file in the namespace `operator-portal`.
+The cluster holds the authoritative zone state and operator state. [clusterstate.py](clusterstate.py) keeps one object for each file in the namespace `operator-portal`.
 
 | Files of the state folder | Objects |
 |---|---|
 | `zone-state.json`, `operator/` (settings, revisions, Apply operations and their logs, backup and relay state), `operations/` (the logs of the zone operations), `facts/`, `frontend/local-ca.crt` | ConfigMaps with the label `hoover.dev/state=file` |
-| `zones/` (the zone secrets, the openDesk values, the master passwords, and the zone user logins `fixture-user-passwords.json` and `passwords.md`) | Secrets with the label `hoover.dev/state=secret` |
 
 - The annotation `hoover.dev/state-path` of each object names its file. A log keeps its last 256 KiB in the cluster.
-- Only the runner container of the operator pod mounts `zones/`, so the portal container reads no zone secret and no
-  zone user password. A state folder of an earlier version keeps the two password files at its top. The next pull or
-  push moves them and their Secrets into `zones/`.
+- The secrets are in the secret store ([Keep the secrets in OpenBao.](#keep-the-secrets-in-openbao)). `zones/` of the
+  state folder holds copies that the zone tools write from the store, and the cluster copy does not keep it. Only the
+  runner container of the operator pod mounts `zones/`, so the portal container reads no copy of a zone secret.
 - `operator/deploy/` (the records of `deploy-k3s`), the tokens, the kubeconfig and the downloaded tools stay only in the state folder, because the workstation needs them before a cluster exists.
 - `deploy-k3s` reads the cluster copy into the state folder after it takes the site lock, and before `render` and `check`. After each step it writes the changed files back. The state folder keeps an export copy for inspection.
 - A folder keeps the digest of each file and the `resourceVersion` of its object from the last synchronization. A write of a file that another writer changed fails with a conflict, and the next run reads the newer copy first.
 - `python3 k3s/clusterstate.py pull|push <state folder>` reads or writes the copy by hand. `KUBECONFIG` names the kubeconfig.
 
 The operator pod (Deployment `portal` of `operator-portal`) runs the portal and the zone runner from the operator image of the registry ([platform/operator/pod.py](platform/operator/pod.py)).
-It mounts no checkout and no host state folder. Each container reads the cluster copy into a folder of the pod at its start. The runner keeps the zone secrets in its own memory folder, so the portal container cannot read them.
+It mounts no checkout and no host state folder. Each container reads the cluster copy into a folder of the pod at its start. The runner reads the secrets from the secret store and keeps their copies in its own memory folder, so the portal container cannot read them.
 The pod runs on the control-plane node. When the site file has `backup`, it runs on the backup node, and the runner container mounts the backup folder of that node at the same path ([platform/operator/backup-mount.py](platform/operator/backup-mount.py)).
 The portal page then shows the cluster slice of the backup node.
 The runner uses the token of the ServiceAccount `zone-runner` and needs no SSH access. The HTTPS frontend serves every zone host, so a zone operation does not change it.
 A create or upgrade checks that the frontend answers for `<zone>-portal.<domain>` with a valid certificate, and stops at the step `frontend` until it does. `deploy-k3s up --target <public node> --steps frontend` on the workstation installs the frontend.
 The runner checks that the registry has the images of the revision. `deploy-k3s up --steps images` builds them.
+
+## Keep the secrets in OpenBao.
+
+[platform/secrets/openbao.py](platform/secrets/openbao.py) runs OpenBao, the secret store of the site, and [secretstore.py](secretstore.py) is its client.
+The step `secret-store` of `deploy-k3s up` installs it after the step `cluster`, and every later step waits for it.
+
+- OpenBao runs as the StatefulSet `openbao` of the namespace `openbao`, with one pod in gVisor on the control-plane node.
+  The pod has the PriorityClass `hoover-node-bound`, a 128 MiB memory request and Raft storage on a 2 GiB claim.
+  One pod is enough, because the site has one k3s server, and the pods read Kubernetes Secret copies, so a stopped store stops no service.
+- OpenBao unseals itself at each start, also after a power loss, with the static seal key `secret-store/seal.key` of the state folder of the deploying host.
+  The Secret `openbao-seal` holds the same key, and only the OpenBao pod mounts it. A key of the state folder that differs from the Secret stops the step.
+  The first start writes the recovery key into `secret-store/recovery-key`. The root token configures the store once and is then revoked.
+- The k3s server keeps the Secrets encrypted at rest (`secrets-encryption`). A server without it gets it at its next `hosts:k3s` step: `k3s secrets-encrypt enable`, a restart with the flag, `rotate-keys`, which encrypts every Secret again, and a second restart.
+- The listener uses TLS with a certificate of a CA that the step makes once. The ConfigMap `openbao-ca` of `operator-portal` holds the CA certificate.
+  The runner calls the Service `openbao.openbao.svc`. The workstation reaches the pod through `kubectl proxy` and the API server, because a port-forward does not reach a listener in gVisor. The network policy admits only the operator pod and the node of the pod.
+- Each secret is a path of the KV version 2 mount `hoover`, which requires check-and-set on each write. A write names the version that it read, so a write after another writer reads and changes again, and both changes stay.
+
+  | Path | Secrets |
+  |---|---|
+  | `site/calls` | the JVB password and the LiveKit secrets |
+  | `site/zone-users` | the password of each user of [zones/zone-users.json](zones/zone-users.json) |
+  | `site/stores`, `site/temporal`, `site/gpu` | the Secret `hoover-stores` of the shared stores, the Temporal signing key, the GPU key |
+  | `site/operator-login`, `site/registry` | the operator login and the registry push password |
+  | `zones/<zone>/secrets` | the secrets of the zone: master password, client secrets, TURN secret, Garage key, PostgreSQL passwords |
+  | `zones/<zone>/test-user`, `zones/<zone>/imported-users` | the test.user password and the users of a Compose import |
+  | `zones/<zone>/stores`, `zones/<zone>/garage-tenants`, `zones/<zone>/hoover/<Secret>` | the store credentials of the zone and the Secrets of its Hoover namespace |
+  | `zones/<zone>/records/<file>` | the records `opendesk-applied.json`, `objectstore-move.json` and `postgresql-move.json` |
+
+- A step that owns a secret keeps it in the store and writes its Kubernetes Secret from the store. A missing value is generated once, and a stored value never changes.
+  A Secret or a file of an earlier version gives the values that the store lacks. A value that differs from the store stops the step with the path and the key, and the services keep the value of the Secret.
+- A process logs in with the Kubernetes auth method. The role `deployer` uses a short token of the ServiceAccount `openbao-deployer` and administers the store. The roles `runner` and `backup` use the token of the ServiceAccount `zone-runner`.
+  The runner reads and writes the paths of `hoover` and creates zone step tokens. The backups read every path and take and restore the snapshot of the store.
+- `zone.py` uses a token of the token role `zone-step` for its zone. Its policy reaches `zones/<zone>/` of that zone only, and reads `site/calls` and `site/zone-users`, which the step `secret-store` writes. `tools/runner-scope-check.py <zone> <other zone>` checks these policies.
+- `zones/` of the state folder holds copies: the values, the master password, the client Secrets, `fixture-user-passwords.json` and `test-user-password`. `zones.py` writes them from the store at each zone apply.
+- `tools/write-password-table.py` prints the login table from the store and the live Secrets. Redirect it to a private file when a person needs a copy.
+- An earlier version kept `zones/` as Secrets of `operator-portal` with the label `hoover.dev/state=secret`.
+  The step `secret-store` loads their secret values into the store and reads each value back. A value that the store holds with another value stops the step before any write.
+  The step `operator` checks each value again after the operator pod of the new version runs.
+  It then deletes the earlier Secrets and the files `zones/secrets.json` and `zones/passwords.md` of the state folder.
+- `python3 k3s/platform/secrets/openbao.py status` prints the seal state, the version and the paths of the store.
 
 ## Save and apply operator settings.
 
@@ -1069,6 +1108,7 @@ $run restore-zone <zone> <generation> [--from <zone of the copy>]
 $run restore-hoover <zone> <collection> <generation> [--from <zone of the copy>]
 $run recovery <generation>
 $run restore-platform <generation>
+$run restore-secret-store <generation>
 ```
 
 - The operator runner starts at most one due job each minute. [schedule.py](platform/backups/schedule.py) holds the rules: eligibility, the weekly limit, the slots and the retention.
@@ -1078,7 +1118,8 @@ $run restore-platform <generation>
 - A copy is made in `staging/<job>/<generation>.partial` of the backup folder, checked against its manifest and renamed into its folder. The rename moves no data. A failed job or check keeps the older copies.
 - A restore reads a copy in place, after a check of every file against its manifest.
 - Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
-- The platform copy holds the newest scheduled etcd snapshot of the server with its token and k3s configuration, `private.tar`, and `recovery.json` (format version 3). `recovery.json` names the snapshot time and the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads format version 2 and a copy of the earlier SQLite format.
+- The platform copy holds the newest scheduled etcd snapshot of the server with its token and k3s configuration, `private.tar`, `openbao.snap`, and `recovery.json` (format version 3).
+  `openbao.snap` is the Raft snapshot of the secret store. The etcd snapshot holds the seal key in the Secret `openbao-seal`. `restore-secret-store` replaces the data of a running store with the snapshot of a copy. `recovery.json` names the snapshot time and the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads format version 2 and a copy of the earlier SQLite format.
   k3s saves an etcd snapshot every 12 hours and keeps 5 in `/var/lib/rancher/k3s/server/db/snapshots` (the k3s defaults). When the newest snapshot is older than 24 hours, the job fails with a message that names its age.
   The job starts the pod `k3s-snapshot-read` in the namespace `platform-backup` on the control plane. The pod mounts the snapshot folder, the token and the k3s configuration read-only, and the runner reads the files with tar through `kubectl exec` and checks their SHA-256. The job then deletes the pod. The runner needs no SSH and no access to a host.
   The pod runs as root without a capability and without an API token. The policy `k3s-snapshot-reader` ([platform/operator/runner-rights.yaml](platform/operator/runner-rights.yaml)) admits only this pod form in `platform-backup`, and the runner can only create, read and delete pods there.

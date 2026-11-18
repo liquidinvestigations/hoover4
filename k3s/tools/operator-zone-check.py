@@ -43,7 +43,8 @@ def leftovers():
  volumes=kubectl('get','logicalvolumes.topolvm.io','-o','json').stdout
  if volumes and zone in volumes:left['volumes']=True
  if (settings.PRIVATE/'zones'/zone).exists():left['files']=True
- if zone in json.loads((settings.PRIVATE/'zones/secrets.json').read_text()):left['secrets']=True
+ import secretstore
+ if secretstore.client().list(f'zones/{zone}'):left['secrets']=True
  livekit=subprocess.run(['kubectl','-n','calls','get','secret','livekit','-o','jsonpath={.data.config\\.yaml}'],capture_output=True,text=True).stdout
  if zone in base64.b64decode(livekit).decode():left['livekit_key']=True
  return left

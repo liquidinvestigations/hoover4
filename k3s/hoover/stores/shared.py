@@ -51,7 +51,8 @@ The ConfigMap shared-stores records the applied plan, the nodes of the store pod
 and the Temporal history shard count. The deploy check reads it (problems()). The stores of an earlier version kept
 several copies, and apply and the deploy check refuse them with the steps to create the stores again.
 The Secret hoover-stores of the namespace holds the ClickHouse admin password, the Manticore admin password and seed,
-the Garage RPC secret and the Garage admin token. The script never prints a credential.
+the Garage RPC secret, the Garage admin token and the PostgreSQL admin password. It is a copy of the path site/stores
+of the secret store (../../secretstore.py). The script never prints a credential.
 
 Usage: shared.py apply             create or update the stores and Temporal, wait for them, join the Garage nodes and
                                    record the plan
@@ -395,13 +396,18 @@ def problems(s=None):
 
 
 def credentials():
-    """Create the Secret of the namespace, or add its missing keys. A present key keeps its value."""
+    """Keep the values of the Secret of the namespace in the path site/stores of the secret store
+    (../../secretstore.py), and write the Secret from the store. A stored key keeps its value. The Secret of an earlier
+    version gives the values that the store lacks."""
+    import secretstore
     found = common.kubectl('-n', NS, 'get', 'secret', SECRET, '--ignore-not-found', '-o', 'json').strip()
     current = {k: base64.b64decode(v).decode() for k, v in json.loads(found).get('data', {}).items()} if found else {}
-    data = {'clickhouse-admin': secrets.token_hex(24), 'manticore-admin': secrets.token_hex(24),
-            'garage-rpc-secret': secrets.token_hex(32), 'garage-admin-token': secrets.token_hex(24),
-            'postgresql-admin': secrets.token_hex(24), **current}
-    data.setdefault('manticore-seed', creds.manticore_seed(data['manticore-admin']))
+    hex24, hex32 = (lambda: secrets.token_hex(24)), (lambda: secrets.token_hex(32))
+    source = f'the Secret {SECRET} of {NS}'
+    data = secretstore.keep('site/stores', {'clickhouse-admin': hex24, 'manticore-admin': hex24, 'garage-rpc-secret': hex32,
+                                            'garage-admin-token': hex24, 'postgresql-admin': hex24}, current, source=source)
+    if 'manticore-seed' not in data:
+        data = secretstore.keep('site/stores', {'manticore-seed': creds.manticore_seed(data['manticore-admin'])}, source=source)
     if data != current:
         common.apply({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': SECRET, 'namespace': NS, 'labels': {common.LABEL: 'credentials'}},
                       'type': 'Opaque', 'stringData': data})

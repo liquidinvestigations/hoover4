@@ -557,7 +557,7 @@ def test_the_schema_password_moves_out_of_the_zone_namespace(monkeypatch):
     monkeypatch.setattr(setup, 'secret', lambda ns, name: dict(secrets.get((ns, name), {})))
     monkeypatch.setattr(setup, 'ensure_secret', lambda name, wanted, follow=(), drop=(): written.setdefault(name, (wanted, follow)) and wanted)
     monkeypatch.setattr(setup, 'kubectl', lambda *a, **k: patched.append(a))
-    monkeypatch.setattr(setup, 'ZONES', type('P', (), {'read_text': lambda self: json.dumps({'zone-a': {'hoover_oidc_secret': 'x'}})})())
+    setup.secretstore.keep('zones/zone-a/secrets', {'hoover_oidc_secret': 'x'})
     monkeypatch.setattr(setup.site_temporal, 'token', lambda zone: 'jwt')
     monkeypatch.setattr(setup.gpu, 'token', lambda zone: 'gpu')
     setup.runtime_secrets()

@@ -250,7 +250,8 @@ spec:
 # The portal page shows the cluster slice of the node of the pod, from the host cgroup files.
 # The pod mounts no checkout and no state folder of a host. The state folder of /site/site.json is /site/site, a
 # folder of the pod that both containers share. The cluster holds the authoritative copy of the state
-# (../../clusterstate.py). The runner keeps the zone secrets in its own folder at /site/site/zones.
+# (../../clusterstate.py). The runner reads the secrets from the secret store (../../secretstore.py) and keeps their
+# copies in its own folder at /site/site/zones.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

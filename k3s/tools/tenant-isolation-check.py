@@ -518,8 +518,9 @@ def postgresql_cases(zone, other):
     entry = zonestate.load()['zones'].get(zone, {})
     if not postgresql.on_shared(entry):
         return [('openDesk databases of the zone on the shared PostgreSQL', 'absent', 'absent', f'{zone} has no value postgresql = site')]
-    data = json.loads((settings.PRIVATE / 'zones' / 'secrets.json').read_text())
-    mine, theirs = data[zone]['postgresql'], data.get(other, {}).get('postgresql') or {}
+    import secretstore
+    mine = secretstore.zone_secrets(zone)['postgresql']
+    theirs = secretstore.read(secretstore.zone_path(other)).get('postgresql') or {}
     pod = kubectl_json('-n', 'hoover-stores', 'get', 'pods', '-l', 'hoover.dev/store=postgresql')['items'][0]
     user, own = postgresql.user_name(zone, 'nextcloud'), postgresql.database_name(zone, 'nextcloud')
     password = mine['nextcloud']

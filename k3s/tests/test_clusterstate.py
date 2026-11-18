@@ -57,8 +57,9 @@ def test_a_first_push_copies_the_state_and_leaves_the_local_files(tmp_path):
     write(tmp_path, 'kubeconfig', 'admin')
     write(tmp_path, 'facts/node-a.json', '{}')
     changes = clusterstate.push(tmp_path, store=store)
-    assert set(changes) == {'zone-state.json', 'operator/desired.json', 'zones/zone-a/master-password', 'facts/node-a.json'}
-    assert store.objects[('secret', 'zones/zone-a/master-password')]['data'] == b'secret'
+    # zones/ holds copies of the secret store (../secretstore.py), which the cluster copy does not keep.
+    assert set(changes) == {'zone-state.json', 'operator/desired.json', 'facts/node-a.json'}
+    assert all(k == 'configmap' and not p.startswith('zones/') for k, p in store.objects)
     assert ('configmap', 'kubeconfig') not in store.objects
     assert clusterstate.push(tmp_path, store=store) == {}
 
@@ -67,10 +68,10 @@ def test_a_new_folder_gets_the_cluster_copy_and_a_cluster_change_replaces_an_unc
     store = Store()
     source, pod = tmp_path / 'workstation', tmp_path / 'pod'
     write(source, 'zone-state.json', 'one')
-    write(source, 'zones/secrets.json', 's1')
+    write(source, 'zones/zone-a/values.yaml', 's1')
     clusterstate.push(source, store=store)
-    assert clusterstate.pull(pod, store=store) == {'zone-state.json': 'written', 'zones/secrets.json': 'written'}
-    assert (pod / 'zones/secrets.json').stat().st_mode & 0o777 == 0o600
+    assert clusterstate.pull(pod, store=store) == {'zone-state.json': 'written'}
+    assert not (pod / 'zones').exists()
     write(source, 'zone-state.json', 'two')
     clusterstate.push(source, store=store)
     assert clusterstate.pull(pod, store=store) == {'zone-state.json': 'written'}
@@ -132,13 +133,13 @@ def test_a_change_of_another_file_does_not_block_a_push(tmp_path):
 def test_a_delete_goes_to_the_cluster_and_to_the_other_folder(tmp_path):
     store = Store()
     a, b = tmp_path / 'a', tmp_path / 'b'
-    write(a, 'zones/zone-a/values.yaml', 'v')
+    write(a, 'facts/node-a.json', 'v')
     clusterstate.push(a, store=store)
     clusterstate.pull(b, store=store)
-    (a / 'zones/zone-a/values.yaml').unlink()
-    assert clusterstate.push(a, store=store) == {'zones/zone-a/values.yaml': 'deleted'}
-    assert clusterstate.pull(b, store=store) == {'zones/zone-a/values.yaml': 'deleted'}
-    assert not (b / 'zones/zone-a/values.yaml').exists()
+    (a / 'facts/node-a.json').unlink()
+    assert clusterstate.push(a, store=store) == {'facts/node-a.json': 'deleted'}
+    assert clusterstate.pull(b, store=store) == {'facts/node-a.json': 'deleted'}
+    assert not (b / 'facts/node-a.json').exists()
 
 
 def test_a_large_log_keeps_its_last_lines_in_the_cluster(tmp_path):
@@ -152,53 +153,13 @@ def test_a_large_log_keeps_its_last_lines_in_the_cluster(tmp_path):
     assert clusterstate.pull(tmp_path, store=store) == {}
 
 
-def test_the_zone_user_passwords_are_secrets_that_reach_the_next_runner(tmp_path):
-    # The runner writes the passwords of the zone users at a create. A restart of its pod must not lose them. The files
-    # are in zones/, which only the runner container mounts.
-    store = Store()
-    runner, portal, workstation = tmp_path / 'runner', tmp_path / 'portal', tmp_path / 'workstation'
-    write(runner, 'zones/fixture-user-passwords.json', '{"user": "pw"}')
-    write(runner, 'zones/passwords.md', '| user | pw |')
-    changes = clusterstate.push(runner, store=store)
-    assert changes == {'zones/fixture-user-passwords.json': 'written', 'zones/passwords.md': 'written'}
-    assert set(store.list('secret')) == {'zones/fixture-user-passwords.json', 'zones/passwords.md'}
-    assert not store.list('configmap')
-    clusterstate.pull(portal, ('configmap',), store=store)
-    assert not (portal / 'zones').exists()
-    clusterstate.pull(workstation, store=store)
-    assert (workstation / 'zones/fixture-user-passwords.json').read_text() == '{"user": "pw"}'
-    assert (workstation / 'zones/fixture-user-passwords.json').stat().st_mode & 0o077 == 0
-
-
-def test_the_password_files_of_an_earlier_version_move_into_zones(tmp_path):
-    # An earlier version kept both files at the top of the state folder, which the portal container shares.
-    store = Store()
-    old, runner = tmp_path / 'old', tmp_path / 'runner'
-    write(old, 'fixture-user-passwords.json', '{"user": "cluster"}')
-    write(old, 'passwords.md', '| user | cluster |')
-    for path in clusterstate.MOVED:
-        store.put('secret', path, (old / path).read_bytes())
-    write(old, 'fixture-user-passwords.json', '{"user": "stale"}')
-    # A runner of the new version pulls: the objects move to zones/, and no file appears at the top of its folder.
-    clusterstate.pull(runner, store=store)
-    assert set(store.list('secret')) == set(clusterstate.MOVED.values())
-    assert (runner / 'zones/fixture-user-passwords.json').read_text() == '{"user": "cluster"}'
-    assert not (runner / 'fixture-user-passwords.json').exists() and not (runner / 'passwords.md').exists()
-    # A workstation folder of the earlier version moves its files. The cluster copy wins over its older file.
-    clusterstate.pull(old, store=store)
-    assert not (old / 'fixture-user-passwords.json').exists() and not (old / 'passwords.md').exists()
-    assert (old / 'zones/fixture-user-passwords.json').read_text() == '{"user": "cluster"}'
-    assert clusterstate.push(old, store=store) == {}
-    assert set(store.list('secret')) == set(clusterstate.MOVED.values())
-
-
-def test_the_objects_name_their_path_and_keep_secrets_out_of_configmaps():
+def test_the_objects_are_configmaps_that_name_their_path():
     kube = clusterstate.Kubectl('/nonexistent')
-    secret = kube.body('secret', 'zones/zone-a/master-password', b'pw')
-    assert secret['kind'] == 'Secret' and secret['data'] == {'content': 'cHc='}
-    assert secret['metadata']['annotations'] == {clusterstate.PATH_ANNOTATION: 'zones/zone-a/master-password'}
+    assert set(clusterstate.KINDS) == {'configmap'}
     config = kube.body('configmap', 'operator/desired.json', b'{}', version='7')
-    assert config['data'] == {'content': '{}'} and config['metadata']['resourceVersion'] == '7'
+    assert config['kind'] == 'ConfigMap' and config['data'] == {'content': '{}'}
+    assert config['metadata']['resourceVersion'] == '7'
+    assert config['metadata']['annotations'] == {clusterstate.PATH_ANNOTATION: 'operator/desired.json'}
     assert kube.body('configmap', 'facts/x.json', b'\xff')['binaryData'] == {'content': '/w=='}
 
 

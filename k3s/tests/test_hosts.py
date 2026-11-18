@@ -81,6 +81,8 @@ advertise-address: 192.0.2.25
 tls-san:
   - 192.0.2.25
 flannel-backend: vxlan
+# The Secrets are encrypted at rest (tasks/secrets-encryption.yml).
+secrets-encryption: true
 token-file: /etc/rancher/k3s/token
 agent-token-file: /etc/rancher/k3s/agent-token
 write-kubeconfig-mode: "0600"

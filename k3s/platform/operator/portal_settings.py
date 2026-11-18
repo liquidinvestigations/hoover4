@@ -1,8 +1,8 @@
 """The settings pages of the operator portal: read, save, Apply, retry and abandon, through settings.py and apply.py.
 
 The portal container of the operator pod runs the k3s folder of the operator image (PORTAL_REPO) with the site file of
-the ConfigMap portal-site. Its state folder holds the ConfigMaps of the cluster copy of the state, without the zone
-secrets (../../clusterstate.py). With HOOVER4_CLUSTER_STATE=1, each request first reads the cluster copy, and a
+the ConfigMap portal-site. Its state folder holds the ConfigMaps of the cluster copy of the state (../../clusterstate.py). The
+secrets are in the secret store (../../secretstore.py), which the portal does not read. With HOOVER4_CLUSTER_STATE=1, each request first reads the cluster copy, and a
 request that changes the operator state writes it back. The runner container runs the Apply operations that this
 module starts.
 """

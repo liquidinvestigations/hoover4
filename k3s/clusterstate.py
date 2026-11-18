@@ -1,20 +1,17 @@
 """The cluster copy of the zone state and the operator state of a site. Standard library only.
 
-The cluster holds the authoritative copy. Each file of the synchronized set is one object in the namespace
-operator-portal: a ConfigMap with the label hoover.dev/state=file, or a Secret with the label
-hoover.dev/state=secret. The annotation hoover.dev/state-path names the path of the file in the state folder. The key
-`content` holds the file.
+The cluster holds the authoritative copy. Each file of the synchronized set is one ConfigMap in the namespace
+operator-portal with the label hoover.dev/state=file. The annotation hoover.dev/state-path names the path of the file in
+the state folder. The key `content` holds the file.
 
   ConfigMaps  zone-state.json, operator/ (the operator settings, the apply operations and their logs, the backup and
               relay state), operations/ (the logs of the zone operations of the runner), facts/ (the host facts),
               speed/ (the measured CPU and disk speeds of the nodes), placement/plan.json (the site placement plan of
               placement.py) and frontend/local-ca.crt (the root certificate of the internal CA of the frontend)
-  Secrets     zones/ (the zone secrets, the openDesk values, the master passwords, fixture-user-passwords.json with
-              the passwords of the zone users of zones/zone-users.py, and passwords.md with the login table)
 
-Only the runner container of the operator pod mounts zones/, so the portal container never reads a zone secret.
-An earlier version kept fixture-user-passwords.json and passwords.md at the top of the state folder. pull() and push()
-move such a file and its object to zones/ once (MOVED).
+The secrets are in the secret store of the site (secretstore.py). zones/ of the state folder holds copies that the
+zone tools write from the store, and it is not part of the cluster copy. An earlier version kept zones/ as Secrets
+with the label hoover.dev/state=secret. platform/secrets/openbao.py moves their values into the store and deletes them.
 
 operator/deploy/ (the records of deploy-k3s), operator/import/ (the records of the Compose import), operator/migration/
 (the records of the earlier migration tool), lock files and files whose name starts with a dot stay local. A log file larger than LOG_LIMIT keeps its last LOG_LIMIT bytes in the cluster.
@@ -28,7 +25,7 @@ it. A file of MERGERS (the backup state) that changed on both sides is merged at
 The site operation lock (oplock.py) makes deploy-k3s, the runner and the backups the only writer at a time. The
 settings saves of the portal take no lock, and they write other files than the operations of the lock holder.
 
-Usage: clusterstate.py pull|push <state folder> [configmap|secret ...]    KUBECONFIG names the kubeconfig.
+Usage: clusterstate.py pull|push <state folder> [configmap]    KUBECONFIG names the kubeconfig.
 """
 import base64
 import contextlib
@@ -51,10 +48,7 @@ KINDS = {
     'configmap': ('file', ('zone-state.json', 'frontend/local-ca.crt', 'placement/plan.json'),
                   ('operator', 'operations', 'facts', 'speed'),
                   '.cluster-state.json', '.cluster-state.lock'),
-    'secret': ('secret', (), ('zones',), 'zones/.cluster-state.json', 'zones/.cluster-state.lock'),
 }
-# The secret files of an earlier version at the top of the state folder, and their paths in zones/.
-MOVED = {'fixture-user-passwords.json': 'zones/fixture-user-passwords.json', 'passwords.md': 'zones/passwords.md'}
 # operator/migration/ holds the records of the earlier migration tool in older state folders.
 EXCLUDED_FOLDERS = ('operator/deploy/', 'operator/import/', 'operator/migration/')
 
@@ -130,9 +124,7 @@ class Kubectl:
             path = (item['metadata'].get('annotations') or {}).get(PATH_ANNOTATION)
             if not path:
                 continue
-            if kind == 'secret':
-                data = base64.b64decode((item.get('data') or {}).get('content', ''))
-            elif 'content' in (item.get('binaryData') or {}):
+            if 'content' in (item.get('binaryData') or {}):
                 data = base64.b64decode(item['binaryData']['content'])
             else:
                 data = (item.get('data') or {}).get('content', '').encode()
@@ -144,15 +136,11 @@ class Kubectl:
                     'annotations': {PATH_ANNOTATION: path}}
         if version:
             metadata['resourceVersion'] = version
-        body = {'apiVersion': 'v1', 'kind': 'Secret' if kind == 'secret' else 'ConfigMap', 'metadata': metadata}
-        if kind == 'secret':
-            body['type'] = 'Opaque'
-            body['data'] = {'content': base64.b64encode(data).decode()}
-        else:
-            try:
-                body['data'] = {'content': data.decode()}
-            except UnicodeDecodeError:
-                body['binaryData'] = {'content': base64.b64encode(data).decode()}
+        body = {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': metadata}
+        try:
+            body['data'] = {'content': data.decode()}
+        except UnicodeDecodeError:
+            body['binaryData'] = {'content': base64.b64encode(data).decode()}
         return body
 
     def put(self, kind, path, data, version=None):
@@ -205,36 +193,9 @@ def write_file(folder, path, data, kind):
     target = Path(folder) / path
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
-    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if kind == 'secret' else 0o644), 'wb') as f:
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644), 'wb') as f:
         f.write(data)
     os.replace(tmp, target)
-
-
-def move_earlier_paths(folder, store):
-    """Move the files and objects of MOVED from the top of the state folder to zones/. The caller holds the secret lock.
-
-    A file that exists at both paths keeps the copy in zones/. An object of the old path becomes an object of the new
-    path when the new path has none, and the object of the old path goes.
-    """
-    folder = Path(folder)
-    remote = None
-    manifest = read_manifest(folder, 'secret')
-    for old, new in MOVED.items():
-        if (folder / old).is_file():
-            if (folder / new).exists():
-                (folder / old).unlink()
-            else:
-                (folder / new).parent.mkdir(parents=True, exist_ok=True)
-                os.replace(folder / old, folder / new)
-        if remote is None:
-            remote = store.list('secret')
-        if old in remote:
-            if new not in remote:
-                store.put('secret', new, remote[old]['data'])
-            store.delete('secret', old)
-        manifest.pop(old, None)
-    if (folder / KINDS['secret'][3]).parent.is_dir():
-        write_manifest(folder, 'secret', manifest)
 
 
 def merge_backup_state(local, remote):
@@ -265,14 +226,12 @@ def merge_backup_state(local, remote):
 MERGERS = {'operator/backups/state.json': merge_backup_state}
 
 
-def pull(folder, kinds=('configmap', 'secret'), store=None):
+def pull(folder, kinds=('configmap',), store=None):
     """Write the cluster changes into the folder. Return {path: action} of the changed files."""
     store = store or Kubectl()
     changes = {}
     for kind in kinds:
         with locked(folder, kind):
-            if kind == 'secret':
-                move_earlier_paths(folder, store)
             remote = store.list(kind)
             local = {p: digest(d) for p, d in local_files(folder, kind).items()}
             manifest = read_manifest(folder, kind)
@@ -308,14 +267,12 @@ def pull(folder, kinds=('configmap', 'secret'), store=None):
     return changes
 
 
-def push(folder, kinds=('configmap', 'secret'), store=None):
+def push(folder, kinds=('configmap',), store=None):
     """Write the changes of the folder into the cluster copy. Return {path: action} of the changed objects."""
     store = store or Kubectl()
     changes = {}
     for kind in kinds:
         with locked(folder, kind):
-            if kind == 'secret':
-                move_earlier_paths(folder, store)
             local = local_files(folder, kind)
             manifest = read_manifest(folder, kind)
             for path in sorted(set(local) | set(manifest)):
@@ -336,8 +293,8 @@ def push(folder, kinds=('configmap', 'secret'), store=None):
     return changes
 
 
-def checkpoint(folder, kinds=('configmap', 'secret')):
-    """Push the folder when this process runs with ENV set, for example after a zone step wrote its secrets."""
+def checkpoint(folder, kinds=('configmap',)):
+    """Push the folder when this process runs with ENV set, for example after a zone step changed the zone state."""
     if os.environ.get(ENV) != '1':
         return {}
     return push(folder, kinds)
@@ -346,7 +303,7 @@ def checkpoint(folder, kinds=('configmap', 'secret')):
 def main(argv):
     if len(argv) < 2 or argv[0] not in ('pull', 'push'):
         raise SystemExit(__doc__)
-    kinds = tuple(argv[2:]) or ('configmap', 'secret')
+    kinds = tuple(argv[2:]) or ('configmap',)
     result = (pull if argv[0] == 'pull' else push)(argv[1], kinds)
     print(json.dumps(result, indent=1, sort_keys=True))
 

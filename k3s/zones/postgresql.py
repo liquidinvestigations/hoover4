@@ -6,7 +6,7 @@ stores (../hoover/stores/shared.py postgresql()). It runs no PostgreSQL in its n
 the openDesk release (DATABASES) has the database <prefix>_<name> and the user <prefix>_<user> of the zone, where the
 prefix is the zone id with _ for - (zone-a gives zone_a_nextcloud and zone_a_nextcloud_user). The user owns its
 database, has the connection limit of the release, and cannot create a database or a role. ensure() creates them,
-and a second run changes nothing. The passwords are postgresql of the zone in secrets.json. zones.py writes the host,
+and a second run changes nothing. The passwords are postgresql of the zone secrets in the secret store (../secretstore.py). zones.py writes the host,
 the names and the passwords into the openDesk values of the zone (values()) and turns the PostgreSQL of openDesk off.
 
 Isolation: no database of a zone and no database of the server (postgres, template1) admits a connection of PUBLIC,
@@ -27,7 +27,7 @@ moves such a zone with the admin kubeconfig (move()):
   5. The Nextcloud configuration in the copied database (fs_config_store) gets the new host, name, user and password,
      because Nextcloud reads it from its database at its start.
   6. The volume of the zone server gets the reclaim policy Retain and the label LABEL. The record
-     zones/<zone>/postgresql-move.json of the state folder holds the counts and the times.
+     postgresql-move.json of the zone in the secret store holds the counts and the times.
   7. The zone state gets postgresql = site. zones.py then writes the values with the shared server, and the openDesk
      waves of zone.py apply them. Helm removes the PostgreSQL of the zone.
   8. Each workload whose configuration names the shared server, and Nextcloud, restart once when their pods started
@@ -394,17 +394,14 @@ def record_path(zone):
 
 
 def write_record(zone, record):
-    path = record_path(zone)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch(mode=0o600)
-    path.write_text(json.dumps(record, indent=1, sort_keys=True) + '\n')
+    """Write the record into the secret store and a copy into the zone folder (objectstore.write_record())."""
+    import objectstore
+    objectstore.write_record(zone, record, RECORD)
 
 
 def read_record(zone):
-    try:
-        return json.loads(record_path(zone).read_text())
-    except (OSError, ValueError):
-        return None
+    import objectstore
+    return objectstore.read_record(zone, RECORD)
 
 
 def step(name, **fields):
@@ -510,11 +507,11 @@ def drop_volume(zone):
 
 
 def zone_passwords(zone):
-    data = json.loads((settings.PRIVATE / 'zones' / 'secrets.json').read_text())
-    try:
-        return data[zone]['postgresql']
-    except KeyError:
-        raise SystemExit(f'zones/secrets.json has no PostgreSQL passwords of {zone}. Run zone.py apply {zone}.') from None
+    import secretstore
+    passwords = secretstore.zone_secrets(zone).get('postgresql')
+    if not passwords:
+        raise SystemExit(f'the zone secrets have no PostgreSQL passwords of {zone}. Run zone.py apply {zone}.')
+    return passwords
 
 
 def main(argv):

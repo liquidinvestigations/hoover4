@@ -43,7 +43,8 @@ Jobs:
   export bucket of the zone, and the job first copies it into the export directory. The export directory in the claim
   and the object are removed after the copy, so no second archive stays.
 - platform: the newest scheduled etcd snapshot of the control-plane server with its token and k3s configuration, the
-  operator state and the private files of the site (credentials included), and recovery.json. k3s saves a snapshot
+  operator state and the private files of the site (credentials included), the Raft snapshot of the secret store
+  (openbao.snap, restore-secret-store), and recovery.json. k3s saves a snapshot
   every 12 hours and keeps 5. The job starts a short pod on the control plane (snapshot_reader()), which mounts the
   snapshot folder, the token and the configuration read-only, reads the files with tar through kubectl exec and
   deletes the pod. The runner needs no SSH and no access to a host. A newest snapshot older than SNAPSHOT_MAX_AGE
@@ -86,6 +87,8 @@ Usage: backups.py tick                      start the next due job, as the opera
                                                                     import a collection copy into the zone's Hoover
        backups.py recovery <generation>                             print the recovery set of a platform copy
        backups.py restore-platform <generation>                     print the root steps that restore a platform copy
+       backups.py restore-secret-store <generation>                 replace the data of the secret store with the
+                                                                    snapshot of a platform copy
 """
 import base64
 import contextlib
@@ -111,6 +114,7 @@ import oplock  # noqa: E402
 import podspec  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 import schedule  # noqa: E402
+import secretstore  # noqa: E402
 
 # The manifest of a copy. A collection export holds its own manifest.json, which the import reads, so this file has
 # another name.
@@ -1205,6 +1209,8 @@ def restore_objects(folder, ns):
 
 
 RECOVERY_FORMAT = 'hoover4-platform-recovery'
+# The Raft snapshot of the secret store (../../secretstore.py) in a platform copy.
+SECRET_STORE_SNAPSHOT = 'openbao.snap'
 # Version 2 holds a snapshot that the job saved over SSH. Version 3 holds the newest scheduled snapshot of k3s with its
 # time (snapshot_created). Both hold etcd/ in the same form, so the restore steps are the same.
 RECOVERY_VERSIONS = (2, 3)
@@ -1353,6 +1359,11 @@ def run_platform(s, partial, now=None):
     subprocess.run(['tar', '-C', str(private), '-cf', str(partial / 'private.tar'),
                     *[f'--exclude=./{e}' for e in PRIVATE_EXCLUDED], '.'], check=True)
     os.chmod(partial / 'private.tar', 0o600)
+    # The secret store keeps its data on a claim, which the etcd snapshot does not hold. Its seal key is the Secret
+    # openbao-seal, which the etcd snapshot holds.
+    snapshot = secretstore.client().snapshot()
+    with open(os.open(partial / SECRET_STORE_SNAPSHOT, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'wb') as handle:
+        handle.write(snapshot)
     state = s.operator_state()
     applied = json.loads((state / 'deploy' / 'applied.json').read_text()) if (state / 'deploy' / 'applied.json').exists() else {}
     settings_applied = json.loads((state / 'applied.json').read_text()) if (state / 'applied.json').exists() else {}
@@ -1361,7 +1372,7 @@ def run_platform(s, partial, now=None):
         'snapshot_source': 'k3s-schedule', 'snapshot_created': host['created'],
         'execution_host': socket.gethostname(), 'control_plane': node, 'destination_node': s.backup.get('node'),
         'k3s_version': host['k3s_version'], 'snapshot': f'etcd/{host["snapshot"]}', 'token': 'etcd/token',
-        'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.id,
+        'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.id, 'secret_store': SECRET_STORE_SNAPSHOT,
         'source_revision': applied.get('revision') or os.environ.get('HOOVER4_REVISION', ''),
         'settings_revision': settings_applied.get('revision', 0),
         'settings_scopes': settings_applied.get('scopes', {}),
@@ -1389,6 +1400,24 @@ def read_recovery(folder):
     raise SystemExit(f'{folder} holds no platform recovery set.')
 
 
+def restore_secret_store(generation):
+    """Replace the data of the secret store with the snapshot of a platform copy. The store must use the seal key of the
+    copy: the Secret openbao-seal of the restored cluster."""
+    s = site()
+    folder = fetched(s, 'platform', generation)
+    data = read_recovery(folder)
+    if not data.get('secret_store'):
+        raise SystemExit(f'the platform copy {generation} holds no snapshot of the secret store.')
+    snapshot = (folder / data['secret_store']).read_bytes()
+    lock = oplock.site_lock(s.operator_state())
+    lock.acquire('restore', f'restore-secret-store-{generation}')
+    try:
+        secretstore.client().restore_snapshot(snapshot)
+    finally:
+        lock.release()
+    return {'restored': generation, 'bytes': len(snapshot)}
+
+
 def restore_platform_steps(generation):
     """The steps that restore a platform copy on the stopped server of an isolated cluster. Each command uses names."""
     return platform_steps(fetched(site(), 'platform', generation), generation)
@@ -1407,6 +1436,9 @@ def platform_steps(folder, generation):
             f'On the server, as the operator user: sudo python3 - restore {name} < '
             'k3s/ansible/roles/hoover4_k3s/files/k3s-datastore.py',
             f'Unpack {data["private"]} of the copy into the state folder of the site file.',
+            *([f'Run deploy-k3s up --steps secret-store, which starts OpenBao with the seal key of the Secret '
+               f'openbao-seal, then in the runner container: backups.py restore-secret-store {generation}.']
+              if data.get('secret_store') else []),
             'Restore the application copies that recovery.json names: backups.py restore-zone for each zone copy '
             'and backups.py restore-hoover for each collection copy, then sign in to each zone.']
 
@@ -1672,6 +1704,26 @@ def restore_secrets(folder, zone, tenant=None):
         kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover-restore', '-f', '-',
                 input=json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': metadata,
                                   'type': item.get('type', 'Opaque'), 'data': data}))
+        store_restored(zone, metadata['name'], data)
+
+
+# The Secrets of a zone that are copies of the secret store (../../secretstore.py): {Secret: path below zones/<zone>/}.
+# A restore writes their restored values into the store, so the next zone apply finds the same values in both.
+STORED_SECRETS = {'hoover-runtime': 'hoover/hoover-runtime', 'oauth2-proxy': 'hoover/oauth2-proxy',
+                  'manticore-schema': 'hoover/manticore-schema', 'hoover-stores': 'stores', 'garage-tenants': 'garage-tenants'}
+
+
+def store_restored(namespace, name, data):
+    """Write the values of a restored Secret into the secret store, when the Secret is a copy of the store."""
+    zone = namespace[len('hoover-'):] if namespace.startswith('hoover-') else namespace
+    # hoover-stores and garage-tenants belong to the zone namespace, the others to the Hoover namespace.
+    zone_namespace = name in ('hoover-stores', 'garage-tenants')
+    if name not in STORED_SECRETS or zone_namespace != (zone == namespace):
+        return
+    values = {k: base64.b64decode(v).decode() for k, v in data.items()}
+    if name == 'garage-tenants':
+        values = json.loads(values.get('tenants.json') or '{}')
+    secretstore.replace(secretstore.zone_path(zone, STORED_SECRETS[name]), values)
 
 
 def restore_claims(folder, zone, step=None):
@@ -1815,12 +1867,14 @@ def option(argv, name):
 
 
 def main(argv):
+    # The backups log in to the secret store with the role backup, which reads every path and the snapshot.
+    secretstore.use_role('backup')
     argv, source_zone = option(list(argv), '--from')
     # Every argument after the command is a name, except the job key of run and verify, which job_folder() checks.
     if argv and argv[0] in ('run', 'verify'):
         job_folder(argv[1]) if len(argv) > 1 else None
         [name_arg(a) for a in argv[2:]]
-    elif argv and argv[0] in ('restore-zone', 'restore-hoover', 'recovery', 'restore-platform'):
+    elif argv and argv[0] in ('restore-zone', 'restore-hoover', 'recovery', 'restore-platform', 'restore-secret-store'):
         [name_arg(a) for a in argv[1:]]
     if argv == ['tick']:
         print(json.dumps(tick()))
@@ -1859,6 +1913,8 @@ def main(argv):
         print(json.dumps(read_recovery(fetched(s, 'platform', argv[1])), indent=1))
     elif len(argv) == 2 and argv[0] == 'restore-platform':
         print('\n'.join(restore_platform_steps(argv[1])))
+    elif len(argv) == 2 and argv[0] == 'restore-secret-store':
+        print(json.dumps(restore_secret_store(argv[1])))
     else:
         raise SystemExit(__doc__)
 

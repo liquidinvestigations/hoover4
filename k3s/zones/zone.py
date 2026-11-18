@@ -46,8 +46,8 @@ The steps of apply, in order:
      outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
      The waves and step 6 run only when an input changed (opendesk_changes()): the digest of every input that they read
      (opendesk_inputs()) differs from the record of the last complete run, or a Helm release of the zone namespace has
-     another revision or a status other than deployed. The record is zones/<zone>/opendesk-applied.json of the state
-     folder, in the cluster copy of the zone secrets, so every operator host reads the same record. --full runs the
+     another revision or a status other than deployed. The record is zones/<zone>/records/opendesk-applied.json of the
+     secret store (../secretstore.py), so every operator host reads the same record. --full runs the
      waves and step 6 without this check, for example after a change by hand.
   6. zone-login-no-mfa.sh, zone-users.py and zone-patches.py set the login flow, the users and the application state.
      When the waves do not run, only the Collabora discovery check of zone-patches.py runs, because a Nextcloud start
@@ -71,13 +71,15 @@ zone keeps its namespaces and its zone state entry. Repair the store and delete 
 The two namespaces of the zone are then deleted at the same time. The delete of the last zone with stores = site
 removes the processing pools. A SeaweedFS or PostgreSQL volume that a move kept is deleted with the admin kubeconfig.
 The zone runner prints its name instead.
-  8. write-password-table.py writes the logins into the inventory.
 KUBECONFIG names the admin kubeconfig. The default is <state folder>/kubeconfig.
 openDesk needs Helm 3 and helmfile in <state folder>/bin/opendesk and the release in <state folder>/downloads.
 The command holds the site operation lock (../oplock.py), or runs inside the operation of deploy-k3s or the zone
-runner. With the lock of a running cluster it first reads the cluster copy of the zone state and the zone secrets
-(../clusterstate.py). With HOOVER4_CLUSTER_STATE=1 (the operator pod, deploy-k3s and this case), apply and delete
-write the zone state and the zone secrets into the cluster copy as soon as they change.
+runner. With the lock of a running cluster it first reads the cluster copy of the zone state (../clusterstate.py).
+With HOOVER4_CLUSTER_STATE=1 (the operator pod, deploy-k3s and this case), apply and delete write the zone state into
+the cluster copy as soon as it changes. The secrets of the zone are in the secret store (../secretstore.py). The
+command uses a token that reaches only the paths of its zone (scope_secrets()), and its scripts get the same token.
+delete removes the paths of the zone at its end. The logins of the site are a view
+(../tools/write-password-table.py).
 """
 import contextlib
 import hashlib
@@ -94,6 +96,7 @@ HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent
 sys.path.insert(0, str(SOURCE))
 import clusterstate  # noqa: E402
+import secretstore  # noqa: E402
 import settings  # noqa: E402
 import zonestate  # noqa: E402
 
@@ -105,7 +108,7 @@ STORES = SOURCE / 'hoover' / 'stores'
 # and takes a lock file for each version, so the processes of both zones share the folder. A version that is in the
 # cache is not pulled again. Remove the folder to pull every chart again. It is not part of the cluster copy.
 CHART_CACHE = PRIVATE / 'opendesk-charts'
-# The record of the last complete openDesk run of a zone, in the zone folder of the cluster copy of the zone secrets.
+# The record of the last complete openDesk run of a zone, in the records of the zone in the secret store.
 RECORD_NAME = 'opendesk-applied.json'
 # The label of the openDesk namespace of a zone on the shared PostgreSQL (../hoover/stores/shared.py POSTGRESQL_CLIENT_LABEL).
 POSTGRESQL_CLIENT_LABEL = 'hoover.dev/opendesk-postgresql'
@@ -439,11 +442,8 @@ def opendesk_inputs(zone):
 
 
 def read_record(zone):
-    path = PRIVATE / 'zones' / zone / RECORD_NAME
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None
+    import objectstore
+    return objectstore.read_record(zone, RECORD_NAME)
 
 
 def opendesk_changes(zone, inputs, releases):
@@ -469,12 +469,10 @@ def opendesk_changes(zone, inputs, releases):
 
 def write_record(zone, inputs):
     """Record a complete run of the waves and the application state steps with its inputs and Helm releases."""
-    path = PRIVATE / 'zones' / zone / RECORD_NAME
+    import objectstore
     record = {'digest': sha(inputs), 'inputs': inputs, 'releases': helm_revisions(zone),
               'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
-    path.touch(mode=0o600)
-    path.write_text(json.dumps(record, indent=1, sort_keys=True) + '\n')
-    clusterstate.checkpoint(PRIVATE)
+    objectstore.write_record(zone, record, RECORD_NAME)
 
 
 def entry_command(entry, releases):
@@ -839,7 +837,7 @@ def objects(zone):
     entry = zonestate.load()['zones'][zone]
     if entry.get('stores') != 'site':
         return False
-    key = json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['objectstore_key']
+    key = secretstore.zone_secrets(zone)['objectstore_key']
     changed = objectstore.ensure(zone, key)
     if changed:
         step('objectstore', zone=zone, changed=changed)
@@ -872,7 +870,7 @@ def databases(zone):
     entry = zonestate.load()['zones'][zone]
     if entry.get('stores') != 'site':
         return False
-    passwords = json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['postgresql']
+    passwords = secretstore.zone_secrets(zone)['postgresql']
     if postgresql.on_shared(entry):
         changed = postgresql.ensure(zone, passwords)
         if changed:
@@ -898,8 +896,8 @@ def databases(zone):
 
 def apply(zone, home=None, values=None, full=False):
     register(zone, home, values)
+    # zones.py keeps the secrets of the zone in the secret store before the first object that uses them.
     run(sys.executable, HERE / 'zones.py', quiet=True)
-    # The zone secrets exist before the first object that uses them, so the cluster copy gets them now.
     clusterstate.checkpoint(PRIVATE)
     step('values', zone=zone)
     if not zonestate.enabled(zone):
@@ -945,7 +943,6 @@ def apply(zone, home=None, values=None, full=False):
     step('zone-state-of-apps', zone=zone)
     hoover(zone)
     step('hoover', zone=zone)
-    run(sys.executable, SOURCE / 'tools' / 'write-password-table.py')
     step('done', zone=zone)
 
 
@@ -956,7 +953,7 @@ def finish_move(zone):
     import postgresql
     entry = zonestate.load()['zones'][zone]
     if objectstore.on_garage(entry) and objectstore.read_record(zone):
-        objectstore.finish(zone, json.loads((PRIVATE / 'zones' / 'secrets.json').read_text())[zone]['objectstore_key'])
+        objectstore.finish(zone, secretstore.zone_secrets(zone)['objectstore_key'])
     if postgresql.on_shared(entry) and postgresql.read_record(zone):
         postgresql.finish(zone)
 
@@ -994,15 +991,11 @@ def delete(zone):
     zonestate.save(state)
     # The last zone of the store layout site takes the processing pools with it.
     pools()
-    secrets_file = PRIVATE / 'zones' / 'secrets.json'
-    if secrets_file.exists():
-        data = json.loads(secrets_file.read_text())
-        if data.pop(zone, None) is not None:
-            secrets_file.write_text(json.dumps(data, indent=1))
+    # The secrets and records of the zone go last, after every object that used them.
+    gone = secretstore.remove(f'zones/{zone}')
     run('rm', '-rf', PRIVATE / 'zones' / zone)
     clusterstate.checkpoint(PRIVATE)
-    step('zone-state', zone=zone, change='removed')
-    run(sys.executable, SOURCE / 'tools' / 'write-password-table.py')
+    step('zone-state', zone=zone, change='removed', secret_paths=len(gone))
 
 
 def main():
@@ -1018,11 +1011,26 @@ def main():
     if not zonestate_name(args.zone):
         raise SystemExit(__doc__)
     settings.use_kubeconfig()
+    scope_secrets(args.zone)
     with operation(f'zone-{args.command}-{args.zone}'):
         if args.command == 'delete':
             delete(args.zone)
             return
         apply(args.zone, args.home, {'stores': args.stores, 'extra_datasets': args.dataset}, full=args.full)
+
+
+def scope_secrets(zone):
+    """Use a token of the secret store that reaches only the paths of this zone, for this process and its children
+    (../secretstore.py zone_token()). The token of the caller creates it. A caller that gives a zone token already
+    gives HOOVER4_SECRET_ZONE."""
+    if os.environ.get('HOOVER4_SECRET_ZONE') == zone:
+        return
+    if os.environ.get('HOOVER4_SECRET_ZONE'):
+        raise SystemExit(f'this process has the secrets of {os.environ["HOOVER4_SECRET_ZONE"]}, not of {zone}')
+    token = secretstore.zone_token(zone)
+    secretstore.reset()
+    os.environ[secretstore.ENV_TOKEN] = token
+    os.environ['HOOVER4_SECRET_ZONE'] = zone
 
 
 @contextlib.contextmanager

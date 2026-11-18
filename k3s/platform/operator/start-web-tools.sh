@@ -16,16 +16,14 @@ for service in monitor-grafana headlamp monitor-kube-prometheus-st-prometheus; d
 done
 umask 077
 login=$private/operator-login
-mkdir -p "$login"
-# The cookie secret must be 32 bytes. The existing files keep sessions valid across reinstalls.
-[ -s "$login/client-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/client-secret"
-[ -s "$login/cookie-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(16), end="")' > "$login/cookie-secret"
-# The portal hop of the gateway sends the proxy secret to the portal with each request. The portal refuses an operator
-# name without it. The secret stays the same across runs. A new secret restarts the gateway and the portal together.
-[ -s "$login/proxy-secret" ] || python3 -c 'import secrets; print(secrets.token_hex(32), end="")' > "$login/proxy-secret"
-# The admin password is operator-login/admin-password of the state folder. The script makes a random one when the file is
-# missing, so no installation keeps the development password admin. The manifest gets its bcrypt hash.
-[ -s "$login/admin-password" ] || python3 -c 'import secrets; print(secrets.token_urlsafe(18))' > "$login/admin-password"
+# The operator login is the path site/operator-login of the secret store (../../secretstore.py). The files of
+# operator-login/ of the state folder are copies, which this script reads. A missing value is generated once: the
+# client and proxy secrets, the cookie secret of 32 bytes, and a random admin password, so no installation keeps the
+# development password admin. A file of an earlier version gives its value to the store. The existing values keep
+# sessions valid across reinstalls. A new proxy secret restarts the gateway and the portal together, because the
+# portal hop of the gateway sends it to the portal with each request.
+python3 "$source_dir/secretstore.py" files site/operator-login "$login" client-secret:hex32 cookie-secret:hex16 \
+  proxy-secret:hex32 admin-password:urlsafe18 admin-password.bcrypt >/dev/null
 hash_rule=''
 if [ -s "$login/admin-password" ]; then
   # Dex reads bcrypt hashes. caddy hash-password reads one line from stdin. Each hash has a new salt, so the file
@@ -36,6 +34,9 @@ if [ -s "$login/admin-password" ]; then
   if [ -z "$hash" ]; then
     hash=$(head -n 1 "$login/admin-password" | "$private/bin/caddy" hash-password --algorithm bcrypt)
     printf '%s %s\n' "$password_digest" "$hash" > "$login/admin-password.bcrypt"
+    # The new hash replaces the stored one on purpose, because it belongs to the stored password.
+    python3 -c 'import sys;sys.path.insert(0,sys.argv[1]);import secretstore
+secretstore.replace("site/operator-login",{"admin-password.bcrypt":open(sys.argv[2]).read()})' "$source_dir" "$login/admin-password.bcrypt"
   fi
   # cpu_policy.py prints JSON on one line, so the rule replaces the bcrypt value inside the Dex config string.
   hash_rule="s|hash: \\\$2[aby]\\\$[0-9][0-9]\\\$[./A-Za-z0-9]\\{53\\}|hash: ${hash}|"
@@ -72,5 +73,3 @@ kubectl -n operator-portal delete configmap portal --ignore-not-found
 python3 "$source_dir/platform/operator/config-digest.py"
 # The first start of the operator pod pulls the operator image from the registry.
 kubectl -n operator-portal rollout status deployment/dex deployment/gateway deployment/portal --timeout=600s
-# The inventory table shows every login with its password in clear text.
-python3 "$source_dir/tools/write-password-table.py"

@@ -71,6 +71,12 @@
   register: hoover4_scheduler_config
   when: hoover4_server | bool
 
+- name: Prepare the secrets encryption
+  ansible.builtin.include_tasks: secrets-encryption.yml
+  vars:
+    hoover4_secrets_phase: prepare
+  when: hoover4_server | bool
+
 - name: Write the k3s configuration
   ansible.builtin.template:
     src: config.yaml.j2

@@ -415,15 +415,22 @@ def signing_key():
 
 
 def ensure_signing_key():
-    """Create the Secret temporal-auth with a new RSA key, unless it exists. Return the public key set."""
+    """Keep the RSA signing key in the path site/temporal of the secret store (../../secretstore.py): the Secret
+    temporal-auth of an earlier version gives it, else a new key. The Secret gets the stored key. Return the public key
+    set."""
+    import secretstore
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
-    found = common.kubectl('-n', NS, 'get', 'secret', AUTH, '--ignore-not-found', '-o', 'name').strip()
-    if not found:
+
+    def new_key():
         key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
-        pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+        return key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    found = common.kubectl('-n', NS, 'get', 'secret', AUTH, '--ignore-not-found', '-o', 'json').strip()
+    current = {k: base64.b64decode(v).decode() for k, v in (json.loads(found).get('data') or {}).items()} if found else {}
+    data = secretstore.keep('site/temporal', {'signing-key.pem': new_key}, current, source=f'the Secret {AUTH} of {NS}')
+    if data != current:
         common.apply({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': AUTH, 'namespace': NS, 'labels': {common.LABEL: 'credentials'}},
-                      'type': 'Opaque', 'stringData': {'signing-key.pem': pem}})
+                      'type': 'Opaque', 'stringData': data})
     return jwks(signing_key().public_key().public_numbers())
 
 

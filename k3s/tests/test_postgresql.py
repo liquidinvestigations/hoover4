@@ -319,7 +319,8 @@ def test_the_zone_step_moves_a_zone_of_an_earlier_version_only_with_the_admin_ku
     monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)
     monkeypatch.setattr(zone, 'PRIVATE', tmp_path)
     (tmp_path / 'zones').mkdir()
-    (tmp_path / 'zones' / 'secrets.json').write_text(json.dumps({'zone-a': {'postgresql': PASSWORDS}}))
+    import secretstore
+    secretstore.keep('zones/zone-a/secrets', {'postgresql': PASSWORDS})
     ran, moved = [], []
     monkeypatch.setattr(zone, 'run', lambda *a, **kw: ran.append(str(a[-1])))
     monkeypatch.setattr(postgresql, 'zone_server_installed', lambda z: True)

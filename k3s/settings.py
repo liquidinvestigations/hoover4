@@ -39,10 +39,9 @@ sys.path.insert(0, str(SOURCE))
 import config  # noqa: E402
 PRIVATE = config.state_folder(SITE_FILE)
 PATH = PRIVATE / 'settings.json'
-# The passwords of the zone users (zones/zone-users.py) and the login table (tools/write-password-table.py). Both are
-# in zones/, which only the runner container of the operator pod mounts, so the portal container cannot read them.
+# The copy of the zone user passwords (zones/zone-users.py) from the secret store (secretstore.py). It is in zones/,
+# which only the runner container of the operator pod mounts, so the portal container cannot read it.
 ZONE_USER_PASSWORDS = PRIVATE / 'zones' / 'fixture-user-passwords.json'
-PASSWORD_TABLE = PRIVATE / 'zones' / 'passwords.md'
 
 
 def _site():
