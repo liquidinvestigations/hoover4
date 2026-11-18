@@ -396,3 +396,29 @@ def test_the_element_entry_runs_once_more_after_a_move(monkeypatch, moved):
     monkeypatch.setitem(sys.modules, 'gate', gate)
     zone.apply('zone-a')
     assert calls == (['waves', 'element', 'record'] if moved else ['waves', 'record'])
+
+
+def test_a_drop_deletes_the_logical_volumes_of_the_kept_volumes(monkeypatch):
+    # A kept volume has the policy Retain: the drop sets Delete, so the provisioner removes the logical volume, and a
+    # LogicalVolume left by an earlier drop without its PersistentVolume is deleted directly.
+    pvs = {'pv-kept'}
+    calls = []
+
+    def kubectl(*args, **kw):
+        calls.append(args)
+        if args[:2] == ('get', 'pv') and '-l' in args:
+            return ''.join(f'persistentvolume/{n}\n' for n in sorted(pvs))
+        if args[:2] == ('get', 'pv'):
+            return ''.join(f'persistentvolume/{n}\n' for n in sorted(pvs | {'pv-other'}))
+        if args[:2] == ('get', 'logicalvolumes.topolvm.io'):
+            return 'logicalvolume.topolvm.io/pv-orphan\nlogicalvolume.topolvm.io/pv-other\n'
+        if args[:2] == ('patch', 'pv'):
+            assert json.loads(args[-1]) == {'spec': {'persistentVolumeReclaimPolicy': 'Delete'}}
+            pvs.discard(args[2])
+        return ''
+    monkeypatch.setattr(objectstore, 'kubectl', kubectl)
+    monkeypatch.setattr(objectstore, 'read_record', lambda z: {'volumes': ['pv-kept', 'pv-orphan', 'pv-other']})
+    monkeypatch.setattr(objectstore, 'step', lambda *a, **k: None)
+    monkeypatch.setattr(objectstore.time, 'sleep', lambda s: None)
+    assert objectstore.drop_kept('zone-a') == ['pv-kept', 'pv-orphan']
+    assert ('delete', 'logicalvolumes.topolvm.io', 'pv-orphan', '--wait=true', '--timeout=300s') in calls

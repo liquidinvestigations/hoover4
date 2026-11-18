@@ -443,13 +443,38 @@ def drop_seaweedfs(zone):
     return drop_kept(zone)
 
 
-def drop_kept(zone):
-    """Delete the SeaweedFS volumes with the label LABEL of a zone. Return their names."""
+def drop_kept(zone, timeout=300):
+    """Delete the SeaweedFS volumes with the label LABEL of a zone, with their logical volumes on the node. Return their
+    names.
+
+    A kept volume has the reclaim policy Retain, and a delete of such a PersistentVolume leaves its logical volume on
+    the node. The policy changes to Delete first: the provisioner then deletes the logical volume and the
+    PersistentVolume. A LogicalVolume of TopoLVM whose PersistentVolume is already gone (an earlier version deleted
+    only the PersistentVolume) is deleted directly, and TopoLVM removes its logical volume."""
     names = kept_volumes(zone)
     for name in names:
-        kubectl('delete', 'pv', name, '--wait=false')
-    step('objectstore-seaweedfs-dropped', zone=zone, volumes=names)
-    return names
+        kubectl('patch', 'pv', name, '--type=merge', '-p', json.dumps({'spec': {'persistentVolumeReclaimPolicy': 'Delete'}}))
+    deadline = time.monotonic() + timeout
+    while names and set(kept_volumes(zone)) & set(names):
+        if time.monotonic() >= deadline:
+            raise SystemExit(f'the SeaweedFS volumes of {zone} were not deleted in {timeout} s: {", ".join(names)}')
+        time.sleep(3)
+    orphans = orphan_logical_volumes(zone)
+    for name in orphans:
+        kubectl('delete', 'logicalvolumes.topolvm.io', name, '--wait=true', f'--timeout={timeout}s')
+    step('objectstore-seaweedfs-dropped', zone=zone, volumes=names, orphan_logical_volumes=orphans)
+    return names + orphans
+
+
+def orphan_logical_volumes(zone):
+    """The TopoLVM LogicalVolumes of SeaweedFS claims of a zone without a PersistentVolume. TopoLVM names a
+    LogicalVolume like its PersistentVolume and records the claim in the annotations of the PersistentVolume only, so
+    the claim name comes from the earlier record of the move."""
+    volumes = (read_record(zone) or {}).get('volumes') or []
+    present = set(kubectl('get', 'pv', '-o', 'name').replace('persistentvolume/', '').split())
+    logical = set(kubectl('get', 'logicalvolumes.topolvm.io', '-o', 'name', check=False).replace(
+        'logicalvolume.topolvm.io/', '').split())
+    return sorted(v for v in volumes if v in logical and v not in present)
 
 
 def zone_key(zone):
