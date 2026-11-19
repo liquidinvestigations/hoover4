@@ -110,6 +110,28 @@ class RemoteUnavailable(RuntimeError):
     Raised fast and with the URLs named: a plan that fails in two seconds with "GPU NER
     unreachable at <url>" names what broke, and one that stalls
     for fifty minutes does not.
+
+    `post_json` raises one of the three subclasses below. Callers that catch this class
+    keep their behavior. `with_remote_outage_retry` waits only for `RemoteOutage`.
+    """
+
+
+class RemoteNotConfigured(RemoteUnavailable):
+    """The call has no endpoint. Another attempt cannot succeed without a new setting."""
+
+
+class RemoteOutage(RemoteUnavailable):
+    """Every endpoint refused the connection, timed out at connect, had an open circuit,
+    or answered HTTP 502 from a proxy.
+
+    No request reached a service, so another attempt after a delay can succeed.
+    """
+
+
+class RemoteReadTimeout(RemoteUnavailable):
+    """An endpoint accepted the connection and did not answer within the read timeout.
+
+    The service is alive, so the failure counts as an ordinary failure.
     """
 
 
@@ -213,13 +235,14 @@ def post_json(
     """
     live = [(name, url) for name, url in endpoints if url]
     if not live:
-        raise RemoteUnavailable(
+        raise RemoteNotConfigured(
             "no endpoint is configured for this call; check the endpoint variables that "
             "deploy.py renders from the [ai_services] and [main_services] switches"
         )
 
     post = (session or requests).post
     attempts: list[str] = []
+    read_timeout_failure = False
 
     for index, (provider, url) in enumerate(live):
         is_last = index == len(live) - 1
@@ -250,6 +273,7 @@ def post_json(
             _record(service, provider, (time.monotonic() - started) * 1000.0,
                     ok=False, detail=type(exc).__name__)
             if isinstance(exc, requests.ReadTimeout):
+                read_timeout_failure = True
                 break       # host is alive and slow; do not silently downgrade
             continue
 
@@ -259,6 +283,12 @@ def post_json(
             retry_after = response.headers.get("Retry-After", "5")
             _record(service, provider, elapsed_ms, ok=False, detail="HTTP 503")
             raise RemoteBusy(retry_after)
+        if response.status_code == 502:
+            # A proxy in front of the service answers 502 when it cannot reach the service.
+            # No request reached the service, so this is an outage like a refused connection.
+            _record(service, provider, elapsed_ms, ok=False, detail="HTTP 502")
+            attempts.append(f"{provider} ({url}): HTTP 502 from a proxy without its service")
+            continue
         try:
             response.raise_for_status()
         except Exception:
@@ -273,7 +303,8 @@ def post_json(
             log.warning("served by fallback provider %s (%s)", provider, url)
         return RemoteResult(data=response.json(), url=url, provider=provider)
 
-    raise RemoteUnavailable(
+    failure = RemoteReadTimeout if read_timeout_failure else RemoteOutage
+    raise failure(
         "every endpoint for this call failed:\n  " + "\n  ".join(attempts)
     )
 
