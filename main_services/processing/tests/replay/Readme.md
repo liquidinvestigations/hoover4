@@ -18,6 +18,7 @@ It needs no running service.
 |---|---|
 | [fixtures/compose_histories.json.gz](fixtures/compose_histories.json.gz) | Two `ExecuteSinglePlan` and two `ProcessItemsBatched` histories of the local Compose stack, recorded before the host claim existed. |
 | [fixtures/host_queue_histories.json.gz](fixtures/host_queue_histories.json.gz) | The histories that [generate_histories.py](generate_histories.py) writes. |
+| [fixtures/update_histories.json.gz](fixtures/update_histories.json.gz) | The processing update histories that [generate_update_histories.py](generate_update_histories.py) writes. |
 
 Each file maps a key to `workflow_id`, `workflow_type` and `history`.
 The history is the JSON of `WorkflowHistory.to_json()`.
@@ -51,3 +52,18 @@ docker exec hoover4-worker sh -lc 'cd /app && uv run python tests/replay/generat
 - The generated histories hold the expected queues, claims, lost-host retry and cancellation.
 
 Set `HOOVER4_REPLAY_HISTORIES` to a folder of captured histories to replay the histories of a deployment with [tests/unit/test_ocr_workflow_replay.py](../unit/test_ocr_workflow_replay.py).
+
+## Processing update histories
+
+[generate_update_histories.py](generate_update_histories.py) runs the update workflows on a local Temporal test server.
+Fake activities answer by name, and the dynamic workflow of [update_history_children.py](update_history_children.py) answers the other children.
+The `legacy-` set comes from the code before the update tracks, so the script runs from a checkout of that revision.
+The `tracks-` set comes from the current code.
+Each set holds a coordinator run and update operations with their `RerunOcr`, `UpdateDatasetEntities` and `UpdateDatasetVectors` children.
+
+```sh
+uv run python tests/replay/generate_update_histories.py --set tracks
+```
+
+[test_update_replay.py](test_update_replay.py) replays each history and each prefix that ends while an activity, a child or a timer runs.
+It also verifies that the legacy set has no tracks patch marker and that a tracked OCR run starts no NER or embedding child.

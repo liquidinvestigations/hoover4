@@ -362,7 +362,7 @@ def test_descriptor_activity_pages_targets_without_repeating_recovery(monkeypatc
     counts = []
     while True:
         page = ocr_rerun.load_ocr_run_plan_page(ocr_rerun.OcrRunPlanPageParams(
-            COLLECTION, CD, OP, "p1", False, after))
+            COLLECTION, CD, OP, "p1", False, after=after))
         if not page.after:
             break
         counts.append(len(page.files))

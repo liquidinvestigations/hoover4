@@ -37,20 +37,23 @@ def test_encoded_attachment_has_no_embedding_request(monkeypatch):
     text = ("A" * 76 + "\n") * 8
     sent, stored = run_embedding(monkeypatch, text)
     assert sent == []
-    assert stored == {}
+    # The page gets an empty-page receipt and no chunk or vector row.
+    assert set(stored) == {"processing_output_receipts"}
+    [receipt] = stored["processing_output_receipts"]
+    assert receipt[2] == activities.EMPTY_PAGE_RECEIPT and receipt[3] == "text:1"
 
 
 def run_embedding(monkeypatch, text):
     sent, stored = [], {}
     rows = [{"collection_dataset": "sample", "file_hash": "a" * 64,
-             "extracted_by": "text", "page_id": 1, "text": text}]
+             "extracted_by": "text", "page_id": 1, "text": text, "version": 1}]
 
     class Client:
         def query_arrow(self, _sql, params):
             page = rows if not params["after_hash"] else []
             return SimpleNamespace(to_pylist=lambda: page)
 
-        def query(self, *_args):
+        def query(self, *_args, **_kwargs):
             return SimpleNamespace(result_rows=[])
 
         def insert(self, table, values, **_kwargs):

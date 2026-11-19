@@ -97,7 +97,8 @@ class OcrRunPlanParams:
     op_id: str
     plan_hash: str
     parts_version: bool = False
-    #: Publish OCR text without NER and embedding, see `RerunOcrParams.separated`.
+    #: Publish OCR text without NER and embedding, see `RerunOcrParams.separated`. A
+    #: subclass adds fields after this one, so construct a subclass with keywords.
     separated: bool = False
 
 

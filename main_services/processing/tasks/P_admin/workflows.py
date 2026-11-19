@@ -680,7 +680,7 @@ class OcrRunPlan:
                 work = await workflow.execute_activity(
                     load_ocr_run_plan_page,
                     OcrRunPlanPageParams(params.collectionname, params.collection_dataset,
-                                         params.op_id, params.plan_hash, True, after),
+                                         params.op_id, params.plan_hash, True, after=after),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options)
                 if not work.after:
                     exhausted = True
