@@ -16,8 +16,15 @@ convention or dimension the search side does not share.
 
 Idempotency: the left-anti join against ``text_chunk_vectors`` on
 ``(collection_dataset, file_hash, extracted_by, page_id, chunk_index, embedding_model)``
-makes a re-run embed exactly the chunks that never got a vector. Chunking is
+makes a re-run embed exactly the chunks that never got a current vector. Chunking is
 deterministic (``chunking.py``), so the re-run reproduces the same chunk keys.
+
+A vector is current when it is not older than its page text: its ``updated_at`` second
+is not before the second of the page's newest ``text_content.version``. A page whose
+text was replaced is embedded again. Vectors and chunk rows of chunk indexes that the
+current text no longer has, and of pages that the text no longer has, are deleted.
+A page without a chunk worth a vector gets an empty-page receipt
+(``EMPTY_PAGE_RECEIPT``) for its text version, so the vector update selects it once.
 """
 
 import logging
@@ -43,6 +50,54 @@ log = logging.getLogger(__name__)
 #: Texts per embeddings request. Bounds request size and makes partial progress
 #: possible (today's alternative is the whole activity chunk in one request).
 EMBED_BATCH_TEXTS = 32
+
+#: The `processing_output_receipts.output_kind` of a page that has no chunk worth a
+#: vector. `output_identity` is `<extracted_by>:<page_id>`, `fingerprint` is
+#: `<model>:<text version>`. The vector update selector reads it.
+EMPTY_PAGE_RECEIPT = "vector_page_empty"
+
+#: Keys in one DELETE of obsolete chunk or vector rows.
+DELETE_KEY_BATCH = 2000
+
+
+def _delete_chunk_keys(client, collection_dataset: str, model: str, keys) -> None:
+    """Delete the vector rows of `model` and the chunk rows of the given chunk keys."""
+    keys = sorted(keys)
+    for start in range(0, len(keys), DELETE_KEY_BATCH):
+        batch = keys[start:start + DELETE_KEY_BATCH]
+        for table, model_clause in (("text_chunk_vectors", " AND embedding_model = {model:String}"),
+                                    ("text_chunks", "")):
+            client.command(
+                f"DELETE FROM {table} WHERE collection_dataset = {{cd:String}} "
+                "AND (file_hash, extracted_by, page_id, chunk_index) IN "
+                "{keys:Array(Tuple(String, String, UInt32, UInt32))}" + model_clause +
+                " SETTINGS mutations_sync = 2",
+                parameters={"cd": collection_dataset, "keys": batch, "model": model})
+
+
+def _write_empty_page_receipts(client, params: ChunkEmbedParams, model: str, pages) -> None:
+    """Record the pages, `(file_hash, extracted_by, page_id, text version)`, without a vector."""
+    if not pages:
+        return
+    rows = [[params.collection_dataset, file_hash, EMPTY_PAGE_RECEIPT, f"{source}:{int(page)}",
+             f"{model}:{int(version)}", "embed", params.op_id]
+            for file_hash, source, page, version in sorted(pages)]
+    client.insert("processing_output_receipts", rows,
+                  column_names=["collection_dataset", "file_hash", "output_kind", "output_identity",
+                                "fingerprint", "stage", "op_id"])
+
+
+def _delete_removed_pages(client, collection_dataset: str, model: str, hashes) -> int:
+    """Delete chunk and vector rows of pages that `text_content` no longer has."""
+    keys = [tuple(row) for row in client.query(
+        "SELECT file_hash, extracted_by, page_id, chunk_index FROM text_chunk_vectors "
+        "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
+        "AND embedding_model = {model:String} AND (file_hash, extracted_by, page_id) NOT IN "
+        "(SELECT file_hash, extracted_by, page_id FROM text_content "
+        "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)})",
+        parameters={"cd": collection_dataset, "hashes": list(hashes), "model": model}).result_rows]
+    _delete_chunk_keys(client, collection_dataset, model, set(keys))
+    return len(keys)
 
 #: Text segments pulled into memory at once, per pass.
 #:
@@ -119,7 +174,8 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
         while True:
             with get_collection_client(params.collectionname) as page_client:
                 rows = page_client.query_arrow("""
-                    SELECT collection_dataset, file_hash, extracted_by, page_id, argMax(text, version) AS text
+                    SELECT collection_dataset, file_hash, extracted_by, page_id, argMax(text, version) AS text,
+                           max(version) AS version
                     FROM text_content
                     WHERE collection_dataset = {collection_dataset:String}
                     AND file_hash IN {item_hashes:Array(String)}
@@ -152,6 +208,11 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     saw_any = False
 
     for text_content in _segment_pages():
+        # A page over the work limit gets no vector on purpose. Its receipt keeps the
+        # vector update from selecting it again.
+        skipped_pages = {(row["file_hash"], row["extracted_by"], int(row["page_id"]), int(row["version"]))
+                         for row in text_content
+                         if (row["file_hash"], row["extracted_by"], int(row["page_id"])) in over_limit}
         text_content = [row for row in text_content if (
             row["file_hash"], row["extracted_by"], int(row["page_id"])) not in over_limit]
         # Page boundary. Every page before this one is fully written, and the anti-join
@@ -209,10 +270,12 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
                        f"{len(candidates)} chunks on this page")
 
         with get_collection_client(params.collectionname) as client:
+            # Each existing vector with the second of its write.
             existing = {
-                (r[0], r[1], int(r[2]), int(r[3]))
+                (r[0], r[1], int(r[2]), int(r[3])): int(r[4])
                 for r in client.query("""
-                    SELECT file_hash, extracted_by, page_id, chunk_index
+                    SELECT file_hash, extracted_by, page_id, chunk_index,
+                           toUInt64(toUnixTimestamp(updated_at))
                     FROM text_chunk_vectors FINAL
                     WHERE collection_dataset = {collection_dataset:String}
                     AND (file_hash, extracted_by, page_id) IN {page_keys:Array(Tuple(String, String, UInt32))}
@@ -223,10 +286,32 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
                     "model": serving_model,
                 }).result_rows
             }
+            stored_chunks = {
+                (r[0], r[1], int(r[2]), int(r[3]))
+                for r in client.query("""
+                    SELECT file_hash, extracted_by, page_id, chunk_index FROM text_chunks FINAL
+                    WHERE collection_dataset = {collection_dataset:String}
+                    AND (file_hash, extracted_by, page_id) IN {page_keys:Array(Tuple(String, String, UInt32))}
+                """, {"collection_dataset": collection_dataset, "page_keys": page_keys}).result_rows
+            }
+            # The second of the newest text of each page. A vector of an earlier second
+            # belongs to replaced text.
+            page_seconds = {(r["file_hash"], r["extracted_by"], int(r["page_id"])): int(r["version"]) // 1_000_000_000
+                            for r in text_content}
+            current = {(c["file_hash"], c["extracted_by"], c["page_id"], c["chunk_index"]) for c in candidates}
+            obsolete = {key for key in set(existing) | stored_chunks if key not in current}
+            pages_with_chunks = {key[:3] for key in current}
+            empty_pages = {(r["file_hash"], r["extracted_by"], int(r["page_id"]), int(r["version"]))
+                           for r in text_content
+                           if (r["file_hash"], r["extracted_by"], int(r["page_id"])) not in pages_with_chunks
+                           } | skipped_pages
+            _delete_chunk_keys(client, collection_dataset, serving_model, obsolete)
+            _write_empty_page_receipts(client, params, serving_model, empty_pages)
 
         missing = [
             c for c in candidates
-            if (c["file_hash"], c["extracted_by"], c["page_id"], c["chunk_index"]) not in existing
+            if existing.get((c["file_hash"], c["extracted_by"], c["page_id"], c["chunk_index"]), -1)
+            < page_seconds[(c["file_hash"], c["extracted_by"], int(c["page_id"]))]
         ]
         if not missing:
             log.info(
@@ -326,6 +411,12 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
             )
         total_chunk_rows += len(chunk_rows)
         total_vectors += page_vectors
+
+    with get_collection_client(params.collectionname) as client:
+        removed = _delete_removed_pages(client, collection_dataset, serving_model, item_hashes)
+    if removed:
+        log.info("%s (plan %s): deleted %d vectors of pages that the text no longer has",
+                 collection_dataset, plan_hash[:8], removed)
 
     if not saw_any:
         log.info("%s (plan %s): nothing to chunk+embed", collection_dataset, plan_hash[:8])

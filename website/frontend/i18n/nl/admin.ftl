@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Tabellen lezen, entiteiten, signalen, inbeddingen en beide indexen
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Bestanden die automatische OCR nodig hebben: { $count }. Eerdere OCR-tekst in de gedetecteerde taal blijft behouden zonder nieuwe OCR. De andere pagina’s krijgen OCR met het geïnstalleerde model van de gedetecteerde taal. Oude varianten worden verwijderd wanneer de vervanging volledig is.
-processing-update-ocr-runs = OCR en doorzoekbare PDF's, daarna entiteitsextractie, embedding en indexering van de nieuwe tekst
+processing-update-ocr-runs = OCR en doorzoekbare PDF's, daarna signalen en indexering van de nieuwe tekst. Entiteitsextractie en embedding van de nieuwe tekst volgen.
 processing-update-ocr_detection-title = OCR-detectie
 processing-update-ocr_detection-explanation = Bestanden zonder huidige tekst-, schrift- of taaldetectie: { $count }. Elke geschikte afbeelding en PDF-pagina wordt in begrensde batches onderzocht.
 processing-update-ocr_detection-runs = Detectie, daarna de zoekkenmerken van deze bestanden
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Bestanden met tekst uit een eerdere sp
 processing-update-text_rows-runs = Tekstsplitsing, daarna entiteitsextractie, embedding en indexering van de nieuwe tekst
 processing-update-vectors-title = Vectoren
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } bestand met tekst heeft geen vectoren van het embeddingmodel dat de installatie aanbiedt.
-   *[other] { $count } bestanden met tekst hebben geen vectoren van het embeddingmodel dat de installatie aanbiedt.
-} Hun vectoren worden berekend en geïndexeerd.
+    [one] { $count } bestand met tekst heeft geen actuele vectoren van het embeddingmodel dat de installatie aanbiedt.
+   *[other] { $count } bestanden met tekst hebben geen actuele vectoren van het embeddingmodel dat de installatie aanbiedt.
+} Ontbrekende en verouderde vectoren worden opnieuw berekend en geïndexeerd.
 processing-update-vectors-runs = Embedding en vectorindexering
 processing-update-folder_counts-title = Maptellingen
 processing-update-folder_counts-explanation = { $files ->

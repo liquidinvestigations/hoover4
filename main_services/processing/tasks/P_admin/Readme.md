@@ -160,12 +160,12 @@ are in [updates/registry.py](updates/registry.py), in run order.
 | `tables` | dataset | Earlier or failed table readings, missing JSON or delimited readings, and published tables without complete matching receipts | `UpdateDatasetTables` resumes parsing, entities, signals, embedding, and both indexes for the published generation | Every selected file has complete matching output receipts. |
 | `archive_members` | dataset | Successful split archives without a current complete manifest receipt | Re-extract, scan, reconcile removed descendants, and finish dependent processing | Current manifest receipts are complete. |
 | `image_previews` | dataset | Live uncommon images without a published preview, except files with a `preview_undecodable_` skip | Create and read each missing preview without repeating settled OCR | No selected preview remains missing. |
-| `ocr` | dataset | Files without OCR text for the effective languages, and text of removed languages | `RerunOcr`, then the purge of dropped variants and orphaned searchable PDFs | No variant of a removed language remains. |
+| `ocr` | dataset | Files without OCR text for the effective languages, and text of removed languages | `RerunOcr`, then the purge of dropped variants and orphaned searchable PDFs. A tracked operation publishes the text without NER and embedding, see "Update tracks". | No variant of a removed language remains. |
 | `pdf_text` | dataset | Files with a searchable PDF part of text layer version 1 for a current language pass that the PDF builder can build | `scan_pdf_text_layers` gives version 2 to the parts of language passes with Windows-1252 alphabets, to borrowed parts, and to parts whose `pdftotext` text has no black square. It removes the other parts, sets their variant to `text_complete = 0` and the `overlay` form, then `RerunOcr` builds the removed parts again. | No part of version 1 remains, and no removed part is without a new part. |
-| `entities` | dataset | Earlier provider completion, missing current text coverage, or missing searchable publication | `UpdateDatasetEntities` lists 1,600 files, runs batches of 100 with up to 4 at once, replaces NER attributes, and writes the dataset terms once after the last batch | Current source completion and verified search receipts exist. |
+| `entities` | dataset | Earlier provider completion, missing current text coverage, or missing searchable publication | `UpdateDatasetEntities` lists 1,600 files, runs batches of 100 with up to 4 at once (a tracked operation: its recorded NER window), replaces NER attributes, and writes the dataset terms once after the last batch | Current source completion and verified search receipts exist. |
 | `text_rows` | dataset | Sources with `segment_version` 0 and more than one row, a PDF source that starts after page 1, or old rows beside rows of the current split | `UpdateDatasetTextRows`, which runs `rewrite_text_rows`, then P4, P5 and P6 on each plan | Every selected source has rows of the current split |
 | `page_text` | dataset | Pages whose stored text has a NUL byte and whose index row differs from the current indexed text | `rewrite_page_text` replaces each such row and keeps its attributes. | No such row remains. |
-| `vectors` | dataset | Files with text and no vectors of the served embedding model | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time | Each selected plan ran. |
+| `vectors` | dataset | Live files with a page whose vectors of the served model are missing, older than the page text, fewer than its current chunk rows, or of a page that the text no longer has. A page without a chunk worth a vector and with an empty-page receipt of its text version is complete. | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time (a tracked operation: its recorded window), then verifies the search copy of each plan | The count is zero. |
 | `folder_counts` | dataset | Folders without counts, or every folder when the stage version is newer than the applied one | `build_vfs_nodes` | No folder lacks counts. |
 | `search_terms` | dataset | The applied term-index version is absent or earlier. Version 3 writes a space for each NUL byte of a term. | `index_entity_terms` publishes the current filter terms. | Each expected term has its current identity and value in the search table. The message names the first 5 other terms. |
 
@@ -193,20 +193,28 @@ These steps include `unfinished`, `failed_files`, `ocr`, and `ocr_detection`. Th
 collection that is not an update. A new ingestion or an interrupted run therefore makes
 these steps calculate again without a version change.
 
+The fingerprints of `entities` and `vectors` also join the dependency revision: the newest
+terminal `update_dataset` operation of the dataset that selected a step which can write
+text (`writes_text` in the registry). The end of such an operation, also after a failure
+or a cancellation, makes the two steps calculate again, so text that an OCR or table
+update wrote becomes NER and vector work. A NER or vector operation writes no text, so
+its end starts no new calculation.
+
 The coordinator `ProcessingUpdates` (id `processing-updates`) compares the fingerprints
 every 2 minutes, and at once on a `request_check` signal. A settings save and "Check
 again" send the signal. Only a changed fingerprint, or a request, runs the count queries
 of a scope. A step with no automatic work records its fingerprint as applied and starts
 no operation. When `[processing_updates] automatic` is true, the coordinator starts one
-automatic operation at a time across the installation, collections first. A dataset
-step that writes to the search index waits until the collection steps are applied. An
-attempt that failed or was cancelled at a fingerprint does not start again automatically.
-The button stays available for a manual run.
+automatic operation for each track of a dataset, collections first, while the cap of the
+track has a free slot (see "Update tracks"). A dataset step that writes to the search index
+waits until the collection steps are applied. An attempt that failed or was cancelled at a
+fingerprint does not start again automatically. The button stays available for a manual run.
 
 `RunProcessingUpdate` first recalculates the requested steps. It refuses a manual request
 whose fingerprint changed (`ProcessingUpdatePreviewStale`), an empty or unknown step list
-(`ProcessingUpdateInvalidRequest`), and a dataset request whose collection steps are not
-applied (`ProcessingUpdatePrerequisitePending`). It then runs the steps in order. The
+or inconsistent track metadata (`ProcessingUpdateInvalidRequest`), and a dataset request
+whose collection steps are not applied (`ProcessingUpdatePrerequisitePending`). An
+automatic request runs against the current fingerprints. It then runs the steps in order. The
 applied row gets the fingerprint of the snapshot, so a setting changed during the run
 leaves the step waiting. A step that fails is recorded, and the next step runs.
 
@@ -214,6 +222,55 @@ The automatic failed files step retries a stage once for each new stage version.
 stage at its first recorded version (`baseline`) has no automatic retry. A manual retry
 also writes the claim. Raise a stage version in [tasks/stage_versions.py](../stage_versions.py) with the
 procedure in [.agents/rules/processing-versions.md](../../../../.agents/rules/processing-versions.md).
+
+## Update tracks
+
+Each dataset step belongs to one track. The coordinator starts one `update_dataset`
+operation for each track of a dataset with automatic work. Its detail holds `track` and
+`profile = tracks-v1`.
+
+| Track | Steps | Cap | Waits for |
+|---|---|---|---|
+| `ocr` | `ocr_detection`, `ocr`, `pdf_text` | `update_ocr_cap` | Its OCR engines. |
+| `ner` | `entities` | `update_ner_cap` | A `ready` NER service before it starts. |
+| `vectors` | `vectors` | `update_vectors_cap` | A `ready` embedding service and the probed model before it starts. |
+| `main` | every other dataset step | `update_main_cap` | Its stages, which include inline NER and embedding. |
+
+Admission counts a tracked operation against the cap of its track only. The coordinator
+starts an operation only while that cap has a free slot. A full OCR track therefore uses no
+slot of another track. Each class takes turns by dataset. At most one operation of a
+dataset is live at a time. The operation lock and admission keep every two writers of one
+dataset apart, because no pair of tracks has a proven separation of its writes. OCR, table
+and archive steps rewrite text and full search rows, and NER rewrites those rows too. NER
+and the vector index both assign shards. Different datasets run in parallel, two for each
+track by default.
+
+A manual request that selects the steps of one track becomes an operation of that track.
+A request with steps of more than one track runs as one operation without a track. It runs
+every selected step in order and waits for `update_dataset_cap`. Its re-run keeps the same
+form. A coordinator run that started before the tracks keeps one automatic operation at a
+time until it continues as new.
+
+A tracked operation records its windows once (`update_windows`). The OCR window is the
+slots of the OCR queue, in files. The NER window is the slots of the NLP queue plus one, in
+batches of 100 files. The vector window is the slots of the embedding queue plus one, in
+plans. The queues still limit the activities that run.
+
+A tracked OCR operation makes no NER or embedding request. `RerunOcr` skips the unfinished
+plans, and the `unfinished` step of the main track runs them. The automatic run lists at
+most 32 files and runs their OCR in the recorded window. One regex scan and one
+`IndexDatasetPlan` then publish the text of the files whose OCR succeeded.
+`verify_automatic_ocr_files` checks text, regex results and search rows. Then it records the
+plan as applied. When the publication of a page fails, each file of the page is published
+alone. Only a file whose own publication fails gets a file error. The search rows of new OCR
+text have no entity values until the NER track runs. The searchable PDF repair of
+`pdf_text` follows the same rule.
+
+NER and embedding activities wait for a service that refuses connections
+(`tasks/remote_busy_retry.py`). The wait lasts at most 12 hours and does not use the ordinary
+failure limit. A main operation that reaches an inline NER or embedding call during an
+outage keeps its main slot while it waits. Other main operations can then queue. After the
+12 hours the step fails with `ServiceOutage`, and the existing failure handling records it.
 
 ## One run per dataset
 
@@ -304,7 +361,8 @@ Text byte totals use each segment's latest version.
 ## Automatic OCR processing updates
 
 The OCR update uses detected pages and installed model capabilities.
-It completes unfinished plans before it selects automatic replacements.
+A legacy operation completes unfinished plans before it selects automatic replacements.
+A tracked operation leaves them to the `unfinished` step.
 It processes at most 32 file descriptors in one workflow iteration.
 Each activity uses a private download directory.
 Stored page plans and request results remain outside workflow history.
@@ -335,7 +393,8 @@ Compatible table receipts preserve unchanged text, regex, signal, and embedding 
 The compatibility rule changes only the earlier NER coverage version.
 An earlier table reader remains selected for its table rewrite.
 
-Automatic OCR schedules each file independently within a four-file window.
+Automatic OCR of a legacy operation schedules each file independently within a four-file window.
+A tracked operation publishes a page of files at once, see "Update tracks".
 Each activity retains its retry policy and pinned publication plan.
 Valid files complete their dependent stages before the operation reports failed files.
 Unsupported or failed files remain selectable and retain per-document errors.

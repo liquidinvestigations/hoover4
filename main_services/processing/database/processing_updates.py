@@ -18,6 +18,12 @@ The **input revision** of a dataset is the newest terminal operation that can ch
 input: every kind except the processing updates themselves, on the dataset or on its
 collection. New ingestion, an interrupted operation or a retry therefore change it, and
 the steps that select unfinished work calculate again without a code change.
+
+The **dependency revision** of a dataset is the newest terminal `update_dataset`
+operation that selected a step which can write text (`registry.TEXT_WRITER_STEPS`). Its
+end, whatever its state, makes the NER and vector steps calculate again. A NER or vector
+operation is not a text writer, so its end does not change the revision, and a consumer
+that settles starts no new calculation.
 """
 
 import json
@@ -55,11 +61,12 @@ def effective_attempt_state(state: str, operation_state: str) -> str:
 # ---- reads -------------------------------------------------------------------------------
 
 
-def input_revisions() -> Dict[str, str]:
-    """The input revision of each dataset scope and each collection scope.
+def input_revisions() -> Dict[str, Dict[str, str]]:
+    """The input revision of each dataset scope and each collection scope, and the
+    dependency revision of each dataset.
 
     Keys are `collection_dataset` and `collectionname`. A dataset revision joins its own
-    newest terminal operation with that of its collection. One query over the global
+    newest terminal operation with that of its collection. Two queries over the global
     operations table.
     """
     from .clickhouse import get_global_client
@@ -71,6 +78,14 @@ def input_revisions() -> Dict[str, str]:
             f"WHERE state IN ({_TERMINAL_SQL}) AND kind NOT IN ({_UPDATE_KINDS_SQL}) "
             "GROUP BY target_kind, collectionname, collection_dataset"
         ).result_rows
+        from tasks.P_admin.updates.registry import TEXT_WRITER_STEPS
+
+        dependencies = {str(cd): str(op_id) for cd, op_id in client.query(
+            "SELECT collection_dataset, argMax(op_id, (finished_at, op_id)) FROM operations FINAL "
+            f"WHERE kind = 'update_dataset' AND state IN ({_TERMINAL_SQL}) AND collection_dataset != '' "
+            "AND hasAny(JSONExtract(detail, 'steps', 'Array(String)'), {writers:Array(String)}) "
+            "GROUP BY collection_dataset",
+            parameters={"writers": list(TEXT_WRITER_STEPS)}).result_rows}
     collections: Dict[str, str] = {}
     datasets: Dict[str, str] = {}
     for target_kind, collectionname, collection_dataset, op_id in rows:
@@ -78,7 +93,7 @@ def input_revisions() -> Dict[str, str]:
             collections[collectionname] = op_id
         elif collection_dataset:
             datasets[collection_dataset] = op_id
-    return {"datasets": datasets, "collections": collections}
+    return {"datasets": datasets, "collections": collections, "dependencies": dependencies}
 
 
 def stored_checks(scope_ids: Iterable[str] = ()) -> Dict[Tuple[str, str], dict]:

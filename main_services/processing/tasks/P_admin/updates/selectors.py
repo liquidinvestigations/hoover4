@@ -19,10 +19,12 @@ Selector contracts, one for each step:
   Settlement verifies exact publication identities and durable dependent output.
 * `entities` selects earlier provider completion, changed source identities, or missing verified search publication.
   Settlement verifies current completion, text attributes, and searchable terms.
-* `vectors` selects files with text and no vector of the served model, when the
-  collection uses vectors. A file whose text has no passage worth a vector stays in the
-  count after the run, so the count is an upper bound. Settlement: every selected plan
-  ran embedding and indexing.
+* `vectors` selects, when the collection uses vectors, live files with a current text
+  page whose vectors of the served model are incomplete: a page without vectors and
+  without an empty-page receipt of its text version, a page whose vectors are older than
+  its text, a page with fewer vectors than current chunk rows, or vectors of a page that
+  the text no longer has (`vector_pending_sql`). Settlement: the count is zero, and the
+  update verified the search copy of each plan that it embedded.
 * `virus_scan` selects, when the scan is on, live files up to the size limit whose hash
   has no completed attempt in the collection and whose latest attempt is not
   `skipped_size` or `incomplete`. A failed or disabled attempt is selected again.
@@ -64,6 +66,8 @@ class ScopeContext:
     input_revision: str = ""
     #: The applied rows of the scope, by step id.
     applied: Dict[str, dict] = field(default_factory=dict)
+    #: The dependency revision of a dataset scope (`registry.py`).
+    dependency_revision: str = ""
 
 
 @dataclass
@@ -352,14 +356,58 @@ def legacy_select_ocr(client, ctx: ScopeContext, target: Optional[dict] = None) 
         "obsolete_variants": variants, "obsolete_pairs": [list(p) for p in pairs]})
 
 
+#: The text pages of a dataset: one row for each page, with its newest text version.
+_TEXT_PAGES = ("SELECT file_hash, extracted_by, page_id, max(version) AS v FROM text_content "
+               "WHERE collection_dataset = {cd:String} GROUP BY file_hash, extracted_by, page_id")
+
+
+def vector_pending_sql() -> str:
+    """The live files whose stored vectors of `{model:String}` are not complete for their text.
+
+    Text versions are nanoseconds and vector times are seconds, so the comparison uses
+    seconds: a vector written in the second of its text counts as current. A page that has
+    no chunk worth a vector has no vector. The embedding stage writes an empty-page receipt
+    for it (`EMPTY_PAGE_RECEIPT`), so the page is not selected again for the same version.
+    Text that an earlier migration wrote has version 0, so its vectors count as current.
+    """
+    from tasks.P5_chunk_embed.activities import EMPTY_PAGE_RECEIPT
+
+    pages = (
+        f"SELECT t.file_hash AS file_hash, t.extracted_by AS extracted_by, t.page_id AS page_id, t.v AS v, "
+        "q.n AS n, q.oldest AS oldest, c.fresh AS fresh FROM (" + _TEXT_PAGES + ") AS t "
+        "LEFT JOIN (SELECT file_hash, extracted_by, page_id, count() AS n, "
+        "min(toUInt64(toUnixTimestamp(updated_at))) AS oldest FROM text_chunk_vectors FINAL "
+        "WHERE collection_dataset = {cd:String} AND embedding_model = {model:String} "
+        "GROUP BY file_hash, extracted_by, page_id) AS q "
+        "ON q.file_hash = t.file_hash AND q.extracted_by = t.extracted_by AND q.page_id = t.page_id "
+        "LEFT JOIN (SELECT k.file_hash AS file_hash, k.extracted_by AS extracted_by, k.page_id AS page_id, "
+        "count() AS fresh FROM text_chunks AS k FINAL INNER JOIN (" + _TEXT_PAGES + ") AS t2 "
+        "ON k.file_hash = t2.file_hash AND k.extracted_by = t2.extracted_by AND k.page_id = t2.page_id "
+        "WHERE k.collection_dataset = {cd:String} "
+        "AND toUInt64(toUnixTimestamp(k.updated_at)) >= intDiv(t2.v, 1000000000) "
+        "GROUP BY k.file_hash, k.extracted_by, k.page_id) AS c "
+        "ON c.file_hash = t.file_hash AND c.extracted_by = t.extracted_by AND c.page_id = t.page_id")
+    incomplete = (
+        "SELECT file_hash AS hash FROM (" + pages + ") WHERE "
+        "(n = 0 AND (file_hash, concat(extracted_by, ':', toString(page_id)), "
+        "concat({model:String}, ':', toString(v))) NOT IN (SELECT file_hash, output_identity, fingerprint "
+        "FROM processing_output_receipts WHERE collection_dataset = {cd:String} "
+        f"AND output_kind = '{EMPTY_PAGE_RECEIPT}' AND stage = 'embed')) "
+        "OR (n > 0 AND oldest < intDiv(v, 1000000000)) OR n < fresh")
+    removed = (
+        "SELECT DISTINCT file_hash AS hash FROM text_chunk_vectors WHERE collection_dataset = {cd:String} "
+        "AND embedding_model = {model:String} AND (file_hash, extracted_by, page_id) NOT IN "
+        "(SELECT file_hash, extracted_by, page_id FROM text_content WHERE collection_dataset = {cd:String})")
+    return (f"SELECT DISTINCT hash FROM ({incomplete} UNION ALL {removed}) "
+            f"WHERE hash IN ({_LIVE})")
+
+
 def select_vectors(client, ctx: ScopeContext, target: Optional[dict] = None) -> Selection:
     target = target or vectors_target(ctx.collectionname)
     if target.get("vectors") != "on":
         return Selection(detail={"vectors": "off"})
     parameters = {"cd": ctx.scope_id, "model": target.get("model", "")}
-    hash_sql = ("SELECT DISTINCT file_hash AS hash FROM text_content WHERE collection_dataset = {cd:String} "
-                "AND file_hash IN (" + _LIVE + ") AND file_hash NOT IN (SELECT file_hash FROM text_chunk_vectors "
-                "WHERE collection_dataset = {cd:String} AND embedding_model = {model:String})")
+    hash_sql = vector_pending_sql()
     files, size = _count(client, hash_sql, parameters, ctx.scope_id)
     return Selection(files, size, files, hash_sql if files else "", parameters,
                      {"vectors": "on", "model": target.get("model", "")})

@@ -492,6 +492,7 @@ async def run_common_worker():
         submit_automatic_update,
         update_operation_state,
         operation_start_params,
+        update_windows,
     )
     from .P_admin.updates.pdf_text_layer import scan_pdf_text_layers
     from .P_admin.updates.text_rows import rewrite_text_rows
@@ -719,6 +720,7 @@ async def run_common_worker():
             submit_automatic_update,
             update_operation_state,
             operation_start_params,
+            update_windows,
             snapshot_processing_update,
             begin_update_step,
             settle_update_step,
@@ -972,7 +974,9 @@ async def run_indexing_worker():
       index_entity_terms, index_vfs_structure, compact_collection_shards,
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
-  from .P_admin.updates.activities import retire_cached_searches, stale_virus_attributes, stale_virus_plan_hashes
+  from .P_admin.updates.activities import (
+      retire_cached_searches, stale_virus_attributes, stale_virus_plan_hashes, verify_update_vector_plan,
+  )
   from .P_admin.updates.entities import finish_entity_terms, finish_entity_update
   from .P_admin.updates.page_text import rewrite_page_text
   from .visibility import ensure_search_attributes
@@ -999,7 +1003,7 @@ async def run_indexing_worker():
                   resolve_canonical_file_type, index_entity_terms,
                   refresh_stale_document_locations, retire_cached_searches, stale_virus_attributes,
                   stale_virus_plan_hashes, finish_entity_update,
-                  rewrite_page_text, finish_entity_terms],
+                  rewrite_page_text, finish_entity_terms, verify_update_vector_plan],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

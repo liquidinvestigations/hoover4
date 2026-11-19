@@ -85,6 +85,14 @@ the steps now. When the counts changed since the page loaded, the request is ref
 new counts show, and nothing runs. A failed or cancelled step does not start again
 automatically. Start it with the button when the cause is fixed.
 
+The automatic updates run in four tracks: OCR, named entities, vectors and the other steps.
+Each track has its own slots, so a long OCR update does not stop the other updates of other
+datasets. One dataset runs one update at a time. The status line names the track of the
+running update. When the steps that you select belong to one track, the update uses the
+slots of that track. The named entity and vector updates wait while their service is not
+available. After an OCR update, the named entity and vector steps of the dataset count the
+new text.
+
 The OCR step selects installed models from each eligible page’s detected script and language.
 Earlier OCR text in the detected language stays, and no new OCR runs for it.
 It preserves earlier output until replacement publication completes, then removes superseded normal variants.

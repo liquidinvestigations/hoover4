@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Leitura de tabelas, entidades, sinais, vetores e ambos os índices
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Ficheiros que precisam de OCR automático: { $count }. O texto OCR anterior no idioma detetado é mantido sem novo OCR. As outras páginas recebem OCR com o modelo instalado do idioma detetado. As variantes anteriores são removidas quando a substituição está completa.
-processing-update-ocr-runs = OCR e PDF pesquisáveis, depois a extração de entidades, a incorporação e a indexação do texto novo
+processing-update-ocr-runs = OCR e PDF pesquisáveis, depois os sinais e a indexação do texto novo. Seguem-se a extração de entidades e a incorporação do texto novo.
 processing-update-ocr_detection-title = Deteção de OCR
 processing-update-ocr_detection-explanation = Ficheiros sem deteção atual de texto, escrita ou idioma: { $count }. Cada imagem e página PDF elegível é examinada em lotes limitados.
 processing-update-ocr_detection-runs = Deteção, depois os atributos de pesquisa destes ficheiros
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Ficheiros com texto de uma divisão an
 processing-update-text_rows-runs = Divisão do texto, depois a extração de entidades, a incorporação e a indexação do texto novo
 processing-update-vectors-title = Vetores
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } ficheiro com texto não tem vetores do modelo de incorporação que a instalação serve.
-   *[other] { $count } ficheiros com texto não têm vetores do modelo de incorporação que a instalação serve.
-} Os seus vetores são calculados e indexados.
+    [one] { $count } ficheiro com texto não tem vetores atuais do modelo de incorporação que a instalação serve.
+   *[other] { $count } ficheiros com texto não têm vetores atuais do modelo de incorporação que a instalação serve.
+} Os vetores em falta ou desatualizados são calculados de novo e indexados.
 processing-update-vectors-runs = Incorporação e indexação de vetores
 processing-update-folder_counts-title = Contagens de pastas
 processing-update-folder_counts-explanation = { $files ->

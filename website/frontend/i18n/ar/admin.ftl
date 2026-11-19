@@ -820,7 +820,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = قراءة الجداول والكيانات والإشارات والتضمين وكلا الفهرسين
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = الملفات التي تحتاج إلى OCR تلقائي: { $count }. يُحتفظ بنص OCR السابق باللغة المكتشفة دون OCR جديد. تحصل الصفحات الأخرى على OCR بالنموذج المثبت للغة المكتشفة. تُزال النسخ المستبدلة عند اكتمال الاستبدال.
-processing-update-ocr-runs = OCR وملفات PDF القابلة للبحث، ثم استخراج الكيانات والتضمين والفهرسة للنص الجديد
+processing-update-ocr-runs = OCR وملفات PDF القابلة للبحث، ثم الإشارات وفهرسة النص الجديد. يلي ذلك استخراج الكيانات والتضمين للنص الجديد.
 processing-update-ocr_detection-title = اكتشاف OCR
 processing-update-ocr_detection-explanation = الملفات دون اكتشاف حالي للنص أو نظام الكتابة أو اللغة: { $count }. تُفحص كل صورة وصفحة PDF مؤهلة في دفعات محدودة.
 processing-update-ocr_detection-runs = الاكتشاف، ثم سمات البحث لهذه الملفات
@@ -840,11 +840,11 @@ processing-update-text_rows-explanation = ملفات نصها من تقسيم س
 processing-update-text_rows-runs = تقسيم النص، ثم استخراج الكيانات والتضمين والفهرسة للنص الجديد
 processing-update-vectors-title = المتجهات
 processing-update-vectors-explanation = { $files ->
-    [one] ملف واحد فيه نص بلا متجهات لنموذج التضمين الذي يخدمه التثبيت.
-    [two] ملفان فيهما نص بلا متجهات لنموذج التضمين الذي يخدمه التثبيت.
-    [few] { $count } ملفات فيها نص بلا متجهات لنموذج التضمين الذي يخدمه التثبيت.
-   *[other] { $count } ملفًا فيها نص بلا متجهات لنموذج التضمين الذي يخدمه التثبيت.
-} تُحسب المتجهات وتُفهرس.
+    [one] ملف واحد فيه نص بلا متجهات حديثة لنموذج التضمين الذي يخدمه التثبيت.
+    [two] ملفان فيهما نص بلا متجهات حديثة لنموذج التضمين الذي يخدمه التثبيت.
+    [few] { $count } ملفات فيها نص بلا متجهات حديثة لنموذج التضمين الذي يخدمه التثبيت.
+   *[other] { $count } ملفًا فيها نص بلا متجهات حديثة لنموذج التضمين الذي يخدمه التثبيت.
+} تُحسب المتجهات الناقصة والقديمة من جديد وتُفهرس.
 processing-update-vectors-runs = التضمين وفهرسة المتجهات
 processing-update-folder_counts-title = أعداد المجلدات
 processing-update-folder_counts-explanation = { $files ->

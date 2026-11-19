@@ -19,6 +19,9 @@ class AutomaticOcrScope:
     after: str = ""
     hashes: list[str] | None = None
     plans: dict[str, str] = field(default_factory=dict)
+    #: Verify only the publication of an OCR-track run: text, regex results and search
+    #: rows. NER and vectors follow in their own tracks.
+    separated: bool = False
 
 
 def hash_sql():
@@ -158,10 +161,13 @@ def verify_automatic_ocr_files(params: AutomaticOcrScope) -> None:
             bodies = publication_rows(client, params.collection_dataset, h, plan["source_kind"], bodies)
             verify_text_publication(client, params, h, bodies)
             verify_artifacts(params.collectionname, output.values())
-            verify_vector_index(client, TableReceiptParams(params.collectionname, params.collection_dataset, params.op_id, [h]))
+            if not params.separated:
+                verify_vector_index(client, TableReceiptParams(params.collectionname, params.collection_dataset, params.op_id, [h]))
+            stages = (["regex", "index_text"] if params.separated
+                      else ["entities", "regex", "embed", "index_text", "index_vectors"])
             for source in sources:
                 verify_stages(client, TableReceiptParams(params.collectionname, params.collection_dataset,
-                    params.op_id, [h], ["entities", "regex", "embed", "index_text", "index_vectors"], text_source=source))
+                    params.op_id, [h], stages, text_source=source))
             from tasks.P3_parse_files.table_generations import GenerationCommand, send_command
             send_command(GenerationCommand(params.collectionname, h, "apply_ocr_plan", owner_op=params.op_id,
                 manifest=json.dumps(dict(dataset=params.collection_dataset, plan_digest=plan["plan_digest"], publication_epoch=publication_epoch)).encode()))

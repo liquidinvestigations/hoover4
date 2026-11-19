@@ -111,6 +111,11 @@ class VectorPlansParams:
     after: str = ""
     done: int = 0
     failed: int = 0
+    #: Verify the search copy of each plan after its indexing. False in a run that
+    #: started before the verification.
+    verify: bool = False
+    #: Plans in flight at once. 0 keeps the earlier `VECTOR_PLAN_WINDOW`.
+    window: int = 0
 
 
 @dataclass

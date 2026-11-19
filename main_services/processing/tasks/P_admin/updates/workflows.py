@@ -71,6 +71,8 @@ with workflow.unsafe.imports_passed_through():
         snapshot_processing_update,
         submit_automatic_update,
         update_operation_state,
+        update_windows,
+        verify_update_vector_plan,
     )
     from tasks.P_admin.updates.pdf_text_layer import scan_pdf_text_layers
     from tasks.P_admin.updates.params import (
@@ -317,10 +319,19 @@ def cap_class_of(candidate) -> str:
 class RunProcessingUpdate:
     """The steps of one update operation. See the module docstring."""
 
+    def __init__(self) -> None:
+        #: The recorded windows of a tracked operation (`update_windows`). Empty for a
+        #: legacy operation, whose children keep their constant windows.
+        self._windows: dict = {}
+
     @workflow.run
     async def run(self, params: RunUpdateParams) -> dict:
         snapshot = await workflow.execute_activity(snapshot_processing_update, params, start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if params.profile == PROFILE_TRACKS:
+            self._windows = await workflow.execute_activity(
+                update_windows, start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         total = len(snapshot.steps)
         failures, done = [], 0
         for step in snapshot.steps:
@@ -366,6 +377,19 @@ class RunProcessingUpdate:
             start_to_close_timeout=timedelta(minutes=5),
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
 
+    def _ocr_profile(self, params: RunUpdateParams) -> dict:
+        """The `RerunOcr` input of a tracked operation: no NER or embedding, its OCR window.
+
+        A legacy operation adds nothing, so its input stays as it was.
+        """
+        if params.profile != PROFILE_TRACKS:
+            return {}
+        return {"separated": True, "ocr_window": self._window(params, "ocr")}
+
+    def _window(self, params: RunUpdateParams, name: str) -> int:
+        """The recorded window of a tracked operation, or 0 for the constant of a legacy one."""
+        return int(self._windows.get(name, 0)) if params.profile == PROFILE_TRACKS else 0
+
     def _child(self, params: RunUpdateParams) -> dict:
         common = dict(task_queue="processing-common-queue")
         if params.collection_dataset:
@@ -404,7 +428,9 @@ class RunProcessingUpdate:
             done = await workflow.execute_child_workflow(
                 UpdateDatasetVectors.run,
                 VectorPlansParams(params.op_id, params.collectionname, params.collection_dataset,
-                                  str(detail.get("model", ""))),
+                                  str(detail.get("model", "")),
+                                  verify=workflow.patched("vector-update-verify"),
+                                  window=self._window(params, "embed")),
                 id=f"update-vectors-{params.op_id}", **self._child(params))
             return f"embedded and indexed {done} plans"
         if step_id == "virus_scan":
@@ -422,7 +448,8 @@ class RunProcessingUpdate:
         if step_id == "entities":
             done = await workflow.execute_child_workflow(
                 UpdateDatasetEntities.run,
-                EntityUpdateParams(params.collectionname, params.collection_dataset, params.op_id),
+                EntityUpdateParams(params.collectionname, params.collection_dataset, params.op_id,
+                                   window=self._window(params, "ner")),
                 id=f"update-entities-{params.op_id}", **self._child(params))
             return f"updated named entities for {done} files"
         if step_id == "tables":
@@ -492,7 +519,7 @@ class RunProcessingUpdate:
     async def _ocr(self, params: RunUpdateParams, step: StepParams) -> str:
         automatic = workflow.patched("automatic-ocr-v1")
         arguments = {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
-                     "op_id": params.op_id}
+                     "op_id": params.op_id, **self._ocr_profile(params)}
         if automatic:
             arguments["automatic_mode"] = "languages" not in json.loads(step.step.detail or "{}")
         result = await workflow.execute_child_workflow(
@@ -522,7 +549,7 @@ class RunProcessingUpdate:
             result = await workflow.execute_child_workflow(
                 "RerunOcr",
                 {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
-                 "op_id": params.op_id},
+                 "op_id": params.op_id, **self._ocr_profile(params)},
                 id=f"update-pdf-text-{params.op_id}", **self._child(params))
         return json.dumps({**counts, "plans": result.get("plans", 0)}, sort_keys=True)
 
@@ -573,8 +600,15 @@ class UpdateDatasetVectors:
             await workflow.execute_child_workflow(
                 "IndexDatasetPlan", {**child, "vectors_only": True},
                 id=f"update-index-vectors-{params.op_id}-{plan_hash}", **common)
+            if params.verify:
+                await workflow.execute_activity(
+                    verify_update_vector_plan,
+                    TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
+                    task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
 
-        results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
+        results = await run_with_window([lambda h=h: plan(h) for h in plans],
+                                        params.window or VECTOR_PLAN_WINDOW)
         failed = 0
         for result in results:
             if isinstance(result, BaseException):
@@ -583,7 +617,7 @@ class UpdateDatasetVectors:
                 failed += 1
         workflow.continue_as_new(VectorPlansParams(
             params.op_id, params.collectionname, params.collection_dataset, params.model,
-            plans[-1], params.done + len(plans), params.failed + failed))
+            plans[-1], params.done + len(plans), params.failed + failed, params.verify, params.window))
 
 
 @workflow.defn
@@ -910,7 +944,8 @@ class UpdateDatasetArchiveMembers:
 ENTITY_UPDATE_BATCH = 100
 #: Batches that one entity update run lists before it continues as new.
 ENTITY_UPDATE_BATCHES_PER_RUN = 16
-#: Batches in flight at once. It matches the default NER slots of the NLP worker.
+#: Batches in flight at once in a legacy operation. A tracked operation records its own
+#: window (`update_windows`).
 ENTITY_UPDATE_WINDOW = 4
 
 
@@ -945,7 +980,7 @@ class UpdateDatasetEntities:
             params.op_id,after=hashes[-1],done=params.done + len(hashes)))
 
     async def _windowed(self, params: EntityUpdateParams) -> int:
-        """Run batches of 100 files with up to `ENTITY_UPDATE_WINDOW` in flight.
+        """Run batches of 100 files with up to `window` (else `ENTITY_UPDATE_WINDOW`) in flight.
 
         One batch at a time left the GPU idle while a batch read text and saved results.
         Each batch writes the rows of its own files only. The dataset terms follow the last batch.
@@ -973,9 +1008,10 @@ class UpdateDatasetEntities:
                 heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
 
         chunks = [hashes[start:start + ENTITY_UPDATE_BATCH] for start in range(0, len(hashes), ENTITY_UPDATE_BATCH)]
-        results = await run_with_window([lambda chunk=chunk: batch(chunk) for chunk in chunks], ENTITY_UPDATE_WINDOW)
+        results = await run_with_window([lambda chunk=chunk: batch(chunk) for chunk in chunks],
+                                        params.window or ENTITY_UPDATE_WINDOW)
         for result in results:
             if isinstance(result, BaseException):
                 raise result
         workflow.continue_as_new(EntityUpdateParams(params.collectionname,params.collection_dataset,
-            params.op_id,after=hashes[-1],done=params.done + len(hashes)))
+            params.op_id,after=hashes[-1],done=params.done + len(hashes),window=params.window))

@@ -20,6 +20,8 @@ class EntityUpdateParams:
     terms_at_end: bool = False
     #: Files that one listing returns.
     limit: int = 100
+    #: NER batches in flight at once. 0 keeps the earlier `ENTITY_UPDATE_WINDOW`.
+    window: int = 0
 
 
 def indexed_page_is_current(stored: str, cleaned: str) -> bool:

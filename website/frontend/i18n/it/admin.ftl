@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Lettura delle tabelle, entità, segnali, vettori ed entrambi gli indici
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = File che richiedono OCR automatico: { $count }. Il testo OCR precedente nella lingua rilevata viene mantenuto senza un nuovo OCR. Le altre pagine ricevono l'OCR con il modello installato della lingua rilevata. Le varianti precedenti vengono rimosse quando la sostituzione è completa.
-processing-update-ocr-runs = OCR e PDF ricercabili, poi estrazione delle entità, embedding e indicizzazione del nuovo testo
+processing-update-ocr-runs = OCR e PDF ricercabili, poi segnali e indicizzazione del nuovo testo. Seguono l'estrazione delle entità e l'embedding del nuovo testo.
 processing-update-ocr_detection-title = Rilevamento OCR
 processing-update-ocr_detection-explanation = File senza rilevamento corrente di testo, scrittura o lingua: { $count }. Ogni immagine e pagina PDF idonea viene esaminata in lotti limitati.
 processing-update-ocr_detection-runs = Rilevamento, poi gli attributi di ricerca di questi file
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = File con testo di una suddivisione pre
 processing-update-text_rows-runs = Suddivisione del testo, poi estrazione delle entità, embedding e indicizzazione del nuovo testo
 processing-update-vectors-title = Vettori
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } file con testo non ha vettori del modello di embedding che l'installazione serve.
-   *[other] { $count } file con testo non hanno vettori del modello di embedding che l'installazione serve.
-} I loro vettori vengono calcolati e indicizzati.
+    [one] { $count } file con testo non ha vettori aggiornati del modello di embedding che l'installazione serve.
+   *[other] { $count } file con testo non hanno vettori aggiornati del modello di embedding che l'installazione serve.
+} I vettori mancanti o non aggiornati vengono calcolati di nuovo e indicizzati.
 processing-update-vectors-runs = Embedding e indicizzazione dei vettori
 processing-update-folder_counts-title = Conteggi delle cartelle
 processing-update-folder_counts-explanation = { $files ->

@@ -788,7 +788,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = テーブルの読み取り、エンティティ、シグナル、埋め込み、両方のインデックス
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = 自動 OCR が必要なファイル数：{ $count }。検出された言語の既存の OCR テキストは、新しい OCR なしで保持されます。その他のページは、検出された言語のインストール済みモデルで OCR されます。置換が完了すると、旧版は削除されます。
-processing-update-ocr-runs = OCRと検索可能なPDF、続いて新しいテキストのエンティティの抽出、埋め込み、インデックス作成
+processing-update-ocr-runs = OCRと検索可能なPDF、続いて新しいテキストのシグナルとインデックス作成。その後、新しいテキストのエンティティの抽出と埋め込みが続きます。
 processing-update-ocr_detection-title = OCR検出
 processing-update-ocr_detection-explanation = 現在のテキスト、文字体系、言語の検出がないファイル数：{ $count }。対象の全画像と PDF ページを上限のあるバッチで調べます。
 processing-update-ocr_detection-runs = 検出、続いてこれらのファイルの検索属性
@@ -805,8 +805,8 @@ processing-update-text_rows-explanation = 以前の分割によるテキスト�
 processing-update-text_rows-runs = テキストの分割、続いて新しいテキストのエンティティの抽出、埋め込み、インデックス作成
 processing-update-vectors-title = ベクトル
 processing-update-vectors-explanation = { $files ->
-   *[other] テキストがあり、この環境が提供する埋め込みモデルのベクトルがないファイルが { $count } 個あります。
-} これらのベクトルを計算して、インデックスに登録します。
+   *[other] テキストがあり、この環境が提供する埋め込みモデルの最新のベクトルがないファイルが { $count } 個あります。
+} 不足しているベクトルと古いベクトルを計算し直して、インデックスに登録します。
 processing-update-vectors-runs = 埋め込みとベクトルのインデックス作成
 processing-update-folder_counts-title = フォルダーの件数
 processing-update-folder_counts-explanation = { $files ->

@@ -806,7 +806,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Čitanje tablica, entiteti, signali, ugrađivanja i oba indeksa
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Datoteke koje trebaju automatski OCR: { $count }. Prethodni OCR tekst na otkrivenom jeziku zadržava se bez novog OCR-a. Ostale stranice dobivaju OCR s instaliranim modelom otkrivenog jezika. Prethodne inačice uklanjaju se kada je zamjena potpuna.
-processing-update-ocr-runs = OCR i PDF-ovi s mogućnošću pretraživanja, zatim izdvajanje entiteta, ugrađivanje i indeksiranje novog teksta
+processing-update-ocr-runs = OCR i PDF-ovi s mogućnošću pretraživanja, zatim signali i indeksiranje novog teksta. Slijede izdvajanje entiteta i ugrađivanje novog teksta.
 processing-update-ocr_detection-title = OCR otkrivanje
 processing-update-ocr_detection-explanation = Datoteke bez trenutačnog otkrivanja teksta, pisma ili jezika: { $count }. Svaka prikladna slika i PDF stranica pregledava se u ograničenim skupinama.
 processing-update-ocr_detection-runs = Otkrivanje, zatim atributi pretrage ovih datoteka
@@ -825,10 +825,10 @@ processing-update-text_rows-explanation = Datoteke s tekstom iz ranije podjele: 
 processing-update-text_rows-runs = Podjela teksta, zatim izdvajanje entiteta, ugrađivanje i indeksiranje novog teksta
 processing-update-vectors-title = Vektori
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } datoteka s tekstom nema vektore modela ugrađivanja koji instalacija poslužuje.
-    [few] { $count } datoteke s tekstom nemaju vektore modela ugrađivanja koji instalacija poslužuje.
-   *[other] { $count } datoteka s tekstom nema vektore modela ugrađivanja koji instalacija poslužuje.
-} Njihovi vektori izračunavaju se i indeksiraju.
+    [one] { $count } datoteka s tekstom nema aktualne vektore modela ugrađivanja koji instalacija poslužuje.
+    [few] { $count } datoteke s tekstom nemaju aktualne vektore modela ugrađivanja koji instalacija poslužuje.
+   *[other] { $count } datoteka s tekstom nema aktualne vektore modela ugrađivanja koji instalacija poslužuje.
+} Nedostajući i zastarjeli vektori ponovno se izračunavaju i indeksiraju.
 processing-update-vectors-runs = Ugrađivanje i indeksiranje vektora
 processing-update-folder_counts-title = Brojevi mapa
 processing-update-folder_counts-explanation = { $files ->

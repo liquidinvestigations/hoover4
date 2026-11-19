@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Lecture des tableaux, entités, signaux, plongements et les deux index
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Fichiers nécessitant un OCR automatique : { $count }. Le texte OCR antérieur dans la langue détectée est conservé sans nouvel OCR. Les autres pages reçoivent un OCR avec le modèle installé de la langue détectée. Les variantes remplacées sont supprimées lorsque le remplacement est complet.
-processing-update-ocr-runs = OCR et PDF interrogeables, puis extraction des entités, embeddings et indexation du nouveau texte
+processing-update-ocr-runs = OCR et PDF interrogeables, puis signaux et indexation du nouveau texte. L’extraction des entités et les embeddings du nouveau texte suivent.
 processing-update-ocr_detection-title = Détection OCR
 processing-update-ocr_detection-explanation = Fichiers sans détection actuelle de texte, d’écriture ou de langue : { $count }. Chaque image et page PDF admissible est examinée par lots limités.
 processing-update-ocr_detection-runs = Détection, puis les attributs de recherche de ces fichiers
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Fichiers dont le texte vient d'un déc
 processing-update-text_rows-runs = Découpage du texte, puis extraction des entités, embeddings et indexation du nouveau texte
 processing-update-vectors-title = Vecteurs
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } fichier avec du texte n’a aucun vecteur du modèle d’embeddings que l’installation sert.
-   *[other] { $count } fichiers avec du texte n’ont aucun vecteur du modèle d’embeddings que l’installation sert.
-} Leurs vecteurs sont calculés et indexés.
+    [one] { $count } fichier avec du texte n’a aucun vecteur à jour du modèle d’embeddings que l’installation sert.
+   *[other] { $count } fichiers avec du texte n’ont aucun vecteur à jour du modèle d’embeddings que l’installation sert.
+} Les vecteurs manquants ou obsolètes sont recalculés et indexés.
 processing-update-vectors-runs = Embeddings et indexation des vecteurs
 processing-update-folder_counts-title = Totaux des dossiers
 processing-update-folder_counts-explanation = { $files ->

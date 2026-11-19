@@ -795,7 +795,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Table reading, entities, signals, embedding, and both indexes
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Files needing automatic OCR: { $count }. Earlier OCR text in the detected language is kept without new OCR. The other pages get OCR with the installed model of the detected language. Superseded variants are removed when the replacement is complete.
-processing-update-ocr-runs = OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text
+processing-update-ocr-runs = OCR and searchable PDFs, then signals and indexing of the new text. Entity extraction and embedding of the new text follow.
 processing-update-ocr_detection-title = OCR detection
 processing-update-ocr_detection-explanation = Files without current text, script, or language detection: { $count }. Every eligible image and PDF page is examined in bounded batches.
 processing-update-ocr_detection-runs = Detection, then the search attributes of these files
@@ -813,9 +813,9 @@ processing-update-text_rows-explanation = Files with text from an earlier split:
 processing-update-text_rows-runs = Text split, then entity extraction, embedding and indexing of the new text
 processing-update-vectors-title = Vectors
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } file with text has no vectors of the embedding model that the installation serves.
-   *[other] { $count } files with text have no vectors of the embedding model that the installation serves.
-} Their vectors are computed and indexed.
+    [one] { $count } file with text has no current vectors of the embedding model that the installation serves.
+   *[other] { $count } files with text have no current vectors of the embedding model that the installation serves.
+} Missing and outdated vectors are computed again and indexed.
 processing-update-vectors-runs = Embedding and vector indexing
 processing-update-folder_counts-title = Folder counts
 processing-update-folder_counts-explanation = { $files ->

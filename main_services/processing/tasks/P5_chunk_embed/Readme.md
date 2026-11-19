@@ -27,7 +27,17 @@ There is no CPU embedding fallback.
   in [agent_common/embeddings.py](../../../agents/agent_common/agent_common/embeddings.py); the two are duplicated deliberately and must agree.
 - Skip chunks already present in `text_chunk_vectors` for the serving model (left-anti
   join on `(collection_dataset, file_hash, extracted_by, page_id, chunk_index,
-  embedding_model)`), so the stage is resumable and cheaply re-runnable.
+  embedding_model)`), so the stage is resumable and cheaply re-runnable. A vector whose
+  `updated_at` second is before the second of its page's newest text version belongs to
+  replaced text, and the chunk is embedded again.
+- Delete the vector and chunk rows of chunk indexes that the current page text does not
+  have. Also delete those of pages that `text_content` no longer has.
+- Write an empty-page receipt (`processing_output_receipts`, `output_kind =
+  vector_page_empty`) for a page without a chunk worth a vector and for a page over the
+  work limit. The `vectors` processing update reads it and does not select the page again
+  for the same text version.
+- Wait for an embedding service that refuses connections for at most 12 hours
+  (`with_remote_outage_retry`).
 - Write `text_chunks` (model-independent) before the first vector of their page, then
   `text_chunk_vectors` with the model and dims the endpoint **actually** served.
 

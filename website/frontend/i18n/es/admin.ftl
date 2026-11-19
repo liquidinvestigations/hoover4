@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Lectura de tablas, entidades, señales, vectores y ambos índices
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Archivos que necesitan OCR automático: { $count }. El texto OCR anterior en el idioma detectado se conserva sin un nuevo OCR. Las demás páginas reciben OCR con el modelo instalado del idioma detectado. Las variantes sustituidas se eliminan cuando el reemplazo está completo.
-processing-update-ocr-runs = OCR y PDF con texto buscable, y luego extracción de entidades, embeddings e indexación del texto nuevo
+processing-update-ocr-runs = OCR y PDF con texto buscable, y luego señales e indexación del texto nuevo. Después siguen la extracción de entidades y los embeddings del texto nuevo.
 processing-update-ocr_detection-title = Detección de OCR
 processing-update-ocr_detection-explanation = Archivos sin detección actual de texto, escritura o idioma: { $count }. Cada imagen y página PDF apta se examina en lotes limitados.
 processing-update-ocr_detection-runs = Detección, y luego los atributos de búsqueda de estos archivos
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Archivos con texto de una división an
 processing-update-text_rows-runs = División del texto, y luego extracción de entidades, embeddings e indexación del texto nuevo
 processing-update-vectors-title = Vectores
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } archivo con texto no tiene vectores del modelo de embeddings que sirve la instalación.
-   *[other] { $count } archivos con texto no tienen vectores del modelo de embeddings que sirve la instalación.
-} Sus vectores se calculan y se indexan.
+    [one] { $count } archivo con texto no tiene vectores actuales del modelo de embeddings que sirve la instalación.
+   *[other] { $count } archivos con texto no tienen vectores actuales del modelo de embeddings que sirve la instalación.
+} Los vectores que faltan o están desactualizados se calculan de nuevo y se indexan.
 processing-update-vectors-runs = Embeddings e indexación de vectores
 processing-update-folder_counts-title = Recuentos de carpetas
 processing-update-folder_counts-explanation = { $files ->

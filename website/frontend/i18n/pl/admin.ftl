@@ -815,7 +815,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Odczyt tabel, encje, sygnały, osadzenia i oba indeksy
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Pliki wymagające automatycznego OCR: { $count }. Wcześniejszy tekst OCR w wykrytym języku zostaje zachowany bez nowego OCR. Pozostałe strony otrzymują OCR z zainstalowanym modelem wykrytego języka. Poprzednie warianty są usuwane, gdy zastąpienie jest pełne.
-processing-update-ocr-runs = OCR i PDF-y z możliwością przeszukiwania, potem wyodrębnianie encji, embedding i indeksowanie nowego tekstu
+processing-update-ocr-runs = OCR i PDF-y z możliwością przeszukiwania, potem sygnały i indeksowanie nowego tekstu. Następnie wyodrębnianie encji i embedding nowego tekstu.
 processing-update-ocr_detection-title = Wykrywanie OCR
 processing-update-ocr_detection-explanation = Pliki bez bieżącego wykrywania tekstu, pisma lub języka: { $count }. Każdy odpowiedni obraz i strona PDF są badane w ograniczonych partiach.
 processing-update-ocr_detection-runs = Wykrywanie, a potem atrybuty wyszukiwania tych plików
@@ -835,11 +835,11 @@ processing-update-text_rows-explanation = Pliki z tekstem z wcześniejszego podz
 processing-update-text_rows-runs = Podział tekstu, potem wyodrębnianie encji, embedding i indeksowanie nowego tekstu
 processing-update-vectors-title = Wektory
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } plik z tekstem nie ma wektorów modelu embeddingów, który obsługuje instalacja.
-    [few] { $count } pliki z tekstem nie mają wektorów modelu embeddingów, który obsługuje instalacja.
-    [many] { $count } plików z tekstem nie ma wektorów modelu embeddingów, który obsługuje instalacja.
-   *[other] { $count } pliku z tekstem nie ma wektorów modelu embeddingów, który obsługuje instalacja.
-} Ich wektory zostaną obliczone i zaindeksowane.
+    [one] { $count } plik z tekstem nie ma aktualnych wektorów modelu embeddingów, który obsługuje instalacja.
+    [few] { $count } pliki z tekstem nie mają aktualnych wektorów modelu embeddingów, który obsługuje instalacja.
+    [many] { $count } plików z tekstem nie ma aktualnych wektorów modelu embeddingów, który obsługuje instalacja.
+   *[other] { $count } pliku z tekstem nie ma aktualnych wektorów modelu embeddingów, który obsługuje instalacja.
+} Brakujące i nieaktualne wektory zostaną obliczone ponownie i zaindeksowane.
 processing-update-vectors-runs = Embedding i indeksowanie wektorów
 processing-update-folder_counts-title = Liczniki folderów
 processing-update-folder_counts-explanation = { $files ->

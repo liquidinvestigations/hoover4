@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Tabelläsning, entiteter, signaler, inbäddningar och båda indexen
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Filer som behöver automatisk OCR: { $count }. Tidigare OCR-text på det identifierade språket behålls utan ny OCR. De andra sidorna får OCR med den installerade modellen för det identifierade språket. Tidigare varianter tas bort när ersättningen är fullständig.
-processing-update-ocr-runs = OCR och sökbara PDF-filer, sedan entitetsextraktion, inbäddning och indexering av den nya texten
+processing-update-ocr-runs = OCR och sökbara PDF-filer, sedan signaler och indexering av den nya texten. Entitetsextraktion och inbäddning av den nya texten följer.
 processing-update-ocr_detection-title = OCR-identifiering
 processing-update-ocr_detection-explanation = Filer utan aktuell identifiering av text, skriftsystem eller språk: { $count }. Varje lämplig bild och PDF-sida undersöks i begränsade grupper.
 processing-update-ocr_detection-runs = Identifiering, sedan sökattributen för dessa filer
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Filer med text från en tidigare uppde
 processing-update-text_rows-runs = Textuppdelning, sedan entitetsextraktion, inbäddning och indexering av den nya texten
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } fil med text saknar vektorer från den inbäddningsmodell som installationen använder.
-   *[other] { $count } filer med text saknar vektorer från den inbäddningsmodell som installationen använder.
-} Deras vektorer beräknas och indexeras.
+    [one] { $count } fil med text saknar aktuella vektorer från den inbäddningsmodell som installationen använder.
+   *[other] { $count } filer med text saknar aktuella vektorer från den inbäddningsmodell som installationen använder.
+} Saknade och föråldrade vektorer beräknas om och indexeras.
 processing-update-vectors-runs = Inbäddning och vektorindexering
 processing-update-folder_counts-title = Mappantal
 processing-update-folder_counts-explanation = { $files ->

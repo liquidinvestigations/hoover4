@@ -204,6 +204,9 @@ RUN_OCR_TARGETS_PATCH = "run-ocr-targets"
 OCR_RUN_TEMP_DIR = "/tmp/hoover4/ocr-run"
 #: Plans of the target phase that run at once, the window of ExecutePlans.
 OCR_RUN_PLAN_WINDOW = 16
+#: Files of a separated automatic run whose OCR runs at once, when the operation recorded
+#: no window. The window of the earlier automatic run is the same.
+AUTOMATIC_OCR_FILE_WINDOW = 4
 
 
 @workflow.defn
@@ -271,6 +274,8 @@ class RerunOcr:
 
     async def _automatic(self, params):
         """Process bounded automatic source pages and verify dependent output."""
+        if params.separated:
+            return await self._automatic_tracks(params)
         if workflow.patched("automatic-ocr-file-progress-v2"):
             return await self._automatic_progress(params)
         from tasks.P_admin.automatic_ocr import AutomaticOcrScope
@@ -339,6 +344,94 @@ class RerunOcr:
             automatic_files=params.automatic_files+len(hashes)-len(failed),
             automatic_failed_files=params.automatic_failed_files+len(failed)))
 
+    async def _automatic_tracks(self, params):
+        """The automatic run of an OCR-track operation: OCR per file, publication per page.
+
+        It lists at most 32 files, and runs the OCR of up to `ocr_window` files at once.
+        Then one regex scan and one indexing publish the text of the files whose OCR
+        succeeded, and one activity verifies them. It makes no NER or embedding request.
+        A file whose OCR failed gets a file error and stays selected. When the page
+        publication fails, each successful file is published alone, so one file cannot
+        stop the others, and only a file whose own publication fails gets a file error.
+        """
+        from tasks.P_admin.automatic_ocr import AutomaticOcrScope
+        from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
+        from tasks.failure_chain import is_cancellation
+        from tasks.workflow_window import run_with_window
+        if not params.listed:
+            params = await self._phase_one(dataclasses.replace(params, parts_version=True), automatic=True)
+        scope = AutomaticOcrScope(params.collectionname, params.collection_dataset, params.op_id,
+                                  params.after, separated=True)
+        options = dict(start_to_close_timeout=timedelta(hours=6),
+                       retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+        files = await workflow.execute_activity("list_automatic_ocr_files", scope, heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+        if not files:
+            if params.automatic_failed_files:
+                raise ApplicationError(f"{params.automatic_failed_files} automatic OCR files failed", non_retryable=True)
+            return {"plans": params.phase_one_plans, "files": params.automatic_files, "batches": params.plans,
+                    "publication_fallbacks": params.publication_failures,
+                    "execution_counts": {"plans_run": params.phase_one_plans, "failed_plans": params.failed_plans,
+                                         "failed_dataset_steps": params.failed_dataset_steps}}
+        hashes = [file["item_hash"] for file in files]
+        started = workflow.now()
+
+        async def ocr(file_hash):
+            return await workflow.execute_activity(
+                "run_automatic_ocr_files", dataclasses.replace(scope, hashes=[file_hash]),
+                task_queue="processing-ocr-queue", heartbeat_timeout=HEARTBEAT_TIMEOUT, **options)
+
+        results = await run_with_window([lambda h=h: ocr(h) for h in hashes],
+                                        params.ocr_window or AUTOMATIC_OCR_FILE_WINDOW)
+        failed, failed_hashes, plans = [], [], {}
+        for file_hash, result in zip(hashes, results):
+            if isinstance(result, BaseException):
+                if is_cancellation(result):
+                    raise result
+                failed.append(result)
+                failed_hashes.append(file_hash)
+            else:
+                plans.update(result)
+        succeeded = [h for h in hashes if h not in failed_hashes]
+        fallback = False
+        if succeeded:
+            try:
+                await self._publish_automatic(params, scope, succeeded, plans, f"-automatic-page-{succeeded[0]}")
+            except Exception as exc:  # noqa: BLE001 - a page failure falls back to single files
+                if is_cancellation(exc):
+                    raise
+                fallback = True
+                workflow.logger.warning("OCR publication of a page failed, files are published alone: %s", exc)
+                singles = await run_with_window(
+                    [lambda h=h: self._publish_automatic(params, scope, [h], plans, f"-automatic-file-{h}")
+                     for h in succeeded], params.ocr_window or AUTOMATIC_OCR_FILE_WINDOW)
+                for file_hash, result in zip(succeeded, singles):
+                    if isinstance(result, BaseException):
+                        if is_cancellation(result):
+                            raise result
+                        failed.append(result)
+                        failed_hashes.append(file_hash)
+        await record_errors_from_results(failed,
+            source_execution_ids=[source_execution_id(workflow.info().run_id, "automatic-ocr-file", index)
+                                  for index in range(len(failed))],
+            task_ids=["run_automatic_ocr_files"] * len(failed), starts=[started] * len(failed),
+            collectionname=params.collectionname, collection_dataset=params.collection_dataset,
+            item_hashes=failed_hashes, op_id=params.op_id)
+        workflow.continue_as_new(dataclasses.replace(params, after=hashes[-1], plans=params.plans + 1,
+            automatic_files=params.automatic_files + len(hashes) - len(failed),
+            automatic_failed_files=params.automatic_failed_files + len(failed),
+            publication_failures=params.publication_failures + int(fallback)))
+
+    async def _publish_automatic(self, params, scope, hashes: list, plans: dict, suffix: str) -> None:
+        """Publish and verify the OCR text of `hashes`: regex scan, indexing, verification."""
+        plan = OcrRunPlanParams(params.collectionname, params.collection_dataset, params.op_id,
+                                hashes[0], separated=True)
+        await OcrRunPlan()._text_steps(plan, hashes, suffix=suffix, strict=True)
+        await workflow.execute_activity(
+            "verify_automatic_ocr_files",
+            dataclasses.replace(scope, hashes=list(hashes), plans={h: plans.get(h, "") for h in hashes}),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, start_to_close_timeout=timedelta(hours=6),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+
     async def _whole_plans(self, params: "RerunOcrParams") -> dict:
         """The run of executions that started before the target-based run. Replay only."""
         reopened = await workflow.execute_activity(
@@ -365,23 +458,29 @@ class RerunOcr:
         return {"plans": reopened, "execution_counts": execution_counts}
 
     async def _phase_one(self, params: "RerunOcrParams", automatic: bool = False) -> "RerunOcrParams":
-        """Run the unfinished plans and the blobs without a plan, then record the targets."""
-        # No operation id: this read only decides whether ExecutePlans runs, and an id
-        # would record the listed plans against the operation a second time.
-        pending = await workflow.execute_activity(
-            list_pending_plans,
-            ListPendingPlansParams(params.collectionname, params.collection_dataset, op_id=""),
-            start_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        new_blobs = await workflow.execute_activity(
-            count_new_blobs,
-            CountNewBlobsParams(params.collectionname, params.collection_dataset),
-            start_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
+        """Run the unfinished plans and the blobs without a plan, then record the targets.
+
+        A separated run skips the unfinished plans: they run every stage, NER and
+        embedding included, and the `unfinished` step of the main track runs them.
+        """
+        pending, new_blobs = [], 0
+        if not params.separated:
+            # No operation id: this read only decides whether ExecutePlans runs, and an
+            # id would record the listed plans against the operation a second time.
+            pending = await workflow.execute_activity(
+                list_pending_plans,
+                ListPendingPlansParams(params.collectionname, params.collection_dataset, op_id=""),
+                start_to_close_timeout=timedelta(minutes=15),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            )
+            new_blobs = await workflow.execute_activity(
+                count_new_blobs,
+                CountNewBlobsParams(params.collectionname, params.collection_dataset),
+                start_to_close_timeout=timedelta(minutes=15),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            )
         await workflow.execute_activity(
             ensure_temp_dir_exists,
             EnsureTempDirExistsParams(base_temp_dir=OCR_RUN_TEMP_DIR),
@@ -430,7 +529,8 @@ class RerunOcr:
         return await workflow.execute_child_workflow(
             OcrRunPlan.run,
             OcrRunPlanParams(params.collectionname, params.collection_dataset,
-                             params.op_id, plan_hash, parts_version=params.parts_version),
+                             params.op_id, plan_hash, parts_version=params.parts_version,
+                             separated=params.separated),
             id=f"run-ocr-plan-{params.op_id}-{plan_hash}",
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
@@ -807,10 +907,28 @@ class OcrRunPlan:
     async def _text_steps(self, params: "OcrRunPlanParams", hashes: list, suffix: str = "", strict: bool = False) -> None:
         """P4 and P5 together, then P6, for the files whose OCR text is not indexed.
 
-        Date resolution and the canonical type do not run: OCR text changes neither.
+        Date resolution and the canonical type do not run: OCR text changes neither. A
+        separated run scans only the regex signals before P6. Its NER and vectors follow
+        in their own update tracks, and P6 indexes the text with empty entity values.
         """
         attributes = dataset_search_attributes(params.collection_dataset)
         common = dict(task_queue="processing-common-queue", search_attributes=attributes)
+        if params.separated:
+            await workflow.execute_child_workflow(
+                ScanRegexEntitiesForPlan.run,
+                ScanRegexEntitiesForPlanParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes, fail_on_errors=strict),
+                id=f"run-ocr-regex-{params.op_id}-{params.plan_hash}{suffix}", **common)
+            await workflow.execute_child_workflow(
+                IndexDatasetPlan.run,
+                IndexDatasetPlanParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes, fail_on_errors=strict),
+                id=f"run-ocr-index-{params.op_id}-{params.plan_hash}{suffix}", **common)
+            return
         results = await asyncio.gather(
             workflow.execute_child_workflow(
                 ExtractEntitiesForPlan.run,

@@ -807,7 +807,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Tabellenlesen, Entitäten, Signale, Einbettungen und beide Indizes
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Dateien mit Bedarf an automatischer OCR: { $count }. Frühere OCR-Texte in der erkannten Sprache bleiben ohne neue OCR erhalten. Die anderen Seiten erhalten OCR mit dem installierten Modell der erkannten Sprache. Abgelöste Varianten werden entfernt, wenn der Ersatz vollständig ist.
-processing-update-ocr-runs = OCR und durchsuchbare PDFs, danach die Entitätenerkennung, Einbettung und Indizierung des neuen Textes
+processing-update-ocr-runs = OCR und durchsuchbare PDFs, danach die Signale und die Indizierung des neuen Textes. Die Entitätenerkennung und Einbettung des neuen Textes folgen.
 processing-update-ocr_detection-title = OCR-Erkennung
 processing-update-ocr_detection-explanation = Dateien ohne aktuelle Text-, Schrift- oder Spracherkennung: { $count }. Jedes geeignete Bild und jede geeignete PDF-Seite werden in begrenzten Stapeln untersucht.
 processing-update-ocr_detection-runs = Erkennung, danach die Suchattribute dieser Dateien
@@ -826,9 +826,9 @@ processing-update-text_rows-runs = Textaufteilung, danach die Entitätenerkennun
 processing-update-vectors-title = Vektoren
 processing-update-vectors-explanation =
     { $files ->
-        [one] { $count } Datei mit Text hat keine Vektoren des Einbettungsmodells, das die Installation bereitstellt.
-       *[other] { $count } Dateien mit Text haben keine Vektoren des Einbettungsmodells, das die Installation bereitstellt.
-    } Deren Vektoren werden berechnet und indiziert.
+        [one] { $count } Datei mit Text hat keine aktuellen Vektoren des Einbettungsmodells, das die Installation bereitstellt.
+       *[other] { $count } Dateien mit Text haben keine aktuellen Vektoren des Einbettungsmodells, das die Installation bereitstellt.
+    } Fehlende und veraltete Vektoren werden neu berechnet und indiziert.
 processing-update-vectors-runs = Einbettung und Vektorindizierung
 processing-update-folder_counts-title = Ordnerzähler
 processing-update-folder_counts-explanation =

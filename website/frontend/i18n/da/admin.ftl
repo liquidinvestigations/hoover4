@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Tabellæsning, entiteter, signaler, indlejringer og begge indeks
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Filer med behov for automatisk OCR: { $count }. Tidligere OCR-tekst på det registrerede sprog bevares uden ny OCR. De andre sider får OCR med den installerede model for det registrerede sprog. Tidligere varianter fjernes, når erstatningen er fuldstændig.
-processing-update-ocr-runs = OCR og søgbare PDF'er, derefter entitetsudtrækning, embedding og indeksering af den nye tekst
+processing-update-ocr-runs = OCR og søgbare PDF'er, derefter signaler og indeksering af den nye tekst. Entitetsudtrækning og embedding af den nye tekst følger.
 processing-update-ocr_detection-title = OCR-registrering
 processing-update-ocr_detection-explanation = Filer uden aktuel registrering af tekst, skriftsystem eller sprog: { $count }. Hvert egnet billede og hver PDF-side undersøges i begrænsede batches.
 processing-update-ocr_detection-runs = Registrering, derefter søgeattributterne for disse filer
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Filer med tekst fra en tidligere opdel
 processing-update-text_rows-runs = Tekstopdeling, derefter entitetsudtrækning, embedding og indeksering af den nye tekst
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } fil med tekst har ingen vektorer fra den embedding-model, som installationen leverer.
-   *[other] { $count } filer med tekst har ingen vektorer fra den embedding-model, som installationen leverer.
-} Deres vektorer beregnes og indekseres.
+    [one] { $count } fil med tekst har ingen aktuelle vektorer fra den embedding-model, som installationen leverer.
+   *[other] { $count } filer med tekst har ingen aktuelle vektorer fra den embedding-model, som installationen leverer.
+} Manglende og forældede vektorer beregnes igen og indekseres.
 processing-update-vectors-runs = Embedding og vektorindeksering
 processing-update-folder_counts-title = Mappetal
 processing-update-folder_counts-explanation = { $files ->

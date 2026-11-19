@@ -95,16 +95,18 @@ def _context(scope_kind: str, scope_id: str, collectionname: str, revisions: dic
                              revisions["collections"].get(collectionname, "")])
     else:
         revision = revisions["collections"].get(collectionname, "")
+    dependency = (revisions.get("dependencies") or {}).get(scope_id, "") if scope_kind == SCOPE_DATASET else ""
     return selectors.ScopeContext(
         scope_kind, scope_id, collectionname, revision,
-        {step_id: row for (sid, step_id), row in applied.items() if sid == scope_id})
+        {step_id: row for (sid, step_id), row in applied.items() if sid == scope_id}, dependency)
 
 
 def _desired(ctx: selectors.ScopeContext) -> Tuple[Dict[str, Desired], Dict[str, dict]]:
     wanted, targets = {}, {}
     for step in steps_of(ctx.scope_kind):
         key, target = selectors.target_key(step, ctx)
-        wanted[step.step_id] = desired(step, key, ctx.input_revision)
+        wanted[step.step_id] = desired(step, key, ctx.input_revision,
+                                       dependency_revision=ctx.dependency_revision)
         targets[step.step_id] = target
     return wanted, targets
 
@@ -367,6 +369,24 @@ def submit_automatic_update(params: SubmitUpdateParams) -> str:
 
 @activity.defn
 @with_heartbeat
+def update_windows() -> Dict[str, int]:
+    """The work units in flight for one tracked update operation, from the worker settings.
+
+    `ocr` is files in flight: the activity slots of the OCR queue. `ner` is batches of
+    `ENTITY_UPDATE_BATCH` files: the NLP queue slots plus one, so a batch waits ready
+    while the others run. `embed` is plans: the embedding queue slots plus one. The
+    queues and the services still limit the inference that runs at once. The workflow
+    records the result, so a settings change after the start changes nothing in a run.
+    """
+    from tasks.run_worker import worker_concurrency
+
+    return {"ocr": worker_concurrency("ocr", 4),
+            "ner": worker_concurrency("nlp", 4) + 1,
+            "embed": worker_concurrency("embed", 6) + 1}
+
+
+@activity.defn
+@with_heartbeat
 def operation_start_params(op_id: str) -> dict:
     """The `Operation` input of a `pending` automatic update row, or {} for another row."""
     from database.operations import get_operation
@@ -423,8 +443,11 @@ def snapshot_processing_update(params: RunUpdateParams) -> UpdateSnapshotResult:
     ctx = _context(scope_kind, scope_id, params.collectionname, revisions, applied)
     wanted, targets = _desired(ctx)
 
+    # An automatic request runs against the current state: the coordinator chose it from
+    # an earlier pass, and a text writer that ended since then changes its fingerprints.
     stale = [s for s in params.steps
-             if params.fingerprints.get(s) and params.fingerprints[s] != wanted[s].fingerprint]
+             if params.fingerprints.get(s) and params.fingerprints[s] != wanted[s].fingerprint
+             and not params.automatic]
     rows = _calculate(ctx, wanted, targets)
     if stale:
         counts = ", ".join(f"{STEPS_BY_ID[s].title}: {rows[s]['pending_files']:,}" for s in stale)
@@ -581,8 +604,11 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             selection = selectors.select_folder_counts(
                 client, selectors.ScopeContext(scope_kind, scope_id, params.collectionname))
             return selection.count == 0, f"{selection.count} folders still have no counts."
-    # Failed files and vectors settle by their work: the reconciliation recorded the
-    # outcome of every selected pair, and every selected plan ran embedding and indexing.
+        if step_id == "vectors":
+            selection = selectors.select_vectors(client, ctx)
+            return selection.count == 0, f"{selection.count} files still have incomplete vectors."
+    # Failed files settle by their work: the reconciliation recorded the outcome of every
+    # selected pair.
     return True, ""
 
 
@@ -714,12 +740,32 @@ def list_update_vector_plans(params: VectorPlansParams) -> List[str]:
             "SELECT DISTINCT plan_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
             "AND plan_hash > {after:String} "
             "AND plan_hash IN (SELECT plan_hash FROM processing_plan_finished WHERE collection_dataset = {cd:String}) "
-            "AND item_hash IN (SELECT DISTINCT file_hash FROM text_content WHERE collection_dataset = {cd:String} "
-            "AND file_hash NOT IN (SELECT file_hash FROM text_chunk_vectors WHERE collection_dataset = {cd:String} "
-            "AND embedding_model = {model:String})) ORDER BY plan_hash LIMIT 100",
+            f"AND item_hash IN ({selectors.vector_pending_sql()}) ORDER BY plan_hash LIMIT 100",
             parameters={"cd": params.collection_dataset, "after": params.after,
                         "model": params.model}).result_rows
     return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def verify_update_vector_plan(params: TablePlanParams) -> int:
+    """Verify that the search copy holds exactly the stored vectors of one plan's files.
+
+    Returns the files that it verified. Raises while the copy differs.
+    """
+    from database.clickhouse import get_collection_client
+    from tasks.P_admin.updates.table_receipts import TableReceiptParams, verify_vector_index
+
+    with get_collection_client(params.collectionname) as client:
+        hashes = [row[0] for row in client.query(
+            "SELECT DISTINCT item_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            "AND plan_hash = {plan:String} AND item_hash IN (SELECT file_hash FROM text_chunk_vectors "
+            "WHERE collection_dataset = {cd:String})",
+            parameters={"cd": params.collection_dataset, "plan": params.plan_hash}).result_rows]
+        if hashes:
+            verify_vector_index(client, TableReceiptParams(
+                params.collectionname, params.collection_dataset, params.op_id, hashes))
+    return len(hashes)
 
 
 @activity.defn

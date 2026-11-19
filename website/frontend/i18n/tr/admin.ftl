@@ -796,7 +796,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Tablo okuma, varlıklar, sinyaller, gömme ve her iki dizin
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Otomatik OCR gereken dosyalar: { $count }. Algılanan dildeki önceki OCR metni yeni OCR yapılmadan korunur. Diğer sayfalar, algılanan dilin kurulu modeliyle OCR edilir. Değiştirme tamamlandığında önceki sürümler kaldırılır.
-processing-update-ocr-runs = OCR ve aranabilir PDF'ler, ardından yeni metnin varlık çıkarma, gömme ve dizinlemesi
+processing-update-ocr-runs = OCR ve aranabilir PDF'ler, ardından yeni metnin sinyalleri ve dizinlemesi. Yeni metnin varlık çıkarma ve gömme işlemleri bunu izler.
 processing-update-ocr_detection-title = OCR algılaması
 processing-update-ocr_detection-explanation = Güncel metin, yazı sistemi veya dil algılaması olmayan dosyalar: { $count }. Her uygun görüntü ve PDF sayfası sınırlı gruplarla incelenir.
 processing-update-ocr_detection-runs = Algılama, ardından bu dosyaların arama öznitelikleri
@@ -814,9 +814,9 @@ processing-update-text_rows-explanation = Önceki bir bölmeden metni olan dosya
 processing-update-text_rows-runs = Metin bölme, ardından yeni metnin varlık çıkarma, gömme ve dizinlemesi
 processing-update-vectors-title = Vektörler
 processing-update-vectors-explanation = { $files ->
-    [one] Metni olan { $count } dosyanın, kurulumun sunduğu gömme modelinden vektörü yok.
-   *[other] Metni olan { $count } dosyanın, kurulumun sunduğu gömme modelinden vektörü yok.
-} Vektörleri hesaplanır ve dizinlenir.
+    [one] Metni olan { $count } dosyanın, kurulumun sunduğu gömme modelinden güncel vektörü yok.
+   *[other] Metni olan { $count } dosyanın, kurulumun sunduğu gömme modelinden güncel vektörü yok.
+} Eksik ve eski vektörler yeniden hesaplanır ve dizinlenir.
 processing-update-vectors-runs = Gömme ve vektör dizinleme
 processing-update-folder_counts-title = Klasör sayıları
 processing-update-folder_counts-explanation = { $files ->

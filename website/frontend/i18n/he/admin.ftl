@@ -806,7 +806,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = קריאת טבלאות, ישויות, אותות, הטמעה ושני האינדקסים
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = קבצים שדורשים OCR אוטומטי: { $count }. טקסט OCR קודם בשפה שזוהתה נשמר ללא OCR חדש. שאר העמודים מקבלים OCR עם המודל המותקן של השפה שזוהתה. גרסאות קודמות מוסרות כשההחלפה מלאה.
-processing-update-ocr-runs = OCR וקובצי PDF הניתנים לחיפוש, ואחריהם חילוץ ישויות, הטמעה ואינדוקס של הטקסט החדש
+processing-update-ocr-runs = OCR וקובצי PDF הניתנים לחיפוש, ואחריהם אותות ואינדוקס של הטקסט החדש. אחר כך מתבצעים חילוץ ישויות והטמעה של הטקסט החדש.
 processing-update-ocr_detection-title = זיהוי OCR
 processing-update-ocr_detection-explanation = קבצים ללא זיהוי עדכני של טקסט, כתב או שפה: { $count }. כל תמונה ועמוד PDF מתאימים נבדקים בקבוצות מוגבלות.
 processing-update-ocr_detection-runs = זיהוי, ואחריו תכונות החיפוש של קבצים אלה
@@ -825,10 +825,10 @@ processing-update-text_rows-explanation = קבצים עם טקסט מפיצול 
 processing-update-text_rows-runs = פיצול טקסט, ואחריו חילוץ ישויות, הטמעה ואינדוקס של הטקסט החדש
 processing-update-vectors-title = וקטורים
 processing-update-vectors-explanation = { $files ->
-    [one] לקובץ אחד עם טקסט אין וקטורים של מודל ההטמעה שההתקנה משרתת.
-    [two] לשני קבצים עם טקסט אין וקטורים של מודל ההטמעה שההתקנה משרתת.
-   *[other] ל-{ $count } קבצים עם טקסט אין וקטורים של מודל ההטמעה שההתקנה משרתת.
-} הווקטורים שלהם מחושבים ומאונדקסים.
+    [one] לקובץ אחד עם טקסט אין וקטורים עדכניים של מודל ההטמעה שההתקנה משרתת.
+    [two] לשני קבצים עם טקסט אין וקטורים עדכניים של מודל ההטמעה שההתקנה משרתת.
+   *[other] ל-{ $count } קבצים עם טקסט אין וקטורים עדכניים של מודל ההטמעה שההתקנה משרתת.
+} וקטורים חסרים וישנים מחושבים מחדש ומאונדקסים.
 processing-update-vectors-runs = הטמעה ואינדוקס וקטורים
 processing-update-folder_counts-title = ספירות תיקיות
 processing-update-folder_counts-explanation = { $files ->

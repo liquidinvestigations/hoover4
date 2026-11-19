@@ -622,8 +622,8 @@ which `./deploy` does.
 ## `[processing_updates]`
 
 `automatic` (default `true`) lets the processing update coordinator start update
-operations without a person. It starts them after a deployment that changes a stage
-version, after a settings change and after new input, within the caps of the update tracks. `false` starts no automatic
+operations without a person. It starts them after a changed stage version, a settings
+change and new input, within the caps of the update tracks. `false` starts no automatic
 operation. The admin pages still show the waiting steps, and Update processing still
 starts them. [deploy.py](../../deploy.py) renders the value into `HOOVER4_PROCESSING_UPDATES_AUTOMATIC` in the
 worker, and a change takes effect when the worker is created again.

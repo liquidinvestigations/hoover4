@@ -788,7 +788,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = 표 읽기, 엔터티, 신호, 임베딩 및 두 인덱스
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = 자동 OCR이 필요한 파일 수: { $count }. 감지된 언어의 이전 OCR 텍스트는 새 OCR 없이 유지됩니다. 나머지 페이지는 감지된 언어의 설치된 모델로 OCR됩니다. 대체가 완료되면 이전 변형이 제거됩니다.
-processing-update-ocr-runs = OCR 및 검색 가능한 PDF, 이후 새 텍스트의 개체 추출, 임베딩, 색인
+processing-update-ocr-runs = OCR 및 검색 가능한 PDF, 이후 새 텍스트의 신호와 색인. 그다음 새 텍스트의 개체 추출과 임베딩이 이어집니다.
 processing-update-ocr_detection-title = OCR 감지
 processing-update-ocr_detection-explanation = 현재 텍스트, 문자 체계 또는 언어 감지가 없는 파일 수: { $count }. 모든 대상 이미지와 PDF 페이지를 제한된 배치로 검사합니다.
 processing-update-ocr_detection-runs = 감지, 이후 해당 파일의 검색 속성
@@ -805,8 +805,8 @@ processing-update-text_rows-explanation = 이전 분할의 텍스트가 있는 �
 processing-update-text_rows-runs = 텍스트 분할, 이후 새 텍스트의 개체 추출, 임베딩, 색인
 processing-update-vectors-title = 벡터
 processing-update-vectors-explanation = { $files ->
-   *[other] 텍스트가 있는 파일 { $count }개에 설치가 제공하는 임베딩 모델의 벡터가 없습니다.
-} 해당 벡터를 계산하여 색인합니다.
+   *[other] 텍스트가 있는 파일 { $count }개에 설치가 제공하는 임베딩 모델의 최신 벡터가 없습니다.
+} 누락되거나 오래된 벡터를 다시 계산하여 색인합니다.
 processing-update-vectors-runs = 임베딩 및 벡터 색인
 processing-update-folder_counts-title = 폴더 수
 processing-update-folder_counts-explanation = { $files ->

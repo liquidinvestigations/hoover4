@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Ανάγνωση πινάκων, οντότητες, σήματα, ενσωματώσεις και οι δύο δείκτες
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Αρχεία που χρειάζονται αυτόματο OCR: { $count }. Το προηγούμενο κείμενο OCR στην ανιχνευμένη γλώσσα διατηρείται χωρίς νέο OCR. Οι άλλες σελίδες λαμβάνουν OCR με το εγκατεστημένο μοντέλο της ανιχνευμένης γλώσσας. Οι προηγούμενες παραλλαγές αφαιρούνται όταν η αντικατάσταση ολοκληρωθεί.
-processing-update-ocr-runs = OCR και PDF με δυνατότητα αναζήτησης, έπειτα εξαγωγή οντοτήτων, embedding και ευρετηρίαση του νέου κειμένου
+processing-update-ocr-runs = OCR και PDF με δυνατότητα αναζήτησης, έπειτα σήματα και ευρετηρίαση του νέου κειμένου. Ακολουθούν η εξαγωγή οντοτήτων και το embedding του νέου κειμένου.
 processing-update-ocr_detection-title = Εντοπισμός OCR
 processing-update-ocr_detection-explanation = Αρχεία χωρίς τρέχουσα ανίχνευση κειμένου, γραφής ή γλώσσας: { $count }. Κάθε επιλέξιμη εικόνα και σελίδα PDF εξετάζεται σε περιορισμένες παρτίδες.
 processing-update-ocr_detection-runs = Εντοπισμός, έπειτα τα χαρακτηριστικά αναζήτησης αυτών των αρχείων
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Αρχεία με κείμενο απ�
 processing-update-text_rows-runs = Διαίρεση κειμένου, έπειτα εξαγωγή οντοτήτων, embedding και ευρετηρίαση του νέου κειμένου
 processing-update-vectors-title = Διανύσματα
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } αρχείο με κείμενο δεν έχει διανύσματα του μοντέλου embedding που εξυπηρετεί η εγκατάσταση.
-   *[other] { $count } αρχεία με κείμενο δεν έχουν διανύσματα του μοντέλου embedding που εξυπηρετεί η εγκατάσταση.
-} Τα διανύσματά τους υπολογίζονται και ευρετηριάζονται.
+    [one] { $count } αρχείο με κείμενο δεν έχει τρέχοντα διανύσματα του μοντέλου embedding που εξυπηρετεί η εγκατάσταση.
+   *[other] { $count } αρχεία με κείμενο δεν έχουν τρέχοντα διανύσματα του μοντέλου embedding που εξυπηρετεί η εγκατάσταση.
+} Τα διανύσματα που λείπουν ή είναι παλιά υπολογίζονται ξανά και ευρετηριάζονται.
 processing-update-vectors-runs = Embedding και ευρετηρίαση διανυσμάτων
 processing-update-folder_counts-title = Πλήθη φακέλων
 processing-update-folder_counts-explanation = { $files ->

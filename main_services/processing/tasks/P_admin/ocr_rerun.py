@@ -71,6 +71,15 @@ class RerunOcrParams:
     automatic_mode: bool | None = None
     automatic_files: int = 0
     automatic_failed_files: int = 0
+    #: A run of an OCR-track update operation. It publishes text, regex results and search
+    #: rows, and makes no NER or embedding request: the NER and vector tracks select the
+    #: new text later. It skips the unfinished plans, which the main track runs.
+    separated: bool = False
+    #: Files in flight at once in a separated automatic run. 0 is the constant of
+    #: `RerunOcr._automatic_tracks`.
+    ocr_window: int = 0
+    #: Pages of a separated automatic run whose publication failed for every file of the page.
+    publication_failures: int = 0
 
 
 @dataclass
@@ -88,6 +97,8 @@ class OcrRunPlanParams:
     op_id: str
     plan_hash: str
     parts_version: bool = False
+    #: Publish OCR text without NER and embedding, see `RerunOcrParams.separated`.
+    separated: bool = False
 
 
 @dataclass

@@ -780,7 +780,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = 表格读取、实体、信号、嵌入和两个索引
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = 需要自动 OCR 的文件数：{ $count }。检测到的语言中已有的 OCR 文本会保留，不再重新 OCR。其他页面使用检测到的语言的已安装模型进行 OCR。替换完成后，被取代的版本会被移除。
-processing-update-ocr-runs = OCR 和可搜索 PDF，然后是新文本的实体提取、嵌入和索引
+processing-update-ocr-runs = OCR 和可搜索 PDF，然后是新文本的信号和索引。之后进行新文本的实体提取和嵌入。
 processing-update-ocr_detection-title = OCR 检测
 processing-update-ocr_detection-explanation = 缺少当前文本、文字体系或语言检测的文件数：{ $count }。每个符合条件的图像和 PDF 页面都以有界批次检查。
 processing-update-ocr_detection-runs = 检测，然后是这些文件的搜索属性
@@ -797,8 +797,8 @@ processing-update-text_rows-explanation = 含有早期拆分文本的文件数�
 processing-update-text_rows-runs = 文本拆分，然后是新文本的实体提取、嵌入和索引
 processing-update-vectors-title = 向量
 processing-update-vectors-explanation = { $files ->
-   *[other] 有 { $count } 个含文本的文件，没有此安装所用嵌入模型的向量。
-} 系统会计算并索引这些文件的向量。
+   *[other] 有 { $count } 个含文本的文件，没有此安装所用嵌入模型的最新向量。
+} 系统会重新计算并索引缺失和过时的向量。
 processing-update-vectors-runs = 嵌入和向量索引
 processing-update-folder_counts-title = 文件夹计数
 processing-update-folder_counts-explanation = { $files ->

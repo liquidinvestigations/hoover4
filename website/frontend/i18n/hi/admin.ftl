@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = तालिका पठन, इकाइयाँ, संकेत, एम्बेडिंग और दोनों अनुक्रमणिकाएँ
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = स्वचालित OCR चाहने वाली फ़ाइलें: { $count }। पहचानी गई भाषा में पहले का OCR पाठ बिना नए OCR के रखा जाता है। बाकी पृष्ठों को पहचानी गई भाषा के स्थापित मॉडल से OCR मिलता है। प्रतिस्थापन पूरा होने पर पुराने संस्करण हटाए जाते हैं।
-processing-update-ocr-runs = OCR और खोजने योग्य PDF, फिर नए टेक्स्ट का इकाई निष्कर्षण, एम्बेडिंग और इंडेक्सिंग
+processing-update-ocr-runs = OCR और खोजने योग्य PDF, फिर नए टेक्स्ट के संकेत और इंडेक्सिंग। इसके बाद नए टेक्स्ट का इकाई निष्कर्षण और एम्बेडिंग होता है।
 processing-update-ocr_detection-title = OCR पहचान
 processing-update-ocr_detection-explanation = वर्तमान पाठ, लिपि या भाषा पहचान के बिना फ़ाइलें: { $count }। हर पात्र चित्र और PDF पृष्ठ की सीमित बैच में जाँच होती है।
 processing-update-ocr_detection-runs = पहचान, फिर इन फ़ाइलों के खोज गुण
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = पिछले विभाजन क
 processing-update-text_rows-runs = टेक्स्ट विभाजन, फिर नए टेक्स्ट का इकाई निष्कर्षण, एम्बेडिंग और इंडेक्सिंग
 processing-update-vectors-title = वेक्टर
 processing-update-vectors-explanation = { $files ->
-    [one] टेक्स्ट वाली { $count } फ़ाइल के पास उस एम्बेडिंग मॉडल के वेक्टर नहीं हैं जिसे इंस्टॉलेशन चलाता है।
-   *[other] टेक्स्ट वाली { $count } फ़ाइलों के पास उस एम्बेडिंग मॉडल के वेक्टर नहीं हैं जिसे इंस्टॉलेशन चलाता है।
-} उनके वेक्टर गणना करके इंडेक्स किए जाते हैं।
+    [one] टेक्स्ट वाली { $count } फ़ाइल के पास उस एम्बेडिंग मॉडल के मौजूदा वेक्टर नहीं हैं जिसे इंस्टॉलेशन चलाता है।
+   *[other] टेक्स्ट वाली { $count } फ़ाइलों के पास उस एम्बेडिंग मॉडल के मौजूदा वेक्टर नहीं हैं जिसे इंस्टॉलेशन चलाता है।
+} छूटे और पुराने वेक्टर फिर से गणना करके इंडेक्स किए जाते हैं।
 processing-update-vectors-runs = एम्बेडिंग और वेक्टर इंडेक्सिंग
 processing-update-folder_counts-title = फ़ोल्डर गिनतियाँ
 processing-update-folder_counts-explanation = { $files ->

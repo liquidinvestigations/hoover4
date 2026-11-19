@@ -806,7 +806,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Citirea tabelelor, entități, semnale, vectorizare și ambele indexuri
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Fișiere care necesită OCR automat: { $count }. Textul OCR anterior în limba detectată se păstrează fără un OCR nou. Celelalte pagini primesc OCR cu modelul instalat al limbii detectate. Variantele anterioare se elimină când înlocuirea este completă.
-processing-update-ocr-runs = OCR și PDF-uri cu text căutabil, apoi extragerea de entități, embedding și indexarea textului nou
+processing-update-ocr-runs = OCR și PDF-uri cu text căutabil, apoi semnalele și indexarea textului nou. Urmează extragerea de entități și embedding pentru textul nou.
 processing-update-ocr_detection-title = Detectare OCR
 processing-update-ocr_detection-explanation = Fișiere fără detectare curentă de text, scriere sau limbă: { $count }. Fiecare imagine și pagină PDF eligibilă este examinată în loturi limitate.
 processing-update-ocr_detection-runs = Detectarea, apoi atributele de căutare ale acestor fișiere
@@ -825,10 +825,10 @@ processing-update-text_rows-explanation = Fișiere cu text dintr-o împărțire 
 processing-update-text_rows-runs = Împărțirea textului, apoi extragerea de entități, embedding și indexarea textului nou
 processing-update-vectors-title = Vectori
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } fișier cu text nu are vectori ai modelului de embeddings pe care îl servește instalarea.
-    [few] { $count } fișiere cu text nu au vectori ai modelului de embeddings pe care îl servește instalarea.
-   *[other] { $count } de fișiere cu text nu au vectori ai modelului de embeddings pe care îl servește instalarea.
-} Vectorii lor sunt calculați și indexați.
+    [one] { $count } fișier cu text nu are vectori actuali ai modelului de embeddings pe care îl servește instalarea.
+    [few] { $count } fișiere cu text nu au vectori actuali ai modelului de embeddings pe care îl servește instalarea.
+   *[other] { $count } de fișiere cu text nu au vectori actuali ai modelului de embeddings pe care îl servește instalarea.
+} Vectorii lipsă și cei învechiți sunt calculați din nou și indexați.
 processing-update-vectors-runs = Embedding și indexarea vectorilor
 processing-update-folder_counts-title = Numere pentru foldere
 processing-update-folder_counts-explanation = { $files ->

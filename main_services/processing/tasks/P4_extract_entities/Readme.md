@@ -152,9 +152,11 @@ one stage is a rule the other can drift away from.
 When `NER_URL` is empty, the activity returns zero counts before it opens ClickHouse. This
 skip applies when `[ai_services] ner_enabled` or `ai_server_enabled` is false, or when the GPU tier is off.
 
-NER errors are **not** swallowed. The activity fails and Temporal retries it
-(`maximum_attempts=3`, 30 min `start_to_close_timeout`); after retries are
-exhausted the workflow records one `processing_errors` row per affected hash.
+NER errors are **not** swallowed. The activity fails and Temporal retries it, with a
+30 min `start_to_close_timeout`. `with_remote_outage_retry` ends the retries after 5
+ordinary failures. A refused connection is not an ordinary failure: the activity waits
+for the service for at most 12 hours (`tasks/remote_busy_retry.py`). After the retries
+end, the workflow records one `processing_errors` row per affected hash.
 An operation-owned successful chunk records one document outcome per member hash.
 A document with no entities is a visible failure, never a silently empty result.
 

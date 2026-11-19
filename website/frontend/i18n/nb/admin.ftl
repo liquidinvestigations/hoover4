@@ -797,7 +797,7 @@ processing-update-tables-explanation = { $files ->
 processing-update-tables-runs = Tabellavlesning, entiteter, signaler, innbygginger og begge indekser
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = Filer som trenger automatisk OCR: { $count }. Tidligere OCR-tekst på det oppdagede språket beholdes uten ny OCR. De andre sidene får OCR med den installerte modellen for det oppdagede språket. Tidligere varianter fjernes når erstatningen er fullstendig.
-processing-update-ocr-runs = OCR og søkbare PDF-er, deretter uthenting av entiteter, embedding og indeksering av den nye teksten
+processing-update-ocr-runs = OCR og søkbare PDF-er, deretter signaler og indeksering av den nye teksten. Uthenting av entiteter og embedding av den nye teksten følger.
 processing-update-ocr_detection-title = OCR-gjenkjenning
 processing-update-ocr_detection-explanation = Filer uten gjeldende deteksjon av tekst, skriftsystem eller språk: { $count }. Hvert egnet bilde og hver PDF-side undersøkes i avgrensede grupper.
 processing-update-ocr_detection-runs = Gjenkjenning, deretter søkeattributtene for disse filene
@@ -815,9 +815,9 @@ processing-update-text_rows-explanation = Filer med tekst fra en tidligere delin
 processing-update-text_rows-runs = Tekstdeling, deretter uthenting av entiteter, embedding og indeksering av den nye teksten
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
-    [one] { $count } fil med tekst mangler vektorer fra embedding-modellen som installasjonen bruker.
-   *[other] { $count } filer med tekst mangler vektorer fra embedding-modellen som installasjonen bruker.
-} Vektorene deres beregnes og indekseres.
+    [one] { $count } fil med tekst mangler oppdaterte vektorer fra embedding-modellen som installasjonen bruker.
+   *[other] { $count } filer med tekst mangler oppdaterte vektorer fra embedding-modellen som installasjonen bruker.
+} Manglende og utdaterte vektorer beregnes på nytt og indekseres.
 processing-update-vectors-runs = Embedding og vektorindeksering
 processing-update-folder_counts-title = Mappetall
 processing-update-folder_counts-explanation = { $files ->
