@@ -601,15 +601,19 @@ The last rule runs after the services start. The others run before any compose c
 One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
 operations of that kind that run at once across the deployment. No key covers a group of
 kinds. [deploy.py](../../deploy.py) refuses a value below 1 and an unknown key in the
-section. It renders the 19 values into one variable, `HOOVER4_OPERATION_CAPS`, in
-`hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` limits the
+section. It renders the 23 values into one variable, `HOOVER4_OPERATION_CAPS`, in
+`hoover4-ops` and the worker, as `kind=value` pairs joined by commas. `ingest_upload_cap` limits the
 `ingest_upload` operations that the upload queues start, one queue for each upload dataset.
-`update_dataset_cap` and `update_collection_cap` limit the processing update operations.
-The coordinator starts one automatic update at a time, so these caps limit the manual
-updates beside it.
+
+The processing updates have six caps. `update_collection_cap` limits the collection updates.
+`update_ocr_cap`, `update_ner_cap`, `update_vectors_cap` and `update_main_cap` limit the
+dataset updates of one track each, automatic and manual. Each track has its own slots, so a
+slow OCR update does not stop the named entity, vector and other updates of other datasets.
+`update_dataset_cap` limits the manual dataset updates that select steps of more than one
+track. The coordinator starts an automatic update only while its track has a free slot.
 
 An operation over its cap is stored as `queued`. It waits with no time limit, and the oldest
-queued operation of its kind starts when a slot is free. An operation also waits as `queued`
+queued operation of its kind or track starts when a slot is free. An operation also waits as `queued`
 while another running operation of its dataset or collection runs, whatever its kind. A queued
 operation holds its dataset or collection. A second operation on that target is refused until the first one ends or is
 cancelled. A change to a cap takes effect when `hoover4-ops` is created again,
@@ -618,8 +622,8 @@ which `./deploy` does.
 ## `[processing_updates]`
 
 `automatic` (default `true`) lets the processing update coordinator start update
-operations without a person. It starts one at a time after a deployment that changes a
-stage version, after a settings change and after new input. `false` starts no automatic
+operations without a person. It starts them after a deployment that changes a stage
+version, after a settings change and after new input, within the caps of the update tracks. `false` starts no automatic
 operation. The admin pages still show the waiting steps, and Update processing still
 starts them. [deploy.py](../../deploy.py) renders the value into `HOOVER4_PROCESSING_UPDATES_AUTOMATIC` in the
 worker, and a change takes effect when the worker is created again.
@@ -782,6 +786,7 @@ Deployment renders this value into the server override XML.
 - `drop_collection_database_cap`, `export_collection_cap`, `import_collection_cap`
 - `purge_unattributed_entities_cap`, `backfill_vectors_cap`, `ingest_upload_cap`
 - `update_dataset_cap`, `update_collection_cap`
+- `update_ocr_cap`, `update_ner_cap`, `update_vectors_cap`, `update_main_cap`
 
 ### `[processing_updates]`: the automatic updates
 

@@ -535,6 +535,9 @@ services:
       - "PDF_OCR_PROVIDER=${PDF_OCR_PROVIDER:-tesseract}"
       # [processing_updates] automatic. false stops automatic update operations.
       - "HOOVER4_PROCESSING_UPDATES_AUTOMATIC=${HOOVER4_PROCESSING_UPDATES_AUTOMATIC:-true}"
+      # The [operations] caps. The processing update coordinator starts an update
+      # operation only while its cap class has a free slot.
+      - "HOOVER4_OPERATION_CAPS=${HOOVER4_OPERATION_CAPS:-}"
       # The container path of the first dataset mount, for readers that know one mount.
       - "DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}"
       # The OCR tier, one endpoint per engine. Empty means "this engine produces no

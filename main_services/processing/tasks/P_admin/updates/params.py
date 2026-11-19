@@ -13,6 +13,10 @@ from typing import Dict, List
 class CheckUpdatesParams:
     #: Scope ids to calculate even when their fingerprints did not change. `*` is every scope.
     forced: List[str] = field(default_factory=list)
+    #: The pass returns one candidate for each track of a dataset, the free capacity of
+    #: each cap class, and no NER or vector candidate whose service is not ready. False is
+    #: the pass of a coordinator run that started before the tracks.
+    tracks: bool = False
 
 
 @dataclass
@@ -23,6 +27,8 @@ class UpdateCandidateParams:
     collection_dataset: str = ""
     steps: List[str] = field(default_factory=list)
     fingerprints: Dict[str, str] = field(default_factory=dict)
+    #: The track of a dataset candidate of a tracks pass, else "".
+    track: str = ""
 
 
 @dataclass
@@ -32,6 +38,11 @@ class CheckUpdatesResult:
     duration_ms: int = 0
     #: `[processing_updates] automatic` of the installation.
     automatic: bool = True
+    #: Free slots of each cap class (`database.operations.update_cap_class`): the cap less
+    #: the live operations of the class. A tracks pass fills it.
+    capacity: Dict[str, int] = field(default_factory=dict)
+    #: The live automatic update operations, `op_id` to state. A tracks pass fills it.
+    live: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -52,6 +63,10 @@ class RunUpdateParams:
     #: The fingerprints of the preview that the person saw. Empty accepts the current state.
     fingerprints: Dict[str, str] = field(default_factory=dict)
     automatic: bool = False
+    #: The track of the operation, and its execution profile. Both are "" for a legacy
+    #: operation, which keeps its earlier behavior. See `registry.py`.
+    track: str = ""
+    profile: str = ""
 
 
 @dataclass

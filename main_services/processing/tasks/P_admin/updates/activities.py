@@ -5,7 +5,10 @@ settings and the stored state with a few global queries. A scope whose fingerpri
 not change costs no collection query. A scope with a changed fingerprint, or one that a
 person asked to calculate, runs every selector of the scope and writes new check rows. A
 step with no automatic work records its fingerprint as applied, so it starts no
-operation. The pass returns the scopes with automatic work, collections first.
+operation. The pass returns the scopes with automatic work, collections first. A tracks
+pass returns one candidate for each track of a dataset, the free slots of each cap class,
+and the live automatic operations. It returns no NER or vector candidate while the
+service of that track is not ready (`tasks/service_readiness.py`).
 
 `snapshot_processing_update` is the first activity of an update operation. It
 recalculates the requested steps and compares them with the preview that the person saw.
@@ -40,12 +43,16 @@ from tasks.P_admin.updates.params import (
 )
 from tasks.P_admin.updates.registry import (
     AUTOMATIC_USER,
+    PROFILE_TRACKS,
     SCOPE_COLLECTION,
     SCOPE_DATASET,
     STEPS_BY_ID,
+    TRACK_CAPABILITY,
+    TRACKS,
     Desired,
     desired,
     steps_of,
+    valid_track_request,
 )
 from tasks.P_admin.updates import selectors
 
@@ -126,7 +133,7 @@ def _calculate(ctx: selectors.ScopeContext, wanted: Dict[str, Desired],
                 "detail": json.dumps({
                     **want.detail(), **selection.detail, "unit": step.unit,
                     "order": [s.step_id for s in steps_of(ctx.scope_kind)].index(step.step_id),
-                    "automatic_step": step.automatic,
+                    "automatic_step": step.automatic, "track": step.track,
                     "title": step.title, "runs": step.runs,
                     "explanation": step.explanation.format(files=f"{selection.count:,}")},
                     sort_keys=True, default=str),
@@ -186,6 +193,52 @@ def _automatic_steps(ctx: selectors.ScopeContext, wanted: Dict[str, Desired],
             continue
         chosen.append(step.step_id)
     return chosen
+
+
+def _track_candidates(candidate: UpdateCandidateParams) -> List[UpdateCandidateParams]:
+    """One candidate for each track of a dataset candidate, in the order of its first step."""
+    if candidate.scope_kind != SCOPE_DATASET:
+        return [candidate]
+    by_track: Dict[str, List[str]] = {}
+    for step_id in candidate.steps:
+        by_track.setdefault(STEPS_BY_ID[step_id].track, []).append(step_id)
+    return [UpdateCandidateParams(candidate.scope_kind, candidate.scope_id, candidate.collectionname,
+                                  candidate.collection_dataset, steps,
+                                  {s: candidate.fingerprints[s] for s in steps}, track)
+            for track, steps in by_track.items()]
+
+
+def update_capacity(live: List[dict]) -> Dict[str, int]:
+    """Free slots of the update cap classes: `update_<track>` and `update_collection`.
+
+    Every live row of a class counts, also a manual one and a `queued` one, so the
+    coordinator never queues an automatic operation behind its own cap.
+    """
+    from database.operations import TRACK_CAP_CLASSES, operation_caps, row_cap_class
+
+    caps = operation_caps()
+    classes = (*TRACK_CAP_CLASSES, "update_collection")
+    used = {name: 0 for name in classes}
+    for row in live:
+        name = row_cap_class(row)
+        if name in used:
+            used[name] += 1
+    return {name: max(0, caps[name] - used[name]) for name in classes}
+
+
+def _ready_tracks(candidates: List[UpdateCandidateParams]) -> set:
+    """The tracks of the candidates whose service is ready. Tracks without a service are ready."""
+    from tasks.service_readiness import READY, capability_readiness
+
+    needed = {c.track for c in candidates if c.track in TRACK_CAPABILITY}
+    ready = {track for track in TRACKS if track not in TRACK_CAPABILITY}
+    for track in sorted(needed):
+        state = capability_readiness(TRACK_CAPABILITY[track])
+        if state == READY:
+            ready.add(track)
+        else:
+            log.info("[updates] the %s track waits: its service is %s", track, state)
+    return ready
 
 
 @activity.defn
@@ -253,8 +306,26 @@ def check_processing_updates(params: CheckUpdatesParams) -> CheckUpdatesResult:
                 scope_kind, scope_id, collectionname,
                 scope_id if scope_kind == SCOPE_DATASET else "",
                 steps, {s: wanted[s].fingerprint for s in steps}))
+    if not params.tracks:
+        return CheckUpdatesResult(candidates, calculated, int((time.monotonic() - started) * 1000),
+                                  automatic_enabled())
+    candidates = [track for candidate in candidates for track in _track_candidates(candidate)]
+    ready = _ready_tracks(candidates)
+    candidates = [c for c in candidates if c.scope_kind != SCOPE_DATASET or c.track in ready]
+    automatic_live = {row["op_id"]: row["state"] for row in live
+                      if row["kind"] in ("update_dataset", "update_collection")
+                      and row.get("user_id") == AUTOMATIC_USER}
     return CheckUpdatesResult(candidates, calculated, int((time.monotonic() - started) * 1000),
-                              automatic_enabled())
+                              automatic_enabled(), update_capacity(live), automatic_live)
+
+
+def candidate_detail(candidate: UpdateCandidateParams) -> dict:
+    """The operation detail of an automatic candidate. A tracked candidate names its track."""
+    detail = {"steps": list(candidate.steps), "fingerprints": dict(candidate.fingerprints),
+              "automatic": True}
+    if candidate.track:
+        detail.update(track=candidate.track, profile=PROFILE_TRACKS)
+    return detail
 
 
 @activity.defn
@@ -262,25 +333,53 @@ def check_processing_updates(params: CheckUpdatesParams) -> CheckUpdatesResult:
 def submit_automatic_update(params: SubmitUpdateParams) -> str:
     """Write the row of an automatic update operation, or name the one that runs.
 
-    Returns `started:<op_id>` for a new row, `running:<op_id>` when an automatic update
-    operation is live, and `held:` when another operation holds the target.
+    Returns `started:<op_id>` for a new row, `running:<op_id>` when a matching automatic
+    update operation is live, and `held:` when another operation holds the target. A
+    candidate without a track matches every live automatic operation, as before the
+    tracks. A tracked candidate matches a live automatic operation of the same scope and
+    track. A retry after the insert finds the row of its own `op_id` and returns `started`.
     """
-    from database.operations import OperationLocked, create_operation
+    from database.operations import OperationLocked, create_operation, detail_track, get_operation
     from database.processing_updates import live_update_operations
 
-    for row in live_update_operations():
-        if row["user_id"] == AUTOMATIC_USER:
-            return f"running:{row['op_id']}"
     candidate = params.candidate
+    if get_operation(params.op_id) is not None:
+        return f"started:{params.op_id}"
+    for row in live_update_operations():
+        if row["user_id"] != AUTOMATIC_USER:
+            continue
+        if not candidate.track:
+            return f"running:{row['op_id']}"
+        same_scope = (row["collection_dataset"] == candidate.collection_dataset
+                      if candidate.scope_kind == SCOPE_DATASET else
+                      row["kind"] == "update_collection" and row["collectionname"] == candidate.collectionname)
+        if same_scope and detail_track(row["detail"]) == candidate.track:
+            return f"running:{row['op_id']}"
     kind = "update_dataset" if candidate.scope_kind == SCOPE_DATASET else "update_collection"
     try:
         create_operation(kind, candidate.collectionname, candidate.collection_dataset,
-                         detail={"steps": candidate.steps, "fingerprints": candidate.fingerprints,
-                                 "automatic": True},
+                         detail=candidate_detail(candidate),
                          user_id=AUTOMATIC_USER, op_id=params.op_id)
     except OperationLocked:
         return "held:"
     return f"started:{params.op_id}"
+
+
+@activity.defn
+@with_heartbeat
+def operation_start_params(op_id: str) -> dict:
+    """The `Operation` input of a `pending` automatic update row, or {} for another row."""
+    from database.operations import get_operation
+
+    row = get_operation(op_id)
+    if row is None or row["state"] != "pending" or row["user_id"] != AUTOMATIC_USER:
+        return {}
+    try:
+        detail = json.loads(row["detail"] or "{}")
+    except ValueError:
+        return {}
+    return {"op_id": op_id, "kind": row["kind"], "collectionname": row["collectionname"],
+            "collection_dataset": row["collection_dataset"], "detail": detail}
 
 
 @activity.defn
@@ -316,6 +415,9 @@ def snapshot_processing_update(params: RunUpdateParams) -> UpdateSnapshotResult:
     if unknown:
         raise ApplicationError(f"Unknown update steps for a {scope_kind}: {unknown}",
                                type=INVALID_REQUEST, non_retryable=True)
+    invalid = valid_track_request(scope_kind, params.steps, params.track, params.profile)
+    if invalid:
+        raise ApplicationError(f"{invalid} Nothing ran.", type=INVALID_REQUEST, non_retryable=True)
     applied = stored_applied([scope_id, params.collectionname])
     revisions = input_revisions()
     ctx = _context(scope_kind, scope_id, params.collectionname, revisions, applied)

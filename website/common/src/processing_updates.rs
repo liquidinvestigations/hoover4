@@ -66,6 +66,28 @@ pub struct UpdateStepView {
     pub last_run_at: String,
     pub last_op_id: String,
     pub last_error: String,
+    /// The track of a dataset step: `ocr`, `ner`, `vectors` or `main`. Empty for a
+    /// collection step and for a check that the pipeline wrote before the tracks.
+    #[serde(default)]
+    pub track: String,
+}
+
+/// The execution profile of an update operation that runs one track. It mirrors
+/// `PROFILE_TRACKS` in `tasks/P_admin/updates/registry.py`.
+pub const PROFILE_TRACKS: &str = "tracks-v1";
+
+/// The one track of the selected steps, or `None` when they belong to more than one
+/// track or a step has no track. A request with one track becomes an operation of that
+/// track. Other requests run as one operation without a track.
+pub fn selection_track(steps: &[UpdateStepView], selected: &[String]) -> Option<String> {
+    let mut tracks = selected
+        .iter()
+        .map(|id| steps.iter().find(|s| &s.step_id == id).map(|s| s.track.clone()).unwrap_or_default());
+    let first = tracks.next()?;
+    if first.is_empty() || tracks.any(|track| track != first) {
+        return None;
+    }
+    Some(first)
 }
 
 /// The processing updates of one scope.
@@ -89,6 +111,9 @@ pub struct ProcessingUpdatesView {
     pub running_state: String,
     pub running_done: u64,
     pub running_total: u64,
+    /// The track of the live update operation, empty for an operation without a track.
+    #[serde(default)]
+    pub running_track: String,
     /// Collection steps that a dataset writer waits for.
     pub prerequisites_waiting: Vec<String>,
     /// `[processing_updates] automatic` of the installation.
@@ -105,7 +130,13 @@ impl ProcessingUpdatesView {
     pub fn status_line(&self) -> String {
         if !self.running_op_id.is_empty() {
             let step = (self.running_done + 1).min(self.running_total.max(1));
-            return format!("Update running, step {step} of {}", self.running_total.max(1));
+            let total = self.running_total.max(1);
+            return match self.running_track.as_str() {
+                "ocr" => format!("OCR update running, step {step} of {total}"),
+                "ner" => format!("Named entity update running, step {step} of {total}"),
+                "vectors" => format!("Vector update running, step {step} of {total}"),
+                _ => format!("Update running, step {step} of {total}"),
+            };
         }
         match self.waiting() {
             0 if self.steps.iter().any(|s| s.state == UpdateStepState::Failed) => {
@@ -153,6 +184,22 @@ mod tests {
     }
 
     #[test]
+    fn a_selection_of_one_track_names_the_track() {
+        let mut ocr = step("ocr", 5, UpdateStepState::Waiting);
+        ocr.track = "ocr".into();
+        let mut pdf = step("pdf_text", 5, UpdateStepState::Waiting);
+        pdf.track = "ocr".into();
+        let mut entities = step("entities", 5, UpdateStepState::Waiting);
+        entities.track = "ner".into();
+        let untracked = step("search_schema", 1, UpdateStepState::Waiting);
+        let steps = [ocr, pdf, entities, untracked];
+        assert_eq!(selection_track(&steps, &["ocr".into(), "pdf_text".into()]).as_deref(), Some("ocr"));
+        assert_eq!(selection_track(&steps, &["ocr".into(), "entities".into()]), None);
+        assert_eq!(selection_track(&steps, &["search_schema".into()]), None);
+        assert_eq!(selection_track(&steps, &[]), None);
+    }
+
+    #[test]
     fn an_empty_selection_runs_nothing() {
         let steps = [step("ocr", 5, UpdateStepState::Waiting)];
         assert_eq!(selection_summary(&steps, &[]), "No step is selected, so nothing runs.");
@@ -176,6 +223,10 @@ mod tests {
         view.running_total = 2;
         view.running_done = 1;
         assert_eq!(view.status_line(), "Update running, step 2 of 2");
+        view.running_track = "ocr".into();
+        assert_eq!(view.status_line(), "OCR update running, step 2 of 2");
+        view.running_track = "ner".into();
+        assert_eq!(view.status_line(), "Named entity update running, step 2 of 2");
         view.running_op_id.clear();
         view.steps[0].state = UpdateStepState::UpToDate;
         assert_eq!(view.status_line(), "Up to date");

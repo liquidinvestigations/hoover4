@@ -91,8 +91,8 @@ const INPUT_KEYS: &[(&str, &[&str])] = &[
     ("export_collection", &["destination"]),
     ("import_collection", &["source"]),
     // A re-run asks for the same steps against the current state, without the stored
-    // fingerprints of the earlier preview.
-    ("update_dataset", &["steps"]),
+    // fingerprints of the earlier preview. A tracked update keeps its track and profile.
+    ("update_dataset", &["steps", "track", "profile"]),
     ("update_collection", &["steps"]),
 ];
 
@@ -1132,6 +1132,19 @@ mod tests {
     #[test]
     fn unknown_target_kind_is_refused() {
         assert!(lock_clause("unknown").is_err());
+    }
+
+    #[test]
+    fn a_re_run_of_a_tracked_update_keeps_its_track() {
+        assert_eq!(
+            project_inputs(
+                "update_dataset",
+                r#"{"steps":["ocr"],"fingerprints":{"ocr":"F"},"track":"ocr","profile":"tracks-v1","automatic":true}"#,
+                None,
+            )
+            .unwrap(),
+            serde_json::json!({"steps":["ocr"],"track":"ocr","profile":"tracks-v1"}),
+        );
     }
 
     #[test]

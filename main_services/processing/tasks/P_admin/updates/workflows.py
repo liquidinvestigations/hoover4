@@ -9,14 +9,20 @@ stored checks, so it never repeats a completed step.
 Each pass runs `check_processing_updates`. A pass that finds no change writes no row and
 starts no operation, so a deployment that changes no version, setting or input starts
 no update operation. A coordinator that starts is not an update run. The coordinator
-starts at most one automatic operation at a time across the installation, collection
-prerequisites first, and waits for its terminal row before it starts the next. A failed
-or cancelled step does not start again automatically at the same fingerprint, so later
-datasets continue.
+starts one automatic operation for each track of a dataset (`registry.py`), collection
+prerequisites first. It starts an operation only while the cap class of the operation has
+a free slot, so each track uses its own slots, and at most one operation of a dataset is
+live at a time. Candidates of one class take turns by dataset, so one dataset with much
+work does not keep the others waiting. A failed or cancelled step does not start again
+automatically at the same fingerprint, so later datasets continue. A coordinator run that
+started before the tracks (patch `TRACKS_PATCH`) keeps one automatic operation at a time.
 
-It waits `IDLE_WAIT` between passes, `ACTIVE_WAIT` while its operation runs, and wakes
+It waits `IDLE_WAIT` between passes, `ACTIVE_WAIT` while an operation runs, and wakes
 at once on a `request_check` signal, which a settings save and a page request send. It
-continues as new after `PASSES_PER_RUN` passes.
+continues as new after `PASSES_PER_RUN` passes. Its state names the live operations that
+it started. A new run reads the live automatic operations from the database again and
+starts the workflow of a row that stays `pending`, for example when the coordinator
+stopped between the insert of the row and the start of its workflow.
 
 `RunProcessingUpdate` is the child of an `update_dataset` or `update_collection`
 operation. It snapshots the requested steps, then runs each step in registry order:
@@ -55,6 +61,7 @@ with workflow.unsafe.imports_passed_through():
         scan_update_files,
         list_update_vector_plans,
         obsolete_ocr_variants,
+        operation_start_params,
         reparse_update_tables,
         restore_missing_image_previews,
         prepare_table_update,
@@ -80,26 +87,40 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P_admin.updates.archive_members import restore_archive_members, finish_archive_members
     from tasks.P_admin.updates.table_receipts import TableReceiptParams, record_table_update_receipts
     from tasks.P_admin.updates.entities import EntityUpdateParams, list_entity_update_hashes, finish_entity_update
-    from tasks.P_admin.updates.registry import SCOPE_DATASET
+    from tasks.P_admin.updates.registry import PROFILE_TRACKS, SCOPE_DATASET, STEPS
     from tasks.P6_index_data.params import RefreshDocumentLocationsParams, RefreshDocumentLocationsResult
     from tasks.visibility import dataset_search_attributes
     from tasks.workflow_window import run_with_window
 
 COORDINATOR_ID = "processing-updates"
+#: The patch of the coordinator run that starts one operation for each track.
+TRACKS_PATCH = "processing-update-tracks"
+#: The live operations that one coordinator state can name.
+MAX_ACTIVE_OPS = 64
 IDLE_WAIT = timedelta(minutes=2)
 ACTIVE_WAIT = timedelta(seconds=30)
 PASSES_PER_RUN = 200
 VECTOR_PLAN_WINDOW = 4
 _TERMINAL = ("finished", "errored", "cancelled", "missing")
 _RETRY = RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS)
+#: The policy of an activity that `with_remote_outage_retry` wraps. The wrapper ends the
+#: retries at the ordinary failure limit or at the end of the outage budget.
+_REMOTE_RETRY = RetryPolicy(maximum_attempts=0)
 
 
 @dataclass
 class CoordinatorState:
-    #: The automatic update operation that this coordinator waits for.
+    #: The automatic update operation of a run before the tracks. A tracks run moves it
+    #: into `active_ops`.
     active_op: str = ""
     #: Check requests that arrived before a continue-as-new.
     requests: list = field(default_factory=list)
+    #: The live automatic operations that this coordinator started, at most `MAX_ACTIVE_OPS`.
+    active_ops: list = field(default_factory=list)
+    #: The scope id that each cap class started last. The next pass starts after it.
+    cursors: dict = field(default_factory=dict)
+    #: Pending rows that this run tried to start once, so it tries each one once.
+    restarted: list = field(default_factory=list)
 
 
 @workflow.defn
@@ -118,6 +139,8 @@ class ProcessingUpdates:
     async def run(self, state: "CoordinatorState | None" = None) -> str:
         state = state or CoordinatorState()
         self._requests.extend(state.requests)
+        if workflow.patched(TRACKS_PATCH):
+            return await self._tracks(state)
         for _ in range(PASSES_PER_RUN):
             forced = sorted({str(r.get("scope_id") or "*") for r in self._requests if r.get("force")})
             self._requests = []
@@ -162,22 +185,132 @@ class ProcessingUpdates:
         state.requests = list(self._requests)
         workflow.continue_as_new(state)
 
+    async def _tracks(self, state: CoordinatorState) -> str:
+        """The passes of a coordinator that starts one operation for each track."""
+        if state.active_op:
+            state.active_ops = [*state.active_ops, state.active_op]
+            state.active_op = ""
+        for _ in range(PASSES_PER_RUN):
+            forced = sorted({str(r.get("scope_id") or "*") for r in self._requests if r.get("force")})
+            self._requests = []
+            result = None
+            try:
+                result = await workflow.execute_activity(
+                    check_processing_updates, CheckUpdatesParams(forced, tracks=True),
+                    start_to_close_timeout=timedelta(minutes=60),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=3))
+            except ActivityError as exc:
+                if is_cancellation(exc):
+                    raise
+                workflow.logger.warning("processing update check failed: %s", exc)
+            if result is not None:
+                await self._reconcile(state, result.live)
+                if result.automatic:
+                    await self._submit(state, result)
+            wait = ACTIVE_WAIT if state.active_ops else IDLE_WAIT
+            try:
+                await workflow.wait_condition(lambda: bool(self._requests), timeout=wait)
+            except asyncio.TimeoutError:
+                pass
+        state.requests = list(self._requests)
+        workflow.continue_as_new(state)
+
+    async def _reconcile(self, state: CoordinatorState, live: dict) -> None:
+        """Keep the live operations, and start a row that waits without its workflow.
+
+        A row that this state does not name and that is still `pending` lost its start,
+        for example when a coordinator stopped after the insert. `_start` of a workflow
+        that exists changes nothing. Each such row gets one start in a run.
+        """
+        state.active_ops = [op for op in state.active_ops if op in live]
+        for op_id, row_state in sorted(live.items()):
+            if op_id in state.active_ops or len(state.active_ops) >= MAX_ACTIVE_OPS:
+                continue
+            if row_state == "pending" and op_id not in state.restarted:
+                state.restarted = [*state.restarted[-(MAX_ACTIVE_OPS - 1):], op_id]
+                await self._start_row(op_id)
+            state.active_ops.append(op_id)
+
+    async def _submit(self, state: CoordinatorState, result) -> None:
+        """Start candidates while their cap class has a free slot, one for each scope."""
+        free = dict(result.capacity)
+        taken = set()
+        for candidate in self._ordered(state, result.candidates):
+            name = cap_class_of(candidate)
+            if free.get(name, 0) <= 0 or candidate.scope_id in taken:
+                continue
+            if len(state.active_ops) >= MAX_ACTIVE_OPS:
+                break
+            kind = "update_dataset" if candidate.scope_kind == SCOPE_DATASET else "update_collection"
+            stamp = int(workflow.now().timestamp() * 1_000_000)
+            op_id = f"{kind}-{candidate.scope_id}-{stamp}-{workflow.uuid4().hex[:12]}"
+            outcome = await workflow.execute_activity(
+                submit_automatic_update, SubmitUpdateParams(op_id, candidate),
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            status, _, named = outcome.partition(":")
+            if status == "held":
+                continue
+            taken.add(candidate.scope_id)
+            if status == "started":
+                await self._start(candidate, named)
+                free[name] -= 1
+                state.cursors = {**state.cursors, name: candidate.scope_id}
+            if named not in state.active_ops:
+                state.active_ops.append(named)
+
+    @staticmethod
+    def _ordered(state: CoordinatorState, candidates: list) -> list:
+        """Collections first. Each class then starts after the scope that it started last."""
+        def key(candidate):
+            cursor = state.cursors.get(cap_class_of(candidate), "")
+            first = STEP_ORDER[candidate.steps[0]] if candidate.steps else 0
+            return (candidate.scope_kind == SCOPE_DATASET, candidate.scope_id <= cursor,
+                    candidate.scope_id, first)
+        return sorted(candidates, key=key)
+
+    async def _start_row(self, op_id: str) -> None:
+        """Start the `Operation` workflow of a stored row, from the row's own values."""
+        params = await workflow.execute_activity(
+            operation_start_params, op_id, start_to_close_timeout=timedelta(minutes=2),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if params:
+            await self._start_child(op_id, params)
+
     async def _start(self, candidate, op_id: str) -> None:
         """Start the `Operation` child, which outlives this run (`ABANDON`)."""
+        detail = {"steps": list(candidate.steps),
+                  "fingerprints": dict(candidate.fingerprints), "automatic": True}
+        if getattr(candidate, "track", ""):
+            detail.update(track=candidate.track, profile=PROFILE_TRACKS)
+        await self._start_child(op_id, {
+            "op_id": op_id,
+            "kind": "update_dataset" if candidate.scope_kind == SCOPE_DATASET else "update_collection",
+            "collectionname": candidate.collectionname,
+            "collection_dataset": candidate.collection_dataset,
+            "detail": detail})
+
+    async def _start_child(self, op_id: str, params: dict) -> None:
         try:
             await workflow.start_child_workflow(
-                "Operation",
-                {"op_id": op_id,
-                 "kind": "update_dataset" if candidate.scope_kind == SCOPE_DATASET else "update_collection",
-                 "collectionname": candidate.collectionname,
-                 "collection_dataset": candidate.collection_dataset,
-                 "detail": {"steps": list(candidate.steps),
-                            "fingerprints": dict(candidate.fingerprints), "automatic": True}},
+                "Operation", params,
                 id=op_id, task_queue="operations-queue",
                 parent_close_policy=workflow.ParentClosePolicy.ABANDON,
                 id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE)
         except WorkflowAlreadyStartedError:
             workflow.logger.info("operation %s started earlier", op_id)
+
+
+#: The run order of each step, for the order of candidates.
+STEP_ORDER = {step.step_id: index for index, step in enumerate(STEPS)}
+
+
+def cap_class_of(candidate) -> str:
+    """The cap class of a candidate: `update_<track>`, or `update_collection`."""
+    if candidate.scope_kind != SCOPE_DATASET:
+        return "update_collection"
+    return f"update_{candidate.track}" if candidate.track else "update_dataset"
 
 
 @workflow.defn
@@ -802,7 +935,7 @@ class UpdateDatasetEntities:
             {"collectionname":params.collectionname,"collection_dataset":params.collection_dataset,
              "plan_hash":"entity-update","hashes":hashes,"op_id":params.op_id},
             task_queue="processing-nlp-queue", start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_REMOTE_RETRY)
         await workflow.execute_activity(finish_entity_update,
             EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id,hashes,
                                terms_at_end=terms_at_end),
@@ -833,7 +966,7 @@ class UpdateDatasetEntities:
                 {"collectionname":params.collectionname,"collection_dataset":params.collection_dataset,
                  "plan_hash":"entity-update","hashes":chunk,"op_id":params.op_id},
                 task_queue="processing-nlp-queue", start_to_close_timeout=timedelta(minutes=30),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_REMOTE_RETRY)
             await workflow.execute_activity(finish_entity_update,
                 EntityUpdateParams(params.collectionname,params.collection_dataset,params.op_id,chunk,terms_at_end=True),
                 task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),

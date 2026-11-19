@@ -15,7 +15,9 @@
 use std::collections::HashMap;
 
 use common::current_user::CurrentUser;
-use common::processing_updates::{ProcessingUpdatesView, UpdateStepState, UpdateStepView};
+use common::processing_updates::{
+    selection_track, ProcessingUpdatesView, UpdateStepState, UpdateStepView, PROFILE_TRACKS,
+};
 use time::format_description::well_known::Rfc3339;
 
 use crate::api::admin::operations;
@@ -136,9 +138,10 @@ pub async fn read_view(scope_kind: &str, scope_id: &str, collectionname: &str) -
     for attempt in &attempts {
         newest.entry(attempt.step_id.clone()).or_insert(attempt);
     }
-    let running: Vec<(String, String, u64, u64)> = client
+    let running: Vec<(String, String, u64, u64, String)> = client
         .query(
-            "SELECT op_id, state, progress_done, progress_total FROM operations FINAL \
+            "SELECT op_id, state, progress_done, progress_total, \
+             JSONExtractString(detail, 'track') AS track FROM operations FINAL \
              WHERE kind IN ('update_dataset', 'update_collection') AND state IN ('pending', 'queued', 'running') \
              AND (collection_dataset = ? OR (target_kind = 'collection' AND collectionname = ? AND ? = 'collection')) \
              ORDER BY started_at DESC LIMIT 1",
@@ -156,11 +159,12 @@ pub async fn read_view(scope_kind: &str, scope_id: &str, collectionname: &str) -
         automatic: std::env::var("HOOVER4_PROCESSING_UPDATES_AUTOMATIC").map_or(true, |v| v.trim() != "false"),
         ..Default::default()
     };
-    if let Some((op_id, state, done, total)) = running.into_iter().next() {
+    if let Some((op_id, state, done, total, track)) = running.into_iter().next() {
         view.running_op_id = op_id;
         view.running_state = state;
         view.running_done = done;
         view.running_total = total;
+        view.running_track = track;
     }
     let mut ordered: Vec<(i64, UpdateStepView)> = Vec::new();
     for check in &checks {
@@ -192,6 +196,7 @@ pub async fn read_view(scope_kind: &str, scope_id: &str, collectionname: &str) -
                 last_run_at: attempt.map(|a| format_ts(a.started_on)).unwrap_or_default(),
                 last_op_id: attempt.map(|a| a.op_id.clone()).unwrap_or_default(),
                 last_error: attempt.map(|a| a.error.clone()).unwrap_or_default(),
+                track: text("track"),
             },
         ));
     }
@@ -272,6 +277,10 @@ pub async fn admin_request_update_check(user: &CurrentUser, scope_id: String) ->
 }
 
 /// Refuse an empty selection and steps that the page did not show.
+///
+/// A dataset selection of one track becomes an operation of that track, with its own
+/// cap. A selection of more than one track becomes one operation without a track, which
+/// runs every selected step in order and waits for `update_dataset_cap`.
 fn validate_selection(
     view: &ProcessingUpdatesView,
     steps: &[String],
@@ -290,7 +299,14 @@ fn validate_selection(
         }
         chosen.insert(step.clone(), serde_json::Value::String(fingerprint.clone()));
     }
-    Ok(serde_json::json!({ "steps": steps, "fingerprints": chosen, "automatic": false }))
+    let mut detail = serde_json::json!({ "steps": steps, "fingerprints": chosen, "automatic": false });
+    if view.scope_kind == "dataset" {
+        if let Some(track) = selection_track(&view.steps, steps) {
+            detail["track"] = serde_json::Value::String(track);
+            detail["profile"] = serde_json::Value::String(PROFILE_TRACKS.to_string());
+        }
+    }
+    Ok(detail)
 }
 
 /// Start an `update_dataset` operation with the selected steps.
@@ -373,5 +389,24 @@ mod tests {
         let detail = validate_selection(&view, &["ocr".into()], &["F".into()]).unwrap();
         assert_eq!(detail["fingerprints"]["ocr"], "F");
         assert_eq!(detail["automatic"], false);
+        assert!(detail.get("track").is_none());
+    }
+
+    #[test]
+    fn a_dataset_selection_of_one_track_names_its_track_and_profile() {
+        let tracked = |id: &str, track: &str| UpdateStepView {
+            step_id: id.into(), track: track.into(), ..Default::default()
+        };
+        let view = ProcessingUpdatesView {
+            scope_kind: "dataset".into(),
+            scope_id: "c_ds".into(),
+            steps: vec![tracked("ocr", "ocr"), tracked("pdf_text", "ocr"), tracked("entities", "ner")],
+            ..Default::default()
+        };
+        let one = validate_selection(&view, &["ocr".into(), "pdf_text".into()], &["A".into(), "B".into()]).unwrap();
+        assert_eq!(one["track"], "ocr");
+        assert_eq!(one["profile"], PROFILE_TRACKS);
+        let mixed = validate_selection(&view, &["ocr".into(), "entities".into()], &["A".into(), "B".into()]).unwrap();
+        assert!(mixed.get("track").is_none() && mixed.get("profile").is_none());
     }
 }

@@ -67,7 +67,7 @@ def record_operation_state(params: OperationStateParams) -> str:
 @activity.defn
 @with_heartbeat
 def admit_operation(op_id: str) -> str:
-    """Start the operation when its kind has a free slot and its target is free.
+    """Start the operation when its cap class has a free slot and its target is free.
 
     The target is free when no running or older waiting operation overlaps it
     (`database.operations.admission_conflicts`), whatever the kinds of the two rows. The
@@ -89,7 +89,7 @@ def admit_operation(op_id: str) -> str:
 
     from database.operations import (
         TERMINAL_STATES, _now, admission_decision, count_admission, get_operation,
-        operation_caps, admission_conflicts, update_operation,
+        operation_caps, admission_conflicts, row_cap_class, update_operation,
     )
 
     row = get_operation(op_id)
@@ -99,7 +99,8 @@ def admit_operation(op_id: str) -> str:
         return row["state"]
     if row["state"] == "running":
         return "running"
-    cap = operation_caps()[row["kind"]]
+    cap_class = row_cap_class(row)
+    cap = operation_caps()[cap_class]
     running, ahead = count_admission(row)
     decision = admission_decision(running, ahead, cap)
     conflicts = admission_conflicts(row) if decision == "running" else []
@@ -112,7 +113,7 @@ def admit_operation(op_id: str) -> str:
     elif row["state"] != "queued":
         update_operation(op_id, base_row=row, state="queued")
     log.info("operation %s (%s): %s, running %d, ahead %d, cap %d",
-             op_id, row["kind"], decision, running, ahead, cap)
+             op_id, cap_class, decision, running, ahead, cap)
     # The row is live now, so its datasets show as processing.
     from database.dataset_stats import refresh_dataset_states_logged
     refresh_dataset_states_logged(row.get("collectionname", ""))

@@ -51,3 +51,12 @@ def test_an_upload_operation_cannot_be_re_run():
         project_inputs("ingest_upload", "c", "c_d", '{"batch_ids": ["a"]}')
     assert str(raised.value) == (
         "ingest_upload needs a batch claim of its upload queue, and the original row does not hold it")
+
+
+def test_a_tracked_update_re_run_keeps_its_track_and_drops_the_preview():
+    assert project_inputs(
+        "update_dataset", "c", "c_d",
+        '{"steps":["ocr"],"fingerprints":{"ocr":"F"},"track":"ocr","profile":"tracks-v1","automatic":true}',
+    ) == {"steps": ["ocr"], "track": "ocr", "profile": "tracks-v1"}
+    assert project_inputs("update_dataset", "c", "c_d", '{"steps":["ocr","entities"]}') == {
+        "steps": ["ocr", "entities"]}

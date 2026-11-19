@@ -11,8 +11,9 @@ INPUT_KEYS: dict[str, tuple[str, ...]] = {
     "export_collection": ("destination",),
     "import_collection": ("source",),
     # A re-run asks for the same steps against the current state, so the stored
-    # fingerprints of the earlier preview are not carried.
-    "update_dataset": ("steps",),
+    # fingerprints of the earlier preview are not carried. A tracked operation keeps its
+    # track and profile, so its re-run uses the slots of the same track.
+    "update_dataset": ("steps", "track", "profile"),
     "update_collection": ("steps",),
 }
 

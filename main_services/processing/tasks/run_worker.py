@@ -491,9 +491,11 @@ async def run_common_worker():
         snapshot_processing_update,
         submit_automatic_update,
         update_operation_state,
+        operation_start_params,
     )
     from .P_admin.updates.pdf_text_layer import scan_pdf_text_layers
     from .P_admin.updates.text_rows import rewrite_text_rows
+    from .service_readiness import probe_capability_readiness
     from .P_admin.updates.workflows import (
         COORDINATOR_ID,
         ProcessingUpdates,
@@ -716,6 +718,7 @@ async def run_common_worker():
             check_processing_updates,
             submit_automatic_update,
             update_operation_state,
+            operation_start_params,
             snapshot_processing_update,
             begin_update_step,
             settle_update_step,
@@ -739,6 +742,7 @@ async def run_common_worker():
             list_virus_attribute_plans,
             list_update_detection_plans,
             scan_pdf_text_layers,
+            probe_capability_readiness,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,

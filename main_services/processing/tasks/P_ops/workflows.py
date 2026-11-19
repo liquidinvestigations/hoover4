@@ -411,23 +411,30 @@ class Operation:
         """Run the selected processing update steps of a dataset or a collection.
 
         The detail holds the selected `steps`, the `fingerprints` of the preview that a
-        person saw, and `automatic` for an operation that the coordinator started. The
-        child is addressed by name for the reason given in `_ingest_dataset`.
+        person saw, `automatic` for an operation that the coordinator started, and the
+        `track` and `profile` of a tracked operation. The child is addressed by name for
+        the reason given in `_ingest_dataset`.
         """
         steps = [str(step) for step in params.detail.get("steps") or []]
         if not steps:
             raise ApplicationErrorDetail(params.kind, "steps")
+        child = {
+            "op_id": params.op_id,
+            "scope_kind": "dataset" if params.kind == "update_dataset" else "collection",
+            "collectionname": params.collectionname,
+            "collection_dataset": params.collection_dataset,
+            "steps": steps,
+            "fingerprints": dict(params.detail.get("fingerprints") or {}),
+            "automatic": bool(params.detail.get("automatic", False)),
+        }
+        # A tracked operation names its track and profile. A legacy detail has neither,
+        # so its input stays as it was.
+        for key in ("track", "profile"):
+            if params.detail.get(key):
+                child[key] = str(params.detail[key])
         result = await workflow.execute_child_workflow(
             "RunProcessingUpdate",
-            {
-                "op_id": params.op_id,
-                "scope_kind": "dataset" if params.kind == "update_dataset" else "collection",
-                "collectionname": params.collectionname,
-                "collection_dataset": params.collection_dataset,
-                "steps": steps,
-                "fingerprints": dict(params.detail.get("fingerprints") or {}),
-                "automatic": bool(params.detail.get("automatic", False)),
-            },
+            child,
             id=f"processing-update-{params.op_id}",
             task_queue="processing-common-queue",
         )

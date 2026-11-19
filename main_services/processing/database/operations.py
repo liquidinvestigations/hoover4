@@ -28,9 +28,11 @@ the row leaves `pending` or `queued` for `running`. Epoch 0 there means the oper
 not started.
 
 A row is `pending` from dispatch until its workflow asks for admission. Admission lets at
-most the configured cap of operations of one kind run at once (`operation_caps()`), and
-it never lets a row run while another running row overlaps its target
-(`admission_conflicts`). A row over its cap or behind an overlapping writer is `queued`,
+most the configured cap of operations of one cap class run at once (`operation_caps()`),
+and it never lets a row run while another running row overlaps its target
+(`admission_conflicts`). The cap class of a row is its kind, except for an
+`update_dataset` row with a track in its detail: its class is `update_<track>`
+(`update_cap_class`). A row over its cap or behind an overlapping writer is `queued`,
 and it waits with no time limit. The oldest waiting row of
 a kind starts first, ordered by `(started_at, op_id)`. A `queued` row is live, so it holds
 its target like a running one.
@@ -482,18 +484,51 @@ def merge_detail(op_id: str, **fields) -> dict | None:
 #: The cap of a kind that `HOOVER4_OPERATION_CAPS` does not name.
 DEFAULT_OPERATION_CAP = 2
 
+#: The cap classes of the processing update tracks, in the order of `registry.TRACKS`.
+#: A tracked `update_dataset` row counts against its class and not against
+#: `update_dataset`, which limits the legacy update operations only.
+TRACK_CAP_CLASSES = ("update_ocr", "update_ner", "update_vectors", "update_main")
+
+
+def detail_track(detail) -> str:
+    """The `track` of an operation detail, a JSON string or a dict. "" when it has none."""
+    if isinstance(detail, str):
+        try:
+            detail = json.loads(detail or "{}")
+        except ValueError:
+            return ""
+    track = detail.get("track") if isinstance(detail, dict) else ""
+    return track if isinstance(track, str) else ""
+
+
+def update_cap_class(kind: str, track: str = "") -> str:
+    """The cap class of a row: `update_<track>` for a tracked dataset update, else its kind.
+
+    A track that is not a class is the legacy class. The update workflow refuses such a
+    request before it writes data.
+    """
+    if kind == "update_dataset" and f"update_{track}" in TRACK_CAP_CLASSES:
+        return f"update_{track}"
+    return kind
+
+
+def row_cap_class(row: dict) -> str:
+    """The cap class of a row that has `kind` and either `track` or `detail`."""
+    track = row["track"] if "track" in row else detail_track(row.get("detail", ""))
+    return update_cap_class(row["kind"], track)
+
 
 def operation_caps() -> dict[str, int]:
-    """The most running operations of each kind, from `HOOVER4_OPERATION_CAPS`.
+    """The most running operations of each cap class, from `HOOVER4_OPERATION_CAPS`.
 
-    The variable holds `kind=value` pairs joined by commas, rendered from the
-    `[operations]` section of `hoover4.ini`. Every kind of `KINDS` gets
-    `DEFAULT_OPERATION_CAP` unless the variable names it. A pair that does not parse, a
-    value below 1, or a kind not in `KINDS` logs a warning and is ignored.
+    The variable holds `class=value` pairs joined by commas, rendered from the
+    `[operations]` section of `hoover4.ini`. Every kind of `KINDS` and every class of
+    `TRACK_CAP_CLASSES` gets `DEFAULT_OPERATION_CAP` unless the variable names it. A pair
+    that does not parse, a value below 1, or an unknown class logs a warning and is ignored.
     """
     import os
 
-    caps = {kind: DEFAULT_OPERATION_CAP for kind in KINDS}
+    caps = {kind: DEFAULT_OPERATION_CAP for kind in (*KINDS, *TRACK_CAP_CLASSES)}
     raw = os.environ.get("HOOVER4_OPERATION_CAPS", "")
     for pair in raw.split(","):
         pair = pair.strip()
@@ -501,7 +536,7 @@ def operation_caps() -> dict[str, int]:
             continue
         kind, sep, value = pair.partition("=")
         kind = kind.strip()
-        if not sep or kind not in KINDS:
+        if not sep or kind not in caps:
             log.warning("HOOVER4_OPERATION_CAPS: ignored %r, not a known kind=value pair", pair)
             continue
         try:
@@ -517,7 +552,7 @@ def operation_caps() -> dict[str, int]:
 
 
 def admission_decision(running: int, ahead: int, cap: int) -> str:
-    """`running` when a slot is free and no older row of the kind can run first, else `queued`."""
+    """`running` when a slot is free and no older row of the class can run first, else `queued`."""
     return "running" if running + ahead < cap else "queued"
 
 
@@ -536,19 +571,21 @@ def targets_overlap(row: dict, other: dict) -> bool:
 
 
 def admission_counts(row: dict, live_rows: list[dict]) -> tuple[int, int]:
-    """The running operations of the row's kind, and the waiting rows that are ahead of it.
+    """The running operations of the row's cap class, and the waiting rows ahead of it.
 
-    A row is ahead when it has the kind of `row`, is `pending` or `queued`, and is older by
-    `(started_at, op_id)`. It must also have no running row on its own target. An older
-    row that waits for its own target cannot take a slot now. It therefore does not keep a
-    row with a free target out of the cap. The older rows that can run keep their order.
+    A row is ahead when it has the cap class of `row` (`row_cap_class`), is `pending` or
+    `queued`, and is older by `(started_at, op_id)`. It must also have no running row on
+    its own target. An older row that waits for its own target cannot take a slot now. It
+    therefore does not keep a row with a free target out of the cap. The older rows that
+    can run keep their order.
     """
     running_rows = [r for r in live_rows if r["state"] == "running"]
-    running = sum(1 for r in running_rows if r["kind"] == row["kind"])
+    cap_class = row_cap_class(row)
+    running = sum(1 for r in running_rows if row_cap_class(r) == cap_class)
     key = (row["started_at"], row["op_id"])
     ahead = 0
     for other in live_rows:
-        if (other["kind"] != row["kind"] or other["state"] not in ("pending", "queued")
+        if (row_cap_class(other) != cap_class or other["state"] not in ("pending", "queued")
                 or (other["started_at"], other["op_id"]) >= key):
             continue
         if not any(targets_overlap(other, r) for r in running_rows if r["op_id"] != other["op_id"]):
@@ -557,7 +594,7 @@ def admission_counts(row: dict, live_rows: list[dict]) -> tuple[int, int]:
 
 
 def count_admission(row: dict) -> tuple[int, int]:
-    """The running operations of the row's kind, and the live rows that wait ahead of it.
+    """The running operations of the row's cap class, and the live rows that wait ahead of it.
 
     It reads the live rows of the kind and every running row, then applies
     `admission_counts`. The live rows of a deployment are few, so one read is enough.
@@ -565,7 +602,8 @@ def count_admission(row: dict) -> tuple[int, int]:
     from .clickhouse import get_global_client
 
     sql = (
-        "SELECT op_id, kind, target_kind, collectionname, collection_dataset, state, started_at "
+        "SELECT op_id, kind, target_kind, collectionname, collection_dataset, state, started_at, "
+        "JSONExtractString(detail, 'track') AS track "
         f"FROM operations FINAL WHERE state IN ({_LIVE_SQL}) "
         "AND (kind = {kind:String} OR state = 'running')"
     )

@@ -1934,6 +1934,8 @@ def test_the_processing_updates_are_automatic_by_default(source):
     assert cfg.get_bool("processing_updates", "automatic")
     caps = deploy.operation_caps_value(cfg).split(",")
     assert "update_dataset=2" in caps and "update_collection=2" in caps
+    for track in ("ocr", "ner", "vectors", "main"):
+        assert f"update_{track}=2" in caps
     cfg.values["processing_updates"]["automatic"] = "false"
     assert not cfg.get_bool("processing_updates", "automatic")
 

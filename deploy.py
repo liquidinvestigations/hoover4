@@ -422,10 +422,11 @@ DEFAULTS = {
         "container_log_max_files": "5",
     },
     # The most running operations of each kind across the deployment, one key for each
-    # kind of KINDS in database/operations.py, in that order. change_ocr_languages has no
+    # kind of KINDS in database/operations.py, in that order, then one key for each
+    # processing update track of TRACK_CAP_CLASSES. change_ocr_languages has no
     # key, because a new run of it is refused. An operation over its cap
     # waits as `queued` with no time limit, and it holds its dataset or collection while
-    # it waits. Rendered into HOOVER4_OPERATION_CAPS for hoover4-ops.
+    # it waits. Rendered into HOOVER4_OPERATION_CAPS for hoover4-ops and the worker.
     "operations": {
         "add_dataset_cap": "2",
         "rescan_dataset_cap": "2",
@@ -445,10 +446,17 @@ DEFAULTS = {
         "backfill_vectors_cap": "2",
         # The upload ingestion kind: the operations that the upload queues start.
         "ingest_upload_cap": "2",
-        # The processing updates. The coordinator starts one automatic operation at a
-        # time, so these caps limit the manual operations beside it.
+        # The processing updates. update_dataset_cap limits the update operations
+        # without a track: a manual request that selects steps of more than one track.
         "update_dataset_cap": "2",
         "update_collection_cap": "2",
+        # The update operations of one track each, automatic and manual
+        # (tasks/P_admin/updates/registry.py). Each track has its own slots, so a slow
+        # OCR operation does not stop the named entity, vector and other updates.
+        "update_ocr_cap": "2",
+        "update_ner_cap": "2",
+        "update_vectors_cap": "2",
+        "update_main_cap": "2",
     },
     # The processing updates (tasks/P_admin/updates). `automatic = false` stops the
     # coordinator from starting update operations on this installation. The pages still

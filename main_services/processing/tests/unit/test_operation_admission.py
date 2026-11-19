@@ -7,7 +7,8 @@ import pytest
 
 from database import operations
 from database.operations import (
-    DEFAULT_OPERATION_CAP, KINDS, admission_decision, operation_caps,
+    DEFAULT_OPERATION_CAP, KINDS, TRACK_CAP_CLASSES, admission_counts, admission_decision,
+    operation_caps, row_cap_class,
 )
 from tasks.P_ops.activities import admit_operation, real_start
 
@@ -27,8 +28,8 @@ def test_admission_decision(running, ahead, cap, expected):
 def test_caps_default_to_two_for_every_kind(monkeypatch):
     monkeypatch.delenv("HOOVER4_OPERATION_CAPS", raising=False)
     caps = operation_caps()
-    assert set(caps) == set(KINDS)
-    assert len(caps) == 20
+    assert set(caps) == set(KINDS) | set(TRACK_CAP_CLASSES)
+    assert len(caps) == 24
     assert set(caps.values()) == {DEFAULT_OPERATION_CAP} == {2}
 
 
@@ -49,9 +50,60 @@ def test_a_bad_pair_warns_and_is_ignored(monkeypatch, caplog, raw):
 
 
 def test_the_rendered_variable_parses_to_every_kind(monkeypatch):
-    rendered = ",".join(f"{kind}=3" for kind in KINDS)
+    rendered = ",".join(f"{kind}=3" for kind in (*KINDS, *TRACK_CAP_CLASSES))
     monkeypatch.setenv("HOOVER4_OPERATION_CAPS", rendered)
     assert set(operation_caps().values()) == {3}
+
+
+def test_the_track_classes_match_the_registry_and_deploy():
+    import importlib.util
+    import pathlib
+
+    from tasks.P_admin.updates.registry import TRACKS
+
+    assert TRACK_CAP_CLASSES == tuple(f"update_{track}" for track in TRACKS)
+    root = pathlib.Path(__file__).resolve().parents[4]
+    spec = importlib.util.spec_from_file_location("deploy_for_test", root / "deploy.py")
+    deploy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(deploy)
+    keys = [key[:-len("_cap")] for key in deploy.DEFAULTS["operations"]]
+    assert keys == [kind for kind in KINDS if kind != "change_ocr_languages"] + list(TRACK_CAP_CLASSES)
+
+
+def _tracked(op_id, state, track="", dataset="c_d", minute=0, kind="update_dataset"):
+    return {"op_id": op_id, "kind": kind, "state": state, "track": track,
+            "target_kind": "dataset", "collectionname": "c", "collection_dataset": dataset,
+            "started_at": datetime(2026, 1, 1, 0, minute)}
+
+
+def test_a_tracked_row_counts_against_its_track_only():
+    assert row_cap_class(_tracked("a", "running", "ocr")) == "update_ocr"
+    assert row_cap_class(_tracked("a", "running", "")) == "update_dataset"
+    assert row_cap_class(_tracked("a", "running", "bogus")) == "update_dataset"
+    assert row_cap_class({"kind": "update_dataset", "detail": '{"track": "ner"}'}) == "update_ner"
+    assert row_cap_class(_tracked("a", "running", "ocr", kind="add_dataset")) == "add_dataset"
+    live = [_tracked("o1", "running", "ocr", "d1"), _tracked("o2", "running", "ocr", "d2"),
+            _tracked("legacy", "running", "", "d3")]
+    third_ocr = _tracked("o3", "pending", "ocr", "d4", minute=5)
+    ner = _tracked("n1", "pending", "ner", "d5", minute=5)
+    main = _tracked("m1", "pending", "main", "d6", minute=5)
+    for row, expected in ((third_ocr, "queued"), (ner, "running"), (main, "running")):
+        running, ahead = admission_counts(row, live + [third_ocr, ner, main])
+        assert admission_decision(running, ahead, 2) == expected
+    # The legacy class has its own count.
+    legacy = _tracked("l2", "pending", "", "d7", minute=5)
+    assert admission_counts(legacy, live + [legacy]) == (1, 0)
+
+
+def test_admission_reads_the_cap_of_the_track_class(fake_store, monkeypatch):
+    row = dict(_row("pending", "update_dataset"), detail='{"track": "ocr", "profile": "tracks-v1"}')
+    fake_store["row"] = row
+    fake_store["counts"] = (1, 0)
+    monkeypatch.setenv("HOOVER4_OPERATION_CAPS", "update_ocr=1,update_dataset=5")
+    assert admit_operation("op") == "queued"
+    monkeypatch.setenv("HOOVER4_OPERATION_CAPS", "update_ocr=2,update_dataset=1")
+    fake_store["row"] = dict(row, state="pending")
+    assert admit_operation("op") == "running"
 
 
 def _row(state: str, kind: str = "add_dataset") -> dict:

@@ -21,6 +21,15 @@ Collection steps are prerequisites. They run as their own `update_collection`
 operation, before any dataset operation that needs them, and never as a child of a
 dataset operation, because admission makes a collection operation wait for every live
 operation of its collection.
+
+Each dataset step belongs to one **track**: `ocr`, `ner`, `vectors` or `main`. The
+coordinator starts one `update_dataset` operation for each track of a dataset that has
+automatic work, with `track` and `profile` (`PROFILE_TRACKS`) in its detail. Each track
+has its own cap in admission (`[operations] update_<track>_cap`), so a slow OCR operation
+does not use the slots of the other tracks. An operation without a track is a legacy
+operation: a manual request that selects steps of more than one track, or an operation
+that started before the tracks. It runs its steps as before and counts against
+`update_dataset_cap`.
 """
 
 import hashlib
@@ -32,6 +41,19 @@ from tasks.stage_versions import STAGE_VERSIONS
 
 SCOPE_DATASET = "dataset"
 SCOPE_COLLECTION = "collection"
+
+TRACK_OCR = "ocr"
+TRACK_NER = "ner"
+TRACK_VECTORS = "vectors"
+TRACK_MAIN = "main"
+#: The dataset tracks. Each one is a cap class of admission (`database/operations.py`).
+TRACKS = (TRACK_OCR, TRACK_NER, TRACK_VECTORS, TRACK_MAIN)
+#: The execution profile of an operation that runs the steps of one track. A legacy
+#: operation has the empty profile and keeps its earlier behavior.
+PROFILE_TRACKS = "tracks-v1"
+#: The service capability that each track needs before the coordinator starts it
+#: (`tasks/service_readiness.py`).
+TRACK_CAPABILITY = {TRACK_NER: "ner", TRACK_VECTORS: "embeddings"}
 
 #: The `user_id` of an operation that the coordinator starts.
 AUTOMATIC_USER = "processing-updates"
@@ -62,6 +84,8 @@ class UpdateStep:
     runs: str
     #: The unit of the count: files, folders for the folder counts, or search tables.
     unit: str = "files"
+    #: The track of a dataset step. A collection step has none.
+    track: str = ""
 
 
 STEPS: Tuple[UpdateStep, ...] = (
@@ -78,14 +102,16 @@ STEPS: Tuple[UpdateStep, ...] = (
         title="Unfinished processing",
         explanation="{files} files are not processed to the end. This includes files without a "
                     "processing plan, for example after an interrupted ingestion. Their processing completes.",
-        runs="All processing stages for these files"),
+        runs="All processing stages for these files",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="failed_files", scope=SCOPE_DATASET, version=1, stages=tuple(sorted(STAGE_VERSIONS)),
         automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
         title="Failed files",
         explanation="{files} files have a processing error. The failed stages run again for them. "
                     "The automatic run retries a file once for each new version of the stage that failed.",
-        runs="The failed stages, then entity extraction, embedding and indexing"),
+        runs="The failed stages, then entity extraction, embedding and indexing",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="virus_scan", scope=SCOPE_DATASET, version=1, stages=("virus_scan",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
@@ -93,33 +119,38 @@ STEPS: Tuple[UpdateStep, ...] = (
         explanation="{files} files have no antivirus verdict. They are scanned. A file that the scanner "
                     "finds infected is marked in search, and its original and searchable PDF downloads "
                     "are refused.",
-        runs="Antivirus scan, then the search attribute of infected files"),
+        runs="Antivirus scan, then the search attribute of infected files",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="tables", scope=SCOPE_DATASET, version=2,
         stages=("table", "entities", "regex", "embed", "index_text", "index_vectors"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Tables",
         explanation="{files} files have earlier table readings or incomplete dependent output. Their stored results are updated.",
-        runs="Table reading, entities, signals, embedding, and both indexes"),
+        runs="Table reading, entities, signals, embedding, and both indexes",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="archive_members", scope=SCOPE_DATASET, version=1, stages=("archive",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Archive members",
         explanation="{files} split archives need their current member list. Their members and search output are updated.",
-        runs="Archive extraction, member reconciliation, and dependent processing"),
+        runs="Archive extraction, member reconciliation, and dependent processing",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="image_previews", scope=SCOPE_DATASET, version=2, stages=("image_preview",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Image previews",
         explanation="{files} uncommon images have no preview. Their previews are created again.",
-        runs="Image preview creation and verification"),
+        runs="Image preview creation and verification",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="ocr_detection", scope=SCOPE_DATASET, version=4, stages=("ocr_detection",),
         automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
         title="OCR detection",
         explanation="{files} files have no detected text, script or language. Each image and each page "
                     "selected for OCR is examined in bounded batches.",
-        runs="Detection, then the search attributes of these files"),
+        runs="Detection, then the search attributes of these files",
+        track=TRACK_OCR),
     UpdateStep(
         step_id="ocr", scope=SCOPE_DATASET, version=3,
         stages=("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf", "ocr_detection", "ocr_plan"),
@@ -128,7 +159,8 @@ STEPS: Tuple[UpdateStep, ...] = (
         explanation="{files} files need automatic OCR. Earlier OCR text that contains the detected language is kept "
                     "without a new OCR request. Other pages get OCR with the installed model of the detected language. "
                     "Superseded variants are removed after the replacement is complete.",
-        runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
+        runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text",
+        track=TRACK_OCR),
     UpdateStep(
         step_id="pdf_text", scope=SCOPE_DATASET, version=2, stages=("pdf_text_layer",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
@@ -138,47 +170,54 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "with only Western European letters are kept. The other PDFs are read, and the parts "
                     "with black squares are built again. An image PDF uses the stored OCR words. A PDF "
                     "page gets a new OCR request.",
-        runs="Searchable PDF parts, then OCR text indexing of the rebuilt PDFs"),
+        runs="Searchable PDF parts, then OCR text indexing of the rebuilt PDFs",
+        track=TRACK_OCR),
     UpdateStep(
         step_id="text_rows", scope=SCOPE_DATASET, version=1, stages=("text_rows",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Text split",
         explanation="{files} files have text from an earlier split. PDF text moves into one row for "
                     "each PDF part, and long text gets cuts with a short overlap. No new OCR or parsing runs.",
-        runs="Text split, then entity extraction, embedding and indexing of the new text"),
+        runs="Text split, then entity extraction, embedding and indexing of the new text",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="entities", scope=SCOPE_DATASET, version=1,
         stages=("entities", "index_text", "index_terms"), automatic=True, uses_input_revision=True,
         prerequisites=("search_schema",), requires=(), title="Named entities",
         explanation="{files} files need complete current entity extraction or searchable output. Earlier successful results are replaced after inference completes.",
-        runs="Named entity extraction, text attributes, and searchable entity terms"),
+        runs="Named entity extraction, text attributes, and searchable entity terms",
+        track=TRACK_NER),
     UpdateStep(
         step_id="page_text", scope=SCOPE_DATASET, version=1, stages=("index_page_text",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Indexed page text",
         explanation="{files} files have pages that search holds only up to a NUL byte. The complete "
                     "text goes into the search index.",
-        runs="Search index text of these pages"),
+        runs="Search index text of these pages",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="vectors", scope=SCOPE_DATASET, version=1, stages=("embed", "index_vectors"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Vectors",
         explanation="{files} files with text have no vectors of the embedding model that the "
                     "installation serves. Their vectors are computed and indexed.",
-        runs="Embedding and vector indexing"),
+        runs="Embedding and vector indexing",
+        track=TRACK_VECTORS),
     UpdateStep(
         step_id="search_terms", scope=SCOPE_DATASET, version=3, stages=("index_terms",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Search terms",
         explanation="{files} search tables need current filter terms. Language, OCR, script, and red-flag terms become searchable.",
-        runs="Filter term indexing and verification", unit="tables"),
+        runs="Filter term indexing and verification", unit="tables",
+        track=TRACK_MAIN),
     UpdateStep(
         step_id="folder_counts", scope=SCOPE_DATASET, version=1, stages=("vfs_stats",),
         automatic=True, uses_input_revision=False, prerequisites=(), requires=(),
         title="Folder counts",
         explanation="{files} folders have no file count or size, or have values of an earlier "
                     "version. The counts are calculated again.",
-        runs="Folder tree", unit="folders"),
+        runs="Folder tree", unit="folders",
+        track=TRACK_MAIN),
 )
 
 STEPS_BY_ID: Dict[str, UpdateStep] = {step.step_id: step for step in STEPS}
@@ -187,6 +226,30 @@ STEPS_BY_ID: Dict[str, UpdateStep] = {step.step_id: step for step in STEPS}
 def steps_of(scope: str) -> Tuple[UpdateStep, ...]:
     """The steps of one scope, in run order."""
     return tuple(step for step in STEPS if step.scope == scope)
+
+
+def track_of_steps(step_ids) -> str:
+    """The one track of dataset steps, or "" for steps of more than one track or unknown steps."""
+    tracks = {STEPS_BY_ID[s].track if s in STEPS_BY_ID else "" for s in step_ids}
+    return tracks.pop() if len(tracks) == 1 else ""
+
+
+def valid_track_request(scope_kind: str, step_ids, track: str, profile: str) -> str:
+    """The reason why track metadata of a request is invalid, or "" when it is valid.
+
+    A request without a track and without a profile is a legacy request and valid here.
+    """
+    if not track and not profile:
+        return ""
+    if scope_kind != SCOPE_DATASET:
+        return "A collection update has no track."
+    if track not in TRACKS:
+        return f"Unknown update track: {track!r}."
+    if profile != PROFILE_TRACKS:
+        return f"Unknown update profile: {profile!r}."
+    if track_of_steps(step_ids) != track:
+        return f"The selected steps are not all steps of the {track} track."
+    return ""
 
 
 def step_version(step: UpdateStep) -> str:

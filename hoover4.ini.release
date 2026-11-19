@@ -332,6 +332,11 @@ backfill_vectors_cap = 2
 ingest_upload_cap = 2
 update_dataset_cap = 2
 update_collection_cap = 2
+# Each processing update track has its own cap: OCR, named entities, vectors and the other steps.
+update_ocr_cap = 2
+update_ner_cap = 2
+update_vectors_cap = 2
+update_main_cap = 2
 
 [processing_updates]
 # True starts processing updates after a deployment, a settings change or new input.
