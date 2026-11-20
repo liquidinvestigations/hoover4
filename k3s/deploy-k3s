@@ -311,9 +311,10 @@ def main(argv):
         targets = record['targets']
         # A complete reset starts a new installation. A record of an earlier generation does not resume.
         generation = reset.installation(ctx)['generation']
-        if args.command != 'reset' and record.get('generation', generation) != generation:
+        # A record of a version before the generations belongs to the first installation, generation 1.
+        if args.command != 'reset' and record.get('generation', 1) != generation:
             raise SystemExit(f'deploy-k3s: the record {record["id"]} belongs to the installation generation '
-                             f'{record["generation"]}, and a reset started generation {generation}. Start a new {args.command}.')
+                             f'{record.get("generation", 1)}, and a reset started generation {generation}. Start a new {args.command}.')
     else:
         if args.command == 'reset' and args.target != ['all']:
             raise SystemExit('deploy-k3s reset erases every zone of the site. Give --target all.')
