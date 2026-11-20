@@ -230,7 +230,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     acts = [activities.open_run, activities.write_ending,
             activities.summarize_if_first_turn,
             steps.record_step_failure, _no_control,
-            steps.write_incomplete]
+            steps.write_incomplete, steps.publish_report]
     try:
         client = await Client.connect("temporal:7233")
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -1221,8 +1221,8 @@ def _delete_workspace(case):
 
 def test_a_stop_after_one_written_file_keeps_it_while_the_next_file_is_pending(monkeypatch):
     """Two requested files. The first write commits. The second write waits at the test
-    barrier, and the stop arrives there. The turn ends cancelled, its ending row lists the
-    first file, and no version of the second file exists."""
+    barrier, and the stop arrives there. The turn ends cancelled. The first file stays in the
+    workspace, the ending row selects no file, and no version of the second file exists."""
     barrier = _Barrier()
     holder = {}
 
@@ -1245,8 +1245,7 @@ def test_a_stop_after_one_written_file_keeps_it_while_the_next_file_is_pending(m
             await handle.result()
         assert [r[:2] for r in _versions(case)] == [("a.md", 1)]
         [files] = _ending_files(case)
-        assert files["report"] == {"name": "a.md", "version": 1}
-        assert [(r["name"], r["version"]) for r in files["reports"]] == [("a.md", 1)]
+        assert files == {}
         assert len(stub.requests) == 2
 
     try:
@@ -1259,7 +1258,7 @@ def test_a_stop_after_one_written_file_keeps_it_while_the_next_file_is_pending(m
 def test_a_write_retried_after_its_commit_stores_one_version(monkeypatch):
     """The first attempt of the write commits its version and then fails in transport. The
     worker sends the call again with the same key, the receipt replays the result, and the
-    file has one version, which the answer lists once."""
+    file has one version. The answer selects no file, because no finish call selected it."""
     holder = {}
 
     def tool(request, n):
@@ -1281,10 +1280,181 @@ def test_a_write_retried_after_its_commit_stores_one_version(monkeypatch):
                 "SELECT usage_json FROM chat_messages FINAL WHERE username = {u:String} "
                 "AND session_id = {s:String} AND role = 'assistant'",
                 parameters={"u": case.username, "s": case.session_id}).result_rows]
-        assert [(r["name"], r["version"]) for r in usage[-1]["reports"]] == [("a.md", 1)]
+        assert "reports" not in usage[-1] and "report" not in usage[-1]
 
     try:
         asyncio.run(_run_case(monkeypatch, _write_script("a.md"), body, tool=tool))
+    finally:
+        if "case" in holder:
+            _delete_workspace(holder["case"])
+
+
+# ------------------------------------------------------------- the terminal report tool
+
+
+def _finish_result(request):
+    """The result of a `finish_with_report` call from the stored versions, as the workspace
+    tool server gives it."""
+    from database import chat_workspace
+
+    args = request["call"]["args"]
+    found = chat_workspace.read_version(request["username"], request["session_id"],
+                                        args["name"], args["version"])
+    if found is None:
+        return 200, {"tool_call_id": request["call"]["id"], "name": "finish_with_report",
+                     "status": "error", "error_class": "tool_error",
+                     "content": json.dumps({"success": False,
+                                            "error": f"{args['name']} has no version {args['version']}."})}
+    return _write_tool(request, {"success": True, "finished": True, "additional": [],
+                                 "report": {"name": found.name, "version": found.version,
+                                            "citations": list(found.citations)}})
+
+
+def _file_tool(request, n):
+    if request["call"]["name"] == "write_file":
+        return _write_tool(request, _workspace_write(request))
+    if request["call"]["name"] == "finish_with_report":
+        return _finish_result(request)
+    return _ok_tool(request, n)
+
+
+def _assistant_usage(case):
+    with get_global_client() as ch:
+        return [(r[0], r[1], json.loads(r[2] or "{}")) for r in ch.query(
+            "SELECT seq, content, usage_json FROM chat_messages FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND role = 'assistant' ORDER BY seq",
+            parameters={"u": case.username, "s": case.session_id}).result_rows]
+
+
+def test_a_finish_call_shows_the_report_and_ends_with_no_model_step(monkeypatch):
+    """The report and a checklist are written, the checklist last. The finish call selects
+    the report. The turn ends after the finish call, and the answer pins the report."""
+    holder = {}
+
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[
+                _call("write_file", {"name": "report.md", "content": "Report."}),
+                _call("write_file", {"name": "todo-search-list.md", "content": "- [x] one"})])
+        if n == 2:
+            return _reply(request, calls=[_call("finish_with_report", {
+                "name": "report.md", "version": 1, "message": "The report has one finding."})])
+        pytest.fail("no model step follows a successful finish call")
+
+    async def body(client, case, stub, queue, titled):
+        holder["case"] = case
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert len(stub.requests) == 2
+        assert case.run_row().model_steps == 2
+        [(seq, content, usage)] = _assistant_usage(case)
+        assert content == "The report has one finding."
+        assert usage["report"] == {"name": "report.md", "version": 1}
+        assert [r["name"] for r in usage["reports"]] == ["report.md"]
+        assert case.run_row().next_seq == seq + 1
+
+    try:
+        asyncio.run(_run_case(monkeypatch, script, body, tool=_file_tool))
+    finally:
+        if "case" in holder:
+            _delete_workspace(holder["case"])
+
+
+def test_a_finish_call_runs_after_the_other_calls_of_its_reply(monkeypatch):
+    holder = {}
+
+    def tool(request, n):
+        if request["call"]["name"] == "search_collections":
+            time.sleep(0.5)
+        return _file_tool(request, n)
+
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[
+                _call("write_file", {"name": "report.md", "content": "Report."})])
+        return _reply(request, calls=[
+            _call("search_collections", {"query": "lease"}),
+            _call("finish_with_report", {"name": "report.md", "version": 1})])
+
+    async def body(client, case, stub, queue, titled):
+        holder["case"] = case
+        assert await (await _start(client, case, queue)).result() == "completed"
+        log = {name: (started, ended) for name, _args, started, ended in stub.tool_log}
+        assert log["search_collections"][1] <= log["finish_with_report"][0]
+        assert len(stub.requests) == 2
+        [(_seq, content, usage)] = _assistant_usage(case)
+        assert content == "report.md"
+        assert usage["report"] == {"name": "report.md", "version": 1}
+
+    try:
+        asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
+    finally:
+        if "case" in holder:
+            _delete_workspace(holder["case"])
+
+
+def test_a_failed_finish_call_leaves_the_turn_open_and_a_plain_answer_shows_no_report(monkeypatch):
+    holder = {}
+
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[
+                _call("write_file", {"name": "report.md", "content": "Report."}),
+                ])
+        if n == 2:
+            return _reply(request, calls=[_call("finish_with_report", {"name": "report.md", "version": 7})])
+        return _reply(request, "The report is saved, and I could not show it.")
+
+    async def body(client, case, stub, queue, titled):
+        holder["case"] = case
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert len(stub.requests) == 3
+        [(_seq, content, usage)] = _assistant_usage(case)
+        assert content.startswith("The report is saved")
+        assert "report" not in usage and "reports" not in usage
+        assert [r[:2] for r in _versions(case)] == [("report.md", 1)]
+
+    try:
+        asyncio.run(_run_case(monkeypatch, script, body, tool=_file_tool))
+    finally:
+        if "case" in holder:
+            _delete_workspace(holder["case"])
+
+
+def test_a_publication_retried_after_its_writes_gives_one_answer(monkeypatch):
+    """The first attempt of `publish_report` writes the answer and then fails, as a worker
+    that stops before it completes. The second attempt writes the same answer at the same
+    seq, and no model step follows."""
+    holder = {"attempts": 0}
+    real = steps.publish_report
+
+    @activity.defn(name="publish_report")
+    def flaky(params: steps.PublishParams) -> int:
+        holder["attempts"] += 1
+        result = real(params)
+        if holder["attempts"] == 1:
+            raise RuntimeError("the worker stopped after the answer write")
+        return result
+
+    monkeypatch.setattr(steps, "publish_report", flaky)
+
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[
+                _call("write_file", {"name": "report.md", "content": "Report."})])
+        if n == 2:
+            return _reply(request, calls=[_call("finish_with_report", {"name": "report.md", "version": 1})])
+        pytest.fail("no model step follows a successful finish call")
+
+    async def body(client, case, stub, queue, titled):
+        holder["case"] = case
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert holder["attempts"] == 2
+        rows = _assistant_usage(case)
+        assert len(rows) == 1 and rows[0][2]["report"] == {"name": "report.md", "version": 1}
+        assert case.run_row().next_seq == rows[0][0] + 1
+
+    try:
+        asyncio.run(_run_case(monkeypatch, script, body, tool=_file_tool))
     finally:
         if "case" in holder:
             _delete_workspace(holder["case"])

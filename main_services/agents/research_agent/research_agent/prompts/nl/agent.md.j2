@@ -40,6 +40,7 @@ Je plan
 Gebruik `update_plan` voor werk met meerdere stappen. Een kort antwoord heeft geen plan nodig.
 Stuur het doel en de hele lijst met stappen met hun status. Een stap is pending totdat het werk eraan klaar is. Stuur hem dan als done met een korte notitie, zoals gevonden of niet gevonden.
 `update_plan` bewaart alleen het plan. Schrijf een rapport of een ander bestand met `write_file`.
+Houd voor een lange lijst van te controleren items een checklistbestand bij, zoals `todo-search-list.md`, en houd het plan kort.
 Openstaande items houden antwoorden niet tegen.
 {% endif %}
 
@@ -50,7 +51,7 @@ Wanneer een antwoord of een rapport op bronnen steunt of een document noemt, wer
 1. Lees de bronpassage voordat je de beweringen ervan gebruikt.
 2. Roep {% if has('cite_documents') %}`cite_documents` aan voor een document{% endif %}{% if has('cite_documents') and has('cite_pages') %} of {% endif %}{% if has('cite_pages') %}`cite_pages` voor een webpagina{% endif %} met exacte brontekst.{{ ' Citeer 5 tot 6 woorden lopende tekst, zonder vraagteken.' if has('cite_documents') else '' }}
 3. Kopieer het teruggegeven label naast elke onderbouwde bewering.
-4. Schrijf het antwoord of het rapport nadat de nodige aanroepen voor bronverwijzingen zijn geslaagd.
+4. Voeg elke bewering toe aan het antwoord of het rapport nadat de bijbehorende bronvermeldingsaanroep is gelukt.
 5. Vermeld elk gevraagd onderdeel dat de bronnen niet vaststellen.
 
 Alleen een teruggegeven label benoemt een bron. Schrijf nooit een eigen label tussen blokhaken.

@@ -174,3 +174,53 @@ def test_a_read_lists_the_files_or_renders_one_with_the_gutter(monkeypatch, head
     assert listed == {"files": [{"name": "report.md", "version": 2, "chars": 9}]}
     assert read["content"] == "1|One.\n2|Two." and read["version"] == 2
     assert "report.md" in missing["error"]
+
+
+# The terminal report tool ------------------------------------------------------------
+
+
+@pytest.fixture
+def versions(monkeypatch):
+    """Two saved files of the caller's session, and one of another session."""
+    rows = {("ann", "s1", "report.md", 3): store.FileVersion("ann", "s1", "report.md", 3,
+                                                           citations=["[D1]"]),
+            ("ann", "s1", "annex.md", 1): store.FileVersion("ann", "s1", "annex.md", 1),
+            ("bob", "s9", "secret.md", 1): store.FileVersion("bob", "s9", "secret.md", 1)}
+    monkeypatch.setattr(store, "read_version", lambda u, s, n, v=None: rows.get((u, s, n, v)))
+    monkeypatch.setattr(store, "list_files", lambda u, s: [
+        {"name": k[2], "version": k[3]} for k in rows if k[:2] == (u, s)])
+    return rows
+
+
+def test_finish_returns_the_selected_versions_with_their_handles(headers, versions, tools):
+    result = json.loads(tools["finish_with_report"](
+        "report.md", 3, message="Two members.", additional=[{"name": "annex.md", "version": 1}]))
+    assert result == {"success": True, "finished": True,
+                      "report": {"name": "report.md", "version": 3, "citations": ["[D1]"]},
+                      "additional": [{"name": "annex.md", "version": 1, "citations": []}]}
+
+
+def test_finish_refuses_a_missing_version_and_names_the_files(headers, versions, tools):
+    body = refusal(tools["finish_with_report"], "report.md", 4)
+    assert body["success"] is False and "report.md has no version 4" in body["error"]
+    assert "annex.md" in body["error"]
+
+
+def test_finish_reads_only_the_callers_session(headers, versions, tools):
+    body = refusal(tools["finish_with_report"], "secret.md", 1)
+    assert body["success"] is False and "secret.md has no version 1" in body["error"]
+
+
+def test_finish_refuses_a_repeated_name_and_a_bad_version(headers, versions, tools):
+    assert "more than once" in refusal(
+        tools["finish_with_report"], "report.md", 3,
+        additional=[{"name": "report.md", "version": 3}])["error"]
+    assert "version" in refusal(tools["finish_with_report"], "report.md", 0)["error"]
+
+
+def test_finish_reports_a_storage_failure_as_retryable(monkeypatch, headers, tools):
+    def broken(*a, **k):
+        raise ConnectionError("down")
+    monkeypatch.setattr(store, "read_version", broken)
+    body = refusal(tools["finish_with_report"], "report.md", 3)
+    assert body["retryable"] is True

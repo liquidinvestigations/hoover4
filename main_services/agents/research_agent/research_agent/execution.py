@@ -56,6 +56,25 @@ log = logging.getLogger(__name__)
 #: `processing/tasks/P_agent/steps.py`, and the two lists change in one patch.
 ORDERED_TOOLS = frozenset({"update_plan", "read_file", "write_file", "patch_file"})
 
+#: The terminal tool that shows a saved report as the answer and ends the turn. The worker
+#: runs it after every other call of its reply. Mirrored as `FINISH_TOOL` in
+#: `processing/tasks/P_workspace/selection.py`.
+FINISH_TOOL = "finish_with_report"
+
+
+def finish_order_problem(names: Sequence[str]) -> str:
+    """Why the calls of one reply cannot run, or an empty string. A reply can hold one
+    `FINISH_TOOL` call, and it must be the last call of the reply."""
+    positions = [i for i, name in enumerate(names) if name == FINISH_TOOL]
+    if not positions:
+        return ""
+    if len(positions) > 1:
+        return f"The reply holds {len(positions)} {FINISH_TOOL} calls, and it can hold one."
+    if positions[0] != len(names) - 1:
+        return f"The {FINISH_TOOL} call is not the last call of the reply."
+    return ""
+
+
 #: The browser server's own tool, and the name prefix of every tool it routes to the
 #: browser (`BROWSER_EXPOSED_TOOLS` chooses which of them it lists).
 BROWSER_READ_TOOL = "read_page"

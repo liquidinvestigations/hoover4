@@ -3,6 +3,12 @@
 ``read_file``   one file with a ``N|`` line gutter, or the list of files
 ``write_file``  create or replace a whole file
 ``patch_file``  replace one region of a file
+``finish_with_report``  select report versions as the answer of the turn
+
+A write or a patch saves work and selects nothing. ``finish_with_report`` validates the
+selected versions through the same owner and session scope as a read, and returns them. The
+worker runs it after every other call of its batch, and a successful result ends the turn
+without another model step (`tasks/P_agent/workflows.py`, `tasks/P_workspace/selection.py`).
 
 The rules live in the pipeline: storage and the read format in `database.chat_workspace`,
 and the write and patch rules in `tasks/P_workspace`. A read goes to storage directly. A
@@ -27,7 +33,7 @@ from typing import Annotated, Any, Optional
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from agent_todo_server.identity import CallerUnknown, parse_caller
 from database import chat_workspace as store
@@ -112,8 +118,37 @@ async def submit(op: str, name: str, **fields: Any) -> str:
     return json.dumps(receipt.result, ensure_ascii=False)
 
 
+class SelectedFile(BaseModel):
+    """One more report file of a finish_with_report call."""
+
+    name: str = Field(description="The file name, such as appendix.md.")
+    version: int = Field(description="The version to show, from the write, the patch or read_file.")
+
+
+def _selected(username: str, session_id: str, name: str, version: Any) -> dict:
+    """One selected version with its citation handles. A refusal names the problem."""
+    problem = store.valid_name(name)
+    if problem:
+        _refuse({"success": False, "error": problem})
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        _refuse({"success": False, "error": f"Give the version of {name} as a number from 1."})
+    try:
+        found = store.read_version(username, session_id, name, version)
+        names = [] if found is not None else [f["name"] for f in store.list_files(username, session_id)]
+    except Exception as exc:  # noqa: BLE001 - a storage failure is a transport failure
+        log.warning("could not read %s of %s: %s", name, session_id, exc)
+        _refuse({"success": False, "retryable": True,
+                 "error": f"The workspace could not be read: {type(exc).__name__}."})
+    if found is None:
+        _refuse({"success": False, "error": f"{name} has no version {version}." + (
+            f" The files are {', '.join(names)}. Read a file to see its version."
+            if names else " The workspace has no files.")})
+    return {"name": found.name, "version": found.version,
+            "citations": [h for h in found.citations if isinstance(h, str)]}
+
+
 def register(mcp) -> None:
-    """Add the three workspace tools to the server."""
+    """Add the four workspace tools to the server."""
 
     @mcp.tool(
         name="read_file",
@@ -182,6 +217,37 @@ def register(mcp) -> None:
     ) -> str:
         return await submit("patch", name, old_string=old_string, new_string=new_string,
                             replace_all=bool(replace_all))
+
+    @mcp.tool(
+        name="finish_with_report",
+        description=(
+            "Show a saved report as your answer and end this turn. Call it when the "
+            "requested report or its revision is ready, or when the person asks to see an "
+            "earlier report again. A write or a patch saves a file and does not show it. "
+            "Give the name and the version that the last write, patch or read returned. "
+            "Make it the last call of your reply. A call with a problem changes nothing and "
+            "returns the error."
+        ),
+    )
+    def finish_with_report(
+        name: Annotated[str, Field(description="The file name of the report to show, such as report.md.")],
+        version: Annotated[int, Field(description="The version of the report to show.")],
+        message: Annotated[Optional[str], Field(description="One or two sentences for the chat that say what the report holds.")] = None,
+        additional: Annotated[Optional[list[SelectedFile]], Field(description="Other report files to list with the answer, when the person asked for several files.")] = None,
+    ) -> str:
+        caller, _headers = _caller_and_headers()
+        primary = _selected(caller.username, caller.session_id, name, version)
+        others: list[dict] = []
+        for item in additional or []:
+            if isinstance(item, dict):
+                item = SelectedFile(**item)
+            if item.name == primary["name"] or any(o["name"] == item.name for o in others):
+                _refuse({"success": False, "error": f"{item.name} is selected more than once."})
+            others.append(_selected(caller.username, caller.session_id, item.name, item.version))
+        log.info("workspace finish %s %s of %s with %d more", primary["name"], primary["version"],
+                 caller.session_id, len(others))
+        return json.dumps({"success": True, "finished": True, "report": primary,
+                           "additional": others}, ensure_ascii=False)
 
 
 __all__ = ["register", "submit"]

@@ -40,6 +40,7 @@ Il tuo piano
 Usa `update_plan` per il lavoro che richiede più passaggi. Una risposta rapida non richiede un piano.
 Invia l'obiettivo e l'intero elenco dei passaggi con i loro stati. Un passaggio resta in sospeso finché il suo lavoro non termina. Poi invialo come completato con una nota breve, per esempio trovato o non trovato.
 `update_plan` conserva soltanto il piano. Scrivi un report o un altro file con `write_file`.
+Per un lungo elenco di elementi da verificare, tieni un file di checklist, come `todo-search-list.md`, e tieni breve il piano.
 Le voci aperte non impediscono di rispondere.
 {% endif %}
 
@@ -50,7 +51,7 @@ Quando una risposta o un report si basa su fonti o nomina un documento, lavora i
 1. Leggi il passaggio della fonte prima di usarne le affermazioni.
 2. Chiama {% if has('cite_documents') %}`cite_documents` per un documento{% endif %}{% if has('cite_documents') and has('cite_pages') %} oppure {% endif %}{% if has('cite_pages') %}`cite_pages` per una pagina web{% endif %} con il testo esatto della fonte.{{ ' Cita da 5 a 6 parole del testo principale, senza punto interrogativo.' if has('cite_documents') else '' }}
 3. Copia l'etichetta restituita accanto a ogni affermazione sostenuta.
-4. Scrivi la risposta o il report dopo che le chiamate di citazione necessarie sono riuscite.
+4. Aggiungi ogni affermazione alla risposta o al report dopo che la sua chiamata di citazione è riuscita.
 5. Indica ogni parte richiesta che le fonti non stabiliscono.
 
 Solo un'etichetta restituita identifica una fonte. Non scrivere mai un'etichetta tua tra parentesi quadre.

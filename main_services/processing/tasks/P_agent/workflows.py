@@ -58,16 +58,19 @@ with workflow.unsafe.imports_passed_through():
         IncompleteParams,
         ModelStepParams,
         ModelStepResult,
+        PublishParams,
         StepFailure,
         StepRef,
         ToolCallParams,
         model_step,
+        publish_report,
         record_step_failure,
         runs_in_browser,
         runs_in_order,
         tool_call,
         write_incomplete,
     )
+    from tasks.P_workspace.selection import FINISH_TOOL
 
 
 #: The queue `AgentRun` is dispatched to, and the queue of its short activities: open, note,
@@ -168,6 +171,13 @@ class AgentRun:
     the browser server (`steps.runs_in_browser`) run one after the other in a second chain,
     because they drive one browser. The other calls run at once beside both chains. A reply
     with calls gives the next calls. A reply with no call ends the round.
+
+    **The terminal call.** A `finish_with_report` call (`P_workspace.selection.FINISH_TOOL`)
+    runs after every other call of its batch has settled. When it succeeds, `publish_report`
+    writes the answer with the selected report versions, and the loop ends. No policy hook,
+    policy batch or model step follows. A failed finish call is an ordinary result, and the
+    model reads it in the next step. The agent service refuses every call of a batch whose
+    finish call is not the last call, so no call of that batch changes state.
 
     **The limits.** When the model steps of the thread reach `RUN_MODEL_STEPS`, or the
     smaller `max_model_steps` of the input, across continue-as-new and continuations, the run
@@ -294,7 +304,9 @@ class AgentRun:
         """
         while True:
             if pending:
-                await self._run_calls(inp, pending)
+                finished = await self._run_calls(inp, pending)
+                if finished is not None:
+                    return await self._publish(inp, finished)
                 after = await self._control(inp, "tool_batch_completed",
                                             anchor_idx=pending[0].ai_idx)
                 if after.closed:
@@ -353,6 +365,18 @@ class AgentRun:
         self._raise_if_stopped()
         return RunSummary(outcome="answered", next_seq=next_seq, end_reason=reason)
 
+    async def _publish(self, inp: AgentRunInput, call: CallRef) -> RunSummary:
+        """Publish the answer of a successful finish call (`steps.publish_report`)."""
+        next_seq = await workflow.execute_activity(
+            publish_report,
+            PublishParams(**self._ref_fields(inp), call=call),
+            start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+        )
+        self._raise_if_stopped()
+        return RunSummary(outcome="answered", next_seq=next_seq)
+
     async def _model_step(self, inp: AgentRunInput, opened: OpenedRun) -> ModelStepResult | None:
         """One model step. None when both attempts replied with no text and no call."""
         self._steps += 1
@@ -384,8 +408,11 @@ class AgentRun:
         self._raise_if_stopped()
         return result
 
-    async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> None:
-        """Run the calls of one reply."""
+    async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> CallRef | None:
+        """Run the calls of one reply. The finish calls run last, one after the other.
+        Returns the finish call that succeeded, else None."""
+        finish = sorted((c for c in pending if c.name == FINISH_TOOL), key=lambda c: c.position)
+        pending = [c for c in pending if c.name != FINISH_TOOL]
         ordered = sorted((c for c in pending if runs_in_order(c)), key=lambda c: c.position)
         browser = sorted((c for c in pending if runs_in_browser(c)), key=lambda c: c.position)
         parallel = sorted((c for c in pending if not runs_in_order(c) and not runs_in_browser(c)),
@@ -422,6 +449,10 @@ class AgentRun:
                 tasks[call.call_id] = asyncio.ensure_future(shared(call, leader))
         await asyncio.gather(in_order(ordered, False), in_order(browser, not page_changes),
                              *(tasks[c.call_id] for c in parallel))
+        for call in finish:
+            if await self._tool_call(inp, call) == "ok":
+                return call
+        return None
 
     async def _tool_call(self, inp: AgentRunInput, call: CallRef,
                          shared_from: CallRef | None = None) -> str:

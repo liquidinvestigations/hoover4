@@ -1177,3 +1177,86 @@ async def test_a_page_read_sends_its_screenshot_by_the_pinned_setting(model, mod
     assert result["status"] == "ok"
     assert result["image_refs"] == selected and result["capture_refs"] == kept
     assert ("screenshot of 1 page(s) is kept" in result["content"]) == bool(kept)
+
+
+# ------------------------------------------------------------ the terminal report tool
+
+
+def _batch_messages(names):
+    return [{"role": "human", "content": "Write the report."},
+            {"role": "ai", "content": "",
+             "tool_calls": [{"id": f"c{i}", "name": n, "args": {}} for i, n in enumerate(names)]}]
+
+
+@pytest.mark.parametrize("names", [
+    ["finish_with_report", "write_file"],
+    ["write_file", "finish_with_report", "finish_with_report"],
+])
+async def test_a_reply_with_a_misplaced_finish_call_runs_no_call(names):
+    """The finish call must be the last call of its reply, and a reply holds one. Every
+    call of another reply is refused, so no call of it changes state."""
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("write_file", EMPTY_SCHEMA, seen),
+                       dict_tool("finish_with_report", EMPTY_SCHEMA, seen)],
+                      {"write_file", "finish_with_report"})
+    for position, name in enumerate(names):
+        result = await steps.run_tool_call(agent, steps.ToolCallRequest(
+            **RUN, call={"id": f"c{position}", "name": name, "args": {}},
+            idempotency_key=f"k{position}", messages=_batch_messages(names)))
+        assert (result["status"], result["error_class"]) == ("error", "invalid_batch")
+        assert "No call of this reply was run." in json.loads(result["content"])["message"]
+    assert seen == []
+
+
+async def test_a_finish_call_at_the_end_of_its_reply_runs():
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("write_file", EMPTY_SCHEMA, seen),
+                       dict_tool("finish_with_report", EMPTY_SCHEMA, seen)],
+                      {"write_file", "finish_with_report"})
+    names = ["write_file", "finish_with_report"]
+    result = await steps.run_tool_call(agent, steps.ToolCallRequest(
+        **RUN, call={"id": "c1", "name": "finish_with_report", "args": {}},
+        idempotency_key="k", messages=_batch_messages(names)))
+    assert result["status"] == "ok"
+    assert len(seen) == 1
+
+
+async def test_the_saved_files_follow_the_newest_message_of_every_request(model):
+    model.replies.append(AIMessage(content="done"))
+    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])], {"search_collections"})
+    files = [{"name": "report.md", "version": 4, "chars": 1200, "updated": "2026-11-20 10:00:00"},
+             {"name": "todo-search-list.md", "version": 9, "chars": 30000,
+              "updated": "2026-11-20 10:05:00"}]
+    await frames_of(agent, step_request(workspace=files))
+    last = model.inputs[0][-1]
+    assert last.content.startswith("Find the lease.\n\nSaved workspace files.")
+    assert "- todo-search-list.md: version 9, 30,000 characters" in last.content
+    assert "- report.md: version 4, 1,200 characters" in last.content
+    assert last.content.index("todo-search-list.md") < last.content.index("report.md")
+
+
+async def test_a_request_without_files_adds_no_list(model):
+    model.replies.extend([AIMessage(content="one"), AIMessage(content="two")])
+    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])], {"search_collections"})
+    await frames_of(agent, step_request(workspace=[]))
+    await frames_of(agent, step_request())
+    assert [m[-1].content for m in model.inputs] == ["Find the lease.", "Find the lease."]
+
+
+def test_a_long_file_list_names_the_newest_files_and_the_complete_listing():
+    from research_agent import workspace_state
+
+    files = [{"name": f"f{i:03}.md", "version": 1, "chars": 10, "updated": f"2026-11-20 10:{i % 60:02}:{i // 60:02}"}
+             for i in range(45)]
+    text = workspace_state.inventory_text(files)
+    assert text.count("\n- ") == workspace_state.MAX_LISTED_FILES
+    assert "15 older files are not listed. Call read_file without a name to list every file." in text
+
+
+def test_the_file_list_follows_a_tool_result_with_images():
+    from langchain_core.messages import ToolMessage
+    from research_agent import workspace_state
+
+    message = ToolMessage(content=[{"type": "text", "text": "page"}], tool_call_id="c1")
+    [out] = workspace_state.with_inventory([message], "Saved workspace files.")
+    assert out.content[-1] == {"type": "text", "text": "\n\nSaved workspace files."}

@@ -89,7 +89,10 @@ A changed version invalidates the earlier review receipt.
 ## Export pinned evidence
 
 [The exporter](export.py) reads completed runs, published answer metadata, stored tool results, and exact delivered file versions.
-It compares publication metadata with successful mutation receipts on the answer thread.
+It compares publication metadata with the delivered selection of the answer thread.
+A turn of the explicit contract delivers the versions that its successful `finish_with_report` call selects.
+An older turn without the contract marker delivers the files of its successful writes and patches.
+The export names the contract in `delivery`, as `explicit` or `mutation`.
 It preserves each original `(thread_id, idx)` identity.
 It rechecks mutable records and session deletion before completing the export.
 A disagreement or deletion race leaves export incomplete.

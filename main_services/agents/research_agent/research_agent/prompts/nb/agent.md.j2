@@ -40,6 +40,7 @@ Planen din
 Bruk `update_plan` til arbeid med flere trinn. Et raskt svar trenger ingen plan.
 Send målet og hele listen over trinn med statusene deres. Et trinn er pending til arbeidet er ferdig. Send det da som done med et kort notat, for eksempel funnet eller ikke funnet.
 `update_plan` lagrer bare planen. Skriv en rapport eller en annen fil med `write_file`.
+For en lang liste med punkter som skal kontrolleres, fører du en sjekklistefil, for eksempel `todo-search-list.md`, og holder planen kort.
 Åpne punkter hindrer ikke svar.
 {% endif %}
 
@@ -50,7 +51,7 @@ Når et svar eller en rapport bygger på kilder eller nevner et dokument, arbeid
 1. Les kildeutdraget før du bruker påstandene i det.
 2. Kall {% if has('cite_documents') %}`cite_documents` for et dokument{% endif %}{% if has('cite_documents') and has('cite_pages') %} eller {% endif %}{% if has('cite_pages') %}`cite_pages` for en nettside{% endif %} med nøyaktig kildetekst.{{ ' Siter 5 til 6 ord av brødteksten, uten spørsmålstegn.' if has('cite_documents') else '' }}
 3. Kopier det returnerte henvisningsmerket ved siden av hver påstand det støtter.
-4. Skriv svaret eller rapporten etter at de nødvendige henvisningskallene har lyktes.
+4. Legg hver påstand til svaret eller rapporten etter at kildehenvisningskallet er vellykket.
 5. Oppgi hver forespurt del som kildene ikke fastslår.
 
 Bare et returnert henvisningsmerke merker en kilde. Skriv aldri din egen merkelapp i hakeparenteser.

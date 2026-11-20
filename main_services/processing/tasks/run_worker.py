@@ -1129,6 +1129,7 @@ async def run_chat_worker():
   from .P_agent.followups import write_followups
   from .P_agent.steps import (
       model_step,
+      publish_report,
       record_step_failure,
       tool_call,
       write_incomplete,
@@ -1174,7 +1175,7 @@ async def run_chat_worker():
         activities=[
             open_run, write_ending, summarize_if_first_turn,
             record_step_failure, control_event,
-            write_incomplete,
+            write_incomplete, publish_report,
             prepare_workspace_mutation, commit_workspace_mutation,
         ],
         activity_executor=activity_executor,

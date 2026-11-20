@@ -14,6 +14,7 @@
  "doc_search_text": "List the hits of a query in one document text source, in page order, with the page, the offsets and a snippet of each hit. Use it to find the pages of a long document to read.",
  "doc_sources": "List every source of one document: text, PDF, email, table, image, audio and video, with the page range of each text source. With a query, give the hit count of each source. Use it to select a source before reading or comparing text.",
  "edit_node": "Replace the text of one node, the root included. One line, 120 characters.",
+ "finish_with_report": "Show a saved report as your answer and end this turn. Call it when the requested report or its revision is ready, or when the person asks to see an earlier report again. A write or a patch saves a file and does not show it. Give the name and the version that the last write, patch or read returned. Make it the last call of your reply. A call with a problem changes nothing and returns the error.",
  "folder_list": "Return folder children, files, breadcrumb, and container root. Use it to browse one dataset node.",
  "folder_overview": "Return collection and dataset storage counts. Use it to inspect the storage landing page.",
  "folder_search": "Find nodes under one dataset folder. Use it to locate a folder or file by name.",

@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-TODO_TOOLS = {"update_plan", "read_file", "write_file", "patch_file"}
+TODO_TOOLS = {"update_plan", "read_file", "write_file", "patch_file", "finish_with_report"}
 
 PROBE = """
 import asyncio, json, runpy, sys

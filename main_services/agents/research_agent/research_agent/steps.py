@@ -53,13 +53,13 @@ from research_agent import compaction, images, llm_events, request_size, skill_s
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.localization import catalog_revision
 from research_agent.execution import (
-    ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
-    batch_budget, is_browser_tool, split_resources, validation_error,
+    FINISH_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
+    batch_budget, finish_order_problem, is_browser_tool, split_resources, validation_error,
 )
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
 )
-from research_agent import thinking
+from research_agent import thinking, workspace_state
 from research_agent.tool_args import DamagedArguments, model_schema, normalize_arguments, repair_json_arguments
 from research_agent.skill_tools import READ_SKILL
 from research_agent.tool_catalogue import SEARCH_TOOL, shown_definition, tool_schema
@@ -138,6 +138,10 @@ class ModelStepRequest(StepRun):
     messages: List[RunMessage] = Field(description="The run thread. messages[0] is human")
     earlier: List[RunMessage] = Field(
         default_factory=list, description="Earlier turns of the chat"
+    )
+    workspace: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="The saved workspace files of the session, from storage "
+        "(`workspace_state`). None when the worker sent no list"
     )
 
     @model_validator(mode="after")
@@ -525,6 +529,9 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     bound_tools = snapshot.tools_for()
     shown_tools = [shown_tool(t, snapshot.language) for t in bound_tools]
     schemas_json = json.dumps([t["function"]["parameters"] for t in shown_tools], default=str)
+    # The saved files follow the newest message. They count with the fixed input.
+    inventory = workspace_state.inventory_text(request.workspace)
+    measured_text = system_text + ("\n\n" + inventory if inventory else "")
 
     # What the compaction returns goes to the model only. The stored thread keeps every
     # tool result in full, and the `compaction` row of the reply records what was replaced.
@@ -548,7 +555,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     rejected: Optional[List[RunMessage]] = None
     for attempt in (0, 1):
         prepared: Optional[Prepared] = None
-        async for item in _prepare(request, context, system_text, schemas_json, rows, applied,
+        async for item in _prepare(request, context, measured_text, schemas_json, rows, applied,
                                    window, force=attempt > 0):
             if isinstance(item, Prepared):
                 prepared = item
@@ -563,7 +570,8 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         image_parts = await asyncio.to_thread(
             images.parts_for, compacted, username=request.username,
             collections=request.allowed_collections)
-        model_input = [SystemMessage(content=system_text)] + to_langchain(compacted, image_parts)
+        model_input = workspace_state.with_inventory(
+            [SystemMessage(content=system_text)] + to_langchain(compacted, image_parts), inventory)
 
         timer = llm_events.CallTimer()
         message: Any = None
@@ -842,6 +850,16 @@ def closest_names(name: str, args: Any, snapshot: Any, allowed: Sequence[str]) -
     return [candidate for _, _, candidate in sorted(ranked)[:2]]
 
 
+def batch_problem(request: ToolCallRequest) -> str:
+    """Why the reply that holds the call cannot run (`execution.finish_order_problem`), or
+    an empty string. Every call of such a reply gets the same refusal, so no call of the
+    reply changes state."""
+    for message in request.messages:
+        if message.role == "ai" and any(c.id == request.call.id for c in message.tool_calls):
+            return finish_order_problem([c.name for c in message.tool_calls])
+    return ""
+
+
 async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
     snapshot = context.snapshot
     name = request.call.name
@@ -852,6 +870,14 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
         'Omit the pages list.'
         if name == "cite_pages" else ""
     )
+
+    problem = batch_problem(request)
+    if problem:
+        return _tool_response(request, _error(
+            "invalid_batch",
+            f"No call of this reply was run. {problem} Send the other calls first. Then "
+            f"call {FINISH_TOOL} alone in a later reply.", tool=name,
+        ), "error", "invalid_batch")
 
     if request.call.argument_error:
         return _tool_response(request, _error(

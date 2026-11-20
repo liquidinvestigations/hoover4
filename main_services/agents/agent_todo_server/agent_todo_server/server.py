@@ -3,7 +3,8 @@
 Tools:
     ``update_plan``  sets the goal and the whole step list with the status of each step
 
-The workspace tools ``read_file``, ``write_file`` and ``patch_file`` are in `workspace.py`.
+The workspace tools ``read_file``, ``write_file``, ``patch_file`` and
+``finish_with_report`` are in `workspace.py`.
 
 **This server holds no rules of its own.** Every shape, every limit and every rule
 about statuses, reasons and identities lives in `database.chat_todos`, which the

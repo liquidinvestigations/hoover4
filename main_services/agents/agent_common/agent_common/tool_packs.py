@@ -6,7 +6,8 @@ runs and lists in its catalogue only the tools of the run's packs. A tool that a
 for every run.
 
 The `skills` pack holds the three skill tools and the notes tool `write_note` of the research
-agent. The `workspace` pack holds the file tools of the session tool server.
+agent. The `workspace` pack holds the file tools of the session tool server, and
+`finish_with_report`, which shows a saved report as the answer and ends the turn.
 `packs_for` adds both to every run kind, also when the configured list omits them, because
 the system prompt of every run lists skills that the model can read with `read_skill`, and
 every report goes through the workspace tools.
@@ -51,7 +52,7 @@ PACKS: Dict[str, FrozenSet[str]] = {
         "folder_list", "folder_search", "read_more",
     }),
     "conversation": frozenset({"update_plan"}),
-    "workspace": frozenset({"read_file", "write_file", "patch_file"}),
+    "workspace": frozenset({"read_file", "write_file", "patch_file", "finish_with_report"}),
     "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page", "cite_pages"}),
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),

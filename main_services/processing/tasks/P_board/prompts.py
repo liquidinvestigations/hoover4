@@ -177,9 +177,11 @@ def render_brief(board, facts, citations, hints, intent, collections, steps: int
         "asks for. For an absence, name the searches and the sources examined, and do not "
         "claim that no such record exists elsewhere. At the end of the report, list at most 3 "
         "questions that the task leaves open. Known answers and source caveats are not open "
-        "questions. The board reads the finding only from that file after your turn ends. Text "
-        "in the chat reply does not reach the board. The board shows the report as the finding, so "
-        "start it with a heading that names the result."
+        "questions. Start the report with a heading that names the result, because the board "
+        "shows the report as the finding. When the report is complete, call "
+        "`finish_with_report` with its name and the version that the last write or patch "
+        "returned. The board reads the finding only from the report that this call selects. "
+        "Text in the chat reply does not reach the board."
     )
 
 

@@ -466,6 +466,17 @@ def _earlier_turns(row) -> list[dict[str, Any]]:
     return out
 
 
+def workspace_inventory(row) -> list[dict[str, Any]]:
+    """The saved files of the session for a step request: the name, the current version, the
+    character count and the time of that version of each file (`chat_workspace.list_files`).
+    The agent service adds the list to the model input, outside every compaction summary.
+    A failed read raises, so the step fails and Temporal runs it again. An empty list means
+    a workspace with no file."""
+    from database import chat_workspace
+
+    return chat_workspace.list_files(row.username, row.session_id)
+
+
 def _write_compaction(row, ai, record: dict) -> None:
     """The `compaction` row of a reply, at the index after its `ai` message."""
     from database import agent_runs
@@ -585,10 +596,12 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
 
     The answer row holds the text of the final reply only. The plan prose and the
     narration of the round go to its reasoning, with the reasoning of every reply, so the
-    narration stays beside the tool activity and outside the answer. When the run wrote or
-    changed workspace files, the metadata lists every delivered file version and names the
-    last one as the report of the turn (`P_workspace.selection.manifest`). The page shows
-    that version as the response and links the other files.
+    narration stays beside the tool activity and outside the answer. A turn of the explicit
+    presentation contract delivers no file here, because only `publish_report` follows a
+    successful `finish_with_report` call. A turn of the mutation contract lists every
+    delivered file version and names the last one as the report of the turn
+    (`P_workspace.selection.manifest`). The page shows that version as the response and
+    links the other files.
     """
     from database import agent_runs
     from tasks.P_agent import citations, reports
@@ -725,7 +738,8 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
        call.
     3. A retry marks final the stream rows that the failed attempt left open.
     4. `POST /model_step` streams the reply, with the earlier turns of the chat for a run
-       that writes the transcript. The partial rows are written as it arrives. The request
+       that writes the transcript, and the saved workspace files of the session
+       (`workspace_inventory`). The partial rows are written as it arrives. The request
        binds every tool of the run.
     5. A `compaction` frame of a run that writes the transcript writes the compaction line
        at `row.next_seq` in its running state, and every later seq of the step moves up by
@@ -783,6 +797,7 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             "messages": [run_message(m, row.thread_id) for m in messages],
             "earlier": earlier_turns,
             "control": pinned_control(messages),
+            "workspace": workspace_inventory(row),
         }
         # The plan prose of the round is narration: the partial row shows it with the
         # reasoning, as the answer row does (`_write_answer`).
@@ -980,6 +995,101 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                 live.close()
 
 
+# ------------------------------------------------------------------------ publish_report
+
+
+@dataclass
+class PublishParams(StepRef):
+    #: The successful `finish_with_report` call of the last batch.
+    call: Optional[CallRef] = None
+
+
+#: The usage key of the `ai` message that records the published answer of its finish call:
+#: the call id and the seq of the answer row. A retry reads it and writes the same rows.
+PUBLISHED_KEY = "published"
+
+
+def finish_message(args: Any) -> str:
+    """The chat text of a finish call: its `message` argument, stripped, or empty."""
+    value = args.get("message") if isinstance(args, dict) else None
+    return value.strip() if isinstance(value, str) else ""
+
+
+@activity.defn
+@with_heartbeat
+def publish_report(params: PublishParams) -> int:
+    """Publish the answer of a turn that a successful `finish_with_report` call ended, with
+    no model call.
+
+    The answer row holds the `message` argument of the call, else the text of the reply that
+    made the call, else the name of the primary report. With a `message`, the text of the
+    reply goes to the reasoning. When a compaction summarised the round, the answer ends with
+    `SUMMARY_NOTICE`, as an answer of `_write_answer` does. Its metadata pins the versions that
+    the call selected (`P_workspace.selection.finish_result`), with the citation status of the
+    primary report (`citations.answer_metadata`). The `ai` message of the call records the
+    seq of the answer row under `PUBLISHED_KEY` before the row is written, so a retry and a
+    worker restart write the same answer at the same seq. The run row gets the result and
+    the next seq. A terminal row writes nothing. Returns the next free seq.
+    """
+    from database import agent_runs
+    from tasks.P_agent import citations, reports
+    from tasks.P_agent.stream_writer import context_window_for, round_view, starts_round
+    from tasks.P_workspace.selection import finish_result
+
+    row = _read_row(params)
+    if agent_runs.is_terminal(row):
+        return row.next_seq
+    call = params.call
+    messages = _read_thread(row)
+    ai = next((m for m in messages if m.role == "ai" and m.idx == call.ai_idx), None)
+    if ai is None or call.position >= len(ai.tool_calls):
+        raise RuntimeError(f"run {row.run_id} has no call {call.ai_idx}:{call.position}")
+    result = _answer_of(messages, call.call_id)
+    selected = finish_result(result) if result is not None else None
+    if not selected:
+        raise RuntimeError(f"run {row.run_id} has no successful {call.name} result for {call.call_id}")
+    files = {"report": {"name": selected[0]["name"], "version": selected[0]["version"]},
+             "reports": selected}
+    published = ai.usage.get(PUBLISHED_KEY)
+    if isinstance(published, dict) and published.get("call_id") == call.call_id:
+        seq = int(published["seq"])
+    else:
+        seq = row.next_seq
+    entry = ai.tool_calls[call.position]
+    text = (ai.content or "").strip()
+    stated = finish_message(entry.get("args"))
+    answer = stated or text or files["report"]["name"]
+    # The text of the reply moves to the reasoning when the call states the chat text.
+    narration = text if stated else ""
+    primary = files["reports"][0]
+    entries = reports.session_citation_entries(row.username, row.session_id)
+    metadata = citations.answer_metadata(
+        answer, entries, effective_internet_tools(params.internet_tools), primary,
+        files["reports"])
+    ai = replace(ai, usage_json=json.dumps({
+        **ai.usage, **metadata, PUBLISHED_KEY: {"call_id": call.call_id, "seq": seq}}))
+    agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
+    earlier = [m for m in messages if m.idx < ai.idx]
+    plan_prose, round_reasoning, _ = round_view(earlier)
+    start = max((i for i, m in enumerate(earlier) if starts_round(m)), default=0)
+    if any(m.role == "ai" and m.usage.get("summarised") for m in earlier[start:] + [ai]):
+        answer = answer + SUMMARY_NOTICE
+    reasoning = "\n\n".join(p for p in (plan_prose, round_reasoning, narration,
+                                         (ai.reasoning or "").strip()) if p)
+    model = str(ai.usage.get("model") or "")
+    _chat_row(row)(
+        seq, "assistant", content=answer, reasoning=reasoning, model=model,
+        usage_json=json.dumps(metadata), context_tokens=int(ai.usage.get("input_tokens") or 0),
+        peak_context_tokens=int(ai.usage.get("input_tokens") or 0)
+        + int(ai.usage.get("output_tokens") or 0),
+        context_window=context_window_for(model))
+    _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.start_seq)
+    agent_runs.RunRowWriter(row).write(result=answer, next_seq=seq + 1)
+    log.info("[P_agent] run %s published %s version %d at seq %d", row.run_id,
+             files["report"]["name"], files["report"]["version"], seq)
+    return seq + 1
+
+
 # ------------------------------------------------------------------ the short activities
 
 
@@ -1098,6 +1208,7 @@ __all__ = [
     "CITATION_NOTE_NAME", "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
     "SHARED_MODE", "SHARED_TOOLS", "SHARED_TEXT", "ToolCallParams", "ToolCallResult",
     "complete_result", "pinned_control", "share_key",
+    "PUBLISHED_KEY", "PublishParams", "finish_message", "publish_report",
     "is_browser_tool", "model_step", "record_step_failure", "runs_in_browser", "runs_in_order",
     "ToolTransportFailure", "tool_call", "tool_idx", "write_incomplete",
 ]

@@ -7,6 +7,7 @@ import subprocess
 from .client import implementation_identity
 from .packets import assemble_packet
 from .schema import Incomplete, digest, require, text_digest
+from tasks.P_workspace.selection import PRESENTATION_KEY
 
 
 class Store:
@@ -52,7 +53,8 @@ def stored_message(thread, row):
             "metadata": {"tool_name": row.tool_name, "tool_call_id": row.tool_call_id,
                          "tool_calls": row.tool_calls,
                          "usage": {k: v for k, v in row.usage.items()
-                                   if k in ("status", "model_content", "evidence", "image_refs", "capture_refs")}}}
+                                   if k in ("status", "model_content", "evidence", "image_refs", "capture_refs",
+                                            PRESENTATION_KEY)}}}
 
 
 def source_records(messages):
@@ -111,7 +113,8 @@ def export_turn(owner, session_id, turn_seq, store=None, requirements=None):
     if len(answers) != 1:
         raise Incomplete("The published answer does not identify one run.")
     run, answer = answers[0]
-    from tasks.P_workspace.selection import delivered_reports, manifest
+    from tasks.P_workspace.selection import (
+        EXPLICIT_PRESENTATION, delivered_reports, manifest, presentation)
     threads = list(dict.fromkeys(store.earlier_threads(owner, session_id, turn_seq) + [r.thread_id for r in runs]))
     raw = {thread: store.messages(owner, session_id, thread) for thread in threads}
     answer_messages = [m for m in raw[run.thread_id] if m.is_final]
@@ -165,6 +168,10 @@ def export_turn(owner, session_id, turn_seq, store=None, requirements=None):
         raise Incomplete("The answer or its stored messages changed during export.")
     return packet, {"serializer": "control.canonical_json.v1", "run_id": run.run_id,
                     "thread_ids": threads, "selected_versions": selected,
+                    # `explicit`: a finish call selected the files. `mutation`: an older turn
+                    # delivered every file that it wrote or patched.
+                    "delivery": ("explicit" if presentation(answer_messages) >= EXPLICIT_PRESENTATION
+                                 else "mutation"),
                     "partial_messages": [[m["thread_id"], m["idx"]] for m in messages if not m["is_final"]],
                     "published_result_differs": answer["content"] != run.result,
                     "published_answer_digest": text_digest(answer["content"]),

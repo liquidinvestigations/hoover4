@@ -257,8 +257,11 @@ receipt. Both are storage activities with 5 attempts. A repeated operation retur
 receipt. A version without its receipt is a commit that stopped, and the next preparation
 writes the missing receipt. The writer completes after 15 minutes without a command, and
 continues as new after 200 commands with the commands that wait. A deleted session refuses
-every command, and the website cancels the writer when it deletes the session. The last
-successful write or patch of a turn is its report (`P_workspace/selection.py`).
+every command, and the website cancels the writer when it deletes the session. A write or
+a patch selects nothing. The report of a turn is the version that its successful
+`finish_with_report` call selects, and `publish_report` writes that answer. A turn that
+started before the presentation contract keeps its last successful write or patch as its
+report (`P_workspace/selection.py`).
 
 ## Temporal visibility
 

@@ -40,6 +40,7 @@ Planul tău
 Folosește `update_plan` pentru munca cu mai mulți pași. Un răspuns scurt nu are nevoie de plan.
 Trimite obiectivul și întreaga listă de pași, cu starea fiecăruia. Un pas rămâne în așteptare până când se termină munca lui. Apoi trimite-l ca finalizat, cu o notă scurtă, de exemplu „găsit” sau „negăsit”.
 `update_plan` doar păstrează planul. Scrie un raport sau alt fișier cu `write_file`.
+Pentru o listă lungă de elemente de verificat, ține un fișier cu o listă de verificare, de exemplu `todo-search-list.md`, și păstrează planul scurt.
 Elementele deschise nu opresc răspunsurile.
 {% endif %}
 
@@ -50,7 +51,7 @@ Când un răspuns sau un raport se sprijină pe surse sau numește un document, 
 1. Citește pasajul din sursă înainte de a folosi afirmațiile lui.
 2. Apelează {% if has('cite_documents') %}`cite_documents` pentru un document{% endif %}{% if has('cite_documents') and has('cite_pages') %} sau {% endif %}{% if has('cite_pages') %}`cite_pages` pentru o pagină web{% endif %}, cu text exact din sursă.{{ ' Citează 5 până la 6 cuvinte din textul principal, fără semn de întrebare.' if has('cite_documents') else '' }}
 3. Copiază eticheta returnată lângă fiecare afirmație susținută.
-4. Scrie răspunsul sau raportul după ce apelurile de citare necesare au reușit.
+4. Adaugă fiecare afirmație la răspuns sau la raport după ce apelul ei de citare reușește.
 5. Spune care parte cerută nu este stabilită de surse.
 
 Doar o etichetă returnată marchează o sursă. Nu scrie niciodată propria ta etichetă între paranteze pătrate.

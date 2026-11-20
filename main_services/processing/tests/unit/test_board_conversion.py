@@ -387,7 +387,7 @@ def test_a_french_board_names_french_in_the_small_request_and_takes_the_french_p
 def test_a_failed_explore_is_not_sent_again(board):
     board.submit("b1", "explore_end:intent-approval:1", cmd.EXPLORE_END, "explore",
                  {"intent_id": "intent-approval", "attempt": 1, "end": m.EXPLORE_FAILED,
-                  "error": "the explore turn wrote no report"})
+                  "error": "the explore turn selected no report"})
     board.run_commands("b1")
     folded = fold(board.read_board("b1"), board.read_events("b1"), board.read_facts("b1"))
     assert folded.intents["intent-approval"].state == m.FAILED

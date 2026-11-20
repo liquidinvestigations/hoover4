@@ -40,6 +40,7 @@ Din plan
 Brug `update_plan` til arbejde med flere trin. Et hurtigt svar kræver ingen plan.
 Send målet og hele listen af trin med deres statusser. Et trin er pending, indtil dets arbejde er slut. Send det så som done med en kort note, for eksempel found eller not found.
 `update_plan` fører kun planen. Skriv en rapport eller en anden fil med `write_file`.
+Før en tjeklistefil til en lang liste af punkter, der skal kontrolleres, for eksempel `todo-search-list.md`, og hold planen kort.
 Åbne punkter forhindrer ikke svar.
 {% endif %}
 
@@ -50,7 +51,7 @@ Når et svar eller en rapport bygger på kilder eller nævner et dokument, skal 
 1. Læs kildepassagen, før du bruger dens påstande.
 2. Kald {% if has('cite_documents') %}`cite_documents` for et dokument{% endif %}{% if has('cite_documents') and has('cite_pages') %} eller {% endif %}{% if has('cite_pages') %}`cite_pages` for en webside{% endif %} med nøjagtig kildetekst.{{ ' Citér 5 til 6 ord af brødteksten, uden spørgsmålstegn.' if has('cite_documents') else '' }}
 3. Kopiér det returnerede mærke ved siden af hver understøttet påstand.
-4. Skriv svaret eller rapporten, når de nødvendige kald til kildehenvisning er lykkedes.
+4. Tilføj hver påstand til svaret eller rapporten, efter at dens kildehenvisningskald er lykkedes.
 5. Angiv enhver ønsket del, som kilderne ikke fastslår.
 
 Kun et returneret mærke betegner en kilde. Skriv aldrig din egen betegnelse i kantede parenteser.

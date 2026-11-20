@@ -14,8 +14,8 @@ start runs nothing.
 
 An explore is an ordinary chat turn: `open_explore_turn` writes the session, the user row and
 the stream row that `send_message` writes for a person, and the turn runs as `AgentRun`. The
-turn writes its result as a workspace report. `conclude_explore` reads the end of the turn:
-a failure, or the report to convert. `convert_explore_report` stores the pinned report
+turn writes its result as a workspace report and selects it with `finish_with_report`.
+`conclude_explore` reads the end of the turn: a failure, or the selected report to convert. `convert_explore_report` stores the pinned report
 version as the finding, unchanged, with the kind and the open questions of one small model
 request (`conversion.py`), and submits it. Every text of a board is in the board language
 (`board_language`).
@@ -860,7 +860,7 @@ def _usage(row: dict) -> dict:
 def turn_report(rows: list[dict], turn_uuid: str) -> tuple[dict, int]:
     """The report version that the turn pinned, `{name, version}`, and the seq of the
     assistant row that names it. The last assistant row of the turn names it in its
-    metadata (`P_workspace.selection`). Empty and 0 when the turn wrote no report."""
+    metadata (`P_workspace.selection`). Empty and 0 when the turn selected no report."""
     answers = [r for r in rows if r["role"] == "assistant" and r.get("message_uuid") in ("", turn_uuid)]
     if not answers:
         return {}, 0
@@ -918,7 +918,7 @@ def conclude_explore(req: TurnRequest) -> Concluded:
     if req.turn_error:
         error = f"the explore turn failed: {req.turn_error}"
     elif not report:
-        error = "the explore turn wrote no report"
+        error = "the explore turn selected no report"
     else:
         return Concluded("convert", report)
     _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",

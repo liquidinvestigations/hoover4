@@ -38,7 +38,7 @@ GENERAL_DESCRIPTIONS = {
     "thorough": "how to choose further searches when a question needs research",
     "citation": "how to cite the documents that support an answer",
     "report": ("where a report, a list, a table, a draft or an answer with citations goes, "
-               "and how to edit it"),
+               "how to edit it, and how to show it"),
 }
 
 #: The descriptions of the technique and stumble skills that the classifier forms were

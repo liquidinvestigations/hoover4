@@ -20,7 +20,7 @@
 | Workspace | Open the workspace pane with the files that the assistant wrote in the conversation. | It is in the title row. The pane is read-only. Its file and version are in the address. |
 | Workspace file | Show the current version of the file in the workspace pane. | The list shows each file with its current version and length. |
 | Open in the workspace | Open the pinned report version of an answer in the workspace pane. | It is in the line above an answer that shows a report. |
-| Delivered file | Open one delivered file version of the turn in the workspace pane. | The Files line under an answer lists each file of the turn when the turn delivered two or more. A stopped, failed or cancelled turn lists its files too. |
+| Delivered file | Open one delivered file version of the turn in the workspace pane. | The Files line under an answer lists each file version that the assistant selected when it selected two or more. A stopped, failed or cancelled turn of an earlier version lists its written files. |
 | Close the workspace | Close the workspace pane. | The conversation stays open. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Pasted Hoover link | Turn the link into a reference chip with its number and the name of the item. | A link of another host, an incomplete link and a link of an item that the person cannot read stay text. The X of a chip removes it. |
@@ -61,9 +61,9 @@ It uses the neutral surface colour, fits its text, and takes at most 80% of the 
 A done task is struck through and followed by the first three words of its reason in bold.
 A replaced task stays struck through directly above the task that replaces it.
 A failed, unchanged, or unstored todo call shows no new summary.
-An answer whose turn wrote a workspace file shows the last file version of the turn as its text, under a line with the file name and the version. The chat text of the answer follows it in a muted colour. Its citation handles are chips that scroll to the source cards of the report, and it shows no second set of cards.
+An answer whose turn selected a report version shows that version as its text, under a line with the file name and the version. A file that the turn wrote and did not select stays in the workspace and does not show under the answer. The chat text of the answer follows it in a muted colour. Its citation handles are chips that scroll to the source cards of the report, and it shows no second set of cards.
 An answer whose report version cannot be read shows its chat text and says so.
-The Files line names each delivered file as "name, version N", in the order of the first delivery, with the last version of each file.
+The Files line names each delivered file as "name, version N", with the shown report first.
 The board writes a "Submitted by the board" finding card after the answer of a board explore turn.
 An active turn shows one line with a turning icon and the text "The bot is working...".
 A queued turn adds the slot that it waits for under that line.

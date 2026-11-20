@@ -2,7 +2,8 @@
 
 The session tool server. One plan per chat or agent run (a goal and a list of steps) is
 exposed as one tool, `update_plan`. The workspace files of a conversation are exposed as
-three more: `read_file`, `write_file` and `patch_file` (see [Workspace files](#workspace-files)).
+four more: `read_file`, `write_file`, `patch_file` and `finish_with_report` (see
+[Workspace files](#workspace-files)).
 
 **The server holds no rules.** Every shape, limit and refusal lives in
 [`../../processing/database/chat_todos.py`](../../processing/database/chat_todos.py),
@@ -48,6 +49,12 @@ read the receipt of the operation id every 0.3 s for up to `WORKSPACE_WRITER_WAI
 the tool call. A failed receipt is a tool error with the result as its text. A writer that
 cannot be reached, or that gives no receipt in time, is a tool error with `retryable` true,
 and the worker sends the call again with the same key.
+
+`finish_with_report` reads the selected versions in the scope of the caller's session and
+returns their names, versions and citation handles. It changes no file. A missing version or
+a repeated name is a tool error, and a storage failure is a tool error with `retryable` true.
+The worker runs the call after every other call of its reply, and a successful result ends
+the turn with that report as the answer.
 
 ## Build context
 

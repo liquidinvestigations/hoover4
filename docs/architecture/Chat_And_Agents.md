@@ -357,28 +357,56 @@ does not change. The check does not show that a claim follows from its source.
 ```mermaid
 flowchart TD
     accTitle: The report of a turn
-    accDescr: The agent writes a file through the session writer. A checked version is stored. At the end of the turn the answer lists every delivered file, and the last successful write or patch is its report.
+    accDescr: The agent writes a file through the session writer. A checked version is stored. A successful finish_with_report call selects a stored version as the answer and ends the turn. Without that call the turn ends with a chat answer and shows no file.
     A[Agent calls write_file or patch_file] --> B[WorkspaceWriter checks version, gutter and handles]
     B -->|finding| C[Tool result with findings, file unchanged]
     C --> A
     B -->|valid| D[Immutable version and receipt in ClickHouse]
-    D --> E{Turn ends}
-    E -->|one or more successful writes or patches| F[Answer row lists each delivered file and names the last version as its report]
-    E -->|no write or patch| G[Ordinary chat answer]
+    D --> A
+    A --> E{finish_with_report}
+    E -->|version exists| F[publish_report pins the selected versions, the turn ends]
+    E -->|error| A
+    A -->|reply with no call| G[Ordinary chat answer, no file shown]
 ```
 
-When the turn ends, the last successful write or patch of its run, in call order, is the
-report of the turn. The answer row stores its name and version (`report` in `usage_json`).
-It also lists each file that the run wrote or changed, in the order of the first delivery,
-with the last version of each file (`reports` in `usage_json`). A retried call with the same
-call id counts once. The transcript shows the report version as the answer with its citation
+A write or a patch saves a version and selects nothing. The agent shows a report with
+`finish_with_report`, which takes the `name` and `version` of the primary report, an optional
+`message` for the chat text, and optional `additional` versions for a request with several
+files. The tool server reads each version in the scope of the caller's session, and a missing
+version is a tool error that leaves the turn open. `AgentRun` runs the finish call after
+every other call of its reply. The agent service refuses every call of a reply whose finish
+call is not its last call, or that holds two finish calls, so no call of that reply changes
+state. After a successful finish call, `publish_report` writes the answer row with no model
+step, no policy hook and no policy batch. The `ai` message of the call records the seq of the
+answer, so a retry or a worker restart writes one answer at the same seq. The answer row
+stores the name and version of the primary report (`report` in `usage_json`) and every
+selected version, the primary report first (`reports`). A reply that ends without a finish
+call is a chat answer with no file, on every turn. A later turn can show an unchanged earlier
+version again. A step limit, a stop or a failure selects no file, and the saved files stay in
+the workspace.
+
+`open_run` records the presentation contract on the opening message of each turn
+(`presentation` 2). A thread without the key is a turn of an earlier version. Its readers
+keep the earlier rule: the last successful write or patch is the report, and the row lists
+each written or changed file in the order of the first delivery, with the last version of
+each. A retried call with the same call id counts once
+([P_workspace/selection.py](../../main_services/processing/tasks/P_workspace/selection.py)). The transcript shows the report version as the answer with its citation
 cards. The chat text of the answer shows muted under it. When the turn delivered two or more
 files, a Files line under the answer has one button for each file version. A row without
 `reports` shows its `report` only. A later edit of a file does not change an earlier answer.
-A turn that stops before its answer, fails or is cancelled stores the same list on its row,
-and the transcript shows the list there. A stored turn of an earlier agent version that asked
+A turn of the earlier contract that stopped before its answer, failed or was cancelled
+stores its list on its ending row, and the transcript shows the list there. A stored turn of an earlier agent version that asked
 the person a question shows the question with its options as plain text, and its files stay
 in the workspace. A new turn cannot ask the person a question.
+
+Each model step request holds the saved files of the session, read from storage by the
+worker (`workspace_inventory`). The agent service adds their names, current versions and
+sizes, and the `read_file` instructions, after the newest message of the model input
+([workspace_state.py](../../main_services/agents/research_agent/research_agent/workspace_state.py)).
+The list names at most 30 files, newest first, and says how to list the others. It is not
+stored and no compaction summary holds it, so a summary that omits a file cannot remove the
+file from the next request. The request size and the compaction plan count it with the fixed
+input. A failed storage read fails the step, and Temporal sends it again.
 
 A write whose text holds handles only inside code formatting, such as `` `[W1]` ``, links no
 citation. The file is stored, and the result gets a note that names the handle and tells the
@@ -555,7 +583,7 @@ row into the transcript and logs at ERROR with the session and the turn uuid.
 | Class | Activities | Attempts |
 |---|---|---|
 | External request | `model_step`, `tool_call`, `write_followups`, `summarize_if_first_turn`, `label_board`, `board_reason`, `convert_explore_report` | 2, the second after 1 s. A browser tool that can change the page gets 1. |
-| Storage write | `open_run`, `control_event`, `write_asked_answer`, `write_incomplete`, `write_ending`, `record_step_failure`, `prepare_workspace_mutation`, `commit_workspace_mutation`, and the board storage activities | 5 (`ACTIVITY_MAX_ATTEMPTS`). Each write has a fixed key, so a repeat is harmless. |
+| Storage write | `open_run`, `control_event`, `write_asked_answer`, `write_incomplete`, `publish_report`, `write_ending`, `record_step_failure`, `prepare_workspace_mutation`, `commit_workspace_mutation`, and the board storage activities | 5 (`ACTIVITY_MAX_ATTEMPTS`). Each write has a fixed key, so a repeat is harmless. |
 
 No activity sends a second request to the same target. The collection server's backend
 client, the browser router and the model client each send a request once. Two cases send a

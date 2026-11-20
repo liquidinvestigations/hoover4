@@ -12,13 +12,15 @@ def assemble_packet(run, messages, file_versions, source_items, identity):
     """Select immutable versions from one answer thread."""
     require(run["owner"] == identity["owner"] and run["session_id"] == identity["session_id"], "Run owner or session differs.")
     answer_thread = run["thread_id"]
-    final = [SimpleNamespace(**m, usage=m["metadata"].get("usage", {}),
+    # The selection reads the stored roles, so the exported `user` role is `human` again.
+    final = [SimpleNamespace(**{**m, "role": "human" if m["role"] == "user" else m["role"]},
+                             usage=m["metadata"].get("usage", {}),
                              tool_name=m["metadata"].get("tool_name", ""),
                              tool_call_id=m["metadata"].get("tool_call_id", ""))
              for m in messages if m["thread_id"] == answer_thread and m["is_final"]]
     selected = delivered_reports(final)
     if selected != run["published_reports"]:
-        raise Incomplete("Published reports differ from successful mutation receipts.")
+        raise Incomplete("Published reports differ from the delivered selection of the answer thread.")
     files = []
     for item in selected:
         key = (item["name"], item["version"])

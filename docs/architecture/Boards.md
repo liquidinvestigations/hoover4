@@ -527,9 +527,10 @@ full text of the intent's `from` facts and of the background context, and the la
 other fact, or its first 40 words when it has no label. It asks for a report file, also for
 a short result, an inference or an absence, with at most 3 open questions at its end. A board
 turn gets no effort note from the chat checks, because the brief gives its call limit. The
-report of the turn is the last file version that it wrote ([Reports and workspace
+brief asks the explore to select its report with `finish_with_report`. The report of the
+turn is the version that this call selects ([Reports and workspace
 files](Chat_And_Agents.md#reports-and-workspace-files)), and the chat page shows it as the
-answer.
+answer. A turn that writes a report and selects none ends without a report.
 
 `conclude_explore` reads the end of the turn. A new turn cannot ask the person a question, and
 `explore_end` refuses the end `explore_question` as unknown. A failed turn and a turn without a report become

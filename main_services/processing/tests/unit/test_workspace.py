@@ -307,6 +307,70 @@ def test_a_repeated_tool_message_of_one_call_counts_once():
     assert [r["name"] for r in selection.delivered_reports([first, again])] == ["a.md"]
 
 
+def opening(contract=selection.EXPLICIT_PRESENTATION):
+    usage = {selection.PRESENTATION_KEY: contract} if contract else {}
+    return RunMessageRow(idx=0, role="human", content="q", usage_json=json.dumps(usage))
+
+
+def finish_row(idx, name, version, additional=(), status="ok", call_id=""):
+    body = ({"success": True, "finished": True,
+             "report": {"name": name, "version": version, "citations": ["[D1]"]},
+             "additional": [{"name": n, "version": v, "citations": []} for n, v in additional]}
+            if status == "ok" else {"success": False, "error": f"{name} has no version {version}."})
+    return RunMessageRow(idx=idx, role="tool", tool_name=selection.FINISH_TOOL,
+                         tool_call_id=call_id, content=json.dumps(body),
+                         usage_json=json.dumps({"status": status}))
+
+
+def test_a_turn_without_the_marker_keeps_the_mutation_contract():
+    rows = [opening(None),
+            tool_row(2, "write_file", {"success": True, "name": "a.md", "version": 1, "citations": []})]
+    assert selection.presentation(rows) == selection.MUTATION_PRESENTATION
+    assert selection.manifest(rows)["report"] == {"name": "a.md", "version": 1}
+
+
+def test_an_explicit_turn_delivers_no_file_without_a_finish_call():
+    """A write and a patch save files. Without a finish call the turn shows no report, also
+    when a checklist was written last."""
+    rows = [opening(),
+            tool_row(2, "write_file", {"success": True, "name": "report.md", "version": 1, "citations": []}),
+            tool_row(3, "write_file", {"success": True, "name": "todo-search-list.md", "version": 4, "citations": []})]
+    assert selection.presentation(rows) == selection.EXPLICIT_PRESENTATION
+    assert selection.selected_report(rows) is None
+    assert selection.delivered_reports(rows) == []
+    assert selection.manifest(rows) == {}
+
+
+def test_an_explicit_turn_delivers_the_versions_that_the_finish_call_selects():
+    rows = [opening(),
+            tool_row(2, "write_file", {"success": True, "name": "report.md", "version": 2, "citations": []}),
+            tool_row(3, "patch_file", {"success": True, "name": "todo-search-list.md", "version": 7, "citations": []}),
+            finish_row(4, "report.md", 2, additional=[("annex.md", 1)])]
+    assert selection.manifest(rows) == {
+        "report": {"name": "report.md", "version": 2},
+        "reports": [{"name": "report.md", "version": 2, "citations": ["[D1]"]},
+                    {"name": "annex.md", "version": 1, "citations": []}]}
+
+
+def test_a_failed_finish_call_selects_nothing():
+    rows = [opening(), finish_row(2, "report.md", 9, status="error")]
+    assert selection.manifest(rows) == {}
+    assert selection.finish_result(rows[1]) is None
+
+
+def test_the_last_successful_finish_call_is_the_selection():
+    rows = [opening(), finish_row(2, "report.md", 1), finish_row(4, "report.md", 3, call_id="f2"),
+            finish_row(5, "report.md", 9, status="error", call_id="f3")]
+    assert selection.selected_report(rows) == {"name": "report.md", "version": 3,
+                                               "citations": ["[D1]"]}
+
+
+def test_a_finish_result_lists_each_name_once():
+    row = finish_row(2, "report.md", 1, additional=[("report.md", 1), ("b.md", 2), ("b.md", 3)])
+    assert [(r["name"], r["version"]) for r in selection.finish_result(row)] == [
+        ("report.md", 1), ("b.md", 2)]
+
+
 def test_handles_in_code_are_literal_and_listed_apart():
     text = "Kept `Web [W1]` and\n```\nsee [D2]\n```\nand \\`x\\` and [D3]."
     assert references.code_handles(text) == ["[W1]", "[D2]"]

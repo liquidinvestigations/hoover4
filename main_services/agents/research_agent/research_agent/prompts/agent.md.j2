@@ -60,6 +60,7 @@ Your plan
 Use `update_plan` for work with several steps. A quick reply needs no plan.
 Send the goal and the whole list of steps with their statuses. A step is pending until its work ends. Then send it as done with a short note, such as found or not found.
 `update_plan` only keeps the plan. Write a report or another file with `write_file`.
+For a long list of items to check, keep a checklist file, such as `todo-search-list.md`, and keep the plan short.
 Open items do not stop answers.
 {% endif %}
 
@@ -70,7 +71,7 @@ When an answer or a report relies on sources or names a document, work in this o
 1. Read the source passage before you use its claims.
 2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.{{ ' Quote 5 to 6 words of body text, without a question mark.' if has('cite_documents') else '' }}
 3. Copy the returned handle beside each supported claim.
-4. Write the answer or the report after the needed citation calls succeed.
+4. Add each claim to the answer or the report after its citation call succeeds.
 5. State any requested part that the sources do not establish.
 
 Only a returned handle labels a source. Never write your own label in square brackets.

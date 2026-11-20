@@ -528,7 +528,8 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
 
     1. When the row does not exist, write the opening message at `idx` 0 and then the row.
        Both keys come from the run id, so a retry writes the same rows. The opening message
-       keeps the structured task of the user row (`task`), when the row has one. It holds
+       records the presentation contract of the turn (`P_workspace.selection`), and keeps
+       the structured task of the user row (`task`), when the row has one. It holds
        the text of the user row and the `References:` block of its references
        (`link_references.with_references`).
     2. A terminal row returns `closed`.
@@ -542,15 +543,21 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
     row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
     if row is None:
         from tasks.P_agent import link_references
+        from tasks.P_workspace.selection import EXPLICIT_PRESENTATION, PRESENTATION_KEY
 
         text, row_usage = _user_row(inp.username, inp.session_id, inp.turn_seq)
         text = link_references.with_references(text, row_usage.get("references") or [])
         # The structured task of a board explore turn (`P_board.activities.explore_task`).
         task = row_usage.get("task") if isinstance(row_usage.get("task"), dict) else None
+        # The presentation contract of the turn (`P_workspace.selection`): the turn
+        # delivers only the report versions that `finish_with_report` selects.
+        opening_usage = {PRESENTATION_KEY: EXPLICIT_PRESENTATION}
+        if task:
+            opening_usage["task"] = task
         agent_runs.write_message(
             inp.username, inp.session_id, inp.run_id, inp.run_id,
             agent_runs.RunMessageRow(idx=0, role="human", content=text, run_id=inp.run_id,
-                                     usage_json=json.dumps({"task": task}) if task else ""),
+                                     usage_json=json.dumps(opening_usage)),
         )
         agent_runs.create_run(agent_runs.RunRow(
             run_id=inp.run_id, username=inp.username, session_id=inp.session_id,

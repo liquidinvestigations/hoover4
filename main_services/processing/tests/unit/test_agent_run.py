@@ -75,7 +75,7 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     assert chat_workflows == ["AgentRun", "WorkspaceWriter"]
     for name in ("open_run", "write_ending", "summarize_if_first_turn",
                  "record_step_failure",
-                 "control_event", "write_incomplete",
+                 "control_event", "write_incomplete", "publish_report",
                  "prepare_workspace_mutation", "commit_workspace_mutation"):
         assert name in chat_acts, name
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
@@ -211,6 +211,8 @@ def store(monkeypatch):
                         lambda u, s, name: {RUN_ID: list(written["session_citations"])})
     monkeypatch.setattr(steps, "_finish_stream_rows_from", lambda *a: None)
     monkeypatch.setattr(steps, "thinking_setting", lambda: True)
+    written["workspace"] = []
+    monkeypatch.setattr(steps, "workspace_inventory", lambda row: list(written["workspace"]))
     monkeypatch.setattr(activities, "_insert_chat_row",
                         lambda u, s, seq, role, **f: written["chat"].append(
                             {"seq": seq, "role": role, **f}))
@@ -1108,11 +1110,12 @@ def test_open_run_keeps_the_structured_task_of_the_user_row(store, monkeypatch):
     ActivityEnvironment().run(activities.open_run, inp)
     [opening] = store["messages"]
     assert opening.content == "The long brief." and opening.usage["task"] == task
-    # A chat turn has no task in its user row, and its opening row keeps no usage.
+    assert opening.usage["presentation"] == 2
+    # A chat turn has no task in its user row, and its opening row keeps only the contract.
     store["messages"], store["row"] = [], None
     monkeypatch.setattr(activities, "_user_row", lambda *a: ("Find the lease.", {}))
     ActivityEnvironment().run(activities.open_run, inp)
-    assert store["messages"][0].usage_json == ""
+    assert store["messages"][0].usage == {"presentation": 2}
 
 
 def test_open_run_gives_the_model_the_references_of_the_user_row(store, monkeypatch):
@@ -1129,4 +1132,174 @@ def test_open_run_gives_the_model_the_references_of_the_user_row(store, monkeypa
     [opening] = store["messages"]
     assert opening.content.startswith("Summarise [R1].\n\nReferences:\n")
     assert '"tool": "read_board"' in opening.content and '"link"' not in opening.content
-    assert opening.usage_json == ""
+    assert opening.usage == {"presentation": 2}
+
+
+# ------------------------------------------------- explicit report selection
+
+
+def _explicit(store):
+    """Give the opening message of the thread the explicit presentation contract."""
+    store["messages"][0] = agent_runs.RunMessageRow(
+        idx=0, role="human", content="q", run_id=RUN_ID,
+        usage_json=json.dumps({"presentation": 2}))
+
+
+def _finish_reply(store, idx, step_no, args, seq, text="", earlier=()):
+    """One reply whose calls are `earlier` and then a finish call, with a stored successful
+    result of each call."""
+    entries = [dict(_entry(f"e{i}", name, a), position=i, seq=seq + i)
+               for i, (name, a) in enumerate(earlier)]
+    entries.append(dict(_entry("fin", "finish_with_report", args), position=len(entries),
+                        seq=seq + len(entries)))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=idx, role="ai", run_id=RUN_ID, content=text,
+        usage_json=json.dumps({"step_no": step_no, "model": "m", "input_tokens": 5}),
+        tool_calls_json=json.dumps(entries)))
+    for i, (name, a) in enumerate(earlier):
+        store["messages"].append(_mutation(idx + 1 + i, f"e{i}", a["name"], a.get("version", 1),
+                                           tool=name))
+    body = {"success": True, "finished": True,
+            "report": {"name": args["name"], "version": args["version"], "citations": ["[D1]"]},
+            "additional": [{**a, "citations": []} for a in args.get("additional") or []]}
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=idx + 1 + len(earlier), role="tool", tool_call_id="fin",
+        tool_name="finish_with_report", run_id=RUN_ID, content=json.dumps(body),
+        usage_json=json.dumps({"status": "ok"})))
+    store["row"] = _row(next_seq=seq + len(entries), model_steps=step_no)
+    return steps.CallRef(call_id="fin", name="finish_with_report", ai_idx=idx, kind="parallel",
+                         position=len(earlier), seq=seq + len(earlier))
+
+
+def _publish(call):
+    return ActivityEnvironment().run(steps.publish_report, steps.PublishParams(
+        run_id=RUN_ID, username="u", session_id="s", call=call))
+
+
+def test_a_finish_call_publishes_the_selected_report_and_not_the_checklist(store, monkeypatch):
+    _explicit(store)
+    monkeypatch.setattr(steps, "_lines", lambda *a: pytest.fail("no model call"))
+    call = _finish_reply(
+        store, 1, 1, {"name": "report.md", "version": 1, "message": "The report lists two members."},
+        seq=5, text="I will show the report.",
+        earlier=[("write_file", {"name": "report.md", "version": 1}),
+                 ("write_file", {"name": "todo-search-list.md", "version": 3})])
+    next_seq = _publish(call)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert (answer["seq"], next_seq) == (8, 9)
+    assert answer["content"] == "The report lists two members."
+    assert "I will show the report." in answer["reasoning"]
+    usage = json.loads(answer["usage_json"])
+    assert usage["report"] == {"name": "report.md", "version": 1}
+    assert [r["name"] for r in usage["reports"]] == ["report.md"]
+    assert usage["citation_status"] == "cited"
+    assert store["run"][-1] == {"result": "The report lists two members.", "next_seq": 9}
+
+
+def test_a_retried_publication_writes_the_same_answer_at_the_same_seq(store):
+    _explicit(store)
+    call = _finish_reply(store, 1, 1, {"name": "report.md", "version": 2}, seq=5)
+    _publish(call)
+    first = [r for r in store["chat"] if r["role"] == "assistant"][-1]
+    # The run row write happened before the retry, so the row has a later next_seq.
+    store["row"] = _row(next_seq=7, model_steps=1)
+    _publish(call)
+    second = [r for r in store["chat"] if r["role"] == "assistant"][-1]
+    assert first["seq"] == second["seq"] == 6
+    assert json.loads(first["usage_json"]) == json.loads(second["usage_json"])
+    assert first["content"] == "report.md"
+
+
+def test_a_finish_call_keeps_several_selected_reports_with_one_primary(store):
+    _explicit(store)
+    call = _finish_reply(store, 1, 1, {"name": "case-1.md", "version": 1,
+                                       "additional": [{"name": "case-2.md", "version": 4},
+                                                      {"name": "case-3.md", "version": 1}]},
+                         seq=5)
+    _publish(call)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    usage = json.loads(answer["usage_json"])
+    assert usage["report"] == {"name": "case-1.md", "version": 1}
+    assert [(r["name"], r["version"]) for r in usage["reports"]] == [
+        ("case-1.md", 1), ("case-2.md", 4), ("case-3.md", 1)]
+
+
+def test_a_later_turn_can_show_an_unchanged_earlier_version(store):
+    """The finish call names a version that an earlier turn wrote. No write is needed."""
+    _explicit(store)
+    call = _finish_reply(store, 1, 1, {"name": "report.md", "version": 3}, seq=5)
+    _publish(call)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert json.loads(answer["usage_json"])["report"] == {"name": "report.md", "version": 3}
+
+
+def test_publication_without_a_successful_finish_result_fails(store):
+    _explicit(store)
+    call = _finish_reply(store, 1, 1, {"name": "report.md", "version": 1}, seq=5)
+    store["messages"][-1] = agent_runs.RunMessageRow(
+        idx=2, role="tool", tool_call_id="fin", tool_name="finish_with_report", run_id=RUN_ID,
+        content=json.dumps({"success": False, "error": "report.md has no version 1."}),
+        usage_json=json.dumps({"status": "error"}))
+    with pytest.raises(RuntimeError):
+        _publish(call)
+    assert not [r for r in store["chat"] if r["role"] == "assistant"]
+
+
+@pytest.mark.parametrize("step_no", [1, 3])
+def test_an_explicit_answer_after_writes_shows_no_report(store, monkeypatch, step_no):
+    """A write and a plain final reply select nothing, on the first and on a later step."""
+    _explicit(store)
+    _five_files(store)
+    store["row"] = _row(next_seq=12, model_steps=step_no - 1)
+    _serve(monkeypatch, store, _frames(text="I saved the files."))
+    _step(step_no=step_no)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    usage = json.loads(answer["usage_json"])
+    assert "report" not in usage and "reports" not in usage
+    assert answer["content"] == "I saved the files."
+
+
+def test_an_explicit_incomplete_turn_and_ending_select_no_file(store, monkeypatch):
+    _explicit(store)
+    _five_files(store)
+    params = steps.IncompleteParams(run_id=RUN_ID, username="u", session_id="s",
+                                    reason="step_budget", limit=600)
+    ActivityEnvironment().run(steps.write_incomplete, params)
+    [row] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert row["usage_json"] == ""
+    monkeypatch.setattr(stream_writer, "release_browser", lambda run_id: None)
+    monkeypatch.setattr(agent_runs, "write_run_terminal", lambda *a, **k: None)
+    store["row"] = _row(next_seq=13, model_steps=2)
+    activities._write_ending(WriteEndingParams(RUN_ID, "u", "s", agent_runs.CANCELLED))
+    [ending] = [r for r in store["chat"] if r["role"] == "error"]
+    assert json.loads(ending["usage_json"]) == {}
+
+
+def test_a_model_step_sends_the_saved_files_of_the_session(store, monkeypatch):
+    store["workspace"] = [{"name": "report.md", "version": 4, "chars": 120,
+                           "updated": "2026-11-20 10:00:00"}]
+    _serve(monkeypatch, store, _frames(text="done"))
+    _step()
+    assert store["requests"][0]["workspace"] == store["workspace"]
+
+
+def test_a_failed_file_list_read_fails_the_model_step(store, monkeypatch):
+    def broken(row):
+        raise ConnectionError("clickhouse is down")
+    monkeypatch.setattr(steps, "workspace_inventory", broken)
+    monkeypatch.setattr(steps, "_lines", lambda *a: pytest.fail("no model call"))
+    with pytest.raises(ConnectionError):
+        _step()
+
+
+def test_a_published_answer_after_a_compaction_says_so(store):
+    _explicit(store)
+    call = _finish_reply(store, 1, 1, {"name": "report.md", "version": 1, "message": "Done."},
+                         seq=5)
+    ai = store["messages"][1]
+    store["messages"][1] = agent_runs.RunMessageRow(
+        idx=ai.idx, role="ai", run_id=RUN_ID, content=ai.content,
+        usage_json=json.dumps({**ai.usage, "summarised": True}), tool_calls_json=ai.tool_calls_json)
+    _publish(call)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert answer["content"] == "Done." + steps.SUMMARY_NOTICE

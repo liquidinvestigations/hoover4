@@ -1,8 +1,9 @@
 """The citation status of an answer row, and the marker of a stored repair note.
 
 `answer_metadata` gives the metadata of an answer row: the tool scope, and the citation
-status of the response. When the turn wrote a workspace file, the response is that report,
-and the status describes its stored version. Otherwise the status describes the chat text,
+status of the response. When the turn delivered a workspace file
+(`tasks/P_workspace/selection.py`), the response is that report, and the status describes
+its stored version. Otherwise the status describes the chat text,
 from `reports.check_labels`: a handle that no successful citation gives, or that names more
 than one source, makes it `invalid`. No rule asks a paragraph for a citation, and no note
 asks the model to repeat an answer. The workspace tools check the handles of a report when
@@ -28,8 +29,8 @@ def answer_metadata(answer: str, session_entries, internet_tools: bool,
                     report: dict | None = None, files: list | None = None) -> dict:
     """Return the citation status, the available tool scope and the files of an answer.
 
-    `report` is the report of the turn (`tasks.P_workspace.selection.selected_report`), or
-    None. `files` is every file that the turn delivered
+    `report` is the report of the turn (`tasks.P_workspace.selection.selected_report`, or the
+    primary report of a finish call), or None. `files` is every file that the turn delivered
     (`tasks.P_workspace.selection.manifest`). With a report, the status describes that file
     version: `cited` when it holds resolved citation handles, else `none`, `report` names
     the version, and `reports` lists `files`. Without a

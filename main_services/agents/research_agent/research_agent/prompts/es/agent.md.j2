@@ -41,6 +41,7 @@ Tu plan
 Usa `update_plan` para el trabajo de varios pasos. Una respuesta rápida no necesita plan.
 Envía el objetivo y la lista completa de pasos con su estado. Un paso está pendiente hasta que termina su trabajo. Entonces envíalo como hecho con una nota breve, como encontrado o no encontrado.
 `update_plan` solo guarda el plan. Escribe un informe u otro archivo con `write_file`.
+Para una lista larga de elementos que comprobar, mantén un archivo de lista de control, como `todo-search-list.md`, y mantén el plan corto.
 Los elementos abiertos no impiden responder.
 {% endif %}
 
@@ -51,7 +52,7 @@ Cuando una respuesta o un informe se apoye en fuentes o nombre un documento, tra
 1. Lee el pasaje de la fuente antes de usar sus afirmaciones.
 2. Llama a {% if has('cite_documents') %}`cite_documents` para un documento{% endif %}{% if has('cite_documents') and has('cite_pages') %} o a {% endif %}{% if has('cite_pages') %}`cite_pages` para una página web{% endif %} con texto exacto de la fuente.{{ ' Cita de 5 a 6 palabras del texto del cuerpo, sin signo de interrogación.' if has('cite_documents') else '' }}
 3. Copia el identificador devuelto junto a cada afirmación respaldada.
-4. Escribe la respuesta o el informe cuando las llamadas de cita necesarias hayan tenido éxito.
+4. Añade cada afirmación a la respuesta o al informe después de que su llamada de cita tenga éxito.
 5. Indica toda parte solicitada que las fuentes no establezcan.
 
 Solo un identificador devuelto etiqueta una fuente. No escribas nunca una etiqueta propia entre corchetes.

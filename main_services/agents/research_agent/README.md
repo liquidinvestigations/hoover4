@@ -57,19 +57,24 @@ role line of the profile and the role text of the run kind, which is the rendere
 name and summary follow. A chat run then gets the rule for a note that says web access is unavailable. Every run with
 `write_file` gets the routing text of the `report` skill under "Reports and other
 documents" (`skill_store.report_rules`): a requested report, list, table or draft, and every
-answer with citations, goes into a workspace file, an edit of a report patches that file, and
-the chat holds questions, progress and a short note about the file. The `report` skill that
+answer with citations, goes into a workspace file, a report that needs research starts early
+and grows by patches, an edit of a report patches that file, a write or a patch shows nothing,
+`finish_with_report` shows a saved report version and ends the turn, and the chat holds
+questions, progress and explanations. The `report` skill that
 `read_skill` returns holds the same text and then the examples, from one template. The
+saved files of the session follow the newest message of every model request
+([workspace_state.py](research_agent/workspace_state.py)). The agent service refuses every
+call of a reply whose `finish_with_report` call is not its last call. The
 initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs are replaced with the returned handles.
 It requires comparative evidence for a size ranking. The plan text
 follows when the run has `update_plan`. It says
 that the plan is optional, that a call sends the goal and the whole step list with
 statuses, that a step stays pending until its work ends and is then done with a short note,
-that `update_plan` only keeps the plan and `write_file` writes a report, and that an open
-item does not stop an answer. When the
+that `update_plan` only keeps the plan and `write_file` writes a report, that a long list of
+items goes into a checklist file, and that an open item does not stop an answer. When the
 run has a citation tool, the citation text gives the order of the work once: read the
 passage, call the citation tool with exact text, copy the returned handle beside the
-claim, write the report after the needed calls succeed, and state the requested parts
+claim, add each claim to the report after its citation call succeeds, and state the requested parts
 that the sources do not establish. After a citation fails twice, the report leaves out the
 claim or states that the sources read do not confirm it. A document quote has 5 to 6 words of body text without
 a question mark. The `citation` skill holds the arguments of `cite_documents`, recovery

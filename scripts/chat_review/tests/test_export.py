@@ -175,3 +175,27 @@ def test_ambiguous_readings_keep_different_populations():
     assert [r['operations']['row_count'] for r in results] == [12, 11]
     assert [len(r['operations']['groups']['Paris']) for r in results] == [3, 2]
     assert results[0]['input_digest'] != results[1]['input_digest']
+
+
+def test_an_older_turn_exports_its_mutation_delivery():
+    _, manifest = export_turn("owner", "session", 1, FakeStore())
+    assert manifest["delivery"] == "mutation"
+
+
+def test_an_explicit_turn_exports_the_finish_selection_and_not_a_later_checklist():
+    store = FakeStore()
+    store.rows["answer"] = [
+        RunMessageRow(0, "human", "Write report.md.", run_id="run",
+                      usage_json=json.dumps({"presentation": 2})),
+        RunMessageRow(1, "tool", json.dumps({"success": True, "name": "report.md", "version": 2}),
+                      tool_name="write_file", tool_call_id="w1", run_id="run"),
+        RunMessageRow(2, "tool", json.dumps({"success": True, "name": "todo.md", "version": 5}),
+                      tool_name="write_file", tool_call_id="w2", run_id="run"),
+        RunMessageRow(3, "tool", json.dumps({"success": True, "finished": True, "additional": [],
+                                             "report": {"name": "report.md", "version": 2, "citations": []}}),
+                      tool_name="finish_with_report", tool_call_id="f1", run_id="run"),
+        RunMessageRow(4, "ai", "Ready.", run_id="run")]
+    packet, manifest = export_turn("owner", "session", 1, store)
+    assert manifest["delivery"] == "explicit"
+    assert manifest["selected_versions"] == [{"name": "report.md", "version": 2, "citations": []}]
+    assert [f["name"] for f in packet["delivery"]["files"]] == ["report.md"]
