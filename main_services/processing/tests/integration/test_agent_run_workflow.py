@@ -1307,7 +1307,7 @@ def _finish_result(request):
                                             "error": f"{args['name']} has no version {args['version']}."})}
     return _write_tool(request, {"success": True, "finished": True, "additional": [],
                                  "report": {"name": found.name, "version": found.version,
-                                            "citations": list(found.citations)}})
+                                            "citations": [c["handle"] for c in found.citations]}})
 
 
 def _file_tool(request, n):

@@ -183,7 +183,7 @@ def test_a_read_lists_the_files_or_renders_one_with_the_gutter(monkeypatch, head
 def versions(monkeypatch):
     """Two saved files of the caller's session, and one of another session."""
     rows = {("ann", "s1", "report.md", 3): store.FileVersion("ann", "s1", "report.md", 3,
-                                                           citations=["[D1]"]),
+                                                           citations=[{"handle": "[D1]", "file_hash": "a" * 64}]),
             ("ann", "s1", "annex.md", 1): store.FileVersion("ann", "s1", "annex.md", 1),
             ("bob", "s9", "secret.md", 1): store.FileVersion("bob", "s9", "secret.md", 1)}
     monkeypatch.setattr(store, "read_version", lambda u, s, n, v=None: rows.get((u, s, n, v)))

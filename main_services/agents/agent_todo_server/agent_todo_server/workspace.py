@@ -144,7 +144,9 @@ def _selected(username: str, session_id: str, name: str, version: Any) -> dict:
             f" The files are {', '.join(names)}. Read a file to see its version."
             if names else " The workspace has no files.")})
     return {"name": found.name, "version": found.version,
-            "citations": [h for h in found.citations if isinstance(h, str)]}
+            # A stored citation is an object with its `handle`, as the writer resolved it.
+            "citations": [c["handle"] for c in found.citations
+                          if isinstance(c, dict) and isinstance(c.get("handle"), str)]}
 
 
 def register(mcp) -> None:
