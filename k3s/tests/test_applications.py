@@ -105,6 +105,24 @@ def test_the_post_renderer_renders_the_retained_workloads_and_refuses_a_retired_
         postrender.overlay([job], 'zone-a')
 
 
+def test_the_post_renderer_leaves_the_retired_secrets_of_the_secrets_release_out(monkeypatch):
+    import postrender
+    monkeypatch.setattr(postrender, 'Zone', lambda namespace: type('Z', (), {'disabled': False})())
+    monkeypatch.setattr(postrender, 'operator_values', lambda z: {})
+
+    def secret(name, release='opendesk-secrets'):
+        return {'apiVersion': 'v1', 'kind': 'Secret',
+                'metadata': {'name': name, 'labels': {'app.kubernetes.io/instance': release}}}
+    names = ['matrix-rtc-livekit-auth-secret', 'database-notes-password', 'keycloak-client-secret-openproject',
+             'synapse-signing-key', 'element-auditbot-password', 'cache-matrix-rtc-password',
+             'matrix-intercom-synapse-as-token', 'database-xwiki-password', 'turn-shared-secret',
+             'keycloak-client-secret-ncoidc', 'jitsi-jvb-auth']
+    out = postrender.overlay([secret(n) for n in names] + [secret('notes-x', release='other')], 'zone-a')
+    assert [d['metadata']['name'] for d in out] == ['matrix-intercom-synapse-as-token', 'database-xwiki-password',
+                                                   'turn-shared-secret', 'keycloak-client-secret-ncoidc',
+                                                   'jitsi-jvb-auth', 'notes-x']
+
+
 def test_every_entry_release_and_image_of_the_pinned_release_has_a_class():
     if not (zone.OPENDESK / 'helmfile-defaults.yaml.gotmpl').exists():
         pytest.skip('the openDesk release is not unpacked in this checkout')

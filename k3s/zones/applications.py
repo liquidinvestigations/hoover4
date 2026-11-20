@@ -111,6 +111,12 @@ RETIRED_REPOSITORIES = (
 RETIRED_WORKLOADS = ('cryptpad*', 'element-*', 'matrix-*', 'opendesk-matrix-*', 'opendesk-provisioning-synapse*',
                      'opendesk-element-*', 'openproject-*', 'opendesk-openproject-*', 'impress-*', 'synapse-*',
                      'opendesk-synapse*', 'opendesk-well-known*', 'lk-jwt*', 'meetings-bot*', 'neoboard*')
+# The words of the Secret names of the retired applications in the openDesk secrets release (opendesk-secrets).
+# postrender.py leaves such a Secret out, so an upgrade deletes it, except a Secret that a retained workload reads
+# (RETAINED_SECRETS): intercom-service mounts the Synapse token.
+RETIRED_SECRET_WORDS = ('cryptpad', 'element', 'livekit', 'matrix', 'notes', 'openproject', 'synapse')
+RETAINED_SECRETS = ('matrix-intercom-synapse-as-token',)
+SECRETS_RELEASE = 'opendesk-secrets'
 # The operator settings of the retired applications. A saved value of one has no effect.
 RETIRED_SETTINGS = tuple(f'app.{name}' for name in RETIRED_APPLICATIONS)
 # The openDesk databases of the retired applications ({value key: database name}, postgresql.py DATABASES) and their
@@ -141,6 +147,11 @@ def entry_class(entry):
 
 def retired_workload(name):
     return any(fnmatch.fnmatchcase(name, p) for p in RETIRED_WORKLOADS)
+
+
+def retired_secret(name):
+    """True for a Secret of the openDesk secrets release that only a retired application reads."""
+    return name not in RETAINED_SECRETS and bool(set(name.split('-')) & set(RETIRED_SECRET_WORDS))
 
 
 def retired_part(name):
@@ -207,5 +218,5 @@ def digest():
     """The SHA-256 of the profile. The zone inputs (zone.py) and the image pre-pull (../driver/deploy.py) include it."""
     data = {'applications': APPLICATIONS, 'retired': RETIRED_APPLICATIONS, 'apps': OPENDESK_APPS, 'releases': RELEASES,
             'images': [RETAINED_IMAGES, RETIRED_IMAGES, OFF_IMAGES], 'repositories': RETIRED_REPOSITORIES,
-            'workloads': RETIRED_WORKLOADS}
+            'workloads': RETIRED_WORKLOADS, 'secrets': [RETIRED_SECRET_WORDS, RETAINED_SECRETS]}
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()

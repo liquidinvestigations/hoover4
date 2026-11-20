@@ -20,7 +20,9 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
 - Rollout: a single-replica Deployment that requests MAX_SURGE_MEMORY or more, or that NO_SURGE names, replaces its pod
   with maxSurge 0 and maxUnavailable 1 (rollout()), so an update does not need the memory of a second pod on a full site.
 - Patches: Jitsi web uses the UDP TURN server for the bridge connection (jitsi_files()).
-- Profile: a render that holds a controller of a retired application (applications.py RETIRED_WORKLOADS) stops.
+- Profile: a render that holds a controller of a retired application (applications.py RETIRED_WORKLOADS) stops. The
+  openDesk secrets release loses the Secrets of the retired applications (applications.py retired_secret()), so an
+  upgrade deletes them.
 - Periodic tasks: each CronJob of the charts becomes a container that stays running and runs the same command at the
   same interval (PERIODIC, periodic()). A CronJob would start a new pod for each run. A CronJob without a rule stops
   the render.
@@ -459,6 +461,14 @@ def periodic(documents, disabled=False, values=None):
     return out
 
 
+def retired_secret(doc):
+    if not isinstance(doc, dict) or doc.get('kind') != 'Secret':
+        return False
+    labels = doc.get('metadata', {}).get('labels') or {}
+    return (labels.get('app.kubernetes.io/instance') == applications.SECRETS_RELEASE and
+            applications.retired_secret(doc['metadata'].get('name', '')))
+
+
 def overlay(documents, namespace):
     zone = Zone(namespace)
     values = operator_values(namespace)
@@ -467,6 +477,7 @@ def overlay(documents, namespace):
             workload, name = key[len('memory.'):].rsplit('.', 1)
             MEMORY.setdefault(workload, {})[name] = value
     extra, claims = [], {}
+    documents = [d for d in documents if not retired_secret(d)]
     for doc in documents:
         if not isinstance(doc, dict):
             continue
