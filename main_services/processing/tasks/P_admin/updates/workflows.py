@@ -15,7 +15,9 @@ a free slot, so each track uses its own slots, and at most one operation of a da
 live at a time. Candidates of one class take turns by dataset, so one dataset with much
 work does not keep the others waiting. A failed or cancelled step does not start again
 automatically at the same fingerprint, so later datasets continue. A coordinator run that
-started before the tracks (patch `TRACKS_PATCH`) keeps one automatic operation at a time.
+started before the tracks (patch `TRACKS_PATCH`) keeps one automatic operation at a time
+until a `request_check` signal with `upgrade` arrives. Each worker start sends that
+signal, and the run then continues as new on the tracks.
 
 It waits `IDLE_WAIT` between passes, `ACTIVE_WAIT` while an operation runs, and wakes
 at once on a `request_check` signal, which a settings save and a page request send. It
@@ -97,6 +99,8 @@ with workflow.unsafe.imports_passed_through():
 COORDINATOR_ID = "processing-updates"
 #: The patch of the coordinator run that starts one operation for each track.
 TRACKS_PATCH = "processing-update-tracks"
+#: The patch of a legacy run that continues as new on an `upgrade` request.
+UPGRADE_PATCH = "processing-update-upgrade"
 #: The live operations that one coordinator state can name.
 MAX_ACTIVE_OPS = 64
 IDLE_WAIT = timedelta(minutes=2)
@@ -134,7 +138,10 @@ class ProcessingUpdates:
 
     @workflow.signal
     def request_check(self, request: dict) -> None:
-        """Calculate a scope now. `{"scope_id": ..., "force": true}`, `*` for every scope."""
+        """Calculate a scope now. `{"scope_id": ..., "force": true}`, `*` for every scope.
+
+        `{"upgrade": true}` moves a run that started before the tracks onto the tracks.
+        """
         self._requests.append(request or {})
 
     @workflow.run
@@ -184,7 +191,11 @@ class ProcessingUpdates:
                 await workflow.wait_condition(lambda: bool(self._requests), timeout=wait)
             except asyncio.TimeoutError:
                 pass
-        state.requests = list(self._requests)
+            if any(r.get("upgrade") for r in self._requests) and workflow.patched(UPGRADE_PATCH):
+                # A worker of the tracks started. The next run takes the tracks path. An
+                # older worker that took the signal kept the loop, and its replay keeps it.
+                break
+        state.requests = [r for r in self._requests if not r.get("upgrade")]
         workflow.continue_as_new(state)
 
     async def _tracks(self, state: CoordinatorState) -> str:

@@ -178,13 +178,16 @@ async def generate(set_name: str) -> dict:
                         if child_kind in real:
                             await record(prefix, child_id, child_run)
 
-            # The coordinator: two passes, then it is stopped.
+            # The coordinator: two passes, an `upgrade` request, then it is stopped. A legacy
+            # run ignores the request, as an older worker that takes the signal does.
             from tasks.P_admin.updates.workflows import ProcessingUpdates
 
             handle = await client.start_workflow(ProcessingUpdates.run, id=f"coordinator-{uuid.uuid4().hex[:6]}",
                                                  task_queue="processing-common-queue")
             await env.sleep(timedelta(minutes=5))
-            await handle.terminate("the generator records two passes")
+            await handle.signal("request_check", {"upgrade": True})
+            await env.sleep(timedelta(minutes=3))
+            await handle.terminate("the generator records the passes")
             await record("coordinator", handle.id, handle.result_run_id)
 
             from tasks.P_admin.updates.workflows import RunProcessingUpdate

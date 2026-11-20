@@ -249,7 +249,8 @@ A manual request that selects the steps of one track becomes an operation of tha
 A request with steps of more than one track runs as one operation without a track. It runs
 every selected step in order and waits for `update_dataset_cap`. Its re-run keeps the same
 form. A coordinator run that started before the tracks keeps one automatic operation at a
-time until it continues as new.
+time until it continues as new. Each worker start sends the coordinator the
+`request_check` signal with `upgrade`, and such a run then continues as new on the tracks.
 
 A tracked operation records its windows once (`update_windows`). The OCR window is the
 slots of the OCR queue, in files. The NER window is the slots of the NLP queue plus one, in

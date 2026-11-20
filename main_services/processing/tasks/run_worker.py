@@ -551,7 +551,8 @@ async def run_common_worker():
     log.info("Recorded %d new stage versions", register_stage_versions())
 
     # The processing update coordinator. Same singleton pattern. Starting it starts no
-    # update operation: its first pass only compares the stored state.
+    # update operation: its first pass only compares the stored state. The `upgrade`
+    # signal moves a run that started before the update tracks onto the tracks.
     try:
         await client.start_workflow(
             ProcessingUpdates.run,
@@ -559,6 +560,8 @@ async def run_common_worker():
             task_queue="processing-common-queue",
             id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+            start_signal="request_check",
+            start_signal_args=[{"upgrade": True}],
         )
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass

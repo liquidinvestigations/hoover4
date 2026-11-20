@@ -107,3 +107,27 @@ def test_the_tracks_histories_hold_the_new_commands():
     ocr = [e for e in tracks.values() if e["workflow_type"] == "RerunOcr"]
     assert ocr and not any("ExtractEntitiesForPlan" in _text(e) or "ChunkEmbedForPlan" in _text(e) for e in ocr)
     assert any("update_windows" in _text(e) for e in tracks.values() if e["workflow_type"] == "RunProcessingUpdate")
+
+
+
+def _signals(entry: dict) -> list:
+    """The decoded inputs of the signals of a history."""
+    import base64
+
+    found = []
+    for event in entry["history"]["events"]:
+        attributes = event.get("workflowExecutionSignaledEventAttributes") or {}
+        for payload in (attributes.get("input") or {}).get("payloads", []):
+            found.append(json.loads(base64.b64decode(payload["data"])))
+    return found
+
+
+def test_a_legacy_coordinator_that_an_older_worker_signalled_keeps_its_loop():
+    """An older worker ignored the `upgrade` request, so the replay must not leave the loop."""
+    legacy = [e for k, e in HISTORIES.items() if k.startswith("legacy-") and e["workflow_type"] == "ProcessingUpdates"]
+    assert legacy and all({"upgrade": True} in _signals(e) for e in legacy)
+    assert all("processing-update-upgrade" not in _patches(e) for e in legacy)
+    for entry in legacy:
+        events = entry["history"]["events"]
+        signalled = next(i for i, e in enumerate(events) if "workflowExecutionSignaledEventAttributes" in e)
+        assert any("activityTaskScheduledEventAttributes" in e for e in events[signalled:])
