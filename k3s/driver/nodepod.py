@@ -1,6 +1,6 @@
 """Run a root command on a node of the cluster through a short pod. Standard library only.
 
-The pod runs in kube-system on the named node, with the root folder of the host mounted at /host, and runs the command
+The pod runs in kube-system on the named node, in the host network, with the root folder of the host mounted at /host, and runs the command
 with chroot /host, so the command uses the tools of the host (k3s crictl, k3s ctr, lvs, k3s etcd-snapshot). It needs
 the admin kubeconfig and no SSH access or sudo rule on the node. deploy-k3s reset (reset.py) uses it.
 A node that does not start the pod within START_TIMEOUT seconds, for example a stopped node, raises Unreachable. The
@@ -36,7 +36,9 @@ def kubectl(kubeconfig, *args, input=None, check=True):
 def pod(name, node, script):
     return {'apiVersion': 'v1', 'kind': 'Pod',
             'metadata': {'name': name, 'namespace': NAMESPACE, 'labels': {LABEL: 'true'}},
-            'spec': {'nodeName': node, 'restartPolicy': 'Never', 'automountServiceAccountToken': False,
+            # The host network lets a host tool reach the API server of the node at 127.0.0.1, as k3s etcd-snapshot does.
+            'spec': {'nodeName': node, 'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'hostNetwork': True,
+                     'dnsPolicy': 'ClusterFirstWithHostNet',
                      'enableServiceLinks': False, 'tolerations': [{'operator': 'Exists'}],
                      'priorityClassName': 'system-node-critical',
                      'containers': [{'name': 'run', 'image': IMAGE, 'imagePullPolicy': 'IfNotPresent',

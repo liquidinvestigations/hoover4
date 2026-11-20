@@ -260,10 +260,16 @@ python3 k3s/zones/zone.py delete zone-x
 - A zone with `stores = site` adds its tenant to the [shared stores](#share-the-hoover-stores-of-a-site) and its namespace to the [Temporal of the site](#share-temporal-in-a-site) at create, and `zone.py delete` removes both before it deletes the namespaces.
 - The Hoover installation of a zone has the name of the zone. Its storage names come from the zone id: for `zone-x` the ClickHouse database prefix `zone_x`, the Manticore table prefix `zone_x_`, the system bucket `zone-x-system` and the collection bucket prefix `zone-x-c-`. No file stores them.
 - `zone.py apply` installs openDesk in waves of its sub-helmfiles (`OPENDESK_WAVES`): the migrations, then the services,
-  then Nubus, then the ten applications at the same time, then the OpenProject bootstrap and the last migrations.
+  then Nubus, then the applications at the same time, then the last migrations. The
+  [application profile](#run-the-supported-applications) gives the class of each entry. An entry without a retained
+  release runs only while the zone still has one of its releases, and then uninstalls them.
   An entry without an installed release uses `helmfile sync`, so a new zone has no diff pass. A failed entry runs once
   more on its own, and the log names the cause (`helmfile-retry`). An openDesk release with another entry list stops
   the install until `OPENDESK_WAVES` names its entries.
+- The zone definitions `zone-definitions.json` of the state folder hold the intended zones: for each zone the switch
+  `enabled`, the store layout, the extra datasets and the tier lists, without credentials or state. `zone.py apply` adds
+  a new zone and `zone.py delete` removes it. [deploy-k3s reset](#reset-a-site) keeps the file, and the next
+  `deploy-k3s up` creates each defined zone that the zone state lacks.
 - The waves and the steps that set the login flow, the users and the application state run only after a change.
   `zone.py` compares a digest of their inputs with the record `zones/<zone>/opendesk-applied.json` of the state
   folder, which the last complete run of the zone wrote. It also compares the Helm releases of the zone namespace.
@@ -288,13 +294,36 @@ python3 k3s/zones/zone.py delete zone-x
 - `deploy-k3s up` applies each zone of the zone state again, after the platform steps. It runs at most
   `vars.deploy.parallel_zones` zone steps at the same time (default 2).
 
+### Run the supported applications.
+
+A zone runs Hoover, Nextcloud with document editing in Collabora, XWiki and Jitsi with the shared JVB and coturn,
+with the identity stack, the portal and the stores that they need. Notes, Element and Matrix chat with Synapse, the
+Matrix authentication service, the Matrix widgets and LiveKit, OpenProject and CryptPad are retired.
+[zones/applications.py](zones/applications.py) holds this profile.
+
+- It gives the openDesk values `apps.<name>.enabled` of every zone, and the class of each entry, release and image of
+  the pinned openDesk release: `retained`, `retired` or `off` (mail, antivirus and the enterprise parts). An entry,
+  release or image without a class stops `zone.py apply` and the site placement with its name, so a new openDesk
+  release needs a class for each new part first.
+- The post-renderer refuses a render that holds a workload or a Job of a retired application.
+- The operator settings `app.<name>` exist only for `nextcloud`, `collabora`, `jitsi`, `xwiki` and `hoover`. A saved
+  revision of an earlier version can name `app.notes`, `app.element`, `app.openproject` or `app.cryptpad`. Such a
+  value has no effect, and a new save of one is refused.
+- The profile is an input of the openDesk waves of each zone and of the image pre-pull, so a change of it runs the
+  waves again.
+- A zone of an earlier version loses its retired releases at its next apply, because helmfile uninstalls the releases
+  that the values turn off. Its retired databases, buckets and volumes stay until `zone.py delete` or
+  [deploy-k3s reset](#reset-a-site).
+- A restore of a zone copy of an earlier version leaves out the Secrets, claims, buckets, database dumps and replica
+  counts of the retired applications and names them in its output (see [Back up and restore](#back-up-and-restore)).
+
 ### Name the zone hosts.
 
 Each zone host has one label below the domain, `<zone>-<app>.<domain>` ([config.py](config.py) `zone_host()`). An example is `zone-x-portal.example.org`.
 The certificate of `*.<domain>` and the DNS record of `*.<domain>` cover every zone, so a zone create or delete changes no certificate, no DNS record and no frontend file.
 
 - The openDesk values of a zone set `global.domain` to the domain and each `global.hosts` entry to `<zone>-<default host>` ([zones/zones.py](zones/zones.py)). The home chart of openDesk serves `global.domain` itself, so no zone installs it.
-- The mail domain and the Matrix server name of a zone stay `<zone>.<domain>`. The zone domain serves the Matrix well-known files.
+- The mail domain and the Matrix domain of the openDesk values of a zone stay `<zone>.<domain>`.
 - The intercom service of a zone answers the cross-origin requests of the hosts of its own zone only.
 - The gate of a zone signs in at `<zone>-auth.<domain>` ([zones/gate.py](zones/gate.py)). Its cookie has the domain `.<domain>` and the name `_hoover_gate_<zone>`.
   One sign-in opens every host of the zone. The gate of another zone does not accept the cookie.
@@ -330,7 +359,7 @@ objects outside them:
 | `shared.py grow` | the claims of the shared stores in `hoover-stores` grow with the zone count | None. The claim template and the pods stay. |
 | `creds.py`, `setup.py`, `shared.py remove` | the tenant of the zone in the shared stores: ClickHouse and Manticore users and databases, Garage keys and buckets, the Temporal namespace, the Secrets `hoover-stores` and `garage-tenants` | None. The stores apply these changes while they run. |
 | Ingress objects of the zone | the routes of the ingress controller | None. The controller reloads its configuration and keeps its pod. |
-| Step `calls` of the zone runner ([platform/calls/install-calls.py](platform/calls/install-calls.py)) | the configuration of coturn, LiveKit and the JVB, which holds each zone | The three call services restart, and the calls of every zone end. |
+| Step `calls` of the zone runner ([platform/calls/install-calls.py](platform/calls/install-calls.py)) | the configuration of coturn and the JVB, which holds each zone | The two call services restart, and the calls of every zone end. |
 | Step `placement` of `up` | the ConfigMap `kube-system/hoover-placement` and the CPU requests of the running pods | A new CPU scale factor resizes the pods of every zone in place, without a restart. A zone operation of the portal does not run this step. |
 
 A zone backup reads the zone and stops no pod of any zone.
@@ -347,15 +376,12 @@ and then at each time of the CronJob schedule, in UTC.
 | Nextcloud background jobs (`cron.php`) | sidecar `cron` in the pod of `opendesk-nextcloud-aio` | 5 minutes |
 | UDM license cache | container `license-cache` of the Deployment `ums-udm-rest-api-periodic` | 1 hour |
 | UDM blocklist cleanup | container `blocklist-cleanup` of the Deployment `ums-udm-rest-api-periodic` | 1 day, at 08:00 |
-| Matrix media cleanup | Deployment `opendesk-element-customization-media-cleanup` | 1 hour |
 
 - Each run writes the line `periodic task <name>: exit <code> after <seconds> s` into the log of its container.
   A failed run does not stop the loop. It repeats after 60 s, at most 5 times, unless the next time of the schedule
   comes first. Read the runs with `kubectl -n <zone> logs deployment/opendesk-nextcloud-aio -c cron`.
 - A sidecar has its own copy of each volume of the CronJob, so it shares no empty folder with the other containers.
 - The memory request of the container is the peak of one run. The pod requests its measured peak plus its sidecars.
-- The media cleanup runs `kubectl exec` in the Synapse media pod with its own service account, so it has its own
-  Deployment.
 - The two UDM tasks share the Deployment `ums-udm-rest-api-periodic`. As sidecars, each change of a task restarted the
   UDM REST API, and the provisioning transformer then restarted too. The UDM REST API keeps `maxSurge: 0`
   (`NO_SURGE`), because its second pod found no node on the full test site.
@@ -433,6 +459,7 @@ k3s/deploy-k3s down --site <file> --target all
 k3s/deploy-k3s up --site <file> --target all --start
 k3s/deploy-k3s status --site <file>
 k3s/deploy-k3s measure-speed --site <file> --target <node>   # see "Measure the node speed"
+k3s/deploy-k3s reset --site <file> --target all             # see "Reset a site"
 ```
 
 - `deploy-k3s` computes a digest of the inputs of [images/operator/](images/operator) and of [ansible/requirements.yml](ansible/requirements.yml), and builds the image `localhost/hoover4-operator:<digest>` when it is missing.
@@ -509,6 +536,73 @@ Every k3s server runs embedded etcd (`cluster-init`), also on a site with one no
 A server that still runs SQLite converts to etcd at its next `root` step. The installer first stops k3s, copies the datastore, the token and the configuration into `/var/lib/hoover4-recovery/` with `SHA256SUMS`, and reads the copy again.
 After each start of the server, the installer verifies etcd with a snapshot. A host that already belongs to a cluster keeps its token: a staged token with another secret stops the installer before any change.
 
+## Reset a site.
+
+`deploy-k3s reset` erases every zone of a site: the data of its applications, its accounts and sessions, its
+credentials, its volumes, its managed backups and the etcd snapshots that hold its objects. It also removes the images
+of the retired applications from the nodes and from the site registry. The site services, the site credentials, the
+shared stores with their other tenants, the read-only dataset folders and the zone definitions stay. The next
+`deploy-k3s up` creates the defined zones again with new data, new credentials and new accounts.
+
+1. Check the site and the zones of the reset:
+
+   ```sh
+   k3s/deploy-k3s check --site <file> --target all
+   k3s/deploy-k3s status --site <file>
+   ```
+
+2. Reset the site. The command prints the record id, the zones and the steps first.
+
+   ```sh
+   k3s/deploy-k3s reset --site <file> --target all
+   ```
+
+3. When the reset stops, fix the cause that the record names, then continue it:
+
+   ```sh
+   k3s/deploy-k3s status --site <file> <record>
+   k3s/deploy-k3s reset --site <file> --resume <record>
+   ```
+
+4. Create the zones again:
+
+   ```sh
+   k3s/deploy-k3s up --site <file> --target all
+   ```
+
+The reset runs these steps ([driver/reset.py](driver/reset.py)):
+
+| Step | Result |
+|---|---|
+| `reset:inventory` | Adds each zone of the zone state to `zone-definitions.json`. Records the zones, their namespaces, volumes, logical volumes, upload folders, the backup destination and the images of each node. The record holds names and identifiers only. |
+| `reset:suspend` | Stops the operator portal (the runner of the backups, Apply and zone operations), removes the Ingresses of the zones, and scales the zones and the processing pools to zero. Waits until no pod of them runs. |
+| `reset:zone:<zone>` | Runs `zone.py delete`: the tenant in ClickHouse, Garage, Manticore, Temporal and PostgreSQL, the namespaces with their claims, the secrets and the zone state entry. |
+| `reset:storage` | Removes each recorded volume that remains, also a volume with the reclaim policy `Retain`, and checks the volume groups of the nodes with `lvs`. |
+| `reset:data` | Empties the upload folder of each zone on its data node. The `testdata` folder and the extra datasets stay. |
+| `reset:backups` | Removes the zone, platform and staging copies of the backup destination and their state, and replaces the etcd snapshots with one new snapshot. |
+| `reset:state` | Removes the zone user passwords (`site/zone-users`) and the local copies of the zone files. |
+| `reset:images` | Removes the retired images of each node and of the site registry ([images/reclaim.py](images/reclaim.py)). |
+| `reset:verify` | Checks each backend again. A remaining object fails the step with its name. |
+
+- While a reset is incomplete, the site lock keeps a reset marker ([oplock.py](oplock.py)), also after a stop of the
+  command. `up`, `down`, the settings Apply, the zone operations, the backups, the restores and the Compose import then
+  stop with the record id of the reset. Only `reset --resume` runs.
+- A step checks the current state of each recorded object, so a step that stopped in part runs again. A node that does
+  not start the command pod in 180 seconds fails the step with its name. Start the node, then resume.
+- A complete reset removes the marker, starts the operator portal again and raises the installation generation in
+  `operator/installation.json`. A resume of a record of an earlier generation, of `reset`, `up` or `down`, is refused.
+- The node commands of the reset run in a short privileged pod in `kube-system` on the node
+  ([driver/nodepod.py](driver/nodepod.py)), so the reset needs the admin kubeconfig and no sudo rule on a node.
+- An image is retired when each of its references names a retired repository. An image that also has a retained
+  reference keeps it and loses only the retired references, so a shared digest and its layers stay. An image that a
+  container uses stays, and the step result names it. The result of `reset:images` gives for each node the used bytes
+  of `/var/lib/rancher` and the bytes of the containerd content store before and after, and the sizes that crictl
+  reports for the removed images. crictl counts a shared layer in each image, so the change of the content store gives
+  the reclaimed space.
+- The reset changes no zone definition. Edit `zone-definitions.json` of the state folder before the next `up` to
+  create other zones. A definition with the store layout `zone` of an earlier version stops `zone.py apply`, because a
+  new zone uses `site` or `local`.
+
 ## Adopt a running cluster.
 
 1. `tools/adopt-cluster.py inventory` writes the nodes, namespaces, claims, Secret names, images and storage identities of the cluster into `<operator state>/adoption/` and lists each difference from the site file.
@@ -576,18 +670,15 @@ Each store keeps one copy of each part of its data. No store has replication or 
 
 A zone with `stores = site` keeps the objects of its openDesk applications in the shared Garage, and runs no SeaweedFS ([zones/objectstore.py](zones/objectstore.py)). A zone of the layout `local` keeps SeaweedFS in its namespace.
 
-- Each openDesk object store of the zone has the bucket `<zone>-opendesk-<bucket>`: `migrations`, `nextcloud`, `notes`, `ums` (Nubus), `openproject`, `openxchange` and `synapse`.
+- Each openDesk object store of the zone has the bucket `<zone>-opendesk-<bucket>`: `migrations`, `nextcloud`, `ums` (Nubus) and `openxchange`. A zone of an earlier version can also hold the buckets `notes`, `openproject` and `synapse` of the retired applications. `zone.py delete` and `deploy-k3s reset` remove every bucket with the prefix of the zone.
 - The key `<zone>-opendesk` reads and writes these buckets only. It has a local alias with the openDesk name of each bucket, for example `nextcloud`, so the applications keep their bucket names. Nextcloud names its root storage by the bucket name. The key cannot create a bucket, change a bucket setting, or reach a Hoover bucket or a bucket of another zone. Its id and secret are `objectstore_key` of the zone secrets in the secret store, and `zone.py apply` imports it into Garage.
-- The values of the zone name the object storage host `<zone>-objectstorage.<domain>`, the key and the Garage region `us-east-1`. Garage refuses a request that is signed for another region. The openDesk Notes template passes no region to its chart, so the zone gives Notes the region in the customization file `zones/notes-s3-region.yaml` of the state folder. Without it Notes signs with an empty region, and Garage refuses each read of a Notes attachment.
-- The applications and the browsers of the users reach Garage at the object storage host, through the HTTPS frontend and the Ingress `opendesk-<zone>` in `hoover-stores`. The Ingress sends only the paths of the zone buckets and the bucket list (`/`) to Garage. Garage answers the bucket list with the buckets of the key. It answers the CORS requests of the OpenProject pages of the zone, because a Garage bucket without a CORS setting refuses them.
+- The values of the zone name the object storage host `<zone>-objectstorage.<domain>`, the key and the Garage region `us-east-1`. Garage refuses a request that is signed for another region.
+- The applications and the browsers of the users reach Garage at the object storage host, through the HTTPS frontend and the Ingress `opendesk-<zone>` in `hoover-stores`. The Ingress sends only the paths of the zone buckets and the bucket list (`/`) to Garage. Garage answers the bucket list with the buckets of the key.
 - The S3 features that each application uses, checked against Garage 2.3.0:
 
   | Application | Bucket | Features | Garage |
   |---|---|---|---|
   | Nextcloud (primary storage) | `nextcloud` | GET, PUT, DELETE, multipart upload, copy, head, list | supported |
-  | OpenProject (attachments, fog) | `openproject` | PUT with the streaming signature, presigned GET from the browser | supported. The direct upload from the browser (presigned POST) is off in this OpenProject configuration. |
-  | Synapse (media store) | `synapse` | GET, PUT, DELETE, head. A customer key (SSE-C) when the zone sets one. | supported, SSE-C included |
-  | Notes | `notes` | GET, PUT, DELETE, signed GET through the Notes frontend | supported |
   | Nubus portal | `ums` | GET, PUT, list | supported |
   | openDesk migrations | `migrations` | GET, PUT, list | supported |
   | Open-Xchange | `openxchange` | GET, PUT, DELETE, multipart upload | supported. The zones do not install Open-Xchange. |
@@ -611,8 +702,8 @@ A zone with `stores = site` keeps the databases of its openDesk applications on 
 
 - The server runs the PostgreSQL major version of the openDesk release (15) in Kata on a block volume of a fast tier. Its admin password is `postgresql-admin` of the Secret `hoover-stores`. The operator tools connect as the admin through the local socket of the pod and need no password.
 - Each PostgreSQL database of the openDesk release has the database `<prefix>_<name>` and the user `<prefix>_<user>` of the zone, for example `zone_a_nextcloud` and `zone_a_nextcloud_user`. The user owns its database and has the connection limit of the release. It cannot create a database or a role. The passwords are `postgresql` of the zone secrets in the secret store, and `zone.py apply` creates the users and the databases. The values of the zone name the server `postgresql.hoover-stores.svc.cluster.local`, the names and the passwords, and turn the openDesk PostgreSQL off.
-- No database of a zone, and neither `postgres` nor `template1`, admits a connection of `PUBLIC`. A user connects only to its own database. In each zone database no user reads `pg_database`, `pg_stat_database`, `pg_stat_database_conflicts`, `pg_roles`, `pg_user`, `pg_group`, `pg_auth_members`, `pg_stat_activity` or `pg_shdescription`. Synapse reads the collation of its database from `pg_database` at its start, so the Synapse user reads that catalog in its own database and can see the database names.
-- The extensions of the openDesk databases are `pg_trgm`, `unaccent`, `fuzzystrmatch` and `btree_gist` (Notes, OpenProject and the Matrix authentication service). PostgreSQL 15 lets the owner of a database create them. Synapse needs the collation `C`, and XWiki the encoding `UNICODE`, as in the release. No application needs another server setting. The server allows 1000 connections, and a zone opens about 40.
+- No database of a zone, and neither `postgres` nor `template1`, admits a connection of `PUBLIC`. A user connects only to its own database. In each zone database no user reads `pg_database`, `pg_stat_database`, `pg_stat_database_conflicts`, `pg_roles`, `pg_user`, `pg_group`, `pg_auth_members`, `pg_stat_activity` or `pg_shdescription`.
+- XWiki needs the encoding `UNICODE`, as in the release. The databases of the retired applications (Notes, OpenProject, Synapse and the Matrix authentication service) are not created. A zone of an earlier version keeps them until `zone.py delete` or `deploy-k3s reset` removes every database with the prefix of the zone. No application needs another server setting. The server allows 1000 connections, and a zone opens about 40.
 - A zone of an earlier version runs PostgreSQL and has no value `postgresql` in the zone state. `zone.py apply` with the admin kubeconfig moves it, and `deploy-k3s up` runs that apply for each zone:
   1. The users of the zone PostgreSQL lose their login, and their sessions end. No application changes a row from here. The switch starts here.
   2. Each database is copied with `pg_dump` and `pg_restore` as its new user, and the row count of each table must be equal on both servers. Else the users get their login again, the applications use the zone PostgreSQL again, and the apply stops with the counts.
@@ -915,7 +1006,7 @@ The step `secret-store` of `deploy-k3s up` installs it after the step `cluster`,
 
   | Path | Secrets |
   |---|---|
-  | `site/calls` | the JVB password and the LiveKit secrets |
+  | `site/calls` | the JVB password, and the unused LiveKit secrets of an earlier version |
   | `site/zone-users` | the password of each user of [zones/zone-users.json](zones/zone-users.json) |
   | `site/stores`, `site/temporal`, `site/gpu` | the Secret `hoover-stores` of the shared stores, the Temporal signing key, the GPU key |
   | `site/operator-login`, `site/registry` | the operator login and the registry push password |
@@ -1042,13 +1133,15 @@ The installation has one GPU key. The operator step generates it once and keeps 
 
 ## Place the call services.
 
-The JVB, LiveKit and coturn run on the first node with the role `calls`, else on the first public node.
-A site without a zone runs only coturn, because only a zone uses LiveKit, and the JVB copies its template from a zone.
-A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit), UDP and TCP 3478 (TURN).
+The JVB and coturn run on the first node with the role `calls`, else on the first public node. They serve the Jitsi
+of every zone. The LiveKit SFU of the retired Matrix calls is not installed, and the step `calls` removes the LiveKit
+objects of an earlier version.
+A site without a zone runs only coturn, because the JVB copies its template from a zone.
+A media node with a public address advertises it, and the clients send their media straight to it: UDP 10000 (JVB), UDP and TCP 3478 (TURN).
 coturn relays UDP only, so a TURN user reaches no store of a zone, which all serve TCP.
-It relays to the pods of the media node and, on a media node with a public address, to that address for a client that can only use TURN.
+It relays to the pods of the media node. On a media node with a public address, coturn may also name that address as a peer.
 The pods of the other nodes and the bridge address of the media node are no peers ([platform/calls/turn_peers.py](platform/calls/turn_peers.py)).
-The chain `coturn_peers` of [coturn-peers.sh](ansible/roles/hoover4_public_firewall/files/coturn-peers.sh), in its own table, limits the public address to the LiveKit media ports for the coturn user, so a TURN user reaches no other port of the node.
+The chain `coturn_peers` of [coturn-peers.sh](ansible/roles/hoover4_public_firewall/files/coturn-peers.sh), in its own table, drops each packet of the coturn user to the public address, so a TURN user reaches no port of the node.
 The steps `operator` and `calls` of `deploy-k3s up` check that chain with a probe pod in the host network of the media node (`install-calls.py --probe`).
 They record the result in the ConfigMap `coturn-peer-check` of `calls`.
 The pod admission policy of `calls` refuses a host network pod other than coturn, so the probe pod runs in `kube-system` with the admin kubeconfig.
@@ -1060,13 +1153,10 @@ A zone create or delete restarts no call service, so the calls of the other zone
 
 | Service | Zone keys | Change of a zone |
 |---|---|---|
-| coturn | one TURN secret for each zone, and one for LiveKit, in the SQLite database of coturn | The Secret `coturn-secrets` lists the secrets. The sidecar `secrets` copies them into the database when the mounted file changes. coturn reads the secrets from the database at each request. |
-| LiveKit | one key `hoover-calls` for all zones | Nothing changes in LiveKit. LiveKit reads its keys only at start, so a key for each zone would restart it. |
+| coturn | one TURN secret for each zone, in the SQLite database of coturn | The Secret `coturn-secrets` lists the secrets. The sidecar `secrets` copies them into the database when the mounted file changes. coturn reads the secrets from the database at each request. |
 | JVB | one XMPP password for all zones | The Secret `jvb-zones` lists the Prosody of each zone. The sidecar `zones` adds and removes the XMPP connection of each zone through the REST API of the bridge (`/colibri/muc-client/add` and `remove`). It adds all connections again when the bridge restarts. |
 
 The kubelet updates a mounted Secret within about one minute, so a new zone reaches coturn and the JVB in that time.
-The shared LiveKit key is an access boundary change: the token service (`lk-jwt`) of each zone holds the key, so the
-service of one zone can sign a token for a room of another zone. The Matrix room of a call names the LiveKit room.
 The step `calls`, also in a portal zone operation, adds the public address only when that record names the media node and its address.
 Without the record, the step stops and names `deploy-k3s up --steps operator`.
 The JVB port is not in that rule, so a Jitsi client that can only use TURN reaches the JVB through its pod address only.

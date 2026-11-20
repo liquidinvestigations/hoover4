@@ -218,3 +218,10 @@ def test_the_registry_names_only_retired_repositories():
     assert reclaim.registry_repositories(['hoover/hoover-website', 'hoover/nextcloud-ai', 'mirror/livekit/livekit-server'],
                                          set()) == []
     assert reclaim.registry_repositories(['livekit/livekit-server', 'hoover/operator'], set()) == ['livekit/livekit-server']
+
+
+def test_the_removal_output_gives_the_used_and_the_content_bytes():
+    text = 'removed\n' + reclaim.SPLIT + '\n17210154496\n' + reclaim.SPLIT + '\n1234\n'
+    assert reclaim.parse_removal(text) == ('removed\n', 17210154496, 1234)
+    with pytest.raises(ValueError):
+        reclaim.parse_removal('no marks')

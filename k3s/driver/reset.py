@@ -422,11 +422,11 @@ def replace_snapshots(ctx):
     """Save one etcd snapshot of the control plane without zone objects, then delete the older snapshots."""
     node = ctx.site.control_plane
     name = f'reset-{ctx.record["id"][:15].lower()}'
-    out = nodepod.run(ctx.kubeconfig, node, f'k3s etcd-snapshot save --name {name} >/dev/null 2>&1; ls {SNAPSHOTS}')
-    files = out.split()
+    saved = nodepod.run(ctx.kubeconfig, node, f'k3s etcd-snapshot save --name {name} 2>&1 | tail -1', check=False)
+    files = nodepod.run(ctx.kubeconfig, node, f'ls {SNAPSHOTS}').split()
     keep = [f for f in files if f.startswith(f'{name}-')]
     if not keep:
-        raise Incomplete(f'the etcd snapshot {name} of {node} is missing: {out.strip()[-300:]}')
+        raise Incomplete(f'the etcd snapshot {name} of {node} is missing: {saved.strip()[-300:]}')
     older = [f for f in files if f not in keep]
     if older:
         nodepod.run(ctx.kubeconfig, node, f'k3s etcd-snapshot delete {" ".join(older)} >/dev/null 2>&1; true')

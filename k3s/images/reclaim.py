@@ -55,6 +55,15 @@ def parse_node(text):
     return images, used, numbers[0], numbers[1]
 
 
+def parse_removal(text):
+    """(report, used bytes, content bytes) of the output of the removal script and MEASURE: the report, then the two
+    numbers, each part after a split mark."""
+    parts = text.split(SPLIT)
+    if len(parts) != 3:
+        raise ValueError(f'the removal output has {len(parts) - 1} split marks, not 2')
+    return parts[0], int(parts[1].strip() or 0), int(parts[2].strip() or 0)
+
+
 def classify(images, used, retired_repositories, retained_repositories):
     """{'remove': [...], 'aliases': [...], 'in_use': [...], 'kept': n} of the images of a node.
 
@@ -144,10 +153,7 @@ def reclaim(kubeconfig, nodes, retired, retained):
             images, used, used_before, content_before = parse_node(nodepod.run(kubeconfig, node, INVENTORY))
             found = classify(images, used, set(retired), set(retained))
             text = nodepod.run(kubeconfig, node, remove_script(found) + f'\necho {SPLIT}\n' + MEASURE)
-            report, measured = text.rsplit(SPLIT, 1)[0], text.rsplit(SPLIT, 1)[1]
-            # MEASURE prints two numbers with the split mark between them.
-            numbers = [int(x) for x in re.findall(r'\d+', measured.replace(SPLIT, ' '))][:2]
-            used_after, content_after = (numbers + [0, 0])[:2]
+            report, used_after, content_after = parse_removal(text)
             failed = re.findall(r'failed (sha256:[0-9a-f]+)', report)
             out['nodes'][node] = {
                 'removed_images': len(found['remove']) - len(failed),
