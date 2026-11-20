@@ -306,6 +306,9 @@ Matrix authentication service, the Matrix widgets and LiveKit, OpenProject and C
   release or image without a class stops `zone.py apply` and the site placement with its name, so a new openDesk
   release needs a class for each new part first.
 - The post-renderer refuses a render that holds a workload or a Job of a retired application.
+- The openDesk secrets release creates a Secret for each application of openDesk. The post-renderer leaves out the
+  Secrets of the retired applications, so the next apply of a zone deletes them. `intercom-service` reads the
+  Synapse token `matrix-intercom-synapse-as-token`, so that Secret stays.
 - The operator settings `app.<name>` exist only for `nextcloud`, `collabora`, `jitsi`, `xwiki` and `hoover`. A saved
   revision of an earlier version can name `app.notes`, `app.element`, `app.openproject` or `app.cryptpad`. Such a
   value has no effect, and a new save of one is refused.
