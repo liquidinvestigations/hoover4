@@ -27,8 +27,8 @@ TOOL_DESCRIPTIONS = json.loads((FIXTURES / "tool_descriptions.json").read_text()
 #: The size budget of the system text of every profile. The request rules that replace the
 #: chat classifier added about 700 characters. The tool lines of the `hoover` pack and the
 #: skills `earlier_work` and `using_hoover` added about 700 more. The rules of the `report`
-#: skill for early drafts and `finish_with_report` added about 750 more.
-MAX_PROMPT_CHARS = 14_600
+#: skill for early drafts, checklist updates and `finish_with_report` added about 900 more.
+MAX_PROMPT_CHARS = 14_800
 
 #: Any backticked snake_case word in a rendered prompt.
 BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
