@@ -25,6 +25,9 @@ use crate::tr;
 
 const REFERENCE_INPUT_JS: Asset = asset!("/assets/reference-input.js");
 
+/// The number of the next editor id. The server render and the browser count separately,
+/// so a hydrated element can hold the id of the server. `onmounted` writes the browser id
+/// on the element, which the channel script waits for.
 static NEXT_INPUT: AtomicU64 = AtomicU64::new(1);
 
 /// The script of the channel. It waits for the script and the element, attaches the editor,
@@ -228,9 +231,19 @@ pub fn ReferenceInput(
     }));
 
     let editable = if disabled { "false" } else { "true" };
+    let mounted_id = id.clone();
     rsx! {
         div {
             id: "{id}",
+            // A hydrated element keeps the id of the server render, and the diff does not
+            // rewrite it. The browser id goes on the element here.
+            onmounted: move |event| {
+                if let Some(element) = event.data().downcast::<web_sys::Element>() {
+                    if let Err(e) = element.set_attribute("id", &mounted_id) {
+                        dioxus::logger::tracing::warn!("reference input id not set: {e:?}");
+                    }
+                }
+            },
             class: "x-ref-input {class}",
             style: "{style}",
             role: "textbox",
