@@ -109,6 +109,9 @@ class Records:
         with self.guard:
             entry = self.step(record, name)
             entry['state'] = state
+            if state == 'done':
+                # The error of an earlier attempt of the step does not belong to its result.
+                entry.pop('error', None)
             entry[{'running': 'started'}.get(state, 'finished')] = now()
             entry.update(fields)
             self.save(record)

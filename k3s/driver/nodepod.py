@@ -3,8 +3,9 @@
 The pod runs in kube-system on the named node, in the host network, with the root folder of the host mounted at /host, and runs the command
 with chroot /host, so the command uses the tools of the host (k3s crictl, k3s ctr, lvs, k3s etcd-snapshot). It needs
 the admin kubeconfig and no SSH access or sudo rule on the node. deploy-k3s reset (reset.py) uses it.
-A node that does not start the pod within START_TIMEOUT seconds, for example a stopped node, raises Unreachable. The
-pod is deleted after each command.
+A node that is not Ready raises Unreachable before any pod. A pod that does not run within START_TIMEOUT seconds also
+raises Unreachable, because a node that stops after the check leaves its pod Pending or Unknown. The pod is deleted
+after each command.
 """
 import json
 import subprocess
@@ -53,6 +54,10 @@ def run(kubeconfig, node, script, timeout=900, check=True):
     """Run script as root on node. Return its output (stdout and stderr of the pod). A failed script raises Failed
     with check, else the output ends with the line 'exit <code>'."""
     name = f'node-command-{node}-{uuid.uuid4().hex[:8]}'[:63]
+    found = kubectl(kubeconfig, 'get', 'node', node, '-o', 'json', check=False)
+    conditions = json.loads(found.stdout).get('status', {}).get('conditions', []) if found.returncode == 0 else []
+    if not any(c.get('type') == 'Ready' and c.get('status') == 'True' for c in conditions):
+        raise Unreachable(f'the node {node} is not Ready')
     kubectl(kubeconfig, 'apply', '-f', '-', input=json.dumps(pod(name, node, script)))
     try:
         started = time.monotonic()
@@ -63,7 +68,7 @@ def run(kubeconfig, node, script, timeout=900, check=True):
             if phase in ('Succeeded', 'Failed'):
                 break
             waited = time.monotonic() - started
-            if phase in ('', 'Pending') and waited > START_TIMEOUT:
+            if phase != 'Running' and waited > START_TIMEOUT:
                 raise Unreachable(f'the node {node} did not start the command pod in {START_TIMEOUT} s')
             if waited > timeout:
                 raise Unreachable(f'the command on {node} did not end in {timeout} s')

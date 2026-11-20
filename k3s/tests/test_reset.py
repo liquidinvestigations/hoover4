@@ -225,3 +225,17 @@ def test_the_removal_output_gives_the_used_and_the_content_bytes():
     assert reclaim.parse_removal(text) == ('removed\n', 17210154496, 1234)
     with pytest.raises(ValueError):
         reclaim.parse_removal('no marks')
+
+
+def test_a_node_that_is_not_ready_gets_no_command_pod(monkeypatch):
+    import nodepod
+    calls = []
+
+    def kubectl(kubeconfig, *args, input=None, check=True):
+        calls.append(args[:2])
+        node = {'status': {'conditions': [{'type': 'Ready', 'status': 'Unknown'}]}}
+        return subprocess.CompletedProcess(args, 0, json.dumps(node), '')
+    monkeypatch.setattr(nodepod, 'kubectl', kubectl)
+    with pytest.raises(nodepod.Unreachable, match='muc is not Ready'):
+        nodepod.run('/kubeconfig', 'muc', 'true')
+    assert calls == [('get', 'node')]
