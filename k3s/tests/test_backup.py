@@ -793,19 +793,16 @@ def test_a_claim_is_read_again_while_its_lmdb_meta_pages_change(tmp_path, monkey
         backups.tar_out('zone-a', 'pod', None, '/data', tmp_path / 'out.tar', settled=lambda: next(changing))
 
 
-def test_the_object_store_key_uses_the_admin_identity_and_the_customer_keys(monkeypatch):
-    import base64
+def test_the_object_store_key_uses_the_admin_identity_and_no_customer_key(monkeypatch):
     backups = backups_module()
     config = {'identities': [{'name': 'nextcloud', 'credentials': [{'accessKey': 'n', 'secretKey': 'ns'}]},
                              {'name': 'admin', 'credentials': [{'accessKey': 'a', 'secretKey': 'as'}]}]}
+    # The Synapse customer key of an earlier version is not read: Element is retired.
     secrets = {('seaweedfs-config', 'seaweedfs_s3_config'): json.dumps(config).encode(),
                ('synapse-s3-encryption-customer-key', 's3EncryptionCustomerKey'): b'k' * 32}
     monkeypatch.setattr(backups, 'secret_item', lambda ns, name, item: secrets.get((name, item), b''))
-    first = backups.object_store_key('zone-a', {'endpoint': 'e:8333'})
-    assert first == {'endpoint': 'e:8333', 'access_key': 'a', 'secret_key': 'as',
-                     'sse_c': {'synapse': base64.b64encode(b'k' * 32).decode()}}
-    secrets[('synapse-s3-encryption-customer-key', 's3EncryptionCustomerKey')] = b''
-    assert backups.object_store_key('zone-a', {'endpoint': 'e:8333'})['sse_c'] == {}
+    assert backups.object_store_key('zone-a', {'endpoint': 'e:8333'}) == {'endpoint': 'e:8333', 'access_key': 'a',
+                                                                          'secret_key': 'as', 'sse_c': {}}
 
 
 def test_the_restore_of_an_online_copy_puts_the_objects_and_reads_its_replicas(tmp_path, monkeypatch):

@@ -2,7 +2,7 @@
 # Admit only the allowed ports on the public interface of a public or calls node. The role hoover4_public_firewall runs
 # it as root, only on a node whose public interface does not carry the node address of the cluster.
 # Allowed: SSH, HTTP and HTTPS (TCP and UDP 443) of the frontend, TURN (UDP and TCP 3478) and the direct media ports of
-# the call services (UDP 10000 of the JVB, TCP 7881 and UDP 7882 of LiveKit), and the WireGuard ports of the node.
+# the call services (UDP 10000 of the JVB), and the WireGuard ports of the node.
 # ../../../../platform/calls/public_endpoints.py firewall prints the ports of each node. Answers to connections of the
 # host and ICMP also pass. The table drops every other packet that enters on the public interface. The drop rules of
 # public-guard.sh stay, and its table runs first. coturn-peers.sh holds the rule of the coturn user in its own table.
@@ -45,8 +45,7 @@ table inet hoover_public_firewall {
     tcp dport { 22, 80, 443 } accept comment "SSH and the HTTPS frontend"
     udp dport 443 accept comment "HTTP/3 of the frontend"
     meta l4proto { tcp, udp } th dport 3478 accept comment "TURN of the call services"
-    udp dport { 7882, 10000 } accept comment "direct media of LiveKit and the JVB"
-    tcp dport 7881 accept comment "LiveKit media over TCP"
+    udp dport 10000 accept comment "direct media of the JVB"
 ${WIREGUARD}    counter drop
   }
 }

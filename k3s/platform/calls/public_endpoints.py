@@ -10,7 +10,7 @@ DNS: the names below the suffix that a browser or a call client uses, and the ad
 A node without a public address gets its node address, and the record is marked internal: a client outside the
 networks of the site cannot use it.
 Firewall: the ports that each public or calls node admits on its public interface. The media ports of the media node
-are UDP 10000 (JVB), TCP 7881 and UDP 7882 (LiveKit) and UDP and TCP 3478 (TURN).
+are UDP 10000 (JVB) and UDP and TCP 3478 (TURN).
 The switch public_firewall of each of these nodes installs ../../ansible/roles/hoover4_public_firewall, whose
 files/public-firewall.sh admits these ports on a separate public interface.
 Usage: public_endpoints.py dns|firewall|show [--site FILE]
@@ -28,8 +28,7 @@ import config as site_config  # noqa: E402
 
 FRONTEND_PORTS = [('tcp', 22, 'SSH'), ('tcp', 80, 'HTTP of the frontend'), ('tcp', 443, 'HTTPS of the frontend'),
                   ('udp', 443, 'HTTP/3 of the frontend')]
-MEDIA_PORTS = [('udp', 3478, 'TURN'), ('tcp', 3478, 'TURN over TCP'), ('udp', 10000, 'JVB media'),
-               ('tcp', 7881, 'LiveKit media over TCP'), ('udp', 7882, 'LiveKit media')]
+MEDIA_PORTS = [('udp', 3478, 'TURN'), ('tcp', 3478, 'TURN over TCP'), ('udp', 10000, 'JVB media')]
 
 
 def address(site, node):

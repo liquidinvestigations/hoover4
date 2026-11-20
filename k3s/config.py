@@ -1125,7 +1125,7 @@ def calls_node(site):
 def calls_settings(site):
     """The placement and the public media address of the call services (../platform/calls/install-calls.py).
 
-    A media node with a public address advertises it, so a client sends its media straight to the JVB and LiveKit of
+    A media node with a public address advertises it, so a client sends its media straight to the JVB of
     that node. A media node without one, such as the local node of a single-node site, advertises the pod addresses.
     """
     node = calls_node(site)

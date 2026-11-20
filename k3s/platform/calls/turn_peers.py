@@ -1,17 +1,17 @@
 """The peers that coturn may relay to, and the check of the host rule that limits the public peer.
 
 coturn relays UDP only (no-tcp-relay). Every store of a zone serves TCP, so a TURN user cannot reach a store through
-coturn. The UDP peers are the pod addresses of the media node, where LiveKit and the JVB run, and the public address of
-the media node when it has one. The pod address of the bridge cni0, the network address and the broadcast address of
+coturn. The UDP peers are the pod addresses of the media node, where the JVB runs, and the public address of the media
+node when it has one. The pod address of the bridge cni0, the network address and the broadcast address of
 the pod range of the node are no peers, so coturn does not relay to the node itself through the bridge. Every other
 address is denied, also the pods of the other nodes.
-A media node without a public address advertises the pod addresses of LiveKit and the JVB. The Jitsi bridge connection
-uses coturn to reach the JVB pod address (../../zones/postrender.py), also on a node with a public address.
-When the media node has a public address, LiveKit offers that address to the clients, so a client that can only use
-TURN needs coturn to relay to it. coturn can allow a peer address but not a port. The chain coturn_peers of
-../../ansible/roles/hoover4_public_firewall/files/public-firewall.sh on the media node therefore drops every packet of
-the coturn user, COTURN_UID, to the public address of the node, except to the LiveKit media ports. The hook of that
-chain runs before the DNAT of the LiveKit host ports, so it sees the public address.
+A media node without a public address advertises the pod address of the JVB. The Jitsi bridge connection uses coturn to
+reach the JVB pod address (../../zones/postrender.py), also on a node with a public address.
+The retired LiveKit SFU offered the public address to the clients, so coturn may relay to it. coturn can allow a peer
+address but not a port. The chain coturn_peers of
+../../ansible/roles/hoover4_public_firewall/files/coturn-peers.sh on the media node therefore drops every packet of
+the coturn user, COTURN_UID, to the public address of the node. The hook of that chain runs before the DNAT of the host
+ports, so it sees the public address.
 The calls step adds the public peer only after a probe pod on the media node shows the rule: in the host network, a
 connection of the coturn user to the public address on PROBE_PORT is dropped, and the same connection of another user
 reaches the port. The admin kubeconfig runs the probe and records its result (install-calls.py --probe). Without a
@@ -23,9 +23,6 @@ import ipaddress
 
 # The user id of the coturn process. No other process of the media node uses it. public-firewall.sh names the same value.
 COTURN_UID = 64981
-# The media ports that LiveKit publishes as host ports of the media node (install-calls.py).
-LIVEKIT_TCP = 7881
-LIVEKIT_UDP = 7882
 # The probe port: the kubelet listens on it on every address of every k3s node, and the chain coturn_peers drops it.
 PROBE_PORT = 10250
 # The user of the control connection of the probe.

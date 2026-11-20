@@ -94,13 +94,6 @@ def keycloak_admin(zone):
 def nextcloud_admin(zone):
  status,_,page=request(gated(zone),f'https://{zone}-files.{settings.SUFFIX}/ocs/v2.php/cloud/user?format=json',headers={**basic('nextcloud',secret(zone,'nextcloud-admin-password','password')),'OCS-APIRequest':'true'})
  return status==200 and '"id":"nextcloud"' in page.replace(' ',''),f'{status} password accepted by the Nextcloud API'
-def openproject_admin(zone):
- o=gated(zone);d=f'https://{zone}-projects.{settings.SUFFIX}'
- status,landing,page=request(o,d+'/login/internal')
- token=re.search(r'name="authenticity_token" value="([^"]+)"',page)
- if not token:return False,f'{status} no internal login form'
- status,landing,page=request(o,d+'/login',urllib.parse.urlencode({'authenticity_token':html.unescape(token.group(1)),'username':'admin','password':secret(zone,'openproject-admin-password','password')}).encode())
- return status==200 and '/login' not in landing,f'{status} {landing.split("?")[0]}'
 def collabora_admin(zone):
  user,password=secret(zone,'collabora-admin-password','username'),secret(zone,'collabora-admin-password','password')
  # The Nextcloud container has curl, and it reaches the Collabora Service from inside the zone.
@@ -123,13 +116,11 @@ for zone in args or list(zonestate.load()['zones']):
  users+=[(e['username'],PASSWORDS[e['username']]) for e in FIXTURE]
  for user,password in users:
   for app,url,host in [('portal',f'https://{zone}-portal.{settings.SUFFIX}/univention/oidc/?location=/univention/portal/',f'{zone}-portal.{settings.SUFFIX}'),
-   ('files',f'https://{zone}-files.{settings.SUFFIX}/login',f'{zone}-files.{settings.SUFFIX}'),('projects',f'https://{zone}-projects.{settings.SUFFIX}/login',f'{zone}-projects.{settings.SUFFIX}'),
-   ('wiki',f'https://{zone}-wiki.{settings.SUFFIX}/bin/view/Main/',f'{zone}-wiki.{settings.SUFFIX}'),('notes',f'https://{zone}-notes.{settings.SUFFIX}/api/v1.0/authenticate/',f'{zone}-notes.{settings.SUFFIX}'),
-   ('chat',f'https://{zone}-mas.{settings.SUFFIX}/login',f'{zone}-mas.{settings.SUFFIX}')]:
+   ('files',f'https://{zone}-files.{settings.SUFFIX}/login',f'{zone}-files.{settings.SUFFIX}'),
+   ('wiki',f'https://{zone}-wiki.{settings.SUFFIX}/bin/view/Main/',f'{zone}-wiki.{settings.SUFFIX}')]:
    check(f'{zone} {user} {app}',application(zone,user,password,url,host))
  check(f'{zone} Keycloak admin console',lambda:keycloak_admin(zone))
  check(f'{zone} Nextcloud internal admin',lambda:nextcloud_admin(zone))
- check(f'{zone} OpenProject internal admin',lambda:openproject_admin(zone))
  check(f'{zone} Collabora admin console',lambda:collabora_admin(zone))
  check(f'{zone} LDAP admin',lambda:ldap_admin(zone))
 print(f'{sum(results)} of {len(results)} logins passed')

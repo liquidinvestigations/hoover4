@@ -10,6 +10,7 @@ from conftest import K3S, REPO
 
 sys.path.insert(0, str(K3S / 'zones'))
 sys.path.insert(0, str(K3S / 'platform' / 'backups'))
+import applications  # noqa: E402
 import backups  # noqa: E402
 import config  # noqa: E402
 import hoover  # noqa: E402
@@ -36,7 +37,7 @@ def test_the_databases_are_the_postgresql_databases_of_the_release():
     text = release('helmfile/environments/default/database.yaml.gotmpl').split('databases:', 1)[1]
     found, options, limits = {}, {}, {}
     for key, body in re.findall(r'^  (\w+):\n((?:    .*\n|\n)+)', text, re.M):
-        if key == 'defaults' or 'type: "postgresql"' not in body:
+        if key == 'defaults' or 'type: "postgresql"' not in body or key in applications.RETIRED_DATABASES:
             continue
         found[key] = (re.search(r'^    name: "([^"]+)"', body, re.M).group(1), re.search(r'^    username: "([^"]+)"', body, re.M).group(1))
         extra = re.search(r'additionalParams: "([^"]+)"', body)
@@ -61,7 +62,7 @@ def test_the_server_uses_the_postgresql_image_of_the_release():
 
 
 def test_the_names_carry_the_zone_prefix_and_fit_the_name_limit():
-    assert postgresql.database_name('zone-a', 'synapse') == 'zone_a_matrix'
+    assert postgresql.database_name('zone-a', 'xwiki') == 'zone_a_xwiki'
     assert postgresql.user_name('zone-a', 'nextcloud') == 'zone_a_nextcloud_user'
     longest = 'zone-' + 'a' * 12
     assert all(len(postgresql.user_name(longest, k)) <= 63 and len(postgresql.database_name(longest, k)) <= 63
@@ -90,8 +91,8 @@ def test_a_zone_on_the_shared_server_renders_its_databases_and_no_postgresql(ren
     assert values['apps']['postgresql'] == {'enabled': False}
     databases = values['databases']
     assert set(databases) == set(postgresql.DATABASES)
-    assert databases['synapse'] == {'host': 'postgresql.hoover-stores.svc.cluster.local', 'port': 5432, 'name': 'zone_a_matrix',
-                                    'username': 'zone_a_matrix_user', 'password': {'value': PASSWORDS['synapse']}}
+    assert databases['xwiki'] == {'host': 'postgresql.hoover-stores.svc.cluster.local', 'port': 5432, 'name': 'zone_a_xwiki',
+                                  'username': 'zone_a_xwiki_user', 'password': {'value': PASSWORDS['xwiki']}}
 
 
 @pytest.mark.parametrize('entry', [{'stores': 'site'}, {'stores': 'local', 'postgresql': 'site'}, {}])
@@ -188,13 +189,12 @@ def test_a_new_zone_gets_its_users_databases_and_rights_and_a_second_run_changes
     assert 'REVOKE ALL ON DATABASE "postgres" FROM PUBLIC;' in text and 'REVOKE ALL ON DATABASE "template1" FROM PUBLIC;' in text
     assert (f'CREATE ROLE "zone_a_authsession_user" LOGIN NOCREATEDB NOCREATEROLE CONNECTION LIMIT 10 '
             f"PASSWORD '{PASSWORDS['umsAuthSession']}';") in server
-    assert ('CREATE DATABASE "zone_a_matrix" OWNER "zone_a_matrix_user" ENCODING \'UTF8\' LC_COLLATE \'C\' LC_CTYPE \'C\' '
-            'TEMPLATE template0;') in server
+    assert 'CREATE DATABASE "zone_a_xwiki" OWNER "zone_a_xwiki_user" ENCODING \'UNICODE\' TEMPLATE template0;' in server
     assert 'CREATE DATABASE "zone_a_nextcloud" OWNER "zone_a_nextcloud_user";' in server
     assert sum(s.startswith('REVOKE ALL ON DATABASE "zone_a_') for s in server) == len(postgresql.DATABASES)
     assert set(inside) == {postgresql.database_name('zone-a', k) for k in postgresql.DATABASES}
     assert inside['zone_a_nextcloud'] == [f'REVOKE SELECT ON pg_catalog.{c} FROM PUBLIC;' for c in postgresql.HIDDEN]
-    assert 'GRANT SELECT ON pg_catalog.pg_database TO "zone_a_matrix_user";' in inside['zone_a_matrix']
+    assert not any('GRANT' in s for s in inside['zone_a_xwiki'])
     assert not any('zone-b' in s or 'zone_b' in s for s in server)
     assert postgresql.statements('zone-a', {**PASSWORDS, 'nextcloud': VERIFIER_PASSWORD}, state_after('zone-a')) == (
         [f'ALTER ROLE "zone_a_{u}" PASSWORD \'{PASSWORDS[k]}\';' for k, (_, u) in postgresql.DATABASES.items() if k != 'nextcloud'],
@@ -211,11 +211,11 @@ def test_a_public_right_or_a_lost_login_is_corrected():
     users, present, catalogs = state_after('zone-a')
     users['zone_a_xwiki_user']['login'] = False
     present['zone_a_xwiki']['acl'] = '{=Tc/zone_a_xwiki_user,zone_a_xwiki_user=CTc/zone_a_xwiki_user}'
-    catalogs['zone_a_notes']['pg_roles'] = '{postgres=arwdDxt/postgres,=r/postgres}'
+    catalogs['zone_a_keycloak']['pg_roles'] = '{postgres=arwdDxt/postgres,=r/postgres}'
     server, inside, changed = postgresql.statements('zone-a', passwords, (users, present, catalogs))
     assert server == ['ALTER ROLE "zone_a_xwiki_user" LOGIN NOCREATEDB NOCREATEROLE CONNECTION LIMIT 100;',
                       'REVOKE ALL ON DATABASE "zone_a_xwiki" FROM PUBLIC;']
-    assert inside == {'zone_a_notes': ['REVOKE SELECT ON pg_catalog.pg_roles FROM PUBLIC;']}
+    assert inside == {'zone_a_keycloak': ['REVOKE SELECT ON pg_catalog.pg_roles FROM PUBLIC;']}
 
 
 def test_a_name_or_password_outside_the_zone_form_is_refused():
@@ -243,13 +243,13 @@ class Move:
 
 
 def test_the_move_copies_each_database_checks_the_counts_and_keeps_the_volume(monkeypatch):
-    counts = {'nextcloud': {'public.oc_users': 3}, 'synapse': {'public.events': 9}}
+    counts = {'nextcloud': {'public.oc_users': 3}, 'xwiki': {'public.xwikidoc': 9}}
     move = Move(monkeypatch, counts, json.loads(json.dumps(counts)))
     record = postgresql.move('zone-a', PASSWORDS)
-    assert move.steps == ['ensure', 'no login', ('drop', ['nextcloud', 'synapse']), 'ensure', ('copy', 'nextcloud'),
-                          ('copy', 'synapse'), 'nextcloud', ('patch', 'pv', 'pv-zone'), 'record']
+    assert move.steps == ['ensure', 'no login', ('drop', ['nextcloud', 'xwiki']), 'ensure', ('copy', 'nextcloud'),
+                          ('copy', 'xwiki'), 'nextcloud', ('patch', 'pv', 'pv-zone'), 'record']
     assert record['databases'] == {'nextcloud': {'tables': 1, 'rows': 3, 'shared_rows': 3},
-                                   'matrix': {'tables': 1, 'rows': 9, 'shared_rows': 9}}
+                                   'xwiki': {'tables': 1, 'rows': 9, 'shared_rows': 9}}
     assert record['volumes'] == ['pv-zone']
 
 
@@ -342,8 +342,10 @@ def test_a_new_site_zone_starts_on_the_shared_server(monkeypatch):
     saved = []
     monkeypatch.setattr(zone.zonestate, 'load', lambda: {'schemaVersion': 1, 'zones': {}})
     monkeypatch.setattr(zone.zonestate, 'save', lambda data: saved.append(data))
-    monkeypatch.setattr(config, 'zone_problems', lambda z, entry, s: [])
+    monkeypatch.setattr(config, 'zone_problems', lambda z, entry, s=None: [])
     monkeypatch.setattr(zone, 'step', lambda *a, **kw: None)
+    monkeypatch.setattr(zone.zonestate, 'definitions', lambda: {})
+    monkeypatch.setattr(zone.zonestate, 'define', lambda z, entry: None)
     zone.register('zone-c')
     assert saved[0]['zones']['zone-c']['postgresql'] == 'site'
 
@@ -395,18 +397,19 @@ def test_the_zone_backup_dumps_each_database_of_the_shared_server(monkeypatch, t
     backups.copy_namespace('zone-a', tmp_path)
     assert sorted(d[3] for d in dumped) == sorted(f'postgresql/{name}.sql' for name, _ in postgresql.DATABASES.values())
     assert {(d[0], d[1]) for d in dumped} == {('hoover-stores', 'postgresql-0')}
-    assert ('hoover-stores', 'postgresql-0', 'zone_a_matrix', 'postgresql/matrix.sql') in dumped
-    assert backups.dump_complete(tmp_path / 'postgresql' / 'matrix.sql')
+    assert ('hoover-stores', 'postgresql-0', 'zone_a_xwiki', 'postgresql/xwiki.sql') in dumped
+    assert backups.dump_complete(tmp_path / 'postgresql' / 'xwiki.sql')
     (tmp_path / 'postgresql' / 'cut.sql').write_bytes(b'-- data\n')
     assert not backups.dump_complete(tmp_path / 'postgresql' / 'cut.sql')
     assert 'postgresql/' in backups.online_parts()
 
 
-def test_the_restore_replaces_each_database_as_its_user(monkeypatch, tmp_path):
+def test_the_restore_replaces_each_database_as_its_user_and_leaves_out_a_retired_one(monkeypatch, tmp_path):
     import podexec
     folder = tmp_path / 'postgresql'
     folder.mkdir()
-    for name in ('nextcloud', 'matrix'):
+    # matrix.sql is the Synapse database of a copy of an earlier version. Element is retired, so it stays out.
+    for name in ('nextcloud', 'xwiki', 'matrix'):
         (folder / f'{name}.sql').write_bytes(b'CREATE TABLE t ();\n-- PostgreSQL database dump complete\n')
     steps = []
     monkeypatch.setattr(backups, 'shared_databases', lambda zone: postgresql)
@@ -421,8 +424,9 @@ def test_the_restore_replaces_each_database_as_its_user(monkeypatch, tmp_path):
         return 0
     monkeypatch.setattr(podexec, 'run', run)
     backups.restore_shared_databases(folder, 'zone-b')
-    assert steps == [('drop', ['nextcloud', 'synapse']), 'ensure', ('zone_b_matrix', b'SET ROLE "zone_b_matrix_user";\n'),
-                     ('zone_b_nextcloud', b'SET ROLE "zone_b_nextcloud_user";\n'), 'nextcloud']
+    assert steps == [('drop', ['nextcloud', 'xwiki']), 'ensure', ('zone_b_nextcloud', b'SET ROLE "zone_b_nextcloud_user";\n'),
+                     ('zone_b_xwiki', b'SET ROLE "zone_b_xwiki_user";\n'), 'nextcloud']
+    assert not any('matrix' in str(s) for s in steps)
     (folder / 'other.sql').write_bytes(b'')
     with pytest.raises(SystemExit, match='other.sql'):
         backups.restore_shared_databases(folder, 'zone-b')

@@ -24,49 +24,9 @@
    "peak": "1746Mi",
    "request": "1760Mi"
   },
-  "deployment/cryptpad": {
-   "peak": "401Mi",
-   "request": "416Mi"
-  },
-  "deployment/element-element-web": {
-   "peak": "134Mi",
-   "request": "160Mi"
-  },
-  "deployment/element-haproxy": {
-   "peak": "132Mi",
-   "request": "160Mi"
-  },
-  "deployment/element-matrix-authentication-service": {
-   "peak": "117Mi",
-   "request": "128Mi"
-  },
-  "deployment/element-matrix-rtc-authorisation-service": {
-   "peak": "31Mi",
-   "request": "32Mi"
-  },
   "deployment/gate": {
    "peak": "80Mi",
    "request": "96Mi"
-  },
-  "deployment/impress-backend": {
-   "peak": "1271Mi",
-   "request": "1280Mi"
-  },
-  "deployment/impress-backend-worker": {
-   "peak": "745Mi",
-   "request": "768Mi"
-  },
-  "deployment/impress-docspec": {
-   "peak": "179Mi",
-   "request": "192Mi"
-  },
-  "deployment/impress-frontend": {
-   "peak": "84Mi",
-   "request": "96Mi"
-  },
-  "deployment/impress-y-provider": {
-   "peak": "221Mi",
-   "request": "224Mi"
   },
   "deployment/intercom-service": {
    "peak": "111Mi",
@@ -84,30 +44,10 @@
    "peak": "128Mi",
    "request": "128Mi"
   },
-  "deployment/matrix-neoboard-widget": {
-   "peak": "49Mi",
-   "request": "64Mi"
-  },
-  "deployment/matrix-neochoice-widget": {
-   "peak": "52Mi",
-   "request": "64Mi"
-  },
-  "deployment/matrix-neodatefix-bot": {
-   "peak": "104Mi",
-   "request": "128Mi"
-  },
-  "deployment/matrix-neodatefix-widget": {
-   "peak": "51Mi",
-   "request": "64Mi"
-  },
   "deployment/memcached": {
    "peak": "212Mi",
    "request": "224Mi",
    "outsidePeak": "137Mi"
-  },
-  "deployment/opendesk-matrix-user-verification-service": {
-   "peak": "105Mi",
-   "request": "128Mi"
   },
   "deployment/opendesk-nextcloud-aio": {
    "peak": "888Mi",
@@ -121,25 +61,9 @@
    "peak": "75Mi",
    "request": "96Mi"
   },
-  "deployment/opendesk-provisioning-synapse": {
-   "peak": "75Mi",
-   "request": "96Mi"
-  },
   "deployment/opendesk-static-files": {
    "peak": "51Mi",
    "request": "64Mi"
-  },
-  "deployment/openproject-hocuspocus": {
-   "peak": "226Mi",
-   "request": "256Mi"
-  },
-  "deployment/openproject-web": {
-   "peak": "2549Mi",
-   "request": "2560Mi"
-  },
-  "deployment/openproject-worker-default": {
-   "peak": "820Mi",
-   "request": "832Mi"
   },
   "deployment/seaweedfs-all-in-one": {
    "peak": "412Mi",
@@ -194,14 +118,6 @@
   "deployment/ums-umc-server": {
    "peak": "63Mi",
    "request": "64Mi"
-  },
-  "statefulset/element-synapse-main": {
-   "peak": "256Mi",
-   "request": "256Mi"
-  },
-  "statefulset/element-synapse-media-repo": {
-   "peak": "237Mi",
-   "request": "256Mi"
   },
   "statefulset/jitsi-prosody": {
    "peak": "97Mi",

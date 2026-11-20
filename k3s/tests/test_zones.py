@@ -285,7 +285,8 @@ def task(name, command=None, mounts=()):
 
 
 def opendesk_cronjobs():
-    """The four CronJobs of openDesk v1.19.1 and the workloads whose pods get their sidecars."""
+    """The CronJobs of the applications of the profile in openDesk v1.19.1 and the workloads whose pods get their
+    sidecars."""
     empty = {'name': 'nextcloud-config', 'emptyDir': {'medium': 'Memory'}}
     ldap = {'name': 'secret-ldap', 'secret': {'secretName': 'ums-ldap-server-admin'}}
     return [
@@ -299,8 +300,6 @@ def opendesk_cronjobs():
                 'ums-udm-rest-api', {'fsGroup': 1000}, [ldap], labels={'app': 'ums-udm-rest-api'}),
         cronjob('ums-udm-rest-api-blocklist-cleanup', '0 8 * * *', task('main', mounts=['secret-ldap']), 'ums-udm-rest-api',
                 {'fsGroup': 1000}, [ldap], labels={'app': 'ums-udm-rest-api'}),
-        cronjob('opendesk-element-customization-media-cleanup', '0 * * * *',
-                task('media-cleanup', ['/bin/bash', '/usr/local/bin/media-cleanup.sh']), 'media-cleanup'),
     ]
 
 
@@ -338,23 +337,16 @@ def test_each_cronjob_of_the_charts_becomes_a_container_that_stays_running():
     assert license['command'][4:] == ['3600', '0', '60', '/usr/share/update-license-cache']
     assert blocklist['command'][4:] == ['86400', '28800', '60', '/bin/blocklist_clean_expired.py']
     assert [v['name'] for v in spec['volumes']] == ['license-cache-secret-ldap', 'blocklist-cleanup-secret-ldap']
-    media = by_name['opendesk-element-customization-media-cleanup']
-    spec = media['spec']['template']['spec']
-    assert media['kind'] == 'Deployment' and media['spec']['replicas'] == 1 and media['spec']['strategy'] == {'type': 'Recreate'}
-    assert media['spec']['selector'] == {'matchLabels': {'hoover.dev/periodic': 'opendesk-element-customization-media-cleanup'}}
-    assert media['spec']['template']['metadata']['labels'] == {
-        'app': 'opendesk-element-customization-media-cleanup', 'hoover.dev/periodic': 'opendesk-element-customization-media-cleanup'}
-    assert spec['serviceAccountName'] == 'media-cleanup' and spec['restartPolicy'] == 'Always'
-    assert spec['containers'][0]['command'][4:] == ['3600', '0', '60', '/bin/bash', '/usr/local/bin/media-cleanup.sh']
+    assert tasks['spec']['replicas'] == 1
     # A second render gives the same result.
     assert postrender.periodic(out) == out
 
 
-def test_a_disabled_zone_or_application_runs_no_periodic_deployment():
+def test_a_disabled_zone_runs_no_periodic_deployment():
     import postrender
-    media = [d for d in opendesk_cronjobs() if d['metadata']['name'].endswith('media-cleanup')]
-    assert postrender.periodic(json_copy(media), disabled=True)[0]['spec']['replicas'] == 0
-    assert postrender.periodic(json_copy(media), values={'app.element': 'false'})[0]['spec']['replicas'] == 0
+    tasks = [d for d in opendesk_cronjobs() if d['metadata']['name'].startswith('ums-udm-rest-api-')]
+    out = postrender.periodic(json_copy(tasks), disabled=True)
+    assert [d['spec']['replicas'] for d in out if d['kind'] == 'Deployment'] == [0]
 
 
 def json_copy(value):
@@ -440,8 +432,8 @@ def test_the_inputs_name_every_module_and_table_that_the_post_renderer_reads():
             for folder in (module.parent, K3S / 'cluster'):
                 if (folder / name).is_file():
                     assert folder / name in sources, f'{module.name} reads {name}'
-    # postrender.py reads its patch files from these folders.
-    assert {'zones/synapse', 'zones/openproject'} <= set(zone.INPUT_SOURCES)
+    # The application profile is an input of the waves.
+    assert 'zones/applications.py' in zone.INPUT_SOURCES
     # The scripts of step 6 that zone.py and zone-patches.py run.
     for script in re.findall(r"HERE / '([\w.-]+)'", (K3S / 'zones/zone.py').read_text()):
         if script.startswith('zone-') and (K3S / 'zones' / script).is_file() and script != 'zone-state.example.json':

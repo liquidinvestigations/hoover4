@@ -871,9 +871,9 @@ def test_the_cluster_setup_labels_only_the_joined_nodes(tmp_path):
     assert r.returncode and 'no facts for edge' in r.stderr
 
 
-def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
-    # A relay-only client needs coturn to reach LiveKit at the public address. A host chain keeps every other port of
-    # it closed to the coturn user. The pod admission policy refuses a privileged pod, so the rule is not in the pod.
+def test_coturn_reaches_no_port_of_the_public_media_address():
+    # The retired LiveKit SFU was the only service at the public address that a relay needed. A host chain keeps every
+    # port of it closed to the coturn user. The pod admission policy refuses a privileged pod, so the rule is not in the pod.
     sys.path.insert(0, str(K3S / 'platform/calls'))
     import turn_peers
     assert turn_peers.peer_lines('10.42.3.0/24', '203.0.113.10')[-1] == 'allowed-peer-ip=203.0.113.10'
@@ -885,16 +885,15 @@ def test_coturn_reaches_the_public_media_address_only_on_the_livekit_ports():
     chain = firewall[firewall.index('chain coturn_peers {'):].split('}')[0].splitlines()
     rules = [line.split(' comment ')[0].strip() for line in chain[1:] if line.strip()]
     assert rules == ['type filter hook output priority raw; policy accept;', 'meta skuid != $COTURN_UID accept',
-                     '$FAMILY daddr != $PUBLIC_IP accept', f'udp dport {turn_peers.LIVEKIT_UDP} accept',
-                     f'tcp dport {turn_peers.LIVEKIT_TCP} accept', 'counter drop']
+                     '$FAMILY daddr != $PUBLIC_IP accept', 'counter drop']
     text = (K3S / 'platform/calls/install-calls.py').read_text()
     assert "'runAsUser':turn_peers.COTURN_UID" in text and 'turn_peers.peer_lines(PODS,public)' in text
     # The public peer comes only from the probe of the host rule (turn_peers.chain_problem).
     assert 'coturn(public_peer())' in text and 'turn_peers.chain_problem(NODE,PUBLIC' in text
-    assert "'hostPort':turn_peers.LIVEKIT_UDP" in text and "'udp_port':turn_peers.LIVEKIT_UDP" in text
+    assert 'LIVEKIT' not in text
     assert 'hostPID' not in text and "'privileged'" not in text
-    # A refused coturn or LiveKit pod fails the step, because the old pod is gone before the new one starts.
-    assert "for name in ('coturn','livekit') if ZONES else ('coturn',):" in text and "'rollout','status'" in text
+    # A refused coturn pod fails the step, because the old pod is gone before the new one starts.
+    assert "for name in ('coturn',):" in text and "'rollout','status'" in text
 
 
 FAKE_CALLS_KUBECTL = r"""#!/usr/bin/env python3

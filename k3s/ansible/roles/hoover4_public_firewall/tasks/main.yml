@@ -1,7 +1,7 @@
 ---
 # The switch public_firewall of a public or calls node. The role installs two parts.
 # - On the media node of the call services, when it has a public address: files/coturn-peers.sh, the chain
-#   coturn_peers in its own table. It limits that address to the LiveKit media ports for the coturn user.
+#   coturn_peers in its own table. It drops each packet of the coturn user to that address.
 # - On a node whose public interface does not carry the node address: files/public-guard.sh drops the k3s node ports
 #   on the public interface, and files/public-firewall.sh admits only the allowed ports there. A node that uses one
 #   interface for the cluster and the public address, for example a LAN node, gets neither, because they would drop

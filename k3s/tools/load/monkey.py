@@ -13,7 +13,7 @@ browser dialog is dismissed, which cancels a confirmation.
 Run it with the Python environment <state folder>/load-venv, which has Playwright and uses /usr/bin/chromium.
 Usage: load-venv/bin/python monkey.py run [app ...] [--seconds 60] [--users N] [--tabs N]
        load-venv/bin/python monkey.py explore <app> [user]   (one tab, a screenshot every 5 s, then 20 s of exercise)
-Apps: portal files office notes projects chat pad wiki meet hoover. The output goes to <state folder>/load/load-<time>/.
+Apps: portal files office wiki meet hoover. The output goes to <state folder>/load/load-<time>/.
 The users are Administrator, test.user and the zone users of ../../zones/zone-users.json, with the passwords of
 the state folder and the zone.
 LOAD_ZONE names the zone, zone-a by default. LOAD_HOST names the SSH alias of the node that runs sampler.py. The script
@@ -47,10 +47,6 @@ APPS = {
     'portal': f'https://{ZONE}-portal.{SUFFIX}/',
     'files': f'https://{ZONE}-files.{SUFFIX}/',
     'office': f'https://{ZONE}-files.{SUFFIX}/',
-    'notes': f'https://{ZONE}-notes.{SUFFIX}/',
-    'projects': f'https://{ZONE}-projects.{SUFFIX}/',
-    'chat': f'https://{ZONE}-chat.{SUFFIX}/',
-    'pad': f'https://{ZONE}-pad.{SUFFIX}/',
     'wiki': f'https://{ZONE}-wiki.{SUFFIX}/',
     'meet': f'https://{ZONE}-meet.{SUFFIX}/loadtest-room',
     'hoover': f'https://{ZONE}-hoover.{SUFFIX}/',
@@ -61,15 +57,14 @@ DENY = re.compile(r'log ?out|sign ?out|abmeld|delete|lösch|remove|entfern|disab
                   r'șterg|sterg|deconect|elimin|dezactiv|ieșire|iesire|resetare|parol|golește|goleste|'
                   r'mailto:|tel:|javascript:void\(0\);?\s*logout', re.I)
 BLOCKED_PATH = re.compile(r'logout|sign_?out|/admin|/settings/admin|/settings/user/security|/univention/management|/realms/master|'
-                          r'/_synapse/admin|/bin/admin|/xwiki/bin/admin|/apps/settings|/settings/apps', re.I)
+                          r'/bin/admin|/xwiki/bin/admin|/apps/settings|/settings/apps', re.I)
 LOGIN_TEXT = re.compile(r'^\s*(log ?in|sign ?in|anmelden|einloggen|login with.*|sign in with.*|continue|weiter|fortfahren|'
                         r'.*opendesk.*|sso|accept|allow|zulassen|akzeptieren|grant|i am the host|ich bin der gastgeber|'
                         r'join meeting|meeting beitreten|beitreten|join)\s*$', re.I)
 # The portal comes first, because its sign-in gives each browser the Keycloak session that the Jitsi adapter needs.
-ORDER = ['portal', 'files', 'office', 'notes', 'projects', 'chat', 'pad', 'wiki', 'meet', 'hoover']
-# CryptPad has its own accounts and no single sign-on in openDesk, so its tabs stay anonymous.
-ANONYMOUS = {'pad'}
-EXTRA_DENY = {'pad': re.compile(r'log ?in|register|sign ?up|inregistr', re.I)}
+ORDER = ['portal', 'files', 'office', 'wiki', 'meet', 'hoover']
+ANONYMOUS = set()
+EXTRA_DENY = {}
 WORDS = 'load test alpha beta gamma delta report draft meeting notes budget plan review summary agenda'.split()
 
 CANDIDATES_JS = r"""(deny) => {
@@ -325,22 +320,8 @@ class Tab:
             self.count('office_open_errors')
 
     async def finish(self, app):
-        """End the Matrix session of a chat tab, so that the test leaves no extra device on the account."""
-        if app != 'chat':
-            return None
-        try:
-            await self.page.goto(APPS['chat'], wait_until='domcontentloaded', timeout=60_000)
-            await asyncio.sleep(8)
-            device = await self.page.evaluate("window.mxMatrixClientPeg && mxMatrixClientPeg.get() ? mxMatrixClientPeg.get().getDeviceId() : null")
-            if not device:
-                return 'no client'
-            # Element's own logout action revokes the OAuth session at MAS, which also removes the Matrix device.
-            await self.page.evaluate("window.mxDispatcher.dispatch({action: 'logout'})")
-            await asyncio.sleep(10)
-            still = await self.page.evaluate("window.mxMatrixClientPeg && mxMatrixClientPeg.get() ? mxMatrixClientPeg.get().getDeviceId() : null")
-            return f'logged out {device}' if not still else f'still signed in {still}'
-        except Exception as error:
-            return 'error ' + str(error)[:120]
+        """The end of a tab. No application of the profile needs a sign-out step."""
+        return None
 
     async def shot(self, folder, name):
         try:

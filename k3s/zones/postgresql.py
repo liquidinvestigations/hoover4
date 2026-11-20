@@ -11,8 +11,7 @@ the names and the passwords into the openDesk values of the zone (values()) and 
 
 Isolation: no database of a zone and no database of the server (postgres, template1) admits a connection of PUBLIC,
 so a user connects only to its own database. In each zone database the users cannot read the catalogs of HIDDEN, which
-name the databases, the roles and the sessions of the server. Synapse reads the collation of its database from
-pg_database at its start, so its user reads that catalog in its own database (READERS) and can list the database names.
+name the databases, the roles and the sessions of the server. READERS names the exceptions of an application.
 The network policy postgresql-clients of shared.py admits only the openDesk namespaces of the site zones.
 
 The zone state entry has postgresql = site for a zone on the shared server. zone.py apply gives it to each new zone of
@@ -60,33 +59,30 @@ sys.path.insert(0, str(SOURCE))
 sys.path.insert(0, str(SOURCE / 'hoover' / 'stores'))
 import settings  # noqa: E402
 
-# The PostgreSQL databases of the openDesk release (databases of database.yaml.gotmpl with the type postgresql): the
-# value key, and the database name and the user name of the release. test_postgresql.py compares them with the release.
+# The PostgreSQL databases of the openDesk release (databases of database.yaml.gotmpl with the type postgresql),
+# without the retired applications of applications.py RETIRED_DATABASES: the value key, and the database name and the user
+# name of the release. test_postgresql.py compares them with the release. A database of a retired application stays
+# until the zone delete (../hoover/stores/shared.py remove), which removes every database with the prefix of the zone.
 DATABASES = {
     'keycloak': ('keycloak', 'keycloak_user'),
     'keycloakExtension': ('keycloak_extensions', 'keycloak_extensions_user'),
-    'matrixAuthenticationService': ('matrix_authentication', 'matrix_authentication_user'),
     'nextcloud': ('nextcloud', 'nextcloud_user'),
-    'notes': ('notes', 'notes_user'),
-    'openproject': ('openproject', 'openproject_user'),
     'oxConnector': ('oxconnector', 'oxconnector_user'),
-    'synapse': ('matrix', 'matrix_user'),
     'umsAuthSession': ('nubus_authsession', 'authsession_user'),
     'umsGuardianManagementApi': ('guardianmanagementapi', 'guardianmanagementapi_user'),
     'umsSelfservice': ('selfservice', 'selfservice_user'),
     'xwiki': ('xwiki', 'xwiki_user'),
 }
-# The CREATE DATABASE options of the release (additionalParams). Synapse refuses a database with another collation.
-CREATE_OPTIONS = {'synapse': "ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0",
-                  'xwiki': "ENCODING 'UNICODE' TEMPLATE template0"}
+# The CREATE DATABASE options of the release (additionalParams).
+CREATE_OPTIONS = {'xwiki': "ENCODING 'UNICODE' TEMPLATE template0"}
 # The connection limit of each user (connectionLimit of the release, else databases.defaults.userConnectionLimit).
 CONNECTION_LIMITS = {'umsAuthSession': 10, 'umsSelfservice': 10}
 DEFAULT_CONNECTION_LIMIT = 100
 # The catalogs that name the databases, the roles and the sessions of the server. No zone user reads them.
 HIDDEN = ('pg_database', 'pg_stat_database', 'pg_stat_database_conflicts', 'pg_roles', 'pg_user', 'pg_group',
           'pg_auth_members', 'pg_stat_activity', 'pg_shdescription')
-# The catalogs of HIDDEN that an application reads in its own database.
-READERS = {'synapse': ('pg_database',)}
+# The catalogs of HIDDEN that an application reads in its own database. No application of the profile reads one.
+READERS = {}
 # The databases of the server that no zone user connects to.
 SERVER_DATABASES = ('postgres', 'template1')
 STORES_NS = 'hoover-stores'

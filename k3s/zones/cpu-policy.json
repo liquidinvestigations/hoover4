@@ -7,17 +7,11 @@
   "limit": "8",
   "workloads": [
    "*/statefulset/xwiki",
-   "*/deployment/openproject-web",
-   "*/deployment/openproject-worker-default",
    "*/deployment/opendesk-nextcloud-aio",
    "*/deployment/collabora",
-   "*/statefulset/element-synapse-main",
-   "*/statefulset/element-synapse-media-repo",
-   "*/deployment/element-matrix-authentication-service",
    "*/statefulset/ums-keycloak",
    "*/deployment/ums-udm-rest-api",
    "*/statefulset/ums-umc-server",
-   "*/deployment/impress-backend",
    "*/deployment/jitsi-jicofo",
    "calls/deployment/jvb",
    "operator-portal/deployment/portal"

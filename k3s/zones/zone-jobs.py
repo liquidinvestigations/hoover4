@@ -6,7 +6,7 @@ zone-patches.py runs this script after each zone install.
   Its group update job runs every 5 minutes instead of each hour.
   After a change the script runs cron.php once in the cron sidecar of the Nextcloud pod, so the first LDAP sync and
   group update run at install.
-- postrender.py holds the schedule change of the OpenProject worker and the loops of the periodic tasks (PERIODIC).
+- postrender.py holds the loops of the periodic tasks (PERIODIC).
 - XWiki needs no change here. zones.py runs its LDAP group jobs each minute.
   Its other jobs only send email, and the zones do not deliver email.
 The script prints one JSON line for each change it makes. A second run changes nothing.

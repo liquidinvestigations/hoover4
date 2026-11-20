@@ -26,12 +26,11 @@ grafana=secret('monitoring','monitor-grafana') or {}
 rows.append(('Grafana local admin','https://operator.'+settings.SUFFIX+'/grafana/',grafana.get('admin-user','(missing)'),grafana.get('admin-password','(missing)'),'The operator portal login is enough.'))
 for zone in ZONES:
  if secret(zone,'ums-nubus-credentials') is None:continue
- rows+=[(f'{zone} portal and applications',f'https://{zone}-portal.{settings.SUFFIX}/','Administrator',value(zone,'ums-nubus-credentials','administrator_password'),'Domain admin, and admin in Files, Projects, Wiki and Chat. zone-users.py sets the application flags.')]
+ rows+=[(f'{zone} portal and applications',f'https://{zone}-portal.{settings.SUFFIX}/','Administrator',value(zone,'ums-nubus-credentials','administrator_password'),'Domain admin, and admin in Files and Wiki. zone-users.py sets the application flags.')]
  test_user=secretstore.read(secretstore.zone_path(zone,'test-user')).get('password')
  if test_user:rows.append((f'{zone} portal and applications',f'https://{zone}-portal.{settings.SUFFIX}/','test.user',test_user,'Normal user in every in-scope application.'))
  rows+=[(f'{zone} Keycloak admin console',f'https://{zone}-id.{settings.SUFFIX}/admin/master/console/','kcadmin',value(zone,'keycloak-admin-password','adminPassword'),'The console signs in to `master`. The zone users are in `opendesk`.'),
   (f'{zone} Nextcloud internal admin',f'https://{zone}-files.{settings.SUFFIX}/login?direct=1','nextcloud',value(zone,'nextcloud-admin-password','password'),'The direct login skips Keycloak.'),
-  (f'{zone} OpenProject internal admin',f'https://{zone}-projects.{settings.SUFFIX}/login/internal','admin',value(zone,'openproject-admin-password','password'),'The internal login skips Keycloak.'),
   (f'{zone} Collabora admin console',f'http://collabora.{zone}.svc:9980/browser/dist/admin/admin.html',value(zone,'collabora-admin-password','username'),value(zone,'collabora-admin-password','password'),'In the cluster only. openDesk blocks this page at the ingress.'),
   (f'{zone} LDAP admin',f'ldap://ums-ldap-server-primary.{zone}.svc:389','cn=admin,dc=swp-ldap,dc=internal',value(zone,'ums-ldap-server-admin','password'),'In the cluster only.'),
   (f'{zone} openDesk master password','-','-',secretstore.read(secretstore.zone_path(zone)).get('master_password','(missing)'),'It generates the zone secrets. It is not a login.')]

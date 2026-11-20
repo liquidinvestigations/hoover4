@@ -19,9 +19,8 @@ manifests/zone-pods.yaml therefore puts every pod of the zone in gVisor at admis
   cannot change after its creation.
 - Rollout: a single-replica Deployment that requests MAX_SURGE_MEMORY or more, or that NO_SURGE names, replaces its pod
   with maxSurge 0 and maxUnavailable 1 (rollout()), so an update does not need the memory of a second pod on a full site.
-- Patches: Synapse loads synapse/hoover_e2ee.py, the user verification service logs at warn, Jitsi web uses the UDP
-  TURN server for the bridge connection, and the OpenProject worker loads openproject/zz-hoover-cron.rb. The
-  docstrings of the functions below give the reasons.
+- Patches: Jitsi web uses the UDP TURN server for the bridge connection (jitsi_files()).
+- Profile: a render that holds a controller of a retired application (applications.py RETIRED_WORKLOADS) stops.
 - Periodic tasks: each CronJob of the charts becomes a container that stays running and runs the same command at the
   same interval (PERIODIC, periodic()). A CronJob would start a new pod for each run. A CronJob without a rule stops
   the render.
@@ -51,6 +50,7 @@ import cpu_policy  # noqa: E402
 import cpu_requests  # noqa: E402
 import memory_requests  # noqa: E402
 import podspec  # noqa: E402
+import applications  # noqa: E402
 import settings  # noqa: E402
 import zonestate  # noqa: E402
 
@@ -62,19 +62,14 @@ MAX_SURGE_MEMORY = 512
 # The smaller single-replica Deployments that also start their new pod only after the old one stopped. The second pod
 # of the UDM REST API (448 MiB) found no node on the full test site (2026-11-16), and its rollout waited without end.
 NO_SURGE = ('ums-udm-rest-api',)
-# The workloads of each openDesk application, by name pattern. A disabled application (operator setting app.<name>)
-# renders zero replicas and keeps its claims, so an enable restores it with its data.
+# The workloads of each openDesk application of the profile (applications.py APPLICATIONS), by name pattern. A disabled
+# application (operator setting app.<name>) renders zero replicas and keeps its claims, so an enable restores it with
+# its data.
 APP_WORKLOADS = {
     'nextcloud': ('opendesk-nextcloud-*',),
     'collabora': ('collabora', 'collabora-*'),
-    'cryptpad': ('cryptpad*',),
-    # The names of openDesk v1.19.1, checked against a deployed zone on 2026-11-11.
-    'element': ('element-*', 'matrix-*', 'opendesk-matrix-*', 'opendesk-provisioning-synapse',
-                'opendesk-element-customization-media-cleanup'),
     'jitsi': ('jitsi-*',),
-    'openproject': ('openproject-*',),
     'xwiki': ('xwiki*',),
-    'notes': ('impress-*',),
 }
 
 
@@ -174,8 +169,8 @@ EXCEPTIONS = {
 # Jobs whose chart name ends with the Helm release revision. A diff renders another revision, so helmfile would upgrade
 # these releases on each run. The post-renderer names each such Job by a hash of its content instead: an unchanged Job
 # keeps its name, and a changed Job gets a new name and runs again.
-REVISION_JOBS = ('openproject-seeder', 'opendesk-nextcloud-management', 'opendesk-migrations-pre', 'opendesk-migrations-post',
-                 'opendesk-keycloak-bootstrap-bootstrap', 'opendesk-trust', 'opendesk-openproject-bootstrap-bootstrap',
+REVISION_JOBS = ('opendesk-nextcloud-management', 'opendesk-migrations-pre', 'opendesk-migrations-post',
+                 'opendesk-keycloak-bootstrap-bootstrap', 'opendesk-trust',
                  'ums-keycloak-bootstrap-bootstrap', 'ums-provisioning-register-consumers', 'ums-stack-data-ums')
 # The CronJobs of the openDesk charts. periodic() replaces each with a container that stays running. The container
 # runs the command of the CronJob with its image, environment, volumes and service account, at the times of its
@@ -205,9 +200,6 @@ PERIODIC = {
     # Removes the expired entries of the UDM blocklist. Peaks 61 and 47 MiB.
     'ums-udm-rest-api-blocklist-cleanup': {'pod': None, 'deployment': UDM_PERIODIC, 'container': 'blocklist-cleanup',
                                            'memory': '64Mi', 'command': ['/bin/blocklist_clean_expired.py']},
-    # Moves old Matrix media into the object store. It runs kubectl exec in the Synapse media pod with its own service
-    # account, so it runs in its own Deployment. Peaks 99 and 50 MiB.
-    'opendesk-element-customization-media-cleanup': {'pod': None, 'container': 'media-cleanup', 'memory': '128Mi'},
 }
 PERIODIC_LABEL = 'hoover.dev/periodic'
 # The loop of a periodic task. Arguments: the task name, then the interval, the offset and the retry wait in seconds,
@@ -341,37 +333,6 @@ def rollout(doc):
         doc['spec']['strategy'] = {'type': 'RollingUpdate', 'rollingUpdate': {'maxSurge': 0, 'maxUnavailable': 1}}
 
 
-def synapse(doc, extra, zone):
-    """Encrypt each new room except the rooms of the meetings bot.
-
-    An init container copies synapse/hoover_e2ee.py from a ConfigMap into /modules, and render-config reads its settings
-    file. The meetings bot stays without encryption: its SDK sends device_keys null on each start after the first key
-    upload, and Synapse 1.161 refuses that request, so the bot stops.
-    """
-    spec = pod_spec(doc)
-    bot = f'@meetings-bot:{settings.zone_domain(zone.name)}'
-    modules = f'modules:\n  - module: hoover_e2ee.EncryptNewRooms\n    config:\n      exempt_users: ["{bot}"]\n'
-    source = (HERE / 'synapse/hoover_e2ee.py').read_text()
-    if not any(o['metadata']['name'] == 'hoover-synapse-modules' for o in extra):
-        extra.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'hoover-synapse-modules'},
-                      'data': {'hoover_e2ee.py': source, 'hoover-modules.yaml': modules}})
-    spec['volumes'].append({'name': 'hoover-modules', 'configMap': {'name': 'hoover-synapse-modules'}})
-    main = spec['containers'][0]
-    spec['initContainers'].insert(0, {
-        'name': 'install-hoover-modules', 'image': main['image'], 'command': ['sh', '-c', 'cp /hoover/hoover_e2ee.py /modules/'],
-        'resources': {'requests': {'cpu': '10m', 'memory': '16Mi'}, 'limits': {'cpu': '500m', 'memory': '64Mi'}},
-        'securityContext': main.get('securityContext', {}),
-        'volumeMounts': [{'name': 'synapse-modules', 'mountPath': '/modules'}, {'name': 'hoover-modules', 'mountPath': '/hoover', 'readOnly': True}]})
-    render = next(c for c in spec['initContainers'] if c['name'] == 'render-config')
-    args = render.get('args', [])
-    # render-config merges the files in order and appends lists, so the module joins the openDesk modules.
-    at = next((i for i, a in enumerate(args) if a.startswith('/config-templates/04-')), len(args))
-    render['args'] = args[:at] + ['/hoover/hoover-modules.yaml'] + args[at:]
-    render.setdefault('volumeMounts', []).append({'name': 'hoover-modules', 'mountPath': '/hoover', 'readOnly': True})
-    digest = hashlib.sha256((source + modules).encode()).hexdigest()[:16]
-    doc['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/synapse-modules'] = digest
-
-
 def jitsi_files(doc):
     """Make Jitsi web use the UDP TURN server that Prosody announces, also for the bridge connection.
 
@@ -383,22 +344,6 @@ def jitsi_files(doc):
     kept = [line for line in current.rstrip('\n').split('\n')
             if not line.startswith(('// hoover:', 'config.useStunTurn', 'config.p2p.useStunTurn', 'config.useTurnUdp'))]
     doc['data']['custom-config.js'] = '\n'.join(kept) + '\n' + JITSI_TURN
-
-
-def openproject_worker(doc, extra):
-    """Load openproject/zz-hoover-cron.rb in the OpenProject worker.
-
-    The user sync with the admin flag then runs each minute, and the worker enqueues each missed cron time at start.
-    """
-    source = (HERE / 'openproject/zz-hoover-cron.rb').read_text()
-    extra.append({'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'hoover-openproject-cron'},
-                  'data': {'zz-hoover-cron.rb': source}})
-    spec = pod_spec(doc)
-    spec['volumes'].append({'name': 'hoover-cron', 'configMap': {'name': 'hoover-openproject-cron'}})
-    container(spec, 'openproject').setdefault('volumeMounts', []).append(
-        {'name': 'hoover-cron', 'mountPath': '/app/config/initializers/zz-hoover-cron.rb', 'subPath': 'zz-hoover-cron.rb', 'readOnly': True})
-    # A subPath mount does not follow a changed ConfigMap, so a changed file restarts the worker through this hash.
-    doc['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/cron'] = hashlib.sha256(source.encode()).hexdigest()[:16]
 
 
 def interval(schedule):
@@ -541,6 +486,11 @@ def overlay(documents, namespace):
             doc['spec']['suspend'] = True
         if kind == 'DaemonSet' and zone.disabled:
             raise RuntimeError(f'the disabled namespace {namespace} renders the DaemonSet {name}, which has no replica count')
+        if kind not in CONTROLLERS and kind != 'Job':
+            continue
+        if applications.retired_workload(name):
+            raise RuntimeError(f'the render of {namespace} holds the {kind} {name} of a retired application '
+                               '(zones/applications.py). Check the apps values of zones.py for this openDesk release.')
         if kind not in CONTROLLERS:
             continue
         key = ref(doc)
@@ -555,14 +505,6 @@ def overlay(documents, namespace):
         elif kind == 'StatefulSet':
             for template in doc['spec'].get('volumeClaimTemplates', []):
                 template['spec']['storageClassName'] = zone.storage_class('default', 'ext4')
-        if key in ('statefulset/element-synapse-main', 'statefulset/element-synapse-media-repo'):
-            synapse(doc, extra, zone)
-        if key == 'deployment/opendesk-matrix-user-verification-service':
-            # The service logs each health probe over several lines.
-            env = container(pod_spec(doc), 'uvs').setdefault('env', [])
-            env[:] = [e for e in env if e['name'] != 'UVS_LOG_LEVEL'] + [{'name': 'UVS_LOG_LEVEL', 'value': 'warn'}]
-        if key == 'deployment/openproject-worker-default':
-            openproject_worker(doc, extra)
         if key == 'deployment/jitsi-web':
             # The web container writes config.js from custom-config.js at its start.
             doc['spec']['template']['metadata'].setdefault('annotations', {})['hoover.dev/jitsi-turn'] = \

@@ -8,6 +8,8 @@ Usage:
   deploy-k3s up        --resume RECORD
   deploy-k3s down      --target NODE... [--steps STEP...]
   deploy-k3s down      --resume RECORD
+  deploy-k3s reset     --target all                                      erase every zone of the site (driver/reset.py)
+  deploy-k3s reset     --resume RECORD
   deploy-k3s status    [RECORD]                                          print the records
   deploy-k3s measure-speed --target NODE...                              measure the CPU and disk speeds again
   deploy-k3s import-compose <zone> <folder> --home NODE --ini FILE [...] import a stopped Compose install into a new zone
@@ -31,6 +33,11 @@ down stops the ingress, the applications and workers, Temporal, the stores, and 
 The cluster holds the zone state, the zone secrets and the operator state (clusterstate.py). Each command reads the
 cluster copy into the state folder first, and up and down write the changes back after each step.
 A failed or stopped run keeps its record. `up --resume RECORD` continues at the first unfinished step.
+reset erases every zone of the site with its data, accounts, credentials, volumes, backups and snapshots, and the
+images of the retired applications (driver/reset.py). It keeps the intended zones in zone-definitions.json, so the next
+up creates them again with new data. While a reset is incomplete, the site lock refuses every other command that
+changes the site. reset --resume RECORD continues it. A complete reset raises the installation generation, and a resume
+of an older record, also of an up or a down, is refused.
 measure-speed measures the CPU speed and the write speed of each storage tier of the nodes, and keeps them in speed/
 of the state folder. up measures a new node once before k3s starts, and then uses the stored values. Stop k3s and every
 container of a node before its measure-speed: it refuses a node where k3s or a container runs, or whose 1-minute load
@@ -201,6 +208,41 @@ def measure_speed(ctx, targets, deploy, records):
     return 0
 
 
+def run_reset(ctx, args, revision, deploy, reset, record):
+    """deploy-k3s reset under the site lock: plan or resume the record, keep the reset marker, run the steps, and end
+    the reset after the last step."""
+    import json
+    lock = ctx.records._lock
+    try:
+        deploy.sync_state(ctx, 'pull')
+        if not deploy.cluster_identity(ctx):
+            raise SystemExit('deploy-k3s: the cluster of the site does not answer. A reset needs it.')
+        if record is not None:
+            refusal = reset.refuse_resume(ctx, record, lock)
+            if refusal:
+                raise SystemExit(f'deploy-k3s: {refusal}')
+            steps = reset.plan(ctx, record['zones'])
+        else:
+            zones = reset.planned_zones(ctx)
+            steps = reset.plan(ctx, zones)
+            record = ctx.records.new('reset', list(ctx.site.nodes), revision, list(steps), zones=zones,
+                                     generation=reset.installation(ctx)['generation'], checkout=str(ctx.repo),
+                                     checkout_changes=deploy.dirty_files(ctx.repo), inputs=deploy.pinned_inputs(ctx))
+            print(json.dumps({'record': record['id'], 'revision': revision, 'zones': zones, 'steps': list(steps)}), flush=True)
+        reset.begin(ctx, record, lock)
+        deploy.sync_state(ctx, 'push')
+        code = deploy.execute(ctx, record, steps)
+        if code == 0:
+            reset.finish(ctx, record, lock)
+            deploy.sync_state(ctx, 'push')
+            print(json.dumps({'record': record['id'], 'reset': 'complete',
+                              'generation': reset.installation(ctx)['generation'],
+                              'next': 'deploy-k3s up --target all creates the zones of zone-definitions.json'}), flush=True)
+        return code
+    except deploy.StepFailed as error:
+        raise SystemExit(f'deploy-k3s: {error}')
+
+
 def main(argv):
     argv = bootstrap_checkout(argv)
     if os.environ.get(IN_IMAGE) != '1':
@@ -213,6 +255,7 @@ def main(argv):
     import config
     import deploy
     import records
+    import reset
 
     if argv and argv[0] == 'import-compose':
         # The import names the images of the commit of HEAD, as the steps of up do.
@@ -225,7 +268,7 @@ def main(argv):
 
     parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'status', 'measure-speed'))
+    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'reset', 'status', 'measure-speed'))
     parser.add_argument('record', nargs='?')
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'), required=not os.environ.get('HOOVER4_SITE'))
     parser.add_argument('--target', nargs='+', default=[])
@@ -260,13 +303,20 @@ def main(argv):
         return 0
 
     if args.resume:
-        if args.command not in ('up', 'down'):
-            raise SystemExit('--resume belongs to up and down.')
+        if args.command not in ('up', 'down', 'reset'):
+            raise SystemExit('--resume belongs to up, down and reset.')
         record = ctx.records.load(args.resume)
         if record['command'] != args.command:
             raise SystemExit(f'the record {args.resume} belongs to {record["command"]}, not {args.command}.')
         targets = record['targets']
+        # A complete reset starts a new installation. A record of an earlier generation does not resume.
+        generation = reset.installation(ctx)['generation']
+        if args.command != 'reset' and record.get('generation', generation) != generation:
+            raise SystemExit(f'deploy-k3s: the record {record["id"]} belongs to the installation generation '
+                             f'{record["generation"]}, and a reset started generation {generation}. Start a new {args.command}.')
     else:
+        if args.command == 'reset' and args.target != ['all']:
+            raise SystemExit('deploy-k3s reset erases every zone of the site. Give --target all.')
         targets = list(site.nodes) if args.target == ['all'] else args.target
         if not targets:
             raise SystemExit(f'deploy-k3s {args.command} needs --target with nodes of the site: {", ".join(site.nodes)}, or all.')
@@ -298,6 +348,11 @@ def main(argv):
         ctx.records.lock(args.command, f'{args.command}-{args.resume or revision[:12]}')
     except records.Busy as error:
         raise SystemExit(f'deploy-k3s: {error}')
+    if args.command == 'reset':
+        try:
+            return run_reset(ctx, args, revision, deploy, reset, record if args.resume else None)
+        finally:
+            ctx.records.unlock()
     try:
         ctx.revision = revision
         # The plan names the zones of the zone state, so the state folder first gets the cluster copy.
@@ -328,7 +383,7 @@ def main(argv):
                                      full=ctx.full,
                                      checkout=str(ctx.repo), checkout_changes=deploy.dirty_files(ctx.repo),
                                      applied_before=(ctx.records.applied() or {}).get('revision'),
-                                     inputs=deploy.pinned_inputs(ctx))
+                                     inputs=deploy.pinned_inputs(ctx), generation=reset.installation(ctx)['generation'])
             print(json.dumps({'record': record['id'], 'revision': revision, 'steps': list(steps)}), flush=True)
         return deploy.execute(ctx, record, steps)
     except deploy.StepFailed as error:

@@ -804,11 +804,13 @@ def test_public_dns_and_firewall_name_the_frontend_and_the_media_node(tmp_path):
     assert not [r for r in records.values() if r['internal']]
     rules = module.firewall(remote)
     media = {(r['protocol'], r['port']) for r in rules['calls']}
-    assert {('udp', 10000), ('tcp', 7881), ('udp', 7882), ('udp', 3478), ('tcp', 3478)} <= media
+    assert {('udp', 10000), ('udp', 3478), ('tcp', 3478)} <= media
+    # The LiveKit media ports of the retired chat calls are closed.
+    assert not {('tcp', 7881), ('udp', 7882)} & media
     assert ('tcp', 443) not in media and ('tcp', 443) in {(r['protocol'], r['port']) for r in rules['edge']}
     assert ('udp', 51820) in media
     script = (REPO / 'k3s/ansible/roles/hoover4_public_firewall/files/public-firewall.sh').read_text()
-    assert 'udp dport { 7882, 10000 } accept' in script and 'tcp dport 7881 accept' in script
+    assert 'udp dport 10000 accept' in script and '7881' not in script and '7882' not in script
 
 
 @pytest.mark.parametrize('fixture,name', [('remote.yml', 'zone-a'), ('remote.yml', 'zone-c'), ('single-node.yml', 'zone-a')])

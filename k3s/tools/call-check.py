@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""Check a short audio call in one zone with Jitsi and with MatrixRTC. Usage: call-check.py <zone> [jitsi] [matrixrtc] [turn] [matrixrtc-relay]
+"""Check a short audio call in one zone with Jitsi, and the TURN server. Usage: call-check.py <zone> [jitsi] [turn]
 
 The browser uses Chrome fake media devices, so no microphone is needed. The check passes when each stack reports
 the call. It does not judge the audio.
 - Jitsi: the browser signs in through the portal as test.user and joins a meeting. The script then reads the
   conference count from the zone Jicofo and from the shared JVB.
-- MatrixRTC: MAS issues a device token for test.user. The script creates an encrypted room, asks Synapse for an
-  OpenID token and asks the zone lk-jwt for a LiveKit token. The browser joins the shared LiveKit and publishes the
-  fake microphone. The script reads the room list of LiveKit and the ICE candidate type. At the end it leaves the
-  room and logs the device out.
-- TURN: Chrome gathers relay candidates from coturn with a credential for the LiveKit TURN secret.
-- matrixrtc-relay: the same join with relay-only ICE, so the media path goes through coturn. The LiveKit client creates
-  its peer connection before the join response brings the TURN entry, so the check passes the TURN entry itself.
+- TURN: Chrome gathers relay candidates from coturn with a credential for the TURN secret of the zone, as Prosody
+  gives it to the Jitsi clients.
 LAB_SUFFIX, LAB_KUBECONFIG, LAB_USER and LAB_PASSWORD_FILE check another host or user. JITSI_SECOND_USER and
 JITSI_SECOND_PASSWORD_FILE let a second user join the Jitsi call from a second browser. Without them the second
 participant is a second tab of the first user. JITSI_HOLD=<seconds> keeps both
@@ -29,7 +24,7 @@ OUT=settings.PRIVATE/'checks';OUT.mkdir(parents=True,exist_ok=True)
 os.environ['KUBECONFIG']=os.environ.get('LAB_KUBECONFIG',settings.KUBECONFIG)
 sys.path.insert(0,str(settings.HOOVER4/'website/tools'))
 from browser_lifecycle import start_browser,stop_browser
-zone=sys.argv[1];parts=sys.argv[2:] or ['jitsi','matrixrtc','turn','matrixrtc-relay'];S=os.environ.get('LAB_SUFFIX',settings.SUFFIX)
+zone=sys.argv[1];parts=sys.argv[2:] or ['jitsi','turn'];S=os.environ.get('LAB_SUFFIX',settings.SUFFIX)
 USER=os.environ.get('LAB_USER','test.user')
 PASSWORD_FILE=pathlib.Path(os.environ.get('LAB_PASSWORD_FILE',settings.PRIVATE/f'zones/{zone}/test-user-password'))
 HOLD=int(os.environ.get('JITSI_HOLD','0'));P2P='true' if os.environ.get('JITSI_P2P')=='1' else 'false'
@@ -42,15 +37,6 @@ def http(method,url,body=None,token=None):
  if token:headers['Authorization']='Bearer '+token
  request=urllib.request.Request(url,method=method,data=json.dumps(body).encode() if body is not None else None,headers=headers)
  with urllib.request.urlopen(request,timeout=60) as r:return json.loads(r.read() or b'{}')
-def livekit_rooms():
- # The shared LiveKit key of the zones may list the rooms (../platform/calls/install-calls.py).
- key=secrets['calls']['livekit_secret']
- def part(v):return base64.urlsafe_b64encode(json.dumps(v,separators=(',',':')).encode()).rstrip(b'=')
- now=int(time.time());head=part({'alg':'HS256','typ':'JWT'})+b'.'+part({'iss':'hoover-calls','nbf':now-5,'exp':now+60,'video':{'roomList':True}})
- token=(head+b'.'+base64.urlsafe_b64encode(hmac.new(key.encode(),head,hashlib.sha256).digest()).rstrip(b'=')).decode()
- out=kubectl('-n','calls','exec','deploy/livekit','--','wget','-qO-','--header','Content-Type: application/json',
-  '--header',f'Authorization: Bearer {token}','--post-data','{}','http://127.0.0.1:7880/twirp/livekit.RoomService/ListRooms')
- return [{'participants':r.get('num_participants',0)} for r in json.loads(out[out.index('{'):]).get('rooms',[])]
 def jitsi_stats():
  pod=json.loads(kubectl('-n',zone,'get','pods','-l','app.kubernetes.io/component=jicofo','-o','json'))['items'][0]['metadata']['name']
  jicofo=json.loads(kubectl('-n',zone,'exec',pod,'--','curl','-s','http://127.0.0.1:8888/stats'))
@@ -143,77 +129,11 @@ async def jitsi_hold(tabs):
  ok=bool(states) and all(s and s.get('same') and s.get('ice') in ('connected','completed') for s in states)
  return {'seconds':HOLD,'passed':ok,'local_candidates':sorted({str(s.get('local')) for s in states if s}),
   'sessions':sorted({str(s.get('session')) for s in states if s}),'samples':samples}
-async def matrixrtc(browser,tab,policy='relay'):
- out=kubectl('-n',zone,'exec','deploy/element-matrix-authentication-service','-c','matrix-authentication-service','--',
-  'mas-cli','manage','issue-compatibility-token',USER,'HOOVERCALLCHECK')
- token=re.search(r'(mct_\S+)',out).group(1);base=f'https://{zone}-matrix.{S}/_matrix/client/v3'
- user=http('GET',base+'/account/whoami',token=token)['user_id']
- room=http('POST',base+'/createRoom',{'name':'Call check','preset':'private_chat'},token)['room_id']
- result={}
- try:
-  openid=http('POST',base+f'/user/{urllib.parse.quote(user)}/openid/request_token',{},token)
-  grant=http('POST',f'https://{zone}-mrtc.{S}/sfu/get',{'room':room,'openid_token':openid,'device_id':'HOOVERCALLCHECK'})
-  result['sfu_url']=grant.get('url')
-  # The LiveKit client creates its peer connection before the join response, which carries the TURN entry.
-  # A relay-only connection then gathers nothing, so the relay test passes the TURN entry itself. The credential uses
-  # the LiveKit TURN secret and the format that LiveKit uses for its clients.
-  rtc={'iceTransportPolicy':policy}
-  if policy=='relay':
-   name=f"{int(time.time())+600}:call-check";secret=secrets['calls']['livekit_turn_secret']
-   rtc['iceServers']=[{'urls':[f'turn:turn.{settings.SUFFIX}:3478?transport=udp'],'username':name,
-    'credential':base64.b64encode(hmac.new(secret.encode(),name.encode(),hashlib.sha1).digest()).decode()}]
-  await tab.get(f'https://{zone}-sfu.{S}/')
-  await ev(tab,'''new Promise((ok, fail) => { const s = document.createElement('script');
-   s.src = 'https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js'; s.onload = ok; s.onerror = fail; document.head.appendChild(s); })''',await_promise=True)
-  # Relay-only ICE makes the media path go through coturn.
-  state=await ev(tab,'''(async () => { try {
-   // The wrapper records the ICE servers of each peer connection, without the passwords.
-   window.lkIce = []; const Native = window.RTCPeerConnection;
-   window.RTCPeerConnection = function (config, ...rest) {
-    window.lkIce.push(((config && config.iceServers) || []).map(s => ({urls: s.urls, user: !!s.username, credential: !!s.credential})));
-    const pc = new Native(config, ...rest); (window.lkPcs = window.lkPcs || []).push(pc);
-    window.lkEvents = window.lkEvents || [];
-    pc.addEventListener('icecandidate', e => window.lkEvents.push(e.candidate ? 'local ' + e.candidate.candidate.split(' ').slice(4,8).join(' ') : 'gathering done'));
-    pc.addEventListener('icecandidateerror', e => window.lkEvents.push('error ' + e.errorCode + ' ' + e.errorText));
-    pc.addEventListener('iceconnectionstatechange', () => window.lkEvents.push('ice ' + pc.iceConnectionState));
-    return pc; };
-   window.RTCPeerConnection.prototype = Native.prototype;
-   const room = new LivekitClient.Room(); window.lkLast = room;
-   await room.connect(%s, %s, {rtcConfig: %s});
-   await room.localParticipant.setMicrophoneEnabled(true);
-   await new Promise(r => setTimeout(r, 5000));
-   const pc = room.engine.pcManager && room.engine.pcManager.publisher && room.engine.pcManager.publisher.getConnectedAddress ? await room.engine.pcManager.publisher.getConnectedAddress() : '';
-   const stats = await room.engine.pcManager.publisher._pc.getStats();
-   let candidate = '';
-   stats.forEach(s => { if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.nominated) {
-     const local = stats.get(s.localCandidateId); candidate = local ? local.candidateType : ''; } });
-   window.lkRoom = room;
-   return JSON.stringify({state: room.state, candidate, address: String(pc), ice: window.lkIce});
-  } catch (e) {
-   // The ICE servers that LiveKit sent show whether the TURN entry reached the browser. The password is left out.
-   let ice = [];
-   ice = window.lkIce;
-   // The candidate pairs of each peer connection show where the relay path stops.
-   const pairs = [];
-   for (const pc of window.lkPcs || []) { try { const stats = await pc.getStats(); stats.forEach(s => { if (s.type === 'candidate-pair') {
-     const l = stats.get(s.localCandidateId), r = stats.get(s.remoteCandidateId);
-     pairs.push([s.state, l && l.candidateType, l && l.address, r && r.candidateType, r && (r.address + ':' + r.port), r && r.protocol].join(' ')); } });
-     pairs.push('config ' + JSON.stringify((pc.getConfiguration().iceServers || []).map(x => x.urls))); } catch (x) { pairs.push(String(x)); } }
-   return JSON.stringify({error: String(e), ice, pairs, events: (window.lkEvents || []).slice(0, 30)});
-  } })()'''%(json.dumps(grant['url']),json.dumps(grant['jwt']),json.dumps(rtc)),await_promise=True)
-  result.update(json.loads(state))
-  result['livekit_rooms']=livekit_rooms()
-  await ev(tab,'window.lkRoom.disconnect()',await_promise=True)
- finally:
-  http('POST',base+f'/rooms/{room}/leave',{},token);http('POST',base+f'/rooms/{room}/forget',{},token);http('POST',base+'/logout',{},token)
- result['policy']=policy
- result['passed']=result.get('state')=='connected' and (policy!='relay' or result.get('candidate')=='relay') and any(r['participants']>=1 for r in result.get('livekit_rooms',[]))
- return result
 async def turn(tab):
- # Chrome gathers relay candidates from coturn with a credential for the LiveKit TURN secret.
- name=f"{int(time.time())+600}:call-check";secret=secrets['calls']['livekit_turn_secret']
+ # Chrome gathers relay candidates from coturn with a credential for the TURN secret of the zone.
+ name=f"{int(time.time())+600}:call-check";secret=secrets[zone]['turn_secret']
  credential=base64.b64encode(hmac.new(secret.encode(),name.encode(),hashlib.sha1).digest()).decode()
- await tab.get(f'https://{zone}-sfu.{S}/')
+ await tab.get(f'https://{zone}-meet.{S}/')
  found=json.loads(await ev(tab,'''(async () => { try { const pc = new RTCPeerConnection({iceTransportPolicy: 'relay',
    iceServers: [{urls: %s, username: %s, credential: %s}]});
   const found = []; pc.onicecandidate = e => { if (e.candidate) found.push(e.candidate.candidate.split(' ').slice(4,8).join(' ')); };
@@ -227,9 +147,7 @@ async def main():
  try:
   tab=await sign_in(browser)
   if 'jitsi' in parts:results['jitsi']=await jitsi(browser,tab);print(json.dumps({'jitsi':results['jitsi']}),flush=True)
-  if 'matrixrtc' in parts:results['matrixrtc']=await matrixrtc(browser,tab,'all');print(json.dumps({'matrixrtc':results['matrixrtc']}),flush=True)
   if 'turn' in parts:results['turn']=await turn(tab);print(json.dumps({'turn':results['turn']}),flush=True)
-  if 'matrixrtc-relay' in parts:results['matrixrtc_relay']=await matrixrtc(browser,tab,'relay');print(json.dumps({'matrixrtc_relay':results['matrixrtc_relay']}),flush=True)
  finally:
   # Another host keeps its own result file, so a check of that host does not replace the local result.
   name=f"call-check-{zone}-{os.environ['LAB_SUFFIX']}.json" if os.environ.get('LAB_SUFFIX') else f'call-check-{zone}.json'

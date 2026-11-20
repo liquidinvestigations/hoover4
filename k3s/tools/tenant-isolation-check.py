@@ -23,9 +23,9 @@ user) and the schema proxy (Manticore schema user). Both zones need the collecti
   pod address, which needs the password: the Nextcloud user of the zone connects to its own database. It cannot
   connect to the database of the other zone, to another database of its own zone or to a database of the server, and it
   cannot read the catalogs that name the databases, the roles or the sessions, create a database or a role. A wrong
-  password, and the user of the other zone with the password of this zone, are refused. The Synapse user reads
-  pg_database in its own database, because Synapse reads its collation there at its start: the case reports the
-  result without a pass or fail. A pod of the Hoover namespace cannot reach the PostgreSQL port.
+  password, and the user of the other zone with the password of this zone, are refused. The XWiki user of the zone
+  cannot read pg_roles or connect to the Nextcloud database of its zone. A pod of the Hoover namespace cannot reach the
+  PostgreSQL port.
 - Manticore, write user: it reads and changes rows of its own tables. It cannot read or change a table of the other
   zone, and it cannot create, alter or drop a table, also not a distributed table that names a table of the other zone.
 - Manticore, read user on the read-only listener 9309 and on 9308: it reads its own tables. It cannot read a table
@@ -537,10 +537,9 @@ def postgresql_cases(zone, other):
     if theirs:
         rows.append(('user of the other zone with the password of this zone', 'refused',
                      postgresql.user_name(other, 'nextcloud'), password, postgresql.database_name(other, 'nextcloud'), 'SELECT 1'))
-    synapse = postgresql.user_name(zone, 'synapse'), mine['synapse'], postgresql.database_name(zone, 'synapse')
-    rows += [('Synapse user reads pg_database in its own database', 'report', *synapse, 'SELECT count(*) FROM pg_catalog.pg_database'),
-             ('Synapse user reads pg_roles', 'refused', *synapse, 'SELECT count(*) FROM pg_catalog.pg_roles'),
-             ('Synapse user connects to the Nextcloud database of its zone', 'refused', synapse[0], synapse[1], own, 'SELECT 1')]
+    xwiki = postgresql.user_name(zone, 'xwiki'), mine['xwiki'], postgresql.database_name(zone, 'xwiki')
+    rows += [('XWiki user reads pg_roles', 'refused', *xwiki, 'SELECT count(*) FROM pg_catalog.pg_roles'),
+             ('XWiki user connects to the Nextcloud database of its zone', 'refused', xwiki[0], xwiki[1], own, 'SELECT 1')]
     text = ''.join('|'.join(r) + '\n' for r in rows)
     r = podexec.call(K + ['-n', 'hoover-stores', 'exec', '-i', pod['metadata']['name'], '-c', 'postgresql'],
                      ['sh', '-c', POSTGRESQL_PROBE, 'probe', pod['status']['podIP']], text, timeout=300)

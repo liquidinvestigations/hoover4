@@ -17,7 +17,7 @@ kcadm config credentials --server http://localhost:8080 --realm master --user kc
 kcadm get authentication/flows -r opendesk --fields alias | grep -q '"2fa-browser"' || kcadm create authentication/flows/browser/copy -r opendesk -s newName=2fa-browser
 kcadm get roles -r opendesk --fields name | grep -q '"2FA role"' || kcadm create roles -r opendesk -s 'name=2FA role'
 # The same bootstrap also leaves out the LDAP group mapper. Without it no user has a group, and Keycloak leaves out the
-# application scopes that depend on group roles, so Nextcloud, Element and XWiki get no user claims.
+# application scopes that depend on group roles, so Nextcloud and XWiki get no user claims.
 provider=$(kcadm get components -r opendesk -q type=org.keycloak.storage.UserStorageProvider --fields id | grep '"id"' | head -1 | cut -d'"' -f4)
 if ! kcadm get components -r opendesk -q parent="$provider" --fields name | grep -q '"univention-groups"'; then
   kcadm create components -r opendesk -s name=univention-groups -s providerId=group-ldap-mapper \

@@ -68,7 +68,9 @@ The zone and platform jobs hold the site operation lock (../../oplock.py), so no
 changes the site during the copy.
 restore-zone restores a complete zone copy into an installed zone: the Secrets, the claims, the objects of the
 object store and the database dumps of the zone namespace and of its Hoover installation, with the applications and
-the other stores stopped. For a site
+the other stores stopped. A copy of an earlier version can hold the parts of a retired application
+(../../zones/applications.py): its Secrets, claims, buckets, database dumps and replica counts. The restore leaves them
+out and names them in its output and its record, so no retired workload or data comes back. For a site
 zone it also replaces the zone databases and the objects of the system bucket with the shared/ part of the copy, and
 it keeps the tenant credentials of the target zone (TENANT_SECRETS). --from names
 the zone of the copy when it differs. On a failure the zone stays closed, and the state file names the step.
@@ -115,6 +117,8 @@ import podspec  # noqa: E402
 import settings as k3s_settings  # noqa: E402
 import schedule  # noqa: E402
 import secretstore  # noqa: E402
+sys.path.append(str(K3S / 'zones'))
+import applications  # noqa: E402
 
 # The manifest of a copy. A collection export holds its own manifest.json, which the import reads, so this file has
 # another name.
@@ -1015,7 +1019,7 @@ def mount_source(ns, claim, pods):
 # application encrypts its objects with a customer key (SSE-C) names the Secret and the item of that key.
 OBJECT_STORE_CONFIG = ('seaweedfs-config', 'seaweedfs_s3_config')
 OBJECT_STORE_PORT = 8333
-CUSTOMER_KEYS = {'synapse': ('synapse-s3-encryption-customer-key', 's3EncryptionCustomerKey')}
+CUSTOMER_KEYS = {}
 
 
 def object_store(ns, pods):
@@ -1177,7 +1181,8 @@ def copy_objects(ns, store, target):
 def restore_objects(folder, ns):
     """Replace the objects of each bucket of the copy in the running object store of ns, or in the openDesk buckets of
     the zone in Garage. Other buckets stay. A copy of SeaweedFS and a copy of Garage have the same form."""
-    rows = json.loads((folder / 'objects' / 'buckets.json').read_text())
+    rows = [r for r in json.loads((folder / 'objects' / 'buckets.json').read_text())
+            if r['bucket'] not in applications.RETIRED_BUCKETS]
     pods = json.loads(kubectl('-n', ns, 'get', 'pods', '-o', 'json'))['items']
     store = object_store(ns, pods)
     key = None if store else opendesk_garage_key(ns)
@@ -1611,6 +1616,9 @@ def restore_zone(zone, generation, source_zone=None):
         raise SystemExit(f'this copy holds the databases of the shared PostgreSQL, and {zone} runs its own PostgreSQL. Apply '
                          'the zone with deploy-k3s up first, which moves its databases.')
     parts = zone_parts(s, folder, zone)
+    progress['retired'] = retired_parts(folder, parts)
+    if any(progress['retired'].values()):
+        print(json.dumps({'zone': zone, 'left_out': progress['retired']}), flush=True)
 
     def step(name, function):
         if name in progress['steps']:
@@ -1663,7 +1671,7 @@ def restore_zone(zone, generation, source_zone=None):
             opened['workloads'] = {}
             for k, v in source['workloads'].items():
                 ns, rest = k.split('/', 1)
-                if ns in renamed:
+                if ns in renamed and not applications.retired_part(rest.rsplit('/', 1)[-1]):
                     opened['workloads'][f'{renamed[ns]}/{rest}'] = v
             opened['workloads'].update({k: v for k, v in progress['closed']['workloads'].items() if k not in opened['workloads']})
         step('open', lambda: reopen(opened))
@@ -1680,9 +1688,29 @@ TENANT_SECRETS = {'hoover-stores': None, 'garage-tenants': None, 'manticore-sche
                   'hoover-runtime': ('clickhouse-', 'manticore-', 's3-access-key-', 's3-secret-key-', 'temporal-api-key')}
 
 
+def retired_parts(folder, parts):
+    """{kind: [names]} of the parts of a zone copy that belong to a retired application (../../zones/applications.py).
+    The restore leaves them out."""
+    out = {'secrets': [], 'claims': [], 'buckets': [], 'databases': []}
+    for part, ns in parts:
+        if (part / 'objects.json').exists():
+            out['secrets'] += [f"{ns}/{i['metadata']['name']}" for i in json.loads((part / 'objects.json').read_text())['items']
+                               if i['kind'] == 'Secret' and applications.retired_part(i['metadata']['name'])]
+        if (part / 'claims.json').exists():
+            out['claims'] += [f"{ns}/{r['claim']}" for r in json.loads((part / 'claims.json').read_text())
+                              if applications.retired_part(r['claim'])]
+        if (part / 'objects' / 'buckets.json').exists():
+            out['buckets'] += [f"{ns}/{r['bucket']}" for r in json.loads((part / 'objects' / 'buckets.json').read_text())
+                               if r['bucket'] in applications.RETIRED_BUCKETS]
+    if (folder / SHARED_DUMPS).is_dir():
+        out['databases'] = sorted(p.stem for p in (folder / SHARED_DUMPS).glob('*.sql')
+                                  if p.stem in applications.RETIRED_DATABASES.values())
+    return out
+
+
 def restore_secrets(folder, zone, tenant=None):
     """Apply the Secrets of the copy. Service account tokens and Helm release records belong to the target, and so do
-    the tenant Secrets of a site zone (tenant, TENANT_SECRETS).
+    the tenant Secrets of a site zone (tenant, TENANT_SECRETS). The Secrets of a retired application stay out.
 
     The items of a Secret of the copy replace the same items of the target Secret. The other items of the target stay,
     because a later release can add an item that an earlier copy does not hold.
@@ -1693,6 +1721,8 @@ def restore_secrets(folder, zone, tenant=None):
     for item in objects:
         name = item['metadata']['name']
         if item['kind'] != 'Secret' or item.get('type') in skipped or (name in tenant and tenant[name] is None):
+            continue
+        if applications.retired_part(name):
             continue
         if name in tenant:
             item = {**item, 'data': {k: v for k, v in (item.get('data') or {}).items() if not k.startswith(tenant[name])}}
@@ -1732,7 +1762,7 @@ def restore_claims(folder, zone, step=None):
     step(name, function) records each finished claim, so a second run continues at the first unfinished claim. A write
     whose stream ends early (tar: short read) runs again, up to three times, from an emptied claim.
     """
-    claims = json.loads((folder / 'claims.json').read_text())
+    claims = [r for r in json.loads((folder / 'claims.json').read_text()) if not applications.retired_part(r['claim'])]
     for row in claims:
         if step:
             step(f'claim:{zone}/{row["claim"]}', lambda row=row: restore_claim(folder, zone, row))
@@ -1824,7 +1854,7 @@ def restore_shared_databases(folder, zone):
     module = shared_databases(zone)
     passwords = module.zone_passwords(zone)
     keys = {name: key for key, (name, _) in module.DATABASES.items()}
-    dumps = sorted(folder.glob('*.sql'))
+    dumps = sorted(p for p in folder.glob('*.sql') if p.stem not in applications.RETIRED_DATABASES.values())
     unknown = [p.name for p in dumps if p.stem not in keys]
     if unknown:
         raise SystemExit(f'the copy holds the dumps {", ".join(unknown)}, which name no openDesk database. The zone stays closed.')

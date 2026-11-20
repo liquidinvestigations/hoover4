@@ -1,5 +1,5 @@
 # Runs inside the check pod. Prints one JSON object. Never prints a credential.
-# The nextcloud identity writes, reads and deletes one object in its bucket. It must not list the bucket of openproject.
+# The nextcloud identity writes, reads and deletes one object in its bucket. It must not list the bucket of ums.
 import hashlib, json, os, subprocess
 ENDPOINT = f"http://seaweedfs-all-in-one.{os.environ['ZONE']}.svc.cluster.local:8333"
 config = json.load(open('/secret/seaweedfs_s3_config'))
@@ -27,7 +27,7 @@ put = aws('nextcloud', 's3', 'cp', '/tmp/object', key)
 get = aws('nextcloud', 's3', 'cp', key, '/tmp/back')
 same = get.returncode == 0 and hashlib.sha256(open('/tmp/back', 'rb').read()).digest() == hashlib.sha256(data).digest()
 delete = aws('nextcloud', 's3', 'rm', key)
-cross = aws('nextcloud', 's3', 'ls', 's3://openproject')
+cross = aws('nextcloud', 's3', 'ls', 's3://ums')
 out.update(put_ok=put.returncode == 0, read_back_identical=same, delete_ok=delete.returncode == 0,
            other_bucket_list_refused=cross.returncode != 0, other_bucket_error=(cross.stderr.strip().splitlines() or [''])[-1][:120])
 print(json.dumps(out))

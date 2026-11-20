@@ -22,9 +22,11 @@ lab=pathlib.Path(__file__).resolve().parent;settings.use_kubeconfig()
 sys.path.insert(0,str(lab));import udm
 BASE='dc=swp-ldap,dc=internal'
 # Jitsi admits members of managed-by-attribute-Videoconference, which opendeskVideoconferenceEnabled sets.
-APPS=['Fileshare','Projectmanagement','Knowledgemanagement','Livecollaboration','Notes','Videoconference']
+# The flags of the applications of the profile (applications.py): Nextcloud (Fileshare), XWiki (Knowledgemanagement) and
+# Jitsi (Videoconference). The retired applications get no flag.
+APPS=['Fileshare','Knowledgemanagement','Videoconference']
 ENABLED={f'opendesk{a}Enabled':True for a in APPS}
-ADMIN={f'opendesk{a}Admin':True for a in ['Fileshare','Projectmanagement','Knowledgemanagement','Livecollaboration']}
+ADMIN={f'opendesk{a}Admin':True for a in ['Fileshare','Knowledgemanagement']}
 def password():
  # The Nubus password policy needs letters, digits and a minimum length.
  alphabet=string.ascii_letters+string.digits

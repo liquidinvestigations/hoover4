@@ -135,12 +135,12 @@ def test_the_call_services_read_the_zone_secrets_while_they_run():
     # coturn keeps no zone secret in its configuration file. The sidecar copies them into its database.
     assert 'static-auth-secret' not in text and "'userdb=/var/lib/coturn/turndb'" in text
     assert "secret('coturn-secrets'" in text and "'restartPolicy':'Always'" in text
-    # LiveKit has one key, so its configuration does not name the zones.
-    assert 'keys={LIVEKIT_KEY:calls' in text
+    # The LiveKit SFU of the retired chat calls is not installed, and an earlier one is removed.
+    assert 'LIVEKIT' not in text and "n.split('/',1)[1]=='livekit'" in text
     # The bridge starts without XMPP connections and the sidecar adds one per zone.
     assert "'JVB_DISABLE_XMPP':'1'" in text and "values.pop(key,None)" in text and '/colibri/muc-client/add' in text
     zones_text = (K3S / 'zones/zones.py').read_text()
-    assert "'livekitAuth':{'key':LIVEKIT_KEY}" in zones_text and "data['calls']['livekit_secret']" in zones_text
+    assert 'livekitAuth' not in zones_text and "data['calls']['livekit_secret']" not in zones_text
     # The probe of the host rule runs again only when its inputs change.
     assert "record.get('inputs')==inputs" in text
 

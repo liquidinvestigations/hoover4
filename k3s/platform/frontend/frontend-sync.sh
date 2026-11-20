@@ -2,8 +2,8 @@
 # Write the Caddyfile of the HTTPS frontend and restart Caddy when the file or the certificate changed. It runs as root
 # on the public host as /opt/hoover-frontend/sync. install-frontend.sh installs it with the site settings
 # /opt/hoover-frontend/site.env and runs it. The file names no zone, so a zone add or delete changes nothing here.
-# Every zone host is <zone>-<app>.<suffix> (../../config.py zone_host()), and the zone domain <zone>.<suffix> serves the
-# Matrix well-known files. The one site *.<suffix> serves them all. Its matcher takes the zone id from the host name,
+# Every zone host is <zone>-<app>.<suffix> (../../config.py zone_host()), and the zone domain <zone>.<suffix> has the same
+# rules. The one site *.<suffix> serves them all. Its matcher takes the zone id from the host name,
 # and the frontend asks the gate of that zone. Another name below the suffix gets 404, except the extra hosts of site.env.
 # A request passes to the ingress only in one of these cases:
 #   - it comes from a pod or a node of the cluster (cluster in site.env),
@@ -13,8 +13,7 @@
 # A page load without a gate cookie goes to the Keycloak sign-in of the zone. Any other request gets 401.
 # The gate cookies have the domain .<suffix>, so a browser sends the gate cookies of every zone to each host. The gate
 # of a zone reads only its own cookie. The applications get their requests without the gate cookies.
-# The Keycloak admin routes and the admin routes of Synapse and lk-jwt answer 403 outside the admin ranges of the site
-# file (vpn in site.env).
+# The Keycloak admin routes answer 403 outside the admin ranges of the site file (vpn in site.env).
 # site.env names the TLS mode (tls_mode, ../../config.py TLS_MODES). The certificate holds *.<suffix>:
 #   cloudflare  certbot holds a public certificate for *.<suffix> and <suffix> in tls_dir. When the certificate lacks
 #               one of them, or holds a name *.<zone>.<suffix> of the earlier zone names, certbot issues it again with
@@ -77,17 +76,15 @@ cat <<CADDY
 	}
 }
 # The WAF checks the routes that pass without the gate. The rule set refuses a request with an attack pattern (403).
-# Large chat media uploads are checked only in their first part. The sign-in arguments state, rd and redirect_uri hold
+# A large request body is checked only in its first part. The sign-in arguments state, rd and redirect_uri hold
 # a return address, for example a wiki path with /bin/, so the command injection and file access rules do not read
 # them. On a domain that ends with .local, the file access rules match .local/bin/ of a wiki address.
-# The Matrix client API sends messages and account data with PUT and DELETE, so the rule set allows these methods too.
 (waf) {
 	coraza_waf {
 		load_owasp_crs
 		directives \`
 			Include @coraza.conf-recommended
 			Include @crs-setup.conf.example
-			SecAction "id:900200,phase:1,pass,t:none,nolog,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
 			Include @owasp_crs/*.conf
 			SecRuleUpdateTargetByTag attack-rce "!ARGS:state|!ARGS:rd|!ARGS:redirect_uri"
 			SecRuleUpdateTargetByTag attack-lfi "!ARGS:state|!ARGS:rd|!ARGS:redirect_uri"
@@ -105,13 +102,13 @@ cat <<CADDY
 	@cluster remote_ip ${cluster}
 	@admin {
 		not remote_ip ${vpn}
-		expression \`($(app id) && path('/admin', '/admin/*', '/realms/master', '/realms/master/*')) || ($(app matrix) && path('/_synapse/admin/*')) || ($(app mrtc) && path('/sfu_webhook*'))\`
+		expression \`$(app id) && path('/admin', '/admin/*', '/realms/master', '/realms/master/*')\`
 	}
 	# The gate answers its own sign-in routes with the cookies of the browser.
 	@gate expression \`$(app auth)\`
-	# The routes of the chat and call clients with their own tokens, and of preflights, pass without the gate.
+	# The well-known routes and the preflights pass without the gate.
 	# The Keycloak sign-in page of a zone loads its style sheets and images from the portal host before any gate cookie exists.
-	@open expression \`method('OPTIONS') || path('/.well-known/*', '/robots.txt') || $(app 'mas|sfu') || ($(app id) && path('/realms/opendesk/*', '/resources/*', '/fingerprintjs*', '/opendesk-static-files/*')) || ($(app portal) && path('/univention/theme.css', '/univention/portal/css/*', '/opendesk-static-files/*', '/favicon.ico')) || ($(app matrix) && path('/_matrix/client/*', '/_matrix/media/*')) || ($(app mrtc) && path('/sfu/get*', '/get_token*', '/delegate_delayed_leave*'))\`
+	@open expression \`method('OPTIONS') || path('/.well-known/*', '/robots.txt') || ($(app id) && path('/realms/opendesk/*', '/resources/*', '/fingerprintjs*', '/opendesk-static-files/*')) || ($(app portal) && path('/univention/theme.css', '/univention/portal/css/*', '/opendesk-static-files/*', '/favicon.ico'))\`
 	@page header Accept *text/html*
 	@other not header Accept *text/html*
 	# Caddy runs the handlers of one route in the written order. The first handler that answers ends the request.

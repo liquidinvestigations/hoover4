@@ -27,8 +27,9 @@ checkout, the SHA-256 of the site file, the settings revision of the operator st
 commands of the steps get HOOVER4_REVISION and HOOVER4_SETTINGS_REVISION, so every render, also a nested one, uses the
 pinned values. A zone step records the scopes of its zone and its Hoover installation as applied with the pinned
 settings revision after their workloads are ready. A finished complete up records the revision for every scope.
-The zone state (zone-state.json, ../zones/zonestate.py) names the zones. up applies each zone of it again. zone.py
-and the operator portal create and delete zones.
+The zone state (zone-state.json, ../zones/zonestate.py) names the zones. up applies each zone of it again, and creates
+each zone of the zone definitions (zone-definitions.json) that the zone state lacks, for example after deploy-k3s reset
+(reset.py). zone.py and the operator portal create and delete zones.
 
 Cluster copy of the state. The cluster holds the authoritative zone state and operator state (../clusterstate.py).
 The secrets are in the secret store of the site (../secretstore.py), which the step secret-store installs after the
@@ -202,6 +203,19 @@ class Context:
         except ValueError as error:
             raise StepFailed(f'the zone state {path} is unreadable: {error}') from None
         return config.hoovers(self.site, data)
+
+    def zone_names(self):
+        """The zones that up applies: the zones of the zone state, then each zone of the zone definitions
+        (zone-definitions.json, ../zones/zonestate.py) that the zone state lacks, for example after deploy-k3s reset."""
+        names = [h.zone for h in self.hoovers().values()]
+        path = self.private / 'zone-definitions.json'
+        if path.exists():
+            try:
+                defined = json.loads(path.read_text())['zones']
+            except (ValueError, KeyError, TypeError) as error:
+                raise StepFailed(f'the zone definitions {path} are unreadable: {error}') from None
+            names += [z for z in defined if z not in names]
+        return names
 
     def image_tags(self, required=True):
         """{image key: tag} of the Hoover images of the revision: the tags that the record keeps, else the tags of the
@@ -1096,7 +1110,10 @@ def sign_in_inputs(ctx, hoover):
     return hashlib.sha256('\n'.join(sorted(parts)).encode()).hexdigest()[:16]
 
 
-def step_zone(zone):
+def step_zone(zone, pools_step=True):
+    """The zone step. pools_step: the zone is in the zone state at the start of up, so the step stores applies the
+    processing pools. A zone that only the zone definitions name, for example after deploy-k3s reset, creates the pools
+    itself when the site has none (../hoover/pools.py ensure)."""
     def run(ctx):
         # As the runner does for create-zone: the zone state gets the zone first. The frontend serves every zone host
         # with the certificate of *.<domain>, so a zone needs no frontend change.
@@ -1105,7 +1122,7 @@ def step_zone(zone):
         # zone.py runs the openDesk waves only when an input of the zone changed. up --full runs them in every zone.
         # The step stores applies the processing pools of the site (../hoover/pools.py), so the zone leaves them.
         ctx.run([sys.executable, SOURCE / 'zones/zone.py', 'apply', zone] + (['--full'] if getattr(ctx, 'full', False) else []),
-                env={'HOOVER4_POOLS_STEP': '1'})
+                env={'HOOVER4_POOLS_STEP': '1' if pools_step else ''})
         hoovers = [h for h in ctx.hoovers().values() if h.zone == zone]
         for namespace in [zone] + [h.namespace for h in hoovers]:
             wait_rollouts(ctx, namespace)
@@ -1199,14 +1216,16 @@ def cluster_steps(ctx):
     # The scheduler can place a zone pod on any node, so every eligible node pulls the zone images while the zones
     # apply (../images/prepull.py).
     steps['prepull'] = step_prepull
-    zones = ctx.hoovers()
-    for hoover in zones.values():
-        steps[f'zone:{hoover.zone}'] = step_zone(hoover.zone)
+    # The zone state names the zones, and the zone definitions add each intended zone that it lacks, so up creates the
+    # zones again after deploy-k3s reset (reset.py).
+    zones = ctx.zone_names()
+    stated = {h.zone for h in ctx.hoovers().values()}
+    for zone in zones:
+        steps[f'zone:{zone}'] = step_zone(zone, pools_step=zone in stated)
     if ctx.site.single and zones:
         # The development relay of a single-node site serves the loopback ports of one Hoover installation, the first
-        # zone of the zone state. install-relay.py keeps the port mode that the operator chose.
-        relayed = next(iter(zones.values()))
-        steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', relayed.name, 'apply')
+        # zone. The installation has the name of its zone. install-relay.py keeps the port mode that the operator chose.
+        steps['mcp-relay'] = step_script(sys.executable, '@platform/mcp-relay/install-relay.py', zones[0], 'apply')
     # The call services join the Jitsi of every zone, so they follow the zones.
     steps['calls'] = step_calls
     # A normal up moves no running pod. up --rebalance moves the running pods to the nodes of a new plan, one at a
@@ -1281,13 +1300,16 @@ def step_rebalance(ctx):
 def step_prepull(ctx):
     """Pull the Hoover images of the revision and the images of the zone pods on every eligible node.
 
-    The images of the zone pods follow from the openDesk release. When the Hoover images, the openDesk release and the
-    nodes are those of the last complete up, the nodes have the images already, so the step starts no pull pod."""
+    The images of the zone pods follow from the openDesk release and the application profile (../zones/applications.py).
+    When the Hoover images, the openDesk release, the profile and the nodes are those of the last complete up, the
+    nodes have the images already, so the step starts no pull pod."""
     import hashlib
+    sys.path.insert(0, str(SOURCE / 'zones'))
+    import applications
     names = [f'registry.hoover.internal/{n}' for n in image_names(ctx)]
     release = sorted(p.name for p in (ctx.private / 'downloads').glob('opendesk-*'))
     nodes = sorted(n.name for n in ctx.site.nodes.values() if not n.has('gpu'))
-    digest = hashlib.sha256(json.dumps([names, release, nodes]).encode()).hexdigest()[:16]
+    digest = hashlib.sha256(json.dumps([names, release, nodes, applications.digest()]).encode()).hexdigest()[:16]
     if applied_fields(ctx, 'prepull').get('digest') == digest:
         return {'digest': digest, 'pulled': False}
     code, out = ctx.run([sys.executable, SOURCE / 'images/prepull.py', *names], capture=True)

@@ -4,7 +4,7 @@ The cluster holds the authoritative copy. Each file of the synchronized set is o
 operator-portal with the label hoover.dev/state=file. The annotation hoover.dev/state-path names the path of the file in
 the state folder. The key `content` holds the file.
 
-  ConfigMaps  zone-state.json, operator/ (the operator settings, the apply operations and their logs, the backup and
+  ConfigMaps  zone-state.json, zone-definitions.json (the intended zones, ../zones/zonestate.py), operator/ (the operator settings, the apply operations and their logs, the backup and
               relay state), operations/ (the logs of the zone operations of the runner), facts/ (the host facts),
               speed/ (the measured CPU and disk speeds of the nodes), placement/plan.json (the site placement plan of
               placement.py) and frontend/local-ca.crt (the root certificate of the internal CA of the frontend)
@@ -45,7 +45,7 @@ ENV = 'HOOVER4_CLUSTER_STATE'
 LOG_LIMIT = 256 * 1024
 # kind: (label value, files, folders, manifest, lock). The paths are relative to the state folder.
 KINDS = {
-    'configmap': ('file', ('zone-state.json', 'frontend/local-ca.crt', 'placement/plan.json'),
+    'configmap': ('file', ('zone-state.json', 'zone-definitions.json', 'frontend/local-ca.crt', 'placement/plan.json'),
                   ('operator', 'operations', 'facts', 'speed'),
                   '.cluster-state.json', '.cluster-state.lock'),
 }

@@ -24,8 +24,7 @@ The steps of apply, in order:
      gate client Secrets. A zone of the store layout site gets its openDesk buckets and key in the shared Garage, and
      the Ingress of its object storage host (objectstore.py ensure()). A zone of an earlier version moves its objects
      from SeaweedFS to Garage first (objectstore.py move()), when the kubeconfig may keep the SeaweedFS volume. The
-     waves of step 5 then switch the applications, and Helm removes SeaweedFS. The entries of objectstore.py
-     SECOND_PASS run once more after a move. After step 5 the applications that hold the key restart once
+     waves of step 5 then switch the applications, and Helm removes SeaweedFS. After step 5 the applications that hold the key restart once
      (objectstore.py finish()). Such a zone also gets its openDesk databases and users on the shared PostgreSQL of the
      site (postgresql.py ensure()), and its openDesk namespace gets the label that admits it there. A zone of an
      earlier version moves its databases from its own PostgreSQL first (postgresql.py move()), with the same rule for
@@ -39,9 +38,11 @@ The steps of apply, in order:
      list that differs from the waves stops the install. A failed entry runs once more on its own after the repair of
      its known cause, and the log names the cause: a new zone has no 2fa-browser flow, which the openDesk Keycloak
      bootstrap Job needs, so zone-login-no-mfa.sh creates it (nubus). Nextcloud restarts when its pod started before
-     the management Job stored the complete configuration (nextcloud). A zone whose first install has not completed
-     loses the Nextcloud user OpenProject that a failed OpenProject bootstrap left behind (opendesk-openproject-bootstrap).
-     The zone state records the completion (bootstrapped), so an existing zone keeps its OpenProject integration.
+     the management Job stored the complete configuration (nextcloud). The zone state records the completion of the
+     first install (bootstrapped).
+     The application profile (applications.py) gives the class of each entry. An entry without a retained release runs only
+     while the zone has one of its releases: helmfile sync then uninstalls the releases that the values turn off. A new
+     zone skips such an entry. An entry, release or image of the release without a class stops the install.
      While the waves run, a helper sets the login flow as soon as zone-login-no-mfa.sh succeeds, checks Nextcloud, and replaces
      outdated OnDelete pods and outdated pods that block a StatefulSet rollout.
      The waves and step 6 run only when an input changed (opendesk_changes()): the digest of every input that they read
@@ -118,7 +119,7 @@ POSTGRESQL_CLIENT_LABEL = 'hoover.dev/opendesk-postgresql'
 INPUT_SOURCES = (
     'zones/zone.py', 'zones/postrender.py', 'zones/cpu_policy.py', 'zones/cpu-policy.json', 'zones/cpu_requests.py',
     'zones/cpu-requests.json', 'zones/memory_requests.py', 'zones/memory-requests.json', 'zones/memory-limits.json',
-    'zones/zonestate.py', 'zones/synapse', 'zones/openproject', 'hoover/stores/podspec.py', 'settings.py', 'config.py',
+    'zones/zonestate.py', 'zones/applications.py', 'hoover/stores/podspec.py', 'settings.py', 'config.py',
     'platform/operator/settings.py', 'cluster/runtimeclasses.yaml', 'driver/artifacts.json',
     'zones/zone-login-no-mfa.sh', 'zones/zone-users.py', 'zones/zone-users.json', 'zones/udm.py',
     'zones/zone-patches.py', 'zones/zone-ai.py', 'zones/nextcloud-ai.py', 'zones/xwiki-ai.sh',
@@ -171,8 +172,9 @@ def apply_manifest(text, namespace=None):
 def register(zone, home=None, values=None):
     """Add a new zone to the zone state, or check that an existing zone has the given values.
 
-    values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). A new zone gets the store
-    layout site unless values names local. A new zone of the layout site gets the Temporal and the Manticore of the
+    values holds the Hoover values of a new zone (config.ZONE_VALUES and extra_datasets). Without values, a new zone of
+    the zone definitions (zonestate.py intended()), for example after deploy-k3s reset, gets the values of its definition.
+    A new zone gets the store layout site unless values names local. The zone definitions keep each registered zone. A new zone of the layout site gets the Temporal and the Manticore of the
     site (temporal = site, manticore = site). home is the home node argument of an earlier version. It has no effect, and a new entry does not record it.
     """
     import config
@@ -184,11 +186,15 @@ def register(zone, home=None, values=None):
             raise
         state = {'schemaVersion': zonestate.SCHEMA, 'zones': {}}
     entry = state['zones'].get(zone)
+    defined = zonestate.definitions().get(zone) or {}
+    if entry is None and not values and defined:
+        values = {k: v for k, v in defined.items() if k in config.ZONE_VALUES or k == 'extra_datasets'}
     if entry is None:
         if values.get('stores') == 'zone':
             raise SystemExit('a new zone cannot use the store layout zone of an earlier version. Use site or local.')
         # bootstrapped turns true after the first complete openDesk install (opendesk()).
         entry = {'enabled': True, 'namespaces': [zone, f'hoover-{zone}'], 'bootstrapped': False, 'stores': 'site', **values}
+        entry.update({k: defined[k] for k in ('enabled', 'tiers') if k in defined})
         if entry['stores'] == 'site':
             entry['temporal'] = 'site'
             entry['manticore'] = 'site'
@@ -201,8 +207,10 @@ def register(zone, home=None, values=None):
             raise SystemExit('; '.join(problems))
         state['zones'][zone] = entry
         zonestate.save(state)
+        zonestate.define(zone, entry)
         step('zone-state', zone=zone, change='added')
         return
+    zonestate.define(zone, entry)
     for key, value in values.items():
         default = config.ZONE_VALUES.get(key, ('',))[0]
         if entry.get(key, default) != value:
@@ -307,9 +315,12 @@ def wave_problems(entries, waves=OPENDESK_WAVES):
 
 
 def check_waves():
+    """Stop when the waves or the application profile (applications.py) do not cover the entries of the release."""
+    import applications
     problems = wave_problems(upstream_entries((OPENDESK / 'helmfile-defaults.yaml.gotmpl').read_text()))
+    problems += applications.problems(OPENDESK, entry_releases)
     if problems:
-        raise SystemExit('; '.join(problems) + '. Update OPENDESK_WAVES for this openDesk release.')
+        raise SystemExit('; '.join(problems) + '. Update OPENDESK_WAVES and zones/applications.py for this openDesk release.')
 
 
 def entry_releases(entry):
@@ -584,8 +595,7 @@ def login_flow(zone, stop, errors):
     """Run zone-login-no-mfa.sh as soon as the opendesk realm exists, and nextcloud_config(), while helmfile runs.
 
     The openDesk Keycloak bootstrap Job needs the 2fa-browser flow, which a zone without two-factor login lacks. The Job
-    retries, so a flow that exists before its last retry lets the first helmfile pass succeed. The OpenProject bootstrap
-    Job calls Nextcloud, so Nextcloud gets its configuration before that Job runs out of retries.
+    retries, so a flow that exists before its last retry lets the first helmfile pass succeed.
     """
     configured = restarted = False
     try:
@@ -613,9 +623,8 @@ def nextcloud_config(zone, wait=True):
 
     The Nextcloud pod loads config.php from the table fs_config_store of its database when it starts. The management Job
     writes the complete configuration there. A pod that starts before the Job keeps the minimal configuration of the
-    install, and answers every request for <zone>-files.<suffix> with a trusted domain error. The OpenProject bootstrap
-    then fails, because it calls Nextcloud, and its failed setup leaves the Nextcloud user OpenProject behind. occ cannot
-    change the configuration, because it is read-only. A new pod loads the complete configuration.
+    install, and answers every request for <zone>-files.<suffix> with a trusted domain error. occ cannot change the
+    configuration, because it is read-only. A new pod loads the complete configuration.
     """
     domain = nextcloud_domain(zone)
     if not kubectl('-n', zone, 'get', 'deployment', 'opendesk-nextcloud-aio', '--ignore-not-found', '-o', 'name').strip():
@@ -670,46 +679,30 @@ def mark_bootstrapped(zone):
         step('zone-state', zone=zone, change='bootstrapped')
 
 
-def openproject_reset(zone):
-    """Remove the Nextcloud user and group OpenProject that a failed OpenProject bootstrap left behind.
-
-    The caller runs it only while Helm lists the release opendesk-openproject-bootstrap as failed. It changes only a
-    zone whose first install has not completed (first_bootstrap()), so the integration of an existing zone stays.
-    The integration setup of the bootstrap creates the user and returns its client credentials. A second setup finds the
-    user and returns no credentials, so every retry fails. The order follows the troubleshooting guide of the Nextcloud
-    app integration_openproject: disable the app, delete the user and the group, enable the app.
-    """
-    if not first_bootstrap(zone):
-        step('openproject-reset', zone=zone, result='skipped, the zone completed its first install')
-        return
-    occ = ['kubectl', '--kubeconfig', str(settings.KUBECONFIG), '-n', zone, 'exec', 'deployment/opendesk-nextcloud-aio',
-           '--', 'php', '/var/www/html/occ']
-    if subprocess.run(occ + ['user:info', 'OpenProject'], capture_output=True).returncode:
-        return
-    for args in (['app:disable', 'integration_openproject'], ['user:delete', 'OpenProject'],
-                 ['group:delete', 'OpenProject'], ['app:enable', 'integration_openproject']):
-        subprocess.run(occ + args, capture_output=True)
-    step('openproject-reset', zone=zone, reason='a failed bootstrap left the Nextcloud user OpenProject')
-
-
 def repair(zone, entry, releases):
     """The repair of a known cause before an entry runs again. releases is {release: status} after the failure.
 
     nubus: the Keycloak bootstrap Job needs the 2fa-browser flow, which zone-login-no-mfa.sh creates once Keycloak
     has the openDesk configuration. nextcloud: Nextcloud restarts when it runs without the configuration of its management Job
-    (nextcloud_config()). opendesk-openproject-bootstrap: the same Nextcloud check, and the removal of the Nextcloud user
-    OpenProject that a failed bootstrap left behind (openproject_reset()).
+    (nextcloud_config()).
     """
     if entry == 'nubus' and kubectl('-n', zone, 'get', 'secret', 'keycloak-admin-password', '--ignore-not-found', '-o', 'name').strip():
         run('bash', HERE / 'zone-login-no-mfa.sh', zone, check=False)
-    if entry in ('nextcloud', 'opendesk-openproject-bootstrap'):
+    if entry == 'nextcloud':
         nextcloud_config(zone)
-    if entry == 'opendesk-openproject-bootstrap' and releases.get('opendesk-openproject-bootstrap') == 'failed':
-        openproject_reset(zone)
 
 
 def install_entry(zone, entry):
-    """Run one entry, and once more after its repair when it fails. The log names the cause of each retry."""
+    """Run one entry, and once more after its repair when it fails. The log names the cause of each retry.
+
+    An entry without a retained release (applications.py) runs only to uninstall the releases that the zone still has."""
+    import applications
+    if applications.entry_class(entry) != 'retained':
+        installed = [n for n in entry_releases(entry) if n in helm_releases(zone)]
+        if not installed:
+            step('helmfile', zone=zone, entry=entry, command='skipped', reason=f'{applications.entry_class(entry)} entry')
+            return
+        step('helmfile', zone=zone, entry=entry, command='sync', reason=f'uninstall {", ".join(installed)}')
     for attempt in (1, 2):
         command = entry_command(entry, helm_releases(zone))
         step('helmfile', zone=zone, entry=entry, command=command, attempt=attempt)
@@ -915,17 +908,13 @@ def apply(zone, home=None, values=None, full=False):
     namespaces(zone)
     step('namespaces', zone=zone)
     refuse_leftovers(zone)
-    moved = objects(zone)
+    objects(zone)
     databases(zone)
     inputs = opendesk_inputs(zone)
     reasons = ['--full'] if full else opendesk_changes(zone, inputs, helm_revisions(zone))
     if reasons:
         step('opendesk-check', zone=zone, result='run', reasons=reasons[:12])
         opendesk(zone)
-        if moved:
-            import objectstore
-            for entry in objectstore.SECOND_PASS:
-                install_entry(zone, entry)
         step('opendesk', zone=zone)
         run('bash', HERE / 'zone-login-no-mfa.sh', zone, quiet=True)
         run(sys.executable, HERE / 'zone-users.py', zone)
@@ -989,6 +978,9 @@ def delete(zone):
                      'Delete it with the admin kubeconfig.')
     del state['zones'][zone]
     zonestate.save(state)
+    # A reset keeps the definition, so the next deploy-k3s up creates the zone again (../driver/reset.py).
+    if not os.environ.get('HOOVER4_RESET'):
+        zonestate.undefine(zone)
     # The last zone of the store layout site takes the processing pools with it.
     pools()
     # The secrets and records of the zone go last, after every object that used them.

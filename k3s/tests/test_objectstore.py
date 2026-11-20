@@ -12,6 +12,7 @@ from conftest import K3S
 
 sys.path.insert(0, str(K3S / 'zones'))
 sys.path.insert(0, str(K3S / 'platform' / 'backups'))
+import applications  # noqa: E402
 import backups  # noqa: E402
 import objectstore  # noqa: E402
 import postgresql  # noqa: E402
@@ -29,7 +30,7 @@ def test_the_buckets_are_the_object_stores_of_the_release():
     text = path.read_text().split('objectstores:', 1)[1]
     found = {}
     for name, body in re.findall(r'^  (\w+):\n((?:    .*\n|\n)+)', text, re.M):
-        if 'enterprise: true' not in body:
+        if 'enterprise: true' not in body and name not in applications.RETIRED_BUCKETS:
             found[name] = re.search(r'bucket: "([^"]+)"', body).group(1)
     assert found == objectstore.BUCKETS
 
@@ -67,8 +68,9 @@ def test_a_zone_on_garage_renders_its_key_and_host_and_no_seaweedfs(render):
                          'secretKey': {'value': KEY['secret_key']}}
     # The bucket names stay those of openDesk: the key has a local alias for each.
     assert all('bucket' not in s for s in stores.values())
-    # The Notes template of openDesk passes no region to its chart, so a customization file sets it.
-    assert values['customization']['release']['notes'] == [str(zones.out / 'notes-s3-region.yaml')]
+    # No retired application gets an object store or a customization file.
+    assert not set(stores) & set(applications.RETIRED_BUCKETS)
+    assert not {'notes', 'openproject', 'opendeskElement'} & set(values['customization']['release'])
 
 
 @pytest.mark.parametrize('entry', [{'stores': 'site'}, {'stores': 'local', 'objectstore': 'garage'}, {}])
@@ -76,16 +78,6 @@ def test_a_zone_before_its_move_or_of_the_layout_local_keeps_seaweedfs(render, e
     values = render(entry)
     assert 'seaweedfs' not in values['apps'] and 'objectstores' not in values
     assert 'notes' not in values['customization']['release']
-
-
-def test_the_notes_region_file_names_the_garage_region(monkeypatch, tmp_path):
-    written = {}
-    monkeypatch.setattr(zones, 'put', lambda path, text: written.update({path.name: text}))
-    monkeypatch.setattr(zones, 'out', tmp_path)
-    monkeypatch.setattr(zones, 'load_secrets', lambda: {'calls': {}})
-    monkeypatch.setattr(zones, 'ZONES', [])
-    zones.main()
-    assert yaml.safe_load(written['notes-s3-region.yaml']) == {'global': {'s3': {'regionName': 'us-east-1'}}}
 
 
 def test_the_ingress_sends_only_the_zone_buckets_to_garage(monkeypatch):
@@ -98,8 +90,8 @@ def test_the_ingress_sends_only_the_zone_buckets_to_garage(monkeypatch):
     # The bucket list of the key, and each bucket of the zone.
     assert paths == {'/': 'Exact', **{f'/{b}': 'Prefix' for b in objectstore.BUCKETS.values()}}
     assert {json.dumps(p['backend']) for p in rule['http']['paths']} == {json.dumps({'service': {'name': 'garage', 'port': {'number': 3900}}})}
-    annotations = ingress['metadata']['annotations']
-    assert annotations['haproxy-ingress.github.io/cors-allow-origin'] == 'https://zone-a-projects.test'
+    # No retired application reads a bucket from the browser, so the Ingress answers no CORS request.
+    assert not any('cors' in k for k in ingress['metadata']['annotations'])
 
 
 def test_the_ingress_controller_reaches_only_the_s3_port_of_garage():
@@ -291,6 +283,8 @@ def test_a_new_zone_of_the_layout_site_starts_on_garage(monkeypatch):
     monkeypatch.setattr(zone.zonestate, 'save', lambda data: saved.update(data))
     import config
     monkeypatch.setattr(config, 'zone_problems', lambda *a: [])
+    monkeypatch.setattr(zone.zonestate, 'definitions', lambda: {})
+    monkeypatch.setattr(zone.zonestate, 'define', lambda z, entry: None)
     zone.register('zone-n')
     assert saved['zones']['zone-n']['objectstore'] == 'garage'
     zone.register('zone-l', values={'stores': 'local'})
@@ -347,11 +341,11 @@ def test_the_garage_copy_has_the_form_of_the_seaweedfs_copy(monkeypatch, tmp_pat
         return None, [{'bucket': bucket, 'objects': 0, 'customer_key_objects': 0}]
     monkeypatch.setattr(garage_client, 'run', run)
     monkeypatch.setattr(garage_client, 'client', lambda: __import__('contextlib').nullcontext('garage-0'))
-    monkeypatch.setattr(backups, 'customer_keys', lambda ns: {'synapse': 'c2Vj'})
+    monkeypatch.setattr(backups, 'customer_keys', lambda ns: {'nextcloud': 'c2Vj'})
     backups.copy_garage_objects('zone-a', KEY, tmp_path)
     rows = json.loads((tmp_path / 'buckets.json').read_text())
     assert [r['bucket'] for r in rows] == sorted(objectstore.BUCKETS.values())
-    assert ('tar', 'synapse', {'synapse': 'c2Vj'}) in ran and ('tar', 'ums', None) in ran
+    assert ('tar', 'nextcloud', {'nextcloud': 'c2Vj'}) in ran and ('tar', 'ums', None) in ran
 
 
 def test_the_restore_writes_the_copy_into_the_garage_buckets_of_the_zone(monkeypatch, tmp_path):
@@ -366,6 +360,11 @@ def test_the_restore_writes_the_copy_into_the_garage_buckets_of_the_zone(monkeyp
     monkeypatch.setattr(garage_client, 'client', lambda: __import__('contextlib').nullcontext('garage-0'))
     backups.restore_objects(tmp_path, 'zone-a')
     assert ran == [('empty', 'nextcloud'), ('untar', 'nextcloud'), ('empty', 'ums'), ('untar', 'ums')]
+    # A copy of an earlier version holds the buckets of retired applications. The restore leaves them out.
+    ran.clear()
+    (tmp_path / 'objects' / 'buckets.json').write_text(json.dumps([{'bucket': 'synapse'}, {'bucket': 'openproject'}, {'bucket': 'ums'}]))
+    backups.restore_objects(tmp_path, 'zone-a')
+    assert ran == [('empty', 'ums'), ('untar', 'ums')]
     (tmp_path / 'objects' / 'buckets.json').write_text(json.dumps([{'bucket': 'other'}]))
     with pytest.raises(SystemExit, match='other'):
         backups.restore_objects(tmp_path, 'zone-a')
@@ -392,29 +391,6 @@ def test_a_zone_delete_drops_the_kept_volume_with_the_admin_kubeconfig_only(monk
     zone.delete('zone-a')
     out = capsys.readouterr().out
     assert dropped == [] and 'hoover.dev/seaweedfs-of=zone-a can stay' in out and 'hoover.dev/postgresql-of=zone-a can stay' in out
-
-
-@pytest.mark.parametrize('moved', [True, False])
-def test_the_element_entry_runs_once_more_after_a_move(monkeypatch, moved):
-    calls = []
-    for name in ('register', 'images', 'cluster', 'namespaces', 'refuse_leftovers', 'databases', 'finish_move', 'hoover'):
-        monkeypatch.setattr(zone, name, lambda *a, **kw: None)
-    monkeypatch.setattr(zone, 'objects', lambda z: moved)
-    monkeypatch.setattr(zone.clusterstate, 'checkpoint', lambda folder: None)
-    monkeypatch.setattr(zone.zonestate, 'enabled', lambda z: True)
-    monkeypatch.setattr(zone, 'run', lambda *a, **kw: None)
-    monkeypatch.setattr(zone, 'apply_manifest', lambda *a, **kw: None)
-    monkeypatch.setattr(zone, 'opendesk_inputs', lambda z: {})
-    monkeypatch.setattr(zone, 'helm_revisions', lambda z: {})
-    monkeypatch.setattr(zone, 'opendesk_changes', lambda z, inputs, releases: ['zone-state changed'])
-    monkeypatch.setattr(zone, 'opendesk', lambda z: calls.append('waves'))
-    monkeypatch.setattr(zone, 'install_entry', lambda z, entry: calls.append(entry))
-    monkeypatch.setattr(zone, 'write_record', lambda z, inputs: calls.append('record'))
-    gate = type(sys)('gate')
-    gate.objects = lambda z: []
-    monkeypatch.setitem(sys.modules, 'gate', gate)
-    zone.apply('zone-a')
-    assert calls == (['waves', 'element', 'record'] if moved else ['waves', 'record'])
 
 
 def test_a_drop_deletes_the_logical_volumes_of_the_kept_volumes(monkeypatch):

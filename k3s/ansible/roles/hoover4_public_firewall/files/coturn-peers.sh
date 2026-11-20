@@ -1,9 +1,9 @@
 #!/bin/bash
 # Limit the public media address of the media node for the coturn user. The role hoover4_public_firewall runs it as
 # root on the media node of the call services when that node has a public address.
-# coturn may relay to that address, because LiveKit offers it to the clients (../../../../platform/calls/turn_peers.py).
-# The chain coturn_peers lets the coturn user reach it only on the LiveKit media ports. Its hook runs before the DNAT of
-# the host ports. The chain is in its own table, so it does not depend on the public interface or on
+# coturn may relay to that address (../../../../platform/calls/turn_peers.py). No call service of the address needs a
+# relay since the retirement of LiveKit, so the chain coturn_peers drops every packet of the coturn user to that
+# address. Its hook runs before the DNAT of the host ports. The chain is in its own table, so it does not depend on the public interface or on
 # public-firewall.sh, and it changes no traffic of another user. The calls step of the driver adds the public peer only
 # after a probe shows this rule.
 # Environment: HOOVER4_PUBLIC_IP, the public address of the node.
@@ -21,7 +21,7 @@ COTURN_UID=64981
 NFT_FILE=/etc/hoover-coturn-peers.nft
 UNIT_FILE=/etc/systemd/system/hoover-coturn-peers.service
 NFT_TEXT=$(cat <<EOF
-# Written by coturn-peers.sh. The coturn user reaches the public media address only on the LiveKit media ports.
+# Written by coturn-peers.sh. The coturn user reaches no port of the public media address.
 table inet hoover_coturn_peers
 delete table inet hoover_coturn_peers
 table inet hoover_coturn_peers {
@@ -29,9 +29,7 @@ table inet hoover_coturn_peers {
     type filter hook output priority raw; policy accept;
     meta skuid != $COTURN_UID accept
     $FAMILY daddr != $PUBLIC_IP accept
-    udp dport 7882 accept comment "LiveKit media"
-    tcp dport 7881 accept comment "LiveKit media over TCP"
-    counter drop comment "coturn relays to no other port of the public address"
+    counter drop comment "coturn relays to no port of the public address"
   }
 }
 EOF

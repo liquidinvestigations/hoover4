@@ -8,15 +8,13 @@ the openDesk name for each of them (for example nextcloud), so the applications 
 names its root storage by the bucket name, and a new name would hide its earlier application data. The key cannot
 create a bucket, change a bucket setting, or reach any other bucket. zones.py keeps the key in the zone secrets of the
 secret store (../secretstore.py) and writes it into the openDesk values of the zone (values()). The values set the region of Garage (REGION), because Garage refuses a
-request signed for another region. The Notes template of openDesk does not pass that value to its chart, so zones.py
-gives Notes the region in a customization file.
+request signed for another region.
 
 The applications reach Garage at the object storage host of the zone, <zone>-objectstorage.<suffix>, through the HTTPS
-frontend. The browser of a user reaches it too, for example when it opens an OpenProject attachment. The Ingress
+frontend. The Ingress
 opendesk-<zone> in the namespace of the shared stores (ingress()) gives the S3 port of Garage only the paths of the
 zone buckets and the bucket list (/). The network policy garage-clients of shared.py admits the ingress controller on
-that port. The Ingress answers the CORS requests of the OpenProject pages of the zone, because a Garage
-bucket without a CORS setting refuses them, and only an owner key can set one.
+that port.
 
 The zone state entry has objectstore = garage for a zone on Garage. zone.py apply gives it to each new zone of the
 store layout site. A zone of an earlier version runs SeaweedFS in its namespace and has no value. zone.py apply moves
@@ -29,7 +27,7 @@ such a zone with the admin kubeconfig (move()):
   4. The volume of SeaweedFS gets the reclaim policy Retain and the label LABEL, so its data stays when Helm removes
      SeaweedFS. The record objectstore-move.json of the zone in the secret store holds the counts and the times.
   5. The zone state gets objectstore = garage. zones.py then writes the values with Garage and without SeaweedFS, and
-     the openDesk waves of zone.py apply them. Helm removes SeaweedFS. The entries of SECOND_PASS run once more.
+     the openDesk waves of zone.py apply them. Helm removes SeaweedFS.
   6. Each workload whose configuration holds the key of the zone, and Nextcloud, which reads its object store
      configuration from its database at its start, restart once (restart_consumers()). The switch ends when they are
      ready.
@@ -56,10 +54,11 @@ sys.path.insert(0, str(SOURCE))
 sys.path.insert(0, str(SOURCE / 'hoover' / 'stores'))
 import settings  # noqa: E402
 
-# The openDesk object stores of a zone (objectstores.yaml.gotmpl of the release, without the enterprise ones), and the
-# bucket of each. test_zones.py compares the list with the release.
-BUCKETS = {'migrations': 'migrations', 'nextcloud': 'nextcloud', 'notes': 'notes', 'nubus': 'ums',
-           'openproject': 'openproject', 'openxchange': 'openxchange', 'synapse': 'synapse'}
+# The openDesk object stores of a zone (objectstores.yaml.gotmpl of the release, without the enterprise ones and the
+# retired applications of applications.py RETIRED_BUCKETS), and the bucket of each. test_zones.py compares the list with the
+# release. A bucket of a retired application stays until the zone delete (../hoover/stores/shared.py remove), which
+# removes every bucket with the prefix of the zone.
+BUCKETS = {'migrations': 'migrations', 'nextcloud': 'nextcloud', 'nubus': 'ums', 'openxchange': 'openxchange'}
 STORES_NS = 'hoover-stores'
 GARAGE_PORT = 3900
 # The region of the shared Garage (s3_region of ../hoover/stores/config/garage/garage.toml).
@@ -67,10 +66,6 @@ REGION = re.search(r'^s3_region\s*=\s*"([^"]+)"', (SOURCE / 'hoover/stores/confi
 # The label of a SeaweedFS volume that a move kept. Its value is the zone.
 LABEL = 'hoover.dev/seaweedfs-of'
 RECORD = 'objectstore-move.json'
-# The openDesk entries that zone.py runs once more after the waves of a move. The chart of the element release hashes
-# a ConfigMap of the release opendesk-element-customization with a lookup. In the first run the lookup reads the
-# ConfigMap before the move, so only the next run gives the element release its final form.
-SECOND_PASS = ('element',)
 # The workload of Nextcloud, which reads its object store configuration from its database at its start.
 NEXTCLOUD = 'deployment/opendesk-nextcloud-aio'
 
@@ -102,7 +97,6 @@ def values(zone, key):
 
 def ingress(zone):
     """The Ingress of the object storage host of a zone: the paths of the zone buckets go to the S3 port of Garage."""
-    projects = f"https://{settings.zone_host(zone, 'projects')}"
     backend = {'service': {'name': 'garage', 'port': {'number': GARAGE_PORT}}}
     # The bucket list (GET /) answers with the buckets of the key only. The Nubus portal consumer waits for it at its start.
     paths = [{'path': '/', 'pathType': 'Exact', 'backend': backend}]
@@ -112,15 +106,7 @@ def ingress(zone):
             'metadata': {'name': f'opendesk-{zone}', 'namespace': STORES_NS, 'labels': {'hoover.dev/opendesk-objects': zone},
                          'annotations': {
                              # A large Nextcloud upload part can take longer than the default of 50 s.
-                             prefix + 'timeout-server': '600s',
-                             # The OpenProject pages read attachments from the bucket, and a direct upload sends a form to it.
-                             prefix + 'cors-enable': 'true',
-                             prefix + 'cors-allow-origin': projects,
-                             prefix + 'cors-allow-credentials': 'true',
-                             prefix + 'cors-allow-methods': 'GET, HEAD, PUT, POST, DELETE, OPTIONS',
-                             prefix + 'cors-allow-headers': 'Authorization, Content-Type, Content-Disposition, Content-MD5, '
-                                                            'X-Requested-With, X-Amz-Date, X-Amz-Content-Sha256, X-Amz-Acl',
-                             prefix + 'cors-expose-headers': 'ETag, Location'}},
+                             prefix + 'timeout-server': '600s'}},
             'spec': {'ingressClassName': 'haproxy',
                      'rules': [{'host': settings.zone_host(zone, 'objectstorage'), 'http': {'paths': paths}}]}}
 

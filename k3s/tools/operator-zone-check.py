@@ -45,8 +45,6 @@ def leftovers():
  if (settings.PRIVATE/'zones'/zone).exists():left['files']=True
  import secretstore
  if secretstore.client().list(f'zones/{zone}'):left['secrets']=True
- livekit=subprocess.run(['kubectl','-n','calls','get','secret','livekit','-o','jsonpath={.data.config\\.yaml}'],capture_output=True,text=True).stdout
- if zone in base64.b64decode(livekit).decode():left['livekit_key']=True
  return left
 def finish():
  result['left_after_delete']=leftovers()

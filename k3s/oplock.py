@@ -18,6 +18,12 @@ SiteLock: an flock on <operator state>/site-operation.lock. The kernel releases 
 A new holder that finds the record of an earlier holder that did not release records it as `recovered`.
 A child process of the holder gets HOOVER4_SITE_OPERATION=<id> and runs inside the operation of its parent without a
 second lock.
+
+An incomplete reset (driver/reset.py) keeps a reset marker after each release of the lock: the annotation
+hoover.dev/site-reset of the Lease, or <operator state>/site-reset.json for the file lock. While a marker exists, only an
+operation of the kind reset can take the lock. Every other kind, for example a deployment, a settings Apply, a zone
+operation, a backup or a restore, gets Busy with the record id of the reset, so nothing creates zone data before the
+reset completes. The reset removes the marker at its end.
 """
 import fcntl
 import json
@@ -32,12 +38,23 @@ ENV = 'HOOVER4_SITE_OPERATION'
 NAMESPACE = 'operator-portal'
 LEASE = 'site-operation'
 ANNOTATION = 'hoover.dev/site-operation'
+RESET_ANNOTATION = 'hoover.dev/site-reset'
+# The only operation kind that a reset marker admits.
+RESET_KIND = 'reset'
 DURATION = 90
 RENEW = 20
 
 
 class Busy(RuntimeError):
-    """Another operation holds the site lock. The message names it."""
+    """Another operation holds the site lock, or an incomplete reset blocks it. The message names it."""
+
+
+def reset_refusal(marker, kind):
+    """The Busy error for an operation of kind while the reset marker exists, else None."""
+    if not marker or kind == RESET_KIND:
+        return None
+    return Busy(f'the reset {marker.get("record", "")} of this site is incomplete since {marker.get("started", "an unknown time")}. '
+                f'No {kind} runs before it ends. Run deploy-k3s reset --resume {marker.get("record", "RECORD")}.')
 
 
 def _write(path, value):
@@ -55,6 +72,7 @@ class SiteLock:
         self.folder = Path(state_folder)
         self.path = self.folder / 'site-operation.lock'
         self.record = self.folder / 'site-operation.json'
+        self.reset_path = self.folder / 'site-reset.json'
         self.handle = None
         self.inherited = False
         self.owner = None
@@ -65,6 +83,21 @@ class SiteLock:
             return json.loads(self.record.read_text())
         except (OSError, ValueError):
             return None
+
+    def reset_marker(self):
+        """The marker of an incomplete reset, or None."""
+        try:
+            return json.loads(self.reset_path.read_text())
+        except (OSError, ValueError):
+            return None
+
+    def set_reset(self, marker):
+        """Keep the marker of an incomplete reset, or remove it with None. Only the reset holder calls it."""
+        if marker is None:
+            self.reset_path.unlink(missing_ok=True)
+        else:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            _write(self.reset_path, marker)
 
     def busy(self):
         """The record of the holder when another process holds the lock now, else None. It takes no lock."""
@@ -104,6 +137,10 @@ class SiteLock:
                                f'{other.get("host", "an unknown host")} since {other.get("started", "an unknown time")}. '
                                'Wait for it to end.')
                 time.sleep(1)
+        refusal = reset_refusal(self.reset_marker(), kind)
+        if refusal:
+            handle.close()
+            raise refusal
         earlier = self.holder()
         owner = {'kind': kind, 'id': operation_id, 'host': socket.gethostname(), 'pid': os.getpid(),
                  'started': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'state': 'held'}
@@ -192,6 +229,32 @@ class LeaseLock:
         lease = self.lease()
         return self.record(lease) if lease else None
 
+    @staticmethod
+    def marker_of(lease):
+        try:
+            return json.loads(((lease or {}).get('metadata', {}).get('annotations') or {}).get(RESET_ANNOTATION, ''))
+        except ValueError:
+            return None
+
+    def reset_marker(self):
+        """The marker of an incomplete reset, or None."""
+        return self.marker_of(self.lease())
+
+    def set_reset(self, marker):
+        """Keep the marker of an incomplete reset on the Lease, or remove it with None. The holder of the lock calls it."""
+        for _ in range(5):
+            lease = self.lease()
+            if lease is None:
+                raise RuntimeError(f'the site lock {NAMESPACE}/{LEASE} does not exist')
+            patch = {'metadata': {'resourceVersion': lease['metadata']['resourceVersion'],
+                                  'annotations': {RESET_ANNOTATION: json.dumps(marker, sort_keys=True) if marker else None}}}
+            result = self.kubectl('patch', 'lease', LEASE, '--type', 'merge', '-p', json.dumps(patch))
+            if result.returncode == 0:
+                return
+            if 'the object has been modified' not in result.stderr:
+                raise RuntimeError(f'the reset marker of {NAMESPACE}/{LEASE} cannot be written: {result.stderr.strip()[-300:]}')
+        raise RuntimeError(f'the reset marker of {NAMESPACE}/{LEASE} changed five times during its write')
+
     def busy(self):
         lease = self.lease()
         if lease and self.live(lease):
@@ -200,8 +263,13 @@ class LeaseLock:
 
     def write(self, lease, owner):
         """Create or replace the Lease. Return False when another writer changed it first."""
+        annotations = {ANNOTATION: json.dumps(owner, sort_keys=True)}
+        # The reset marker stays through every write of the holder record.
+        marker = ((lease or {}).get('metadata', {}).get('annotations') or {}).get(RESET_ANNOTATION)
+        if marker:
+            annotations[RESET_ANNOTATION] = marker
         body = {'apiVersion': 'coordination.k8s.io/v1', 'kind': 'Lease',
-                'metadata': {'name': LEASE, 'namespace': NAMESPACE, 'annotations': {ANNOTATION: json.dumps(owner, sort_keys=True)}},
+                'metadata': {'name': LEASE, 'namespace': NAMESPACE, 'annotations': annotations},
                 'spec': {'holderIdentity': owner['id'] if owner.get('state') == 'held' else '',
                          'leaseDurationSeconds': DURATION, 'renewTime': _now()}}
         if owner.get('state') == 'held':
@@ -236,6 +304,9 @@ class LeaseLock:
                                'Wait for it to end.')
                 time.sleep(2)
                 continue
+            refusal = reset_refusal(self.marker_of(lease), kind)
+            if refusal:
+                raise refusal
             owner = {'kind': kind, 'id': operation_id, 'host': socket.gethostname(), 'pid': os.getpid(),
                      'started': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'state': 'held'}
             earlier = self.record(lease) if lease else None

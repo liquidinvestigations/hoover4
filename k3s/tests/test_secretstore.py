@@ -114,7 +114,7 @@ def test_a_zone_step_writes_only_the_secrets_of_its_zone(monkeypatch):
     with pytest.raises(SystemExit, match='steps secret-store'):
         zones.load_secrets()
     calls, users = zones.site_secrets()
-    assert set(calls) == {'jvb_password', 'livekit_turn_secret', 'livekit_secret'}
+    assert set(calls) == {'jvb_password'}
     assert set(users) == set(zones.fixture_users())
     data = zones.load_secrets()
     assert set(data) == {'calls', 'zone-a'}

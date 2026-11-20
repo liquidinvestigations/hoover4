@@ -6,7 +6,7 @@ requires check-and-set on each write, so a write names the version that it read.
 update() then reads the path again and repeats the change, so two writers of one path keep both changes.
 
 The paths are relative to the mount.
-  site/calls                 the JVB password and the LiveKit secrets of the call services (../zones/zones.py)
+  site/calls                 the JVB password of the call services, and the unused LiveKit secrets of an earlier version (../zones/zones.py)
   site/zone-users            the password of each user of ../zones/zone-users.json, the same in every zone
   site/stores                the Secret hoover-stores of the shared stores (../hoover/stores/shared.py)
   site/temporal              the signing key of the Temporal of the site (../hoover/stores/temporal.py)
@@ -47,6 +47,8 @@ Usage: secretstore.py status                  print the paths of the store
        secretstore.py files <path> <folder> <name>[:<generator>] ...
                                               keep files of a folder in a path (keep_files())
        secretstore.py read <path> <key>       print one value, for the scripts of the deployment
+       secretstore.py remove <prefix>         delete every path below the prefix (deploy-k3s reset). It prints the
+                                              deleted paths, without values.
 """
 import contextlib
 import fcntl
@@ -560,6 +562,13 @@ def main(argv):
             if generator and generator not in GENERATORS:
                 raise SystemExit(f'{generator} is no generator. The generators are {", ".join(GENERATORS)}.')
         print(json.dumps({'path': argv[1], 'written': keep_files(argv[1], argv[2], names)}))
+    elif argv[0] == 'remove' and len(argv) == 2:
+        gone = remove(argv[1])
+        # The prefix can also name one path, for example site/zone-users.
+        if read(argv[1]):
+            client().delete(argv[1])
+            gone.append(argv[1])
+        print(json.dumps({'prefix': argv[1], 'deleted': gone}))
     elif argv[0] == 'read' and len(argv) == 3:
         value = read(argv[1]).get(argv[2])
         if value is None:

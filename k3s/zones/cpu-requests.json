@@ -29,60 +29,10 @@
    "baseline": "5m",
    "request": "10m"
   },
-  "deployment/cryptpad": {
-   "startPeak": "10m",
-   "baseline": "5m",
-   "request": "10m"
-  },
-  "deployment/element-element-web": {
-   "startPeak": "3m",
-   "baseline": "3m",
-   "request": "10m"
-  },
-  "deployment/element-haproxy": {
-   "startPeak": "9m",
-   "baseline": "7m",
-   "request": "10m"
-  },
-  "deployment/element-matrix-authentication-service": {
-   "startPeak": "28m",
-   "baseline": "13m",
-   "request": "20m"
-  },
-  "deployment/element-matrix-rtc-authorisation-service": {
-   "startPeak": "2m",
-   "baseline": "2m",
-   "request": "10m"
-  },
   "deployment/gate": {
    "startPeak": "15m",
    "baseline": "15m",
    "request": "20m"
-  },
-  "deployment/impress-backend": {
-   "startPeak": "317m",
-   "baseline": "34m",
-   "request": "100m"
-  },
-  "deployment/impress-backend-worker": {
-   "startPeak": "392m",
-   "baseline": "144m",
-   "request": "200m"
-  },
-  "deployment/impress-docspec": {
-   "startPeak": "18m",
-   "baseline": "11m",
-   "request": "20m"
-  },
-  "deployment/impress-frontend": {
-   "startPeak": "3m",
-   "baseline": "3m",
-   "request": "10m"
-  },
-  "deployment/impress-y-provider": {
-   "startPeak": "194m",
-   "baseline": "4m",
-   "request": "50m"
   },
   "deployment/intercom-service": {
    "startPeak": "5m",
@@ -104,35 +54,10 @@
    "baseline": "3m",
    "request": "10m"
   },
-  "deployment/matrix-neoboard-widget": {
-   "startPeak": "2m",
-   "baseline": "2m",
-   "request": "10m"
-  },
-  "deployment/matrix-neochoice-widget": {
-   "startPeak": "2m",
-   "baseline": "2m",
-   "request": "10m"
-  },
-  "deployment/matrix-neodatefix-bot": {
-   "startPeak": "3m",
-   "baseline": "2m",
-   "request": "10m"
-  },
-  "deployment/matrix-neodatefix-widget": {
-   "startPeak": "2m",
-   "baseline": "2m",
-   "request": "10m"
-  },
   "deployment/memcached": {
    "startPeak": "12m",
    "baseline": "11m",
    "request": "20m"
-  },
-  "deployment/opendesk-matrix-user-verification-service": {
-   "startPeak": "5m",
-   "baseline": "3m",
-   "request": "10m"
   },
   "deployment/opendesk-nextcloud-aio": {
    "startPeak": "118m",
@@ -149,30 +74,10 @@
    "baseline": "5m",
    "request": "10m"
   },
-  "deployment/opendesk-provisioning-synapse": {
-   "startPeak": "48m",
-   "baseline": "6m",
-   "request": "20m"
-  },
   "deployment/opendesk-static-files": {
    "startPeak": "5m",
    "baseline": "4m",
    "request": "10m"
-  },
-  "deployment/openproject-hocuspocus": {
-   "startPeak": "9m",
-   "baseline": "5m",
-   "request": "10m"
-  },
-  "deployment/openproject-web": {
-   "startPeak": "1305m",
-   "baseline": "7m",
-   "request": "270m"
-  },
-  "deployment/openproject-worker-default": {
-   "startPeak": "1264m",
-   "baseline": "6m",
-   "request": "260m"
   },
   "deployment/seaweedfs-all-in-one": {
    "startPeak": "26m",
@@ -238,16 +143,6 @@
    "startPeak": "3m",
    "baseline": "2m",
    "request": "10m"
-  },
-  "statefulset/element-synapse-main": {
-   "startPeak": "203m",
-   "baseline": "23m",
-   "request": "60m"
-  },
-  "statefulset/element-synapse-media-repo": {
-   "startPeak": "483m",
-   "baseline": "19m",
-   "request": "120m"
   },
   "statefulset/jitsi-prosody": {
    "startPeak": "2m",

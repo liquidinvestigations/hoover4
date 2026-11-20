@@ -23,6 +23,13 @@ with its own "tiers" table. The first tier of the list that a node of the site h
 back between device classes. The scheduler then binds the volume on a node with that tier and free capacity.
 "*" stands for any tier of the site, in the order of TIER_ORDER. A node has a tier when it has the label
 storage.tier/<tier>=true.
+
+zone-definitions.json of the state folder holds the intended zones apart from their state (DEFINITIONS): for each zone
+the switch enabled, the store layout, the extra datasets and the tier lists. It holds no credential and no runtime
+value, such as bootstrapped or the result of a move. zone.py register() adds a new zone and zone.py delete removes it,
+so the file follows the zone state. deploy-k3s reset (../driver/reset.py) keeps the file and removes the zone state, and
+the next deploy-k3s up creates each zone of the file that the zone state lacks (intended()). A zone of the store layout
+zone or local of an earlier version keeps its layout in the file. zone.py refuses a new zone of the layout zone.
 """
 import json
 import subprocess
@@ -34,7 +41,10 @@ import config  # noqa: E402
 import settings  # noqa: E402
 
 PATH = settings.PRIVATE / 'zone-state.json'
+DEFINITIONS = settings.PRIVATE / 'zone-definitions.json'
 SCHEMA = 1
+# The values of a zone entry that define the zone. The other values are state.
+DEFINED = ('enabled', 'stores', 'extra_datasets', 'tiers')
 TIER_ORDER = ['nvme', 'ssd', 'hdd']
 FAST = ['nvme', 'ssd', 'hdd']
 # The key "default" covers the volumes of the apps and every store that the table does not name.
@@ -125,3 +135,76 @@ def save(data, path=PATH):
     validate(data)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(data, indent=1) + '\n')
+
+
+def definition(entry):
+    """The defining values of a zone state entry (DEFINED)."""
+    return {k: entry[k] for k in DEFINED if k in entry and entry[k] not in (None, '', [], {})}
+
+
+def definitions(path=DEFINITIONS):
+    """{zone: definition} of the zone definitions file. A missing file gives {}."""
+    try:
+        data = json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as error:
+        raise ZoneStateError(f'the zone definitions {path} are unreadable: {error}') from None
+    if not isinstance(data, dict) or data.get('schemaVersion') != SCHEMA or not isinstance(data.get('zones'), dict):
+        raise ZoneStateError(f'the zone definitions {path} have no schema version 1 zone table')
+    for zone, entry in data['zones'].items():
+        problems = config.zone_problems(zone, entry)
+        if problems:
+            raise ZoneStateError('; '.join(problems))
+    return data['zones']
+
+
+def save_definitions(zones, path=DEFINITIONS):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(path).with_name(f'.{Path(path).name}.tmp')
+    tmp.write_text(json.dumps({'schemaVersion': SCHEMA, 'zones': zones}, indent=1, sort_keys=True) + '\n')
+    tmp.replace(path)
+
+
+def _locked(path):
+    """An exclusive lock of the definitions file, so zone steps that run at the same time do not lose a change."""
+    import contextlib
+    import fcntl
+
+    @contextlib.contextmanager
+    def hold():
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(Path(path).with_name(f'.{Path(path).name}.lock'), 'a') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            yield
+    return hold()
+
+
+def define(zone, entry, path=DEFINITIONS):
+    """Keep the definition of a zone from its zone state entry."""
+    with _locked(path):
+        zones = definitions(path)
+        if zones.get(zone) != definition(entry):
+            zones[zone] = definition(entry)
+            save_definitions(zones, path)
+
+
+def undefine(zone, path=DEFINITIONS):
+    with _locked(path):
+        zones = definitions(path)
+        if zone in zones:
+            del zones[zone]
+            save_definitions(zones, path)
+
+
+def intended(path=DEFINITIONS, state_path=PATH):
+    """{zone: definition} of the zones that the site must have: the definitions, and each zone of the zone state that
+    the definitions lack, for example a zone of a version before the file."""
+    zones = dict(definitions(path))
+    try:
+        state = load(state_path)['zones']
+    except ZoneStateError:
+        state = {}
+    for zone, entry in state.items():
+        zones.setdefault(zone, definition(entry))
+    return zones

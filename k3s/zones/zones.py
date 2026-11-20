@@ -17,7 +17,7 @@ the zone.
 """
 import base64,json,os,pathlib,re,secrets,string,sys,yaml
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]));import secretstore,settings
-import objectstore,postgresql,zonestate
+import objectstore,postgresql,applications,zonestate
 out=settings.PRIVATE/'zones'
 # The openDesk release is not in Git. The operator unpacks it into the private folder.
 OPENDESK=settings.PRIVATE/'downloads/opendesk-v1.19.1/src'
@@ -48,8 +48,6 @@ def zone_names():return list(zone_entries())
 ENTRIES=zone_entries()
 ZONES=list(ENTRIES)
 NEXTCLOUD_IMAGE_TAG='33.0.9-2'
-# The key name of the one LiveKit key of all zones (load_secrets()).
-LIVEKIT_KEY='hoover-calls'
 XWIKI_EXTENSIONS_TAG='llm-0.11'
 SUFFIX=settings.SUFFIX
 # Pods name the images of the cluster registry with this host name. Each node maps it to the registry endpoint.
@@ -63,10 +61,9 @@ OPENDESK_HOSTS={'collabora':'office','cryptpad':'pad','elementAdmin':'element-ad
  'minioApi':'objectstore','minioConsole':'objectstore-ui','seaweedfs':'objectstorage','seaweedfsAdmin':'objectstorage-ui',
  'nextcloud':'files','notes':'notes','nubus':'portal','openproject':'projects','openxchange':'webmail','openxchangeDav':'dav',
  'static':'static','synapse':'matrix','whiteboard':'whiteboard','xwiki':'wiki'}
-# The applications of a zone that a browser opens: the openDesk hosts of the applications that the zones keep, auth (the
-# sign-in host of the zone gate, gate.py), sfu (LiveKit, ../platform/calls/install-calls.py) and hoover.
-HOSTS=['auth','portal','id','ics','files','office','pad','chat','matrix','mas','element-admin','matrix-neoboard-widget','matrix-neochoice-widget',
- 'matrix-neodatefix-bot','matrix-neodatefix-widget','projects','wiki','notes','static','meet','mrtc','objectstorage','sfu','hoover']
+# The applications of a zone that a browser opens: the openDesk hosts of the applications of the profile (applications.py),
+# auth (the sign-in host of the zone gate, gate.py) and hoover. The hosts of the retired applications have no route.
+HOSTS=['auth','portal','id','ics','files','office','wiki','static','meet','objectstorage','hoover']
 def zone_hosts(zone):
  """The openDesk global.hosts of a zone: each default host name with the zone id in front, for example zone-a-portal."""
  return {key:f'{zone}-{name}' for key,name in OPENDESK_HOSTS.items()}
@@ -99,9 +96,9 @@ def fixture_users():
 def site_secrets():
  """Keep the secrets of the site that every zone reads: the call secrets and the zone user passwords. The step
  secret-store of deploy-k3s up writes them, because a zone step only reads them."""
- # The shared JVB uses one XMPP password in every zone Prosody. LiveKit reads its keys only at start, so every zone
- # signs its tokens with the one key LIVEKIT_KEY, and a new zone does not restart LiveKit (../platform/calls/install-calls.py).
- calls=secretstore.keep('site/calls',{k:(lambda:secrets.token_hex(24)) for k in ('jvb_password','livekit_turn_secret','livekit_secret')})
+ # The shared JVB uses one XMPP password in every zone Prosody (../platform/calls/install-calls.py). The LiveKit
+ # secrets of an earlier version stay unused in the path.
+ calls=secretstore.keep('site/calls',{'jvb_password':lambda:secrets.token_hex(24)})
  users=secretstore.keep('site/zone-users',{u:user_password for u in fixture_users()})
  return calls,users
 def zone_defaults(stored,entry):
@@ -111,7 +108,7 @@ def zone_defaults(stored,entry):
  # An installed zone keeps the Administrator password that openDesk derived from its master password.
  if 'master_password' not in stored:wanted['administrator_password']=udm_password
  wanted['master_password']=hex24
- # Each zone has its own TURN secret, because coturn serves every zone. livekit_secret of an earlier version stays unused.
+ # Each zone has its own TURN secret, because coturn serves every zone.
  wanted['turn_secret']=hex24
  # The Keycloak client of Hoover and its oauth2-proxy share this secret (hoover_oidc).
  wanted['hoover_oidc_secret']=hex24
@@ -163,9 +160,9 @@ def reduced_resources():
  return result
 def zone_values(zone,data,storage_class,entry=None):
  z=data[zone]
- # The home chart serves global.domain, which is the domain of the site and of every zone, so no zone installs it.
- apps={name:{'enabled':False} for name in ['oxAppSuite','dovecot','postfix','clamavSimple','mariadb','neoboard','elementAdmin','home']}
- apps['notes']={'enabled':True}
+ # The applications of the profile (applications.py). The home chart serves global.domain, which is the domain of the site
+ # and of every zone, so no zone installs it.
+ apps={name:{'enabled':enabled} for name,enabled in applications.OPENDESK_APPS.items()}
  # A zone on Garage runs no SeaweedFS, and its object stores name the Garage key, the host and the region.
  garage=objectstore.on_garage(entry or {})
  if garage:apps['seaweedfs']={'enabled':False}
@@ -174,8 +171,8 @@ def zone_values(zone,data,storage_class,entry=None):
  if shared_db:apps['postgresql']={'enabled':False}
  return {**(objectstore.values(zone,z['objectstore_key']) if garage else {}),
   **(postgresql.values(zone,z['postgresql']) if shared_db else {}),
-  # openDesk names each host <global.hosts.x>.<global.domain>. The mail domain and the Matrix server name stay
-  # <zone>.<suffix>, so the Matrix IDs and the mail addresses of each zone differ.
+  # openDesk names each host <global.hosts.x>.<global.domain>. The mail domain and the Matrix domain stay
+  # <zone>.<suffix>, so the values of each zone differ.
   'global':{'domain':SUFFIX,'hosts':zone_hosts(zone),'mailDomain':settings.zone_domain(zone),'matrixDomain':settings.zone_domain(zone)},
   'apps':apps,
   'antivirus':{'icap':{'host':None},'milter':{'host':None}},
@@ -188,34 +185,30 @@ def zone_values(zone,data,storage_class,entry=None):
   'persistence':{'storageClassNames':{'RWO':storage_class}},
   'resources':reduced_resources(),
   # Helm waits this many seconds for each of these releases. The openDesk values of 300 s and 600 s ran out during a
-  # zone create while other zones started on the same nodes: the Synapse account bootstrap of the meetings bot, the
-  # Nextcloud management Job, the OpenProject bootstrap and XWiki. A timeout made the whole install run again.
-  'deployment':{'timeouts':{'releases':{'matrixNeodatefixBotBootstrap':900,'opendeskMatrixUserVerificationServiceBootstrap':900,
-    'opendeskNextcloudManagement':1200,'opendeskOpenprojectBootstrap':900,'openproject':1200,'xwiki':1200}}},
+  # zone create while other zones started on the same nodes: the Nextcloud management Job and XWiki. A timeout made
+  # the whole install run again.
+  'deployment':{'timeouts':{'releases':{'opendeskNextcloudManagement':1200,'xwiki':1200}}},
   # The MVP has no MFA and no email, so the zone login asks only for the user name and password.
   'functional':{'authentication':{'twoFactor':{'groups':[]},'newDeviceLoginNotification':{'enabled':False},
     'oidc':oidc_clients(zone)},
     'portal':{'custom':{'extraDataFiles':{'90-hoover-portal.yaml':hoover_portal(zone)}}},
     # The deploy timestamp changes at each render, so every installer run would upgrade the Nubus release.
     'admin':{'portal':{'deploymentTimestamp':{'enabled':False}}},
-    # XWiki, OpenProject, Nextcloud and OX take this language as the default. The openDesk default is de_DE.
-    # OpenProject and XWiki write their seed content in it when a zone is created.
+    # XWiki and Nextcloud take this language as the default. The openDesk default is de_DE. XWiki writes its seed
+    # content in it when a zone is created.
     'internationalization':{'defaultLanguage':'en_GB'}},
-  'customization':{'release':{'opendeskElement':[str(out/'synapse-url-preview.yaml'),str(out/zone/'calls-matrix.yaml')],'jitsi':[str(out/'calls-jitsi.yaml')],
+  'customization':{'release':{'jitsi':[str(out/'calls-jitsi.yaml')],
     'ums':[str(out/'two-factor-off.yaml'),str(out/'nats-sync.yaml'),str(out/'nats-probes.yaml')],
     'redis':[str(out/'redis-probes.yaml')],'xwiki':[str(out/'xwiki-group-sync.yaml'),str(out/'xwiki-title.yaml')],
-    'openproject':[str(out/'openproject-title.yaml')],'intercomService':[str(out/zone/'intercom.yaml')],
-    # The openDesk Notes template does not pass objectstores.notes.region to the chart, so Notes signs with an empty
-    # region. Garage refuses that signature (AuthorizationHeaderMalformed), and Notes then cannot read an attachment.
-    **({'notes':[str(out/'notes-s3-region.yaml')]} if garage else {})}},
+    'intercomService':[str(out/zone/'intercom.yaml')]}},
   # The Nextcloud image adds the Assistant and integration_openai apps. zone.py builds and pushes it.
   'images':{'nextcloud':{'registry':REGISTRY,'repository':'hoover/nextcloud-ai','tag':NEXTCLOUD_IMAGE_TAG}},
-  # Calls use the shared coturn, LiveKit and JVB in the namespace calls (../platform/calls/install-calls.py).
+  # Calls use the shared coturn and JVB in the namespace calls (../platform/calls/install-calls.py).
   'turn':{'transport':'udp','server':{'host':f'turn.{SUFFIX}','port':'3478'},'tls':{'host':'','port':'5349'}},
-  'secrets':{'turn':{'sharedSecret':{'value':z['turn_secret']}},'matrixRTC':{'livekitAuthSecret':{'value':data['calls']['livekit_secret']}},
+  'secrets':{'turn':{'sharedSecret':{'value':z['turn_secret']}},
    'jitsi':{'jvbAuthPassword':{'value':data['calls']['jvb_password']}},
    **({'nubus':{'systemAccounts':{'administratorPassword':{'value':z['administrator_password']}}}} if 'administrator_password' in z else {})},
-  # Notes and Collabora use the private LLM in private/ai.json. zone-ai.py applies the same values to running zones.
+  # Collabora uses the private LLM in private/ai.json. zone-ai.py applies the same values to running zones.
   'ai':ai_values(),
  }
 def hoover_oidc(zone):
@@ -292,11 +285,6 @@ def main():
  put(out/'calls-jitsi.yaml',yaml.safe_dump({'jitsi':{'jvb':{'replicaCount':0,'service':{'enabled':False}},
   'jicofo':{'extraEnvs':{'JICOFO_MAX_MEMORY':'512m'}},'prosody':{'extraEnvs':{'LOG_LEVEL':'warn'}}}},sort_keys=False))
  # The Nubus chart syncs JetStream every 10 ms. Idle, that gave about 960 writes per second on each zone volume.
- # The chart blocks URL previews only for some private ranges. Pod, Service and loopback addresses stay reachable,
- # so a chat user could make Synapse fetch internal URLs. This list is the Synapse sample list for private ranges.
- ranges=['127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','100.64.0.0/10','192.0.0.0/24','169.254.0.0/16','192.88.99.0/24',
-  '198.18.0.0/15','192.0.2.0/24','198.51.100.0/24','203.0.113.0/24','224.0.0.0/4','::1/128','fe80::/10','fc00::/7','2001:db8::/32','ff00::/8','fec0::/10']
- put(out/'synapse-url-preview.yaml','synapse:\n  additional:\n    9-hooverUrlPreview:\n      config: |\n        url_preview_ip_range_blacklist:\n'+''.join(f"          - '{r}'\n" for r in ranges))
  # XWiki imports LDAP groups, and with them the admin group, only in two scheduler jobs at night.
  # Each job runs every minute instead, so a group change reaches XWiki within a minute.
  # The jobs run as XWiki.superadmin, which needs no login.
@@ -304,15 +292,13 @@ def main():
  # The jobs read group members through the LDAP group cache, which openDesk keeps for 300 s. The zones keep it for 60 s.
  job='property:xwiki:LDAPUserImport.{}^XWiki.SchedulerJobClass.cron'
  # XWiki installs extensions only from the repository in manifests/xwiki-extensions.yaml.
- # The openDesk templates set German window titles for XWiki and OpenProject, independent of the default language.
+ # The openDesk templates set a German window title for XWiki, independent of the default language.
  put(out/'xwiki-title.yaml','properties:\n  "property:xwiki:XWiki.XWikiPreferences^XWiki.XWikiPreferences.title": "Knowledge - $!tdoc.displayTitle - openDesk"\n')
- put(out/'openproject-title.yaml','environment:\n  OPENPROJECT_APP__TITLE: "Projects - openDesk"\n')
  put(out/'xwiki-group-sync.yaml','properties:\n'+f'  "{job.format("LDAPGroupImportJob")}": "0 * * * * ?"\n'+f'  "{job.format("MappedGroupsDailyUpdater")}": "30 * * * * ?"\n'
   +'customConfigs:\n  xwiki.cfg:\n    xwiki.authentication.ldap.groupcache_expiration: 60\n  xwiki.properties:\n    extension.repositories: "hoover:maven:http://xwiki-extensions.extensions.svc.cluster.local/repo/"\n')
  put(out/'nats-sync.yaml','# A sync each second limits a host crash to one second of provisioning events.\nnubusProvisioning:\n  nats:\n    config:\n      jetstream:\n        fileStore:\n          sync_interval: 1s\n')
  put(out/'nats-probes.yaml','nubusProvisioning:\n  nats:\n    startupProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 1\n      failureThreshold: 120\n      timeoutSeconds: 5\n    readinessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 2\n      failureThreshold: 3\n      timeoutSeconds: 5\n    livenessProbe:\n      httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}\n      initialDelaySeconds: 0\n      periodSeconds: 10\n      failureThreshold: 3\n      timeoutSeconds: 5\n')
  put(out/'redis-probes.yaml','master:\n  readinessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_readiness_local.sh 1"]}\n    initialDelaySeconds: 0\n    periodSeconds: 1\n    failureThreshold: 5\n    timeoutSeconds: 2\n  livenessProbe:\n    exec: {command: ["/bin/bash", "-ec", "/health/ping_liveness_local.sh 5"]}\n    initialDelaySeconds: 5\n    periodSeconds: 5\n    failureThreshold: 5\n    timeoutSeconds: 6\n')
- put(out/'notes-s3-region.yaml',yaml.safe_dump({'global':{'s3':{'regionName':objectstore.REGION}}}))
  put(out/'two-factor-off.yaml','# The MVP has no MFA.\nnubusKeycloakBootstrap:\n  bootstrap:\n    twoFactorAuthentication:\n      enabled: false\n')
  for zone in scoped_zones():
   folder=out/zone;folder.mkdir(exist_ok=True)
@@ -333,15 +319,6 @@ def main():
   # from the fixed host names id and portal, so the zone gives them in full.
   put(folder/'intercom.yaml',yaml.safe_dump({'ics':{'originRegex':origin_regex(zone),
    'keycloak':{'url':f"https://{settings.zone_host(zone,'id')}"},'portal':{'url':f"https://{settings.zone_host(zone,'portal')}"}}}))
-  # lk-jwt of each zone signs tokens with the shared key LIVEKIT_KEY for the shared LiveKit. Without its own SFU, the chart does not
-  # set LIVEKIT_URL. lk-jwt polls the SFU for gone participants, because the shared SFU sends no webhooks.
-  put(folder/'calls-matrix.yaml',yaml.safe_dump({'matrixRTC':{'sfu':{'enabled':False},'livekitAuth':{'key':LIVEKIT_KEY},
-   'extraEnv':[{'name':'LIVEKIT_URL','value':f"wss://{settings.zone_host(zone,'sfu')}"},{'name':'LIVEKIT_SANITY_CHECK_INTERVAL_SECONDS','value':'10'},
-    # lk-jwt logs each health probe at info, so the level is warn to keep the log writes low.
-    {'name':'LIVEKIT_LOG_LEVEL','value':'warn'}],
-   # lk-jwt finds the homeserver through the server well-known over HTTPS, so it needs the frontend CA like the other parts.
-   'extraVolumes':[{'name':'trusted-cert-secret-volume','secret':{'secretName':'hoover-ca-bundle','items':[{'key':'ca.crt','path':'ca-certificates.crt'}]}}],
-   'extraVolumeMounts':[{'name':'trusted-cert-secret-volume','mountPath':'/etc/ssl/certs/ca-certificates.crt','subPath':'ca-certificates.crt'}]}},sort_keys=False))
  write_user_files(scoped_zones())
  # install-server-names.sh writes these names into /etc/hosts of the workstation.
  put(out/'frontend.env',f"zones=({' '.join(ZONES)})\nsuffix={SUFFIX}\nhosts=({' '.join(HOSTS)})\nextra_hosts=(operator.{SUFFIX})\nbind_extra=({' '.join(settings.FRONTEND_BIND)})\n")

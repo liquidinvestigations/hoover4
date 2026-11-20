@@ -310,8 +310,13 @@ VOLUMES = {
 }
 CLUSTER_HOOVER += [Setting(f'volume.{name}', 'hoover', 'size', size, (name,), 'expand', 'volume')
                    for name, size in VOLUMES.items()]
-# The openDesk applications of a zone (../../zones/zones.py) and Hoover.
-APPLICATIONS = ('nextcloud', 'collabora', 'cryptpad', 'element', 'jitsi', 'openproject', 'xwiki', 'notes', 'hoover')
+# The openDesk applications of a zone and Hoover: the application profile (../../zones/applications.py). A retired application
+# has no setting. A saved value of one (RETIRED) is refused at a save and has no effect in effective().
+_profile_spec = importlib.util.spec_from_file_location('zone_profile', K3S / 'zones' / 'applications.py')
+PROFILE = importlib.util.module_from_spec(_profile_spec)
+_profile_spec.loader.exec_module(PROFILE)
+APPLICATIONS = PROFILE.APPLICATIONS
+RETIRED = PROFILE.RETIRED_SETTINGS
 ZONE_SETTINGS = [Setting('zone.enabled', 'zone', 'bool', 'true', ('zone',), 'reconcile', 'switch')]
 ZONE_SETTINGS += [Setting(f'app.{name}', 'zone', 'bool', 'true', (name,), 'reconcile', 'switch') for name in APPLICATIONS]
 
@@ -411,7 +416,9 @@ def check_values(scope_id, values, registry=REGISTRY):
     out, problems = {}, []
     for key, value in values.items():
         setting = registry.get(key)
-        if setting is None:
+        if key in RETIRED:
+            problems.append(f'{key} belongs to a retired application, which no zone of this release runs.')
+        elif setting is None:
             problems.append(f'{key} is not a setting.')
         elif kind == POOLS and key not in POOLED:
             problems.append(f'{key} is not a setting of the processing pools.')
@@ -437,6 +444,8 @@ def effective(scope_id, overrides, registry=REGISTRY):
         values = effective('hoover:pools', {k: v for k, v in overrides.items() if k in POOLED}, registry)
         return {k: values[k] for k in scope_keys(POOLS, registry=registry)}
     values = {k: s.default for k, s in registry.items() if s.scope == kind}
+    # A revision of an earlier version can hold the switch of a retired application. It has no effect.
+    overrides = {k: v for k, v in overrides.items() if k not in RETIRED}
     if kind == 'hoover':
         sys.path.insert(0, str(K3S / 'hoover'))
         import zone_ini

@@ -154,7 +154,7 @@ def test_the_measured_large_opendesk_deployments_roll_with_max_surge_0():
         else:
             assert 'strategy' not in doc['spec'], name
     print('maxSurge 0:', ', '.join(large))
-    assert 'openproject-web' in large and 'collabora' in large
+    assert 'collabora' in large and 'opendesk-nextcloud-aio' in large
 
 
 def test_no_descheduler_runs_and_setup_removes_the_one_of_an_earlier_version():

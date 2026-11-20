@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
 """Install the call media services that every zone shares. Usage: install-calls.py [--probe [--force]]
 
-The namespace calls holds three services:
+The namespace calls holds two services. They serve the Jitsi of every zone. The chat calls of LiveKit are retired with
+Element (../../zones/applications.py), and the script removes the LiveKit objects of an earlier version.
 - coturn gives TURN and STUN on 3478 in the host network. It listens on loopback and on the pod bridge address of its
-  node. Each zone has its own TURN secret, and LiveKit has one. coturn reads the secrets from its SQLite database at
+  node. Each zone has its own TURN secret. coturn reads the secrets from its SQLite database at
   each request. The sidecar secrets copies them from the Secret coturn-secrets into the database while coturn runs, so
   a new or deleted zone changes no pod.
   turn_listen in the settings file (k3s/settings.py) adds addresses: the frontend address, which the pods reach as
   turn.<suffix>, and the public address of the host. A remote client sends its media to coturn on 3478, and coturn
   relays it to the pods from the bridge address. It also relays to the public address of the media node, but a host rule
-  limits that address to the LiveKit media ports (turn_peers.py, the role hoover4_public_firewall of ../../ansible/).
+  limits that address to the earlier LiveKit media ports, where no service listens (turn_peers.py, the role
+  hoover4_public_firewall of ../../ansible/).
   coturn relays UDP only, to the pods of the media node and to that address.
   --probe checks that rule on the media node with a probe pod in its host network in kube-system, records the result in
   the ConfigMap coturn-peer-check of calls, and installs nothing. It needs the admin kubeconfig: the step operator and the step calls
   of ../../deploy-k3s up run it. The zone runner of the operator portal has no right on pods in calls. Without --probe the
   script adds the public address only when the record names the media node and its public address, and stops
   otherwise.
-- LiveKit is the MatrixRTC SFU. LiveKit reads its keys only at start, so every zone signs tokens with one shared key
-  (LIVEKIT_KEY), and a new or deleted zone does not restart LiveKit. The lk-jwt service of any zone can therefore sign
-  a token for a room of another zone.
-  <zone>-sfu.<suffix> reaches its signalling port through the ingress. Media goes to the pod address.
 - JVB is the Jitsi video bridge. The script copies the JVB Deployment that the openDesk chart renders in the first
   zone with zero replicas, without its XMPP connections. The sidecar zones connects the bridge to the Prosody of each
   zone through the REST API of the bridge (/colibri/muc-client/add and remove), from the Secret jvb-zones, so a new
   or deleted zone changes no pod.
-The three services run on the media node: the first node with the role calls, else the first public node (decision
+The two services run on the media node: the first node with the role calls, else the first public node (decision
 D9, config.calls_node()). When the media node has a public address, the services advertise it, so a client sends its
-media straight to the node: the JVB on UDP 10000, LiveKit on TCP 7881 and UDP 7882, coturn on 3478. The pods publish
+media straight to the node: the JVB on UDP 10000 and coturn on 3478. The pods publish
 these ports as host ports of the media node, and ../calls/public_endpoints.py prints the firewall rules and the DNS
 records that the operator adds. A media node without a public address, such as the local node of a single-node site,
 advertises the pod addresses, which the host reaches.
@@ -41,7 +39,7 @@ import base64,copy,hashlib,ipaddress,json,os,pathlib,subprocess,sys,time
 source=pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(source));import settings
 settings.use_kubeconfig()
-sys.path.insert(0,str(source/'zones'));from zones import ZONES,SUFFIX,LIVEKIT_KEY
+sys.path.insert(0,str(source/'zones'));from zones import ZONES,SUFFIX
 import cpu_policy
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parent));import turn_peers
 NS='calls';NODE=settings.HOST.get('calls_node',settings.HOST['ingress_node']);PUBLIC=settings.HOST.get('calls_public_address','')
@@ -52,7 +50,6 @@ PODS=next(n['spec']['podCIDR'] for n in nodes if n['metadata']['name']==NODE)
 BRIDGE=str(ipaddress.ip_network(PODS)[1])
 COTURN='docker.io/coturn/coturn:4.7.0-alpine@sha256:99fe8365aa12dcb4f90346c29f07a05d35b781f8c117f31165700064e70337d9'
 PROBE_IMAGE='docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd'
-LIVEKIT='docker.io/livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3'
 # The sidecar of coturn. It copies the secrets of /etc/coturn-secrets/secrets into the database of coturn when the
 # file changes, and marks the first copy for the startupProbe. It prints no secret.
 COTURN_SECRETS=r"""set -eu
@@ -183,7 +180,8 @@ def coturn(public):
   # The shared secrets of the TURN REST API are in this database (COTURN_SECRETS), not in this file.
   'userdb=/var/lib/coturn/turndb',
   # UDP relay only, to the pods of the media node and the public media address. The host rule coturn_peers limits
-  # that address to the LiveKit media ports for the coturn user, so a TURN user cannot reach the host or another network.
+  # that address to the earlier LiveKit media ports for the coturn user, so a TURN user cannot reach the host or another
+  # network.
   *turn_peers.peer_lines(PODS,public),
   # Logs go to stdout only. Without a user database, coturn keeps no state on disk.
   'log-file=stdout','simple-log','pidfile=/var/lib/coturn/turnserver.pid']
@@ -206,40 +204,11 @@ def coturn(public):
     {'name':'admin-tmp','mountPath':'/var/tmp'}]}],
   'volumes':[{'name':'config','secret':{'secretName':'coturn'}},{'name':'state','emptyDir':{'medium':'Memory','sizeLimit':'8Mi'}},
    {'name':'secrets','secret':{'secretName':'coturn-secrets'}},{'name':'admin-tmp','emptyDir':{'medium':'Memory','sizeLimit':'4Mi'}}]}
- shared=[secret('coturn-secrets',{'secrets':''.join(f'{v}\n' for v in [data[zone]['turn_secret'] for zone in ZONES]+[calls['livekit_turn_secret']])})]
+ shared=[secret('coturn-secrets',{'secrets':''.join(f'{v}\n' for v in [data[zone]['turn_secret'] for zone in ZONES])})]
  return shared+[secret('coturn',{'turnserver.conf':'\n'.join(lines)+'\n'}),
   {'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'coturn','namespace':NS},
    'spec':{'replicas':1,'strategy':{'type':'Recreate'},'selector':{'matchLabels':{'app.kubernetes.io/name':'coturn'}},
     'template':{'metadata':{'labels':{'app.kubernetes.io/name':'coturn'}},'spec':pod}}}]
-def livekit():
- keys={LIVEKIT_KEY:calls['livekit_secret']}
- config={'port':7880,'rtc':{'tcp_port':turn_peers.LIVEKIT_TCP,'udp_port':turn_peers.LIVEKIT_UDP,'use_external_ip':False,
-   'turn_servers':[{'host':f'turn.{SUFFIX}','port':3478,'protocol':'udp','secret':calls['livekit_turn_secret']}]},
-  # lk-jwt creates each room after it checks the Matrix membership, so LiveKit must not create rooms for any token.
-  'room':{'auto_create':False},'turn':{'enabled':False},'keys':keys,'logging':{'level':'warn','pion_level':'error'}}
- pod={'automountServiceAccountToken':False,'enableServiceLinks':False,
-  'containers':[{'name':'livekit','image':LIVEKIT,'args':['--config','/etc/livekit/config.yaml','--node-ip',PUBLIC or '$(POD_IP)'],
-   'env':[{'name':'POD_IP','valueFrom':{'fieldRef':{'fieldPath':'status.podIP'}}}],
-   # With a public address the media ports are host ports of the media node, so a client reaches them directly.
-   'ports':[{'name':'http','containerPort':7880},
-    {'name':'rtc-tcp','containerPort':turn_peers.LIVEKIT_TCP,**({'hostPort':turn_peers.LIVEKIT_TCP} if PUBLIC else {})},
-    {'name':'rtc-udp','containerPort':turn_peers.LIVEKIT_UDP,'protocol':'UDP',**({'hostPort':turn_peers.LIVEKIT_UDP} if PUBLIC else {})}],
-   'readinessProbe':{'httpGet':{'path':'/','port':7880},'periodSeconds':10},
-   'resources':{'requests':{'cpu':'50m','memory':'64Mi'},'limits':{'cpu':'2','memory':'1Gi'}},'securityContext':SECURITY,
-   'volumeMounts':[{'name':'config','mountPath':'/etc/livekit','readOnly':True}]}],
-  'volumes':[{'name':'config','secret':{'secretName':'livekit'}}]}
- items=[secret('livekit',{'config.yaml':json.dumps(config)}),
-  {'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'livekit','namespace':NS},
-   'spec':{'replicas':1,'strategy':{'type':'Recreate'},'selector':{'matchLabels':{'app.kubernetes.io/name':'livekit'}},
-    'template':{'metadata':{'labels':{'app.kubernetes.io/name':'livekit'}},'spec':pod}}},
-  {'apiVersion':'v1','kind':'Service','metadata':{'name':'livekit','namespace':NS},
-   'spec':{'selector':{'app.kubernetes.io/name':'livekit'},'ports':[{'name':'http','port':7880,'targetPort':'http'}]}}]
- for zone in ZONES:
-  host=settings.zone_host(zone,'sfu')
-  items.append({'apiVersion':'networking.k8s.io/v1','kind':'Ingress','metadata':{'name':f'livekit-{zone}','namespace':NS},
-   'spec':{'ingressClassName':'haproxy','rules':[{'host':host,'http':{'paths':[{'path':'/','pathType':'Prefix',
-    'backend':{'service':{'name':'livekit','port':{'number':7880}}}}]}}]}})
- return items
 def jvb():
  # The openDesk chart renders the JVB with zero replicas. Its pod template keeps the chart security context.
  source=json.loads(kubectl('-n',ZONES[0],'get','deployment','jitsi-jvb-0','-o','json'))
@@ -292,7 +261,7 @@ calls=secretstore.read('site/calls')
 data={'calls':calls,**{zone:secretstore.zone_secrets(zone) for zone in ZONES}}
 def checksum(items):
  # Each Deployment carries a hash of its Secret, so a changed config restarts it and an unchanged one does not.
- # A restart of coturn, LiveKit or the JVB ends the calls that run on it.
+ # A restart of coturn or the JVB ends the calls that run on it.
  data={i['metadata']['name']:i['data'] for i in items if i['kind']=='Secret'}
  for item in items:
   # The CPU policy values go in before the hash, so a later cpu_policy.py run changes nothing.
@@ -305,18 +274,21 @@ def checksum(items):
    digest=hashlib.sha256(json.dumps(data.get(item['metadata']['name'],{}),sort_keys=True).encode()).hexdigest()[:16]
    item['spec']['template']['metadata'].setdefault('annotations',{})['hoover.dev/config']=digest
  return items
-# The bridge copies its template from the first zone and serves only zones, and only a zone uses LiveKit. Without a
-# zone, the script removes both.
-apply(checksum(coturn(public_peer())+(livekit()+jvb() if ZONES else [])))
-if not ZONES:
- for name in ('jvb','livekit'):kubectl('-n',NS,'delete','deployment',name,'--ignore-not-found')
-# coturn and LiveKit stop the old pod before the new one starts, so a refused or failing pod leaves no call service.
+# The bridge copies its template from the first zone and serves only zones. Without a zone, the script removes it.
+apply(checksum(coturn(public_peer())+(jvb() if ZONES else [])))
+if not ZONES:kubectl('-n',NS,'delete','deployment','jvb','--ignore-not-found')
+# The LiveKit objects of an earlier version: the SFU of the retired chat calls, its Secret and the Ingress of each
+# zone. The script lists them first, so a run without them deletes nothing.
+retired=[n for n in kubectl('-n',NS,'get','deployment,service,secret,ingress','-o','name').split()
+ if n.split('/',1)[1]=='livekit' or n.split('/',1)[1].startswith('livekit-')]
+if retired:kubectl('-n',NS,'delete',*retired,'--ignore-not-found')
+# coturn stops the old pod before the new one starts, so a refused or failing pod leaves no call service.
 # The JVB starts its new pod first and keeps the old one, so this script does not wait for it.
-for name in ('coturn','livekit') if ZONES else ('coturn',):
+for name in ('coturn',):
  r=subprocess.run(['kubectl','-n',NS,'rollout','status',f'deployment/{name}','--timeout=300s'],text=True,capture_output=True)
  if r.returncode:
   events=subprocess.run(['kubectl','-n',NS,'get','events','--field-selector','reason=FailedCreate','-o','jsonpath={.items[-1:].message}'],text=True,capture_output=True).stdout
   sys.exit(f'the call service {name} did not start: {(r.stderr or r.stdout).strip()[-300:]} {events[-300:]}')
-deployments=['coturn']+(['livekit','jvb'] if ZONES else [])
+deployments=['coturn']+(['jvb'] if ZONES else [])
 for name in deployments:kubectl('-n',NS,'rollout','status',f'deployment/{name}','--timeout=300s')
 print(json.dumps({'namespace':NS,'deployments':deployments,'zones':ZONES}))

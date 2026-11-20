@@ -112,7 +112,7 @@ class InstallerTests(unittest.TestCase):
     def test_zone_values_put_the_zone_id_in_front_of_each_host(self):
         import re
         import zones
-        data = {'calls': {'jvb_password': 'j'}, 'zone-test': {'turn_secret': 't', 'livekit_secret': 'l'}}
+        data = {'calls': {'jvb_password': 'j'}, 'zone-test': {'turn_secret': 't'}}
         with patch.object(zones, 'reduced_resources', return_value={}), patch.object(zones, 'ai_values', return_value={}):
             values = zones.zone_values('zone-test', data, 'ssd-ext4')
         suffix = zones.SUFFIX
@@ -120,7 +120,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(values['global']['hosts']['nubus'], 'zone-test-portal')
         self.assertTrue(all(h.startswith('zone-test-') for h in values['global']['hosts'].values()))
         self.assertEqual(set(values['global']['hosts']), set(zones.OPENDESK_HOSTS))
-        # The Matrix IDs and the mail addresses keep the zone domain.
+        # The mail addresses and the Matrix domain keep the zone domain.
         self.assertEqual(values['global']['mailDomain'], f'zone-test.{suffix}')
         self.assertEqual(values['global']['matrixDomain'], f'zone-test.{suffix}')
         # The home chart would serve the site domain in every zone.

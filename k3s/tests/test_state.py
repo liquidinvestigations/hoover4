@@ -505,24 +505,13 @@ def zone_module(tmp_path, monkeypatch, entry):
     return module, path, calls
 
 
-@pytest.mark.parametrize('entry', [{'enabled': True, 'home': 'dev', 'namespaces': ['zone-a']},
-                                   {'enabled': True, 'home': 'dev', 'namespaces': ['zone-a'], 'bootstrapped': True}])
-def test_an_existing_zone_never_loses_its_openproject_integration(tmp_path, monkeypatch, entry):
-    zone, _, calls = zone_module(tmp_path, monkeypatch, entry)
-    zone.openproject_reset('zone-a')
-    assert calls == []
-
-
-def test_a_new_zone_resets_openproject_until_its_first_install_completes(tmp_path, monkeypatch):
+def test_the_first_complete_install_marks_the_zone_bootstrapped(tmp_path, monkeypatch):
     zone, path, calls = zone_module(tmp_path, monkeypatch,
                                     {'enabled': True, 'home': 'dev', 'namespaces': ['zone-a'], 'bootstrapped': False})
-    zone.openproject_reset('zone-a')
-    assert any('user:delete' in argv for argv in calls)
+    assert zone.first_bootstrap('zone-a')
     zone.mark_bootstrapped('zone-a')
     assert json.loads(path.read_text())['zones']['zone-a']['bootstrapped'] is True
-    calls.clear()
-    zone.openproject_reset('zone-a')
-    assert calls == []
+    assert not zone.first_bootstrap('zone-a') and calls == []
 
 
 def test_a_registered_zone_starts_without_a_completed_install(tmp_path, monkeypatch):

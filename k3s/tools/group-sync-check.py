@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Measure how long an admin flag change in Nubus takes to reach each application. Usage: group-sync-check.py <zone>
 
-The check turns on the four application admin flags of test.user, waits until each application shows the user as
-admin, then turns them off and waits again. The check reads the admin state from the application databases, from MAS
-for chat, and from occ in Nextcloud.
+The check turns on the application admin flags of test.user for Nextcloud and XWiki, waits until each application
+shows the user as admin, then turns them off and waits again. The check reads the admin state from the XWiki database
+and from occ in Nextcloud.
 It writes <state folder>/checks/group-sync-check-<zone>.json and prints no credential. It exits with 1 when an
 application does not follow the flag within the timeout.
 """
@@ -13,8 +13,8 @@ sys.path.insert(0,str(settings.SOURCE/'zones'));import udm
 OUT=settings.PRIVATE/'checks';OUT.mkdir(parents=True,exist_ok=True)
 settings.use_kubeconfig()
 zone=sys.argv[1]
-FLAGS={'files':'opendeskFileshareAdmin','projects':'opendeskProjectmanagementAdmin','wiki':'opendeskKnowledgemanagementAdmin','chat':'opendeskLivecollaborationAdmin'}
-URLS={'files':'files/status.php','projects':'projects/health_checks/default','wiki':'wiki/','chat':'chat/'}
+FLAGS={'files':'opendeskFileshareAdmin','wiki':'opendeskKnowledgemanagementAdmin'}
+URLS={'files':'files/status.php','wiki':'wiki/'}
 TIMEOUT=600
 def kubectl(*args,check=True):return subprocess.run(['kubectl',*args],check=check,capture_output=True,text=True).stdout
 # Each zone has its own PostgreSQL from the openDesk chart, with one database for each application.
@@ -28,11 +28,8 @@ def nextcloud_uid():
  return next(uid for uid,name in users.items() if name.startswith('Test User'))
 def admin(app,uid):
  """Return True or False for the admin state of test.user, or None when the application cannot answer now."""
- if app=='projects':value=psql('openproject',"select admin from users where login='test.user'");return {'t':True,'f':False}.get(value)
  if app=='wiki':
   return bool(psql('xwiki',"select 1 from xwikiobjects o join xwikistrings s on s.xws_id=o.xwo_id where o.xwo_name='XWiki.XWikiAdminGroup' and s.xws_name='member' and s.xws_value='XWiki.testuser'"))
- # MAS grants the Synapse admin right through can_request_admin. Synapse users.admin stays 0.
- if app=='chat':value=psql('matrix_authentication',"select can_request_admin from users where username='test.user'");return {'t':True,'f':False}.get(value)
  pod=aio_pod()
  if pod is None:return None
  out=subprocess.run(['kubectl','-n',zone,'exec',pod,'-c','aio','--','php','/var/www/html/occ','user:info',uid,'--output=json'],capture_output=True,text=True).stdout

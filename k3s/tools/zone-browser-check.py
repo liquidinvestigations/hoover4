@@ -4,12 +4,10 @@
 For each user the script starts a fresh Chromium, signs in once through the zone Keycloak at the portal, and then
 opens each application. An application passes when the browser stays on the host of the application, the page shows
 no password field, and the page text holds a marker that only a signed-in page shows. The page title does not count,
-because a page without a session can have the same title. Element and Jitsi get one click on their single sign-on
-button when they show one.
+because a page without a session can have the same title. Jitsi gets one click on its single sign-on button when it
+shows one.
 - Office is Collabora, which opens documents from Files. The check writes an empty hoover-office-check.odt to the
   Files of the user, opens it, and waits for the Document_Loaded message of Collabora. Then it deletes the file.
-- Pad is CryptPad. It has its own accounts and no single sign-on, so its row shows that the start page answers.
-  The row has "contract": "availability" and does not show a sign-in.
 - Meet checks the join page of a room only.
 The passwords come from <state folder>/zones/fixture-user-passwords.json and from the Secret ums-nubus-credentials.
 The script prints one JSON line for each check and no password. It exits with 1 when a check fails.
@@ -44,19 +42,11 @@ PAGE = ('JSON.stringify({url: location.href, title: document.title, text: docume
 APPS = [
     ('portal', f'https://{host("portal")}/univention/portal/', host('portal'), ['Logged in as', 'Angemeldet als'], []),
     ('files', f'https://{host("files")}/apps/files/', host('files'), ['All files', 'Alle Dateien'], []),
-    ('notes', f'https://{host("notes")}/', host('notes'), ['My notes', 'Meine Notizen'], []),
-    ('projects', f'https://{host("projects")}/', host('projects'), ['Sie sind nun angemeldet', 'You are now logged in', 'My page', 'Meine Seite',
-                                                           'My projects', 'Meine Projekte'], []),
-    # After the first sign-in of a user, Element asks a new browser to verify the device. It shows that page only to a
-    # signed-in user.
-    ('chat', f'https://{host("chat")}/', host('chat'), ['Unreads', 'Ungelesen', 'Start chat', 'Unterhaltung beginnen', 'Verify this device'],
-     ['Continue', 'Sign in', 'Anmelden', 'Weiter']),
-    ('pad', f'https://{host("pad")}/', host('pad'), ['CryptPad'], []),
     ('wiki', f'https://{host("wiki")}/bin/view/Main/', host('wiki'), ['Benutzerprofil', 'User profile', 'User Profile'], []),
     ('meet', f'https://{host("meet")}/hoover-check-room', host('meet'), ['Join meeting', 'Konferenz beitreten', 'Beitreten'], ['Login', 'Anmelden', 'Sign in']),
     ('hoover', f'https://{host("hoover")}/', host('hoover'), ['Text Search'], []),
 ]
-AVAILABILITY = {'pad'}
+AVAILABILITY = set()
 # Runs in the Files page: write an empty document and return its file id.
 CREATE_DOCUMENT = """(async () => {
  const path = '/remote.php/dav/files/' + encodeURIComponent(OC.getCurrentUser().uid) + '/hoover-office-check.odt';
