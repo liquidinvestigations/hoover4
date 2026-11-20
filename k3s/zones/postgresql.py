@@ -11,7 +11,9 @@ the names and the passwords into the openDesk values of the zone (values()) and 
 
 Isolation: no database of a zone and no database of the server (postgres, template1) admits a connection of PUBLIC,
 so a user connects only to its own database. In each zone database the users cannot read the catalogs of HIDDEN, which
-name the databases, the roles and the sessions of the server. READERS names the exceptions of an application.
+name the databases, the roles and the sessions of the server. Liquibase in Keycloak lists the catalogs from pg_database
+before it creates its lock table in an empty database, so the Keycloak user reads that catalog in its own database
+(READERS) and can list the database names.
 The network policy postgresql-clients of shared.py admits only the openDesk namespaces of the site zones.
 
 The zone state entry has postgresql = site for a zone on the shared server. zone.py apply gives it to each new zone of
@@ -81,8 +83,8 @@ DEFAULT_CONNECTION_LIMIT = 100
 # The catalogs that name the databases, the roles and the sessions of the server. No zone user reads them.
 HIDDEN = ('pg_database', 'pg_stat_database', 'pg_stat_database_conflicts', 'pg_roles', 'pg_user', 'pg_group',
           'pg_auth_members', 'pg_stat_activity', 'pg_shdescription')
-# The catalogs of HIDDEN that an application reads in its own database. No application of the profile reads one.
-READERS = {}
+# The catalogs of HIDDEN that an application reads in its own database.
+READERS = {'keycloak': ('pg_database',)}
 # The databases of the server that no zone user connects to.
 SERVER_DATABASES = ('postgres', 'template1')
 STORES_NS = 'hoover-stores'

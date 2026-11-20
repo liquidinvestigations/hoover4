@@ -195,6 +195,7 @@ def test_a_new_zone_gets_its_users_databases_and_rights_and_a_second_run_changes
     assert set(inside) == {postgresql.database_name('zone-a', k) for k in postgresql.DATABASES}
     assert inside['zone_a_nextcloud'] == [f'REVOKE SELECT ON pg_catalog.{c} FROM PUBLIC;' for c in postgresql.HIDDEN]
     assert not any('GRANT' in s for s in inside['zone_a_xwiki'])
+    assert 'GRANT SELECT ON pg_catalog.pg_database TO "zone_a_keycloak_user";' in inside['zone_a_keycloak']
     assert not any('zone-b' in s or 'zone_b' in s for s in server)
     assert postgresql.statements('zone-a', {**PASSWORDS, 'nextcloud': VERIFIER_PASSWORD}, state_after('zone-a')) == (
         [f'ALTER ROLE "zone_a_{u}" PASSWORD \'{PASSWORDS[k]}\';' for k, (_, u) in postgresql.DATABASES.items() if k != 'nextcloud'],
