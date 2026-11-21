@@ -1,9 +1,4 @@
-"""The single system prompt: what it lists, how large it is, and that it stays fixed.
-
-The prompt is rendered from the run's snapshot and listed skills. These tests render it for
-each profile against the tools of its packs and check that it lists every tool of the
-snapshot, names no tool outside it, and stays inside its size budget.
-"""
+"""Test the short system prompt and its source scope."""
 
 from __future__ import annotations
 
@@ -24,11 +19,7 @@ FIXTURES = Path(__file__).parent / "prompt_fixtures"
 #: The first description line of each tool that the MCP servers and the agent list.
 TOOL_DESCRIPTIONS = json.loads((FIXTURES / "tool_descriptions.json").read_text())
 
-#: The size budget of the system text of every profile. The request rules that replace the
-#: chat classifier added about 700 characters. The tool lines of the `hoover` pack and the
-#: skills `earlier_work` and `using_hoover` added about 700 more. The rules of the `report`
-#: skill for early drafts, checklist updates and `finish_with_report` added about 900 more.
-MAX_PROMPT_CHARS = 14_800
+MAX_PROMPT_CHARS = 5_000
 
 #: Any backticked snake_case word in a rendered prompt.
 BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
@@ -71,7 +62,7 @@ def rendered(profile, packs="all", tools=None, skills=None, **kwargs):
 
 def all_skills(profile):
     """The listed skills of a run that has every tool: every general, technique and stumble
-    skill of the store. The role skill is in the prompt text and is not listed."""
+    skill of the store."""
     return listed_skills(SkillContext(profile=profile, tool_names=EVERY_TOOL))
 
 
@@ -82,15 +73,12 @@ def listed_lines(text):
 # -------------------------------------------------------------------------- normal
 
 
-def test_the_full_chat_lead_lists_every_tool_and_every_skill():
+def test_the_full_chat_lists_each_skill_without_tool_descriptions():
     skills = all_skills("full_research")
     assert len(skills) == 19
     text = rendered("full_research", skills=skills)
-    names = listed_lines(text)
-    tools = [n for n in names if n in EVERY_TOOL]
-    assert sorted(tools) == sorted(EVERY_TOOL)
-    assert len(tools) == len(EVERY_TOOL)
-    assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
+    assert listed_lines(text) == [skill.name for skill in skills]
+    assert "Find a tool by a few words with `search_agent_tools`." in text
 
 
 def test_the_internal_chat_lists_no_web_tool():
@@ -109,7 +97,6 @@ def test_every_profile_renders_strictly_and_names_only_its_tools(profile):
     named = {w for w in BACKTICKED.findall(text) if w not in NOT_TOOLS}
     skills = {s.name for s in listed_skills(snap.skill_context)}
     assert (named & EVERY_TOOL) <= set(snap.tools_by_name)
-    assert set(snap.tools_by_name) <= named
     assert skills <= named
 
 
@@ -144,8 +131,6 @@ def test_each_source_set_renders_strictly_and_names_only_its_sources(profile, so
     prompt = prompts.render(profile, snapshot=snap, skills=skills, strict=True)
     tools = set(snap.tools_by_name)
     assert {w for w in BACKTICKED.findall(prompt) if w in EVERY_TOOL} <= tools
-    texts = [prompt] + [skill_store.render_skill(s.name, snap.skill_context, strict=True)
-                        for s in skills]
     if "documents" in names:
         assert NO_COLLECTIONS not in prompt
         assert {"search", "citation"} <= {s.name for s in skills}
@@ -153,19 +138,16 @@ def test_each_source_set_renders_strictly_and_names_only_its_sources(profile, so
         assert not tools & PACKS["collections"]
         assert not {s.name for s in skills} & COLLECTION_SKILLS
         assert NO_COLLECTIONS in prompt
-        for text in texts:
-            assert "collection" not in text.replace(NO_COLLECTIONS, "").lower(), text[:200]
-            assert "not found in the documents" not in text
+        assert "`cite_documents`" not in prompt
     if "web" in names:
-        assert "`web_search`" in prompt and "web_research" in {s.name for s in skills}
+        assert "`cite_pages`" in prompt and "web_research" in {s.name for s in skills}
     else:
         assert not tools & (PACKS["web"] | PACKS["browser"])
         assert "search the open web" not in prompt
     if not names:
         # A source-free run gets no instruction to search or cite any source.
         assert "Use the document collections" not in prompt and "Use the web" not in prompt
-        assert "cannot read the web" in prompt
-        assert "Citations\n" not in prompt
+        assert "`cite_documents`" not in prompt and "`cite_pages`" not in prompt
     assert "ask_user" not in prompt
 
 
@@ -177,24 +159,6 @@ def test_the_citation_skill_is_listed_only_with_cite_documents():
     assert skill_store.SKILLS["citation"].tools == ("cite_documents",)
 
 
-def test_every_run_tool_has_one_prompt_line():
-    snap = snapshot_for("full_research")
-    text = prompts.render("full_research", snapshot=snap, skills=[])
-    tools_part = text.split("\nTools\n", 1)[1]
-    names = listed_lines(tools_part)
-    assert names == list(snap.callable_names())
-    assert "Find a tool by a few words with `search_agent_tools`." in text
-
-
-def test_a_summary_is_the_first_sentence_cut_at_a_word_boundary():
-    assert prompts.tool_summary("Read a table. Then more.\nSecond line.") == "Read a table."
-    assert prompts.tool_summary("读取一个表格。然后更多。") == "读取一个表格。"
-    long = "word " * 60
-    summary = prompts.tool_summary(long)
-    assert len(summary) <= prompts.SUMMARY_MAX_CHARS
-    assert not summary.endswith(" ") and summary.split(" ")[-1] == "word"
-
-
 # ------------------------------------------------------------------------ boundary
 
 
@@ -202,16 +166,6 @@ def test_a_summary_is_the_first_sentence_cut_at_a_word_boundary():
 def test_the_prompt_stays_inside_its_size_budget(profile):
     text = rendered(profile, skills=all_skills(profile))
     assert len(text) <= MAX_PROMPT_CHARS, len(text)
-
-
-def test_a_run_without_the_plan_tool_has_no_plan_rule():
-    narrow = rendered("full_research", packs="collections,web")
-    assert "Your plan" not in narrow
-    full = rendered("full_research")
-    assert "Your plan" in full
-    assert "`update_plan` only keeps the plan. Write a report or another file with `write_file`." in full
-
-
 
 
 def test_no_readable_collection_is_said_plainly():
@@ -281,8 +235,7 @@ async def test_the_system_text_is_the_same_for_each_model_step(monkeypatch):
     second = context.system_text_for(("table_page", "pdf_search"))
     assert first == second
     assert "Skills" in first and "`citation`" in first
-    # The role text is in the prompt, and the role skill is not listed.
-    assert "Your role" in first and "`method_chat_full`" not in first
+    assert first.startswith("You are a research assistant.")
     assert context.skill_context.profile == "full_research"
     assert context.skill_context.tool_names == frozenset(context.snapshot.tools_by_name)
 
@@ -341,23 +294,19 @@ async def test_an_internal_context_without_collections_reads_no_source(monkeypat
     bound = set(context.snapshot.tools_by_name)
     assert not bound & (PACKS["collections"] | PACKS["web"] | PACKS["browser"])
     text = context.system_text_for(())
-    assert NO_COLLECTIONS in text and "cannot read the web" in text
+    assert NO_COLLECTIONS in text and "open web" not in text
     assert "Use the document collections" not in text
     assert "not found in the documents" not in text
 
 
-def test_list_constraints_apply_before_any_optional_skill_read():
+def test_the_first_step_has_the_delivery_and_citation_contract():
     text = rendered("full_research")
-    assert "For each listed item, verify every constraint against the source text" in text
-    assert "Give fewer items when the sources establish fewer matches" in text
-    assert "Verify in the source each property that the request requires of an item." in text
-    assert "Count one case, event or entity once, even when several sources report its stages." in text
-    assert "When a page read fails, use another readable source or omit its claims and address." in text
-    assert "Read every page that you cite before you write the answer or the report." in text
-    assert "Call `read_page` for every web source before you use its claims." in text
-    assert "Use its `find` field to read the passage that supports each claim." in text
-    assert "State when the sources do not establish the ranking." in text
-    assert "Search snippets and security check pages cannot establish a matching item." in text
+    assert "Apply a restriction or permission to its stated scope." in text
+    assert "Keep sourced findings in a report unless the user asks for them in chat." in text
+    assert "Cite any sourced claim in the closing message too." in text
+    assert "Copy the returned handle beside each supported claim." in text
+    assert "`finish_with_report` with its name and version as the last call" in text
+    assert "`cite_chats_and_boards`" in text
 
 
 def test_the_prompt_uses_the_observed_utc_date(monkeypatch):

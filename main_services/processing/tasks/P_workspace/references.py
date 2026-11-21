@@ -22,7 +22,7 @@ import re
 from typing import Iterable
 
 FENCE = re.compile(r"^\s*(```|~~~)")
-HANDLE_VALUE = re.compile(r"[DWCB]\d+")
+HANDLE_VALUE = re.compile(r"[DWCB][0-9]+")
 
 
 def _as_handles(inner: str) -> list[str] | None:
@@ -55,17 +55,25 @@ def handles(text: str) -> list[tuple[str, int]]:
                     continue
             if c == "[":
                 close = line.find("]", i + 1)
-                if close != -1 and not line.startswith("(", close + 1):
-                    found = _as_handles(line[i + 1:close])
-                    if found is not None:
-                        out.extend((handle, number) for handle in found)
-                        i = close + 1
-                        continue
+                if close != -1:
+                    if line.startswith("(", close + 1):
+                        end = line.find(")", close + 2)
+                        href = line[close + 2:end].strip().lower() if end != -1 else ""
+                        if href.startswith(("https://", "http://", "mailto:", "/docs#", "/docs/admin#")) \
+                                or href in ("/docs", "/docs/admin"):
+                            i = end + 1
+                            continue
+                    else:
+                        found = _as_handles(line[i + 1:close])
+                        if found is not None:
+                            out.extend((handle, number) for handle in found)
+                            i = close + 1
+                            continue
             i += 1
     return out
 
 
-CODE_HANDLE = re.compile(r"\[\s*[DWCB]\d+(?:\s*,\s*[DWCB]\d+)*\s*\]")
+CODE_HANDLE = re.compile(r"\[\s*[DWCB][0-9]+(?:\s*,\s*[DWCB][0-9]+)*\s*\]")
 
 
 def code_handle_places(text: str) -> list[tuple[str, bool]]:

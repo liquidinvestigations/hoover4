@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "Страница результата, начиная с 0. У результата с next_page есть продолжение.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "Раздел из search_manual или ссылка /docs. Пустое значение читает содержание.",
  "The session_id from list_chats_and_boards or from a chat link.": "session_id из list_chats_and_boards или из ссылки на чат.",
- "The skill `{skill}` shows how to fix this.": "Навык `{skill}` показывает, как это исправить.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "Источники, которые может использовать web_search, с их видом (web, news, reference или archive). Вызывай, только если нужно сузить поиск до отдельных источников. Источник, для которого в этом развёртывании нет ключа, вообще не перечисляется.",
  "The step, as a short sentence.": "Шаг в виде короткого предложения.",
  "The task goal in one or two sentences.": "Цель задачи в одном-двух предложениях.",

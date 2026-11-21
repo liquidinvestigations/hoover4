@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "结果的页码，从 0 开始。带有 next_page 的结果还有更多内容。",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "来自 search_manual 的章节，或一个 /docs 链接。留空则阅读目录。",
  "The session_id from list_chats_and_boards or from a chat link.": "来自 list_chats_and_boards 或对话链接的 session_id。",
- "The skill `{skill}` shows how to fix this.": "技能 `{skill}` 说明了如何解决这个问题。",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "web_search 可以使用的来源及其类型（web、news、reference 或 archive）。只有需要把搜索限制在特定来源时才调用它。此部署没有密钥的来源完全不会列出。",
  "The step, as a short sentence.": "步骤，写成一个简短的句子。",
  "The task goal in one or two sentences.": "用一两句话写出的任务目标。",

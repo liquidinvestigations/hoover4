@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "Η σελίδα του αποτελέσματος, από 0. Ένα αποτέλεσμα με next_page έχει κι άλλα.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "Η ενότητα από το search_manual ή ένας σύνδεσμος /docs. Κενό διαβάζει τα περιεχόμενα.",
  "The session_id from list_chats_and_boards or from a chat link.": "Το session_id από το list_chats_and_boards ή από σύνδεσμο συνομιλίας.",
- "The skill `{skill}` shows how to fix this.": "Η δεξιότητα `{skill}` δείχνει πώς να το διορθώσεις.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "Οι πηγές που μπορεί να χρησιμοποιήσει το web_search, με το είδος τους (web, news, reference ή archive). Κάλεσέ το μόνο αν χρειάζεται να περιορίσεις μια αναζήτηση σε συγκεκριμένες πηγές. Μια πηγή για την οποία αυτή η εγκατάσταση δεν έχει κλειδί δεν παρατίθεται καθόλου.",
  "The step, as a short sentence.": "Το βήμα, ως σύντομη πρόταση.",
  "The task goal in one or two sentences.": "Ο στόχος της εργασίας σε μία ή δύο προτάσεις.",

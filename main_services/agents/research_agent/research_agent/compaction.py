@@ -108,17 +108,16 @@ EVICTION_PLACEHOLDER = (
 #: The start of each record. A `human` message that starts with it is a record, never a
 #: user message, and a later compaction replaces it.
 RECORD_HEADER = (
-    "[Summary of earlier steps. Code wrote the lists of searches, documents, pages, "
-    "continuations and citation labels. A model wrote the rest from the steps it replaces. "
-    "The full steps are in the transcript. Read a source again before you quote it.]\n\n"
+    "[Summary of earlier steps. Code wrote the lists of searches, sources and citations. "
+    "Read saved workspace files to recover their text. Read an unresolved passage before quoting it.]\n\n"
 )
 #: The starts of the records of version 2 and version 1 rows.
 _V2_RECORD_HEAD = "[Record of earlier steps. Code wrote the lists"
 _V1_RECORD_HEAD = "[Context handoff."
 _RECORD_HEADS = (RECORD_HEADER[:40], _V2_RECORD_HEAD, _V1_RECORD_HEAD)
 
-#: A document or web citation handle returned by a citation tool.
-CITATION_HANDLE = re.compile(r"\[[DW]\d+\]")
+#: A handle returned by a citation tool.
+CITATION_HANDLE = re.compile(r"\[[DWCB]\d+\]")
 
 #: The results that never go to the summary model. The index names them.
 TEXT_TOOLS = frozenset({thread_index.READ_SKILL, thread_index.READ_TOOL})
@@ -154,6 +153,9 @@ questions it did not answer, and the leads not yet followed, each with the docum
 query that raised it. Check completed tool results before you list work here. A cut page \
 has been read through its shown text; its continuation remains unread. List only the \
 needed unread part as work. Add no work that the user or the agent did not state.
+Separate candidates saved in workspace files from unsaved candidates. For each unsaved \
+candidate that matters, give its identifier and the next unresolved action. State what \
+the current workspace files hold only when a tool result records the save.
 
 ## Sources to read again
 The identifiers that let the agent read a source again exactly: file hashes with pages, \
@@ -390,7 +392,8 @@ def _key(m: RunMessage) -> Optional[Key]:
 
 def is_record(m: RunMessage) -> bool:
     """Whether a `human` message is a compaction record of any version."""
-    return m.role == "human" and (m.content or "").startswith(_RECORD_HEADS)
+    return m.role == "human" and (m.human_origin == "summary" or (
+        m.human_origin is None and (m.content or "").startswith(_RECORD_HEADS)))
 
 
 def step_groups(msgs: Sequence[RunMessage]) -> List[List[int]]:
@@ -410,7 +413,7 @@ def step_groups(msgs: Sequence[RunMessage]) -> List[List[int]]:
 
 
 def _is_user(m: RunMessage) -> bool:
-    return m.role == "human" and not is_record(m)
+    return m.role == "human" and m.human_origin != "policy" and not is_record(m)
 
 
 def _names(msgs: Sequence[RunMessage]) -> Dict[int, str]:
@@ -684,7 +687,7 @@ def summarise_with_images(plan: "CompactionPlan", max_tokens: int) -> str:
                                            max_tokens=max_tokens)
     if not summary:
         return ""
-    task = next((m.content for m in plan.applied if m.role == "human" and not is_record(m)), "")
+    task = next((m.content for m in plan.applied if _is_user(m)), "")
     for group in later:
         content = [{"type": "text", "text": DESCRIBE_IMAGES_PROMPT.format(task=task[:TASK_CHARS])}]
         for n in group:
@@ -910,10 +913,19 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
                    for k in [_key(m)] if k and k not in hidden}
         return thread_index.render(rows, visible_after=visible)
 
+    # A low trigger can make its fractional target smaller than the input that must stay.
+    compulsory = fixed + header + newest + est.tokens_text(index_for(len(steps) - 1))
+    raised_target = compulsory > target
+    if raised_target:
+        remaining = max(0, trigger - compulsory)
+        older_steps = min(target_tokens(remaining), max(0, remaining - newest))
+        target = min(limit, compulsory + older_steps)
+
     # The largest suffix of complete groups that fits the target with the fixed input and
     # the summary, and at least the newest group.
     start, used = len(steps) - 1, newest
-    while start > 0 and fixed + header + used + sizes[start - 1] <= target:
+    first_candidate = 1 if raised_target else 0
+    while start > first_candidate and fixed + header + used + sizes[start - 1] <= target:
         start -= 1
         used += sizes[start]
     if start == 0:
@@ -959,7 +971,7 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
         target=target, billed=billed, source=source, retained_from=retained_from,
         index=index, prompt=prompt,
         steps_summarised=sum(1 for i in prefix if applied[i].role == "ai"),
-        sizes={"fixed": est.fixed, "user": user, "retained": used,
+        sizes={"fixed": est.fixed, "user": user, "newest": newest, "retained": used,
                "index": est.tokens_text(index), "summary_input": est.tokens_text(prompt),
                "summary_window": int(s_window)},
         extracts=extracts, unchanged_failure=unchanged,

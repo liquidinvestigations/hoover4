@@ -28,8 +28,7 @@ its arguments normalized (`classify_calls`).
 
 `/tool_call` runs one call and returns its result as JSON. It refuses an unavailable name,
 damaged arguments, and arguments that do not match the tool's schema. The length of the
-conversation never refuses a call. A failed result that shows a known stumble ends with a
-sentence that names the skill of the fix (`stumbles.py`).
+conversation never refuses a call.
 """
 
 from __future__ import annotations
@@ -41,7 +40,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, AsyncIterator, Dict, FrozenSet, List, Literal, Optional, Sequence, Tuple
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Sequence, Tuple
 
 import httpx
 import openai
@@ -49,7 +48,7 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, images, llm_events, request_size, skill_store, stumbles
+from research_agent import compaction, images, llm_events, request_size, skill_store
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.localization import catalog_revision
 from research_agent.execution import (
@@ -110,6 +109,7 @@ class ControlAssets(BaseModel):
     revision: str = ""
     system_prompt: str = ""
     skills: Dict[str, str] = Field(default_factory=dict)
+    tool_definitions: Optional[List[Dict[str, Any]]] = None
     #: The image setting of the pinned definition (`images.select`). A request without it
     #: attaches every image, as before the setting existed.
     model_images: str = "attach"
@@ -374,11 +374,22 @@ async def run_model_step(agent: Any, request: ModelStepRequest) -> AsyncIterator
 def model_input_rows(earlier: Sequence[RunMessage], messages: Sequence[RunMessage]
                      ) -> Tuple[List[RunMessage], List[RunMessage]]:
     """The stored thread of one model call, with a `not_run` result for each unanswered
-    call of an earlier turn, and the list after every stored compaction."""
+    call of an earlier turn, and the list after every stored compaction. Earlier policy
+    notes stay in the transcript and do not instruct the new turn."""
     rows = close_unanswered(list(earlier)) + list(messages)
+    old_notes = {(m.thread_id, m.idx) for m in earlier if m.human_origin == "policy"}
     views = [m.model_copy(update={"content": m.model_content})
-             if m.role == "tool" and m.model_content is not None else m for m in rows]
+             if m.role == "tool" and m.model_content is not None else m for m in rows
+             if m.human_origin != "policy" or (m.thread_id, m.idx) not in old_notes]
     return rows, apply_compactions(views)
+
+
+def _callable_names(snapshot, control: Optional[ControlAssets]) -> Tuple[str, ...]:
+    names = snapshot.callable_names()
+    if control is None or control.tool_definitions is None:
+        return names
+    return tuple(tool["function"]["name"] for tool in control.tool_definitions
+                 if tool["function"]["name"] in names)
 
 
 def build_model_input(
@@ -523,12 +534,15 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     snapshot = context.snapshot
     thread = [m for m in list(request.earlier) + list(request.messages)
               if m.role != "compaction"]
-    names = snapshot.callable_names()
+    names = _callable_names(snapshot, request.control)
     pinned = request.control.system_prompt if request.control is not None else ""
     system_text = pinned or context.system_text_for(names)
-    bound_tools = snapshot.tools_for()
-    shown_tools = [shown_tool(t, snapshot.language) for t in bound_tools]
-    schemas_json = json.dumps([t["function"]["parameters"] for t in shown_tools], default=str)
+    if request.control is not None and request.control.tool_definitions is not None:
+        shown_tools = [tool for tool in request.control.tool_definitions
+                       if tool["function"]["name"] in names]
+    else:
+        shown_tools = [shown_tool(t, snapshot.language) for t in snapshot.tools_for()]
+    schemas_json = json.dumps(shown_tools, ensure_ascii=False)
     # The saved files follow the newest message. They count with the fixed input.
     inventory = workspace_state.inventory_text(request.workspace)
     measured_text = system_text + ("\n\n" + inventory if inventory else "")
@@ -673,8 +687,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             "reasoning_tokens": int(stats.reasoning_tokens or 0),
             "request_size": sent_size,
             # The worker's citation check runs only for a model that had the tool.
-            "citation_tool": any(getattr(t, "name", "") in ("cite_documents", "cite_pages", "cite_chats_and_boards")
-                                 for t in bound_tools),
+            "citation_tool": bool(set(names) & {"cite_documents", "cite_pages", "cite_chats_and_boards"}),
         },
         # True when a summary replaced older steps. A failed summary changes no message.
         "summarised": report is not None and report.status == "ok",
@@ -792,22 +805,9 @@ def retryable_result(content: str) -> bool:
     return isinstance(body, dict) and body.get("success") is False and body.get("retryable") is True
 
 
-def _listed_skill_names(context: Any) -> FrozenSet[str]:
-    """The names of the skills that the run lists, for the skill line of an error."""
-    ctx = getattr(context, "skill_context", None) \
-        or getattr(getattr(context, "snapshot", None), "skill_context", None)
-    if ctx is None:
-        return frozenset()
-    return frozenset(skill.name for skill in skill_store.listed_skills(ctx))
-
-
 async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
-    """Run one tool call and return its result. A failed result that shows a known stumble
-    ends with the sentence that names its skill (`stumbles.with_skill_line`)."""
-    context = await _context(agent, request)
-    response = await _run_tool_call(context, request)
-    return stumbles.with_skill_line(response, dict(request.call.args or {}),
-                                    _listed_skill_names(context), context.snapshot.language)
+    """Run one tool call and return its result."""
+    return await _run_tool_call(await _context(agent, request), request)
 
 
 def _failed_result(body: Any) -> bool:
@@ -823,13 +823,17 @@ def _failed_result(body: Any) -> bool:
 
 
 def _successful_repeat_result(message: RunMessage) -> bool:
-    """Exclude failed tool results from repeat pointers and search refusals."""
+    """Use a complete result as the target of a repeat pointer."""
     if message.status == "error":
         return False
     try:
-        return not _failed_result(json.loads(message.content))
+        body = json.loads(message.content)
     except (TypeError, ValueError):
-        return True
+        return not (
+            message.content.startswith("This call repeats call ")
+            and message.content.endswith(". Its result is above.")
+        )
+    return not (_failed_result(body) or (isinstance(body, dict) and body.get("status") == "refused"))
 
 
 def closest_names(name: str, args: Any, snapshot: Any, allowed: Sequence[str]) -> List[str]:
@@ -863,7 +867,7 @@ def batch_problem(request: ToolCallRequest) -> str:
 async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
     snapshot = context.snapshot
     name = request.call.name
-    allowed = snapshot.callable_names()
+    allowed = _callable_names(snapshot, request.control)
     argument_hint = (
         ' For cite_pages, retry one page with flat arguments: '
         '{"url":"COPY_READ_PAGE_URL","terms":["COPY_SHORT_EXACT_PHRASE"]}. '
@@ -916,7 +920,8 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             _with_repairs(None, repairs),
         )
 
-    if name == READ_SKILL and request.control is not None and request.control.skills:
+    if (name == READ_SKILL and request.control is not None
+            and (request.control.skills or request.control.tool_definitions is not None)):
         # The run reads the skill text that its turn pinned.
         skill = str(args.get("name") or "")
         if skill in request.control.skills:
@@ -929,33 +934,6 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     search_tools = {"search_collections", "search_passages", "web_search", "folder_search",
                     "search_facet_values", "search_histogram", "search_entity_explainer",
                     "doc_search_text", "pdf_search"}
-    if name in search_tools:
-        completed = {m.tool_call_id for m in request.messages
-                     if m.role == "tool" and _successful_repeat_result(m)}
-        previous = [c for m in request.messages if m.role == "ai" for c in m.tool_calls
-                    if c.name == name and c.id in completed and c.id != request.call.id
-                    and normalize_arguments(c.args, schema).args == args]
-        if len(previous) >= 2:
-            earlier = next((m for m in request.messages if m.role == "tool"
-                            and m.tool_call_id == previous[0].id), None)
-            try:
-                body = json.loads(earlier.content) if earlier else {}
-            except (TypeError, ValueError):
-                body = {}
-            fields = body.get("fields", {}) if isinstance(body, dict) else {}
-            items = next((body[k] for k in ("items", "documents", "results")
-                          if isinstance(body, dict) and isinstance(body.get(k), list)), [])
-            matched = body.get("keyword_sources", fields.get("keyword_sources", [])) if isinstance(body, dict) else []
-            count = len(items)
-            legacy = isinstance(body, dict) and "query_forms" not in body and "keyword_sources" not in body
-            keyword_count = len(matched) if matched else count if name == "search_collections" and legacy else 0
-            return _tool_response(request, json.dumps({
-                "status": "refused", "repeated_call": previous[0].id,
-                "item_count": count, "keyword_match_count": keyword_count,
-                "message": f"This search repeats call {previous[0].id} a second time. "
-                           f"It returned {count} items with {keyword_count} keyword matches. "
-                           "Run a different search or write the answer."}))
-
     citation_call = name in ("cite_documents", "cite_pages")
     if citation_call or name in search_tools or name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
         rows, visible = model_input_rows(request.earlier, request.messages)
@@ -994,7 +972,7 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
                             continue
                         return _tool_response(request,
                             f"This citation repeats call {call.id}. Use its verified handles {', '.join(dict.fromkeys(handles))}. "
-                            "Cite different terms for another passage. Finish the answer when its sources are complete.", "ok")
+                            "Cite different terms for another passage.", "ok")
                     return _tool_response(request, f"This call repeats call {call.id}. Its result is above.", "ok")
 
     share_token = _PAGE_SHARE.set(request.page_share)
@@ -1072,6 +1050,7 @@ async def control_snapshot(agent: Any, request: ControlSnapshotRequest) -> Dict[
         return out
     snapshot = context.snapshot
     names = list(snapshot.callable_names())
+    tools = [shown_tool(tool, snapshot.language) for tool in snapshot.tools_for()]
     system_text = context.system_text_for(tuple(names))
     ctx = context.skill_context
     skills: Dict[str, Any] = {}
@@ -1083,7 +1062,7 @@ async def control_snapshot(agent: Any, request: ControlSnapshotRequest) -> Dict[
                               "not_for": skill.not_for}
     prompt_digest = skill_digest(system_text)
     language = snapshot.language
-    revision_parts = [prompt_digest, snapshot.version,
+    revision_parts = [prompt_digest, snapshot.version, tools,
                       sorted((n, s["digest"]) for n, s in skills.items())]
     # An English snapshot keeps its earlier revision. Another language adds its code and
     # the revision of its translations.
@@ -1095,6 +1074,7 @@ async def control_snapshot(agent: Any, request: ControlSnapshotRequest) -> Dict[
         "system_prompt": system_text, "system_prompt_digest": prompt_digest,
         "prompt_override": bool(getattr(agent, "system_prompt_override", "")),
         "skills": skills, "callable_tools": names, "catalogue_version": snapshot.version,
+        "tool_definitions": tools,
         "revision": skill_digest(json.dumps(revision_parts)),
     })
     return out
@@ -1106,7 +1086,7 @@ async def policy_calls(agent: Any, request: PolicyCallsRequest) -> Dict[str, Any
     does not hold is refused and left out."""
     context = await _context(agent, request)
     snapshot = context.snapshot
-    names = snapshot.callable_names()
+    names = _callable_names(snapshot, request.control)
     calls = [c for c in request.calls if c.get("name") in names]
     entries = await asyncio.to_thread(classify_calls, snapshot, names, calls, 0, [])
     return {"entries": [e.model_dump() for e in entries],

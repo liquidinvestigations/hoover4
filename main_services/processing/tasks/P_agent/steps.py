@@ -426,6 +426,7 @@ def pinned_control(messages) -> Optional[dict]:
             "system_prompt": assets["system_prompt"],
             "skills": {name: (skill or {}).get("text") or ""
                        for name, skill in (assets.get("skills") or {}).items()},
+            "tool_definitions": assets.get("tool_definitions"),
             "model_images": str(definition.get("model_images") or "attach")}
 
 

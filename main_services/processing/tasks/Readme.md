@@ -227,10 +227,11 @@ The transcript shows this metadata below the answer.
 The worker stores typed evidence beside each tool result.
 Evidence identifies document reads, discovery, citations, notes, artifacts, spans, and errors.
 
-The `control_event` activity runs the chat checks of [P_agent/control/](P_agent/control) at the turn start and after each tool batch.
-[control/coordinator.py](P_agent/control/coordinator.py) describes the stored decision of each event and the rows it writes.
+The `pin_turn_control` activity saves the turn assets and selects its policy mode.
+The default turn resumes the model after each ordinary tool batch.
+A turn with rules runs [policy checks](P_agent/control) through `control_event` at turn start and after each tool batch.
+Each event saves its decision before it writes action rows.
 A policy batch runs through `tool_call` before the next model step.
-The checks read the stored thread and the tool results. They make no model request.
 
 Each model, tool, and title attempt records an `agent_step_events` row.
 The row records queue wait, duration, status, error class, and token counts.
@@ -240,8 +241,9 @@ The agent run sweep closes a running row whose workflow has ended or is absent.
 It records cancellation for a stopped turn and failure for other ended workflows.
 It leaves rows younger than 120 seconds unchanged.
 
-Stop active turns before changing the workflow's command sequence.
-Cancellation must finish while the old worker still runs.
+Use a Temporal patch to change the command sequence of `AgentRun`.
+Replay a saved history before deploying a new sequence.
+Drain the worker when deploying a new version.
 Deploy the worker before the website so every dispatched queue has a poller.
 
 ### P_workspace - workspace files of a chat

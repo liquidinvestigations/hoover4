@@ -47,6 +47,7 @@ Separate verified document passages share one card and open their own find queri
 Bold and italic citation handles keep their source controls and validation.
 A comma-separated citation group renders and verifies each handle.
 Chat citation status checks visible markers. Code, escaped brackets, and link labels are literal text.
+The tool group shows stored instructions from earlier turns and turns that use a policy definition.
 Tables show a source card after the first row that cites it.
 Document cards contain the matching source excerpt.
 Web cards show a linked title, its domain on the line under the title, and the verified source excerpt below them.

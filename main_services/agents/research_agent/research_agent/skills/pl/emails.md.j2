@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Czytanie dokumentów e-mail
 
 {% if has('search_collections') %}
-Znajdź e-maile za pomocą {{ tool('search_collections') }}. Umieść każdą formę adresu lub nazwy w jednym wywołaniu, na przykład adres, "Imię Nazwisko" i "Nazwisko, Imię".
+Znajdź e-maile za pomocą {{ tool('search_collections') }}. Połącz warianty zapisu jednego nadawcy. Wyszukuj różnych nadawców osobno, aby utrzymać przypisanie wyników.
 
 {% endif %}
 {% if has('doc_email') %}

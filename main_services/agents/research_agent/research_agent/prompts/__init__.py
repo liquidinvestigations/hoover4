@@ -1,10 +1,7 @@
 """The system prompt of every run kind, rendered from the run's snapshot and skills.
 
-One template, `agent.md.j2`, renders for every profile. It holds the role line of the
-profile, the role text of the profile (the rendered role skill, `skill_store.role_method`),
-the listed skills by name and description, and the tools of the run's snapshot by name and
-summary in one list. The other method texts are in the skill store
-(`research_agent.skill_store`), which the model reads with `read_skill` when it chooses to.
+One template renders the profile role line, the delivery and citation rules, and the
+skills of the run. The model receives tool definitions through its callable catalogue.
 
 The prompt uses the profile, `collections_hint`, model, snapshot, and observed UTC date.
 The step context renders it once and keeps that text for the run.
@@ -27,15 +24,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, StrictUndefined
 
 from agent_common.tool_packs import PACKS, pack_of
-from research_agent.localization import DEFAULT_LANGUAGE, language_name, localize_text, run_language
+from research_agent.localization import DEFAULT_LANGUAGE, language_name, run_language
 from research_agent.skill_store import (
     DEFAULT_PROFILE,
     Skill,
@@ -43,8 +39,6 @@ from research_agent.skill_store import (
     UnboundToolError,
     environment,
     render_skill,
-    report_rules,
-    role_method,
 )
 
 log = logging.getLogger(__name__)
@@ -83,17 +77,6 @@ ROLE_LINES: Dict[str, str] = {
     ),
 }
 
-#: The longest summary of one tool in the tool lists.
-SUMMARY_MAX_CHARS = 160
-
-#: The plan tool. The plan rule renders when the run has it.
-TODO_TOOLS = ("update_plan",)
-
-#: A sentence end: a Latin full stop, question or exclamation mark and a space, or a full-width
-#: one, which Chinese and Japanese write with no space after it.
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s|(?<=[。！？])")
-
-
 def _environment(language: str = DEFAULT_LANGUAGE) -> Environment:
     """The Jinja environment of the templates, translated first. `StrictUndefined` so a
     mistyped name is loud."""
@@ -121,24 +104,6 @@ def role_line_source(profile: str, language: str) -> str:
         if isinstance(lines.get(profile), str) and lines[profile].strip():
             return lines[profile]
     return ROLE_LINES[profile]
-
-
-def tool_summary(description: str) -> str:
-    """The first sentence of the first line of a description, cut at a word boundary to at
-    most `SUMMARY_MAX_CHARS` characters."""
-    lines = (description or "").strip().splitlines()
-    first = lines[0].strip() if lines else ""
-    sentence = _SENTENCE_END.split(first, maxsplit=1)[0].strip()
-    if len(sentence) <= SUMMARY_MAX_CHARS:
-        return sentence
-    cut = sentence[:SUMMARY_MAX_CHARS + 1].rsplit(" ", 1)[0]
-    return cut if cut else sentence[:SUMMARY_MAX_CHARS]
-
-
-def _pairs(snapshot: Any, names: Sequence[str], language: str) -> List[Tuple[str, str]]:
-    tools = snapshot.tools_by_name
-    return [(n, tool_summary(localize_text(getattr(tools[n], "description", "") or "", language)))
-            for n in names]
 
 
 def render(
@@ -189,12 +154,8 @@ def render(
         language_name=language_name(language),
         has=lambda name: name in tool_names,
         role_line=role_line,
-        role_method=role_method(ctx, strict=strict),
-        report_rules=report_rules(ctx, strict=strict),
         skills=list(skills),
-        tools=_pairs(snapshot, snapshot.callable_names(), language),
         catalogue_search="search_agent_tools" in tool_names,
-        todo_rule=all(t in tool_names for t in TODO_TOOLS),
     ).strip()
 
 
@@ -235,12 +196,10 @@ __all__ = [
     "DEFAULT_PROFILE",
     "PROFILE_KINDS",
     "ROLE_LINES",
-    "SUMMARY_MAX_CHARS",
     "TEMPLATE_DIR",
     "UnboundToolError",
     "active_profile",
     "render",
     "system_prompt",
     "system_prompt_override",
-    "tool_summary",
 ]

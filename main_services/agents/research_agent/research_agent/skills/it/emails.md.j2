@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Lettura dei documenti email
 
 {% if has('search_collections') %}
-Trova le email con {{ tool('search_collections') }}. Inserisci in una sola chiamata tutte le forme di un indirizzo o di un nome, per esempio l'indirizzo, "Nome Cognome" e "Cognome, Nome".
+Trova le email con {{ tool('search_collections') }}. Raggruppa le varianti di un mittente. Cerca separatamente mittenti diversi per mantenere l’attribuzione dei risultati.
 
 {% endif %}
 {% if has('doc_email') %}

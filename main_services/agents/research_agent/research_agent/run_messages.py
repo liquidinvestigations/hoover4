@@ -48,6 +48,8 @@ class RunMessage(BaseModel):
     #: The stored key of the message. A `compaction` row names messages by this key.
     thread_id: Optional[str] = None
     idx: Optional[int] = None
+    #: The source of a human row. Earlier workers send no value.
+    human_origin: Optional[Literal["user", "policy", "summary"]] = None
     #: `ai` only.
     tool_calls: List[ToolCallRecord] = Field(default_factory=list)
     #: `tool` only.
@@ -187,7 +189,7 @@ def _apply_prefix(messages: Sequence[RunMessage], record: Dict[str, Any]) -> Lis
         if key is not None and key in gone:
             if not placed:
                 out.append(RunMessage(role="human", content=summary,
-                                      thread_id=key[0], idx=key[1]))
+                                      thread_id=key[0], idx=key[1], human_origin="summary"))
                 placed = True
             continue
         out.append(message)
@@ -219,7 +221,7 @@ def _apply_v2(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[Ru
         if key is not None and key in gone:
             if not placed and handoff:
                 out.append(RunMessage(role="human", content=handoff,
-                                      thread_id=key[0], idx=key[1]))
+                                      thread_id=key[0], idx=key[1], human_origin="summary"))
                 placed = True
             continue
         if key is not None and key in cuts and message.role == "tool" \
@@ -247,7 +249,7 @@ def _apply_v1(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[Ru
         if key is not None and key in summarised and handoff:
             if not placed:
                 out.append(RunMessage(role="human", content=handoff,
-                                      thread_id=key[0], idx=key[1]))
+                                      thread_id=key[0], idx=key[1], human_origin="summary"))
                 placed = True
             continue
         if key is not None and key in evicted and message.role == "tool":

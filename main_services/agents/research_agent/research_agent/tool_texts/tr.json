@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "Sonucun sayfası, 0'dan başlar. next_page içeren bir sonucun devamı vardır.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "search_manual sonucundaki bölüm veya bir /docs bağlantısı. Boş değer içindekileri okur.",
  "The session_id from list_chats_and_boards or from a chat link.": "list_chats_and_boards sonucundaki veya bir sohbet bağlantısındaki session_id.",
- "The skill `{skill}` shows how to fix this.": "`{skill}` becerisi bunun nasıl düzeltileceğini gösterir.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "web_search'ün kullanabileceği kaynaklar, türleriyle (web, news, reference ya da archive). Bunu yalnızca bir aramayı belirli kaynaklarla daraltman gerekirse çağır. Bu dağıtımın anahtarının olmadığı bir kaynak hiç listelenmez.",
  "The step, as a short sentence.": "Kısa bir cümle olarak adım.",
  "The task goal in one or two sentences.": "Bir ya da iki cümleyle görevin hedefi.",

@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "結果のページ番号で、0 から始まります。next_page がある結果には続きがあります。",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "search_manual が返したセクション、または /docs のリンク。空の場合は目次を読みます。",
  "The session_id from list_chats_and_boards or from a chat link.": "list_chats_and_boards またはチャットのリンクから得た session_id。",
- "The skill `{skill}` shows how to fix this.": "スキル`{skill}`に、これを修正する方法が書かれています。",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "web_searchが使えるソースを、その種類（web、news、reference、archive）とともに示します。検索を特定のソースに絞る必要があるときだけ、これを呼び出します。このデプロイにキーがないソースは、一覧に含まれません。",
  "The step, as a short sentence.": "ステップを短い文で示します。",
  "The task goal in one or two sentences.": "作業の目標を、1〜2文で示します。",

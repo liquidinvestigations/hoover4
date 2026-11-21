@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 قراءة مستندات البريد الإلكتروني
 
 {% if has('search_collections') %}
-اعثر على الرسائل باستخدام {{ tool('search_collections') }}. ضع كل صيغ العنوان أو الاسم في استدعاء واحد، مثل العنوان و"First Last" و"Last, First".
+اعثر على الرسائل باستخدام {{ tool('search_collections') }}. اجمع صيغ المرسل الواحد في بحث واحد. ابحث عن المرسلين المختلفين على حدة للحفاظ على نسبة النتائج إلى مرسليها.
 
 {% endif %}
 {% if has('doc_email') %}

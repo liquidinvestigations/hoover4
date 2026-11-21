@@ -9,7 +9,7 @@ tools: doc_email, doc_metadata, read_documents
 קריאת מסמכי דוא"ל
 
 {% if has('search_collections') %}
-מצא הודעות דוא"ל באמצעות {{ tool('search_collections') }}. שים כל צורה של כתובת או של שם בקריאה אחת, לדוגמה הכתובת, "First Last" ו-"Last, First".
+מצא הודעות דוא"ל באמצעות {{ tool('search_collections') }}. קבץ גרסאות כתיב של שולח אחד. חפש שולחים שונים בנפרד כדי לשמור על שיוך התוצאות.
 
 {% endif %}
 {% if has('doc_email') %}

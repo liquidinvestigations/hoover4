@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 E-posta belgelerini okuma
 
 {% if has('search_collections') %}
-E-postaları {{ tool('search_collections') }} ile bul. Bir adresin ya da adın her biçimini tek bir çağrıya koy, örneğin adres, "Ad Soyad" ve "Soyad, Ad".
+E-postaları {{ tool('search_collections') }} ile bul. Bir gönderenin yazım biçimlerini birleştir. Sonuçların hangi gönderene ait olduğunu korumak için farklı gönderenleri ayrı ara.
 
 {% endif %}
 {% if has('doc_email') %}

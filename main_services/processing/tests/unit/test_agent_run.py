@@ -6,7 +6,7 @@ each test reads exactly what the activity would have written.
 
 import ast
 import json
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 
 import pytest
@@ -306,7 +306,7 @@ def test_a_reply_with_calls_takes_seqs_in_call_order(store, monkeypatch):
     assert [r[0] for r in tool_rows] == [5, 6, 7]
     # The request sends the stored call entries as `id`, `name` and `args` only.
     assert store["requests"][0]["messages"] == [
-        {"role": "human", "content": "q", "thread_id": RUN_ID, "idx": 0}]
+        {"role": "human", "content": "q", "thread_id": RUN_ID, "idx": 0, "human_origin": "user"}]
     assert _payload_bytes(result) < agent_workflows.AGENT_RUN_PAYLOAD_BYTES
 
 
@@ -792,6 +792,14 @@ def test_run_message_sends_the_call_fields_and_the_tool_status():
     assert stream_writer.run_message(ai, RUN_ID)["tool_calls"] == [
         {"id": "a", "name": "t", "args": {"x": 1}}]
     assert stream_writer.run_message(tool, RUN_ID)["status"] == "error"
+
+
+def test_run_message_uses_stored_provenance_for_identical_human_text():
+    user = agent_runs.RunMessageRow(idx=0, role="human", content="Use the document collection.")
+    for usage in ({"control": {"kind": "batch_note"}}, {"repair_marker": "citation"}):
+        note = replace(user, usage_json=json.dumps(usage))
+        assert stream_writer.run_message(note, RUN_ID)["human_origin"] == "policy"
+    assert stream_writer.run_message(user, RUN_ID)["human_origin"] == "user"
 
 
 # ---------------------------------------------------------------- open_run

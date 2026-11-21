@@ -1,6 +1,6 @@
 {
-  "*": "chat-deterministic",
-  "full_research:documents": "chat-deterministic",
-  "full_research:web": "chat-deterministic",
-  "internal_search:documents": "chat-deterministic"
+  "*": "chat-null",
+  "full_research:documents": "chat-null",
+  "full_research:web": "chat-null",
+  "internal_search:documents": "chat-null"
 }

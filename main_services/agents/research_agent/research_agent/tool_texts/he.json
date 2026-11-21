@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "עמוד התוצאה, החל מ-0. לתוצאה עם next_page יש עוד.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "הסעיף מתוך search_manual, או קישור /docs. ערך ריק קורא את תוכן העניינים.",
  "The session_id from list_chats_and_boards or from a chat link.": "ה-session_id מתוך list_chats_and_boards או מקישור לצ'אט.",
- "The skill `{skill}` shows how to fix this.": "המיומנות `{skill}` מראה איך לתקן את זה.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "המקורות ש-web_search יכול להשתמש בהם, עם הסוג שלהם (web, news, reference או archive). קרא לכלי הזה רק אם אתה צריך לצמצם חיפוש למקורות מסוימים. מקור שאין לפריסה הזו מפתח עבורו אינו מופיע כלל.",
  "The step, as a short sentence.": "השלב, כמשפט קצר.",
  "The task goal in one or two sentences.": "יעד המשימה במשפט או שניים.",

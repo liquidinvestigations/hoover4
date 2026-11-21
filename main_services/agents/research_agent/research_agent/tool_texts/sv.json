@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "Resultatets sida, från 0. Ett resultat med next_page har fler.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "Avsnittet från search_manual eller en /docs-länk. Tomt läser innehållsförteckningen.",
  "The session_id from list_chats_and_boards or from a chat link.": "session_id från list_chats_and_boards eller från en chattlänk.",
- "The skill `{skill}` shows how to fix this.": "Färdigheten `{skill}` visar hur du rättar detta.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "De källor som web_search kan använda, med deras slag (web, news, reference eller archive). Anropa det här bara om du behöver begränsa en sökning till vissa källor. En källa som den här driftsättningen saknar nyckel för listas inte alls.",
  "The step, as a short sentence.": "Steget, som en kort mening.",
  "The task goal in one or two sentences.": "Uppgiftens mål i en eller två meningar.",

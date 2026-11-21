@@ -4,7 +4,7 @@ Each skill is one file, `skills/<name>.md.j2`. The file starts with front matter
 `---` lines, one `key: value` per line, and then a Jinja body.
 
 * `name` is `[a-z_]{1,64}` and equals the file name.
-* `group` is `role`, `general`, `technique` or `stumble`.
+* `group` is `general`, `technique` or `stumble`.
 * `description` is one line of at most 200 characters. The system prompt lists it, and
   `search_skills` searches it.
 * `tools` is a comma list of tool names that a pack of `agent_common.tool_packs` holds, or
@@ -15,10 +15,8 @@ Each skill is one file, `skills/<name>.md.j2`. The file starts with front matter
   worker's preparation question reads them with the description. The system prompt lists
   the description only.
 
-The role skill of a profile is not listed. The system prompt holds its text
-(`role_method`), so every run of the profile reads it before its first call, and no run reads
-it with `read_skill`. `render_skill` renders a body with the context that its caller passes,
-and it keeps no state of its own. `has()` in a body reads every tool of the run.
+`render_skill` renders a body with the context that its caller passes.
+`has()` in a body reads every tool of the run.
 
 A body can include a partial of `skills/partials/` by its file name. A partial has the
 suffix `.j2` only, so `load_skills` never reads it as a skill. An included partial reads the
@@ -49,7 +47,7 @@ log = logging.getLogger(__name__)
 SKILL_DIR = Path(__file__).parent / "skills"
 #: The texts that more than one skill includes.
 PARTIALS_DIR = SKILL_DIR / "partials"
-GROUPS = ("role", "general", "technique", "stumble")
+GROUPS = ("general", "technique", "stumble")
 
 #: The longest description a skill may have.
 DESCRIPTION_MAX_CHARS = 200
@@ -60,21 +58,12 @@ _KEYS = ("name", "group", "description", "tools")
 #: The profile of a chat lead when the caller names none.
 DEFAULT_PROFILE = "internal_search"
 
-ROLE_SKILLS = {
-    "internal_search": "method_chat_internal",
-    "full_research": "method_chat_full",
-}
-
 #: The values of `citation_artefact` and `citation_resolver` for each profile. Cited text
 #: goes into a workspace file in every profile (`report` skill).
 ROLE_CONTEXT = {
     "internal_search": ("report", "reader"),
     "full_research": ("report", "reader"),
 }
-
-#: The skill whose short routing text the system prompt holds (`report_rules`).
-REPORT_SKILL = "report"
-
 
 class UnboundToolError(RuntimeError):
     """A text names a tool that no pack holds.
@@ -102,7 +91,7 @@ class Skill:
 
 @dataclass(frozen=True)
 class SkillContext:
-    profile: str  # one of the keys of ROLE_SKILLS
+    profile: str  # one of the keys of ROLE_CONTEXT
     tool_names: FrozenSet[str]  # every tool of the run's snapshot
     collections_hint: bool = True
     language: str = "en"  # the agent language of the run (`localization.run_language`)
@@ -210,12 +199,10 @@ def _tools_rule(skill: Skill, tool_names: FrozenSet[str]) -> bool:
 
 
 def listed_skills(ctx: SkillContext, skills: Optional[Dict[str, Skill]] = None) -> List[Skill]:
-    """The skills that one run can read: the general, technique and stumble skills whose
-    `tools` rule holds, each group in file name order. The role skill is in the system
-    prompt (`role_method`)."""
+    """List the skills of each group in file name order when their tool rule holds."""
     skills = _store(ctx, skills)
     out: List[Skill] = []
-    for group in GROUPS[1:]:
+    for group in GROUPS:
         for name in sorted(skills):
             skill = skills[name]
             if skill.group == group and _tools_rule(skill, ctx.tool_names):
@@ -251,10 +238,8 @@ def tool_function(strict: bool):
     return tool
 
 
-def skill_variables(ctx: SkillContext, strict: bool = False,
-                    routing_only: bool = False) -> Dict[str, object]:
-    """The names a skill body can read. `routing_only` is true when the system prompt
-    renders the routing text of the `report` skill."""
+def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object]:
+    """The names a skill body can read."""
     names = ctx.tool_names
     artefact, resolver = ROLE_CONTEXT.get(ctx.profile, ROLE_CONTEXT[DEFAULT_PROFILE])
     return {
@@ -265,7 +250,6 @@ def skill_variables(ctx: SkillContext, strict: bool = False,
         "citation_resolver": resolver,
         "collections_hint": bool(ctx.collections_hint),
         "profile": ctx.profile,
-        "routing_only": routing_only,
     }
 
 
@@ -282,28 +266,6 @@ def render_skill(name: str, ctx: SkillContext, *, strict: bool = False,
     """The text of one skill for one run. The first line is ``Skill `name`.``, and a blank
     line follows it. An unknown name raises `KeyError`."""
     return f"Skill `{name}`.\n\n{render_body(name, ctx, strict=strict, skills=skills)}"
-
-
-def report_rules(ctx: SkillContext, *, strict: bool = False,
-                 skills: Optional[Dict[str, Skill]] = None) -> str:
-    """The routing text of the `report` skill, for the system prompt of every run that
-    has the workspace tools. Empty when the run has no `write_file`. The system prompt
-    holds it, so compaction cannot remove it, and no skill load is needed."""
-    store = _store(ctx, skills)
-    if REPORT_SKILL not in store or "write_file" not in ctx.tool_names:
-        return ""
-    return environment(ctx.language).from_string(store[REPORT_SKILL].body).render(
-        **skill_variables(ctx, strict, routing_only=True)).strip()
-
-
-def role_method(ctx: SkillContext, *, strict: bool = False,
-                skills: Optional[Dict[str, Skill]] = None) -> str:
-    """The rendered role skill of the run's profile, for the system prompt, or empty when
-    the profile has none."""
-    name = ROLE_SKILLS.get(ctx.profile, "")
-    if name not in _store(ctx, skills):
-        return ""
-    return render_body(name, ctx, strict=strict, skills=skills)
 
 
 # ---------------------------------------------------------------------- searching
@@ -390,9 +352,9 @@ def search_skills(query: str, ctx: SkillContext, limit: int = 6,
 
 __all__ = [
     "DEFAULT_PROFILE", "GROUPS", "ROLE_CONTEXT",
-    "PARTIALS_DIR", "ROLE_SKILLS", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
+    "PARTIALS_DIR", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
     "SkillFileError", "UnboundToolError", "listed_skills", "load_skills",
-    "REPORT_SKILL", "rank_matches", "render_body", "render_skill", "report_rules",
-    "role_method", "search_skills", "searched_text", "skills_for",
+    "rank_matches", "render_body", "render_skill",
+    "search_skills", "searched_text", "skills_for",
     "skill_variables", "words",
 ]

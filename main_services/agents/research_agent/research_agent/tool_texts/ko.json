@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "결과의 페이지이며 0부터 시작합니다. next_page가 있는 결과에는 더 있습니다.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "search_manual에서 얻은 섹션 또는 /docs 링크입니다. 비우면 목차를 읽습니다.",
  "The session_id from list_chats_and_boards or from a chat link.": "list_chats_and_boards 또는 채팅 링크에서 얻은 session_id.",
- "The skill `{skill}` shows how to fix this.": "스킬 `{skill}`이(가) 이를 해결하는 방법을 보여 줍니다.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "web_search가 사용할 수 있는 출처와 그 종류(web, news, reference 또는 archive). 검색을 특정 출처로 좁혀야 할 때만 호출하십시오. 이 배포에 키가 없는 출처는 전혀 나열되지 않습니다.",
  "The step, as a short sentence.": "짧은 문장으로 쓴 단계.",
  "The task goal in one or two sentences.": "한두 문장으로 쓴 작업 목표.",

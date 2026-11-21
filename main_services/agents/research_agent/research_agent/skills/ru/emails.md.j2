@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Чтение документов с электронной почтой
 
 {% if has('search_collections') %}
-Находи письма с помощью {{ tool('search_collections') }}. Помести все формы адреса или имени в один вызов, например адрес, "First Last" и "Last, First".
+Находи письма с помощью {{ tool('search_collections') }}. Объединяй варианты написания одного отправителя. Ищи разных отправителей отдельно, чтобы сохранить принадлежность результатов.
 
 {% endif %}
 {% if has('doc_email') %}

@@ -23,7 +23,7 @@ from mcp.types import EmbeddedResource, TextResourceContents
 
 from agent_common.result_pages import ByteLimit, PageInput, SAFE_MODE_BATCH_BYTES, build_page
 from agent_common.tool_packs import allowed_tools
-from research_agent import execution, steps, stumbles
+from research_agent import execution, steps
 from research_agent.agent import AgentContext, MCPGatewayAgent
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.skill_tools import SKILL_TOOLS
@@ -585,12 +585,6 @@ async def test_a_misspelled_name_gets_the_closest_names_of_the_run():
     assert "The closest names are read_file, write_file." in message
 
 
-def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
-    for text in ("No tool of this run is named 'x'.",):
-        content = json.dumps({"success": False, "message": text})
-        assert stumbles.stumble_skill("update_plan", content, "error", {}) is None, text
-
-
 async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
     seen: List[Any] = []
     agent = FakeAgent([dict_tool("write_todo", EMPTY_SCHEMA, seen)], {"write_todo"}, kind="chat")
@@ -1071,26 +1065,40 @@ async def test_only_complete_unchanged_verified_citations_skip_reexecution(name,
         assert len(seen) == 1
 
 
-@pytest.mark.parametrize("first,expected", [
-    ({"items": [{"file_hash": "a"}], "keyword_sources": ["a"]}, 1),
-    ({"items": [{"file_hash": "a"}], "query_forms": [{"query": "", "total_count": 1}]}, 0),
-    ({"items": [{"file_hash": "a"}]}, 1),
+@pytest.mark.parametrize("pointer", [
+    "This call repeats call old. Its result is above.",
+    "This call repeats call old of the same reply. Its result is above.",
+    '{"status": "refused", "repeated_call": "old"}',
 ])
-async def test_search_second_completed_repeat_is_refused(model, first, expected):
+async def test_identical_search_runs_again_when_only_its_pointer_survives(pointer):
     seen = []
-    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, seen)], {"search_collections"})
-    messages = [{"role": "human", "content": "question", "thread_id": "t", "idx": 0}]
-    for n in range(2):
-        messages.extend([
-            {"role": "ai", "content": "", "tool_calls": [{"id": f"old{n}", "name": "search_collections", "args": {"query": "x"}}], "thread_id": "t", "idx": n*2+1},
-            {"role": "tool", "content": json.dumps(first) if n == 0 else "This call repeats call old0. Its result is above.", "tool_call_id": f"old{n}", "name": "search_collections", "status": "ok", "thread_id": "t", "idx": n*2+2}])
-    request = tool_request("search_collections", {"query": "x"}).model_copy(update={"messages": [steps.RunMessage(**m) for m in messages]})
+    name = "search_collections"
+    args = {"query": ""}
+    agent = FakeAgent([dict_tool(name, LIST_SCHEMA, seen)], {name})
+    messages = [
+        steps.RunMessage(role="human", content="question", thread_id="t", idx=0),
+        steps.RunMessage(role="ai", content="", thread_id="t", idx=1,
+                         tool_calls=[{"id": "old", "name": name, "args": args}]),
+        steps.RunMessage(role="tool", content='{"items":[{"file_hash":"candidate"}]}',
+                         tool_call_id="old", name=name, status="ok", thread_id="t", idx=2),
+        steps.RunMessage(role="ai", content="", thread_id="t", idx=3,
+                         tool_calls=[{"id": "pointer", "name": name, "args": args}]),
+        steps.RunMessage(role="tool", content=pointer, tool_call_id="pointer",
+                         name=name, status="ok", thread_id="t", idx=4),
+    ]
+    request = tool_request(name, args).model_copy(update={"messages": messages})
     result = await steps.run_tool_call(agent, request)
-    content = json.loads(result["content"])
-    assert content["status"] == "refused" and content["item_count"] == 1 and content["keyword_match_count"] == expected
+    assert result["content"] == "This call repeats call old. Its result is above."
     assert seen == []
-    request.messages = [m for m in request.messages if m.role != "tool"]
-    assert (await steps.run_tool_call(agent, request))["status"] == "ok"
+
+    request.messages.append(steps.RunMessage(
+        role="compaction", content=json.dumps({
+            "version": 3, "status": "ok", "source": [["t", 1], ["t", 2]], "summary": "Earlier search",
+        }), thread_id="t", idx=5,
+    ))
+    result = await steps.run_tool_call(agent, request)
+    assert result["status"] == "ok"
+    assert json.loads(result["content"]) == {"tool": name, "ok": True}
     assert len(seen) == 1
 
 
@@ -1229,7 +1237,7 @@ async def test_the_saved_files_follow_the_newest_message_of_every_request(model)
               "updated": "2026-11-20 10:05:00"}]
     await frames_of(agent, step_request(workspace=files))
     last = model.inputs[0][-1]
-    assert last.content.startswith("Find the lease.\n\nSaved workspace files.")
+    assert last.content.startswith("Find the lease.\n\nSaved workspace files (system inventory).")
     assert "- todo-search-list.md: version 9, 30,000 characters" in last.content
     assert "- report.md: version 4, 1,200 characters" in last.content
     assert last.content.index("todo-search-list.md") < last.content.index("report.md")

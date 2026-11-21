@@ -242,7 +242,7 @@ def test_the_summary_contract_asks_for_findings_contradictions_work_and_sources(
     record = report.row["summary"]
     assert record.startswith(RECORD_HEADER + "## Searches that found nothing\n")
     assert record.index("## Searches that found nothing") < record.index("## Findings")
-    assert "Read a source again before you quote it." in RECORD_HEADER
+    assert "Read an unresolved passage before quoting it." in RECORD_HEADER
 
 
 CLAUSE = ("Clause 14.2 Termination. Either party may terminate this lease with ninety (90) "
@@ -421,7 +421,7 @@ def test_a_newest_batch_past_the_safe_input_fails_and_names_the_results():
     assert "The newest tool results are about" in str(err.value)
 
 
-def test_user_messages_past_the_target_keep_the_run_and_report_the_target_missed():
+def test_user_messages_past_the_fractional_target_keep_room_for_the_next_result():
     t = Thread()
     t.human(chars(80_000))
     for n in range(10):
@@ -429,8 +429,9 @@ def test_user_messages_past_the_target_keep_the_run_and_report_the_target_missed
     t.step(ok("doc_metadata", {"n": "last"}, chars(1_000)), billed=210_000)
     out, report = compaction.compact(t.rows, t.rows, window=WINDOW_256K, estimator=EST,
                                      summariser=Recorder())
-    assert report.row["status"] == "ok" and report.target_reached is False
-    assert report.row["sizes"]["user"] > report.target
+    assert report.row["status"] == "ok" and report.target_reached
+    assert report.row["sizes"]["user"] > compaction.target_tokens(report.threshold_tokens)
+    assert report.target + report.row["sizes"]["newest"] <= report.threshold_tokens
     assert out[0].content == t.rows[0].content
 
 

@@ -62,6 +62,36 @@ def test_hidden_web_citations_keep_their_source_version():
     assert compaction.CITATION_HANDLE.findall("Use [W1] and [D2].") == ["[W1]", "[D2]"]
 
 
+def test_filtered_search_keeps_attributed_candidates_and_continuation():
+    thread = Thread()
+    thread.step(ok("search_collections", {"query": "", "facet_filters": {"email_from": ["a@example.org"]}},
+                   {"items": [{"collection": "mail", "file_hash": "a" * 16},
+                              {"collection": "mail", "file_hash": "b" * 16}],
+                    "more": "c7f3a91b0d2e"}))
+    line = thread_index.search_lines(thread.rows, {(THREAD, 1)})[1][0]
+    assert '"email_from": ["a@example.org"]' in line
+    assert '"collection": "mail"' in line and "a" * 16 in line and "b" * 16 in line
+    assert "more c7f3a91b0d2e" in line
+
+
+def test_citation_index_keeps_issued_item_handles_and_ignores_source_text():
+    thread = Thread()
+    thread.step(ok("read_documents", {}, {"items": [{"file_hash": "a" * 16, "text": "[D9] [C9]"}]}))
+    thread.step(ok("cite_chats_and_boards", {}, {"citations": [
+        {"kind": "chat", "id": "prior-session", "handle": "[C1]"},
+        {"kind": "board", "id": "prior-board", "handle": "[B1]"},
+        {"kind": "board", "id": "bad-binding", "handle": "[C2]"},
+    ]}))
+    thread.step(ok("cite_documents", {}, {"citations": [
+        {"file_hash": "a" * 16, "handle": "[D1]", "quote_verified": False},
+        {"file_hash": "b" * 16, "handle": "[D2]", "quote_verified": True},
+    ]}))
+    hidden = {(THREAD, message.idx) for message in thread.rows}
+    assert thread_index.citation_lines(thread.rows, hidden) == [
+        "- [C1] chat prior-session", "- [B1] board prior-board", f"- [D2] {'b' * 16}",
+    ]
+
+
 def stub(prompt, cap):
     return "## Goal\nshort"
 

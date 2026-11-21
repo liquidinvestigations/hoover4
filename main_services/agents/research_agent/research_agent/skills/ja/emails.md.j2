@@ -9,7 +9,7 @@ tools: doc_email, doc_metadata, read_documents
 メールのドキュメントの読み取り
 
 {% if has('search_collections') %}
-メールは、{{ tool('search_collections') }}で探してください。アドレスや名前のすべての表記を、1回の呼び出しにまとめてください。例: アドレス、"First Last"、"Last, First"。
+メールは、{{ tool('search_collections') }}で探してください。 同じ送信者の表記ゆれをまとめて検索してください。結果の帰属が分かるよう、送信者が異なる場合は別々に検索してください。
 
 {% endif %}
 {% if has('doc_email') %}

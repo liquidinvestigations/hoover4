@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Čitanje dokumenata e-pošte
 
 {% if has('search_collections') %}
-Pronađi e-poruke pomoću {{ tool('search_collections') }}. Stavi svaki oblik adrese ili imena u jedan poziv, na primjer adresu, "Ime Prezime" i "Prezime, Ime".
+Pronađi e-poruke pomoću {{ tool('search_collections') }}. Grupiraj inačice imena istog pošiljatelja. Pretraži različite pošiljatelje odvojeno kako bi se rezultati mogli pripisati pošiljatelju.
 
 {% endif %}
 {% if has('doc_email') %}

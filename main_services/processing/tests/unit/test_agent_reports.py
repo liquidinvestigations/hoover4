@@ -58,7 +58,7 @@ def test_chat_citation_status_ignores_literal_markers():
     }]}), "ok")
     assert reports.label_bindings(entries) == {"[D1]": {HASH_A[:16]}}
     assert citations.answer_metadata("`[D1]`", entries, False)["citation_status"] == "none"
-    answer = "\\[D2] [D3](https://example.org)\n```text\n[D4]\n```"
+    answer = "\\[D2] [D3](https://example.org/[D4]) [D٣]\n```text\n[D5]\n```\n~~~text\n[D6]\n~~~"
     assert citations.answer_metadata(answer, entries, False)["citation_status"] == "none"
     assert citations.answer_metadata("**[D1]**", entries, False)["citation_status"] == "cited"
     assert citations.answer_metadata("_[D1, W2]_", entries, False)["citation_status"] == "invalid"

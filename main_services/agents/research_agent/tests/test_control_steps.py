@@ -102,6 +102,32 @@ async def test_a_pinned_system_prompt_replaces_the_current_one(model):
     assert agent.revisions == ["rev-1"]
 
 
+async def test_pinned_definitions_bind_only_tools_that_still_have_permission(model):
+    model.replies.append(AIMessage(content="done"))
+    agent = SkillAgent(["search_collections", "read_documents"])
+    old = SkillAgent(["search_collections", "web_search"])
+    pin_request = steps.ControlSnapshotRequest(run_id="r1", username="alice", session_id="s1")
+    pin = await steps.control_snapshot(old, pin_request)
+    pin["skills"] = {name: asset["text"] for name, asset in pin["skills"].items()}
+    pinned_search = next(tool for tool in pin["tool_definitions"]
+                         if tool["function"]["name"] == "search_collections")
+    pinned_search["function"]["description"] = "Stored search description."
+    await frames_of(agent, step_request(control=pin))
+    assert "read_documents" not in model.bound_log[-1] and "web_search" not in model.bound_log[-1]
+    assert pinned_search in model.bound_tools
+    refused = await steps.run_tool_call(agent, tool_request("read_documents", {"query": "x"}, control=pin))
+    assert refused["status"] == "error" and json.loads(refused["content"])["error"] == "tool_unavailable"
+
+
+def test_prior_policy_note_does_not_replace_an_identical_user_amendment():
+    note = steps.RunMessage(role="human", content="Do not use the web.", thread_id="old",
+                            idx=4, human_origin="policy")
+    request = note.model_copy(update={"thread_id": "new", "idx": 0, "human_origin": "user"})
+    stored, applied = steps.model_input_rows([note], [request])
+    assert stored == [note, request]
+    assert applied == [request]
+
+
 async def test_a_request_without_control_uses_the_current_prompt(model):
     model.replies.append(AIMessage(content="done"))
     agent = SkillAgent(["search_collections"])

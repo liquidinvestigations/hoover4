@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Lese e-postdokumenter
 
 {% if has('search_collections') %}
-Finn e-poster med {{ tool('search_collections') }}. Legg alle former av en adresse eller et navn i ett kall, for eksempel adressen, "Fornavn Etternavn" og "Etternavn, Fornavn".
+Finn e-poster med {{ tool('search_collections') }}. Samle skrivevarianter av én avsender. Søk etter forskjellige avsendere hver for seg for å beholde tilordningen.
 
 {% endif %}
 {% if has('doc_email') %}

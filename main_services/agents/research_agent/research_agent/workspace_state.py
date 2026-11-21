@@ -32,8 +32,7 @@ def inventory_text(files: Optional[Sequence[Dict[str, Any]]]) -> str:
         return ""
     ordered = sorted(files, key=lambda f: (str(f.get("updated") or ""), str(f.get("name") or "")),
                      reverse=True)
-    lines = ["Saved workspace files. The system adds this list to the newest message. "
-             "The person did not write it."]
+    lines = ["Saved workspace files (system inventory)."]
     for item in ordered[:MAX_LISTED_FILES]:
         lines.append(f"- {item.get('name')}: version {int(item.get('version') or 0)}, "
                      f"{int(item.get('chars') or 0):,} characters")
@@ -41,9 +40,7 @@ def inventory_text(files: Optional[Sequence[Dict[str, Any]]]) -> str:
     if hidden > 0:
         lines.append(f"{hidden} older files are not listed. Call read_file without a name "
                      "to list every file.")
-    lines.append("A saved file keeps its text until a write or a patch changes it. Read a file "
-                 "with read_file and its name before you change it or continue its work. "
-                 "Use offset to read the next part of a long file.")
+    lines.append("Use read_file with a name to recover the current text.")
     return "\n".join(lines)
 
 

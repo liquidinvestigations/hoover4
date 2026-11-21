@@ -9,7 +9,7 @@ tools: doc_email, doc_metadata, read_documents
 Leer documentos de correo electrónico
 
 {% if has('search_collections') %}
-Encuentra correos con {{ tool('search_collections') }}. Pon todas las formas de una dirección o de un nombre en una sola llamada, por ejemplo la dirección, "Nombre Apellido" y "Apellido, Nombre".
+Encuentra correos con {{ tool('search_collections') }}. Agrupa las variantes de un mismo remitente. Busca los remitentes distintos por separado para mantener la atribución.
 
 {% endif %}
 {% if has('doc_email') %}

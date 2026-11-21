@@ -9,7 +9,7 @@ tools: doc_email, doc_metadata, read_documents
 Läsa e-postdokument
 
 {% if has('search_collections') %}
-Hitta e-postmeddelanden med {{ tool('search_collections') }}. Lägg alla former av en adress eller ett namn i ett enda anrop, till exempel adressen, "Förnamn Efternamn" och "Efternamn, Förnamn".
+Hitta e-postmeddelanden med {{ tool('search_collections') }}. Samla stavningsvarianter för en avsändare. Sök efter olika avsändare separat så att varje träff kan tillskrivas rätt avsändare.
 
 {% endif %}
 {% if has('doc_email') %}

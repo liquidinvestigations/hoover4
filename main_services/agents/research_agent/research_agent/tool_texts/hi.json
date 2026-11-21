@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "परिणाम का पेज, 0 से शुरू। next_page वाले परिणाम में और आइटम हैं।",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "search_manual से मिला खंड, या कोई /docs लिंक। खाली मान विषय-सूची पढ़ता है।",
  "The session_id from list_chats_and_boards or from a chat link.": "list_chats_and_boards से या किसी चैट लिंक से session_id।",
- "The skill `{skill}` shows how to fix this.": "स्किल `{skill}` दिखाती है कि इसे कैसे ठीक करें।",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "वे स्रोत जिन्हें web_search उपयोग कर सकता है, उनके प्रकार (web, news, reference या archive) के साथ। इसे तभी कॉल करें जब आपको खोज को विशेष स्रोतों तक सीमित करना हो। जिस स्रोत की कुंजी इस डिप्लॉयमेंट में नहीं है, वह सूचीबद्ध ही नहीं होता।",
  "The step, as a short sentence.": "चरण, एक छोटे वाक्य के रूप में।",
  "The task goal in one or two sentences.": "कार्य का लक्ष्य, एक या दो वाक्यों में।",

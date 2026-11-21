@@ -1125,7 +1125,7 @@ async def run_chat_worker():
       write_ending,
   )
   from .P_agent.control import registry as control_registry
-  from .P_agent.control_steps import control_event
+  from .P_agent.control_steps import control_event, pin_turn_control
   from .P_agent.followups import write_followups
   from .P_agent.steps import (
       model_step,
@@ -1174,7 +1174,7 @@ async def run_chat_worker():
         workflows=[AgentRun, WorkspaceWriter],
         activities=[
             open_run, write_ending, summarize_if_first_turn,
-            record_step_failure, control_event,
+            record_step_failure, control_event, pin_turn_control,
             write_incomplete, publish_report,
             prepare_workspace_mutation, commit_workspace_mutation,
         ],

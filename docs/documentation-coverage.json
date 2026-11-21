@@ -1871,7 +1871,7 @@
     {
       "id": "F-chat-19w",
       "source": [
-        "main_services/agents/research_agent/research_agent/stumbles.py"
+        "main_services/agents/research_agent/research_agent/tool_args.py"
       ],
       "docs": [
         "docs/user-manual/User_Manual.md#9-ai-chat",

@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "Pagina rezultatului, de la 0. Un rezultat cu next_page are mai multe.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "Secțiunea din search_manual sau un link /docs. Gol citește cuprinsul.",
  "The session_id from list_chats_and_boards or from a chat link.": "session_id din list_chats_and_boards sau dintr-un link de conversație.",
- "The skill `{skill}` shows how to fix this.": "Abilitatea `{skill}` arată cum se remediază acest lucru.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "Sursele pe care le poate folosi web_search, cu tipul lor (web, news, reference sau archive). Apelează-l doar dacă trebuie să restrângi o căutare la anumite surse. O sursă pentru care această instalare nu are cheie nu apare deloc în listă.",
  "The step, as a short sentence.": "Pasul, ca propoziție scurtă.",
  "The task goal in one or two sentences.": "Obiectivul sarcinii în una sau două propoziții.",

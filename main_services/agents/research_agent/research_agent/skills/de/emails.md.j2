@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 E-Mail-Dokumente lesen
 
 {% if has('search_collections') %}
-Finden Sie E-Mails mit {{ tool('search_collections') }}. Geben Sie jede Form einer Adresse oder eines Namens in einem Aufruf an, zum Beispiel die Adresse, "Vorname Nachname" und "Nachname, Vorname".
+Finden Sie E-Mails mit {{ tool('search_collections') }}. Bündeln Sie Schreibvarianten derselben Absenderadresse. Suchen Sie für verschiedene Absender getrennt, damit die Treffer zugeordnet bleiben.
 
 {% endif %}
 {% if has('doc_email') %}

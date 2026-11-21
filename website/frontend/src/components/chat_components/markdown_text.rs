@@ -702,7 +702,7 @@ pub fn parse_blocks(text: &str) -> Vec<Block> {
 }
 
 fn fence_language(line: &str) -> Option<String> {
-    let rest = line.strip_prefix("```")?;
+    let rest = line.strip_prefix("```").or_else(|| line.strip_prefix("~~~"))?;
     Some(rest.trim().to_string())
 }
 
@@ -1190,6 +1190,12 @@ mod tests {
                 body: "fn a() {}\n\nfn b() {}".into()
             }]
         );
+    }
+
+    #[test]
+    fn tilde_fences_keep_citation_markers_literal() {
+        let text = "~~~text\n[D1]\n~~~\n\nSource [D2].";
+        assert_eq!(referenced_handles(text), vec!["[D2]".to_string()]);
     }
 
     #[test]

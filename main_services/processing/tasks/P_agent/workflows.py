@@ -8,10 +8,8 @@ ids only.
 activity on `chat-model-queue`. Each tool call is one `tool_call` activity on `agent-tool-queue`. None of
 these is the ingestion queue, so an ingestion backlog cannot delay a person at a screen.
 
-**A change to `AgentRun` needs the drain.** A running `AgentRun` replays its history on
-new code, and a history that does not match the new code fails as nondeterministic. No
-workflow versioning exists, so a deploy that changes this workflow first stops every open
-agent turn and cancels every running `AgentRun` (`tasks/Readme.md`).
+Running turns replay their history on the next worker. Use a Temporal patch for a change
+to their command sequence and drain the worker on restart.
 """
 
 import asyncio
@@ -50,7 +48,9 @@ with workflow.unsafe.imports_passed_through():
         HOOK_SECONDS,
         ControlOutcome,
         ControlParams,
+        PinnedTurn,
         control_event,
+        pin_turn_control,
     )
     from tasks.P_agent.steps import (
         EMPTY_RESPONSE,
@@ -195,9 +195,9 @@ class AgentRun:
     `ActivityError` that wraps it, and both write the `cancelled` ending. A workflow that
     starts after a stop closes in `open_run`.
 
-    **The policy hooks.** `control_event` runs at two points of the loop
-    (`control_steps.py`). `turn_started` follows `open_run`, and its skill loads run as a
-    policy batch before the first model step. `tool_batch_completed` follows every batch,
+    **The policy hooks.** The turn pins its settings before the first model step. A turn
+    with policy hooks evaluates `turn_started`, and its skill loads run as a policy batch.
+    `tool_batch_completed` follows every batch of a policy turn,
     and its follow-on calls run as one more batch before the next model step. Automatic
     reads follow a model batch only, so after a policy batch the hook can load skills and
     no more. An answer ends the turn. No hook reviews it and no note starts
@@ -294,7 +294,7 @@ class AgentRun:
     # ------------------------------------------------------------------------ the loop
 
     async def _agent_loop(self, inp: AgentRunInput, opened: OpenedRun,
-                          pending: list[CallRef]) -> RunSummary:
+                          pending: list[CallRef], *, use_policy: bool) -> RunSummary:
         """One round: run the unanswered calls, then model steps until a reply has no call.
 
         The first round of a workflow run starts with the unanswered calls that `open_run`
@@ -307,15 +307,16 @@ class AgentRun:
                 finished = await self._run_calls(inp, pending)
                 if finished is not None:
                     return await self._publish(inp, finished)
-                after = await self._control(inp, "tool_batch_completed",
-                                            anchor_idx=pending[0].ai_idx)
-                if after.closed:
-                    return RunSummary(outcome="closed", next_seq=after.next_seq)
-                if after.end_turn:
-                    return await self._incomplete(inp, "no_progress")
-                pending = after.calls
-                if pending:
-                    continue
+                if use_policy:
+                    after = await self._control(inp, "tool_batch_completed",
+                                                anchor_idx=pending[0].ai_idx)
+                    if after.closed:
+                        return RunSummary(outcome="closed", next_seq=after.next_seq)
+                    if after.end_turn:
+                        return await self._incomplete(inp, "no_progress")
+                    pending = after.calls
+                    if pending:
+                        continue
             if (self._steps_here >= CONTINUE_AS_NEW_STEPS
                     or workflow.info().get_current_history_length() > HISTORY_EVENTS_PER_RUN):
                 workflow.continue_as_new(inp)
@@ -506,12 +507,28 @@ class AgentRun:
     # ------------------------------------------------------------------------ the rounds
 
     async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
+        if workflow.patched("pin-agent-turn-control"):
+            seconds = HOOK_SECONDS["turn_started"]
+            pinned: PinnedTurn = await workflow.execute_activity(
+                pin_turn_control,
+                ControlParams(**self._ref_fields(inp), deadline_seconds=seconds),
+                start_to_close_timeout=timedelta(seconds=seconds + HOOK_MARGIN_SECONDS),
+                heartbeat_timeout=timedelta(seconds=CONTROL_HEARTBEAT_SECONDS * 5),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                task_queue=CHAT_TASK_QUEUE,
+                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            )
+            self._raise_if_stopped()
+            if pinned.closed:
+                return RunSummary(outcome="closed", next_seq=pinned.next_seq)
+            if not pinned.use_policy:
+                return await self._agent_loop(inp, opened, opened.pending, use_policy=False)
         prepared = await self._control(inp, "turn_started", anchor_idx=0)
         if prepared.closed:
             return RunSummary(outcome="closed", next_seq=prepared.next_seq)
         pending = list(prepared.calls) + [c for c in opened.pending
                                           if c.call_id not in {p.call_id for p in prepared.calls}]
-        return await self._agent_loop(inp, opened, pending)
+        return await self._agent_loop(inp, opened, pending, use_policy=True)
 
     async def _finish(self, inp: AgentRunInput, state: str, error: str = "") -> None:
         await workflow.execute_activity(

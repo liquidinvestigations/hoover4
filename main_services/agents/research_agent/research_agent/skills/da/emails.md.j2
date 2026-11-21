@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Læsning af e-maildokumenter
 
 {% if has('search_collections') %}
-Find e-mails med {{ tool('search_collections') }}. Læg alle former af en adresse eller et navn i ét kald, for eksempel adressen, "Fornavn Efternavn" og "Efternavn, Fornavn".
+Find e-mails med {{ tool('search_collections') }}. Saml stavevarianter af én afsender. Søg efter forskellige afsendere hver for sig, så resultaterne kan tilskrives korrekt.
 
 {% endif %}
 {% if has('doc_email') %}

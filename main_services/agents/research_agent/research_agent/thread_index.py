@@ -5,9 +5,9 @@ summary starts with lists that code writes from the stored thread, because a sum
 copies file hashes with errors. This module writes those lists.
 
 - "Searches that found nothing": each search call whose result holds no document.
-- "Searches that found documents": each other successful search call, with its count.
+- "Searches that found documents": each successful call, with its count and filtered candidates.
 - "Documents read": each document of a `read_documents` result, with its pages.
-- "Citation labels": each label of a `cite_documents` result, with its file hash.
+- "Citation labels": each issued label with the identity of its source.
 - "Pages read": each page of a `read_page` result, with its source version and any unread
   continuation. A find with no match does not count as a content read.
 - "Results that continue": each result page with a `more` handle, with its call.
@@ -47,6 +47,9 @@ DOCUMENT_LINES = 60
 CITATION_LINES = 80
 PAGE_LINES = 40
 MORE_LINES = 40
+SEARCH_FILTER_CHARS = 400
+SEARCH_CANDIDATES = 3
+ISSUED_HANDLE = re.compile(r"\[[DWCB][1-9][0-9]*\]")
 
 Key = Tuple[str, int]
 
@@ -123,6 +126,29 @@ def _dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def _filter_text(filters: Dict[str, Any]) -> str:
+    text = _dumps(filters)
+    if len(text) > SEARCH_FILTER_CHARS:
+        return text[:SEARCH_FILTER_CHARS] + "…"
+    return text
+
+
+def _search_candidates(content: str) -> str:
+    body = _json_object(content) or {}
+    items = body.get("items") or body.get("documents") or []
+    candidates = []
+    if isinstance(items, list):
+        for item in items[:SEARCH_CANDIDATES]:
+            if isinstance(item, dict) and isinstance(item.get("file_hash"), str):
+                candidates.append({
+                    "collection": str(item.get("collection") or item.get("collectionname") or "")[:128],
+                    "file_hash": item["file_hash"][:64],
+                })
+    more = body.get("more")
+    return ((f"; candidates {_dumps(candidates)}" if candidates else "")
+            + (f"; more {more[:64]}" if isinstance(more, str) and more else ""))
+
+
 def _newest(lines: List[str], cap: int) -> List[str]:
     """Each line once, at its newest place, and at most `cap` of the newest."""
     seen: Set[str] = set()
@@ -146,10 +172,12 @@ def search_lines(rows: Sequence[Any], hidden: Set[Key]) -> Tuple[List[str], List
             continue
         queries, filters = _queries_and_filters(args)
         if count == 0:
-            nothing.append(f"- {name} {_dumps(queries)} filters {_dumps(filters)}")
+            nothing.append(f"- {name} {_dumps(queries)} filters {_filter_text(filters)}")
         else:
             noun = "document" if count == 1 else "documents"
-            found.append(f"- {name} {_dumps(queries)}: {count} {noun}")
+            suffix = (f"; filters {_filter_text(filters)}{_search_candidates(m.content)}"
+                      if args.get("facet_filters") else "")
+            found.append(f"- {name} {_dumps(queries)}: {count} {noun}{suffix}")
     return _newest(nothing, NOTHING_LINES), _newest(found, FOUND_LINES)
 
 
@@ -188,20 +216,32 @@ def documents_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
 
 
 def citation_lines(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
-    """Retain each hidden citation handle with its document or captured page version."""
-    labels: Dict[str, str] = {}
+    """Retain issued handles with the source identities given by citation calls."""
+    lines: List[str] = []
     for m, name, _args in _results(rows):
-        if name not in (CITE_DOCUMENTS, "cite_pages") or _key(m) not in hidden:
+        if name not in (CITE_DOCUMENTS, "cite_pages", "cite_chats_and_boards") or _key(m) not in hidden:
             continue
         body = _json_object(m.content) or {}
+        if body.get("success") is False:
+            continue
         for item in body.get("citations") or []:
-            identity = item.get("file_hash") if isinstance(item, dict) else ""
-            if isinstance(item, dict) and item.get("url") and item.get("version"):
+            if not isinstance(item, dict) or item.get("error") or item.get("quote_verified") is False:
+                continue
+            handle = item.get("handle")
+            if not isinstance(handle, str) or not ISSUED_HANDLE.fullmatch(handle):
+                continue
+            identity = ""
+            if name == CITE_DOCUMENTS and handle.startswith("[D"):
+                identity = item.get("file_hash") or ""
+            elif name == "cite_pages" and handle.startswith("[W") and item.get("url") and item.get("version"):
                 identity = f"{item['url']} version={item['version']}"
-            if isinstance(item, dict) and item.get("handle") and identity:
-                labels.pop(str(item["handle"]), None)
-                labels[str(item["handle"])] = str(identity)
-    return [f"- {label} {file_hash}" for label, file_hash in labels.items()][-CITATION_LINES:]
+            elif name == "cite_chats_and_boards" and item.get("id"):
+                kind = {"[C": "chat", "[B": "board"}.get(handle[:2])
+                if kind and item.get("kind") == kind:
+                    identity = f"{kind} {item['id']}"
+            if identity:
+                lines.append(f"- {handle} {identity}")
+    return _newest(lines, CITATION_LINES)
 
 
 def page_blocks(content: str) -> List[str]:

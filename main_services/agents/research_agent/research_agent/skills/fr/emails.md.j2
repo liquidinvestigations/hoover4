@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Lire des documents e-mail
 
 {% if has('search_collections') %}
-Trouvez des e-mails avec {{ tool('search_collections') }}. Mettez toutes les formes d’une adresse ou d’un nom dans un seul appel, par exemple l’adresse, « Prénom Nom » et « Nom, Prénom ».
+Trouvez des e-mails avec {{ tool('search_collections') }}. Groupe les variantes d’un même expéditeur. Recherche les autres expéditeurs séparément pour conserver l’attribution des résultats.
 
 {% endif %}
 {% if has('doc_email') %}

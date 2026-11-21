@@ -16,9 +16,9 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Replayer, Worker
 
 from tasks.P_agent.activities import AgentRunInput, CallRef, OpenedRun, RunRef, WriteEndingParams
-from tasks.P_agent.control_steps import ControlOutcome, ControlParams
+from tasks.P_agent.control_steps import ControlOutcome, ControlParams, PinnedTurn
 from tasks.P_agent.steps import (
-    IncompleteParams, ModelStepParams, ModelStepResult, StepFailure,
+    IncompleteParams, ModelStepParams, ModelStepResult, PublishParams, StepFailure,
     ToolCallParams, ToolCallResult,
 )
 from tasks.P_agent.workflows import (
@@ -53,6 +53,12 @@ async def control_event(params: ControlParams) -> ControlOutcome:
     return outcome
 
 
+@activity.defn(name="pin_turn_control")
+async def pin_turn_control(params: ControlParams) -> PinnedTurn:
+    LOG.append("pin_turn_control")
+    return PinnedTurn(use_policy=SCRIPT.get("use_policy", True))
+
+
 @activity.defn(name="model_step")
 async def model_step(params: ModelStepParams) -> ModelStepResult:
     LOG.append(f"model:{params.step_no}")
@@ -63,8 +69,16 @@ async def model_step(params: ModelStepParams) -> ModelStepResult:
 async def tool_call(params: ToolCallParams) -> ToolCallResult:
     shared = f"<{params.shared_from.call_id}" if params.shared_from else ""
     LOG.append(f"tool:{params.call.call_id}{shared}")
+    if params.call.name == "finish_with_report" and SCRIPT.get("finish_gate") is not None:
+        await SCRIPT["finish_gate"].wait()
     await asyncio.sleep(0.05 if params.call.position == 0 else 0)
     return ToolCallResult(status="ok")
+
+
+@activity.defn(name="publish_report")
+async def publish_report(params: PublishParams) -> int:
+    LOG.append(f"publish:{params.call.call_id}:{params.call.seq}")
+    return params.call.seq + 1
 
 
 @activity.defn(name="write_followups")
@@ -93,17 +107,20 @@ async def write_incomplete(params: IncompleteParams) -> int:
     return 0
 
 
-def _workers(client, executor):
-    return [
+def _workers(client, executor, *, tools=True, cache_size=1000):
+    workers = [
         Worker(client, task_queue=CHAT_TASK_QUEUE, workflows=[AgentRun],
-               activities=[open_run, control_event, write_ending, summarize_if_first_turn,
-                           record_step_failure, write_incomplete],
-               activity_executor=executor),
+               activities=[open_run, pin_turn_control, control_event, write_ending,
+                           summarize_if_first_turn, record_step_failure, write_incomplete,
+                           publish_report],
+               activity_executor=executor, max_cached_workflows=cache_size),
         Worker(client, task_queue=CHAT_MODEL_TASK_QUEUE, activities=[model_step, write_followups],
                activity_executor=executor),
-        Worker(client, task_queue=AGENT_TOOL_TASK_QUEUE, activities=[tool_call],
-               activity_executor=executor),
     ]
+    if tools:
+        workers.append(Worker(client, task_queue=AGENT_TOOL_TASK_QUEUE, activities=[tool_call],
+                              activity_executor=executor))
+    return workers
 
 
 def _input():
@@ -120,6 +137,64 @@ async def _run_with(env, scenario):
             return await scenario()
         finally:
             await asyncio.gather(*(w.shutdown() for w in workers), return_exceptions=True)
+
+
+@pytest.mark.parametrize("restart", ["none", "before_tool", "before_publication"])
+def test_empty_rule_turn_publishes_once_without_hooks(monkeypatch, restart):
+    LOG.clear()
+    monkeypatch.setitem(SCRIPT, "use_policy", False)
+    SCRIPT.update(control=[], model=[
+        ModelStepResult(outcome="calls", calls=[_call(1, 0, "filter", "search_collections")]),
+        ModelStepResult(outcome="calls", calls=[_call(3, 0, "read", "read_documents")]),
+        ModelStepResult(outcome="calls", calls=[_call(5, 0, "cite", "cite_documents")]),
+        ModelStepResult(outcome="calls", calls=[
+            _call(7, 0, "write", "write_file"),
+            _call(7, 1, "finish", "finish_with_report"),
+        ]),
+    ])
+
+    async def main():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            gate = asyncio.Event() if restart == "before_publication" else None
+            monkeypatch.setitem(SCRIPT, "finish_gate", gate)
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                first = _workers(env.client, executor, tools=restart != "before_tool", cache_size=0)
+                tasks = [asyncio.create_task(worker.run()) for worker in first]
+                inp = _input()
+                try:
+                    handle = await env.client.start_workflow(AgentRun.run, inp, id=inp.run_id,
+                                                             task_queue=CHAT_TASK_QUEUE)
+                    if restart == "before_tool":
+                        async with asyncio.timeout(10):
+                            while not any(event.activity_task_scheduled_event_attributes.activity_type.name
+                                          == "tool_call" for event in (await handle.fetch_history()).events):
+                                await asyncio.sleep(0.05)
+                    elif restart == "before_publication":
+                        async with asyncio.timeout(10):
+                            while "tool:finish" not in LOG:
+                                await asyncio.sleep(0.05)
+                        await first[0].shutdown()
+                        gate.set()
+                    if restart == "none":
+                        assert await handle.result() == "completed"
+                finally:
+                    if gate is not None:
+                        gate.set()
+                    await asyncio.gather(*(worker.shutdown() for worker in first))
+                    await asyncio.gather(*tasks)
+            if restart != "none":
+                try:
+                    async with asyncio.timeout(40):
+                        assert await _run_with(env, handle.result) == "completed"
+                except TimeoutError:
+                    pytest.fail(f"The restarted workers did not complete the turn. Activities: {LOG!r}")
+            history = await handle.fetch_history()
+            await Replayer(workflows=[AgentRun]).replay_workflow(history)
+
+    asyncio.run(main())
+    assert LOG == ["open_run", "pin_turn_control", "model:1", "tool:filter", "model:2",
+                   "tool:read", "model:3", "tool:cite", "model:4", "tool:write",
+                   "tool:finish", "publish:finish:11", "followups", "ending:completed", "title"]
 
 
 def test_hooks_run_policy_batches_before_the_next_model_step_and_replay():
@@ -151,14 +226,14 @@ def test_hooks_run_policy_batches_before_the_next_model_step_and_replay():
             await Replayer(workflows=[AgentRun]).replay_workflow(history)
 
     asyncio.run(main())
-    assert LOG[:4] == ["open_run", "control:turn_started:0:", "tool:ctl-a-0",
+    assert LOG[:5] == ["open_run", "pin_turn_control", "control:turn_started:0:", "tool:ctl-a-0",
                        "control:tool_batch_completed:1:"]
-    assert LOG[4] == "model:1"
-    batch = LOG[5:8]
+    assert LOG[5] == "model:1"
+    batch = LOG[6:9]
     assert set(batch) == {"tool:m-0", "tool:m-1<m-0", "tool:m-2"}
     assert batch.index("tool:m-0") < batch.index("tool:m-1<m-0")
     # An answer ends the turn: no hook reviews it.
-    assert LOG[8:] == ["control:tool_batch_completed:3:", "tool:ctl-b-0",
+    assert LOG[9:] == ["control:tool_batch_completed:3:", "tool:ctl-b-0",
                        "control:tool_batch_completed:5:", "model:2", "followups",
                        "ending:completed", "title"]
 
@@ -202,7 +277,7 @@ def test_a_restarted_worker_resumes_after_the_completed_hooks():
                 # model step with no activity in flight. It keeps no workflow in its cache,
                 # so the next workflow task goes to the shared queue.
                 first = Worker(env.client, task_queue=CHAT_TASK_QUEUE, workflows=[AgentRun],
-                               activities=[open_run, control_event], activity_executor=executor,
+                               activities=[open_run, pin_turn_control, control_event], activity_executor=executor,
                                max_cached_workflows=0)
                 task = asyncio.ensure_future(first.run())
                 handle = await env.client.start_workflow(AgentRun.run, inp, id=inp.run_id,
@@ -223,7 +298,7 @@ def test_a_restarted_worker_resumes_after_the_completed_hooks():
     asyncio.run(main())
     assert LOG.count("control:turn_started:0:") == 1
     assert LOG.count("open_run") == 1
-    assert LOG == ["open_run", "control:turn_started:0:", "model:1", "followups",
+    assert LOG == ["open_run", "pin_turn_control", "control:turn_started:0:", "model:1", "followups",
                    "ending:completed", "title"]
 
 

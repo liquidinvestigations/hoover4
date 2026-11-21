@@ -1,10 +1,7 @@
-"""The `control_event` activity: the policy hooks of `AgentRun`.
+"""Turn pinning and policy activities of AgentRun.
 
-`AgentRun` calls it at three points: `turn_started` after `open_run`, `tool_batch_completed`
-after every call of a batch has its result, and `answer_drafted` after an answer or a
-question. The coordinator (`control.coordinator`) stores one decision for each event and
-writes its rows. The activity returns ids and small values only: the policy calls that the
-workflow runs through `tool_call`, whether a draft gets another round, and the next seq.
+The pin activity returns the turn's saved mode. A turn with policy hooks uses
+`control_event` at turn start and after each completed tool batch.
 """
 
 from __future__ import annotations
@@ -54,6 +51,22 @@ class ControlOutcome:
     end_turn: bool = False
 
 
+@dataclass
+class PinnedTurn:
+    use_policy: bool = False
+    closed: bool = False
+    next_seq: int = 0
+
+
+@activity.defn
+@with_heartbeat(interval_seconds=CONTROL_HEARTBEAT_SECONDS)
+def pin_turn_control(params: ControlParams) -> PinnedTurn:
+    """Store the turn assets and return its policy mode."""
+    from tasks.P_agent.control.coordinator import pin_turn
+
+    return pin_turn(params)
+
+
 @activity.defn
 @with_heartbeat(interval_seconds=CONTROL_HEARTBEAT_SECONDS)
 def control_event(params: ControlParams) -> ControlOutcome:
@@ -64,4 +77,4 @@ def control_event(params: ControlParams) -> ControlOutcome:
 
 
 __all__ = ["CONTROL_HEARTBEAT_SECONDS", "ControlOutcome", "ControlParams", "HOOK_MARGIN_SECONDS",
-           "HOOK_SECONDS", "control_event"]
+           "HOOK_SECONDS", "PinnedTurn", "control_event", "pin_turn_control"]

@@ -1,9 +1,4 @@
-"""The skill store: loading, listing, rendering, and the text that moved into the skills.
-
-`prompt_fixtures/` holds the prompt templates as they were before the skills held their
-text. The equality cases render those templates and the skills with the same tool names,
-and compare the two texts after each run of whitespace becomes one space.
-"""
+"""Test skill loading, listing, and strict rendering."""
 
 from __future__ import annotations
 
@@ -12,12 +7,10 @@ import re
 from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from agent_common.tool_packs import PACKS
-from research_agent import skill_store
+from research_agent import prompts, skill_store
 from research_agent.skill_store import (
-    ROLE_CONTEXT,
     SkillContext,
     SkillFileError,
     UnboundToolError,
@@ -30,7 +23,7 @@ FIXTURES = Path(__file__).parent / "prompt_fixtures"
 
 EVERY_TOOL = frozenset().union(*PACKS.values())
 NARROW_TOOLS = PACKS["collections"] | PACKS["conversation"] | PACKS["skills"]
-PROFILES = sorted(ROLE_CONTEXT)
+PROFILES = sorted(prompts.PROFILE_KINDS)
 
 #: The descriptions of the general skills that the prompt lists.
 GENERAL_DESCRIPTIONS = {
@@ -82,7 +75,6 @@ def test_the_store_holds_the_migrated_and_the_new_skills():
     groups = {group: sorted(n for n, s in skills.items() if s.group == group)
               for group in skill_store.GROUPS}
     assert groups == {
-        "role": sorted(["method_chat_full", "method_chat_internal"]),
         "general": sorted(["search", "thorough", "citation", "report"]),
         "technique": TECHNIQUE_SKILLS,
         "stumble": STUMBLE_SKILLS,
@@ -101,7 +93,6 @@ def test_a_general_skill_keeps_its_description(name):
 
 def test_a_skill_of_the_web_is_not_listed_without_the_web(tmp_path):
     for name, group, tools in (
-        ("method_chat_internal", "role", ""),
         ("web_research", "technique", "web_search, read_page"),
         ("search", "general", "search_collections"),
     ):
@@ -113,25 +104,6 @@ def test_a_skill_of_the_web_is_not_listed_without_the_web(tmp_path):
     assert names == ["search"]
     with_web = [s.name for s in listed_skills(context("internal_search", EVERY_TOOL), skills)]
     assert "web_research" in with_web
-
-
-def test_no_run_lists_a_role_skill_and_each_profile_gets_its_own_role_text():
-    for profile, name in skill_store.ROLE_SKILLS.items():
-        listed = [s.name for s in listed_skills(context(profile))]
-        assert not [n for n in listed if skill_store.SKILLS[n].group == "role"]
-        body = skill_store.render_body(name, context(profile), strict=True)
-        assert skill_store.role_method(context(profile)) == body
-
-
-
-
-@pytest.mark.parametrize("profile", sorted(skill_store.ROLE_SKILLS))
-def test_a_role_text_asks_for_no_search_heading_or_todo_update(profile):
-    """A role text gives the objective, the sources, the evidence rule and the role's duty.
-    It asks for no search before an answer, no report heading and no todo update."""
-    text = normalised(skill_store.role_method(context(profile))).lower()
-    for phrase in ("todo", "##", "search relevant", "identify the people"):
-        assert phrase not in text, (profile, phrase)
 
 
 # ------------------------------------------------------------------------- failure
@@ -165,83 +137,6 @@ def test_every_skill_renders_strictly_for_every_profile(profile, name):
 
 
 # ------------------------------------------------------------------------ equality
-
-
-def _old_environment() -> Environment:
-    return Environment(
-        loader=FileSystemLoader(str(FIXTURES)),
-        undefined=StrictUndefined,
-        trim_blocks=True,
-        lstrip_blocks=True,
-        keep_trailing_newline=True,
-    )
-
-
-def _old_variables(profile, tools):
-    artefact, resolver = ROLE_CONTEXT[profile]
-    return {
-        "has": lambda name: name in tools,
-        "tool": lambda name: f"`{name}`",
-        "web_enabled": "web_search" in tools,
-        "citation_artefact": artefact,
-        "citation_resolver": resolver,
-        "collections_hint": True,
-        "profile": profile,
-    }
-
-
-def _lines(template: str, first: int, last: int) -> str:
-    return "".join((FIXTURES / template).read_text().splitlines(keepends=True)[first - 1:last])
-
-
-#: The template lines that each role skill took, in template order. `method_planner` and
-#: `method_organizer` are left out, because their texts now hold the plan caps and the
-#: packing numbers, which the old templates did not.
-ROLE_SOURCES = {
-    "method_chat_internal": ("internal_search", [("internal_search.md.j2", 27, 36)]),
-    "method_chat_full": (
-        "full_research",
-        [("full_research.md.j2", 23, 33), ("full_research.md.j2", 36, 40)],
-    ),
-}
-
-#: Old text that a skill holds in a corrected form, and the form it holds. The old text
-#: holds a dash that the prose rules of the repository do not allow.
-DASH = chr(0x2014)
-CORRECTED = {
-    f"thread {DASH} a delegated turn": "thread, because a delegated turn",
-}
-
-
-def _old_text(source: str, profile: str, tools) -> str:
-    text = _old_environment().from_string(source).render(**_old_variables(profile, tools))
-    for old, new in CORRECTED.items():
-        text = text.replace(old, new)
-    return normalised(text)
-
-
-def _new_text(name: str, profile: str, tools) -> str:
-    text = render_skill(name, context(profile, tools))
-    first, _, rest = text.partition("\n")
-    assert first == f"Skill `{name}`."
-    for line in SEARCH_LINES + (CITATION_LINE.format(artefact=ROLE_CONTEXT[profile][0]),):
-        rest = rest.replace(line, "")
-    return normalised(rest)
-
-
-TOOL_SETS = {"every pack": EVERY_TOOL, "narrow": NARROW_TOOLS}
-
-
-@pytest.mark.parametrize("tools", sorted(TOOL_SETS))
-@pytest.mark.parametrize("name", sorted(ROLE_SOURCES))
-def test_a_role_skill_holds_the_text_of_its_old_template_lines(name, tools):
-    profile, ranges = ROLE_SOURCES[name]
-    names = TOOL_SETS[tools]
-    text = render_skill(name, context(profile, names), strict=True)
-    assert text.startswith(f"Skill `{name}`.")
-    assert "insults or emotive words" not in text
-    if name.startswith("method_chat"):
-        assert "can need no tool call" in text
 
 
 def test_the_search_and_citation_skills_hold_the_new_lines():
@@ -325,23 +220,12 @@ def test_the_cite_pages_arguments_are_in_one_skill_once():
     assert "citation_failures" not in load_skills()
 
 
-def test_web_citation_role_does_not_request_bare_source_links():
-    context = SkillContext(profile="full_research", tool_names=frozenset({"cite_pages", "read_page", "web_search"}))
-    body = skill_store.role_method(context, strict=True)
-    assert "returned `cite_pages` handle" in body
-    assert "Put a direct page link" not in body
-    assert "give the link of each web page" not in body
-    assert "Never number citations yourself." in body
-    assert "omit its claims until a later citation succeeds" in body
-
-
-def test_the_system_prompt_holds_the_report_routing_text_and_the_skill_adds_the_details():
-    rules = skill_store.report_rules(context())
-    body = render_skill("report", context())
-    assert "Write a file with `write_file`" in rules
-    assert "Example." not in rules
-    assert rules in body and "Example." in body
-    assert skill_store.report_rules(context(tools={"cite_documents"})) == ""
+def test_report_skill_records_a_candidate_before_verification():
+    body = render_skill("report", context(), strict=True)
+    assert "file hash, and next action before verification" in body
+    assert "search scope for an absence and the error for a failed read" in body
+    assert "After citation succeeds, patch the report and mark the checklist entry complete." in body
+    assert "other four files\nwith their versions in additional" in body
 
 
 #: Fixed recovery counts that end a recovery before a different method runs.

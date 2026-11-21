@@ -232,7 +232,7 @@ def _step_body(row, params) -> dict:
     return _step_run(row, params)
 
 
-def _pin(row, messages, params) -> dict:
+def _pin(row, messages, params, *, legacy: bool = True) -> dict:
     """The control record of the turn. When the opening row has none, resolve the active
     definition and the agent's assets, and store both on the opening row."""
     opening = messages[0]
@@ -245,18 +245,21 @@ def _pin(row, messages, params) -> dict:
     assets = {k: snapshot.get(k) for k in ("revision", "system_prompt", "system_prompt_digest",
                                            "prompt_override", "skills", "callable_tools",
                                            "catalogue_version", "profile", "language",
-                                           "catalog_revision")}
+                                           "catalog_revision", "tool_definitions")}
     capabilities = capabilities_of(assets.get("callable_tools") or [])
     definition = definitions.resolve(profile_of(params.internet_tools, capabilities))
+    control = {"definition": definition.record(), "assets": assets,
+               "capabilities": sorted(capabilities),
+               "revision": digest([definition.revision, assets.get("revision")])}
+    if not legacy and not definition.rules:
+        write_control(row, opening, control)
+        return control
+
     services = Services(Deadline(2), messages, row, params)
     listing = services._backend("collections/list", {}) if params.allowed_collections else {"collections": []}
     collections = [c["collectionname"] for c in listing.get("collections", []) if c.get("collectionname")]
     conversation, earlier = _conversation(row)
-    control = {"definition": definition.record(), "assets": assets,
-               "capabilities": sorted(capabilities), "collections": collections,
-               "conversation": conversation,
-               "revision": digest([definition.revision, assets.get("revision")]),
-               "decisions": {}}
+    control.update(collections=collections, conversation=conversation, decisions={})
     # The task record of the turn, derived once here and read by every hook of the turn.
     # A board explore turn has its own structured task on the opening message, which stays
     # authoritative (`facts.task_of`).
@@ -268,6 +271,22 @@ def _pin(row, messages, params) -> dict:
         control["task"] = TS.text_task(state)
     write_control(row, opening, control)
     return control
+
+
+def pin_turn(params):
+    """Pin a new turn and return the policy mode saved on its opening row."""
+    from database import agent_runs
+    from tasks.P_agent.control_steps import PinnedTurn
+    from tasks.P_agent.steps import _read_row, _read_thread
+
+    row = _read_row(params)
+    if agent_runs.is_terminal(row):
+        return PinnedTurn(closed=True, next_seq=row.next_seq)
+    messages = _read_thread(row)
+    if not messages or messages[0].role != "human":
+        return PinnedTurn(next_seq=row.next_seq)
+    control = _pin(row, messages, params, legacy=False)
+    return PinnedTurn(use_policy="decisions" in control, next_seq=row.next_seq)
 
 
 #: The earlier turns that a pin reads at most to rebuild the task of a session whose

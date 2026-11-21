@@ -210,11 +210,45 @@ def test_a_handler_with_another_interface_version_is_a_configuration_error(tmp_p
 def test_the_built_in_definitions_resolve(monkeypatch):
     # The built-in activation only: a deployment's control directory can select another.
     monkeypatch.delenv(registry.CONTROL_DIR_ENV, raising=False)
-    assert definitions.resolve("full_research").id == "chat-deterministic"
-    assert definitions.resolve("internal_search").id == "chat-deterministic"
+    assert definitions.resolve("full_research").id == "chat-null"
+    assert definitions.resolve("internal_search").id == "chat-null"
     record = definitions.resolve("full_research").record()
     assert definitions.pinned(record).revision == record["revision"]
     assert definitions.stale_rules(definitions.pinned(record)) == []
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_empty_rule_pinning_needs_only_the_asset_snapshot(store, monkeypatch, structured):
+    definition = _pin(store, monkeypatch, _definition([]))
+    briefing = {"task": {"goal": "Check the named email", "filename": "report.md"}} if structured else {}
+    store["messages"][0] = replace(store["messages"][0], content="Write a file. An address may have no email.",
+                                    usage_json=json.dumps(briefing))
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("An empty rule list must not prepare or evaluate policy")
+
+    for module, names in ((coordinator, ("_conversation", "evaluate", "_visible_skills")),
+                          (coordinator.TS, ("derive", "from_structured", "text_task")),
+                          (coordinator.F, ("task_state_of",)),
+                          (coordinator.Services, ("_backend",))):
+        for name in names:
+            monkeypatch.setattr(module, name, unexpected)
+    params = control_steps.ControlParams(run_id=RUN_ID, username="u", session_id="s",
+                                         allowed_collections=["testdata"], board_turn=structured)
+    outcome = ActivityEnvironment().run(control_steps.pin_turn_control, params)
+    assert not outcome.use_policy
+    before = store["messages"][0]
+    control = before.usage["control"]
+    assert control["definition"]["revision"] == definition.revision
+    assert control["assets"]["system_prompt"] == "PROMPT dated 2026-10-08"
+    assert not {"decisions", "task", "task_state", "conversation", "collections"} & control.keys()
+    assert before.usage.get("task") == briefing.get("task")
+    assert not store["chat"]
+
+    monkeypatch.setattr(definitions, "resolve", unexpected)
+    assert ActivityEnvironment().run(control_steps.pin_turn_control, params) == outcome
+    assert store["messages"][0] == before
+    assert [path for path, _ in store["agent"].requests] == ["/control_snapshot"]
 
 
 def test_a_run_keeps_its_pinned_revision_after_a_new_activation(store, monkeypatch):
@@ -623,17 +657,17 @@ def test_verified_citations_reset_progress_in_a_partly_failed_batch():
 
 def test_a_control_folder_selects_another_definition(monkeypatch, tmp_path):
     (tmp_path / "definitions").mkdir()
-    (tmp_path / "definitions" / "active.json").write_text(json.dumps({"*": "chat-null"}))
+    (tmp_path / "definitions" / "active.json").write_text(json.dumps({"*": "chat-deterministic"}))
     monkeypatch.setenv(registry.CONTROL_DIR_ENV, str(tmp_path))
     try:
         registry.load(refresh=True)
         definition = definitions.resolve("internal_search")
-        assert definition.id == "chat-null"
-        assert definition.rules == ()
+        assert definition.id == "chat-deterministic"
+        assert definition.rules
     finally:
         monkeypatch.delenv(registry.CONTROL_DIR_ENV)
         registry.load(refresh=True)
-    assert definitions.resolve("internal_search").id == "chat-deterministic"
+    assert definitions.resolve("internal_search").id == "chat-null"
 
 
 # ------------------------------------------------------- policies and repairs

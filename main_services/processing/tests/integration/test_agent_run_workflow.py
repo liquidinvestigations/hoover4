@@ -34,7 +34,7 @@ from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 from database import agent_runs, chat_todos
 from database.clickhouse import get_global_client
 from tasks.P_agent import activities, steps, stream_writer, workflows
-from tasks.P_agent.control_steps import ControlOutcome, ControlParams
+from tasks.P_agent.control_steps import ControlOutcome, ControlParams, PinnedTurn
 from tasks.run_worker import STEP_HEARTBEAT_THROTTLE, WORKFLOW_FAILURE_EXCEPTION_TYPES
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(240)]
@@ -208,6 +208,12 @@ def _no_control(params: ControlParams) -> ControlOutcome:
     return ControlOutcome(next_seq=row.next_seq if row is not None else 0)
 
 
+@activity.defn(name="pin_turn_control")
+def _pin_no_rules(params: ControlParams) -> PinnedTurn:
+    row = agent_runs.read_run(params.username, params.session_id, params.run_id)
+    return PinnedTurn(next_seq=row.next_seq if row is not None else 0)
+
+
 async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
                     model_worker=True, plan=False):
     """Run `body(client, case, stub, queue, titled)` with a worker on each queue of the
@@ -229,7 +235,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     client = None
     acts = [activities.open_run, activities.write_ending,
             activities.summarize_if_first_turn,
-            steps.record_step_failure, _no_control,
+            steps.record_step_failure, _pin_no_rules, _no_control,
             steps.write_incomplete, steps.publish_report]
     try:
         client = await Client.connect("temporal:7233")

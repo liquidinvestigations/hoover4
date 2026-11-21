@@ -47,84 +47,21 @@ denies the second outright.
 
 ## The system prompt and the skill store
 
-Not in compose, and not as string literals. One template, `research_agent/prompts/agent.md.j2`,
-renders the system prompt of every profile ([research_agent/prompts/__init__.py](research_agent/prompts/__init__.py)).
-`SYSTEM_PROMPT` overrides the whole rendered text, and empty means "render the template".
+The [system prompt](research_agent/prompts/agent.md.j2) gives the profile role, available sources, agent language, and delivery rules.
+The model receives tool definitions separately. It can find a tool by name or description.
+The model can read a skill for a method. The [skill store](research_agent/skills/) filters skills by the tools of the turn.
+`SYSTEM_PROMPT` replaces the rendered prompt when the setting has a value.
 
-**The prompt holds the role, lists the rest, and the skills teach.** The prompt holds the
-role line of the profile and the role text of the run kind, which is the rendered role skill
-(`skill_store.role_method`). The run's skills by name and description and the run's tools by
-name and summary follow. A chat run then gets the rule for a note that says web access is unavailable. Every run with
-`write_file` gets the routing text of the `report` skill under "Reports and other
-documents" (`skill_store.report_rules`): a requested report, list, table or draft, and every
-answer with citations, goes into a workspace file, a report that needs research starts early
-and grows by patches, an edit of a report patches that file, a write or a patch shows nothing,
-`finish_with_report` shows a saved report version and ends the turn, and the chat holds
-questions, progress and explanations. The `report` skill that
-`read_skill` returns holds the same text and then the examples, from one template. The
-saved files of the session follow the newest message of every model request
-([workspace_state.py](research_agent/workspace_state.py)). The agent service refuses every
-call of a reply whose `finish_with_report` call is not its last call. The
-initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs are replaced with the returned handles.
-It requires comparative evidence for a size ranking. The plan text
-follows when the run has `update_plan`. It says
-that the plan is optional, that a call sends the goal and the whole step list with
-statuses, that a step stays pending until its work ends and is then done with a short note,
-that `update_plan` only keeps the plan and `write_file` writes a report, that a long list of
-items goes into a checklist file, and that an open item does not stop an answer. When the
-run has a citation tool, the citation text gives the order of the work once: read the
-passage, call the citation tool with exact text, copy the returned handle beside the
-claim, add each claim to the report after its citation call succeeds, and state the requested parts
-that the sources do not establish. After a citation fails twice, the report leaves out the
-claim or states that the sources read do not confirm it. A document quote has 5 to 6 words of body text without
-a question mark. The `citation` skill holds the arguments of `cite_documents`, recovery
-examples, and the batch form. It is listed only with `cite_documents`. The `web_research`
-skill holds the arguments and the recovery examples of `cite_pages`. Both skills include the
-failure rules of one partial, `skills/partials/citation_failures.j2`, through the loader of
-`skill_store.environment`. `load_skills` reads only `*.md.j2` files, so a partial is never a
-skill. The summary of a
-tool is the first sentence of its description, at most 160 characters. `_create_context`
-renders the prompt once for each step context. The prompt cache holds the system text for
-the run.
+The turn pins the prompt, skill texts, and tool definitions. A tool must also remain available under the caller's permissions.
+The agent reads a source before it cites it. It puts an issued handle beside each sourced claim and each named source.
+The document and web skills give the required quote formats and retry arguments.
+The agent can cite earlier chats and boards that the caller can read.
 
-The method text is in [research_agent/skills/](research_agent/skills).
-Citation recovery copies returned retry arguments and retries only failed pages.
-Schema recovery examples use `read_tool` before correcting an unknown argument.
-Document reread examples keep each document's range and source version in its own call.
-Each skill has a Jinja body and front matter with its name, group, description, and tools.
-A skill can also name `terms` and `not_for`: the words that requests use for the method, and
-the similar requests that do not need it. The worker's turn-start check reads them with the
-description. The system prompt lists the description only.
-The role skills are `method_chat_full` and `method_chat_internal`.
-They define the role's sources and evidence requirements. Each sentence about documents
-renders only with `search_collections` or `cite_documents`, and each sentence about the web
-only with `web_search`. A run without collections and without the web gets a role text that
-asks for no search. The role line of a run without collections says "This conversation can
-read no document collections.", and it names the web only when the run has `web_search`.
-The full chat role verifies every constraint for each listed item before an optional skill read.
-It requires reading each cited page and reports a shortage when fewer items match.
-It keeps items that fail a constraint outside the matching list.
-It verifies product names, composition, and production methods against the source.
-It keeps plant extraction separate from synthetic production.
-It counts a trial and its appeals as one prosecution.
-It uses another readable source or omits claims from a failed page read.
-The system text records the observed UTC date when the run context is created.
-Current web claims require the latest dated source update.
-Repository data reads use raw addresses, returned continuation offsets, and surrounding record text when a match omits an identifying fact.
-The other groups provide search, citation, tool use, and failed-call instructions.
-A technique or stumble skill has at most 2,600 characters.
-A skill renders a tool name only when the run has that tool.
-[tests/test_skill_store.py](tests/test_skill_store.py) verifies skill rendering and tool membership.
-
-The model finds a skill with `search_skills` and reads one with `read_skill` when it chooses
-to. The result of a read starts with the line ``Skill `name`.``. A role skill and a skill of
-another profile are refused with `unknown_skill`. No run reads a skill before its first
-model call.
-
-The model receives each tool's schema with each call. It can read a fuller description
-with `read_tool`. The Manticore match syntax reaches the model through the skill `search` and
-the descriptions of the search tools. The collection MCP server also renders it into its
-`instructions`, which this agent does not pass to the model.
+A file write creates a saved version. The last call of a reply can select saved versions with `finish_with_report`.
+The agent returns a selected version as the answer and ends the turn.
+The [workspace inventory](research_agent/workspace_state.py) supplies current file names and versions after compaction.
+The report skill describes how to save a candidate before verification and add each cited finding.
+The email skill distinguishes a forwarded passage's writer from the sender of the outer message.
 
 ## The agent language of a run
 
@@ -150,9 +87,7 @@ words that the documents use.
 
 A translated tool text changes only the definitions that the model is shown and the tool
 summaries. The tool objects stay English, so a call validates and runs as before. Skill
-search and tool search match the translated text and the English text. The error messages
-of the tool servers stay English, because the agent reads their causes from the English text
-(`stumbles.py`).
+search and tool search match the translated text and the English text. Tool servers keep their error text.
 
 The context key (`_acl_key`), the catalogue version and the control snapshot revision include
 the language and the catalog revision. A context or a pinned snapshot of one language is never
@@ -227,7 +162,7 @@ request without `control` uses the current prompt and skill texts of the service
 
 The worker calls it when a turn starts. The response holds the rendered system prompt, which
 is the `SYSTEM_PROMPT` override when it is set. It holds the text, digest, description,
-`terms` and `not_for` of each listed skill. It also holds the callable tool names, the
+`terms` and `not_for` of each listed skill. It also holds the callable tool definitions and names, the
 catalogue version, the `language` of the run, the `catalog_revision` of its translations,
 and one revision digest of these values. The digest of a run in another language than
 English includes the language and the catalog revision. No credential and no connection header is in it. With
@@ -310,17 +245,6 @@ the call, less the required arguments that the call lacks, then when its spellin
 A `write_report` call with `name` and `content` gets `write_file`, and a `workspace_read`
 call with only `name` gets `read_file` first. `search_agent_tools` can list available names.
 
-**A failed result names the skill of its fix.** `stumbles.with_skill_line` reads each result
-before the service returns it. When the result shows a known stumble, and the run lists the
-skill that teaches its fix, the text ends with the sentence "Before you call this tool again,
-read the skill `name` with `read_skill`." A file name or a path in place of a `file_hash`
-names `document_ids`, a collection outside the chat names `collection_names`, a refused query
-list names `search`, a refused todo call names `todo_upkeep`, a refused plan tree call names
-`plan_editing`, arguments that the schema refuses name `call_arguments`, and a browser error
-names `browser_use`. In a JSON object the sentence goes after the text of `message`, else of
-`error`, else under the key `next`. In other text it goes after a blank line. A result
-page and a result with no failure get no sentence.
-
 **The arguments are normalized before the call.** `/tool_call` runs the normalization of
 [Tool arguments](#tool-arguments) again, which changes nothing for a call that `/model_step`
 normalized, and then validates the arguments against the tool's own schema.
@@ -328,7 +252,7 @@ normalized, and then validates the arguments against the tool's own schema.
 ### The size of a request
 
 Before each model call, `/model_step` measures the whole request (`request_size.py`): the
-system text, the schemas of the bound tools, and every message of the list that the model
+system text, the complete definitions of the bound tools, and every message of the list that the model
 receives, with the tool results that the worker stored after the previous reply. The billed
 tokens of the previous reply do not include those results, so they are telemetry and not
 the size of the next request. With a known context window, the served tokenizer
@@ -382,7 +306,7 @@ field and gives the agent `reasoning_content`.
 
 The model decides when it is finished: a reply with no call is the answer. The worker adds
 no todo round. The service skips a repeated successful search or read while its complete result remains in model input.
-Failed results do not create repeat pointers or search refusals. A batch with only failed document reads can run again.
+A failed result or a repeat pointer can be retrieved again. Reuse requires the complete result to stay visible.
 It also reuses an identical complete verified citation until another source read occurs.
 Different passages, partial failures, and reduced results remain executable.
 Its limits are the step limit of the run and one retry
@@ -396,8 +320,9 @@ A run grows because every result that it collected stays in the list of the next
 [research_agent/compaction.py](research_agent/compaction.py) compacts the list when the measured size of the next request
 (see "The size of a request") reaches the trigger, a fraction of the model's stated context
 window. The trigger is never above the safe input, the window less the output reserve. It
-plans the list to a target of a third of the trigger before the next model call, and
-replaces one older prefix of steps with one summary.
+replaces one older prefix with a summary. The usual target is one third of the trigger.
+If the fixed input, index, and newest group exceed that target, use the space left after those parts.
+Reserve room for a result group of the same size as the newest group when the trigger permits it.
 
 | variable | default | meaning |
 |---|---|---|
@@ -407,9 +332,8 @@ For a window of 262,144 tokens at 0.80, the trigger is 209,715 tokens and the ta
 
 **The parts of the list.** `plan_compaction` plans, in list order, with no model call:
 
-1. **The user's messages.** Every `human` message that is not a record stays in its place:
-   the request, the clarifications and the notes that the worker writes. With the system
-   text and the tool schemas they are the fixed input.
+1. **The user's messages.** Keep the request and its amendments in their original order.
+   Earlier policy notes stay in the stored transcript. They do not become user instructions.
 2. **The summary.** One `human` message takes the place of the first message of the older
    prefix that it replaces. The prefix holds complete step groups (an `ai` message with all
    its results) and the previous summary, so a new summary extends the previous one.
@@ -427,15 +351,15 @@ system text and the tool schemas included, and clamps the ratio to 1/6 to 1/1.5 
 character. Each size gets a margin of 5 percent. `request_size.measure` uses the same
 estimate when the tokenizer does not count.
 
-**The summary.** It starts with `RECORD_HEADER`, which tells the model to read a source again
-before it quotes it. Code writes the lists next (`thread_index.py`): the searches that found
-nothing, the searches that found documents with their counts, the documents read with their
-pages, the citation labels with document hashes or web source versions, the pages that `read_page` read with
+**The summary.** Its header tells the model to recover saved work and read unresolved passages.
+The [index](research_agent/thread_index.py) keeps empty searches and bounded candidates of filtered searches.
+It keeps the documents read with their pages and issued citation handles with source identities.
+It also keeps the pages that `read_page` read with
 their source versions and unread continuation offsets, the result pages that continue with their `more`
 handle and call, and one line that names the skill and tool texts that left the list. The model never writes those lists, because a summary model copies
 file hashes with errors. The summary model writes the rest with thinking off, in one request
 with a completion cap of 2,000 tokens, in four sections: findings with their sources,
-contradictions, outstanding work, and the identifiers that read a source again. The model
+contradictions, outstanding work, and source identifiers. Outstanding work names unsaved candidates and the next unresolved action. The model
 writes each finding with an exact quote and its source. A cut page is read through its shown
 text. Its continuation stays unread. The summary request presents page results last, with
 their stored step numbers and call inputs. A find with no match is not a content read.

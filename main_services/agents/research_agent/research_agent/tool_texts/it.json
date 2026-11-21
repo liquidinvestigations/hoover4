@@ -171,7 +171,6 @@
  "The page of the result, from 0. A result with next_page has more.": "La pagina del risultato, da 0. Un risultato con next_page ne ha altre.",
  "The section from search_manual, or a /docs link. Empty reads the contents.": "La sezione da search_manual, oppure un link /docs. Vuoto legge l’indice.",
  "The session_id from list_chats_and_boards or from a chat link.": "Il session_id da list_chats_and_boards o da un link di chat.",
- "The skill `{skill}` shows how to fix this.": "La skill `{skill}` mostra come correggere questo problema.",
  "The sources web_search can use, with their kind (web, news, reference or archive). Call this only if you need to narrow a search to particular sources. A source this deployment has no key for is not listed at all.": "Le fonti che web_search può usare, con il loro tipo (web, news, reference o archive). Chiamalo solo se ti serve restringere una ricerca a fonti particolari. Una fonte per cui questa installazione non ha una chiave non viene elencata affatto.",
  "The step, as a short sentence.": "Il passaggio, come frase breve.",
  "The task goal in one or two sentences.": "L'obiettivo dell'attività in una o due frasi.",

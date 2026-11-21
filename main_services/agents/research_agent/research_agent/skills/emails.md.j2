@@ -9,7 +9,7 @@ tools: doc_email, doc_metadata, read_documents
 Reading e-mail documents
 
 {% if has('search_collections') %}
-Find e-mails with {{ tool('search_collections') }}. Put every form of an address or a name into one call, for example the address, "First Last" and "Last, First".
+Find e-mails with {{ tool('search_collections') }}. Batch spelling variants for one sender. Search different senders separately so each result keeps its sender.
 
 {% endif %}
 {% if has('doc_email') %}

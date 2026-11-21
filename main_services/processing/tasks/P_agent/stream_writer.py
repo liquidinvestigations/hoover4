@@ -529,7 +529,15 @@ def run_message(message, thread_id: str) -> dict[str, Any]:
     """
     out: dict[str, Any] = {"role": message.role, "content": message.content,
                            "thread_id": str(thread_id), "idx": int(message.idx)}
-    if message.role == "ai":
+    if message.role == "human":
+        from tasks.P_agent.citations import is_citation_note
+
+        usage = message.usage
+        control = usage.get("control")
+        policy = (usage.get("origin") == "policy" or is_citation_note(message)
+                  or isinstance(control, dict) and control.get("kind") in ("batch_note", "draft_note"))
+        out["human_origin"] = "policy" if policy else "user"
+    elif message.role == "ai":
         out["tool_calls"] = [
             {"id": str(c.get("id") or ""), "name": str(c.get("name") or ""),
              "args": c.get("args") if isinstance(c.get("args"), dict) else {}}
