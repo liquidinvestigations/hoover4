@@ -45,7 +45,7 @@ The site file is a YAML Ansible inventory with one group, `hoover4`.
 | `hoover4.vars.lans.<name>` | One LAN, with an optional range (`cidr`). |
 | `hoover4.hosts.<name>` | One node: its roles (`node_roles`), its address in each network and LAN, its public address, the volume group of each storage tier (`storage`), the switches of its host changes, and the TLS mode of a public node. |
 | `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool. |
-| `hoover4.vars.backup` | The backup node and the backup folder on that node. |
+| `hoover4.vars.backup` | The backup node and the backup folder on that node, the optional volume group and size of the backup volume, and an optional mirror on a second node. |
 | `hoover4.vars.pod_swap` | The swap and zswap quota of each pod in percent of its memory limit (`swap_percent`, `zswap_percent`, default 35 and 15). |
 | `hoover4.vars.deploy` | The count of zone steps that `deploy-k3s up` runs at the same time (`parallel_zones`, default 2). |
 | `hoover4.vars.stores` | The nodes and node counts of the shared stores, and the zone count (`zones`) that the site placement reserves memory and CPU for. |

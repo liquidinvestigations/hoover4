@@ -1142,3 +1142,15 @@ def test_the_memory_recommendations_name_each_node_and_change_no_exit_code():
     assert deploy.memory_recommendations('d', {'total_bytes': 32 * gib, 'swap_devices': swap, 'zswap': {'enabled': 'Y'},
                                                'oom_daemons': []}) == []
     assert deploy.memory_recommendations('e', None) == []
+
+
+def test_the_check_names_a_backup_node_of_the_stores_without_a_mirror_and_a_site_without_a_policy(env):
+    ctx = env.make('single-node.yml')
+    problems = deploy.backup_problems(ctx)
+    assert any(p.startswith('the backup node dev holds data of the shared stores, and the site has no vars.backup.mirror')
+               for p in problems)
+    assert any(p.startswith('the site has vars.backup and no backup policy is on') for p in problems)
+    ctx.site.backup['mirror'] = {'node': 'other', 'path': '/srv/m'}
+    assert not any('vars.backup.mirror' in p for p in deploy.backup_problems(ctx))
+    ctx.site.backup.clear()
+    assert deploy.backup_problems(ctx) == []

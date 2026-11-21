@@ -1068,3 +1068,90 @@ def test_the_alarm_rows_name_a_failed_job_a_blocked_job_a_pause_and_a_site_witho
     assert 'keep 1 copies of hoover:zone-a:c' in rows[1]['summary'] and all(r['source'] == 'backup' for r in rows)
     assert [r['name'] for r in schedule.alarm_rows({'jobs': {}, 'blocked': [], 'paused': ''}, True)] == ['BackupOff']
     assert schedule.alarm_rows({'jobs': {}, 'blocked': [], 'paused': ''}, False) == []
+
+
+def test_the_mirror_receives_each_copy_that_it_lacks_and_loses_the_copies_that_retention_removed(local_destination, monkeypatch):
+    backups, s, dest = local_destination
+    dest.mkdir()
+    backups.Destination(s).enable()
+    s.backup['mirror'] = {'node': 'other', 'path': '/srv/mirror'}
+    monkeypatch.setattr(backups, 'site', lambda: s)
+    monkeypatch.setattr(backups, 'applied_values', lambda s, scope: {'backup.opendesk.copies': '2'})
+    lock = type('Lock', (), {'acquire': lambda self, kind, op: None, 'release': lambda self: None})()
+    monkeypatch.setattr(backups.oplock, 'site_lock', lambda folder: lock)
+    clock = iter(range(T0, T0 + 1000, 10))
+    monkeypatch.setattr(backups.time, 'time', lambda: next(clock))
+    monkeypatch.setattr(backups, 'run_zone', lambda s, zone, partial, key: partial.mkdir() or (partial / 'a.sql').write_bytes(b'x'))
+    held, events = {'zones/zone-a': ['g0']}, []
+
+    class FakeMirror:
+        fail = ''
+
+        def __init__(self, s):
+            self.node = s.backup['mirror']['node']
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def problem(self):
+            return FakeMirror.fail
+
+        def copies(self):
+            return {k: list(v) for k, v in held.items()}
+
+        def send(self, local, key, generation):
+            assert (local if hasattr(local, "exists") else __import__("pathlib").Path(local)).joinpath(backups.MANIFEST).exists()
+            events.append(('send', generation))
+            held.setdefault('zones/zone-a', []).append(generation)
+
+        def remove(self, key, generation):
+            events.append(('remove', generation))
+            held['zones/zone-a'].remove(generation)
+    monkeypatch.setattr(backups, 'Mirror', FakeMirror)
+    backups.run_job('zone:zone-a', 'g1')
+    backups.run_job('zone:zone-a', 'g2')
+    assert events == [('send', 'g1'), ('remove', 'g0'), ('send', 'g2')]
+    FakeMirror.fail = 'the mirror /srv/mirror of other has no marker.'
+    backups.run_job('zone:zone-a', 'g3')
+    record = backups.load_state(s)['jobs']['zone:zone-a']
+    assert record['mirror_failed'] == FakeMirror.fail and [c['generation'] for c in record['copies']] == ['g2', 'g3']
+    # The next job sends the copy that the failed mirror lacks and removes the one that retention removed.
+    FakeMirror.fail = ''
+    backups.run_job('zone:zone-a', 'g4')
+    assert events[3:] == [('send', 'g3'), ('send', 'g4'), ('remove', 'g1'), ('remove', 'g2')]
+    assert 'mirror_failed' not in backups.load_state(s)['jobs']['zone:zone-a']
+
+
+def test_the_mirror_scripts_check_a_copy_and_list_the_copies(tmp_path):
+    import subprocess
+    backups = backups_module()
+    folder = copy_folder(backups, tmp_path / 'zones/zone-a/g1', {'a.sql': b'one'})
+    (folder / 'sub').mkdir()
+    out = json.loads(subprocess.run([sys.executable, '-c', backups.MIRROR_VERIFY, str(folder)], capture_output=True,
+                                    check=True, text=True).stdout)
+    assert out['differences'] == [] and out['files'] == 1
+    (folder / 'a.sql').write_bytes(b'changed')
+    out = json.loads(subprocess.run([sys.executable, '-c', backups.MIRROR_VERIFY, str(folder)], capture_output=True,
+                                    check=True, text=True).stdout)
+    assert out['differences'] == ['a.sql']
+    listed = json.loads(subprocess.run([sys.executable, '-c', backups.MIRROR_LIST, str(tmp_path)], capture_output=True,
+                                       check=True, text=True).stdout)
+    assert listed == {'zones/zone-a': ['g1']}
+
+
+def test_the_mirror_pod_has_the_form_that_the_policy_admits():
+    backups = backups_module()
+    pod = backups.mirror_writer('node-b', '/srv/mirror')
+    spec = pod['spec']
+    assert spec['nodeSelector'] == {'kubernetes.io/hostname': 'node-b'}
+    assert spec['volumes'] == [{'name': 'mirror', 'hostPath': {'path': '/srv/mirror', 'type': 'Directory'}}]
+    assert spec['securityContext']['runAsUser'] == 1000 and spec['automountServiceAccountToken'] is False
+    [container] = spec['containers']
+    assert container['image'] == backups.HELPER_IMAGE and container['securityContext']['capabilities'] == {'drop': ['ALL']}
+    policy = next(d for d in runner_rights() if d['kind'] == 'ValidatingAdmissionPolicy' and d['metadata']['name'] == 'k3s-snapshot-reader')
+    variables = {v['name']: v['expression'] for v in policy['spec']['variables']}
+    assert variables['mirror'] == "'HOOVER4_MIRROR_PATH'" and "variables.mirror != ''" in variables['writer']
+    assert 'HOOVER4_MIRROR_PATH' in (K3S / 'platform/operator/install-runner.sh').read_text()

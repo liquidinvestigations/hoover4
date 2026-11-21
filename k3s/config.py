@@ -122,7 +122,10 @@ NODE_KEYS = {
 }
 # The GPU pool names nodes or an address. Its key is a generated Secret of the cluster, so the site file names no key.
 GPU_POOL_KEYS = {'nodes': (False, 'names'), 'address': (False, 'address')}
-BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
+# vars.backup and vars.backup.mirror. With volume_group and size_gb the host role creates the logical volume
+# hoover4-backups of that size and mounts it at path. Without them the person supplies the mount.
+BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path'), 'volume_group': (False, 'name_any'),
+               'size_gb': (False, 'count')}
 # The deployment driver (driver/deploy.py): vars.deploy.
 #   parallel_zones  the count of zone steps that deploy-k3s up runs at the same time. Default: PARALLEL_ZONES.
 DEPLOY_KEYS = {'parallel_zones': (False, 'count')}
@@ -695,7 +698,14 @@ def parse(text, check_files=False):
                         {}, problems)
     backup = {}
     if variables.get('backup') is not None:
-        backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
+        raw_backup = _mapping(variables['backup'], 'vars.backup', problems)
+        backup = _section('vars.backup', {k: v for k, v in raw_backup.items() if k != 'mirror'},
+                          dict(BACKUP_KEYS, mirror=(False, 'mapping')), {}, problems)
+        if raw_backup.get('mirror') is not None:
+            mirror = _section('vars.backup.mirror', _mapping(raw_backup['mirror'], 'vars.backup.mirror', problems),
+                              BACKUP_KEYS, {}, problems)
+            if mirror:
+                backup['mirror'] = mirror
     deploy = _section('vars.deploy', _mapping(variables.get('deploy'), 'vars.deploy', problems), DEPLOY_KEYS, {}, problems)
     pod_swap = _section('vars.pod_swap', _mapping(variables.get('pod_swap'), 'vars.pod_swap', problems), POD_SWAP_KEYS, {},
                         problems)
@@ -854,6 +864,15 @@ def check(site, check_files=False):
             problems.append(f'vars.backup node = {site.backup.get("node")} is not a node of the site.')
         elif node.has('gpu'):
             problems.append('vars.backup node is a GPU node. Choose a node that holds application data.')
+        mirror = site.backup.get('mirror') or {}
+        for label, values in (('vars.backup', site.backup), ('vars.backup.mirror', mirror)):
+            if bool(values.get('volume_group')) != bool(values.get('size_gb')):
+                problems.append(f'{label} needs both volume_group and size_gb, or neither.')
+        if mirror:
+            if mirror.get('node') not in nodes:
+                problems.append(f'vars.backup.mirror node = {mirror.get("node")} is not a node of the site.')
+            elif mirror.get('node') == site.backup.get('node'):
+                problems.append('vars.backup.mirror node is the backup node. The mirror needs another node.')
     problems += store_problems(site)
     if check_files:
         problems += missing_files(site)
@@ -1005,6 +1024,8 @@ def document(site):
                                 ('replicas', site.replicas, REPLICA_KEYS), ('pod_swap', site.pod_swap, POD_SWAP_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
+    if site.backup.get('mirror'):
+        variables['backup']['mirror'] = {k: _text(v) for k, v in site.backup['mirror'].items() if k in BACKUP_KEYS}
     for part, keys in STORE_PARTS.items():
         if site.stores.get(part):
             variables.setdefault('stores', {})[part] = {k: _text(v) for k, v in site.stores[part].items() if k in keys}
@@ -1522,6 +1543,14 @@ def kubelet_reserved(node, factor, threads, server=False, base=None, memory=None
     return ','.join(f'{k}={v}' for k, v in parts.items())
 
 
+def backup_place(site, name):
+    """vars.backup when the node is the backup node, vars.backup.mirror when it is the mirror node, else {}."""
+    if site.backup.get('node') == name:
+        return site.backup
+    mirror = site.backup.get('mirror') or {}
+    return mirror if mirror.get('node') == name else {}
+
+
 def ansible_variables(site, private):
     """The extra variables of the host plays, as a dict. private is the state folder.
 
@@ -1565,7 +1594,10 @@ def ansible_variables(site, private):
             # The media node with a public address gets the chain coturn_peers (../platform/calls/turn_peers.py).
             'coturn_peers': bool(media and media.name == node.name and node.public_address),
             'wireguard_ports': sorted({m.port for m in node.networks.values()}),
-            'backup_path': site.backup.get('path', '') if site.backup.get('node') == node.name else '',
+            # The backup node and the mirror node keep a backup folder (role hoover4_host, tasks/backup.yml).
+            'backup_path': backup_place(site, node.name).get('path', ''),
+            'backup_volume_group': backup_place(site, node.name).get('volume_group', ''),
+            'backup_size_gb': backup_place(site, node.name).get('size_gb', 0),
             'registry_endpoint': f'{node_address(site, registry[0])}:{REGISTRY_PORT}' if registry else '',
             'convert_sqlite': node.name == site.control_plane,
             'wireguard': wireguard(site, node),

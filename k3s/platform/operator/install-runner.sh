@@ -23,7 +23,9 @@ chmod 700 "$folder"
 for namespace in operator-portal calls hoover-data extensions hoover-stores hoover-pools platform-backup; do
   kubectl get namespace "$namespace" >/dev/null 2>&1 || kubectl create namespace "$namespace"
 done
-kubectl apply -f "$source_dir/platform/operator/runner-rights.yaml"
+# The admission policy of platform-backup admits the mirror writer only with the mirror folder of the site file.
+mirror=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import settings; print(((settings.SITE.backup or {}).get("mirror") or {}).get("path", "") if settings.SITE else "")' "$source_dir")
+sed "s|HOOVER4_MIRROR_PATH|$mirror|" "$source_dir/platform/operator/runner-rights.yaml" | kubectl apply -f -
 (cd "$source_dir/zones" && python3 -c 'import zone; zone.cluster()')
 token=''
 for _ in $(seq 30); do

@@ -5,6 +5,64 @@
 # the folders. The marker file tells backups.py that the destination is present.
 # The fstab of the node can name a mount at the path. When that file system is not mounted, the step writes nothing
 # below the path, so the jobs pause instead of filling the root file system.
+# With hoover4_backup_volume_group the role creates the logical volume hoover4-backups in that group and mounts it at
+# the path. An existing volume of that name is never formatted and never resized.
+- name: Refuse a missing volume group of the backups
+  ansible.builtin.command: vgs {{ hoover4_backup_volume_group }}
+  changed_when: false
+  check_mode: false
+  when: hoover4_backup_volume_group | length > 0
+
+- name: Read the backup volume
+  ansible.builtin.command: lvs --noheadings {{ hoover4_backup_volume_group }}/hoover4-backups
+  register: hoover4_backup_lv
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: hoover4_backup_volume_group | length > 0
+
+- name: Create the backup volume and its file system
+  ansible.builtin.shell: |
+    set -eu
+    lvcreate --yes -n hoover4-backups -L {{ hoover4_backup_size_gb }}G {{ hoover4_backup_volume_group }}
+    mkfs.ext4 -q -L hoover4-backups /dev/{{ hoover4_backup_volume_group }}/hoover4-backups
+  when: hoover4_backup_volume_group | length > 0 and hoover4_backup_lv.rc != 0
+  changed_when: true
+
+- name: Read the device at the backup path
+  ansible.builtin.command: findmnt -n -o SOURCE --mountpoint {{ hoover4_backup_path }}
+  register: hoover4_backup_source
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  when: hoover4_backup_volume_group | length > 0
+
+- name: Read the devices of the backup path and the backup volume
+  ansible.builtin.command: realpath {{ hoover4_backup_source.stdout }} /dev/{{ hoover4_backup_volume_group }}/hoover4-backups
+  register: hoover4_backup_devices
+  changed_when: false
+  check_mode: false
+  when: hoover4_backup_volume_group | length > 0 and hoover4_backup_source.rc == 0
+
+- name: Refuse another device at the backup path
+  ansible.builtin.assert:
+    that: (hoover4_backup_devices.stdout_lines | unique | length) == 1
+    fail_msg: >-
+      {{ hoover4_backup_path }} holds {{ hoover4_backup_source.stdout }}, not the backup volume
+      /dev/{{ hoover4_backup_volume_group }}/hoover4-backups.
+    quiet: true
+  when: hoover4_backup_volume_group | length > 0 and hoover4_backup_source.rc == 0
+
+- name: Mount the backup volume
+  ansible.posix.mount:
+    src: /dev/{{ hoover4_backup_volume_group }}/hoover4-backups
+    path: "{{ hoover4_backup_path }}"
+    fstype: ext4
+    opts: defaults,noatime,nofail
+    passno: "2"
+    state: mounted
+  when: hoover4_backup_volume_group | length > 0 and hoover4_backup_source.rc != 0
+
 - name: Read the backup folders
   ansible.builtin.stat:
     path: "{{ item }}"

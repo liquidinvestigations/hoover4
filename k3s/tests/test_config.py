@@ -403,3 +403,20 @@ def test_the_memory_switch_and_the_pod_swap_quotas_reach_each_node():
     assert 'vars.pod_swap.swap_percent = 101 must be at most 100.' in message
     message = problems_of(text.replace('    domain: example.org\n', '    domain: example.org\n    pod_swap: {swap_percent: 10, zswap_percent: 20}\n'))
     assert 'vars.pod_swap.zswap_percent = 20 must be at most swap_percent (10).' in message
+
+
+def test_the_backup_volume_and_the_mirror_are_checked_and_reach_their_nodes():
+    text = site_text('remote.yml')
+    backup = ('    backup:\n      node: worker-b\n      path: /srv/b\n      volume_group: tier-hdd\n      size_gb: 300\n'
+              '      mirror: {node: server-a, path: /srv/m, volume_group: vg-m, size_gb: 50}\n  hosts:\n')
+    site = config.parse(text.replace('  hosts:\n', backup, 1))
+    nodes = config.ansible_variables(site, '/state')['hoover4_nodes']
+    assert (nodes['worker-b']['backup_path'], nodes['worker-b']['backup_volume_group'], nodes['worker-b']['backup_size_gb']) == ('/srv/b', 'tier-hdd', 300)
+    assert (nodes['server-a']['backup_path'], nodes['server-a']['backup_volume_group']) == ('/srv/m', 'vg-m')
+    assert nodes['edge']['backup_path'] == '' and nodes['edge']['backup_volume_group'] == ''
+    assert config.parse(json.dumps(config.document(site))).backup == site.backup
+    message = problems_of(text.replace('  hosts:\n', backup.replace('      size_gb: 300\n', '').replace('server-a', 'worker-b'), 1))
+    assert 'vars.backup needs both volume_group and size_gb, or neither.' in message
+    assert 'vars.backup.mirror node is the backup node. The mirror needs another node.' in message
+    message = problems_of(text.replace('  hosts:\n', backup.replace('server-a', 'nowhere'), 1))
+    assert 'vars.backup.mirror node = nowhere is not a node of the site.' in message

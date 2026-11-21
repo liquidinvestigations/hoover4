@@ -1792,6 +1792,29 @@ def measure_speed(ctx, targets):
     return {name: config.speed_report(ctx.site, ctx.private)[name] for name in targets}
 
 
+def backup_problems(ctx):
+    """A backup node that holds the data of the shared stores needs a mirror, and a backup destination needs a policy."""
+    backup = ctx.site.backup
+    if not backup:
+        return []
+    out = []
+    if backup.get('node') in config.store_plan(ctx.site)['nodes'] and not backup.get('mirror'):
+        out.append(f'the backup node {backup["node"]} holds data of the shared stores, and the site has no '
+                   'vars.backup.mirror. A loss of that node loses the data and its copies.')
+    module = operator_settings_module()
+    folder = ctx.private / 'operator'
+    state = module.State(folder) if (folder / 'desired.json').exists() else None
+
+    def values(scope):
+        return module.effective(scope, state.overrides(state.applied_revision(scope)).get(scope, {}) if state else {})
+    scopes = ['cluster'] + [f'zone:{h.zone}' for h in ctx.hoovers().values()]
+    keys = ('backup.platform.enabled', 'backup.opendesk.enabled', 'backup.hoover.enabled')
+    if not any(values(scope).get(key) == 'true' for scope in scopes for key in keys):
+        out.append('the site has vars.backup and no backup policy is on. Turn on backup.platform.enabled and the zone '
+                   'policies in the operator settings.')
+    return out
+
+
 def memory_recommendations(name, memory):
     """The recommendations for the memory setup of one node, from the memory facts of the node (role hoover4_facts)."""
     if not memory:
@@ -1857,6 +1880,7 @@ def check(ctx, targets):
         state['peers'] = config.peer_table(ctx.site)
         state['switches'] = {n.name: config.switches(n) for n in ctx.site.nodes.values()}
         state['stopped'] = ctx.records.stopped()
+        problems += backup_problems(ctx)
         if ctx.kubeconfig.exists():
             found = ctx.kubectl('-n', SHARED_STORES, 'get', 'configmap', 'shared-stores', '--ignore-not-found', '-o', 'json', check=False).strip()
             try:

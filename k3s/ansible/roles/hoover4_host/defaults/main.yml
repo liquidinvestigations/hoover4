@@ -25,6 +25,9 @@ hoover4_stop_docker: false
 hoover4_memory_tuning: false
 hoover4_k3s_volume_group: ""
 hoover4_backup_path: ""
+# The volume group and the size of the logical volume hoover4-backups at the backup path (tasks/backup.yml).
+hoover4_backup_volume_group: ""
+hoover4_backup_size_gb: 0
 # The user and group of the operator pod (runAsUser and runAsGroup of ../../../../platform/operator/operator-login.yaml),
 # which writes the copies into the backup path.
 hoover4_backup_uid: 1000

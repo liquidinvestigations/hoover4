@@ -58,7 +58,10 @@ Jobs:
 A job writes its copy into <folder>/staging/<job>/<generation>.partial, on the volume of the copies. Each tar stream
 of a pod must reach its end-of-archive marker and each database dump must end with the trailer line of its dump tool,
 or the part is read again. The copy then gets copy-manifest.json with the size and SHA-256 of every file, is read
-again against it, and is renamed into its folder. Only then does retention remove older copies. A failed job or check
+again against it, and is renamed into its folder. Only then does retention remove older copies. With
+vars.backup.mirror the job then sends each verified copy that the mirror lacks to the mirror node (mirror_job()), checks
+it there against its manifest and removes the mirror copies that retention removed. A failed mirror sets mirror_failed
+in the job record and keeps the copies of the first location. A failed job or check
 leaves the older copies. The destination folder must hold the marker file of schedule.py, which the host step of the
 backup node writes (../../ansible/roles/hoover4_host/tasks/backup.yml), so a missing mount pauses the jobs.
 The zone job records the replicas of each workload of the zone in workloads.json, which restore-zone applies. It stops
@@ -82,8 +85,9 @@ Usage: backups.py tick                      start the next due job, as the opera
        backups.py status                    print the state, the next slots and the blocked jobs
        backups.py run <job> <generation>    run one job now, in the foreground
        backups.py enable                    write the folders and the marker of the destination
-       backups.py copies                    list the copies of the destination
-       backups.py verify <job> <generation>                        read a copy again against its manifest
+       backups.py copies [--mirror]         list the copies of the destination, or of the mirror
+       backups.py verify <job> <generation> [--mirror]             read a copy again against its manifest, in the
+                                                                    destination or in the mirror
        backups.py restore-zone <zone> <generation> [--from <zone>]  restore a complete zone copy into a zone
        backups.py restore-hoover <zone> <collection> <generation> [--from <zone>]
                                                                     import a collection copy into the zone's Hoover
@@ -1275,6 +1279,170 @@ def snapshot_reader(node):
                      'volumes': [{'name': n, 'hostPath': {'path': p, 'type': kind}} for n, p, kind, _ in mounts]}}
 
 
+# The mirror of the copies on vars.backup.mirror: a short pod on the mirror node mounts the mirror folder and receives
+# each copy with tar through kubectl exec. It runs as the user of the operator pod, which owns the folder.
+MIRROR_POD = 'backup-mirror-write'
+MIRROR_ROOT = '/mirror'
+MIRROR_UID = 1000
+# The check of a copy in the mirror pod: the same rows as verify(), printed as JSON with the SHA-256 of the manifest.
+MIRROR_VERIFY = r"""
+import hashlib, json, os, sys
+folder = sys.argv[1]
+raw = open(os.path.join(folder, 'copy-manifest.json'), 'rb').read()
+wanted = json.loads(raw)
+found = {}
+for root, _, files in os.walk(folder):
+    for name in files:
+        if name == 'copy-manifest.json' and root == folder:
+            continue
+        path = os.path.join(root, name)
+        digest = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(4 << 20), b''):
+                digest.update(chunk)
+        found[os.path.relpath(path, folder)] = {'path': os.path.relpath(path, folder), 'bytes': os.path.getsize(path),
+                                               'sha256': digest.hexdigest()}
+differences = [r['path'] for r in wanted['files'] if found.get(r['path']) != r]
+differences += sorted(set(found) - {r['path'] for r in wanted['files']})
+print(json.dumps({'files': len(wanted['files']), 'bytes': sum(r['bytes'] for r in wanted['files']),
+                  'differences': differences, 'manifest_sha256': hashlib.sha256(raw).hexdigest()}))
+"""
+# The copies of the mirror: {job folder: [generations]}, in the form of Destination.copies().
+MIRROR_LIST = r"""
+import json, os, sys
+root, found = sys.argv[1], {}
+for top in ('platform', 'zones'):
+    for base, dirs, files in os.walk(os.path.join(root, top)):
+        if 'copy-manifest.json' in files:
+            relative = os.path.relpath(base, root).split(os.sep)
+            if 2 <= len(relative) <= 5 and not relative[-1].endswith('.partial'):
+                found.setdefault('/'.join(relative[:-1]), []).append(relative[-1])
+print(json.dumps({k: sorted(v) for k, v in sorted(found.items())}))
+"""
+
+
+def mirror_writer(node, path):
+    """The pod that receives the copies on the mirror node. It mounts only the mirror folder, runs as the user that owns
+    the folder, with no capability and no API token, and the runner deletes it after the job."""
+    return {'apiVersion': 'v1', 'kind': 'Pod',
+            'metadata': {'name': MIRROR_POD, 'namespace': READER_NAMESPACE,
+                         'labels': {'app.kubernetes.io/name': 'backup-mirror-write'}},
+            'spec': {'restartPolicy': 'Never', 'serviceAccountName': READER_ACCOUNT,
+                     'automountServiceAccountToken': False, 'enableServiceLinks': False,
+                     'activeDeadlineSeconds': 6 * 3600, 'nodeSelector': {'kubernetes.io/hostname': node},
+                     'tolerations': [{'key': 'node-role.kubernetes.io/control-plane', 'operator': 'Exists',
+                                      'effect': 'NoSchedule'}],
+                     'securityContext': {'runAsUser': MIRROR_UID, 'runAsGroup': MIRROR_UID, 'runAsNonRoot': True,
+                                         'seccompProfile': {'type': 'RuntimeDefault'}},
+                     'containers': [{'name': 'write', 'image': HELPER_IMAGE, 'command': ['sleep', str(6 * 3600)],
+                                     'resources': {'requests': {'cpu': '10m', 'memory': '32Mi'},
+                                                   'limits': {'memory': '256Mi'}},
+                                     'securityContext': {'allowPrivilegeEscalation': False, 'privileged': False,
+                                                         'readOnlyRootFilesystem': True,
+                                                         'capabilities': {'drop': ['ALL']}},
+                                     'volumeMounts': [{'name': 'mirror', 'mountPath': MIRROR_ROOT}]}],
+                     'volumes': [{'name': 'mirror', 'hostPath': {'path': path, 'type': 'Directory'}}]}}
+
+
+class Mirror:
+    """The second location of vars.backup.mirror. Each command runs in the pod of mirror_writer()."""
+
+    def __init__(self, s):
+        values = s.backup.get('mirror') or {}
+        self.node, self.path = values.get('node', ''), values.get('path', '')
+
+    def __enter__(self):
+        kubectl('-n', READER_NAMESPACE, 'delete', 'pod', MIRROR_POD, '--ignore-not-found', '--wait=true')
+        kubectl('create', '-f', '-', input=json.dumps(mirror_writer(self.node, self.path)))
+        try:
+            kubectl('-n', READER_NAMESPACE, 'wait', '--for=condition=Ready', f'pod/{MIRROR_POD}', '--timeout=300s')
+        except SystemExit:
+            self.__exit__()
+            raise
+        return self
+
+    def __exit__(self, *_):
+        kubectl('-n', READER_NAMESPACE, 'delete', 'pod', MIRROR_POD, '--wait=false', check=False)
+
+    def run(self, *args, check=True):
+        return kubectl('-n', READER_NAMESPACE, 'exec', MIRROR_POD, '-c', 'write', '--', *args, check=check)
+
+    def succeeds(self, *args):
+        return subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', READER_NAMESPACE, 'exec',
+                               MIRROR_POD, '-c', 'write', '--', *args], capture_output=True).returncode == 0
+
+    def problem(self):
+        if self.succeeds('test', '-f', f'{MIRROR_ROOT}/{schedule.MARKER}'):
+            return ''
+        return (f'the mirror {self.path} of {self.node} has no {schedule.MARKER}. A mount may be missing. The mirror '
+                'pauses until the folder is mounted again.')
+
+    def folder(self, key, generation):
+        return f'{MIRROR_ROOT}/{job_folder(key)}/{name_arg(generation, "generation")}'
+
+    def copies(self):
+        return json.loads(self.run('python3', '-c', MIRROR_LIST, MIRROR_ROOT))
+
+    def check(self, key, generation):
+        folder = self.folder(key, generation)
+        if not self.succeeds('test', '-f', f'{folder}/{MANIFEST}'):
+            raise SystemExit(f'the mirror has no copy {folder}.')
+        return json.loads(self.run('python3', '-c', MIRROR_VERIFY, folder))
+
+    def send(self, local, key, generation):
+        """Stream the verified copy in the folder local into the mirror, check it there and rename it into place."""
+        staging = f'{MIRROR_ROOT}/{STAGING}/{key.replace(":", "_")}/{name_arg(generation, "generation")}.partial'
+        self.run('sh', '-c', f'rm -rf "{staging}" && mkdir -p "{staging}"')
+        reader = subprocess.Popen(['tar', '-C', str(local), '-cf', '-', '.'], stdout=subprocess.PIPE)
+        writer = subprocess.run(['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', READER_NAMESPACE, 'exec',
+                                 '-i', MIRROR_POD, '-c', 'write', '--', 'tar', '-xf', '-', '-C', staging],
+                                stdin=reader.stdout, capture_output=True)
+        reader.stdout.close()
+        if reader.wait() or writer.returncode:
+            raise SystemExit(f'the transfer of {key} {generation} to the mirror failed: {writer.stderr[-300:]!r}')
+        checked = json.loads(self.run('python3', '-c', MIRROR_VERIFY, staging))
+        if checked['differences']:
+            raise SystemExit(f'the mirror copy of {key} {generation} differs from its manifest: {checked["differences"][:5]}')
+        final = self.folder(key, generation)
+        self.run('sh', '-c', f'mkdir -p "$(dirname "{final}")" && rm -rf "{final}" && mv "{staging}" "{final}"')
+        return checked
+
+    def remove(self, key, generation):
+        self.run('rm', '-rf', self.folder(key, generation))
+
+
+def mirror_job(s, key):
+    """Send each verified copy of the job that the mirror lacks, and remove the mirror copies that retention removed.
+
+    A failed mirror marks the job with mirror_failed in the state. The first location keeps its copies, and the next
+    job sends the missing ones.
+    """
+    if not (s.backup.get('mirror') or {}).get('node'):
+        return
+    target, _ = destination(s)
+    data = load_state(s)
+    record = data['jobs'].setdefault(key, {'copies': []})
+    try:
+        with Mirror(s) as mirror:
+            problem = mirror.problem()
+            if problem:
+                raise SystemExit(problem)
+            present = set(mirror.copies().get(job_folder(key), []))
+            kept = {c['generation'] for c in record['copies'] if c.get('verified')}
+            for copy in record['copies']:
+                if copy.get('verified') and copy['generation'] not in present:
+                    mirror.send(copy['path'], key, copy['generation'])
+                    print(json.dumps({'job': key, 'generation': copy['generation'], 'mirror': mirror.node}), flush=True)
+            for generation in sorted(present - kept):
+                mirror.remove(key, generation)
+        record.pop('mirror_failed', None)
+    except (SystemExit, OSError, ValueError, subprocess.SubprocessError) as error:
+        record['mirror_failed'] = str(error)[:500]
+        print(json.dumps({'job': key, 'mirror_failed': record['mirror_failed']}), flush=True)
+    data['jobs'][key] = record
+    save_state(s, data)
+
+
 def newest_snapshot(names, now):
     """(file name, creation time) of the newest scheduled snapshot of names. The time is in the name."""
     found = sorted((int(m.group(1)), name) for name in names if (m := SNAPSHOT_FILE.fullmatch(name)))
@@ -1505,6 +1673,7 @@ def run_job(key, generation):
         record['copies'].remove(old)
     save_state(s, data)
     print(json.dumps({'job': key, **copy}))
+    mirror_job(s, key)
 
 
 def fetched(s, key, generation):
@@ -1915,7 +2084,7 @@ def main(argv):
     # Every argument after the command is a name, except the job key of run and verify, which job_folder() checks.
     if argv and argv[0] in ('run', 'verify'):
         job_folder(argv[1]) if len(argv) > 1 else None
-        [name_arg(a) for a in argv[2:]]
+        [name_arg(a) for a in argv[2:] if a != '--mirror']
     elif argv and argv[0] in ('restore-zone', 'restore-hoover', 'recovery', 'restore-platform', 'restore-secret-store'):
         [name_arg(a) for a in argv[1:]]
     if argv == ['tick']:
@@ -1936,6 +2105,12 @@ def main(argv):
                              'backups.py in the runner container of the operator pod.')
         target.enable()
         print(json.dumps({'destination': target.path, 'node': target.node.name, 'marker': schedule.MARKER}))
+    elif argv == ['copies', '--mirror']:
+        with Mirror(site()) as mirror:
+            print(json.dumps(mirror.copies(), indent=1))
+    elif len(argv) == 4 and argv[0] == 'verify' and argv[3] == '--mirror':
+        with Mirror(site()) as mirror:
+            print(json.dumps(mirror.check(argv[1], name_arg(argv[2], 'generation'))))
     elif argv == ['copies']:
         target, problem = destination(site())
         if problem:

@@ -118,7 +118,7 @@ The portal also shows the operations of the zones.
 The settings `backup.opendesk.*` and `backup.hoover.*` of each zone and `backup.platform.*` of the cluster turn each job on and set its retained copies.
 The operator pod runs on the backup node, and its runner container writes the copies into the folder of that node. No copy needs SSH.
 
-1. Mount the file system of the backups at the backup folder on the backup node. Make sure that it is on another host. The system cannot check this.
+1. Give the backup node a file system for the backups. With `volume_group` and `size_gb` in `backup` of the site file, `deploy-k3s up` creates and mounts a logical volume. Without them, mount the file system yourself. Add `backup.mirror` to keep each copy on a second node as well.
 2. Run `deploy-k3s up`. The host step creates the folders `zones`, `platform` and `staging` and the marker of the folder.
    A folder without the marker pauses every job, so a missing mount does not fill the disk.
    When the fstab names a mount at the folder and it is not mounted, the step writes no marker.
@@ -126,9 +126,10 @@ The operator pod runs on the backup node, and its runner container writes the co
 4. Read the state of the jobs and the list of copies in the runner container:
 
    ```sh
-   run="kubectl -n operator-portal exec deploy/portal -c runner -- python3 /opt/hoover4/k3s/platform/backups/backups.py"
+   run="kubectl -n operator-portal exec deploy/portal -c runner -- env KUBECONFIG=/tmp/kubeconfig-runner python3 /opt/hoover4/k3s/platform/backups/backups.py"
    $run status
    $run copies
+   $run copies --mirror
    ```
 
 | Copy | Folder below the backup folder |

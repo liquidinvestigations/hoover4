@@ -113,7 +113,7 @@
   ansible.builtin.include_tasks: local.yml
   when: hoover4_single_local | bool
 
-- name: Create the backup folders of the backup node
+- name: Create the backup folders of the backup node and the mirror node
   ansible.builtin.include_tasks: backup.yml
   when: hoover4_backup_path | length > 0
 

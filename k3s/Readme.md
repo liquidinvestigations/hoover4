@@ -1218,6 +1218,19 @@ The `backup` node holds the backup folder (`path`). The operator pod runs on tha
 The runner writes, checks, lists and removes the copies as files of that folder, so no copy needs SSH, a user entry or a key.
 The host step `hosts:prepare` creates the folders `zones/`, `platform/` and `staging/` and the marker `.hoover4-backup-destination`, owned by the user of the operator pod (uid 1000).
 When the fstab of the node names a mount at the path and the file system is not mounted, the step writes nothing there.
+With `volume_group` and `size_gb` the step creates the logical volume `hoover4-backups` of that size in the volume group, makes an ext4 file system on it and mounts it at the path with `nofail`. It never formats or resizes an existing volume of that name. Another device at the path stops the step with the names of both devices.
+`backup.mirror` (`node`, `path`, `volume_group`, `size_gb`) names a second node with its own folder, which the step prepares in the same way. The mirror node must differ from the backup node.
+`deploy-k3s check` reports a backup node that holds data of the shared stores when the site has no mirror, and a site with `backup` and no backup policy on.
+
+```yaml
+backup:
+  node: worker-b
+  path: /srv/hoover4-backups
+  volume_group: hdd-vg
+  size_gb: 300
+  mirror: {node: server-a, path: /srv/hoover4-backups, volume_group: hdd-vg, size_gb: 300}
+```
+
 The commands take names: a zone, a collection, a job and a generation (the name of a copy). No command takes a host path.
 Run them in the runner container, because only that container has the folder:
 
@@ -1228,11 +1241,11 @@ Run them in the runner container, because only that container has the folder:
 | The platform recovery set | `platform/<generation>/` |
 
 ```sh
-run="kubectl -n operator-portal exec deploy/portal -c runner -- python3 /opt/hoover4/k3s/platform/backups/backups.py"
+run="kubectl -n operator-portal exec deploy/portal -c runner -- env KUBECONFIG=/tmp/kubeconfig-runner python3 /opt/hoover4/k3s/platform/backups/backups.py"
 $run enable    # writes the folders and the marker, as the host step does
 $run status
-$run copies
-$run verify zone:<zone> <generation>
+$run copies [--mirror]
+$run verify zone:<zone> <generation> [--mirror]
 $run restore-zone <zone> <generation> [--from <zone of the copy>]
 $run restore-hoover <zone> <collection> <generation> [--from <zone of the copy>]
 $run recovery <generation>
@@ -1246,6 +1259,10 @@ $run restore-secret-store <generation>
 - A missing marker pauses every job, so a missing remote mount does not fill the local disk.
 - A copy is made in `staging/<job>/<generation>.partial` of the backup folder, checked against its manifest and renamed into its folder. The rename moves no data. A failed job or check keeps the older copies.
 - A restore reads a copy in place, after a check of every file against its manifest.
+- With a mirror, each job then sends every verified copy of the job that the mirror lacks to the mirror node, and removes the mirror copies that retention removed.
+  The pod `backup-mirror-write` in `platform-backup` mounts only the mirror folder and runs as the user 1000. The runner streams the copy with tar through `kubectl exec`, the pod checks every file against `copy-manifest.json` and renames the folder into place, and the runner deletes the pod.
+  The mirror folder needs its own marker. Without it, or when the mirror node is down, the job record gets `mirror_failed` and the first location keeps its copies. The next job sends the missing copies.
+  `copies --mirror` and `verify <job> <generation> --mirror` read the mirror. `verify --mirror` also prints the SHA-256 of the manifest, so it can be compared with the manifest of the first location.
 - Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
 - The platform copy holds the newest scheduled etcd snapshot of the server with its token and k3s configuration, `private.tar`, `openbao.snap`, and `recovery.json` (format version 3).
   `openbao.snap` is the Raft snapshot of the secret store. The etcd snapshot holds the seal key in the Secret `openbao-seal`. `restore-secret-store` replaces the data of a running store with the snapshot of a copy. `recovery.json` names the snapshot time and the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads format version 2 and a copy of the earlier SQLite format.
