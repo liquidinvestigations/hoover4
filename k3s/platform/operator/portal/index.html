@@ -29,6 +29,9 @@
 <p>The GPU services of this installation check one key. A GPU host outside the cluster needs the same key in the file that its <code>[ai_services] vllm_api_key_file</code> names.</p>
 <p><button type="button" id="gpu-show">Show the GPU key</button> <button type="button" id="gpu-copy" hidden>Copy the GPU key</button></p>
 <p id="gpu-key" aria-live="polite"></p>
+<h2>Alarms</h2>
+<p id="alarms-status" aria-live="polite">The alarm list is loading.</p>
+<table><thead><tr><th>Since</th><th>Severity</th><th>Alarm</th><th>Object</th><th>Summary</th></tr></thead><tbody id="alarms"></tbody></table>
 <h2>Recent events</h2>
 <p id="events-status" aria-live="polite">The event feed is loading.</p>
 <table><thead><tr><th>Time</th><th>Type</th><th>Object</th><th>Reason</th><th>Message</th></tr></thead><tbody id="events"></tbody></table>
@@ -62,6 +65,23 @@ async function updateEvents() {
   document.getElementById('events').replaceChildren(...rows);
   status.textContent = `The feed shows ${data.length} recent warnings.`;
  } catch (error) { status.textContent = 'The cluster event feed is unavailable.'; }
+}
+async function updateAlarms() {
+ const status = document.getElementById('alarms-status');
+ try {
+  const result = await fetch('/alarms.json');
+  const data = await result.json();
+  if (!result.ok) throw Error(data.error);
+  document.getElementById('alarms').replaceChildren(...data.map(item => {
+   const row = document.createElement('tr');
+   const where = [item.namespace, item.pod, item.node, item.instance].filter(Boolean).join(' ') || (item.source === 'backup' ? 'Backups' : '');
+   for (const value of [item.since ? new Date(item.since).toLocaleString() : '', item.severity, item.name, where, item.summary]) {
+    const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+   }
+   return row;
+  }));
+  status.textContent = data.length ? '' : 'No alarm is active.';
+ } catch (error) { status.textContent = 'The alarm list is unavailable.'; }
 }
 function cell(...children) { const td = document.createElement('td'); td.append(...children); return td; }
 function button(label, action) { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = action; return b; }
@@ -127,6 +147,6 @@ document.getElementById('gpu-copy').onclick = async () => {
  try { await navigator.clipboard.writeText(out.textContent); document.getElementById('gpu-copy').textContent = 'Copied'; }
  catch (error) { out.textContent += ' The browser refused the copy. Select the key and copy it.'; }
 };
-update(); setInterval(update, 5000); updateEvents(); setInterval(updateEvents, 15000); updateZones(); setInterval(updateZones, 10000);
+update(); setInterval(update, 5000); updateAlarms(); setInterval(updateAlarms, 30000); updateEvents(); setInterval(updateEvents, 15000); updateZones(); setInterval(updateZones, 10000);
 </script>
 </html>

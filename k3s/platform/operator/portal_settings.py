@@ -14,10 +14,12 @@ from pathlib import Path
 REPO = Path(os.environ.get('PORTAL_REPO', '/repo'))
 sys.path.insert(0, str(REPO / 'k3s'))
 sys.path.insert(0, str(REPO / 'k3s/platform/operator'))
+sys.path.insert(0, str(REPO / 'k3s/platform/backups'))
 import config  # noqa: E402
 import apply  # noqa: E402
 import clusterstate  # noqa: E402
 import oplock  # noqa: E402
+import schedule  # noqa: E402
 
 S = apply.operator_settings
 GROUP_TITLES = {'budget': 'Hoover resources', 'switch': 'Switches', 'tuning': 'Tunings', 'volume': 'Volume sizes',
@@ -100,6 +102,15 @@ def operation_view(st, op):
     return {'id': op.id, 'status': op.status, 'error': op.error, 'steps': op.steps, 'changed': op.changed,
             'revision': op.desired_revision, 'source': op.source_revision[:12], 'attempts': op.attempts,
             'created': op.created, 'updated': op.updated, 'log': [line[:300] for line in lines]}
+
+
+@synced
+def backup_alarms():
+    """The alarm rows of the backups, from operator/backups/state.json of the operator state (../backups/backups.py)."""
+    s = site()
+    path = s.operator_state() / 'backups' / 'state.json'
+    data = json.loads(path.read_text()) if path.exists() else {}
+    return schedule.alarm_rows(data, bool(s.backup))
 
 
 @synced

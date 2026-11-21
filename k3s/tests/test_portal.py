@@ -26,7 +26,7 @@ def portal(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.PROXY_SECRET = SECRET
-    for name in ('status', 'events', 'zones', 'settings_overview'):
+    for name in ('status', 'events', 'alarms', 'zones', 'settings_overview'):
         setattr(module, name, functools.partial(lambda n: {'route': n}, name))
     server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(module.Handler, directory=str(module.ROOT)))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -44,7 +44,7 @@ def get(url, headers=None):
         return error.code, error.read()
 
 
-ROUTES = ('/status.json', '/events.json', '/zones.json', '/settings.json')
+ROUTES = ('/status.json', '/events.json', '/alarms.json', '/zones.json', '/settings.json')
 
 
 @pytest.mark.parametrize('path', ROUTES + tuple(r + '?x=1' for r in ROUTES))
@@ -255,3 +255,28 @@ def test_the_settings_page_shows_the_pool_settings_once_for_the_site(tmp_path, m
     assert view['pending'] == [{'scope': 'pools', 'key': 'budget.clamav_memory_mib', 'from': '3456', 'to': '5000'},
                                {'scope': 'pools', 'key': 'main_services.clamav_mem_limit', 'from': '3456M', 'to': '5000M'}]
     assert view['steps'] == ['pools'] and view['services'] == ['hoover4-clamav']
+
+
+def test_the_alarm_list_leaves_out_watchdog_and_puts_critical_rows_first(monkeypatch):
+    import io
+    import types
+    spec = importlib.util.spec_from_file_location('portal_server_alarms', OPERATOR / 'portal-server.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    alerts = {'data': {'alerts': [
+        {'state': 'firing', 'labels': {'alertname': 'Watchdog', 'severity': 'none'}, 'activeAt': '2026-01-01T00:00:00Z'},
+        {'state': 'pending', 'labels': {'alertname': 'NodeMemoryLow', 'severity': 'critical'}},
+        {'state': 'firing', 'labels': {'alertname': 'PodRestarts', 'severity': 'warning', 'namespace': 'a', 'pod': 'p'},
+         'annotations': {'summary': 'restarted'}, 'activeAt': '2026-01-01T00:00:00Z'},
+        {'state': 'firing', 'labels': {'alertname': 'NodeOutOfMemoryKill', 'severity': 'critical', 'instance': 'n:9100'},
+         'annotations': {'description': 'x' * 400}, 'activeAt': '2026-01-02T00:00:00Z'}]}}
+    urls = []
+    monkeypatch.setattr(module.urllib.request, 'urlopen', lambda url, timeout: urls.append(url) or io.BytesIO(json.dumps(alerts).encode()))
+    backup = {'source': 'backup', 'name': 'BackupPaused', 'severity': 'critical', 'summary': 's', 'since': ''}
+    monkeypatch.setattr(module, 'portal_settings', lambda: types.SimpleNamespace(backup_alarms=lambda: [backup]))
+    rows = module.alarms()
+    assert urls == [module.PROMETHEUS + '/api/v1/alerts']
+    assert [r['name'] for r in rows] == ['NodeOutOfMemoryKill', 'BackupPaused', 'PodRestarts']
+    assert rows[0] == {'source': 'prometheus', 'name': 'NodeOutOfMemoryKill', 'severity': 'critical', 'summary': 'x' * 300,
+                       'since': '2026-01-02T00:00:00Z', 'instance': 'n:9100'}
+    assert rows[2]['namespace'] == 'a' and rows[2]['pod'] == 'p' and rows[2]['summary'] == 'restarted'

@@ -22,9 +22,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'zones'))
 import settings  # noqa: E402
-import zonestate  # noqa: E402
 
 K = ['kubectl', '--kubeconfig', str(settings.KUBECONFIG)]
 NS = 'alarm-check'
@@ -125,7 +123,9 @@ def main():
         raise SystemExit(__doc__)
     check, NODE = sys.argv[1:]
     NODE_ADDRESS = kubectl('get', 'node', NODE, '-o', 'jsonpath={.status.addresses[?(@.type=="InternalIP")].address}')
-    tier = zonestate.node_tiers(NODE, settings.KUBECONFIG)[0]
+    # The first storage tier of the node, from its labels storage.tier/<tier>=true.
+    labels = json.loads(kubectl('get', 'node', NODE, '-o', 'json'))['metadata'].get('labels', {})
+    tier = sorted(k.split('/', 1)[1] for k, v in labels.items() if k.startswith('storage.tier/') and v == 'true')[0]
     kubectl('create', 'namespace', NS)
     ok = True
     try:

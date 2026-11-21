@@ -11,6 +11,9 @@ operator does.
   abandon                           press Abandon on the failed operation
   default <scope> <key>             press Use default and Save
   show                              take a screenshot only
+  alarms <name> present|absent [timeout]
+                                    read /alarms.json until the alarm <name> is present or absent, then take a
+                                    screenshot of the start page with its alarm list
 The check appends one result per run to <state folder>/checks/operator-settings-check.jsonl and writes a screenshot to
 <state folder>/checks/operator-settings/<n>-<phase>.png. It prints no password.
 Run it with the browser Python environment in <state folder>/browser-venv, which has nodriver.
@@ -141,12 +144,26 @@ async def main(argv):
         elif phase == 'abandon':
             await click(tab, 'Abandon')
             await asyncio.sleep(3)
+        elif phase == 'alarms':
+            name, wanted = args[0], args[1] == 'present'
+            deadline = time.time() + (int(args[2]) if len(args) > 2 else 600)
+            while True:
+                rows = json.loads(await js(tab, "fetch('/alarms.json',{cache:'no-store'}).then(r => r.text())"))
+                found = [r for r in rows if r.get('name') == name]
+                if bool(found) == wanted or time.time() > deadline:
+                    break
+                await asyncio.sleep(10)
+            result['alarm'] = {'name': name, 'wanted': args[1], 'found': found, 'rows': len(rows),
+                               'seconds': round(time.time() - deadline + (int(args[2]) if len(args) > 2 else 600))}
+            result['ok'] = bool(found) == wanted
+            await tab.get(f'{BASE}/')
+            await asyncio.sleep(4)
         after = await state(tab)
         result['revision_after'] = after['revision']
         result['applied_after'] = after['applied']['revision']
         result['pending'] = after['pending']
         result['services'] = after['services']
-        result['summary'] = await js(tab, "document.getElementById('summary').textContent")
+        result['summary'] = await js(tab, "document.getElementById('summary')?.textContent || ''")
         count = len(list(SHOTS.glob('*.png'))) + 1
         shot = SHOTS / f'{count:02d}-{phase}.png'
         await tab.save_screenshot(str(shot), full_page=True)

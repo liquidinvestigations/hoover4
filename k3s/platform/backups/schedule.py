@@ -164,3 +164,33 @@ def recommend(sizes, free_bytes):
         while needed(plan_copies) > free_bytes and plan_copies[kind] > minimum[kind]:
             plan_copies[kind] -= 1
     return plan_copies, needed(plan_copies)
+
+
+def _stamp(seconds):
+    import time
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(seconds)) if seconds else ''
+
+
+def alarm_rows(data, has_destination):
+    """The alarm rows of the backups for the operator portal, from the state file of backups.py.
+
+    A job whose last run failed, each blocked job, a paused destination, and a site with a destination and no job give
+    one row each.
+    """
+    rows = []
+    for key, record in sorted((data.get('jobs') or {}).items()):
+        if record.get('last_error'):
+            rows.append({'source': 'backup', 'name': 'BackupFailed', 'severity': 'critical',
+                         'summary': f'The last copy of {key} failed: {record["last_error"]}'[:300],
+                         'since': _stamp(record.get('failed'))})
+    for entry in data.get('blocked') or []:
+        rows.append({'source': 'backup', 'name': 'BackupBlocked', 'severity': 'warning',
+                     'summary': f'The destination has too little space for {entry.get("job")}. Proposal: '
+                                f'{entry.get("proposal", "")}'[:300], 'since': ''})
+    if data.get('paused'):
+        rows.append({'source': 'backup', 'name': 'BackupPaused', 'severity': 'critical',
+                     'summary': ('The backups pause: ' + data['paused'])[:300], 'since': ''})
+    if has_destination and not data.get('jobs'):
+        rows.append({'source': 'backup', 'name': 'BackupOff', 'severity': 'warning',
+                     'summary': 'The site has a backup destination and no backup policy is on.', 'since': ''})
+    return rows

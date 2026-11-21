@@ -107,7 +107,10 @@ The operator portal at `https://operator.<domain>/` links the monitoring tools.
 | Grafana | Read the resource dashboards. Use Explore to search the logs in Loki. |
 | Prometheus | Read the alarms at `/alerts` and the scrape targets. |
 
-The portal also shows the recent warning events of the cluster and the operations of the zones.
+The portal shows the active alarms above the recent warning events. The list holds the firing Prometheus alarms and the backup alarms: a failed copy, a job without space, a paused destination, and a destination without a backup policy.
+No alarm leaves the cluster. Alertmanager is off, so the site sends no mail and no message.
+
+The portal also shows the operations of the zones.
 
 ## Back up the site
 

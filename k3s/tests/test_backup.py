@@ -1054,3 +1054,17 @@ def test_a_snapshot_that_changed_in_the_transfer_stops_the_platform_copy(local_d
     with pytest.raises(SystemExit, match='hours old'):
         backups.run_platform(s, tmp_path / 'partial-2', now=1800000000)
     assert not any(c[0] == 'tar' for c in old) and old[-1][-4:] == ('delete', 'pod', 'k3s-snapshot-read', '--wait=false')
+
+
+def test_the_alarm_rows_name_a_failed_job_a_blocked_job_a_pause_and_a_site_without_jobs():
+    data = {'jobs': {'zone:zone-a': {'copies': [], 'last_error': 'the dump failed', 'failed': 86400},
+                     'platform': {'copies': []}},
+            'blocked': [{'job': 'hoover:zone-a:c', 'needed_bytes': 9, 'free_bytes': 1, 'proposal': 'keep 1 copies of hoover:zone-a:c'}],
+            'paused': 'the backup destination /b has no marker.'}
+    rows = schedule.alarm_rows(data, True)
+    assert [(r['name'], r['severity']) for r in rows] == [('BackupFailed', 'critical'), ('BackupBlocked', 'warning'),
+                                                          ('BackupPaused', 'critical')]
+    assert rows[0]['summary'] == 'The last copy of zone:zone-a failed: the dump failed' and rows[0]['since'] == '1970-01-02T00:00:00Z'
+    assert 'keep 1 copies of hoover:zone-a:c' in rows[1]['summary'] and all(r['source'] == 'backup' for r in rows)
+    assert [r['name'] for r in schedule.alarm_rows({'jobs': {}, 'blocked': [], 'paused': ''}, True)] == ['BackupOff']
+    assert schedule.alarm_rows({'jobs': {}, 'blocked': [], 'paused': ''}, False) == []

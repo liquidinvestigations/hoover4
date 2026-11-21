@@ -1483,6 +1483,7 @@ def run_job(key, generation):
         lock.release()
         data = load_state(s)
         data['jobs'].setdefault(key, {'copies': []})['last_error'] = str(error)[:500]
+        data['jobs'][key]['failed'] = int(time.time())
         data['jobs'][key].pop('running', None)
         save_state(s, data)
         shutil.rmtree(partial, ignore_errors=True)
@@ -1494,6 +1495,7 @@ def run_job(key, generation):
     record.pop('running', None)
     record.pop('slot', None)
     record.pop('last_error', None)
+    record.pop('failed', None)
     copies = {'hoover': 'backup.hoover.copies', 'zone': 'backup.opendesk.copies', 'opendesk': 'backup.opendesk.copies',
               'platform': 'backup.platform.copies'}[kind]
     scope = 'cluster' if key == 'platform' else f'zone:{key.split(":")[1]}'

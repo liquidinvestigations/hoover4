@@ -13,7 +13,7 @@ together with X-Operator-Proxy-Secret. The secret is the key proxy-secret of the
 (start-web-tools.sh). Only the portal hop of the gateway pod sets it (operator-login.yaml): it listens on the loopback
 address of that pod, removes a copy that a client sent and adds the secret, so Grafana, Prometheus and Headlamp never
 receive it.
-Every dynamic route needs the operator: status.json, events.json, zones.json, settings.json and every POST. The route
+Every dynamic route needs the operator: status.json, events.json, alarms.json, zones.json, settings.json and every POST. The route
 is the path without its query. /healthz answers {"ok": true} without the operator and gives no other data. The static
 pages hold no data.
 A POST needs the operator origin, so another site cannot send one with the operator session cookie.
@@ -171,7 +171,22 @@ class Handler(SimpleHTTPRequestHandler):
   except Exception:raw=json.dumps({'error':failure}).encode();self.send_response(503)
   self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
 def settings_overview():return portal_settings().overview(nodes())
+SEVERITY={'critical':0,'warning':1}
+def alarms():
+ """The firing alarms of Prometheus without Watchdog and InfoInhibitor, and the alarm rows of the backups. Critical rows
+ come first, then the oldest. No alarm leaves the cluster: Alertmanager is off."""
+ with urllib.request.urlopen(PROMETHEUS+'/api/v1/alerts',timeout=10) as response:items=json.load(response)['data']['alerts']
+ rows=[]
+ for a in items:
+  labels=a.get('labels') or {};notes=a.get('annotations') or {}
+  if a.get('state')!='firing' or labels.get('alertname') in ('Watchdog','InfoInhibitor'):continue
+  rows.append({'source':'prometheus','name':labels.get('alertname',''),'severity':labels.get('severity',''),
+   'summary':(notes.get('summary') or notes.get('description') or '')[:300],'since':a.get('activeAt',''),
+   **{k:labels[k] for k in ('namespace','pod','node','instance') if k in labels}})
+ rows+=portal_settings().backup_alarms()
+ rows.sort(key=lambda r:(SEVERITY.get(r['severity'],2),r['since'] or '9'))
+ return rows
 # The dynamic routes. The handler looks each function up at request time, so a test can replace it.
 ROUTES={'/status.json':('status','Cluster resource measurements are unavailable.'),'/events.json':('events','The cluster event feed is unavailable.'),
- '/zones.json':('zones','The zone list is unavailable.'),'/settings.json':('settings_overview','The operator settings are unavailable.')}
+ '/zones.json':('zones','The zone list is unavailable.'),'/alarms.json':('alarms','The alarm list is unavailable.'),'/settings.json':('settings_overview','The operator settings are unavailable.')}
 if __name__=='__main__':ThreadingHTTPServer(ADDRESS,functools.partial(Handler,directory=str(ROOT))).serve_forever()
