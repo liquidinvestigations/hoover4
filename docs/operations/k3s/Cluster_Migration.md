@@ -145,7 +145,7 @@ A second import of the same zone id needs the removal of `operator/import/<zone>
    ```
 
 4. Restore the archive into a temporary zone of another site and verify the sign-in and the data before the removal.
-   [The operations manual](Cluster_Operations.md#restore-a-zone) describes the restore.
+   [The operations manual](Cluster_Recovery.md#restore-a-zone) describes the restore.
 5. Write the removal script, read every line, and run it as root:
 
    ```sh

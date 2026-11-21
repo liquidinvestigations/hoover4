@@ -9,11 +9,14 @@ Keep host names, addresses and credentials in the private site folder and in the
 ## Contents
 
 - [Prepare the operator host](#prepare-the-operator-host)
+- [Prepare the nodes](#prepare-the-nodes)
 - [Write the site file](#write-the-site-file)
 - [Choose the node roles](#choose-the-node-roles)
 - [Choose the certificates of the HTTPS frontend](#choose-the-certificates-of-the-https-frontend)
+- [Resolve the names of a LAN site](#resolve-the-names-of-a-lan-site)
 - [Give the operator SSH and sudo access to each node](#give-the-operator-ssh-and-sudo-access-to-each-node)
 - [Install the site](#install-the-site)
+- [Keep the files of the site](#keep-the-files-of-the-site)
 - [Add a GPU node](#add-a-gpu-node)
 - [Sign in for the first time](#sign-in-for-the-first-time)
 - [Verify the installation](#verify-the-installation)
@@ -28,6 +31,15 @@ The operator host is a workstation that reaches every node with SSH. It runs the
 3. Put the site file in a folder of your choice, for example `k3s/private/<site>.yml`. Git ignores `k3s/private/`.
    Its state folder is beside it, with the name of the file without its extension, for example `k3s/private/<site>/`.
    One checkout manages more than one site. Each site has its own site file and state folder.
+
+## Prepare the nodes
+
+The test sites run Debian 13 on x86-64 nodes. A GPU node can be ARM64.
+
+1. Give each node the volume groups of the site file. The installer creates no volume group and changes no disk, partition or swap device.
+2. Give each node a swap device of 25 to 50 % of its memory. The pods use swap only up to their quota, and k3s uses none.
+3. Set `memory_tuning: true` for the node in the site file. The host step then turns on zswap with zstd. `deploy-k3s check` prints a recommendation for a node without swap, without zswap or with an active OOM daemon. [Use swap and zswap](../../../k3s/Readme.md#use-swap-and-zswap) describes the settings.
+4. Stop and disable an OOM daemon such as `earlyoom` or `nohang`. It stops the processes of the pods before the kernel and the kubelet act.
 
 ## Write the site file
 
@@ -107,6 +119,14 @@ Replace the files on the public node, then run the frontend step again.
 Each zone host is `<zone>-<app>.<domain>`, for example `zone-a-portal.<domain>`. The name `*.<domain>` covers every zone, so a new zone needs no new certificate.
 Point the DNS records `*.<domain>` and `<domain>` to the public node, and `turn.<domain>` to the media node. `deploy-k3s render` prints them. A new zone needs no new DNS record.
 
+## Resolve the names of a LAN site
+
+A site on a LAN serves every zone at a name below its domain, for example `<zone>-files.<domain>`. The site makes no DNS record outside its nodes.
+
+1. Add a DNS record for `*.<domain>` and `<domain>` with the address of the public node to the DNS server of the LAN.
+2. With `tls_mode: internal`, install `frontend/local-ca.crt` of the state folder in each browser that opens the site.
+3. Give the CA file to the check tools of the workstation, for example `SSL_CERT_FILE=<state folder>/frontend/local-ca.crt python3 k3s/tools/verify-lab-logins.py <zone>`.
+
 ## Give the operator SSH and sudo access to each node
 
 The host steps are Ansible plays ([k3s/ansible](../../../k3s/ansible)) that the driver runs in the operator image.
@@ -157,6 +177,27 @@ The host play removes `/usr/local/libexec/hoover4`, the sudo rule `/etc/sudoers.
    A resume refuses a changed site file, another commit of the checkout and another cluster. Start a new run after such a change.
 5. A complete run writes `deploy/applied.json` in the operator state. `k3s/deploy-k3s status` shows the applied revision.
 
+## Keep the files of the site
+
+Keep these files outside the nodes of the site. Without them a lost site or control plane cannot be recovered.
+
+| File | Content | When it changes |
+|---|---|---|
+| The site file | The nodes, roles, volume groups and site values | At each change of the site |
+| The state folder | The admin kubeconfig, the tokens, the keys of the secret store and the operator logins | At each run of `deploy-k3s` |
+| The site identity file of `deploy-k3s identity export` | The server token and the two keys of the secret store, encrypted | At a reinstall |
+| The passphrase of the identity file | | Keep it apart from the file. |
+| The backup copies | The copies of the zones, the collections and the platform | Each job. Keep the backup folder or its mirror on another host. |
+
+Write the identity file after the first `deploy-k3s up`, and check it:
+
+```sh
+k3s/deploy-k3s identity export <file> --site <site file>
+k3s/deploy-k3s identity verify <file> --site <site file>
+```
+
+The command refuses a file in the checkout or in the state folder. [The recovery manual](Cluster_Recovery.md) names the files that each procedure needs.
+
 ## Add a GPU node
 
 A GPU node can keep its existing VPN interface. Then name that interface in the site file and turn off `managed` for the node.
@@ -196,5 +237,5 @@ Add the reverse peer first. Then run the host steps of the peer node, and check 
 | The run is complete | `k3s/deploy-k3s status` names the applied record and revision. |
 | The logins of a zone work | `python3 k3s/tools/verify-lab-logins.py <zone>` |
 
-[The operations manual](Cluster_Operations.md) describes upgrades, settings, backups and restore.
+[The operations manual](Cluster_Operations.md) describes upgrades, settings and backups. [The recovery manual](Cluster_Recovery.md) describes the restores.
 [The migration manual](Cluster_Migration.md) describes the move of an earlier installation into a site.

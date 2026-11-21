@@ -347,7 +347,7 @@ A pod stops or moves on a running site only in a deployment: `deploy-k3s up`, a 
 | Site placement | No. The step `placement` runs only in `up`. A new CPU scale factor resizes the CPU requests of the running pods in place and restarts no container. A new plan changes no pod template ([Place the pods of the site](#place-the-pods-of-the-site)). |
 | Preemption | No. Only a new pod of the class `hoover-node-bound` preempts. The renders give the class only to Deployments, StatefulSets, the operator portal and the coturn probe pod of the calls step, so no Job or CronJob creates such a pod. |
 | Node-pressure eviction | No, while each pod stays at its measured peak: the requests hold the peaks and the kubelet reserves the memory of k3s and the system ([Size the memory](#size-the-memory)). |
-| OOM kill | A container above its limit restarts in its pod, on its node. The limits stay above the measured peaks. |
+| OOM kill | A runc container or a Kata guest above its limit restarts in its pod, on its node. A gVisor pod above its limit uses its swap quota first, then the kernel stops it. The limits stay above the measured peaks. |
 | Periodic tasks and Jobs | A zone has no CronJob. Each periodic openDesk task runs in a container that stays running ([Run the periodic tasks](#run-the-periodic-tasks)). The install and migration Jobs start their own pods, only in a deployment. These pods have the default priority, so they preempt no pod. |
 | Rollout | A large single-replica Deployment stops its old pod before the new pod starts (`rollout()` of [zones/postrender.py](zones/postrender.py), `Recreate` in the Hoover render), so an update needs no free memory for a second pod. |
 | Node restart | A node that returns within 300 s restarts its pods in place. After 300 s the taint `node.kubernetes.io/unreachable` evicts its pods, and their controllers start them on other nodes. The pods of the class `hoover-node-bound` wait for their node. |
@@ -365,7 +365,7 @@ objects outside them:
 | `shared.py grow` | the claims of the shared stores in `hoover-stores` grow with the zone count | None. The claim template and the pods stay. |
 | `creds.py`, `setup.py`, `shared.py remove` | the tenant of the zone in the shared stores: ClickHouse and Manticore users and databases, Garage keys and buckets, the Temporal namespace, the Secrets `hoover-stores` and `garage-tenants` | None. The stores apply these changes while they run. |
 | Ingress objects of the zone | the routes of the ingress controller | None. The controller reloads its configuration and keeps its pod. |
-| Step `calls` of the zone runner ([platform/calls/install-calls.py](platform/calls/install-calls.py)) | the configuration of coturn and the JVB, which holds each zone | The two call services restart, and the calls of every zone end. |
+| Step `calls` of the zone runner ([platform/calls/install-calls.py](platform/calls/install-calls.py)) | the configuration of coturn and the JVB, which holds each zone | No call service restarts. The sidecars load the new zone list. See [Place the call services.](#place-the-call-services) |
 | Step `placement` of `up` | the ConfigMap `kube-system/hoover-placement` and the CPU requests of the running pods | A new CPU scale factor resizes the pods of every zone in place, without a restart. A zone operation of the portal does not run this step. |
 
 A zone backup reads the zone and stops no pod of any zone.

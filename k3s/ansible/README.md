@@ -26,7 +26,7 @@ All managed nodes in inventory must have:
 - Passwordless SSH access
 - Root access (or a user with equivalent permissions) 
 
-It is also recommended that all managed nodes disable firewalls and swap. See [K3s Requirements](https://docs.k3s.io/installation/requirements) for more information.
+It is also recommended that all managed nodes disable firewalls. The hoover4 roles keep the swap device of a host and give each pod a swap quota (see [Use swap and zswap.](../Readme.md#use-swap-and-zswap)). See [K3s Requirements](https://docs.k3s.io/installation/requirements) for more information.
 
 ## Installation
 

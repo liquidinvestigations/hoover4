@@ -29,7 +29,7 @@ flannel-iface: {{ hoover4_flannel_iface }}
 kubelet-arg:
   # One node can hold several zones. A zone has about 50 pods, and the node pod network is a /24.
   - max-pods=250
-  # The pods must not use the memory of the system and k3s, because memory is not overcommitted.
+  # The pods must not use the memory of the system and k3s, because the memory requests are not overcommitted.
 {% if hoover4_kubelet_reserved %}
   # The memory of the value reserved of the site file, the CPU of k3s without pods, and the CPU that a slow node cannot
   # use. The allocatable CPU of a node counts threads of the fastest node of the site (../../../../config.py

@@ -46,7 +46,7 @@ The cluster places each pod of the zone on the node with the lowest requested CP
 A pod with a volume stays on the node of its volume.
 When that node is full, the pod takes the place of a pod without a volume, and that pod starts again on another node.
 
-A create, upgrade or delete restarts the shared call services. Calls that run at that time end.
+A create or delete restarts no shared call service. The calls of the other zones continue.
 
 Each host of a zone is `<zone>-<app>.<domain>`, and the HTTPS frontend serves all of them.
 A create stops at the step `frontend` with an error when the frontend does not answer for the zone portal. For example, the frontend is not installed.
@@ -80,7 +80,7 @@ A value that you save during a running operation waits for the next Apply.
 A zone operation or an Apply that fails keeps its finished steps.
 
 1. Read the error and the last output lines of the operation.
-2. Correct the cause. The private infrastructure log and [the troubleshooting guide](../Troubleshooting.md) help with known causes.
+2. Correct the cause. [The troubleshooting manual](Cluster_Troubleshooting.md) names the known causes.
 3. Select **Run again** for a zone operation, or **Retry** for an Apply. The operation continues at its first unfinished step.
 4. Select **Abandon** to stop a failed Apply. Its unfinished scopes keep their earlier applied values.
 
@@ -101,7 +101,7 @@ The ClickHouse databases, Manticore tables and Garage buckets of a zone are in t
 
 1. Turn on `backup.opendesk.enabled` and `backup.identity.enabled`, set `backup.opendesk.copies` and `backup.identity.copies` in the settings of the zone, and Apply.
 2. The runner makes one zone copy each week and one identity copy each day. The zone keeps running during a copy.
-3. Restore the identity copy with `backups.py restore-identity`, then the zone copy with `backups.py restore-zone`, in the runner container of the operator pod. [The operations manual](Cluster_Operations.md#restore-a-zone) describes the steps.
+3. Restore the identity copy with `backups.py restore-identity`, then the zone copy with `backups.py restore-zone`, in the runner container of the operator pod. [The operations manual](Cluster_Recovery.md#restore-a-zone) describes the steps.
 
 <a href="img/settings-zone-backup.png"><img src="img/settings-zone-backup.png" alt="The backup destination and the backup settings of a zone" width="100%"></a>
 
