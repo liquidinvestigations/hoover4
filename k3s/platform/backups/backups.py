@@ -90,7 +90,10 @@ Usage: backups.py tick                      start the next due job, as the opera
        backups.py copies [--mirror]         list the copies of the destination, or of the mirror
        backups.py verify <job> <generation> [--mirror]             read a copy again against its manifest, in the
                                                                     destination or in the mirror
-       backups.py restore-zone <zone> <generation> [--from <zone>]  restore a complete zone copy into a zone
+       backups.py restore-identity <zone> <generation> [--from <zone>]
+                                                                    restore an identity copy into a zone
+       backups.py restore-zone <zone> <generation> [--from <zone>] [--without-owners]
+                                                                    restore a zone copy into a zone
        backups.py restore-hoover <zone> <collection> <generation> [--from <zone>]
                                                                     import a collection copy into the zone's Hoover
        backups.py recovery <generation>                             print the recovery set of a platform copy
@@ -1945,202 +1948,238 @@ def zone_parts(s, folder, zone):
     return parts
 
 
-def restore_zone(zone, generation, source_zone=None):
-    """Restore a complete zone copy into an installed zone.
+# The steps of the two restore commands, in their order. Each restore records its finished steps in
+# <operator state>/backups/restore-<zone>.json and writes the record into the cluster copy after each step, so a new
+# operator pod continues at the first step that is not done.
+#   check            the copy against its manifest, copy.json (format, version, kind, release, classes of the parts),
+#                    the dumps and, for a zone copy, the owners of the data in the directory of the target.
+#   close            scale the applications, gates and workers to zero, and the stores except the databases.
+#   directory        replace the directory claim (identity copy).
+#   databases        replace each database of the copy (keycloak in an identity copy, the data databases in a zone copy).
+#   claims, objects, shared-stores   replace each data claim, data bucket and the Hoover databases (zone copy).
+#   reset-derived    empty each derived claim of the zone (parts.py), so no service keeps the state of before.
+#   bind-keycloak    bind.keycloak_admin(), before Keycloak starts.
+#   open             start the zone with the replicas of the target.
+#   bind-directory   bind.directory_accounts().
+#   jobs             bind.rerun_jobs(), then a restart of Nextcloud, which reads its configuration row at its start.
+#   apply            zone.py apply <zone> --full.
+RESTORE_STEPS = {
+    'identity': ['check', 'close', 'directory', 'databases', 'reset-derived', 'bind-keycloak', 'open', 'bind-directory',
+                 'jobs', 'apply'],
+    'zone': ['check', 'close', 'databases', 'claims', 'objects', 'shared-stores', 'reset-derived', 'open', 'jobs',
+             'apply'],
+}
+RESTORE_JOB_KEYS = {'identity': 'identity', 'zone': 'zone'}
 
-    The zone must exist, for example after zone.py apply. The steps: fetch and verify the copy, close the zone and its
-    Hoover installation and stop their stores except the zone databases and the object store, replace the objects of
-    the object store, apply the Secrets of each part, replace the content of each claim, import the database dumps,
-    restart the databases and the object store, and open the zone with the replicas of the copy. Each step is recorded in <operator state>/backups/restore-<zone>.json. A failure leaves the zone closed.
-    """
-    s = site()
-    name_arg(zone, 'zone')
-    key = f'zone:{source_zone or zone}'
-    if kubectl('get', 'namespace', zone, '--ignore-not-found', '-o', 'name').strip() == '':
-        raise SystemExit(f'the zone namespace {zone} does not exist. Install the zone first.')
-    copy = f'{job_folder(key)}/{name_arg(generation, "generation")}'
-    record_path = s.operator_state() / 'backups' / f'restore-{zone}.json'
-    progress = json.loads(record_path.read_text()) if record_path.exists() else {'copy': copy, 'steps': []}
-    if progress['copy'] != copy:
-        raise SystemExit(f'{record_path} belongs to the restore of {progress["copy"]}. Remove it after its check.')
-    # fetched() checks the copy against its manifest.
-    folder = fetched(s, key, generation)
-    if (folder / 'postgresql.sql').exists() and b'DROP DATABASE' not in (folder / 'postgresql.sql').read_bytes()[:1 << 20]:
-        raise SystemExit('the PostgreSQL dump of this copy has no DROP statements, because an earlier version made it. '
-                         'Restore it into a new database server by hand.')
-    dumps = [folder / name for name in DUMP_TRAILERS] + sorted((folder / SHARED_DUMPS).glob('*.sql'))
-    for path in dumps:
-        if path.exists() and not dump_complete(path):
+
+def copy_record(folder):
+    """copy.json of a copy. A copy without it or of an earlier version is refused (D16 of the design)."""
+    path = Path(folder) / COPY_FILE
+    record = json.loads(path.read_text()) if path.exists() else {}
+    if record.get('format') != COPY_FORMAT or int(record.get('version') or 0) < COPY_VERSION:
+        raise SystemExit(f'This copy has an earlier format. The commit {EARLIER_FORMAT_COMMIT} restores it into its own '
+                         'running zone.')
+    return record
+
+
+def check_copy(folder, record, kind, zone, without_owners=False):
+    """The checks of the step check. Raise with the reason of the first failure."""
+    import parts as classes
+    if record.get('kind') != kind:
+        raise SystemExit(f'the copy is a {record.get("kind")} copy, and restore-{kind} needs a {kind} copy.')
+    copy_release, target_release = record.get('opendesk_release') or '', opendesk_release()
+    if copy_release and target_release and release_tuple(copy_release) > release_tuple(target_release):
+        raise SystemExit(f'the copy holds openDesk {copy_release}, and {zone} runs {target_release}. Update the zone first.')
+    for row in record.get('parts') or []:
+        if row.get('kind') != 'shared-stores':
+            classes.classify(row['kind'], row['name'])
+    if record.get('secrets'):
+        raise SystemExit('the copy names Secrets, and a copy of this version holds none.')
+    for path in sorted(Path(folder).rglob('*.sql')):
+        if path.parent.name == SHARED_DUMPS and not dump_complete(path):
             raise SystemExit(f'the dump {path.relative_to(folder)} of this copy has no end line of its dump tool, so it is '
                              'incomplete. Restore another copy.')
-    module = shared_databases(zone)
-    if module and (folder / 'postgresql.sql').exists():
-        raise SystemExit(f'this copy holds the PostgreSQL of the zone namespace from before the move of {zone} to the shared '
-                         'PostgreSQL. Restore it into the databases of the zone by hand.')
-    if (folder / SHARED_DUMPS).is_dir() and not module:
-        raise SystemExit(f'this copy holds the databases of the shared PostgreSQL, and {zone} runs its own PostgreSQL. Apply '
-                         'the zone with deploy-k3s up first, which moves its databases.')
-    parts = zone_parts(s, folder, zone)
-    progress['retired'] = retired_parts(folder, parts)
-    if any(progress['retired'].values()):
-        print(json.dumps({'zone': zone, 'left_out': progress['retired']}), flush=True)
+    if kind == 'zone' and not without_owners:
+        present = set(directory_uids(zone).values())
+        missing = sorted(set(record.get('owners') or []) - present)
+        if missing:
+            raise SystemExit(f'the directory of {zone} has no user {", ".join(missing)}, and the copy holds their data. '
+                             f'Restore the identity copy first: backups.py restore-identity {zone} <generation>')
 
-    def step(name, function):
-        if name in progress['steps']:
-            return
-        function()
-        progress['steps'].append(name)
+
+def push_state():
+    """Write the operator state into the cluster copy. A conflict with another writer reads the cluster first."""
+    import clusterstate
+    try:
+        clusterstate.push(k3s_settings.PRIVATE)
+    except clusterstate.Conflict:
+        clusterstate.pull(k3s_settings.PRIVATE)
+        clusterstate.push(k3s_settings.PRIVATE)
+
+
+def reset_derived(zone):
+    """Empty each derived claim of the zone namespace (parts.py). The workloads that mount them are stopped."""
+    import parts as classes
+    count = 0
+    for item in json.loads(kubectl('-n', zone, 'get', 'pvc', '-o', 'json'))['items']:
+        name = item['metadata']['name']
+        if any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', [])):
+            continue
+        if classes.classify('claim', name) != 'derived':
+            continue
+        row = {'claim': name, 'volume_mode': item['spec'].get('volumeMode') or 'Filesystem'}
+        kubectl('-n', zone, 'delete', 'pod', 'restore-write', '--ignore-not-found', '--wait=true')
+        kubectl('apply', '-f', '-', input=json.dumps(restore_pod(zone, row)))
+        try:
+            kubectl('-n', zone, 'wait', '--for=condition=Ready', 'pod/restore-write', '--timeout=300s')
+            kubectl('-n', zone, 'exec', 'restore-write', '--', 'sh', '-c',
+                    'until grep -q " /data " /proc/mounts; do sleep 1; done; '
+                    'find /data -mindepth 1 -maxdepth 1 ! -name lost+found -exec rm -rf {} +')
+        finally:
+            kubectl('-n', zone, 'delete', 'pod', 'restore-write', '--wait=true', check=False)
+        count += 1
+    return count
+
+
+def restart_nextcloud(zone):
+    if kubectl('-n', zone, 'get', 'deployment', 'opendesk-nextcloud-aio', '--ignore-not-found', '-o', 'name').strip():
+        kubectl('-n', zone, 'rollout', 'restart', 'deployment/opendesk-nextcloud-aio')
+        kubectl('-n', zone, 'rollout', 'status', 'deployment/opendesk-nextcloud-aio', '--timeout=900s')
+
+
+def apply_zone(zone):
+    """zone.py apply <zone> --full in this container, as a zone operation of the runner runs it."""
+    result = subprocess.run([sys.executable, str(K3S / 'zones' / 'zone.py'), 'apply', zone, '--full'],
+                            env={**os.environ, 'HOOVER4_CLUSTER_STATE': '1'})
+    if result.returncode:
+        raise SystemExit(f'zone.py apply {zone} --full failed with exit code {result.returncode}. Run the restore again '
+                         'after the cause is corrected. It continues at the step apply.')
+
+
+def restore(kind, zone, generation, source_zone=None, without_owners=False):
+    """Restore an identity copy (kind identity) or a zone copy (kind zone) of source_zone or zone into the installed
+    zone. The steps are RESTORE_STEPS[kind]. A restore that stopped continues at its first step that is not done. A
+    restore of another copy or kind is refused while the record of the zone is not complete."""
+    import bind
+    import clusterstate
+    s = site()
+    name_arg(zone, 'zone')
+    key = f'{RESTORE_JOB_KEYS[kind]}:{name_arg(source_zone or zone, "zone")}'
+    copy = f'{job_folder(key)}/{name_arg(generation, "generation")}'
+    try:
+        clusterstate.pull(k3s_settings.PRIVATE)
+    except clusterstate.Unavailable:
+        pass
+    if kubectl('get', 'namespace', zone, '--ignore-not-found', '-o', 'name').strip() == '':
+        raise SystemExit(f'the zone namespace {zone} does not exist. Install the zone first.')
+    record_path = s.operator_state() / 'backups' / f'restore-{zone}.json'
+    progress = json.loads(record_path.read_text()) if record_path.exists() else None
+    if progress and not progress.get('complete') and (progress.get('copy'), progress.get('kind')) != (copy, kind):
+        raise SystemExit(f'the restore of {progress.get("copy")} into {zone} is not complete. Run it again to continue it, '
+                         f'or remove {record_path} after its check.')
+    if not progress or progress.get('complete') or (progress.get('copy'), progress.get('kind')) != (copy, kind):
+        progress = {'kind': kind, 'copy': copy, 'zone': zone, 'steps': [], 'counts': {}, 'complete': False,
+                    'started': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+    folder = fetched(s, key, generation)
+    record = copy_record(folder)
+    parts = zone_parts(s, folder, zone)
+    suffix = f'restore-{hashlib.sha256(copy.encode()).hexdigest()[:6]}'
+
+    def save():
         record_path.parent.mkdir(parents=True, exist_ok=True)
         record_path.write_text(json.dumps(progress, indent=1))
+        push_state()
 
+    def close():
+        closed = close_zone(s, zone)
+        # The stores stop too, except the zone databases and the directory, which a later step reads.
+        for _, ns in parts:
+            for item in json.loads(kubectl('-n', ns, 'get', 'statefulsets', '-o', 'json'))['items']:
+                name = item['metadata']['name']
+                if tier_of(ns, name) == 'stores' and not (ns == zone and any(d in name for d in DATABASES)):
+                    closed['workloads'][f'{ns}/statefulset/{name}'] = item['spec'].get('replicas', 1)
+        progress['closed'] = closed
+        apply_closure(closed)
+
+    def claims(part, ns, wanted):
+        rows = json.loads((part / 'claims.json').read_text()) if (part / 'claims.json').exists() else []
+        for row in rows:
+            if row['claim'] in wanted and not applications.retired_part(row['claim']):
+                restore_claim(part, ns, row)
+        return len(rows)
+
+    def shared_stores():
+        count = 0
+        for part, ns in parts[1:]:
+            if (part / SHARED_PART / 'stores.json').exists():
+                restore_shared_stores(part / SHARED_PART, next(h for h in site_config.hoovers(s).values() if h.namespace == ns))
+                count += 1
+        return count
+
+    def objects():
+        count = 0
+        for part, ns in parts:
+            if (part / 'objects' / 'buckets.json').exists():
+                restore_objects(part, ns)
+                count += 1
+        return count
+
+    def all_claims():
+        count = 0
+        for part, ns in parts:
+            if (part / 'claims.json').exists():
+                count += claims(part, ns, {r['claim'] for r in json.loads((part / 'claims.json').read_text())})
+        return count
+
+    def jobs():
+        count = bind.rerun_jobs(zone, suffix)
+        restart_nextcloud(zone)
+        return count
+
+    actions = {
+        'check': lambda: check_copy(folder, record, kind, zone, without_owners),
+        'close': close,
+        'directory': all_claims,
+        'databases': lambda: restore_shared_databases(folder / SHARED_DUMPS, zone),
+        'claims': all_claims,
+        'objects': objects,
+        'shared-stores': shared_stores,
+        'reset-derived': lambda: reset_derived(zone),
+        'bind-keycloak': lambda: bind.keycloak_admin(zone),
+        'open': lambda: reopen(progress['closed']),
+        'bind-directory': lambda: bind.directory_accounts(zone),
+        'jobs': jobs,
+        'apply': lambda: apply_zone(zone),
+    }
     lock = oplock.site_lock(s.operator_state())
     lock.acquire('restore', f'restore-{zone}')
     try:
-        # An online copy names its replicas in workloads.json, a copy of an earlier version in closure.json.
-        recorded = next((folder / n for n in ('workloads.json', 'closure.json') if (folder / n).exists()), None)
-        source = json.loads(recorded.read_text()) if recorded else None
-        if 'closed' not in progress:
-            closed = close_zone(s, zone)
-            # The stores stop too, except the zone databases, which import the dumps.
-            for _, ns in parts:
-                for item in json.loads(kubectl('-n', ns, 'get', 'statefulsets', '-o', 'json'))['items']:
-                    name = item['metadata']['name']
-                    if tier_of(ns, name) == 'stores' and not (ns == zone and any(d in name for d in DATABASES)):
-                        closed['workloads'][f'{ns}/statefulset/{name}'] = item['spec'].get('replicas', 1)
-            progress['closed'] = closed
-            record_path.parent.mkdir(parents=True, exist_ok=True)
-            record_path.write_text(json.dumps(progress, indent=1))
-        step('close', lambda: apply_closure(progress['closed']))
-        target = next((h for h in site_config.hoovers(s).values() if h.zone == zone), None)
-        site_zone = target is not None and target.stores == 'site'
-        for part, ns in parts:
-            label = '' if ns == zone else f':{ns}'
-            if (part / 'objects' / 'buckets.json').exists():
-                # The object store keeps running in a closed zone. The objects go in with its current admin key,
-                # before the Secrets of the copy replace that key.
-                step('objects' + label, lambda part=part, ns=ns: restore_objects(part, ns))
-            module = shared_databases(zone) if ns == zone else None
-            kept = set(module.zone_passwords(zone).values()) if module else set()
-            step('secrets' + label, lambda part=part, ns=ns, kept=kept: restore_secrets(part, ns, TENANT_SECRETS if site_zone else {}, kept))
-            restore_claims(part, ns, step)
-            if site_zone and ns != zone and (part / SHARED_PART / 'stores.json').exists():
-                hoover = next(h for h in site_config.hoovers(s).values() if h.namespace == ns)
-                step('shared-stores' + label, lambda part=part, hoover=hoover: restore_shared_stores(part / SHARED_PART, hoover))
-        step('databases', lambda: restore_databases(folder, zone))
-        if (folder / 'objects' / 'buckets.json').exists():
-            # The object store reads the S3 configuration of the restored Secrets at its start.
-            step('object-store-restart', lambda: restart_object_store(zone))
-        # The replicas of the source zone apply when the copy names them. Otherwise the zone keeps its own.
-        opened = dict(progress['closed'])
-        if source:
-            renamed = {source['namespaces'][0]: zone}
-            renamed.update({f'hoover-{source["namespaces"][0]}': f'hoover-{zone}'})
-            opened['workloads'] = {}
-            for k, v in source['workloads'].items():
-                ns, rest = k.split('/', 1)
-                if ns in renamed and not applications.retired_part(rest.rsplit('/', 1)[-1]):
-                    opened['workloads'][f'{renamed[ns]}/{rest}'] = v
-            opened['workloads'].update({k: v for k, v in progress['closed']['workloads'].items() if k not in opened['workloads']})
-        step('open', lambda: reopen(opened))
+        save()
+        for name in RESTORE_STEPS[kind]:
+            if name in progress['steps']:
+                continue
+            started = time.time()
+            result = actions[name]()
+            progress['steps'].append(name)
+            if isinstance(result, int):
+                progress['counts'][name] = result
+            print(json.dumps({'zone': zone, 'step': name, 'seconds': round(time.time() - started)}), flush=True)
+            save()
+        progress['complete'] = True
+        progress['finished'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        save()
     finally:
         lock.release()
-    print(json.dumps({'zone': zone, 'restored': copy, 'steps': progress['steps']}))
+    print(json.dumps({'zone': zone, 'restored': copy, 'kind': kind, 'steps': progress['steps']}))
+    return progress
 
 
-# The Secrets and the Secret items of a site zone that hold the credentials of its tenant in the shared stores
-# (../../hoover/stores/creds.py and ../../hoover/setup.py). They belong to the target zone, because the store users
-# and the Garage keys of the target have these passwords and keys. None (the value) is the whole Secret, and a tuple
-# names the item prefixes of the Secret.
-TENANT_SECRETS = {'hoover-stores': None, 'garage-tenants': None, 'manticore-schema': None,
-                  'hoover-runtime': ('clickhouse-', 'manticore-', 's3-access-key-', 's3-secret-key-', 'temporal-api-key')}
+def restore_zone(zone, generation, source_zone=None, without_owners=False):
+    return restore('zone', zone, generation, source_zone, without_owners)
 
 
-def retired_parts(folder, parts):
-    """{kind: [names]} of the parts of a zone copy that belong to a retired application (../../zones/applications.py).
-    The restore leaves them out."""
-    out = {'secrets': [], 'claims': [], 'buckets': [], 'databases': []}
-    for part, ns in parts:
-        if (part / 'objects.json').exists():
-            out['secrets'] += [f"{ns}/{i['metadata']['name']}" for i in json.loads((part / 'objects.json').read_text())['items']
-                               if i['kind'] == 'Secret' and applications.retired_secret_part(i['metadata']['name'])]
-        if (part / 'claims.json').exists():
-            out['claims'] += [f"{ns}/{r['claim']}" for r in json.loads((part / 'claims.json').read_text())
-                              if applications.retired_part(r['claim'])]
-        if (part / 'objects' / 'buckets.json').exists():
-            out['buckets'] += [f"{ns}/{r['bucket']}" for r in json.loads((part / 'objects' / 'buckets.json').read_text())
-                               if r['bucket'] in applications.RETIRED_BUCKETS]
-    if (folder / SHARED_DUMPS).is_dir():
-        out['databases'] = sorted(p.stem for p in (folder / SHARED_DUMPS).glob('*.sql')
-                                  if p.stem in applications.RETIRED_DATABASES.values())
-    return out
-
-
-def restore_secrets(folder, zone, tenant=None, kept=()):
-    """Apply the Secrets of the copy. Service account tokens and Helm release records belong to the target, and so do
-    the tenant Secrets of a site zone (tenant, TENANT_SECRETS). The Secrets of a retired application stay out.
-
-    The items of a Secret of the copy replace the same items of the target Secret. The other items of the target stay,
-    because a later release can add an item that an earlier copy does not hold.
-    kept holds the passwords of the database users of the target on the shared PostgreSQL. A target item with one of
-    these values stays, because restore_shared_databases() gives the users the passwords of the target. A copy of
-    another zone holds the passwords of that zone.
-    """
-    tenant = tenant or {}
-    objects = json.loads((folder / 'objects.json').read_text())['items']
-    skipped = ('kubernetes.io/service-account-token', 'helm.sh/release.v1')
-    for item in objects:
-        name = item['metadata']['name']
-        if item['kind'] != 'Secret' or item.get('type') in skipped or (name in tenant and tenant[name] is None):
-            continue
-        if applications.retired_secret_part(name):
-            continue
-        if name in tenant:
-            item = {**item, 'data': {k: v for k, v in (item.get('data') or {}).items() if not k.startswith(tenant[name])}}
-        metadata = {k: v for k, v in item['metadata'].items() if k in ('name', 'labels', 'annotations')}
-        metadata['namespace'] = zone
-        metadata.get('annotations', {}).pop('kubectl.kubernetes.io/last-applied-configuration', None)
-        current = kubectl('-n', zone, 'get', 'secret', metadata['name'], '--ignore-not-found', '-o', 'json').strip()
-        target = (json.loads(current).get('data') or {}) if current else {}
-        copied = {k: v for k, v in (item.get('data') or {}).items()
-                  if not (k in target and base64.b64decode(target[k]).decode(errors='replace') in kept)}
-        data = {**target, **copied}
-        kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover-restore', '-f', '-',
-                input=json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': metadata,
-                                  'type': item.get('type', 'Opaque'), 'data': data}))
-        store_restored(zone, metadata['name'], data)
-
-
-# The Secrets of a zone that are copies of the secret store (../../secretstore.py): {Secret: path below zones/<zone>/}.
-# A restore writes their restored values into the store, so the next zone apply finds the same values in both.
-STORED_SECRETS = {'hoover-runtime': 'hoover/hoover-runtime', 'oauth2-proxy': 'hoover/oauth2-proxy',
-                  'manticore-schema': 'hoover/manticore-schema', 'hoover-stores': 'stores', 'garage-tenants': 'garage-tenants'}
-
-
-def store_restored(namespace, name, data):
-    """Write the values of a restored Secret into the secret store, when the Secret is a copy of the store."""
-    zone = namespace[len('hoover-'):] if namespace.startswith('hoover-') else namespace
-    # hoover-stores and garage-tenants belong to the zone namespace, the others to the Hoover namespace.
-    zone_namespace = name in ('hoover-stores', 'garage-tenants')
-    if name not in STORED_SECRETS or zone_namespace != (zone == namespace):
-        return
-    values = {k: base64.b64decode(v).decode() for k, v in data.items()}
-    if name == 'garage-tenants':
-        values = json.loads(values.get('tenants.json') or '{}')
-    secretstore.replace(secretstore.zone_path(zone, STORED_SECRETS[name]), values)
-
-
-def restore_claims(folder, zone, step=None):
-    """Replace the content of each claim of the copy. The workloads that mount the claims are stopped.
-
-    step(name, function) records each finished claim, so a second run continues at the first unfinished claim. A write
-    whose stream ends early (tar: short read) runs again, up to three times, from an emptied claim.
-    """
-    claims = [r for r in json.loads((folder / 'claims.json').read_text()) if not applications.retired_part(r['claim'])]
-    for row in claims:
-        if step:
-            step(f'claim:{zone}/{row["claim"]}', lambda row=row: restore_claim(folder, zone, row))
-        else:
-            restore_claim(folder, zone, row)
+def restore_identity(zone, generation, source_zone=None):
+    return restore('identity', zone, generation, source_zone)
 
 
 def restore_claim(folder, zone, row):
@@ -2273,11 +2312,14 @@ def main(argv):
     # The backups log in to the secret store with the role backup, which reads every path and the snapshot.
     secretstore.use_role('backup')
     argv, source_zone = option(list(argv), '--from')
+    without_owners = '--without-owners' in argv
+    argv = [a for a in argv if a != '--without-owners']
     # Every argument after the command is a name, except the job key of run and verify, which job_folder() checks.
     if argv and argv[0] in ('run', 'verify'):
         job_folder(argv[1]) if len(argv) > 1 else None
         [name_arg(a) for a in argv[2:] if a != '--mirror']
-    elif argv and argv[0] in ('restore-zone', 'restore-hoover', 'recovery', 'restore-platform', 'restore-secret-store'):
+    elif argv and argv[0] in ('restore-zone', 'restore-identity', 'restore-hoover', 'recovery', 'restore-platform',
+                              'restore-secret-store'):
         [name_arg(a) for a in argv[1:]]
     if argv == ['tick']:
         print(json.dumps(tick()))
@@ -2314,7 +2356,9 @@ def main(argv):
             raise SystemExit(problem)
         print(json.dumps(target.check(argv[1], argv[2])))
     elif len(argv) == 3 and argv[0] == 'restore-zone':
-        restore_zone(argv[1], argv[2], source_zone)
+        restore_zone(argv[1], argv[2], source_zone, without_owners)
+    elif len(argv) == 3 and argv[0] == 'restore-identity' and not without_owners:
+        restore_identity(argv[1], argv[2], source_zone)
     elif len(argv) == 4 and argv[0] == 'restore-hoover':
         restore_hoover(argv[1], argv[2], argv[3], source_zone)
     elif len(argv) == 2 and argv[0] == 'recovery':

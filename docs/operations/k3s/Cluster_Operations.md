@@ -115,7 +115,7 @@ The portal also shows the operations of the zones.
 ## Back up the site
 
 `backup` of the site file names the backup node and its backup folder.
-The settings `backup.opendesk.*` and `backup.hoover.*` of each zone and `backup.platform.*` of the cluster turn each job on and set its retained copies.
+The settings `backup.opendesk.*`, `backup.identity.*` and `backup.hoover.*` of each zone and `backup.platform.*` of the cluster turn each job on and set its retained copies.
 The operator pod runs on the backup node, and its runner container writes the copies into the folder of that node. No copy needs SSH.
 
 1. Give the backup node a file system for the backups. With `volume_group` and `size_gb` in `backup` of the site file, `deploy-k3s up` creates and mounts a logical volume. Without them, mount the file system yourself. Add `backup.mirror` to keep each copy on a second node as well.
@@ -134,13 +134,15 @@ The operator pod runs on the backup node, and its runner container writes the co
 
 | Copy | Folder below the backup folder |
 |---|---|
-| A complete zone: openDesk and its Hoover installation | `zones/<zone>/<generation>/` |
+| The data of a zone: openDesk and its Hoover installation | `zones/<zone>/<generation>/` |
+| The people of a zone: the directory and the Keycloak database | `zones/<zone>/identity/<generation>/` |
 | A Hoover collection of a zone | `zones/<zone>/collections/<collection>/<generation>/` |
 | The platform recovery set | `platform/<generation>/` |
 
 The commands take names only. A zone copy reads the running zone and stops no application.
 A copy replaces an older copy only after its check against its manifest. A failed job keeps the older copies.
 The platform job copies the newest scheduled etcd snapshot of k3s through a short pod on the control plane. k3s saves a snapshot every 12 hours. When the newest snapshot is older than 24 hours, the job fails and its error names the age. Then read `journalctl -u k3s` on the control plane.
+A copy holds no Secret and no password of a service. The users keep their password hashes in the identity copy.
 
 The settings page shows the backup folder and the backup policies of the selected scope.
 
@@ -148,31 +150,37 @@ The settings page shows the backup folder and the backup policies of the selecte
 
 ## Restore a zone
 
-A restore replaces the data of an installed zone with a zone copy.
+A restore writes a copy into an installed zone. It can be the zone of the copy or another zone. The target keeps its own Secrets and service passwords.
 
-1. Install the target zone. It can be the zone of the copy or another zone.
-2. Check the copy in the runner container (`$run` of [Back up the site](#back-up-the-site)):
+1. Install the target zone.
+2. Check both copies in the runner container (`$run` of [Back up the site](#back-up-the-site)):
 
    ```sh
+   $run verify identity:<zone of the copy> <generation>
    $run verify zone:<zone of the copy> <generation>
    ```
 
-3. Restore it. `--from` names the zone of the copy when it differs from the target zone.
+3. Restore the identity copy first. It replaces the users, the groups and the sign-in data of the target. `--from` names the zone of the copy when it differs from the target zone.
+
+   ```sh
+   $run restore-identity <zone> <generation> --from <zone of the copy>
+   ```
+
+4. Restore the zone copy. It replaces the files, the wiki pages, the chats, the boards and the Hoover databases.
 
    ```sh
    $run restore-zone <zone> <generation> --from <zone of the copy>
    ```
 
-4. Sign in to the zone, and check the files, the chats and boards, and the collections.
+5. Sign in to the zone as a user of the copy, with the password of the copy. Check the files, the wiki pages, the chats and boards, and the collections.
+6. Restore the collections with `$run restore-hoover <zone> <collection> <generation>`.
 
-The zone copy reads the running zone and stops no application, so its parts hold different moments. The restore writes all parts before an application starts.
-The restore closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store.
-It replaces the objects of the object store, applies the Secrets of the copy, replaces each claim, imports the database dumps, restarts the databases and the object store, and opens the zone.
-For a zone with `stores = site` it also replaces the ClickHouse databases `<prefix>` and `<prefix>_Processing` and the objects of the bucket `<zone>-system` with the copy. The target keeps its own store credentials: the Secrets `hoover-stores`, `garage-tenants` and `manticore-schema` and the store items of `hoover-runtime` are not restored. Restore the collections with `restore-hoover`.
-A database dump without the end line of its dump tool stops the restore before it changes the zone. Restore another copy.
-A database error during the import stops the restore and shows the error.
-A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps, and a second run continues after them.
-Restore a single collection with `$run restore-hoover <zone> <collection> <generation>`.
+`restore-zone` stops in its first step when a user who owns data in the copy is not in the directory of the target. The message names the users. Restore the identity copy, or create the users and add `--without-owners`.
+`Administrator` and the onboarding account `test.user` keep the passwords of the target zone.
+
+A restore closes the zone, writes the parts of the copy, writes the passwords of the target into the restored data, starts the zone, and runs `zone.py apply <zone> --full`.
+A failure leaves the zone in the state of its last finished step. `<operator state>/backups/restore-<zone>.json` names the finished steps. Run the same command again after the cause is corrected. It continues at the first step that is not done, also after a restart of the operator pod.
+A copy of an earlier format stops the restore. Its message names the commit that restores such a copy into its own running zone.
 
 ## Restore the platform
 

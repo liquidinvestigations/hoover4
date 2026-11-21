@@ -1090,7 +1090,7 @@ They also hold the openDesk applications and memory limits of each zone, and the
   the store layout `site`.
 - The zone settings `app.<name>` turn openDesk applications and Hoover off and on. An application that is off has zero replicas and keeps its claims.
   The zone memory limits and the cluster CPU policy reach the zone render through [zones/postrender.py](zones/postrender.py).
-- The backup policies are settings: `backup.opendesk.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.
+- The backup policies are settings: `backup.opendesk.*`, `backup.identity.*` and `backup.hoover.*` of each zone, and `backup.platform.*` of the cluster.
   `backup` of the site file names the destination. Without it the portal keeps the backup controls off.
 
 ## Reach an installation from the workstation.
@@ -1236,7 +1236,8 @@ Run them in the runner container, because only that container has the folder:
 
 | Copy | Folder below the backup folder |
 |---|---|
-| A complete zone: openDesk and its Hoover installation | `zones/<zone>/<generation>/` |
+| The data of a zone: openDesk and its Hoover installation | `zones/<zone>/<generation>/` |
+| The people of a zone: the directory and the Keycloak database | `zones/<zone>/identity/<generation>/` |
 | A Hoover collection of a zone | `zones/<zone>/collections/<collection>/<generation>/` |
 | The platform recovery set | `platform/<generation>/` |
 
@@ -1246,7 +1247,8 @@ $run enable    # writes the folders and the marker, as the host step does
 $run status
 $run copies [--mirror]
 $run verify zone:<zone> <generation> [--mirror]
-$run restore-zone <zone> <generation> [--from <zone of the copy>]
+$run restore-identity <zone> <generation> [--from <zone of the copy>]
+$run restore-zone <zone> <generation> [--from <zone of the copy>] [--without-owners]
 $run restore-hoover <zone> <collection> <generation> [--from <zone of the copy>]
 $run recovery <generation>
 $run restore-platform <generation>
@@ -1256,6 +1258,7 @@ $run restore-secret-store <generation>
 - The operator runner starts at most one due job each minute. [schedule.py](platform/backups/schedule.py) holds the rules: eligibility, the weekly limit, the slots and the retention.
 - A Hoover collection gets a copy after its first completed ingestion and after each complete reprocessing, at most once in 7 days, and keeps one or two copies.
 - Each zone and the platform recovery set get one copy each week, and keep two or three copies. The portal setting `backup.opendesk.*` controls the zone copy.
+- The identity copy of a zone runs each day and keeps `backup.identity.copies` copies (default 7, from 2 to 14). The portal setting `backup.identity.enabled` turns it on (default off).
 - A missing marker pauses every job, so a missing remote mount does not fill the local disk.
 - A copy is made in `staging/<job>/<generation>.partial` of the backup folder, checked against its manifest and renamed into its folder. The rename moves no data. A failed job or check keeps the older copies.
 - A restore reads a copy in place, after a check of every file against its manifest.
@@ -1270,9 +1273,12 @@ $run restore-secret-store <generation>
   The job starts the pod `k3s-snapshot-read` in the namespace `platform-backup` on the control plane. The pod mounts the snapshot folder, the token and the k3s configuration read-only, and the runner reads the files with tar through `kubectl exec` and checks their SHA-256. The job then deletes the pod. The runner needs no SSH and no access to a host.
   The pod runs as root without a capability and without an API token. The policy `k3s-snapshot-reader` ([platform/operator/runner-rights.yaml](platform/operator/runner-rights.yaml)) admits only this pod form in `platform-backup`, and the runner can only create, read and delete pods there.
   A pod that stays running is not necessary for a weekly job of under a minute. It would keep the token mounted and hold memory on the control plane all the time.
-- The zone copy reads the running zone. No workload stops or scales. `workloads.json` of the copy records the replicas
-  of the applications, gates and workers, which `restore-zone` applies. The next runner tick restores a closure that a
+- The zone copy and the identity copy read the running zone. No workload stops or scales. The next runner tick restores a closure that a
   job of an earlier version left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
+- [parts.py](platform/backups/parts.py) gives each claim, database, bucket, Secret and ConfigMap of a zone a class. The zone copy holds the parts of the class `data`, and the identity copy the parts of the class `people`: the directory claim and the Keycloak database. The installer and the services of the target make the parts of the classes `identity` (every Secret) and `derived` again, so no copy holds them. A part of the class `off` belongs to an application that the zones do not install.
+  The job gives every part its class before its first read. A part without a class stops the job with its name. Add the class in `COPY_PARTS` and run the job again.
+- A copy holds no Secret and no credential of its zone. The dumps get an empty value in each column of `SOURCE_VALUES` of `parts.py`: the Keycloak client secrets and the LDAP password of its user federation, the passwords and keys of the Nextcloud configuration row and three Nextcloud application values, and the SMTP password of the XWiki mail configuration with its history. The XWiki claim leaves out `xwiki.properties`, `hibernate.cfg.xml`, `xwiki.cfg` and the status logs of the extension jobs (`CLAIM_LEFT_OUT`). XWiki writes the three files from the Secrets of the target at each start.
+- `copy.json` of a copy names the format `hoover4-zone-copy`, version 4, the kind (`zone` or `identity`), the source site, zone and domain, the openDesk release, the application profile, every part with its class, the owners of the data, and an empty list of Secrets. The owners are the directory `uid` values of the Hoover users that are not deleted and of the Nextcloud accounts.
 - The parts of a zone copy hold different moments. `moments.json` names the start and the end of each part. The copy
   reads them in this order (`online_parts()` of [backups.py](platform/backups/backups.py)):
 
@@ -1295,14 +1301,19 @@ $run restore-secret-store <generation>
 - A zone copy keeps the dumps of the zone databases, the objects of the object store, and one tar file for each other claim of the zone namespace, with the owners and modes, and the same parts of the Hoover namespace in `hoover/<installation>/`.
   A Block claim of a Kata store is read through its store container, so the store must run. A file system claim is read with `tar` in a running container that mounts it, else through a short reader pod on the node of the claim. A claim that a pod owns holds temporary files and is not copied.
 - `restore-hoover` imports into an installation without that collection, or into a collection whose stores `drop_collection_database` removed.
-- `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store. A zone on Garage gets the objects of the copy in its openDesk buckets.
-  It then replaces the objects of each bucket of the copy, applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and the object store, and opens the zone with the replicas of `workloads.json` (`closure.json` in a copy of an earlier version).
-  All parts are in place before an application starts.
-  On the shared PostgreSQL the database users keep the passwords of the target zone. A Secret item of the target
-  with one of these passwords keeps its value, because a copy of another zone holds the passwords of that zone.
-  A dump without its end line stops the restore before any change. `psql` and the MariaDB client stop at the first error, and the restore fails with that error.
+- `restore-identity` restores an identity copy and `restore-zone` a zone copy into an installed zone. Restore the identity copy first.
+  `restore-zone` stops in its step `check` when an owner of the data is not a user of the directory of the target, and names the missing users. `--without-owners` skips this check, for owners that the operator created by hand.
+  A copy without `copy.json` or of an earlier version stops the restore with the commit that restores it into its own running zone.
+  The steps of `restore-identity`: `check`, `close`, `directory`, `databases` (Keycloak), `reset-derived`, `bind-keycloak`, `open`, `bind-directory`, `jobs`, `apply`.
+  The steps of `restore-zone`: `check`, `close`, `databases`, `claims`, `objects`, `shared-stores`, `reset-derived`, `open`, `jobs`, `apply`.
+  `close` scales the applications, the gates, the workers and the stores to zero, except the zone databases and the directory. `reset-derived` empties each derived claim of the zone, so that no service keeps its state from before the restore.
+  The bind steps ([platform/backups/bind.py](platform/backups/bind.py)) write the values of the target into the restored data: the password of the Keycloak admin and of the Keycloak user federation, and the passwords of the directory service accounts, of `cn=admin`, of `Administrator` and of the onboarding account `test.user`. The users keep the passwords of the copy.
+  `jobs` creates the configuration Jobs of the releases `ums`, `opendesk-keycloak-bootstrap` and `opendesk-nextcloud-management` again from the Helm release records of the target and waits for them, then restarts Nextcloud. These Jobs write the Keycloak clients, the Nextcloud configuration and the provisioning registrations with the values of the target. `zone.py apply` does not run them again, because their names stay the same while their content is the same.
+  `apply` runs `zone.py apply <zone> --full`.
+  No Secret of the copy is applied, so the target keeps its Secrets, its store users and its Garage keys. For a site zone `restore-zone` also replaces the zone databases and the objects of the system bucket with the `shared/` part of the copy.
+  A dump without its end line stops the restore before any change. `psql` stops at the first error, and the restore fails with that error.
   A copy part `hoover/<installation>/` restores into the installation of that name, or into the one installation of the zone.
-  A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps.
+  `<operator state>/backups/restore-<zone>.json` names the finished steps. The restore writes it into the cluster copy after each step and reads the cluster copy at its start, so a second run continues at the first step that is not done, also in a new operator pod. A restore of another copy into the zone stops while that record is not complete.
 
 ## Run the tests.
 

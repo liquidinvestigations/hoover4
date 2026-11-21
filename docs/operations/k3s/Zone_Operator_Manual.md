@@ -96,12 +96,12 @@ A site upgrade with `k3s/deploy-k3s up` also upgrades every zone. [The operation
 
 ## Back up and restore a zone
 
-A zone copy holds the openDesk databases and volumes of the zone and the volumes of its Hoover installation.
+A zone copy holds the data of the openDesk databases and volumes of the zone and the volumes of its Hoover installation. An identity copy holds the people of the zone: the directory with the users, the groups and their password hashes, and the Keycloak database. No copy holds a Secret or a service password.
 The ClickHouse databases, Manticore tables and Garage buckets of a zone are in the shared stores of the site. The zone copy holds the zone databases (users, groups, chats, boards, settings and operation history) and the objects of the system bucket of the zone. The collection copies of the backup settings hold the databases, tables and buckets of the collections. The export writes the ClickHouse part into the bucket `<zone>-exports` of the zone, and the collection copy takes it from there. `main.py reindex-collection` also builds the Manticore tables of a collection again from ClickHouse. The workflow history of the zone is in the Temporal of the site, and no copy holds it.
 
-1. Turn on `backup.opendesk.enabled` and set `backup.opendesk.copies` in the settings of the zone, and Apply.
-2. The runner makes one copy each week. The zone keeps running during the copy.
-3. Restore a copy with `backups.py restore-zone` in the runner container of the operator pod. [The operations manual](Cluster_Operations.md#restore-a-zone) describes the steps.
+1. Turn on `backup.opendesk.enabled` and `backup.identity.enabled`, set `backup.opendesk.copies` and `backup.identity.copies` in the settings of the zone, and Apply.
+2. The runner makes one zone copy each week and one identity copy each day. The zone keeps running during a copy.
+3. Restore the identity copy with `backups.py restore-identity`, then the zone copy with `backups.py restore-zone`, in the runner container of the operator pod. [The operations manual](Cluster_Operations.md#restore-a-zone) describes the steps.
 
 <a href="img/settings-zone-backup.png"><img src="img/settings-zone-backup.png" alt="The backup destination and the backup settings of a zone" width="100%"></a>
 

@@ -167,30 +167,6 @@ def test_the_retained_entries_run_as_before(monkeypatch):
     assert ran == ['sync']
 
 
-def test_the_restore_of_an_older_copy_leaves_the_retired_parts_out(tmp_path):
-    import backups
-    part = tmp_path / 'copy'
-    (part / 'objects').mkdir(parents=True)
-    (part / 'postgresql').mkdir()
-    (part / 'objects.json').write_text(json.dumps({'items': [
-        {'kind': 'Secret', 'metadata': {'name': 'opendesk-nextcloud-admin'}},
-        {'kind': 'Secret', 'metadata': {'name': 'openproject-admin-password'}},
-        {'kind': 'Secret', 'metadata': {'name': 'synapse-s3-encryption-customer-key'}},
-        {'kind': 'Secret', 'metadata': {'name': 'database-notes-password'}},
-        # intercom-service, a retained release, reads this Secret.
-        {'kind': 'Secret', 'metadata': {'name': 'matrix-intercom-synapse-as-token'}}]}))
-    (part / 'claims.json').write_text(json.dumps([{'claim': 'data-xwiki-0'}, {'claim': 'media-element-synapse-media-repo-0'},
-                                                  {'claim': 'cryptpad-data'}]))
-    (part / 'objects' / 'buckets.json').write_text(json.dumps([{'bucket': 'nextcloud'}, {'bucket': 'synapse'}, {'bucket': 'notes'}]))
-    for name in ('nextcloud', 'matrix', 'openproject', 'xwiki'):
-        (part / 'postgresql' / f'{name}.sql').write_text('')
-    left = backups.retired_parts(part, [(part, 'zone-a')])
-    assert left == {'secrets': ['zone-a/openproject-admin-password', 'zone-a/synapse-s3-encryption-customer-key',
-                                'zone-a/database-notes-password'],
-                    'claims': ['zone-a/media-element-synapse-media-repo-0', 'zone-a/cryptpad-data'],
-                    'buckets': ['zone-a/synapse', 'zone-a/notes'], 'databases': ['matrix', 'openproject']}
-
-
 def test_the_profile_is_an_input_of_the_zone_and_of_the_prepull():
     assert 'zones/applications.py' in zone.INPUT_SOURCES
     assert 'applications' in (K3S / 'driver/deploy.py').read_text()

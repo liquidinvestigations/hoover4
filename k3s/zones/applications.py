@@ -154,12 +154,6 @@ def retired_secret(name):
     return name not in RETAINED_SECRETS and bool(set(name.split('-')) & set(RETIRED_SECRET_WORDS))
 
 
-def retired_secret_part(name):
-    """True for a Secret of a zone copy that belongs to a retired application: a part of a retired workload, or a
-    Secret of the openDesk secrets release with a retired word. A Secret of RETAINED_SECRETS stays."""
-    return name not in RETAINED_SECRETS and (retired_part(name) or retired_secret(name))
-
-
 def retired_part(name):
     """True for a Secret, claim or workload of a retired application: the name, or a part of the name after a hyphen,
     matches RETIRED_WORKLOADS. A claim name holds its template name first, for example data-element-synapse-main-0."""

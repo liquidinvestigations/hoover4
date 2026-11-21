@@ -578,40 +578,6 @@ def test_a_restore_reads_the_copy_in_place_after_its_check(local_destination):
         backups.fetched(s, 'zone:zone-a', 'g2')
 
 
-def test_a_restored_secret_keeps_the_items_that_the_copy_lacks(tmp_path, monkeypatch):
-    backups = backups_module()
-    (tmp_path / 'objects.json').write_text(json.dumps({'items': [
-        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'hoover-runtime'}, 'data': {'a': 'Y29weQ=='}}]}))
-    applied = []
-
-    def kubectl(*args, input=None, check=True, stdout=None):
-        if 'get' in args:
-            return json.dumps({'data': {'a': 'b2xk', 'gpu-token': 'dG9rZW4='}})
-        applied.append(json.loads(input))
-        return ''
-    monkeypatch.setattr(backups, 'kubectl', kubectl)
-    backups.restore_secrets(tmp_path, 'hoover-zone-a')
-    assert applied[0]['data'] == {'a': 'Y29weQ==', 'gpu-token': 'dG9rZW4='}
-
-
-def test_a_restored_secret_keeps_the_database_passwords_of_the_target(tmp_path, monkeypatch):
-    backups = backups_module()
-    # A copy of another zone: its database password is the password of that zone.
-    (tmp_path / 'objects.json').write_text(json.dumps({'items': [
-        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'ums-keycloak-postgresql-opendesk-credentials'},
-         'data': {'keycloakDatabasePassword': 'c291cmNl', 'other': 'Y29weQ=='}}]}))
-    applied = []
-
-    def kubectl(*args, input=None, check=True, stdout=None):
-        if 'get' in args:
-            return json.dumps({'data': {'keycloakDatabasePassword': 'dGFyZ2V0', 'other': 'b2xk'}})
-        applied.append(json.loads(input))
-        return ''
-    monkeypatch.setattr(backups, 'kubectl', kubectl)
-    backups.restore_secrets(tmp_path, 'zone-b', kept={'target'})
-    assert applied[0]['data'] == {'keycloakDatabasePassword': 'dGFyZ2V0', 'other': 'Y29weQ=='}
-
-
 def test_the_local_retirement_uses_the_tar_check_of_the_backups():
     import importlib.util
     spec = importlib.util.spec_from_file_location('local_retirement', K3S / 'tools/local-retirement.py')
@@ -908,26 +874,6 @@ def test_the_restore_of_an_online_copy_puts_the_objects_and_reads_its_replicas(t
     pods[1]['status']['phase'] = 'Pending'
     with pytest.raises(SystemExit, match='no running object store'):
         backups.restore_objects(tmp_path, 'zone-a')
-
-
-def test_a_restored_site_zone_keeps_its_own_tenant_credentials(tmp_path, monkeypatch):
-    backups = backups_module()
-    (tmp_path / 'objects.json').write_text(json.dumps({'items': [
-        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'hoover-runtime'},
-         'data': {'clickhouse-worker': 'b2xk', 'temporal-api-key': 'b2xk', 'proxy-secret': 'Y29weQ=='}},
-        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'manticore-schema'}, 'data': {'password': 'b2xk'}},
-        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'oauth2-proxy'}, 'data': {'proxy-secret': 'Y29weQ=='}}]}))
-    applied = []
-
-    def kubectl(*args, input=None, check=True, stdout=None):
-        if 'get' in args:
-            return json.dumps({'data': {'clickhouse-worker': 'bmV3', 'temporal-api-key': 'bmV3'}})
-        applied.append(json.loads(input))
-        return ''
-    monkeypatch.setattr(backups, 'kubectl', kubectl)
-    backups.restore_secrets(tmp_path, 'hoover-zone-a', backups.TENANT_SECRETS)
-    assert [a['metadata']['name'] for a in applied] == ['hoover-runtime', 'oauth2-proxy']
-    assert applied[0]['data'] == {'clickhouse-worker': 'bmV3', 'temporal-api-key': 'bmV3', 'proxy-secret': 'Y29weQ=='}
 
 
 def test_a_file_system_claim_is_read_in_the_running_pod_that_mounts_it(monkeypatch):
@@ -1274,3 +1220,125 @@ def test_the_xwiki_claim_leaves_out_the_configuration_files_and_the_mail_passwor
     assert backups.leave_out_source_values('xwiki', dump) == 2
     text = dump.read_text()
     assert 'smtp-pass-1' not in text and 'hash:SHA-512:aa:bb' in text and '42\t1\t<page/>' in text
+
+
+def test_a_restore_refuses_a_copy_of_an_earlier_format_and_a_copy_without_the_owners(tmp_path, monkeypatch):
+    backups = backups_module()
+    with pytest.raises(SystemExit, match=f'The commit {backups.EARLIER_FORMAT_COMMIT} restores it'):
+        backups.copy_record(tmp_path)
+    (tmp_path / 'copy.json').write_text(json.dumps({'format': backups.COPY_FORMAT, 'version': 3}))
+    with pytest.raises(SystemExit, match='earlier format'):
+        backups.copy_record(tmp_path)
+    record = {'format': backups.COPY_FORMAT, 'version': 4, 'kind': 'zone', 'opendesk_release': '',
+              'parts': [{'kind': 'claim', 'name': 'xwiki-data-xwiki-0'}], 'owners': ['gabriel', 'stefan'], 'secrets': []}
+    (tmp_path / 'copy.json').write_text(json.dumps(record))
+    assert backups.copy_record(tmp_path)['kind'] == 'zone'
+    monkeypatch.setattr(backups, 'directory_uids', lambda zone: {'id-1': 'gabriel'})
+    with pytest.raises(SystemExit, match=r'has no user stefan.*Restore the identity copy first: backups.py '
+                                         r'restore-identity zone-b <generation>'):
+        backups.check_copy(tmp_path, record, 'zone', 'zone-b')
+    backups.check_copy(tmp_path, record, 'zone', 'zone-b', without_owners=True)
+    with pytest.raises(SystemExit, match='restore-identity needs a identity copy'):
+        backups.check_copy(tmp_path, record, 'identity', 'zone-b')
+    unknown = {**record, 'parts': [{'kind': 'claim', 'name': 'data-new-app-0'}]}
+    with pytest.raises(SystemExit, match='data-new-app-0 has no class'):
+        backups.check_copy(tmp_path, unknown, 'zone', 'zone-b', without_owners=True)
+    with pytest.raises(SystemExit, match='holds none'):
+        backups.check_copy(tmp_path, {**record, 'secrets': ['x']}, 'zone', 'zone-b', without_owners=True)
+
+
+def test_a_restore_that_stopped_continues_at_its_first_open_step_and_a_second_restore_waits(tmp_path, monkeypatch):
+    import sys
+    import types
+    backups = backups_module()
+    state = tmp_path / 'operator'
+    folder = tmp_path / 'copy'
+    folder.mkdir()
+    site = types.SimpleNamespace(operator_state=lambda: state)
+    calls = []
+    fake_bind = types.SimpleNamespace(keycloak_admin=lambda z: calls.append('bind-keycloak') or 2,
+                                      directory_accounts=lambda z: calls.append('bind-directory') or 8,
+                                      rerun_jobs=lambda z, suffix: calls.append(('jobs', suffix)) or 5)
+    fake_state = types.SimpleNamespace(pull=lambda f: calls.append('pull'), push=lambda f: calls.append('push'),
+                                       Conflict=RuntimeError, Unavailable=OSError)
+    monkeypatch.setitem(sys.modules, 'bind', fake_bind)
+    monkeypatch.setitem(sys.modules, 'clusterstate', fake_state)
+    lock = types.SimpleNamespace(acquire=lambda *a: None, release=lambda: None)
+    monkeypatch.setattr(backups.oplock, 'site_lock', lambda path: lock)
+    monkeypatch.setattr(backups, 'site', lambda: site)
+    monkeypatch.setattr(backups, 'kubectl', lambda *a, **kw: '{"items": []}' if 'json' in a else 'namespace/zone-b')
+    monkeypatch.setattr(backups, 'fetched', lambda s, key, generation: calls.append(('fetched', key)) or folder)
+    monkeypatch.setattr(backups, 'copy_record', lambda f: {'kind': 'identity'})
+    monkeypatch.setattr(backups, 'zone_parts', lambda s, f, zone: [(folder, zone)])
+    monkeypatch.setattr(backups, 'check_copy', lambda *a: calls.append('check'))
+    monkeypatch.setattr(backups, 'close_zone', lambda s, zone: {'namespaces': [zone], 'workloads': {}, 'cronjobs': {}})
+    monkeypatch.setattr(backups, 'apply_closure', lambda record: calls.append('close'))
+    monkeypatch.setattr(backups, 'restore_shared_databases', lambda f, zone: calls.append('databases'))
+    monkeypatch.setattr(backups, 'reset_derived', lambda zone: calls.append('reset-derived') or 5)
+    monkeypatch.setattr(backups, 'reopen', lambda record: calls.append('open'))
+    monkeypatch.setattr(backups, 'restart_nextcloud', lambda zone: calls.append('nextcloud'))
+    failing = {'directory': True}
+
+    def directory():
+        calls.append('directory')
+        if failing['directory']:
+            raise SystemExit('the write of the claim failed three times')
+        return 1
+    applied = []
+    monkeypatch.setattr(backups, 'apply_zone', lambda zone: applied.append(zone))
+    monkeypatch.setattr(backups, 'restore_claim', lambda *a: directory())
+    (folder / 'claims.json').write_text(json.dumps([{'claim': 'shared-data-ums-ldap-server-primary-0'}]))
+    with pytest.raises(SystemExit, match='failed three times'):
+        backups.restore_identity('zone-b', 'day-1', 'zone-a')
+    record = json.loads((state / 'backups' / 'restore-zone-b.json').read_text())
+    assert record['steps'] == ['check', 'close'] and not record['complete'] and 'push' in calls
+    with pytest.raises(SystemExit, match='is not complete. Run it again to continue it'):
+        backups.restore_zone('zone-b', 'week-1', 'zone-a')
+    calls.clear()
+    failing['directory'] = False
+    result = backups.restore_identity('zone-b', 'day-1', 'zone-a')
+    assert calls[0] == 'pull' and 'check' not in calls and 'close' not in calls
+    assert [c for c in calls if isinstance(c, str) and c not in ('pull', 'push')] == [
+        'directory', 'databases', 'reset-derived', 'bind-keycloak', 'open', 'bind-directory', 'nextcloud']
+    assert result['complete'] and result['steps'] == backups.RESTORE_STEPS['identity'] and applied == ['zone-b']
+    assert result['counts']['bind-directory'] == 8 and result['counts']['jobs'] == 5
+    assert ('fetched', 'identity:zone-a') in calls and result['copy'] == 'zones/zone-a/identity/day-1'
+
+
+
+def bind_module():
+    spec = importlib.util.spec_from_file_location('bind', K3S / 'platform' / 'backups' / 'bind.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_bind_step_writes_a_keycloak_password_that_keycloak_can_check():
+    import base64
+    import hashlib
+    bind = bind_module()
+    secret, data = bind.keycloak_credential(b'target-password', salt=b'0123456789abcdef')
+    secret, data = json.loads(secret), json.loads(data)
+    assert data == {'hashIterations': 210000, 'algorithm': 'pbkdf2-sha512', 'additionalParameters': {}}
+    assert base64.b64decode(secret['salt']) == b'0123456789abcdef'
+    assert base64.b64decode(secret['value']) == hashlib.pbkdf2_hmac('sha512', b'target-password', b'0123456789abcdef',
+                                                                      210000, 64)
+    assert 'RETURNING 1' in bind.KEYCLOAK_ADMIN_SQL and 'RETURNING 1' in bind.KEYCLOAK_BIND_SQL
+    assert bind.updated('1\n') == 1 and bind.updated('') == 0
+
+
+def test_the_bind_step_runs_a_release_job_again_under_a_new_name():
+    bind = bind_module()
+    job = {'apiVersion': 'batch/v1', 'kind': 'Job',
+           'metadata': {'name': 'ums-stack-data-ums-9df2b0df', 'namespace': 'zone-a', 'labels': {'app': 'stack-data'},
+                        'annotations': {'helm.sh/hook': 'post-install'}, 'uid': 'u1', 'resourceVersion': '7'},
+           'spec': {'selector': {'matchLabels': {'controller-uid': 'u1'}},
+                    'template': {'metadata': {'labels': {'controller-uid': 'u1', 'job-name': 'x', 'app': 'stack-data'}},
+                                 'spec': {'containers': [{'name': 'main'}]}}}}
+    copy = bind.job_copy('zone-b', job, 'restore-ab12cd')
+    assert copy['metadata'] == {'name': 'ums-stack-data-ums-9df2b0df-restore-ab12cd', 'namespace': 'zone-b',
+                                'labels': {'app': 'stack-data'}}
+    assert 'selector' not in copy['spec'] and copy['spec']['template']['metadata']['labels'] == {'app': 'stack-data'}
+    assert job['metadata']['name'] == 'ums-stack-data-ums-9df2b0df'
+    assert len(bind.job_copy('zone-b', {**job, 'metadata': {'name': 'x' * 70}}, 'restore-ab12cd')['metadata']['name']) <= 63
+    assert bind.JOB_RELEASES == ['ums', 'opendesk-keycloak-bootstrap', 'opendesk-nextcloud-management']
