@@ -141,7 +141,7 @@ The operator pod runs on the backup node, and its runner container writes the co
 
 The commands take names only. A zone copy reads the running zone and stops no application.
 A copy replaces an older copy only after its check against its manifest. A failed job keeps the older copies.
-The platform job copies the newest scheduled etcd snapshot of k3s through a short pod on the control plane. k3s saves a snapshot every 12 hours. When the newest snapshot is older than 24 hours, the job fails and its error names the age. Then read `journalctl -u k3s` on the control plane.
+The platform job copies the newest scheduled etcd snapshot of k3s through a short pod on the control plane. k3s saves a snapshot every 12 hours. When k3s ran through two schedule times without a new snapshot, the job fails and its error names the age. Then read `journalctl -u k3s` on the control plane. A time without power does not count.
 A copy holds no Secret and no password of a service. The users keep their password hashes in the identity copy.
 
 The settings page shows the backup folder and the backup policies of the selected scope.
@@ -184,19 +184,26 @@ A copy of an earlier format stops the restore. Its message names the commit that
 
 ## Restore the platform
 
-The platform copy holds the newest scheduled etcd snapshot of the server, its token and k3s configuration, the private files of the site and `recovery.json`. `recovery.json` names the time of the snapshot.
-An etcd snapshot holds no volume data, so a complete recovery also restores the zone copies that `recovery.json` names.
+The platform copy holds the newest scheduled etcd snapshot of the server with its k3s configuration, `site-config.tar`, the snapshot of the secret store and `recovery.json`. It holds no server token and no key. `recovery.json` names the time of the snapshot and the zone copies that a complete recovery needs.
 
-1. Print the recovery set and the root steps of a copy:
+Keep the site identity file outside the site. Write it once after the first `deploy-k3s up`, and check it:
+
+```sh
+k3s/deploy-k3s identity export <file> --site <site file>
+k3s/deploy-k3s identity verify <file> --site <site file>
+```
+
+The command asks for a passphrase. Keep the passphrase apart from the file.
+
+1. Print the recovery set and the procedures of a copy:
 
    ```sh
    $run recovery <generation>
    $run restore-platform <generation>
    ```
 
-2. Do the printed steps on the stopped server of an isolated cluster.
-   The root step runs the datastore script of the k3s role with sudo: `sudo python3 - restore <name> < k3s/ansible/roles/hoover4_k3s/files/k3s-datastore.py`.
-3. Restore each zone copy with `restore-zone`, then sign in to each zone.
+2. For a lost site, do procedure 1: unpack `site-config.tar` into the state folder, run `deploy-k3s up --target all`, then restore the identity copy and the zone copy of each zone.
+3. For an etcd restore on the same hardware, do procedure 2. It needs the site identity file and its passphrase.
 
 ## Reach an installation from a workstation
 

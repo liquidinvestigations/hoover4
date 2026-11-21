@@ -24,8 +24,8 @@
 #   cannot change it.
 # - In hoover-pools it creates, changes and deletes the processing pools of the site (../../hoover/pools.py ensure).
 # - In platform-backup it creates, reads and deletes the reader pod of the platform backup
-#   (../backups/backups.py snapshot_reader()). The pod reads the k3s etcd snapshots, the token and the k3s
-#   configuration on the control plane. The ValidatingAdmissionPolicy k3s-snapshot-reader admits only that pod form.
+#   (../backups/backups.py snapshot_reader()). The pod reads the k3s etcd snapshots and the k3s configuration on the
+#   control plane. The ValidatingAdmissionPolicy k3s-snapshot-reader admits only that pod form.
 # The runner cannot read or change any other object.
 apiVersion: v1
 kind: ServiceAccount
@@ -244,7 +244,7 @@ subjects: [{kind: ServiceAccount, name: zone-runner, namespace: operator-portal}
 ---
 # Every pod of platform-backup must have the form of snapshot_reader() or mirror_writer() in ../backups/backups.py. The
 # policy requires HELPER_IMAGE of backups.py, no capability, no privilege escalation, no host namespace and the
-# ServiceAccount k3s-snapshot-reader without a token. The reader mounts the three host paths read-only. The mirror
+# ServiceAccount k3s-snapshot-reader without a token. The reader mounts the two host paths read-only. The mirror
 # writer mounts only the mirror folder of vars.backup.mirror and runs as the user 1000. install-runner.sh replaces
 # HOOVER4_MIRROR_PATH with that folder, or with an empty text when the site has no mirror.
 apiVersion: admissionregistration.k8s.io/v1
@@ -267,7 +267,7 @@ spec:
     - name: containers
       expression: "object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : [])"
     - name: paths
-      expression: "['/var/lib/rancher/k3s/server/db/snapshots', '/var/lib/rancher/k3s/server/token', '/etc/rancher/k3s/config.yaml']"
+      expression: "['/var/lib/rancher/k3s/server/db/snapshots', '/etc/rancher/k3s/config.yaml']"
     - name: mirror
       expression: "'HOOVER4_MIRROR_PATH'"
     - name: writer
@@ -280,7 +280,7 @@ spec:
     - expression: "variables.containers.all(c, c.image == 'docker.io/library/python:3.14-alpine@sha256:7f2ec713f0436c59df2362d973b6a05af9e87ba78f0e94f5245c302984a7a1fd')"
       message: A pod here uses the pinned image of the snapshot reader.
     - expression: "variables.writer || (has(object.spec.volumes) && object.spec.volumes.all(v, has(v.hostPath) && v.hostPath.path in variables.paths))"
-      message: A pod here mounts only the k3s snapshot folder, the token and the k3s configuration, or only the mirror folder.
+      message: A pod here mounts only the k3s snapshot folder and the k3s configuration, or only the mirror folder.
     - expression: "variables.writer || variables.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, has(m.readOnly) && m.readOnly))"
       message: A reader pod here mounts every volume read-only.
     - expression: >

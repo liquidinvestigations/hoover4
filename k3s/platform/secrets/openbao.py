@@ -165,7 +165,7 @@ def seal_key(initialized):
     if key is None:
         if initialized:
             raise SystemExit(f'the store is initialized, and neither {SEAL_FILE} nor the Secret openbao-seal holds its '
-                             'seal key. Restore the key from the platform backup (private.tar).')
+                             'seal key. Restore the key from the site identity file (deploy-k3s identity export).')
         key = os.urandom(32)
     if len(key) != 32:
         raise SystemExit(f'the seal key has {len(key)} bytes, and the static seal needs 32')

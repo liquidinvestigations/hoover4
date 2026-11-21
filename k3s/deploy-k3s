@@ -10,7 +10,8 @@ Usage:
   deploy-k3s down      --resume RECORD
   deploy-k3s reset     --target all                                      erase every zone of the site (driver/reset.py)
   deploy-k3s reset     --resume RECORD
-  deploy-k3s status    [RECORD]                                          print the records
+  deploy-k3s status    [RECORD]                                          print the records and the last identity export
+  deploy-k3s identity export|verify FILE                                 write or check the encrypted site identity
   deploy-k3s measure-speed --target NODE...                              measure the CPU and disk speeds again
   deploy-k3s import-compose <zone> <folder> --home NODE --ini FILE [...] import a stopped Compose install into a new zone
 
@@ -42,6 +43,9 @@ measure-speed measures the CPU speed and the write speed of each storage tier of
 of the state folder. up measures a new node once before k3s starts, and then uses the stored values. Stop k3s and every
 container of a node before its measure-speed: it refuses a node where k3s or a container runs, or whose 1-minute load
 is above 5. The next up gives the new speed factor to k3s.
+identity export writes the k3s server token, the seal key and the recovery key of the secret store into FILE, encrypted
+with a passphrase that it asks for (openssl enc -aes-256-cbc -pbkdf2). FILE gets mode 0600 and must be outside the
+checkout and the state folder. identity verify compares FILE with the state folder and the seal key of the site.
 import-compose runs import_compose/import_compose.py with the commit of HEAD. `deploy-k3s import-compose --help` names
 its arguments and steps. It runs once per zone.
 
@@ -151,6 +155,12 @@ def run_in_image(argv):
         (work / 'group').write_text(f'root:x:0:\n{user}:x:{gid}:\n')
         mounts = [f'{repo}:{repo}:ro', f'{site.parent}:{site.parent}:rw', f'{work}/passwd:/etc/passwd:ro',
                   f'{work}/group:/etc/group:ro']
+        # The identity file is outside the checkout and the state folder, so its folder gets its own mount.
+        if 'identity' in argv and argv.index('identity') + 2 < len(argv):
+            at = argv.index('identity') + 2
+            argv = list(argv)
+            argv[at] = str(Path(argv[at]).expanduser().resolve())
+            mounts.append(f'{Path(argv[at]).parent}:{Path(argv[at]).parent}:rw')
         if (home / '.ssh').is_dir():
             mounts.append(f'{home / ".ssh"}:{home / ".ssh"}:ro')
         # HOME is a folder of the container, so no tool writes into the read-only checkout or the home folder. ssh
@@ -268,8 +278,9 @@ def main(argv):
 
     parser = argparse.ArgumentParser(prog='deploy-k3s', description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'reset', 'status', 'measure-speed'))
+    parser.add_argument('command', choices=('render', 'check', 'up', 'down', 'reset', 'status', 'measure-speed', 'identity'))
     parser.add_argument('record', nargs='?')
+    parser.add_argument('file', nargs='?')
     parser.add_argument('--site', default=os.environ.get('HOOVER4_SITE'), required=not os.environ.get('HOOVER4_SITE'))
     parser.add_argument('--target', nargs='+', default=[])
     parser.add_argument('--steps', nargs='+', default=[])
@@ -290,6 +301,25 @@ def main(argv):
     if args.ask_become_pass:
         ctx.ask_become_pass()
 
+    if args.command == 'identity':
+        import getpass
+        if args.record not in ('export', 'verify') or not args.file:
+            raise SystemExit('Usage: deploy-k3s identity export|verify FILE')
+        try:
+            passphrase = getpass.getpass('Passphrase of the identity file: ')
+            if args.record == 'export':
+                if len(passphrase) < 12:
+                    raise SystemExit('deploy-k3s: use a passphrase of at least 12 characters.')
+                if getpass.getpass('Type the passphrase again: ') != passphrase:
+                    raise SystemExit('deploy-k3s: the two passphrases differ. Nothing was written.')
+                print(json.dumps(deploy.identity_export(ctx, args.file, passphrase), indent=1))
+                return 0
+            result = deploy.identity_verify(ctx, args.file, passphrase)
+        except deploy.StepFailed as error:
+            raise SystemExit(f'deploy-k3s: {error}')
+        print(json.dumps(result, indent=1))
+        return 0 if result['ok'] else 1
+
     if args.command == 'status':
         ids = [args.record] if args.record else ctx.records.list()
         for record_id in ids:
@@ -299,7 +329,8 @@ def main(argv):
         applied = ctx.records.applied()
         print(json.dumps({'applied': applied and applied['id'], 'applied_revision': applied and applied['revision'],
                           'previous_revision': (ctx.records.previous() or {}).get('revision'),
-                          'stopped': ctx.records.stopped()}, indent=1))
+                          'stopped': ctx.records.stopped(), 'identity_exported': deploy.identity_export_time(ctx)},
+                         indent=1))
         return 0
 
     if args.resume:

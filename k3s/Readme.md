@@ -1267,12 +1267,15 @@ $run restore-secret-store <generation>
   The mirror folder needs its own marker. Without it, or when the mirror node is down, the job record gets `mirror_failed` and the first location keeps its copies. The next job sends the missing copies.
   `copies --mirror` and `verify <job> <generation> --mirror` read the mirror. `verify --mirror` also prints the SHA-256 of the manifest, so it can be compared with the manifest of the first location.
 - Each tar stream from a pod must reach its end-of-archive marker, and each database dump must end with the end line of its dump tool. Otherwise the copy reads that part again, up to three times.
-- The platform copy holds the newest scheduled etcd snapshot of the server with its token and k3s configuration, `private.tar`, `openbao.snap`, and `recovery.json` (format version 3).
-  `openbao.snap` is the Raft snapshot of the secret store. The etcd snapshot holds the seal key in the Secret `openbao-seal`. `restore-secret-store` replaces the data of a running store with the snapshot of a copy. `recovery.json` names the snapshot time and the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads format version 2 and a copy of the earlier SQLite format.
-  k3s saves an etcd snapshot every 12 hours and keeps 5 in `/var/lib/rancher/k3s/server/db/snapshots` (the k3s defaults). When the newest snapshot is older than 24 hours, the job fails with a message that names its age.
-  The job starts the pod `k3s-snapshot-read` in the namespace `platform-backup` on the control plane. The pod mounts the snapshot folder, the token and the k3s configuration read-only, and the runner reads the files with tar through `kubectl exec` and checks their SHA-256. The job then deletes the pod. The runner needs no SSH and no access to a host.
+- The platform copy holds the newest scheduled etcd snapshot of the server with its k3s configuration and without its token, `site-config.tar`, `openbao.snap`, and `recovery.json` (format version 4).
+  `site-config.tar` holds the files of `SITE_CONFIG_FILES` in [backups.py](platform/backups/backups.py): the zone definitions, the settings revisions and the applied records of the operator, the placement plan, and the node facts and speeds. It holds no secret. A new file of the state folder is not copied until it is added to that list.
+  The k3s server token, the seal key and the recovery key of the secret store are in the site identity file. Write it with `deploy-k3s identity export FILE` after the first `up`, and keep it outside the site. See [Keep the site identity.](#keep-the-site-identity)
+  `openbao.snap` is the Raft snapshot of the secret store. The etcd snapshot holds the seal key in the Secret `openbao-seal`. `restore-secret-store` replaces the data of a running store with the snapshot of a copy. `recovery.json` names the snapshot time and the application copies that a complete recovery needs, because a snapshot holds no claim data. `recovery` also reads format versions 2 and 3 and a copy of the earlier SQLite format. A copy of version 3 holds the token and `private.tar` with the credentials of the site.
+  `restore-platform` prints two procedures. The first is a reinstall with `site-config.tar`, `deploy-k3s up` and the zone restores. The second is the etcd restore on the same hardware, which reads the server token from the site identity file.
+  k3s saves an etcd snapshot every 12 hours and keeps 5 in `/var/lib/rancher/k3s/server/db/snapshots` (the k3s defaults). The job fails with a message that names the age of the newest snapshot when k3s ran through two schedule times after it without a new one. The time when k3s did not run, for example a host without power, does not count. The last start of k3s is the time when the control-plane node became Ready.
+  The job starts the pod `k3s-snapshot-read` in the namespace `platform-backup` on the control plane. The pod mounts the snapshot folder and the k3s configuration read-only, and the runner reads the files with tar through `kubectl exec` and checks their SHA-256. The job then deletes the pod. The runner needs no SSH and no access to a host.
   The pod runs as root without a capability and without an API token. The policy `k3s-snapshot-reader` ([platform/operator/runner-rights.yaml](platform/operator/runner-rights.yaml)) admits only this pod form in `platform-backup`, and the runner can only create, read and delete pods there.
-  A pod that stays running is not necessary for a weekly job of under a minute. It would keep the token mounted and hold memory on the control plane all the time.
+  A pod that stays running is not necessary for a weekly job of under a minute. It would keep the snapshots mounted and hold memory on the control plane all the time.
 - The zone copy and the identity copy read the running zone. No workload stops or scales. The next runner tick restores a closure that a
   job of an earlier version left. The earlier job key `opendesk:<zone>` reads as `zone:<zone>`.
 - [parts.py](platform/backups/parts.py) gives each claim, database, bucket, Secret and ConfigMap of a zone a class. The zone copy holds the parts of the class `data`, and the identity copy the parts of the class `people`: the directory claim and the Keycloak database. The installer and the services of the target make the parts of the classes `identity` (every Secret) and `derived` again, so no copy holds them. A part of the class `off` belongs to an application that the zones do not install.
@@ -1314,6 +1317,21 @@ $run restore-secret-store <generation>
   A dump without its end line stops the restore before any change. `psql` stops at the first error, and the restore fails with that error.
   A copy part `hoover/<installation>/` restores into the installation of that name, or into the one installation of the zone.
   `<operator state>/backups/restore-<zone>.json` names the finished steps. The restore writes it into the cluster copy after each step and reads the cluster copy at its start, so a second run continues at the first step that is not done, also in a new operator pod. A restore of another copy into the zone stops while that record is not complete.
+
+### Keep the site identity.
+
+The k3s server token, the seal key and the recovery key of the secret store open every other secret of a site. They change only at a reinstall. No backup copy holds them.
+
+```sh
+k3s/deploy-k3s identity export /media/usb/<site>-identity.enc --site k3s/private/<site>.yml
+k3s/deploy-k3s identity verify /media/usb/<site>-identity.enc --site k3s/private/<site>.yml
+```
+
+- `identity export` asks for a passphrase of at least 12 characters twice. It writes the three values as one tar archive, encrypted with `openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt`, with the file mode 0600. openssl reads the passphrase on a file descriptor, so it is no argument and is in no log.
+- The command refuses a file in the checkout or in the state folder.
+- `identity-export.json` of the state folder keeps the time of the last export, and `deploy-k3s status` prints it. `deploy-k3s check` prints a recommendation when the site has zones and no export.
+- `identity verify` compares the file with the state folder and with the Secret `openbao-seal` of the running site. It prints `equal`, `different` or `missing` for each value and no value.
+- The etcd restore of a platform copy reads the server token from this file. `restore-platform` prints the command.
 
 ## Run the tests.
 

@@ -1154,3 +1154,29 @@ def test_the_check_names_a_backup_node_of_the_stores_without_a_mirror_and_a_site
     assert not any('vars.backup.mirror' in p for p in deploy.backup_problems(ctx))
     ctx.site.backup.clear()
     assert deploy.backup_problems(ctx) == []
+
+
+def test_the_identity_file_holds_the_three_keys_encrypted_and_is_refused_inside_the_site(env, tmp_path):
+    ctx = env.make('single-node.yml')
+    for rel, value in (('staging/tokens/server-token', 'K10abc::server:token-secret\n'), ('secret-store/seal.key', 'seal-secret\n'),
+                       ('secret-store/recovery-key', 'recovery-secret\n')):
+        (ctx.private / rel).parent.mkdir(parents=True, exist_ok=True)
+        (ctx.private / rel).write_text(value)
+    out = tmp_path / 'outside' / 'site.identity'
+    out.parent.mkdir()
+    for inside in (ctx.repo / 'id.enc', ctx.private / 'id.enc'):
+        with pytest.raises(deploy.StepFailed, match='Keep the identity file outside the site'):
+            deploy.identity_export(ctx, inside, 'a long passphrase')
+    assert deploy.identity_export_time(ctx) is None
+    result = deploy.identity_export(ctx, out, 'a long passphrase')
+    assert result['mode'] == '0600' and oct(out.stat().st_mode & 0o777) == '0o600'
+    assert deploy.identity_export_time(ctx) == result['exported']
+    raw = out.read_bytes()
+    assert raw.startswith(b'Salted__') and b'seal-secret' not in raw and b'token-secret' not in raw
+    assert deploy.identity_read(out, 'a long passphrase')['seal.key'] == b'seal-secret\n'
+    verified = deploy.identity_verify(ctx, out, 'a long passphrase')
+    assert verified['ok'] and verified['server-token'] == 'equal' and verified['cluster seal key'] == 'not read'
+    (ctx.private / 'secret-store/recovery-key').write_text('another\n')
+    assert deploy.identity_verify(ctx, out, 'a long passphrase')['recovery-key'] == 'different'
+    with pytest.raises(deploy.StepFailed, match='The passphrase is wrong'):
+        deploy.identity_read(out, 'wrong passphrase')

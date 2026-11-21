@@ -1815,6 +1815,105 @@ def backup_problems(ctx):
     return out
 
 
+# The site identity: the three values that open the rest of a site. The k3s server token decrypts the bootstrap data
+# of etcd, and the seal key and the recovery key open the secret store. They change only at a reinstall, so one export
+# after the first up is enough. The export is a tar file of the three files, encrypted with a passphrase of the
+# operator. The operator keeps it outside the site, so a platform copy needs none of them.
+IDENTITY_FILES = {'server-token': 'staging/tokens/server-token', 'seal.key': 'secret-store/seal.key',
+                  'recovery-key': 'secret-store/recovery-key'}
+IDENTITY_RECORD = 'identity-export.json'
+IDENTITY_CIPHER = ['openssl', 'enc', '-aes-256-cbc', '-pbkdf2', '-iter', '600000', '-salt']
+
+
+def identity_path(ctx, path):
+    """The absolute path of an identity file. A path in the checkout or in the state folder is refused."""
+    path = Path(path).expanduser().resolve()
+    for folder, name in ((Path(ctx.repo).resolve(), 'the checkout'), (Path(ctx.private).resolve(), 'the state folder')):
+        if path == folder or folder in path.parents:
+            raise StepFailed(f'{path} is in {name}. Keep the identity file outside the site, for example on a removable '
+                             'disk of the operator.')
+    return path
+
+
+def identity_cipher(args, data, passphrase):
+    """Run openssl enc with the passphrase on a pipe, so it is no argument and appears in no log."""
+    read_end, write_end = os.pipe()
+    try:
+        os.write(write_end, passphrase.encode() + b'\n')
+        os.close(write_end)
+        r = subprocess.run(IDENTITY_CIPHER + args + ['-pass', f'fd:{read_end}'], input=data, capture_output=True,
+                           pass_fds=(read_end,))
+    finally:
+        os.close(read_end)
+    if r.returncode:
+        raise StepFailed('openssl refused the identity file. The passphrase is wrong or the file is damaged.'
+                         if '-d' in args else f'openssl failed: {r.stderr.decode(errors="replace").strip()[-200:]}')
+    return r.stdout
+
+
+def identity_export(ctx, path, passphrase):
+    """Write the encrypted identity file with mode 0600 and keep the export time in the state folder."""
+    import io
+    import tarfile
+    path = identity_path(ctx, path)
+    missing = [rel for rel in IDENTITY_FILES.values() if not (ctx.private / rel).is_file()]
+    if missing:
+        raise StepFailed(f'the state folder has no {", ".join(missing)}. Run deploy-k3s up first.')
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode='w') as tar:
+        for name, rel in IDENTITY_FILES.items():
+            data = (ctx.private / rel).read_bytes()
+            info = tarfile.TarInfo(name)
+            info.size, info.mode, info.mtime = len(data), 0o600, int(time.time())
+            tar.addfile(info, io.BytesIO(data))
+    encrypted = identity_cipher([], buffer.getvalue(), passphrase)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(encrypted)
+    os.chmod(path, 0o600)
+    stamp = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    private_write(ctx.private / IDENTITY_RECORD, json.dumps({'exported': stamp, 'files': sorted(IDENTITY_FILES)}) + '\n')
+    return {'file': str(path), 'exported': stamp, 'mode': '0600'}
+
+
+def identity_read(path, passphrase):
+    """{name: bytes} of an identity file."""
+    import io
+    import tarfile
+    data = identity_cipher(['-d'], Path(path).expanduser().read_bytes(), passphrase)
+    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+        return {m.name: tar.extractfile(m).read() for m in tar.getmembers() if m.isfile() and m.name in IDENTITY_FILES}
+
+
+def identity_verify(ctx, path, passphrase):
+    """Compare an identity file with the state folder and with the seal key Secret of the running site. Print no value."""
+    import base64
+    values = identity_read(identity_path(ctx, path), passphrase)
+    out = {}
+    for name, rel in IDENTITY_FILES.items():
+        here = ctx.private / rel
+        out[name] = ('missing in the file' if name not in values else 'missing in the state folder' if not here.is_file()
+                     else 'equal' if values[name].strip() == here.read_bytes().strip() else 'different')
+    found = ctx.kubectl('-n', 'openbao', 'get', 'secret', 'openbao-seal', '-o', 'json', check=False).strip() \
+        if ctx.kubeconfig.exists() else ''
+    try:
+        items = [base64.b64decode(v).strip() for v in json.loads(found).get('data', {}).values()] if found else []
+    except ValueError:
+        items = []
+    out['cluster seal key'] = ('not read' if not items else
+                               'equal' if values.get('seal.key', b'').strip() in items else 'different')
+    out['ok'] = all(v in ('equal', 'not read') for v in out.values())
+    return out
+
+
+def identity_export_time(ctx):
+    path = ctx.private / IDENTITY_RECORD
+    try:
+        return json.loads(path.read_text()).get('exported') if path.exists() else None
+    except ValueError:
+        return None
+
+
 def memory_recommendations(name, memory):
     """The recommendations for the memory setup of one node, from the memory facts of the node (role hoover4_facts)."""
     if not memory:
@@ -1868,6 +1967,9 @@ def check(ctx, targets):
         state[name]['speed'] = speeds[name]
     # Recommendations are no problems, so the exit code stays the same.
     state['recommendations'] = [line for name in targets for line in memory_recommendations(name, state[name].get('memory'))]
+    if ctx.hoovers() and not identity_export_time(ctx):
+        state['recommendations'].append('the site has zones and no export of its identity. Run deploy-k3s identity export '
+                                        '<file> and keep the file outside the site.')
     if ctx.site.control_plane in targets:
         missing = [str(p) for p in tool_paths(ctx) if not p.exists()]
         if missing:

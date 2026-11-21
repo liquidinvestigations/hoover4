@@ -42,17 +42,21 @@ Jobs:
   of the claim ops-backups. In a zone of the store layout site the ClickHouse archive of the export is an object of the
   export bucket of the zone, and the job first copies it into the export directory. The export directory in the claim
   and the object are removed after the copy, so no second archive stays.
-- platform: the newest scheduled etcd snapshot of the control-plane server with its token and k3s configuration, the
-  operator state and the private files of the site (credentials included), the Raft snapshot of the secret store
-  (openbao.snap, restore-secret-store), and recovery.json. k3s saves a snapshot
-  every 12 hours and keeps 5. The job starts a short pod on the control plane (snapshot_reader()), which mounts the
-  snapshot folder, the token and the configuration read-only, reads the files with tar through kubectl exec and
-  deletes the pod. The runner needs no SSH and no access to a host. A newest snapshot older than SNAPSHOT_MAX_AGE
-  stops the job with a message that names its age. The snapshot is normally up to 12 hours older than the private files,
-  and recovery.json names its time. recovery.json has format_version 3, the datastore etcd, the execution host, the
+- platform: the newest scheduled etcd snapshot of the control-plane server with its k3s configuration and without
+  its token, site-config.tar with the files of SITE_CONFIG_FILES (no secret), the Raft snapshot of the secret store
+  (openbao.snap, restore-secret-store), and recovery.json. The server token, the seal key and the recovery key of the
+  secret store are in the site identity file of deploy-k3s identity export, which the operator keeps outside the
+  site. k3s saves a snapshot every 12 hours and keeps 5. The job starts a short pod on the control plane
+  (snapshot_reader()), which mounts the snapshot folder and the configuration read-only, reads the files with tar
+  through kubectl exec and deletes the pod. The runner needs no SSH and no access to a host. A snapshot after which
+  k3s ran through SNAPSHOT_MISSED schedule times stops the job with a message that names its age. The snapshot is
+  normally up to 12 hours older than site-config.tar, and recovery.json names its time. recovery.json has
+  format_version 4, the datastore etcd, the execution host, the
   control plane, the destination node, the k3s version, the applied source and settings revisions, the pinned tool
   versions and the application copies that a complete recovery needs. An etcd snapshot holds no claim data, so the
-  application copies are part of the recovery set. read_recovery() also reads format_version 2, whose snapshot the
+  application copies are part of the recovery set. platform_steps() prints the reinstall with the zone restores first
+  and the etcd restore with the identity file second. read_recovery() also reads format_version 3, whose copy holds
+  the token and private.tar with the credentials of the site, format_version 2, whose snapshot the
   job saved over SSH, and a copy of the earlier format with the SQLite file k3s-state.db, for the conversion of an
   earlier installation. No new copy uses SQLite.
 A job writes its copy into <folder>/staging/<job>/<generation>.partial, on the volume of the copies. Each tar stream
@@ -102,6 +106,7 @@ Usage: backups.py tick                      start the next due job, as the opera
                                                                     snapshot of a platform copy
 """
 import base64
+import calendar
 import contextlib
 import hashlib
 import json
@@ -1420,25 +1425,29 @@ RECOVERY_FORMAT = 'hoover4-platform-recovery'
 # The Raft snapshot of the secret store (../../secretstore.py) in a platform copy.
 SECRET_STORE_SNAPSHOT = 'openbao.snap'
 # Version 2 holds a snapshot that the job saved over SSH. Version 3 holds the newest scheduled snapshot of k3s with its
-# time (snapshot_created). Both hold etcd/ in the same form, so the restore steps are the same.
-RECOVERY_VERSIONS = (2, 3)
-# The private folders that hold no recovery input: builds, downloads, tool binaries, the staged k3s files of each
-# architecture of earlier installers, the node facts and the generated Ansible inventory. staging/tokens holds the site
-# tokens and is part of the copy.
-PRIVATE_EXCLUDED = ['build', 'bin', 'browser-venv', 'checks', 'downloads', 'operator/backups', 'operator/deploy/logs',
-                    'staging/amd64', 'staging/arm64', 'deploy/remote', 'facts', 'ansible']
+# time (snapshot_created), the token and private.tar with the credentials of the site. Version 4 holds the snapshot
+# without the token and site-config.tar without a secret. The etcd restore of version 4 reads the token from the site
+# identity file (deploy-k3s identity export).
+RECOVERY_VERSIONS = (2, 3, 4)
+# The files of the state folder that site-config.tar holds, as glob patterns relative to the state folder. A reinstall
+# needs them to create the same zones with the same settings. None of them holds a secret. The list names the files
+# that the copy holds, so a new file of the state folder is not copied until it is added here.
+SITE_CONFIG_FILES = ['zone-definitions.json', 'operator/applied.json', 'operator/desired.json',
+                     'operator/installation.json', 'operator/revisions/*.json', 'operator/deploy/applied.json',
+                     'placement/plan.json', 'facts/*.json', 'speed/*.json']
 
 
 # The platform job reads the newest scheduled etcd snapshot of the k3s server. k3s saves one every 12 hours with its
 # default schedule (etcd-snapshot-schedule-cron "0 */12 * * *") and keeps 5 (etcd-snapshot-retention) in SNAPSHOT_DIR.
-# A newest snapshot older than SNAPSHOT_MAX_AGE, two schedule intervals, shows that the schedule does not run, and the
-# job fails. k3s saves a snapshot as <name>.part and renames it when it is complete, so SNAPSHOT_FILE does not match an
+# A snapshot is too old when k3s ran through SNAPSHOT_MISSED schedule times after it without a new snapshot
+# (snapshot_too_old()). Then the schedule does not run, and the job fails. The time when k3s did not run, for example a
+# host without power, does not count. k3s saves a snapshot as <name>.part and renames it when it is complete, so SNAPSHOT_FILE does not match an
 # incomplete file. The optional .zip is the form of etcd-snapshot-compress.
 SNAPSHOT_DIR = '/var/lib/rancher/k3s/server/db/snapshots'
-TOKEN_FILE = '/var/lib/rancher/k3s/server/token'
 K3S_CONFIG = '/etc/rancher/k3s/config.yaml'
 SNAPSHOT_FILE = __import__('re').compile(r'etcd-snapshot-.+-([0-9]{9,})(\.zip)?')
-SNAPSHOT_MAX_AGE = 24 * 3600
+SNAPSHOT_INTERVAL = 12 * 3600
+SNAPSHOT_MISSED = 2
 # The short pod that reads the snapshot on the control plane. The namespace, its ServiceAccount without rights, the
 # rights of the runner there and the policy that admits only this pod form are in ../operator/runner-rights.yaml.
 READER_NAMESPACE = 'platform-backup'
@@ -1448,15 +1457,14 @@ READER_ROOT = '/k3s'
 
 
 def snapshot_reader(node):
-    """The pod that mounts the snapshot folder, the token and the k3s configuration of the server read-only.
+    """The pod that mounts the snapshot folder and the k3s configuration of the server read-only.
 
     It runs as root, because the files belong to root with mode 0600, but with no capability, no privilege escalation
     and a read-only root file system. It has no API token. The runner streams the files out with tar and deletes the
-    pod. A weekly job of under a minute needs no pod that stays running, and such a pod would keep the token mounted
-    and hold memory on the control plane all the time.
+    pod. A weekly job of under a minute needs no pod that stays running, and such a pod would keep the snapshots
+    mounted and hold memory on the control plane all the time. The server token is not mounted: a copy holds no token.
     """
     mounts = [('snapshots', SNAPSHOT_DIR, 'Directory', f'{READER_ROOT}/snapshots'),
-              ('token', TOKEN_FILE, 'File', f'{READER_ROOT}/token'),
               ('config', K3S_CONFIG, 'File', f'{READER_ROOT}/config.yaml')]
     return {'apiVersion': 'v1', 'kind': 'Pod',
             'metadata': {'name': READER_POD, 'namespace': READER_NAMESPACE,
@@ -1642,18 +1650,24 @@ def mirror_job(s, key):
     save_state(s, data)
 
 
-def newest_snapshot(names, now):
+def snapshot_too_old(created, started, now):
+    """True when k3s ran through SNAPSHOT_MISSED schedule times after the snapshot without a new one. started is the
+    last start of k3s on the control plane. A schedule time is a multiple of SNAPSHOT_INTERVAL in UTC."""
+    since = max(created, started or 0)
+    return now // SNAPSHOT_INTERVAL - since // SNAPSHOT_INTERVAL >= SNAPSHOT_MISSED
+
+
+def newest_snapshot(names, now, started=0):
     """(file name, creation time) of the newest scheduled snapshot of names. The time is in the name."""
     found = sorted((int(m.group(1)), name) for name in names if (m := SNAPSHOT_FILE.fullmatch(name)))
     if not found:
         raise SystemExit(f'the control plane has no scheduled etcd snapshot in {SNAPSHOT_DIR}. k3s saves one every 12 '
                          'hours. Check that the server uses etcd and that etcd-disable-snapshots is not set.')
     created, name = found[-1]
-    age = now - created
-    if age > SNAPSHOT_MAX_AGE:
-        raise SystemExit(f'the newest scheduled etcd snapshot {name} is {age / 3600:.1f} hours old, and the limit is '
-                         f'{SNAPSHOT_MAX_AGE // 3600} hours. Check the snapshot schedule in journalctl -u k3s on the '
-                         'control plane.')
+    if snapshot_too_old(created, started, now):
+        raise SystemExit(f'the newest scheduled etcd snapshot {name} is {(now - created) / 3600:.1f} hours old, and k3s '
+                         f'ran through {SNAPSHOT_MISSED} schedule times after it. Check the snapshot schedule in '
+                         'journalctl -u k3s on the control plane.')
     return name, created
 
 
@@ -1672,8 +1686,19 @@ def start_snapshot_reader(node):
         raise
 
 
+def k3s_started(node):
+    """The last start of k3s on node, in seconds: the time when the node became Ready. 0 when it is not known."""
+    text = kubectl('get', 'node', node, '-o', 'jsonpath={.status.conditions[?(@.type=="Ready")].lastTransitionTime}',
+                   check=False).strip()
+    try:
+        return calendar.timegm(time.strptime(text, '%Y-%m-%dT%H:%M:%SZ')) if text else 0
+    except ValueError:
+        return 0
+
+
 def read_snapshot(node, etcd, now):
-    """Copy the newest scheduled snapshot, the token and the k3s configuration of the server into the folder etcd.
+    """Copy the newest scheduled snapshot and the k3s configuration of the server into the folder etcd. The token stays
+    on the server: an etcd restore reads it from the site identity file.
 
     The files come as one tar stream that must reach its end-of-archive marker, as the claims of a zone copy do. Each
     file must then have the SHA-256 that the pod computed. etcd/host.json names the snapshot in the form that the restore
@@ -1681,8 +1706,9 @@ def read_snapshot(node, etcd, now):
     """
     start_snapshot_reader(node)
     try:
-        name, created = newest_snapshot(reader_exec('ls', '-1', f'{READER_ROOT}/snapshots').split(), now)
-        members = [f'snapshots/{name}', 'token', 'config.yaml']
+        name, created = newest_snapshot(reader_exec('ls', '-1', f'{READER_ROOT}/snapshots').split(), now,
+                                        k3s_started(node))
+        members = [f'snapshots/{name}', 'config.yaml']
         digests = {}
         for line in reader_exec('sha256sum', *[f'{READER_ROOT}/{m}' for m in members]).splitlines():
             digest, path = line.split(None, 1)
@@ -1721,16 +1747,28 @@ def application_copies(data):
     return out
 
 
+def site_config_files(private):
+    """The files of the state folder that SITE_CONFIG_FILES names, relative and sorted."""
+    private = Path(private)
+    return sorted({str(path.relative_to(private)) for pattern in SITE_CONFIG_FILES for path in private.glob(pattern)
+                   if path.is_file()})
+
+
+def write_site_config(private, target):
+    """Write site-config.tar with the files of SITE_CONFIG_FILES. Return the list of the files."""
+    files = site_config_files(private)
+    subprocess.run(['tar', '-C', str(private), '-cf', str(target), '--', *files], check=True)
+    os.chmod(target, 0o600)
+    return files
+
+
 def run_platform(s, partial, now=None):
-    """The newest scheduled etcd snapshot of the control plane with its token and configuration, the private files and
-    recovery.json."""
+    """The newest scheduled etcd snapshot of the control plane with its configuration, site-config.tar, the snapshot of
+    the secret store and recovery.json."""
     partial.mkdir(parents=True, exist_ok=True)
     node = s.control_plane
     host = read_snapshot(node, partial / 'etcd', now or time.time())
-    private = k3s_settings.PRIVATE
-    subprocess.run(['tar', '-C', str(private), '-cf', str(partial / 'private.tar'),
-                    *[f'--exclude=./{e}' for e in PRIVATE_EXCLUDED], '.'], check=True)
-    os.chmod(partial / 'private.tar', 0o600)
+    write_site_config(k3s_settings.PRIVATE, partial / 'site-config.tar')
     # The secret store keeps its data on a claim, which the etcd snapshot does not hold. Its seal key is the Secret
     # openbao-seal, which the etcd snapshot holds.
     snapshot = secretstore.client().snapshot()
@@ -1740,11 +1778,11 @@ def run_platform(s, partial, now=None):
     applied = json.loads((state / 'deploy' / 'applied.json').read_text()) if (state / 'deploy' / 'applied.json').exists() else {}
     settings_applied = json.loads((state / 'applied.json').read_text()) if (state / 'applied.json').exists() else {}
     recovery = {
-        'format': RECOVERY_FORMAT, 'format_version': 3, 'datastore': 'etcd', 'route': 'reader-pod',
+        'format': RECOVERY_FORMAT, 'format_version': 4, 'datastore': 'etcd', 'route': 'reader-pod',
         'snapshot_source': 'k3s-schedule', 'snapshot_created': host['created'],
         'execution_host': socket.gethostname(), 'control_plane': node, 'destination_node': s.backup.get('node'),
-        'k3s_version': host['k3s_version'], 'snapshot': f'etcd/{host["snapshot"]}', 'token': 'etcd/token',
-        'k3s_config': 'etcd/config.yaml', 'private': 'private.tar', 'site': s.id, 'secret_store': SECRET_STORE_SNAPSHOT,
+        'k3s_version': host['k3s_version'], 'snapshot': f'etcd/{host["snapshot"]}', 'token': None,
+        'k3s_config': 'etcd/config.yaml', 'site_config': 'site-config.tar', 'site': s.id, 'secret_store': SECRET_STORE_SNAPSHOT,
         'source_revision': applied.get('revision') or os.environ.get('HOOVER4_REVISION', ''),
         'settings_revision': settings_applied.get('revision', 0),
         'settings_scopes': settings_applied.get('scopes', {}),
@@ -1803,6 +1841,8 @@ def platform_steps(folder, generation):
                 '/var/lib/rancher/k3s/server/db/state.db with the token of the earlier server, start k3s, then run '
                 'deploy-k3s up --steps hosts:k3s to convert it to etcd.']
     name = f'restore-{name_arg(generation, "generation")}'
+    if data['format_version'] >= 4:
+        return platform_steps_v4(folder, generation, data, name)
     return [f'Copy the folder etcd/ of the copy into ~/hoover4-snapshots/{name}/ of the operator user on the server. '
             f'This host holds it in {folder / "etcd"}.',
             f'On the server, as the operator user: sudo python3 - restore {name} < '
@@ -1813,6 +1853,32 @@ def platform_steps(folder, generation):
               if data.get('secret_store') else []),
             'Restore the application copies that recovery.json names: backups.py restore-zone for each zone copy '
             'and backups.py restore-hoover for each collection copy, then sign in to each zone.']
+
+
+def platform_steps_v4(folder, generation, data, name):
+    """The two procedures of a copy of version 4: the reinstall with the zone restores first, the etcd restore on the
+    same hardware second."""
+    copies = data.get('application_copies', {})
+    zones = sorted({key.split(':')[1] for key in copies if key.split(':')[0] in ('zone', 'identity')})
+    return ['Procedure 1, a reinstall on new or the same hardware:',
+            f'Unpack {data["site_config"]} of the copy ({folder}) into the state folder of the site file.',
+            'Run deploy-k3s up --target all with the site file. It creates the zones of zone-definitions.json.',
+            *[f'In the runner container: backups.py restore-identity {z} <generation>, then backups.py restore-zone {z} '
+              '<generation>, with the generations that recovery.json names.' for z in zones],
+            'Restore each collection copy that recovery.json names with backups.py restore-hoover, then sign in to each '
+            'zone.',
+            'Procedure 2, the etcd restore on the same hardware, with the site identity file of deploy-k3s identity '
+            'export:',
+            f'Write the server token of the identity file as the file token into the folder etcd/ of the copy: openssl '
+            f'enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in <identity file> | tar -xO server-token > '
+            f'{folder / "etcd" / "token"}. openssl asks for the passphrase.',
+            f'Copy the folder etcd/ into ~/hoover4-snapshots/{name}/ of the operator user on the server.',
+            f'On the server, as the operator user: sudo python3 - restore {name} < '
+            'k3s/ansible/roles/hoover4_k3s/files/k3s-datastore.py',
+            *([f'Run deploy-k3s up --steps secret-store, which starts OpenBao with the seal key of the Secret '
+               f'openbao-seal, then in the runner container: backups.py restore-secret-store {generation}.']
+              if data.get('secret_store') else []),
+            'Remove the file token from the folder etcd/ of the copy.']
 
 
 def run_job(key, generation):

@@ -398,10 +398,27 @@ def test_the_recovery_set_names_etcd_and_reads_the_earlier_format(tmp_path):
     (earlier / 'k3s-state.db').write_bytes(b'sqlite')
     assert backups.read_recovery(earlier)['datastore'] == 'sqlite'
     assert 'convert it to etcd' in backups.platform_steps(earlier, 'week-0')[0]
-    (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 4}))
+    (current / 'recovery.json').write_text(json.dumps({'format': backups.RECOVERY_FORMAT, 'format_version': 5}))
     with pytest.raises(SystemExit, match='does not read'):
         backups.read_recovery(current)
-    assert 'staging/tokens' not in backups.PRIVATE_EXCLUDED and 'build' in backups.PRIVATE_EXCLUDED
+
+
+def test_site_config_holds_no_secret_of_the_state_folder(tmp_path):
+    import tarfile
+    backups = backups_module()
+    private = tmp_path / 'private'
+    for rel in ('secret-store/seal.key', 'secret-store/recovery-key', 'staging/tokens/server-token',
+                'operator-login/password', 'kubeconfig', 'zones/zone-a/master-password', 'registry-push-password',
+                'zone-definitions.json', 'operator/revisions/3.json', 'operator/applied.json', 'placement/plan.json',
+                'facts/cp-1.json', 'speed/cp-1.json'):
+        (private / rel).parent.mkdir(parents=True, exist_ok=True)
+        (private / rel).write_text('x')
+    files = backups.write_site_config(private, tmp_path / 'site-config.tar')
+    with tarfile.open(tmp_path / 'site-config.tar') as tar:
+        names = sorted(tar.getnames())
+    assert names == files == ['facts/cp-1.json', 'operator/applied.json', 'operator/revisions/3.json',
+                              'placement/plan.json', 'speed/cp-1.json', 'zone-definitions.json']
+    assert (tmp_path / 'site-config.tar').stat().st_mode & 0o777 == 0o600
 
 
 def test_the_zone_closure_records_and_restores_replicas_and_cronjobs(local_destination, monkeypatch):
@@ -953,10 +970,28 @@ def test_the_newest_scheduled_snapshot_is_chosen_and_an_old_one_stops_the_job():
     names = ['etcd-snapshot-cp-1-1799990000', 'etcd-snapshot-cp-1-1799950000', 'etcd-snapshot-cp-1-1799999000.part',
              'on-demand-cp-1-1799999500', 'etcd-snapshot-cp-1-1799960000.zip', 'notes.txt']
     assert backups.newest_snapshot(names, 1800000000) == ('etcd-snapshot-cp-1-1799990000', 1799990000)
-    with pytest.raises(SystemExit, match=r'is 25\.0 hours old, and the limit is 24 hours'):
+    with pytest.raises(SystemExit, match=r'is 25\.0 hours old, and k3s ran through 2 schedule times after it'):
         backups.newest_snapshot(['etcd-snapshot-cp-1-1799910000'], 1800000000)
     with pytest.raises(SystemExit, match='has no scheduled etcd snapshot'):
         backups.newest_snapshot(['on-demand-cp-1-1799999500', 'etcd-snapshot-cp-1-1799999000.part'], 1800000000)
+
+
+def test_a_snapshot_is_old_only_after_two_schedule_times_with_k3s_running():
+    backups = backups_module()
+    hour = 3600
+    snapshot = 1800000000 // (12 * hour) * (12 * hour)
+    # Two days without power: k3s starts 50 hours after the snapshot. The job that runs at once copies it.
+    started = snapshot + 50 * hour
+    assert not backups.snapshot_too_old(snapshot, started, started + 600)
+    # k3s then runs through one schedule time without a new snapshot: the job still copies it.
+    assert not backups.snapshot_too_old(snapshot, started, started + 12 * hour)
+    # A new snapshot at the next schedule time: the job copies it.
+    assert not backups.snapshot_too_old(snapshot + 60 * hour, started, snapshot + 61 * hour)
+    # k3s runs through two schedule times without a new snapshot: the schedule does not run.
+    assert backups.snapshot_too_old(snapshot, started, started + 25 * hour)
+    # No restart: the same rule from the time of the snapshot.
+    assert not backups.snapshot_too_old(snapshot, 0, snapshot + 23 * hour)
+    assert backups.snapshot_too_old(snapshot, 0, snapshot + 24 * hour)
 
 
 def runner_rights():
@@ -971,7 +1006,7 @@ def test_the_reader_pod_has_the_form_that_the_policy_admits():
     assert pod['metadata']['namespace'] == backups.READER_NAMESPACE == 'platform-backup'
     assert spec['nodeSelector'] == {'kubernetes.io/hostname': 'cp-1'}
     assert spec['serviceAccountName'] == backups.READER_ACCOUNT and spec['automountServiceAccountToken'] is False
-    assert {v['hostPath']['path'] for v in spec['volumes']} == {backups.SNAPSHOT_DIR, backups.TOKEN_FILE, backups.K3S_CONFIG}
+    assert {v['hostPath']['path'] for v in spec['volumes']} == {backups.SNAPSHOT_DIR, backups.K3S_CONFIG}
     [container] = spec['containers']
     assert all(m['readOnly'] for m in container['volumeMounts'])
     assert container['securityContext']['capabilities'] == {'drop': ['ALL']}
@@ -982,7 +1017,7 @@ def test_the_reader_pod_has_the_form_that_the_policy_admits():
     text = json.dumps(policy)
     assert container['image'] == backups.HELPER_IMAGE and backups.HELPER_IMAGE in text
     paths = next(v['expression'] for v in policy['spec']['variables'] if v['name'] == 'paths')
-    assert all(f"'{p}'" in paths for p in (backups.SNAPSHOT_DIR, backups.TOKEN_FILE, backups.K3S_CONFIG))
+    assert all(f"'{p}'" in paths for p in (backups.SNAPSHOT_DIR, backups.K3S_CONFIG)) and 'token' not in paths
     assert policy['spec']['matchConditions'][0]['expression'] == "request.namespace == 'platform-backup'"
     account = next(d for d in docs if d['kind'] == 'ServiceAccount' and d['metadata']['name'] == backups.READER_ACCOUNT)
     assert account['automountServiceAccountToken'] is False
@@ -994,9 +1029,9 @@ def test_the_reader_pod_has_the_form_that_the_policy_admits():
 
 
 def fake_reader(backups, tmp_path, monkeypatch, name, changed=False):
-    """The reader pod as fake kubectl calls, and a tar stream of its three files. Return the list of calls."""
+    """The reader pod as fake kubectl calls, and a tar stream of its two files. Return the list of calls."""
     import hashlib
-    files = {f'snapshots/{name}': b'etcd-data', 'token': b'K10::server:secret', 'config.yaml': b'cluster-init: true\n'}
+    files = {f'snapshots/{name}': b'etcd-data', 'config.yaml': b'cluster-init: true\n'}
     calls = []
 
     def kubectl(*args, input=None, check=True, stdout=None):
@@ -1013,7 +1048,7 @@ def fake_reader(backups, tmp_path, monkeypatch, name, changed=False):
         calls.append(('tar', ns, pod, folder, tuple(members), changed_ok))
         sent = dict(files)
         if changed:
-            sent['token'] = b'other'
+            sent['config.yaml'] = b'other'
         target.write_bytes(tar_bytes(sorted(sent.items()))[0])
     monkeypatch.setattr(backups, 'kubectl', kubectl)
     monkeypatch.setattr(backups, 'tar_out', tar_out)
@@ -1027,32 +1062,37 @@ def test_the_platform_copy_reads_the_scheduled_snapshot_through_the_reader_pod(l
     private = tmp_path / 'private'
     (private / 'zones').mkdir(parents=True)
     (private / 'zones' / 'secret.yaml').write_text('x')
+    (private / 'zone-definitions.json').write_text('{}')
     monkeypatch.setattr(backups.k3s_settings, 'PRIVATE', private)
     monkeypatch.setattr(backups, 'state_path', lambda site: tmp_path / 'state.json')
     partial = tmp_path / 'partial'
     backups.run_platform(s, partial, now=1800000000)
     create = next(c for c in calls if c[:1] == ('create',))
     assert create == ('create', '-f', '-')
-    assert ('tar', 'platform-backup', 'k3s-snapshot-read', '/k3s', (f'snapshots/{name}', 'token', 'config.yaml'), False) in calls
+    assert ('tar', 'platform-backup', 'k3s-snapshot-read', '/k3s', (f'snapshots/{name}', 'config.yaml'), False) in calls
     # The pod goes away after the read.
     assert calls[-2][-4:] == ('delete', 'pod', 'k3s-snapshot-read', '--wait=false')
     etcd = partial / 'etcd'
-    assert sorted(p.name for p in etcd.iterdir()) == sorted(['config.yaml', 'host.json', name, 'token'])
+    assert sorted(p.name for p in etcd.iterdir()) == sorted(['config.yaml', 'host.json', name])
     host = json.loads((etcd / 'host.json').read_text())
     assert host['snapshot'] == name and host['created'] == '2027-01-15T05:13:20Z' and host['k3s_version'] == 'v1.36.5+k3s1'
-    assert (etcd / 'token').stat().st_mode & 0o777 == 0o600 and not (partial / 'etcd.stream.tar').exists()
+    assert (etcd / 'config.yaml').stat().st_mode & 0o777 == 0o600 and not (partial / 'etcd.stream.tar').exists()
+    assert not (partial / 'private.tar').exists() and (partial / 'site-config.tar').exists()
     recovery = backups.read_recovery(partial)
-    assert recovery['format_version'] == 3 and recovery['snapshot'] == f'etcd/{name}'
+    assert recovery['format_version'] == 4 and recovery['snapshot'] == f'etcd/{name}' and recovery['token'] is None
     assert recovery['snapshot_created'] == host['created'] and recovery['route'] == 'reader-pod'
     steps = backups.platform_steps(partial, 'week-9')
-    assert 'Copy the folder etcd/ of the copy into ~/hoover4-snapshots/restore-week-9/' in steps[0]
+    assert steps[0].startswith('Procedure 1, a reinstall') and 'site-config.tar' in steps[1]
+    second = steps.index(next(s for s in steps if s.startswith('Procedure 2')))
+    assert 'tar -xO server-token' in steps[second + 1]
+    assert 'Copy the folder etcd/ into ~/hoover4-snapshots/restore-week-9/' in steps[second + 2]
     assert not any('nodeshell' in str(c) or 'ssh' in str(c) for c in calls)
 
 
 def test_a_snapshot_that_changed_in_the_transfer_stops_the_platform_copy(local_destination, tmp_path, monkeypatch):
     backups, s, _ = local_destination
     calls = fake_reader(backups, tmp_path, monkeypatch, 'etcd-snapshot-cp-1-1799990000', changed=True)
-    with pytest.raises(SystemExit, match='token changed in the transfer'):
+    with pytest.raises(SystemExit, match='config.yaml changed in the transfer'):
         backups.run_platform(s, tmp_path / 'partial', now=1800000000)
     assert any(c[-4:] == ('delete', 'pod', 'k3s-snapshot-read', '--wait=false') for c in calls)
     old = fake_reader(backups, tmp_path, monkeypatch, 'etcd-snapshot-cp-1-1799900000')
@@ -1234,7 +1274,7 @@ def test_a_restore_refuses_a_copy_of_an_earlier_format_and_a_copy_without_the_ow
     (tmp_path / 'copy.json').write_text(json.dumps(record))
     assert backups.copy_record(tmp_path)['kind'] == 'zone'
     monkeypatch.setattr(backups, 'directory_uids', lambda zone: {'id-1': 'gabriel'})
-    with pytest.raises(SystemExit, match=r'has no user stefan.*Restore the identity copy first: backups.py '
+    with pytest.raises(SystemExit, match=r'has no user stefan with.*Restore the identity copy first: backups.py '
                                          r'restore-identity zone-b <generation>'):
         backups.check_copy(tmp_path, record, 'zone', 'zone-b')
     backups.check_copy(tmp_path, record, 'zone', 'zone-b', without_owners=True)
