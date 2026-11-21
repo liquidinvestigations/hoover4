@@ -36,6 +36,23 @@ def request():
     return backend_client.CollectionsListRequest()
 
 
+@pytest.mark.parametrize("completeness, expected", [({}, False),
+    ({"cluster_size_complete": False}, False), ({"cluster_size_complete": True}, True)])
+def test_email_response_reads_graph_completeness(monkeypatch, completeness, expected):
+    graph = {"nodes": [], "edges": [], "cluster_size": 1, "truncated": False, **completeness}
+    payload = {"envelope": None, "parent": None, "cluster_size": 1, "headers": {},
+               "attachments": [], "graph": graph, "source": "email"}
+    session = Session([Response(200, payload)])
+    client = backend_client.BackendClient("http://agent-api", session)
+    monkeypatch.setattr(client, "caller_headers", lambda: {})
+
+    result = client.post("documents/email", request(), backend_client.DocumentsEmailResponse)
+
+    assert result.graph.cluster_size_complete is expected
+    with pytest.raises(ValidationError):
+        backend_client.EmailGraph.model_validate({**graph, "unexpected": True})
+
+
 def test_success_forwards_only_agent_identity_headers(monkeypatch):
     session = Session([Response(200, {"collections": [], "source": ""})])
     client = backend_client.BackendClient("http://agent-api", session)

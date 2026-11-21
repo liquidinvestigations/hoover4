@@ -35,9 +35,6 @@ MAX_ENTRY_TEXT = 2000
 #: The `cut` text of a `read_documents` item: `<shown> of <total> bytes`.
 _CUT_TEXT = re.compile(r"^\s*(\d+)\s+of\s+(\d+)\s+bytes")
 
-#: A citation label as an answer writes it.
-LABEL_PATTERN = re.compile(r"\[\s*([DWCB]\d+(?:\s*,\s*[DWCB]\d+)*)\s*\]")
-
 #: A chat or board handle, `[C1]` or `[B1]`, and the kind that each letter names.
 ITEM_HANDLE = re.compile(r"\[([CB])[1-9]\d*\]")
 ITEM_KINDS = {"C": "chat", "B": "board"}
@@ -527,14 +524,10 @@ def message_evidence(message) -> list[dict]:
 
 
 def answer_labels(answer: str) -> list[str]:
-    """Return distinct document, web, chat and board citation labels in their answer order."""
-    seen: list[str] = []
-    for match in LABEL_PATTERN.finditer(answer or ""):
-        for value in match.group(1).split(","):
-            label = f"[{value.strip()}]"
-            if label not in seen:
-                seen.append(label)
-    return seen
+    """Return the distinct visible citation labels in answer order."""
+    from tasks.P_workspace.references import handles
+
+    return list(dict.fromkeys(handle for handle, _ in handles(answer or "")))
 
 
 def label_bindings(entries: Iterable[dict]) -> dict[str, set[str]]:

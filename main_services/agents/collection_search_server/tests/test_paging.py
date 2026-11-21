@@ -980,10 +980,12 @@ def test_email_first_page_defers_graph_rows(monkeypatch):
     Store(monkeypatch)
     response = {**deepcopy(SAMPLES["doc_email"]), "source": "email-stable"}
     response["graph"]["nodes"] *= 400
+    response["graph"]["cluster_size_complete"] = True
     monkeypatch.setattr(paging.BackendClient, "post", lambda self, route, request, model, **kw: model.model_validate(response))
     request = tools_document.DOC_EMAIL.model.model_validate({"collectionname": "c", "file_hash": "h"})
     page = json.loads(paging.finish(tools_document.DOC_EMAIL.render(request, {}, "")))
     assert page["graph_counts"]["nodes"] == 400
+    assert page["graph_counts"]["cluster_size_complete"] is True
     assert all(item["field"] == "attachments" for item in page["items"])
     following = json.loads(paging.read_more.fn(page["more"]))
     assert following["items"][0]["field"] == "graph_nodes"

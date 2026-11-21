@@ -541,8 +541,13 @@ class PagedTool:
             excluded.add(self.columns_key)
         fields = {key: value for key, value in result.items() if key not in excluded}
         if self.item_key == "__email_entries":
-            fields["graph_counts"] = {"nodes": len(graph.get("nodes", [])), "edges": len(graph.get("edges", [])),
-                                      "cluster_size": graph.get("cluster_size", 0), "truncated": graph.get("truncated", False)}
+            fields["graph_counts"] = {
+                "nodes": len(graph.get("nodes", [])),
+                "edges": len(graph.get("edges", [])),
+                "cluster_size": graph.get("cluster_size", 0),
+                "cluster_size_complete": graph.get("cluster_size_complete", False),
+                "truncated": graph.get("truncated", False),
+            }
         columns = result.get(self.columns_key) if self.columns_key else None
         next_position = result.get("next_position")
         total = result.get("total")

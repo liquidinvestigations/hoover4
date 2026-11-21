@@ -560,6 +560,7 @@ class EmailGraph(AgentModel):
     nodes: list[EmailGraphNode]
     edges: list[EmailGraphEdge]
     cluster_size: int
+    cluster_size_complete: bool = False
     truncated: bool
 
 

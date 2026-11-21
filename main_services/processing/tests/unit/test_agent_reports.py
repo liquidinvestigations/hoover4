@@ -8,7 +8,7 @@ import json
 import pytest
 
 from database import agent_runs
-from tasks.P_agent import reports, steps
+from tasks.P_agent import citations, reports, steps
 
 THREAD = "7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 FIRST = THREAD
@@ -50,6 +50,18 @@ def test_grouped_citations_validate_each_source_in_answer_order():
     })
     assert check["labels"] == ["[W1]", "[D8]", "[W2]"]
     assert check["unresolved"] == ["[W2]"]
+
+
+def test_chat_citation_status_ignores_literal_markers():
+    entries = reports.normalize("cite_documents", {}, json.dumps({"citations": [{
+        "handle": "[D1]", "file_hash": HASH_A, "quote_verified": True,
+    }]}), "ok")
+    assert reports.label_bindings(entries) == {"[D1]": {HASH_A[:16]}}
+    assert citations.answer_metadata("`[D1]`", entries, False)["citation_status"] == "none"
+    answer = "\\[D2] [D3](https://example.org)\n```text\n[D4]\n```"
+    assert citations.answer_metadata(answer, entries, False)["citation_status"] == "none"
+    assert citations.answer_metadata("**[D1]**", entries, False)["citation_status"] == "cited"
+    assert citations.answer_metadata("_[D1, W2]_", entries, False)["citation_status"] == "invalid"
 
 
 def test_web_discovery_and_citations_keep_distinct_evidence():

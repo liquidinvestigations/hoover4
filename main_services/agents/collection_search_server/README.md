@@ -33,6 +33,7 @@ The backend resolves text in the selected collections and reports applied filter
 An empty query lists filter matches.
 `doc_metadata` and `doc_email` accept one hash or up to ten hashes with equal page shares.
 The first email page gives the envelope, attachments, and graph counts.
+The graph counts report whether the cluster size is complete. Earlier responses default to false.
 Without attachments, it includes the first graph row to provide a content page.
 Graph nodes and edges continue through `read_more`.
 An unknown continuation repairs one changed character or one adjacent swap only when one issued handle matches.
