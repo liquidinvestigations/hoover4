@@ -1369,6 +1369,7 @@ def test_the_bind_step_writes_a_keycloak_password_that_keycloak_can_check():
     assert base64.b64decode(secret['value']) == hashlib.pbkdf2_hmac('sha512', b'target-password', b'0123456789abcdef',
                                                                       210000, 64)
     assert 'RETURNING 1' in bind.KEYCLOAK_ADMIN_SQL and 'RETURNING 1' in bind.KEYCLOAK_BIND_SQL
+    assert "LIKE '%/univention/oidc/'" in bind.KEYCLOAK_UMC_SQL.format(value='v') and 'RETURNING 1' in bind.KEYCLOAK_UMC_SQL
     assert bind.updated('1\n') == 1 and bind.updated('') == 0
 
 

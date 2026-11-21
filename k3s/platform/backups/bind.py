@@ -7,8 +7,10 @@ record. No function prints a value.
 
 The rules come from the prototype restore of one zone into another on a test site:
 
-- keycloak_admin(): the Keycloak database holds the credential of kcadmin, the admin of the Keycloak master, and the
-  password of ldapsearch_keycloak in the user federation (bindCredential). The zone installer signs in with the
+- keycloak_admin(): the Keycloak database holds the credential of kcadmin, the admin of the Keycloak master, the
+  password of ldapsearch_keycloak in the user federation (bindCredential) and the secret of the UMC client
+  (<portal host>/univention/oidc/). The Keycloak bootstrap of ums creates the UMC client with its secret, and it does
+  not change the secret of a client that exists. The zone installer signs in with the
   password of the Secret keycloak-admin-password, so every later Keycloak step fails without this rule, and Keycloak
   reads no user of the directory without bindCredential.
 - directory_accounts(): the directory holds the passwords of its service accounts, of cn=admin and of the onboarding
@@ -50,6 +52,9 @@ KEYCLOAK_ADMIN_SQL = (
 KEYCLOAK_BIND_SQL = ("WITH changed AS (UPDATE component_config SET value = $bind${value}$bind$ WHERE name = "
                      "'bindCredential' RETURNING 1) SELECT count(*) FROM changed;\n")
 KEYCLOAK_LDAP = ('ums-keycloak-bootstrap-ldap-opendesk-credentials', 'password')
+KEYCLOAK_UMC_SQL = ("WITH changed AS (UPDATE client SET secret = $bind${value}$bind$ WHERE client_id LIKE "
+                    "'%/univention/oidc/' RETURNING 1) SELECT count(*) FROM changed;\n")
+KEYCLOAK_UMC = ('ums-keycloak-bootstrap-oidc-rp-umc-server', 'password')
 # (account, Secret of the target, key). An account is uid=<account>,cn=users,<base>.
 DIRECTORY_ACCOUNTS = [('Administrator', 'ums-nubus-credentials', 'administrator_password'),
                       ('readonly', 'ums-stack-data-ums-readonly-user', 'password'),
@@ -100,9 +105,9 @@ def updated(out):
 
 
 def keycloak_admin(zone):
-    """Write the credential of kcadmin from the Secret keycloak-admin-password and bindCredential from the Secret of
-    ldapsearch_keycloak. Run it before Keycloak starts, because Keycloak keeps the users and the components of the
-    master in its cache."""
+    """Write the credential of kcadmin from the Secret keycloak-admin-password, bindCredential from the Secret of
+    ldapsearch_keycloak and the secret of the UMC client from its Secret. Run it before Keycloak starts, because
+    Keycloak keeps the users, components and clients in its cache."""
     import postgresql
     database = postgresql.database_name(zone, 'keycloak')
     secret, data = keycloak_credential(secret_value(zone, 'keycloak-admin-password', 'adminPassword'))
@@ -110,10 +115,12 @@ def keycloak_admin(zone):
     if count != 1:
         raise SystemExit(f'the restored Keycloak database of {zone} has {count} passwords of kcadmin, and the bind '
                          'step needs one.')
-    value = secret_value(zone, *KEYCLOAK_LDAP).decode()
-    if '$bind$' in value:
-        raise SystemExit('the password of ldapsearch_keycloak holds the quote mark of the update.')
-    return count + updated(postgresql.server_sql(KEYCLOAK_BIND_SQL.format(value=value), database))
+    for sql, source in ((KEYCLOAK_BIND_SQL, KEYCLOAK_LDAP), (KEYCLOAK_UMC_SQL, KEYCLOAK_UMC)):
+        value = secret_value(zone, *source).decode()
+        if '$bind$' in value:
+            raise SystemExit(f'the value of the Secret {source[0]} holds the quote mark of the update.')
+        count += updated(postgresql.server_sql(sql.format(value=value), database))
+    return count
 
 
 def ldap_exec(zone, script, stdin):
