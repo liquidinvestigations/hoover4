@@ -385,7 +385,8 @@ def test_the_removal_drops_the_databases_and_the_users_of_the_zone_only(monkeypa
 
 def test_the_zone_backup_dumps_each_database_of_the_shared_server(monkeypatch, tmp_path):
     pods = {'items': []}
-    monkeypatch.setattr(backups, 'kubectl', lambda *a, **kw: json.dumps(pods) if a[2] == 'get' else '{"items": []}')
+    monkeypatch.setattr(backups, 'kubectl', lambda *a, **kw: '' if 'secrets,configmaps' in a
+                        else json.dumps(pods) if a[2] == 'get' else '{"items": []}')
     monkeypatch.setattr(backups, 'shared_databases', lambda ns: postgresql if ns == 'zone-a' else None)
     monkeypatch.setattr(backups, 'opendesk_garage_key', lambda ns: None)
     monkeypatch.setattr(shared, 'ready_pod', lambda store: 'postgresql-0')
@@ -395,8 +396,11 @@ def test_the_zone_backup_dumps_each_database_of_the_shared_server(monkeypatch, t
         dumped.append((ns, args[0], args[-1], target.relative_to(tmp_path).as_posix()))
         target.write_bytes(b'-- data\n-- PostgreSQL database dump complete\n\n')
     monkeypatch.setattr(backups, 'dump_out', dump_out)
-    backups.copy_namespace('zone-a', tmp_path)
-    assert sorted(d[3] for d in dumped) == sorted(f'postgresql/{name}.sql' for name, _ in postgresql.DATABASES.values())
+    import parts
+    rows = backups.copy_namespace('zone-a', tmp_path)
+    data = sorted(name for name, _ in postgresql.DATABASES.values() if parts.classify('database', name) == 'data')
+    assert sorted(d[3] for d in dumped) == [f'postgresql/{name}.sql' for name in data] and 'xwiki' in data
+    assert 'keycloak' not in data and {r['name'] for r in rows if r['kind'] == 'database'} >= {'keycloak', 'xwiki'}
     assert {(d[0], d[1]) for d in dumped} == {('hoover-stores', 'postgresql-0')}
     assert ('hoover-stores', 'postgresql-0', 'zone_a_xwiki', 'postgresql/xwiki.sql') in dumped
     assert backups.dump_complete(tmp_path / 'postgresql' / 'xwiki.sql')

@@ -321,13 +321,16 @@ ZONE_SETTINGS = [Setting('zone.enabled', 'zone', 'bool', 'true', ('zone',), 'rec
 ZONE_SETTINGS += [Setting(f'app.{name}', 'zone', 'bool', 'true', (name,), 'reconcile', 'switch') for name in APPLICATIONS]
 
 
-# The backup policies. The site file names the destination (vars.backup node and path). Each policy is weekly: a
-# zone gets one openDesk copy a week and keeps 2 or 3, a Hoover collection gets at most one copy a week after its first
-# ingestion or a complete reprocessing and keeps 1 or 2, and the platform recovery set keeps 1 to 3 weekly copies.
+# The backup policies. The site file names the destination (vars.backup node and path). A zone gets one zone copy a
+# week and keeps 2 or 3, the identity of a zone (its users, groups and sign-in data) gets one copy a day and keeps 2 to
+# 14, a Hoover collection gets at most one copy a week after its first ingestion or a complete reprocessing and keeps 1
+# or 2, and the platform recovery set keeps 1 to 3 weekly copies.
 # Mode schedule: the backup scheduler reads the applied value, and no service restarts.
 BACKUP_SETTINGS = [
     Setting('backup.opendesk.enabled', 'zone', 'bool', 'false', ('backups',), 'schedule', 'backup'),
     Setting('backup.opendesk.copies', 'zone', 'int', '3', ('backups',), 'schedule', 'backup', minimum=2, maximum=3),
+    Setting('backup.identity.enabled', 'zone', 'bool', 'false', ('backups',), 'schedule', 'backup'),
+    Setting('backup.identity.copies', 'zone', 'int', '7', ('backups',), 'schedule', 'backup', minimum=2, maximum=14),
     Setting('backup.hoover.enabled', 'zone', 'bool', 'false', ('backups',), 'schedule', 'backup'),
     Setting('backup.hoover.copies', 'zone', 'int', '2', ('backups',), 'schedule', 'backup', minimum=1, maximum=2),
     Setting('backup.platform.enabled', 'cluster', 'bool', 'false', ('backups',), 'schedule', 'backup'),

@@ -64,19 +64,21 @@ it there against its manifest and removes the mirror copies that retention remov
 in the job record and keeps the copies of the first location. A failed job or check
 leaves the older copies. The destination folder must hold the marker file of schedule.py, which the host step of the
 backup node writes (../../ansible/roles/hoover4_host/tasks/backup.yml), so a missing mount pauses the jobs.
-The zone job records the replicas of each workload of the zone in workloads.json, which restore-zone applies. It stops
-and scales no workload. A job of an earlier version closed the zone during the copy. A runner that finds such a
-recorded closure without a running job restores it.
+The zone and identity jobs stop and scale no workload. A job of an earlier version closed the zone during the copy. A
+runner that finds such a recorded closure without a running job restores it.
 The zone and platform jobs hold the site operation lock (../../oplock.py), so no deployment, Apply or Compose import
 changes the site during the copy.
-restore-zone restores a complete zone copy into an installed zone: the Secrets, the claims, the objects of the
-object store and the database dumps of the zone namespace and of its Hoover installation, with the applications and
-the other stores stopped. A copy of an earlier version can hold the parts of a retired application
-(../../zones/applications.py): its Secrets, claims, buckets, database dumps and replica counts. The restore leaves them
-out and names them in its output and its record, so no retired workload or data comes back. For a site
-zone it also replaces the zone databases and the objects of the system bucket with the shared/ part of the copy, and
-it keeps the tenant credentials of the target zone (TENANT_SECRETS). --from names
-the zone of the copy when it differs. On a failure the zone stays closed, and the state file names the step.
+restore-identity restores an identity copy and restore-zone a zone copy into an installed zone, with the steps of
+RESTORE_STEPS. Restore the identity copy first: restore-zone stops in its step check when an owner of the data of the
+copy is not a user of the directory of the target, unless --without-owners is given for owners that the operator
+created by hand. The restores write the parts of the copy while the applications and the other stores are stopped,
+empty the derived claims, write the values of the target into the restored data (bind.py), run the configuration Jobs
+of the releases again and apply the zone. No Secret of the copy is applied: the target keeps every Secret and its
+store credentials. For a site zone restore-zone also replaces the zone databases and the objects of the system bucket
+with the shared/ part of the copy. --from names the zone of the copy when it differs. The record
+<operator state>/backups/restore-<zone>.json names the finished steps and goes into the cluster copy after each step,
+so a second run, also in a new operator pod, continues at the first step that is not done. A copy without copy.json
+or of an earlier version is refused with the commit that restores it (EARLIER_FORMAT_COMMIT).
 A runner restart finds a job that runs (its process id and its export operation in the state) and waits for it.
 Receipts of a collection come from the table operations of the installation: the first finished add_dataset of each of
 its datasets, when none of its dataset operations still runs, is the ingestion receipt. A finished update_collection,
@@ -175,10 +177,12 @@ def job_folder(key):
         return 'platform'
     if kind in ('zone', 'opendesk'):
         return f'zones/{name_arg(rest, "zone")}'
+    if kind == 'identity':
+        return f'zones/{name_arg(rest, "zone")}/identity'
     if kind == 'hoover':
         zone, _, collection = rest.partition(':')
         return f'zones/{name_arg(zone, "zone")}/collections/{name_arg(collection, "collection")}'
-    raise SystemExit(f'{key!r} is not a job. A job is platform, zone:<zone> or hoover:<zone>:<collection>.')
+    raise SystemExit(f'{key!r} is not a job. A job is platform, zone:<zone>, identity:<zone> or hoover:<zone>:<collection>.')
 
 
 def kubectl(*args, input=None, check=True, stdout=None):
@@ -308,6 +312,8 @@ def jobs(s, data):
         zone = applied_values(s, f'zone:{hoover.zone}')
         if zone.get('backup.opendesk.enabled') == 'true':
             out.append(schedule.Job(f'zone:{hoover.zone}', int(zone['backup.opendesk.copies'])))
+        if zone.get('backup.identity.enabled') == 'true':
+            out.append(schedule.Job(f'identity:{hoover.zone}', int(zone['backup.identity.copies']), duration=300))
         if zone.get('backup.hoover.enabled') == 'true':
             for collection in collections(hoover):
                 key = f'hoover:{hoover.zone}:{collection}'
@@ -452,7 +458,7 @@ def tick(now=None):
         record = data['jobs'].setdefault(job.key, {'copies': []})
         if job.weekly and not record.get('slot'):
             last = schedule.last_copy(record)
-            record['slot'] = schedule.slot_after(job.key, last['finished'] if last else now)
+            record['slot'] = schedule.slot_after(job.key, last['finished'] if last else now, job.period)
     start, blocked, slots = schedule.plan(selected, data['jobs'], now, free_bytes(target))
     data['blocked'] = blocked
     for key, slot in slots.items():
@@ -508,9 +514,10 @@ def tar_status_ok(code, stderr):
     return code == 1 and bool(lines) and all(any(m in line for m in TAR_CHANGED) or line.endswith(b'Exiting with failure status due to previous errors') for line in lines)
 
 
-def tar_command(ns, pod, container, folder, tar=('tar',), members=('.',)):
+def tar_command(ns, pod, container, folder, tar=('tar',), members=('.',), excludes=()):
     return ['kubectl', '--kubeconfig', k3s_settings.KUBECONFIG, '-n', ns, 'exec', pod,
-            *(['-c', container] if container else []), '--', *tar, '-C', folder, '-cf', '-', *members]
+            *(['-c', container] if container else []), '--', *tar, *[f'--exclude={e}' for e in excludes], '-C', folder,
+            '-cf', '-', *members]
 
 
 def stream_out(ns, pod, container, folder, target):
@@ -558,8 +565,9 @@ def tar_complete(path):
     return True
 
 
-def tar_out(ns, pod, container, folder, target, tar=('tar',), settled=None, members=('.',), changed_ok=True):
+def tar_out(ns, pod, container, folder, target, tar=('tar',), settled=None, members=('.',), changed_ok=True, excludes=()):
     """Write a folder of a pod, or the members of the folder, into one host tar file, with their owners and modes.
+    excludes are tar patterns of the members that the file leaves out.
 
     kubectl exec can end with status 0 after a stream reset, so the file is read to its end. An incomplete file is
     written again, up to three times. settled() gives a value before and after the read. When the two differ, a file
@@ -570,7 +578,8 @@ def tar_out(ns, pod, container, folder, target, tar=('tar',), settled=None, memb
     for attempt in range(3):
         before = settled() if settled else None
         with open(target, 'wb') as out:
-            result = subprocess.run(tar_command(ns, pod, container, folder, tar, members), stdout=out, stderr=subprocess.PIPE)
+            result = subprocess.run(tar_command(ns, pod, container, folder, tar, members, excludes), stdout=out,
+                                    stderr=subprocess.PIPE)
         status = tar_status_ok(result.returncode, result.stderr) if changed_ok else result.returncode == 0
         if status and tar_complete(target) and (settled is None or settled() == before):
             return
@@ -857,21 +866,103 @@ class Moments:
         self.parts[name] = {'started': round(started, 1), 'finished': round(time.time(), 1)}
 
 
-def run_zone(s, zone, partial, key=None):
-    """Copy a running zone: its namespace into partial, and each Hoover installation into partial/hoover/<name>/.
+# The format of copy.json of a zone copy and of an identity copy. restore-zone and restore-identity refuse an earlier
+# version. The commit EARLIER_FORMAT_COMMIT restores a copy of version 3 or earlier into its own running zone.
+COPY_FORMAT = 'hoover4-zone-copy'
+COPY_VERSION = 4
+EARLIER_FORMAT_COMMIT = '3fc6f256'
+COPY_FILE = 'copy.json'
 
-    No workload stops. workloads.json records the replicas, and moments.json the time of each part.
+
+def opendesk_release():
+    """The openDesk release of the installer, from the download folder that ../../zones/zone.py names."""
+    import re
+    found = re.search(r"downloads/opendesk-(v[0-9][0-9.]*)/", (K3S / 'zones' / 'zone.py').read_text())
+    return found.group(1) if found else ''
+
+
+def release_tuple(text):
+    return tuple(int(x) for x in text.lstrip('v').split('.') if x.isdigit())
+
+
+# The LDAP server of a zone. Its container main reads the directory as root of the server through ldapi.
+LDAP_POD = 'ums-ldap-server-primary-0'
+
+
+def directory_uids(zone):
+    """{univentionObjectIdentifier: uid} of the users of the directory of a zone, read in its LDAP server pod."""
+    out = kubectl('-n', zone, 'exec', LDAP_POD, '-c', 'main', '--', 'sh', '-c',
+                  'ldapsearch -LLL -Q -Y EXTERNAL -H ldapi:/// -b "$LDAP_BASE_DN" -o ldif-wrap=no '
+                  '"(&(uid=*)(univentionObjectIdentifier=*))" uid univentionObjectIdentifier')
+    found, entry = {}, {}
+    for line in out.splitlines() + ['']:
+        if not line.strip():
+            if entry.get('uid') and entry.get('univentionObjectIdentifier'):
+                found[entry['univentionObjectIdentifier']] = entry['uid']
+            entry = {}
+        elif ': ' in line:
+            name, value = line.split(': ', 1)
+            entry[name] = value
+    return found
+
+
+def owners(s, zone):
+    """The sorted directory uid values that own data in a zone: the Hoover users that are not deleted, and the
+    Nextcloud accounts, whose ids are the univentionObjectIdentifier of their directory entry."""
+    names = set()
+    for hoover in (h for h in site_config.hoovers(s).values() if h.zone == zone):
+        rows = clickhouse(hoover, f'SELECT username FROM `{hoover.clickhouse_database_prefix}_Processing`.users FINAL '
+                                  'WHERE is_deleted = 0')
+        names |= {json.loads(line)['username'] for line in rows.splitlines() if line.strip()}
+    module = shared_databases(zone)
+    if module:
+        pod = module.shared().ready_pod('postgresql')
+        ids = kubectl('-n', module.STORES_NS, 'exec', pod, '-c', 'postgresql', '--', 'psql', '-U', 'postgres', '-At', '-d',
+                      module.database_name(zone, 'nextcloud'), '-c', 'SELECT uid FROM oc_accounts').split()
+        uids = directory_uids(zone)
+        names |= {uids[i] for i in ids if i in uids}
+    return sorted(names)
+
+
+def write_copy_record(s, zone, partial, kind, parts):
+    """Write copy.json: the format, the source, the releases, the parts with their class and size, the owners of the
+    data and an empty list of Secrets. No Secret value is in a copy."""
+    record = {'format': COPY_FORMAT, 'version': COPY_VERSION, 'kind': kind,
+              'source': {'site': s.id, 'zone': zone, 'domain': s.domain},
+              'opendesk_release': opendesk_release(), 'hoover_revision': os.environ.get('HOOVER4_REVISION', ''),
+              'application_profile': sorted(k for k, v in applications.OPENDESK_APPS.items() if v),
+              'parts': parts, 'owners': owners(s, zone), 'secrets': []}
+    (partial / COPY_FILE).write_text(json.dumps(record, indent=1))
+    return record
+
+
+def run_zone(s, zone, partial, key=None):
+    """Copy the data of a running zone: the data parts of its namespace (parts.py) into partial, and of each Hoover
+    installation into partial/hoover/<name>/ with the zone databases and the system bucket of the shared stores.
+
+    No workload stops. moments.json records the time of each part, and copy.json the parts and the owners. The copy
+    holds no Secret, no ConfigMap and no part of the classes people, identity and derived.
     """
     partial.mkdir(parents=True, exist_ok=True)
     moments = Moments()
-    workloads = close_zone(s, zone)
-    copy_namespace(zone, partial, moments)
+    rows = copy_namespace(zone, partial, moments)
     for hoover in (h for h in site_config.hoovers(s).values() if h.zone == zone):
-        copy_namespace(hoover.namespace, partial / 'hoover' / hoover.name, moments, f'hoover/{hoover.name}/')
+        rows += copy_namespace(hoover.namespace, partial / 'hoover' / hoover.name, moments, f'hoover/{hoover.name}/')
         if hoover.stores == 'site':
             with moments.part(f'hoover/{hoover.name}/{SHARED_PART}'):
                 copy_shared_stores(hoover, partial / 'hoover' / hoover.name / SHARED_PART)
-    (partial / 'workloads.json').write_text(json.dumps(workloads, indent=1))
+            rows.append({'namespace': hoover.namespace, 'kind': 'shared-stores', 'name': SHARED_PART, 'class': 'data'})
+    write_copy_record(s, zone, partial, 'zone', rows)
+    (partial / 'moments.json').write_text(json.dumps({'online': True, 'parts': moments.parts}, indent=1))
+
+
+def run_identity(s, zone, partial, key=None):
+    """Copy the people of a running zone: the directory claim with the LDAP check of copy_namespace() and the dump of
+    the Keycloak database. No application stops."""
+    partial.mkdir(parents=True, exist_ok=True)
+    moments = Moments()
+    rows = copy_namespace(zone, partial, moments, wanted=('people',))
+    write_copy_record(s, zone, partial, 'identity', rows)
     (partial / 'moments.json').write_text(json.dumps({'online': True, 'parts': moments.parts}, indent=1))
 
 
@@ -905,14 +996,101 @@ def shared_databases(zone):
     return postgresql if postgresql.on_shared(entry) else None
 
 
-def copy_shared_databases(zone, module, target):
-    """Write a pg_dump of each openDesk database of a zone on the shared PostgreSQL into target/<database>.sql. Each
-    dump holds one moment of its database, without owner and rights, so it restores into the database of any zone."""
+def copy_shared_databases(zone, module, target, names=None):
+    """Write a pg_dump of each openDesk database of a zone on the shared PostgreSQL into target/<database>.sql, or of
+    the databases of names. Each dump holds one moment of its database, without owner and rights, so it restores into
+    the database of any zone."""
     target.mkdir(parents=True, exist_ok=True)
     pod = module.shared().ready_pod('postgresql')
     for key, (name, _) in sorted(module.DATABASES.items()):
+        if names is not None and name not in names:
+            continue
         dump_out(module.STORES_NS, [pod, '-c', 'postgresql', '--', 'pg_dump', '-U', 'postgres', '--no-owner', '--no-acl',
                                     '-d', module.database_name(zone, key)], target / f'{name}.sql')
+        leave_out_source_values(name, target / f'{name}.sql')
+
+
+# The escapes of the text form of COPY (the PostgreSQL manual, COPY, "Text Format"). pg_dump writes only these.
+COPY_ESCAPES = {'\\': '\\', 'n': '\n', 'r': '\r', 't': '\t', 'b': '\b', 'f': '\f', 'v': '\v'}
+
+
+def copy_field(text):
+    """The value of one field of a COPY row, or None for NULL."""
+    if text == '\\N':
+        return None
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == '\\' and i + 1 < len(text) and text[i + 1] in COPY_ESCAPES:
+            out.append(COPY_ESCAPES[text[i + 1]])
+            i += 2
+        else:
+            out.append(text[i])
+            i += 1
+    return ''.join(out)
+
+
+def copy_text(value):
+    """The COPY form of one field value."""
+    if value is None:
+        return '\\N'
+    return (value.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t'))
+
+
+def changed_value(value, change):
+    """The value of a column after a change of parts.SOURCE_VALUES."""
+    if change is None or value is None:
+        return None
+    if isinstance(change, str):
+        return change
+    data = json.loads(value)
+    for path in change:
+        node = data
+        for key in path[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, dict) and path[-1] in node:
+            node[path[-1]] = ''
+    return json.dumps(data, separators=(',', ':'))
+
+
+def leave_out_source_values(database, path):
+    """Write an empty value into each column of parts.SOURCE_VALUES of the dump of database at path. The dump keeps its
+    trailer line, and the function returns the count of changed fields."""
+    import parts as classes
+    rules = classes.SOURCE_VALUES.get(database)
+    if not rules:
+        return 0
+    path = Path(path)
+    temporary = path.with_suffix('.filtered')
+    count = 0
+    table_rules, columns = [], []
+    with open(path, encoding='utf-8', newline='') as source, open(temporary, 'w', encoding='utf-8', newline='') as out:
+        for line in source:
+            if table_rules:
+                if line == '\\.\n':
+                    table_rules = []
+                else:
+                    fields = line.rstrip('\n').split('\t')
+                    for _, match, column, change in table_rules:
+                        if callable(match):
+                            if not match({c: copy_field(f) for c, f in zip(columns, fields)}):
+                                continue
+                        elif match and tuple(copy_field(fields[columns.index(c)]) for c in match[0]) not in match[1]:
+                            continue
+                        at = columns.index(column)
+                        old = copy_field(fields[at])
+                        new = changed_value(old, change)
+                        if new != old:
+                            fields[at] = copy_text(new)
+                            count += 1
+                    line = '\t'.join(fields) + '\n'
+            elif line.startswith('COPY public.'):
+                table = line.split()[1].split('.', 1)[1]
+                table_rules = [r for r in rules if r[0] == table]
+                if table_rules:
+                    columns = [c.strip() for c in line[line.index('(') + 1:line.index(') FROM stdin')].split(',')]
+            out.write(line)
+    os.replace(temporary, path)
+    return count
 
 
 def dump_out(ns, exec_args, target):
@@ -925,38 +1103,51 @@ def dump_out(ns, exec_args, target):
     raise SystemExit(f'the dump {target.name} of {ns} stayed incomplete after three attempts.')
 
 
-def copy_namespace(ns, partial, moments=None, label=''):
-    """Copy the database dumps, the claims, the object store, the Secrets and the ConfigMaps of one running namespace
-    into partial, in the order of online_parts()."""
+def copy_namespace(ns, partial, moments=None, label='', wanted=('data',)):
+    """Copy the parts of one running namespace whose class (parts.py) is in wanted into partial: the database dumps,
+    the claims and the buckets, in the order of online_parts(). Return the rows of every part with its class.
+
+    Every claim, database, bucket, Secret and ConfigMap gets its class before the first read, so a part without a class
+    stops the job before it reads anything. The copy reads no Secret value.
+    """
+    import parts as classes
     moments = moments or Moments()
     partial.mkdir(parents=True, exist_ok=True)
     pods = json.loads(kubectl('-n', ns, 'get', 'pods', '-o', 'json'))['items']
     names = {p['metadata']['name'] for p in pods if p['status'].get('phase') == 'Running'}
+    if names & {'postgresql-0', 'mariadb-0'}:
+        raise SystemExit(f'{ns} runs its own database server, from an earlier version. Apply the zone with deploy-k3s up '
+                         'first, which moves its databases to the shared PostgreSQL.')
     module = shared_databases(ns)
-    if module:
-        with moments.part(label + SHARED_DUMPS + '/'):
-            copy_shared_databases(ns, module, partial / SHARED_DUMPS)
-    elif 'postgresql-0' in names:
-        # --clean lets restore-zone replace the databases of a zone that the installer created.
-        with moments.part(label + 'postgresql.sql'):
-            dump_out(ns, ['postgresql-0', '-c', 'postgresql', '--', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists'],
-                     partial / 'postgresql.sql')
-    if 'mariadb-0' in names:
-        with moments.part(label + 'mariadb.sql'):
-            dump_out(ns, ['mariadb-0', '--', 'sh', '-c',
-                          'mariadb-dump --all-databases --single-transaction -uroot -p"$MARIADB_ROOT_PASSWORD"'],
-                     partial / 'mariadb.sql')
     store = object_store(ns, pods)
-    garage_key = None if store else opendesk_garage_key(ns)
-    claims = json.loads(kubectl('-n', ns, 'get', 'pvc', '-o', 'json'))['items']
-    rows = []
+    if store:
+        raise SystemExit(f'{ns} runs its own object store, from an earlier version. Apply the zone with deploy-k3s up '
+                         'first, which moves its objects to Garage.')
+    garage_key = opendesk_garage_key(ns)
+    claims = [item for item in json.loads(kubectl('-n', ns, 'get', 'pvc', '-o', 'json'))['items']
+              if not any(d in item['metadata']['name'] for d in DATABASES)
+              and not any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', []))]
+    rows = [{'namespace': ns, 'kind': 'claim', 'name': i['metadata']['name']} for i in claims]
+    if module:
+        rows += [{'namespace': ns, 'kind': 'database', 'name': name} for name, _ in sorted(module.DATABASES.values())]
+    if garage_key:
+        rows += [{'namespace': ns, 'kind': 'bucket', 'name': b} for b in opendesk_buckets()]
+    for line in kubectl('-n', ns, 'get', 'secrets,configmaps', '-o', 'name').split():
+        kind, _, name = line.partition('/')
+        rows.append({'namespace': ns, 'kind': kind, 'name': name})
+    for row in rows:
+        row['class'] = classes.classify(row['kind'], row['name'])
+    copied = {(r['kind'], r['name']) for r in rows if r['class'] in wanted}
+    if module:
+        databases = [n for k, n in copied if k == 'database']
+        if databases:
+            with moments.part(label + SHARED_DUMPS + '/'):
+                copy_shared_databases(ns, module, partial / SHARED_DUMPS, databases)
+    claim_rows = []
     with moments.part(label + 'claims/'):
         for item in claims:
             claim = item['metadata']['name']
-            if any(d in claim for d in DATABASES) or any(o['kind'] == 'Pod' for o in item['metadata'].get('ownerReferences', [])):
-                continue
-            if store and claim in store['claims']:
-                # The object store is copied through its S3 API (copy_objects()). Its files change while it runs.
+            if ('claim', claim) not in copied:
                 continue
             mode = item['spec'].get('volumeMode') or 'Filesystem'
             target = partial / 'claims' / f'{claim}.tar'
@@ -964,29 +1155,28 @@ def copy_namespace(ns, partial, moments=None, label=''):
                 source = block_source(claim, pods)
                 if source is None:
                     raise SystemExit(f'no running store pod mounts the Block claim {ns}/{claim}. Start the zone and run the job again.')
-                tar_out(ns, *source, target, tar=('/tools/busybox', 'tar'))
+                tar_out(ns, *source, target, tar=('/tools/busybox', 'tar'), excludes=classes.left_out(claim))
             elif mounted := mount_source(ns, claim, pods):
                 # The running pod of the claim reads it with its own tar, so the copy needs no free memory on the
                 # node of the claim.
-                tar_out(ns, *mounted, target, settled=lambda m=mounted: lmdb_meta(ns, *m))
+                tar_out(ns, *mounted, target, settled=lambda m=mounted: lmdb_meta(ns, *m), excludes=classes.left_out(claim))
             else:
                 node = (item['metadata'].get('annotations') or {}).get('volume.kubernetes.io/selected-node')
                 pod = helper_pod(ns, claim, node)
                 try:
-                    tar_out(ns, pod, None, '/data', target, settled=lambda pod=pod: lmdb_meta(ns, pod, None, '/data'))
+                    tar_out(ns, pod, None, '/data', target, settled=lambda pod=pod: lmdb_meta(ns, pod, None, '/data'),
+                            excludes=classes.left_out(claim))
                 finally:
                     kubectl('-n', ns, 'delete', 'pod', pod, '--wait=false')
-            rows.append({'claim': claim, 'size': item['spec']['resources']['requests']['storage'],
-                         'storage_class': item['spec'].get('storageClassName'), 'volume_mode': mode})
-    (partial / 'claims.json').write_text(json.dumps(rows, indent=1))
-    if store:
+            claim_rows.append({'claim': claim, 'size': item['spec']['resources']['requests']['storage'],
+                               'storage_class': item['spec'].get('storageClassName'), 'volume_mode': mode})
+    if claim_rows:
+        (partial / 'claims.json').write_text(json.dumps(claim_rows, indent=1))
+    buckets = sorted(n for k, n in copied if k == 'bucket')
+    if garage_key and buckets:
         with moments.part(label + 'objects/'):
-            copy_objects(ns, store, partial / 'objects')
-    elif garage_key:
-        with moments.part(label + 'objects/'):
-            copy_garage_objects(ns, garage_key, partial / 'objects')
-    (partial / 'objects.json').write_text(kubectl('-n', ns, 'get', 'secrets,configmaps', '-o', 'json'))
-    os.chmod(partial / 'objects.json', 0o600)
+            copy_garage_objects(ns, garage_key, partial / 'objects', buckets)
+    return rows
 
 
 # The check of the LMDB files of a claim: the SHA-256 of the two meta pages of each data.mdb below the folder. LMDB
@@ -1088,15 +1278,15 @@ def opendesk_buckets():
     return sorted(objectstore.BUCKETS.values())
 
 
-def copy_garage_objects(ns, key, target):
-    """Copy each openDesk bucket of the zone ns from Garage into target/<bucket>.tar, and the bucket list into
-    target/buckets.json, in the form of copy_objects()."""
+def copy_garage_objects(ns, key, target, buckets=None):
+    """Copy each openDesk bucket of the zone ns from Garage, or each bucket of buckets, into target/<bucket>.tar, and
+    the bucket list into target/buckets.json, in the form of copy_objects()."""
     import garage_client
     target.mkdir(parents=True, exist_ok=True)
     sse = customer_keys(ns)
     rows = []
     with garage_client.client() as pod:
-        for bucket in opendesk_buckets():
+        for bucket in (opendesk_buckets() if buckets is None else buckets):
             path = target / f'{bucket}.tar'
             for attempt in range(3):
                 _, reports = garage_client.run(pod, key, 'tar', bucket, out=path, sse_c={bucket: sse[bucket]} if bucket in sse else None)
@@ -1630,7 +1820,7 @@ def run_job(key, generation):
     kind, _, rest = key.partition(':')
     lock = oplock.site_lock(s.operator_state())
     try:
-        if kind in ('zone', 'opendesk', 'platform'):
+        if kind in ('zone', 'opendesk', 'identity', 'platform'):
             # The copy is the consistency boundary of the zone or the cluster, so no other operation changes the site.
             lock.acquire('backup', f'backup-{key}-{generation}')
         if kind == 'hoover':
@@ -1638,6 +1828,8 @@ def run_job(key, generation):
             run_hoover(s, zone, collection, generation, partial)
         elif kind in ('zone', 'opendesk'):
             run_zone(s, rest, partial, key)
+        elif kind == 'identity':
+            run_identity(s, rest, partial, key)
         else:
             run_platform(s, partial)
         lock.release()
@@ -1665,7 +1857,7 @@ def run_job(key, generation):
     record.pop('last_error', None)
     record.pop('failed', None)
     copies = {'hoover': 'backup.hoover.copies', 'zone': 'backup.opendesk.copies', 'opendesk': 'backup.opendesk.copies',
-              'platform': 'backup.platform.copies'}[kind]
+              'identity': 'backup.identity.copies', 'platform': 'backup.platform.copies'}[kind]
     scope = 'cluster' if key == 'platform' else f'zone:{key.split(":")[1]}'
     # Retention runs only after the new copy was verified.
     for old in schedule.retention(record, int(applied_values(s, scope)[copies])):

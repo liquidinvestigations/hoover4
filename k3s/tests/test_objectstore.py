@@ -317,16 +317,15 @@ def test_a_failed_copy_check_gives_the_routes_back_to_seaweedfs(monkeypatch, tmp
 
 
 def test_the_zone_backup_copies_the_openDesk_buckets_from_garage(monkeypatch, tmp_path):
-    pods = {'items': [{'metadata': {'name': 'postgresql-0'}, 'status': {'phase': 'Running'}, 'spec': {}}]}
-    monkeypatch.setattr(backups, 'kubectl', lambda *a, **kw: json.dumps(pods if a[3] == 'pods' else {'items': []})
-                        if a[2] == 'get' else '{"items": []}')
-    monkeypatch.setattr(backups, 'dump_out', lambda ns, args, target: target.write_text('dump'))
+    monkeypatch.setattr(backups, 'kubectl', lambda *a, **kw: '' if 'secrets,configmaps' in a else '{"items": []}')
+    monkeypatch.setattr(backups, 'shared_databases', lambda ns: None)
     monkeypatch.setattr(backups, 'opendesk_garage_key', lambda ns: KEY if ns == 'zone-a' else None)
     copied = []
-    monkeypatch.setattr(backups, 'copy_garage_objects', lambda ns, key, target: copied.append((ns, key['access_key'], target.name)))
+    monkeypatch.setattr(backups, 'copy_garage_objects',
+                        lambda ns, key, target, buckets: copied.append((ns, key['access_key'], target.name, buckets)))
     monkeypatch.setattr(backups, 'copy_objects', lambda *a: pytest.fail('no SeaweedFS runs'))
     backups.copy_namespace('zone-a', tmp_path)
-    assert copied == [('zone-a', KEY['access_key'], 'objects')]
+    assert copied == [('zone-a', KEY['access_key'], 'objects', ['nextcloud', 'ums'])]
 
 
 def test_the_garage_copy_has_the_form_of_the_seaweedfs_copy(monkeypatch, tmp_path):

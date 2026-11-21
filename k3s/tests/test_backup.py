@@ -732,14 +732,15 @@ def test_the_zone_job_copies_the_shared_stores_of_a_site_zone_only(tmp_path, mon
     backups = backups_module()
     hoovers = {'zone-a': site_hoover('zone-a'), 'zone-c': config.Hoover(zone='zone-c', stores='local')}
     monkeypatch.setattr(backups.site_config, 'hoovers', lambda _s: hoovers)
-    monkeypatch.setattr(backups, 'close_zone', lambda s, zone: {'namespaces': [], 'workloads': {'zone-a/deployment/x': 1}, 'cronjobs': {}})
-    copied = []
-    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial, moments, label='': copied.append(ns))
+    copied, records = [], []
+    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial, moments, label='', wanted=('data',): copied.append(ns) or [])
     monkeypatch.setattr(backups, 'copy_shared_stores', lambda hoover, target: copied.append(str(target.relative_to(tmp_path))))
+    monkeypatch.setattr(backups, 'write_copy_record', lambda s, zone, partial, kind, parts: records.append((zone, kind, parts)))
     backups.run_zone(None, 'zone-a', tmp_path / 'a')
     backups.run_zone(None, 'zone-c', tmp_path / 'c')
     assert copied == ['zone-a', 'hoover-zone-a', 'a/hoover/zone-a/shared', 'zone-c', 'hoover-zone-c']
-    assert json.loads((tmp_path / 'a' / 'workloads.json').read_text())['workloads'] == {'zone-a/deployment/x': 1}
+    assert records[0] == ('zone-a', 'zone', [{'namespace': 'hoover-zone-a', 'kind': 'shared-stores', 'name': 'shared', 'class': 'data'}])
+    assert not (tmp_path / 'a' / 'workloads.json').exists() and not (tmp_path / 'a' / 'objects.json').exists()
     moments = json.loads((tmp_path / 'a' / 'moments.json').read_text())
     assert moments['online'] is True and list(moments['parts']) == ['hoover/zone-a/shared']
 
@@ -748,15 +749,10 @@ def test_the_zone_job_stops_no_workload(tmp_path, monkeypatch):
     backups = backups_module()
     monkeypatch.setattr(backups.site_config, 'hoovers', lambda _s: {'zone-a': site_hoover('zone-a')})
     calls = []
-
-    def kubectl(*args, input=None, check=True, stdout=None):
-        calls.append(args)
-        if 'deployments,statefulsets,cronjobs' in args:
-            return json.dumps({'items': [{'kind': 'Deployment', 'metadata': {'name': 'nextcloud'}, 'spec': {'replicas': 1}}]})
-        return ''
-    monkeypatch.setattr(backups, 'kubectl', kubectl)
-    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial, moments, label='': None)
+    monkeypatch.setattr(backups, 'kubectl', lambda *args, input=None, check=True, stdout=None: calls.append(args) or '')
+    monkeypatch.setattr(backups, 'copy_namespace', lambda ns, partial, moments, label='', wanted=('data',): [])
     monkeypatch.setattr(backups, 'copy_shared_stores', lambda hoover, target: None)
+    monkeypatch.setattr(backups, 'write_copy_record', lambda s, zone, partial, kind, parts: None)
     backups.run_zone(None, 'zone-a', tmp_path / 'a', key='zone:zone-a')
     assert not [a for a in calls if 'scale' in a or 'patch' in a]
 
@@ -773,31 +769,94 @@ def namespace_objects(store=True):
     return pods, claims, services
 
 
-def test_the_online_copy_reads_the_databases_first_and_the_object_store_through_s3(tmp_path, monkeypatch):
-    backups = backups_module()
-    pods, claims, services = namespace_objects()
+class FakeDatabases:
+    DATABASES = {'keycloak': ('keycloak', 'u'), 'nextcloud': ('nextcloud', 'u'), 'xwiki': ('xwiki', 'u'),
+                 'umsSelfservice': ('selfservice', 'u'), 'oxConnector': ('oxconnector', 'u')}
+
+
+def zone_namespace_fakes(backups, monkeypatch, claims, secret_value='fixture-secret-value'):
+    """A running zone namespace on the shared stores: pods, claims, Secrets and ConfigMaps as fake kubectl answers.
+    Return the list of the reads in their order."""
+    pods = [{'metadata': {'name': 'xwiki-0', 'labels': {}}, 'status': {'phase': 'Running'},
+             'spec': {'containers': [{'name': 'xwiki'}],
+                      'volumes': [{'name': 'd', 'persistentVolumeClaim': {'claimName': 'xwiki-data-xwiki-0'}}]}}]
+    items = [{'metadata': {'name': n, 'annotations': {}}, 'spec': {'volumeMode': 'Filesystem', 'resources': {'requests': {'storage': '1Gi'}}}}
+             for n in claims]
     order = []
 
     def kubectl(*args, input=None, check=True, stdout=None):
         if args[-3:] == ('pods', '-o', 'json'):
             return json.dumps({'items': pods})
         if args[-3:] == ('pvc', '-o', 'json'):
-            return json.dumps({'items': claims})
+            return json.dumps({'items': items})
         if args[-3:] == ('services', '-o', 'json'):
-            return json.dumps({'items': services})
-        return '{"items": []}'
+            return json.dumps({'items': []})
+        if 'secrets,configmaps' in args:
+            assert args[-2:] == ('-o', 'name')
+            return 'secret/ums-nubus-credentials\nconfigmap/xwiki-config\n'
+        order.append(('kubectl',) + args)
+        return secret_value
     monkeypatch.setattr(backups, 'kubectl', kubectl)
-    monkeypatch.setattr(backups, 'dump_out', lambda ns, args, target: order.append(target.name))
-    monkeypatch.setattr(backups, 'helper_pod', lambda ns, claim, node: f'reader-{claim}')
-    monkeypatch.setattr(backups, 'tar_out', lambda ns, pod, c, folder, target, tar=('tar',), settled=None:
-                        order.append((target.name, settled is not None)))
-    monkeypatch.setattr(backups, 'copy_objects', lambda ns, store, target: order.append(('objects', store['endpoint'])))
+    monkeypatch.setattr(backups, 'shared_databases', lambda ns: FakeDatabases)
+    monkeypatch.setattr(backups, 'opendesk_garage_key', lambda ns: {'access_key': 'GK', 'secret_key': secret_value})
+    monkeypatch.setattr(backups, 'copy_shared_databases', lambda zone, module, target, names=None: order.append(('databases', sorted(names))))
+    monkeypatch.setattr(backups, 'mount_source', lambda ns, claim, pods: ('xwiki-0', 'xwiki', '/data'))
+    monkeypatch.setattr(backups, 'tar_out', lambda ns, pod, c, folder, target, tar=('tar',), settled=None, excludes=():
+                        order.append(('claim', target.name, tuple(excludes))) or target.parent.mkdir(parents=True, exist_ok=True)
+                        or target.write_bytes(b'tar'))
+    monkeypatch.setattr(backups, 'copy_garage_objects', lambda ns, key, target, buckets=None: order.append(('buckets', buckets)))
+    return order
+
+
+def test_the_zone_copy_holds_only_the_data_parts_and_no_secret(tmp_path, monkeypatch):
+    backups = backups_module()
+    order = zone_namespace_fakes(backups, monkeypatch, ['xwiki-data-xwiki-0', 'shared-data-ums-ldap-server-primary-0',
+                                                        'redis-data-redis-master-0'])
     moments = backups.Moments()
-    backups.copy_namespace('zone-a', tmp_path, moments)
-    assert order == ['postgresql.sql', ('shared-data-ldap-0.tar', True),
-                     ('objects', 'seaweedfs.zone-a.svc.cluster.local:8333')]
-    assert [r['claim'] for r in json.loads((tmp_path / 'claims.json').read_text())] == ['shared-data-ldap-0']
-    assert list(moments.parts) == ['postgresql.sql', 'claims/', 'objects/']
+    rows = backups.copy_namespace('zone-a', tmp_path, moments)
+    assert order == [('databases', ['nextcloud', 'xwiki']), ('claim', 'xwiki-data-xwiki-0.tar', ('./xwiki.properties', './hibernate.cfg.xml', './xwiki.cfg', './jobs/status')),
+                     ('buckets', ['nextcloud', 'ums'])]
+    classes = {(r['kind'], r['name']): r['class'] for r in rows}
+    assert classes[('claim', 'shared-data-ums-ldap-server-primary-0')] == 'people'
+    assert classes[('secret', 'ums-nubus-credentials')] == 'identity' and classes[('database', 'keycloak')] == 'people'
+    assert [r['claim'] for r in json.loads((tmp_path / 'claims.json').read_text())] == ['xwiki-data-xwiki-0']
+    # No file of the copy holds a Secret or a Secret value.
+    for path in tmp_path.rglob('*'):
+        if path.is_file():
+            assert b'fixture-secret-value' not in path.read_bytes() and b'"Secret"' not in path.read_bytes()
+    # The identity copy holds the directory and the Keycloak database only.
+    order[:] = []
+    backups.copy_namespace('zone-a', tmp_path / 'identity', backups.Moments(), wanted=('people',))
+    assert order == [('databases', ['keycloak']), ('claim', 'shared-data-ums-ldap-server-primary-0.tar', ())]
+
+
+def test_a_part_without_a_class_fails_the_job_before_the_first_read(tmp_path, monkeypatch):
+    backups = backups_module()
+    order = zone_namespace_fakes(backups, monkeypatch, ['xwiki-data-xwiki-0', 'data-new-application-0'])
+    with pytest.raises(SystemExit, match='the claim data-new-application-0 has no class in COPY_PARTS'):
+        backups.copy_namespace('zone-a', tmp_path, backups.Moments())
+    assert order == []
+
+
+def test_a_namespace_of_an_earlier_layout_is_refused(tmp_path, monkeypatch):
+    backups = backups_module()
+    pods = [{'metadata': {'name': 'postgresql-0', 'labels': {}}, 'status': {'phase': 'Running'}, 'spec': {}}]
+    monkeypatch.setattr(backups, 'kubectl', lambda *args, **kw: json.dumps({'items': pods}))
+    with pytest.raises(SystemExit, match='runs its own database server'):
+        backups.copy_namespace('zone-a', tmp_path, backups.Moments())
+
+
+def test_the_identity_job_is_daily_and_has_its_own_folder():
+    backups = backups_module()
+    job = schedule.Job('identity:zone-a', 7)
+    assert job.period == schedule.DAY and schedule.Job('zone:zone-a', 3).period == schedule.WEEK
+    assert backups.job_folder('identity:zone-a') == 'zones/zone-a/identity'
+    ready, reason, generation = schedule.due(job, {}, T0)
+    slot = schedule.slot_after('identity:zone-a', T0, schedule.DAY)
+    assert slot - T0 < schedule.DAY and (ready, reason) == ((True, 'the daily slot') if slot <= T0 else (False, 'waits for its slot'))
+    record = {'copies': [{'generation': 'day-1', 'verified': True, 'finished': T0}], 'slot': T0 + 10}
+    assert schedule.due(job, record, T0 + 3600)[:2] == (False, 'a copy of the last day exists')
+    assert schedule.due(job, record, T0 + schedule.DAY + 20)[0] is True
 
 
 def test_a_claim_is_read_again_while_its_lmdb_meta_pages_change(tmp_path, monkeypatch):
@@ -1155,3 +1214,63 @@ def test_the_mirror_pod_has_the_form_that_the_policy_admits():
     variables = {v['name']: v['expression'] for v in policy['spec']['variables']}
     assert variables['mirror'] == "'HOOVER4_MIRROR_PATH'" and "variables.mirror != ''" in variables['writer']
     assert 'HOOVER4_MIRROR_PATH' in (K3S / 'platform/operator/install-runner.sh').read_text()
+
+
+def test_the_copy_leaves_out_the_credentials_of_the_source_in_the_dumps(tmp_path):
+    backups = backups_module()
+    config = {'dbpassword': 'db-pass-1', 'redis': {'host': 'redis', 'password': 'redis-pass-1'},
+              'objectstore': {'arguments': {'key': 'key-1', 'secret': 'objsecret-1', 'bucket': 'nextcloud'}},
+              'mail_smtppassword': 'smtp-pass-1', 'secret': 'instance-secret', 'trusted_domains': ['a\\b']}
+    value = backups.copy_text(json.dumps(config))
+    dump = tmp_path / 'nextcloud.sql'
+    dump.write_text('SET x = 1;\n'
+                    'COPY public.fs_config_store (name, value) FROM stdin;\n'
+                    f'config_php\t{value}\n'
+                    'other\t{"dbpassword": "kept"}\n'
+                    '\\.\n'
+                    'COPY public.oc_appconfig (appid, configkey, configvalue, type, lazy) FROM stdin;\n'
+                    'user_ldap\ts01ldap_agent_password\tbGRhcC1wYXNz\t2\t0\n'
+                    'serverinfo\ttoken\tserverinfo-token-1\t2\t0\n'
+                    'other_app\ttoken\tkept-token\t2\t0\n'
+                    '\\.\n'
+                    '-- PostgreSQL database dump complete\n\n')
+    assert backups.leave_out_source_values('nextcloud', dump) == 3
+    text = dump.read_text()
+    for secret in ('db-pass-1', 'redis-pass-1', 'key-1', 'objsecret-1', 'smtp-pass-1', 'bGRhcC1wYXNz',
+                   'serverinfo-token-1'):
+        assert secret not in text
+    assert 'kept-token' in text and '"dbpassword": "kept"' in text and text.endswith('dump complete\n\n')
+    row = next(line for line in text.splitlines() if line.startswith('config_php\t'))
+    restored = json.loads(backups.copy_field(row.split('\t')[1]))
+    assert restored['secret'] == 'instance-secret' and restored['trusted_domains'] == ['a\\b']
+    assert restored['redis'] == {'host': 'redis', 'password': ''} and restored['objectstore']['arguments']['bucket'] == 'nextcloud'
+    keycloak = tmp_path / 'keycloak.sql'
+    keycloak.write_text('COPY public.client (id, client_id, secret) FROM stdin;\n'
+                        'c1\topendesk-nextcloud\tclient-secret-1\nc2\taccount\t\\N\n\\.\n'
+                        'COPY public.component_config (id, component_id, name, value) FROM stdin;\n'
+                        'k1\tl1\tbindCredential\tbind-pass-1\nk2\tl1\tbindDn\tuid=ldapsearch_keycloak\n\\.\n')
+    assert backups.leave_out_source_values('keycloak', keycloak) == 2
+    text = keycloak.read_text()
+    assert 'client-secret-1' not in text and 'bind-pass-1' not in text and 'uid=ldapsearch_keycloak' in text
+    assert 'c1\topendesk-nextcloud\t\\N\n' in text
+    assert backups.leave_out_source_values('xwiki', keycloak) == 0
+
+
+def test_the_xwiki_claim_leaves_out_the_configuration_files_and_the_mail_password(tmp_path):
+    backups = backups_module()
+    import parts
+    assert parts.left_out('xwiki-data-xwiki-0') == ['./xwiki.properties', './hibernate.cfg.xml', './xwiki.cfg',
+                                                    './jobs/status']
+    assert parts.left_out('shared-data-ums-ldap-server-primary-0') == []
+    command = backups.tar_command('zone-a', 'xwiki-0', 'xwiki', '/usr/local/xwiki/data',
+                                  excludes=parts.left_out('xwiki-data-xwiki-0'))
+    assert command[command.index('tar') + 1:command.index('-C')] == [
+        '--exclude=./xwiki.properties', '--exclude=./hibernate.cfg.xml', '--exclude=./xwiki.cfg', '--exclude=./jobs/status']
+    dump = tmp_path / 'xwiki.sql'
+    dump.write_text('COPY public.xwikipasswords (xwp_id, xwp_name, xwp_value) FROM stdin;\n'
+                    '1\tpassword\tsmtp-pass-1\n2\tpassword\thash:SHA-512:aa:bb\n3\tldap_bind_pass\t\n\\.\n'
+                    'COPY public.xwikircs (xwr_docid, xwr_version1, xwr_patch) FROM stdin;\n'
+                    '361299506791820685\t1\t<password>smtp-pass-1</password>\n42\t1\t<page/>\n\\.\n')
+    assert backups.leave_out_source_values('xwiki', dump) == 2
+    text = dump.read_text()
+    assert 'smtp-pass-1' not in text and 'hash:SHA-512:aa:bb' in text and '42\t1\t<page/>' in text

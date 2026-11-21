@@ -4,14 +4,15 @@
 This module holds the rules only. It reads no cluster and runs no copy, so the backup suite tests it with controlled
 time (../../tests/test_backup.py). backups.py runs the jobs that it selects.
 
-Jobs. A job key names its subject: `hoover:<zone>:<collection>`, `opendesk:<zone>` or `platform`.
+Jobs. A job key names its subject: `hoover:<zone>:<collection>`, `zone:<zone>`, `identity:<zone>` or `platform`.
 - A Hoover collection becomes eligible when its first ingestion completed, and again after each complete
   reprocessing. A receipt names that event: {'kind': 'ingest' | 'reprocess', 'generation': <id>, 'settled': <time>}.
   A partial processing update and an additional ingestion give no receipt (backups.py reads the receipts).
   An eligible generation waits until the job may make a copy. A generation that has a copy is not copied again, so an
   unchanged collection gets no weekly copy. Several pending generations become one copy of the newest.
-- openDesk and the platform recovery set are copied once in each week.
-- The weekly limit: a job makes at most one automatic copy in any period of 7 days.
+- The zone and the platform recovery set are copied once in each week, and the identity of a zone once each day.
+- The weekly limit: a collection job makes at most one automatic copy in any period of 7 days. A periodic job makes at
+  most one copy in its period.
 Slots. Each job gets a stable offset in the week from a hash of its key, so the jobs of a site spread over the week.
 The jobs of one destination run one at a time. A job whose slot passed while the runner was stopped gets the next
 free future slot, with the estimated durations of the jobs before it, so a restart does not start every missed job.
@@ -28,6 +29,7 @@ import os
 from dataclasses import dataclass, field
 
 WEEK = 7 * 24 * 3600
+DAY = 24 * 3600
 MARKER = '.hoover4-backup-destination'
 # The default duration of a job without a measured duration, for the spacing of slots.
 DEFAULT_DURATION = 3600
@@ -43,19 +45,24 @@ class Job:
 
     @property
     def weekly(self):
+        """True for a job with a fixed period (zone, identity, platform), False for a collection job."""
         return not self.key.startswith('hoover:')
 
+    @property
+    def period(self):
+        return DAY if self.key.startswith('identity:') else WEEK
 
-def week_offset(key):
-    """The stable offset of a job in the week, in seconds."""
-    return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % WEEK
+
+def week_offset(key, period=WEEK):
+    """The stable offset of a job in its period, in seconds."""
+    return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % period
 
 
-def slot_after(key, after):
-    """The first weekly slot of a job at or after a time."""
-    week_start = after - after % WEEK
-    slot = week_start + week_offset(key)
-    return slot if slot >= after else slot + WEEK
+def slot_after(key, after, period=WEEK):
+    """The first slot of a job at or after a time, once in each period."""
+    start = after - after % period
+    slot = start + week_offset(key, period)
+    return slot if slot >= after else slot + period
 
 
 def destination_problem(path):
@@ -92,14 +99,16 @@ def due(job, record, now):
     generation = next_generation(job, record)
     last = last_copy(record)
     if job.weekly:
-        if last and now - last['finished'] < WEEK:
-            return False, 'a copy of the last 7 days exists', None
+        if last and now - last['finished'] < job.period:
+            return False, 'a copy of the last 7 days exists' if job.period == WEEK else 'a copy of the last day exists', None
         # A new job waits for its first slot. The runner saves the slot of each job (backups.py), so a later call
         # keeps it.
-        slot = record.get('slot') or slot_after(job.key, last['finished'] if last else now)
+        slot = record.get('slot') or slot_after(job.key, last['finished'] if last else now, job.period)
         if now < slot:
             return False, 'waits for its slot', None
-        return True, 'the weekly slot', f'week-{slot}'
+        if job.period == WEEK:
+            return True, 'the weekly slot', f'week-{slot}'
+        return True, 'the daily slot', f'day-{slot}'
     if generation is None:
         return False, 'no eligible generation without a copy', None
     if last and now - last['finished'] < WEEK:
