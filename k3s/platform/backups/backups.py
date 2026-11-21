@@ -1656,7 +1656,9 @@ def restore_zone(zone, generation, source_zone=None):
                 # The object store keeps running in a closed zone. The objects go in with its current admin key,
                 # before the Secrets of the copy replace that key.
                 step('objects' + label, lambda part=part, ns=ns: restore_objects(part, ns))
-            step('secrets' + label, lambda part=part, ns=ns: restore_secrets(part, ns, TENANT_SECRETS if site_zone else {}))
+            module = shared_databases(zone) if ns == zone else None
+            kept = set(module.zone_passwords(zone).values()) if module else set()
+            step('secrets' + label, lambda part=part, ns=ns, kept=kept: restore_secrets(part, ns, TENANT_SECRETS if site_zone else {}, kept))
             restore_claims(part, ns, step)
             if site_zone and ns != zone and (part / SHARED_PART / 'stores.json').exists():
                 hoover = next(h for h in site_config.hoovers(s).values() if h.namespace == ns)
@@ -1710,12 +1712,15 @@ def retired_parts(folder, parts):
     return out
 
 
-def restore_secrets(folder, zone, tenant=None):
+def restore_secrets(folder, zone, tenant=None, kept=()):
     """Apply the Secrets of the copy. Service account tokens and Helm release records belong to the target, and so do
     the tenant Secrets of a site zone (tenant, TENANT_SECRETS). The Secrets of a retired application stay out.
 
     The items of a Secret of the copy replace the same items of the target Secret. The other items of the target stay,
     because a later release can add an item that an earlier copy does not hold.
+    kept holds the passwords of the database users of the target on the shared PostgreSQL. A target item with one of
+    these values stays, because restore_shared_databases() gives the users the passwords of the target. A copy of
+    another zone holds the passwords of that zone.
     """
     tenant = tenant or {}
     objects = json.loads((folder / 'objects.json').read_text())['items']
@@ -1732,7 +1737,10 @@ def restore_secrets(folder, zone, tenant=None):
         metadata['namespace'] = zone
         metadata.get('annotations', {}).pop('kubectl.kubernetes.io/last-applied-configuration', None)
         current = kubectl('-n', zone, 'get', 'secret', metadata['name'], '--ignore-not-found', '-o', 'json').strip()
-        data = {**((json.loads(current).get('data') or {}) if current else {}), **item.get('data', {})}
+        target = (json.loads(current).get('data') or {}) if current else {}
+        copied = {k: v for k, v in (item.get('data') or {}).items()
+                  if not (k in target and base64.b64decode(target[k]).decode(errors='replace') in kept)}
+        data = {**target, **copied}
         kubectl('apply', '--server-side', '--force-conflicts', '--field-manager=hoover-restore', '-f', '-',
                 input=json.dumps({'apiVersion': 'v1', 'kind': 'Secret', 'metadata': metadata,
                                   'type': item.get('type', 'Opaque'), 'data': data}))

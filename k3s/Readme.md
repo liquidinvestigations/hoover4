@@ -1245,6 +1245,8 @@ $run restore-secret-store <generation>
 - `restore-zone` restores a complete zone copy into an installed zone. It closes the zone and its Hoover installation and stops their stores, except the zone databases and the object store. A zone on Garage gets the objects of the copy in its openDesk buckets.
   It then replaces the objects of each bucket of the copy, applies the Secrets of each part, replaces the content of each claim, imports the dumps, restarts the databases and the object store, and opens the zone with the replicas of `workloads.json` (`closure.json` in a copy of an earlier version).
   All parts are in place before an application starts.
+  On the shared PostgreSQL the database users keep the passwords of the target zone. A Secret item of the target
+  with one of these passwords keeps its value, because a copy of another zone holds the passwords of that zone.
   A dump without its end line stops the restore before any change. `psql` and the MariaDB client stop at the first error, and the restore fails with that error.
   A copy part `hoover/<installation>/` restores into the installation of that name, or into the one installation of the zone.
   A failure leaves the zone closed. `<operator state>/backups/restore-<zone>.json` names the finished steps.

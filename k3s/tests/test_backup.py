@@ -594,6 +594,24 @@ def test_a_restored_secret_keeps_the_items_that_the_copy_lacks(tmp_path, monkeyp
     assert applied[0]['data'] == {'a': 'Y29weQ==', 'gpu-token': 'dG9rZW4='}
 
 
+def test_a_restored_secret_keeps_the_database_passwords_of_the_target(tmp_path, monkeypatch):
+    backups = backups_module()
+    # A copy of another zone: its database password is the password of that zone.
+    (tmp_path / 'objects.json').write_text(json.dumps({'items': [
+        {'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': 'ums-keycloak-postgresql-opendesk-credentials'},
+         'data': {'keycloakDatabasePassword': 'c291cmNl', 'other': 'Y29weQ=='}}]}))
+    applied = []
+
+    def kubectl(*args, input=None, check=True, stdout=None):
+        if 'get' in args:
+            return json.dumps({'data': {'keycloakDatabasePassword': 'dGFyZ2V0', 'other': 'b2xk'}})
+        applied.append(json.loads(input))
+        return ''
+    monkeypatch.setattr(backups, 'kubectl', kubectl)
+    backups.restore_secrets(tmp_path, 'zone-b', kept={'target'})
+    assert applied[0]['data'] == {'keycloakDatabasePassword': 'dGFyZ2V0', 'other': 'Y29weQ=='}
+
+
 def test_the_local_retirement_uses_the_tar_check_of_the_backups():
     import importlib.util
     spec = importlib.util.spec_from_file_location('local_retirement', K3S / 'tools/local-retirement.py')
