@@ -175,14 +175,18 @@ def test_the_restore_of_an_older_copy_leaves_the_retired_parts_out(tmp_path):
     (part / 'objects.json').write_text(json.dumps({'items': [
         {'kind': 'Secret', 'metadata': {'name': 'opendesk-nextcloud-admin'}},
         {'kind': 'Secret', 'metadata': {'name': 'openproject-admin-password'}},
-        {'kind': 'Secret', 'metadata': {'name': 'synapse-s3-encryption-customer-key'}}]}))
+        {'kind': 'Secret', 'metadata': {'name': 'synapse-s3-encryption-customer-key'}},
+        {'kind': 'Secret', 'metadata': {'name': 'database-notes-password'}},
+        # intercom-service, a retained release, reads this Secret.
+        {'kind': 'Secret', 'metadata': {'name': 'matrix-intercom-synapse-as-token'}}]}))
     (part / 'claims.json').write_text(json.dumps([{'claim': 'data-xwiki-0'}, {'claim': 'media-element-synapse-media-repo-0'},
                                                   {'claim': 'cryptpad-data'}]))
     (part / 'objects' / 'buckets.json').write_text(json.dumps([{'bucket': 'nextcloud'}, {'bucket': 'synapse'}, {'bucket': 'notes'}]))
     for name in ('nextcloud', 'matrix', 'openproject', 'xwiki'):
         (part / 'postgresql' / f'{name}.sql').write_text('')
     left = backups.retired_parts(part, [(part, 'zone-a')])
-    assert left == {'secrets': ['zone-a/openproject-admin-password', 'zone-a/synapse-s3-encryption-customer-key'],
+    assert left == {'secrets': ['zone-a/openproject-admin-password', 'zone-a/synapse-s3-encryption-customer-key',
+                                'zone-a/database-notes-password'],
                     'claims': ['zone-a/media-element-synapse-media-repo-0', 'zone-a/cryptpad-data'],
                     'buckets': ['zone-a/synapse', 'zone-a/notes'], 'databases': ['matrix', 'openproject']}
 

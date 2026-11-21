@@ -1695,7 +1695,7 @@ def retired_parts(folder, parts):
     for part, ns in parts:
         if (part / 'objects.json').exists():
             out['secrets'] += [f"{ns}/{i['metadata']['name']}" for i in json.loads((part / 'objects.json').read_text())['items']
-                               if i['kind'] == 'Secret' and applications.retired_part(i['metadata']['name'])]
+                               if i['kind'] == 'Secret' and applications.retired_secret_part(i['metadata']['name'])]
         if (part / 'claims.json').exists():
             out['claims'] += [f"{ns}/{r['claim']}" for r in json.loads((part / 'claims.json').read_text())
                               if applications.retired_part(r['claim'])]
@@ -1722,7 +1722,7 @@ def restore_secrets(folder, zone, tenant=None):
         name = item['metadata']['name']
         if item['kind'] != 'Secret' or item.get('type') in skipped or (name in tenant and tenant[name] is None):
             continue
-        if applications.retired_part(name):
+        if applications.retired_secret_part(name):
             continue
         if name in tenant:
             item = {**item, 'data': {k: v for k, v in (item.get('data') or {}).items() if not k.startswith(tenant[name])}}
