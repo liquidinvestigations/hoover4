@@ -1549,9 +1549,11 @@ def restore_pod(namespace, row):
     """The pod that writes one claim. A Block claim gets the Kata wrapper of the stores, which makes and mounts its file
     system at /data."""
     spec = {'restartPolicy': 'Never', 'automountServiceAccountToken': False, 'enableServiceLinks': False,
-            # A Kata guest does not start a container without limits.
+            # A Kata guest does not start a container without limits. Without requests the requests are the limits,
+            # and a claim on a node with little free CPU would leave the pod Pending.
             'containers': [{'name': 'write', 'image': HELPER_IMAGE, 'command': ['sleep', '3600'],
-                            'resources': {'limits': {'cpu': '1', 'memory': '256Mi'}},
+                            'resources': {'requests': {'cpu': '10m', 'memory': '32Mi'},
+                                          'limits': {'cpu': '1', 'memory': '256Mi'}},
                             'volumeMounts': [{'name': 'data', 'mountPath': '/data'}]}],
             'volumes': [{'name': 'data', 'persistentVolumeClaim': {'claimName': row['claim']}}]}
     if row.get('volume_mode') == 'Block':

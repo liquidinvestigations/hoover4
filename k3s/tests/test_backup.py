@@ -181,6 +181,8 @@ def test_a_block_claim_is_restored_in_kata_with_limits_and_a_file_system_claim_w
     assert write['volumeDevices'] == [{'name': 'data', 'devicePath': '/dev/block-data'}]
     plain = backups.restore_pod('r', {'claim': 'xwiki-data', 'volume_mode': 'Filesystem'})['spec']
     assert 'runtimeClassName' not in plain and plain['containers'][0]['volumeMounts'][0]['mountPath'] == '/data'
+    # A small request lets the pod run on a node with little free CPU, as the claim reader does.
+    assert plain['containers'][0]['resources']['requests'] == {'cpu': '10m', 'memory': '32Mi'}
 
 
 def test_the_export_check_finds_a_truncated_manticore_meta_file(tmp_path):
