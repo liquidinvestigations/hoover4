@@ -194,3 +194,12 @@ def test_the_restore_of_an_older_copy_leaves_the_retired_parts_out(tmp_path):
 def test_the_profile_is_an_input_of_the_zone_and_of_the_prepull():
     assert 'zones/applications.py' in zone.INPUT_SOURCES
     assert 'applications' in (K3S / 'driver/deploy.py').read_text()
+
+
+def test_the_prepull_leaves_out_the_images_of_a_retired_application():
+    sys.path.insert(0, str(K3S / 'images'))
+    import prepull
+    pods = [{'spec': {'containers': [{'image': 'docker.io/livekit/livekit-server:v1.9.0'},
+                                     {'image': 'registry.opencode.de/bmi/opendesk/components/supplier/element/images-mirror/synapse:1'},
+                                     {'image': 'docker.io/library/busybox:1.37.0-musl'}]}}]
+    assert prepull.pod_images(pods) == {'docker.io/library/busybox:1.37.0-musl'}

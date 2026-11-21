@@ -3,7 +3,8 @@
 
 Usage: prepull.py [--timeout SECONDS] [image ...]
 The images are the arguments (deploy-k3s up gives the Hoover images of the revision) and the images of the containers
-and init containers of the pods in the zone namespaces (label hoover.dev/zone=true) and in calls. An eligible node is
+and init containers of the pods in the zone namespaces (label hoover.dev/zone=true) and in calls, without the images of
+a retired application. An eligible node is
 Ready, schedulable and has no NoSchedule or NoExecute taint, so a GPU node is left out.
 For each node the script starts one pod prepull-<node> in kube-system, bound to the node. Its first init container
 copies the static busybox binary into an emptyDir volume. Each further init container uses one image and runs that
@@ -18,6 +19,12 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'zones'))
+import applications  # noqa: E402
+import reclaim  # noqa: E402
 
 NAMESPACE = 'kube-system'
 BUSYBOX = 'docker.io/library/busybox:1.37.0-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478'
@@ -43,11 +50,14 @@ def eligible_nodes(nodes):
 
 
 def pod_images(pods):
+    """The images of the pods, without the images of a retired application (../zones/applications.py). A pod of an
+    earlier version that runs until a later step removes it would else put its image on every node again."""
     images = set()
     for pod in pods:
         spec = pod['spec']
         for c in spec.get('containers', []) + spec.get('initContainers', []):
-            images.add(c['image'])
+            if not applications.retired_repository(reclaim.repository(c['image'])):
+                images.add(c['image'])
     return images
 
 

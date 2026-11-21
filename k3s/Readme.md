@@ -314,6 +314,8 @@ Matrix authentication service, the Matrix widgets and LiveKit, OpenProject and C
   value has no effect, and a new save of one is refused.
 - The profile is an input of the openDesk waves of each zone and of the image pre-pull, so a change of it runs the
   waves again.
+- The image pre-pull leaves out the images of a retired application. A pod of an earlier version that runs until a
+  later step of the same `up` removes it does not put its image on every node again.
 - A zone of an earlier version loses its retired releases at its next apply, because helmfile uninstalls the releases
   that the values turn off. Its retired databases, buckets and volumes stay until `zone.py delete` or
   [deploy-k3s reset](#reset-a-site).
