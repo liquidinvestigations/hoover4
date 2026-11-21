@@ -106,8 +106,38 @@
   register: hoover4_k3s_registries
   when: hoover4_registry_endpoint | length > 0
 
+# k3s, its containerd and the runc shims swap no page. The kubelet sets the swap of the pods (kubelet-hoover4.conf.j2)
+# and the service hoover4-pod-swap sets the quota of each pod slice. The file needs no k3s restart.
+- name: Create the folder of the k3s unit settings
+  ansible.builtin.file:
+    path: /etc/systemd/system/{{ hoover4_unit }}.service.d
+    state: directory
+    mode: "0755"
+
+- name: Write the memory settings of the k3s unit
+  ansible.builtin.copy:
+    content: "[Service]\nMemorySwapMax=0\n"
+    dest: /etc/systemd/system/{{ hoover4_unit }}.service.d/10-hoover4-memory.conf
+    mode: "0644"
+  register: hoover4_unit_memory
+
+- name: Load the memory settings of the k3s unit
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: hoover4_unit_memory.changed
+
 - name: Install k3s
   ansible.builtin.include_tasks: install.yml
+
+- name: Read the swap limit of the k3s unit
+  ansible.builtin.command: cat /sys/fs/cgroup/system.slice/{{ hoover4_unit }}.service/memory.swap.max
+  register: hoover4_unit_swap
+  changed_when: false
+  check_mode: false
+  failed_when: hoover4_unit_swap.stdout | trim != '0'
+
+- name: Set the swap quota of the pods
+  ansible.builtin.include_tasks: pod-swap.yml
 
 - name: Finish the server
   ansible.builtin.include_tasks: server.yml

@@ -1,0 +1,36 @@
+---
+# The service hoover4-pod-swap gives each pod slice its swap and zswap quota (files/hoover4-pod-swap.py). It runs on
+# every node. On a node without zswap or with writeback off, a pod at its memory limit stops at its limit.
+- name: Copy the pod swap script
+  ansible.builtin.copy:
+    src: hoover4-pod-swap.py
+    dest: /usr/local/sbin/hoover4-pod-swap
+    mode: "0755"
+  register: hoover4_pod_swap_script
+
+- name: Create the folder of the pod swap settings
+  ansible.builtin.file:
+    path: /etc/hoover4
+    state: directory
+    mode: "0755"
+
+- name: Write the pod swap settings
+  ansible.builtin.copy:
+    content: "{{ hoover4_pod_swap | combine({'interval_seconds': 15}) | to_nice_json }}\n"
+    dest: /etc/hoover4/pod-swap.json
+    mode: "0644"
+  register: hoover4_pod_swap_settings
+
+- name: Write the pod swap unit
+  ansible.builtin.template:
+    src: hoover4-pod-swap.service.j2
+    dest: /etc/systemd/system/hoover4-pod-swap.service
+    mode: "0644"
+  register: hoover4_pod_swap_unit
+
+- name: Start the pod swap service
+  ansible.builtin.systemd_service:
+    name: hoover4-pod-swap
+    state: "{{ 'restarted' if hoover4_pod_swap_script.changed or hoover4_pod_swap_settings.changed or hoover4_pod_swap_unit.changed else 'started' }}"
+    enabled: true
+    daemon_reload: "{{ hoover4_pod_swap_unit.changed }}"

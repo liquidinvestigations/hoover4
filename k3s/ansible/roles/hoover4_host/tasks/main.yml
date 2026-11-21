@@ -9,7 +9,9 @@
     hoover4_modules_file: "/etc/modules-load.d/{{ '90-hoover4-k3s' if hoover4_single_local | bool else '90-k3s-node' }}.conf"
     hoover4_sysctl_file: "/etc/sysctl.d/{{ '90-hoover4-k3s' if hoover4_single_local | bool else '90-k3s-node' }}.conf"
     hoover4_nm_file: "/etc/NetworkManager/conf.d/{{ '90-hoover4-k3s' if hoover4_single_local | bool else '90-k3s-node' }}.conf"
-    hoover4_all_modules: "{{ hoover4_modules + (['dm_thin_pool'] if hoover4_single_local | bool else []) }}"
+    hoover4_all_modules: >-
+      {{ hoover4_modules + (['dm_thin_pool'] if hoover4_single_local | bool else [])
+         + (['zstd'] if hoover4_memory_tuning | bool else []) }}
 
 # The NVIDIA container toolkit gives k3s the runtime handler nvidia of a GPU node. Its package comes from the NVIDIA
 # repository, which the node gets only when the toolkit is missing.
@@ -65,12 +67,19 @@
     state: present
   loop: "{{ hoover4_all_modules }}"
 
+# The switch memory_tuning sets vm.page-cluster 0. A read-ahead of compressed pages decompresses pages that no process
+# asked for.
 - name: Write the sysctl settings
   ansible.builtin.copy:
-    content: "{% for key, value in hoover4_sysctl.items() %}{{ key }} = {{ value }}\n{% endfor %}"
+    content: "{% for key, value in hoover4_sysctl_all.items() %}{{ key }} = {{ value }}\n{% endfor %}"
     dest: "{{ hoover4_sysctl_file }}"
     mode: "0644"
+  vars:
+    hoover4_sysctl_all: "{{ hoover4_sysctl | combine({'vm.page-cluster': '0'} if hoover4_memory_tuning | bool else {}) }}"
   notify: Load the sysctl settings
+
+- name: Set the memory of the node
+  ansible.builtin.include_tasks: memory.yml
 
 - name: Read the state of NetworkManager
   ansible.builtin.command: systemctl is-active NetworkManager  # noqa: command-instead-of-module

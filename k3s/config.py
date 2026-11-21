@@ -10,7 +10,7 @@ secret is a reference to a private file on the node that reads it.
 
   hoover4:
     vars:                domain, control_plane, and the optional mappings networks, lans, gpu_pool, backup, stores,
-                         deploy and replicas
+                         deploy, replicas and pod_swap
       networks:          one entry per WireGuard network: interface, cidr, hubs, port and managed (NETWORK_KEYS)
       lans:              one entry per LAN, with an optional cidr
       gpu_pool:          the GPU services: the GPU nodes of the site, or the address of a shared pool
@@ -19,10 +19,11 @@ secret is a reference to a private file on the node that reads it.
                          Temporal pods, the Cassandra data size, the history shard count of the site Temporal and the
                          planned zone count (STORES_KEYS, STORE_PARTS)
       replicas:          the pod count of each stateless processing service of the zones (REPLICA_KEYS)
+      pod_swap:          the swap and zswap quota of each pod in percent of its memory limit (POD_SWAP_KEYS)
     hosts:
       <node>:            node_roles, local, ssh_host, networks (its address in each network), lan (its LAN address),
-                         public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker and
-                         public_firewall, the TLS mode of a public node and its secret files
+                         public_address, storage (tier: volume group), the switches k3s_volume_group, stop_docker,
+                         memory_tuning and public_firewall, the TLS mode of a public node and its secret files
 
 The probe of each node (the role hoover4_facts of ansible/) reads the architecture, AVX2, the GPUs and the volume groups
 into facts/<node>.json of the state folder. The role hoover4_speed measures the CPU speed and the disk speeds of a node
@@ -95,7 +96,7 @@ STORAGE_RESERVE = 0.05
 # secret (the absolute path of a private file), alias (an SSH host alias).
 SITE_KEYS = {'domain': (True, 'domain'), 'control_plane': (True, 'name')}
 # The mappings of hoover4.vars beside the site values.
-SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores', 'deploy', 'replicas')
+SITE_MAPPINGS = ('networks', 'lans', 'gpu_pool', 'backup', 'stores', 'deploy', 'replicas', 'pod_swap')
 # A WireGuard network: vars.networks.<name>. hubs names the nodes that every other node of the network peers with.
 # Without hubs, every node peers with every other node. managed: the installer writes and starts the interface on each
 # node of the network and adds its peers. Without it, the installer reads the interface and changes nothing on it.
@@ -114,6 +115,7 @@ NODE_KEYS = {
     # Ansible reserves the variable name roles, so the node roles have the key node_roles.
     'node_roles': (True, 'roles'), 'local': (False, 'bool'), 'ssh_host': (False, 'alias'),
     'public_address': (False, 'address'), 'k3s_volume_group': (False, 'name_any'), 'stop_docker': (False, 'bool'),
+    'memory_tuning': (False, 'bool'),
     'public_firewall': (False, 'bool'), 'reserved': (False, 'reserved'), 'data_root': (False, 'path'),
     'tls_mode': (False, ('choice', tuple(TLS_MODES))), 'tls_dns_credentials_file': (False, 'secret'),
     'tls_certificate_file': (False, 'secret'), 'tls_key_file': (False, 'secret'),
@@ -125,6 +127,9 @@ BACKUP_KEYS = {'node': (True, 'name'), 'path': (True, 'path')}
 #   parallel_zones  the count of zone steps that deploy-k3s up runs at the same time. Default: PARALLEL_ZONES.
 DEPLOY_KEYS = {'parallel_zones': (False, 'count')}
 PARALLEL_ZONES = 2
+# The swap quota of each pod, as a percentage of its memory limit (role hoover4_k3s, hoover4-pod-swap).
+POD_SWAP_KEYS = {'swap_percent': (False, 'count'), 'zswap_percent': (False, 'count'), 'writeback': (False, 'bool')}
+POD_SWAP = {'swap_percent': 35, 'zswap_percent': 15, 'writeback': False}
 # The shared Hoover stores of the site (../hoover/stores/shared.py, ../hoover/stores/temporal.py): vars.stores. Each
 # store keeps one copy of each part of its data. ClickHouse runs one pod. Garage, Cassandra and OpenSearch can shard
 # their data over several nodes, one pod on each node. A lost node loses its part until it returns, and the backups are
@@ -226,6 +231,8 @@ class Node:
     # file system.
     k3s_volume_group: str = ''
     stop_docker: bool = False
+    # Host zswap, the huge page mode madvise and vm.page-cluster 0 (role hoover4_host, tasks/memory.yml).
+    memory_tuning: bool = False
     public_firewall: bool = False
     reserved: str = ''
     data_root: str = '/srv/hoover-data'
@@ -312,6 +319,8 @@ class Site:
     stores: dict = field(default_factory=dict)
     # vars.deploy as given in the site file.
     deploy: dict = field(default_factory=dict)
+    # vars.pod_swap as given in the site file. POD_SWAP holds the defaults.
+    pod_swap: dict = field(default_factory=dict)
     # vars.replicas as given in the site file: {service: count}. A missing service has 1 pod.
     replicas: dict = field(default_factory=dict)
     # The site file that read() parsed, or empty for parse().
@@ -688,6 +697,15 @@ def parse(text, check_files=False):
     if variables.get('backup') is not None:
         backup = _section('vars.backup', _mapping(variables['backup'], 'vars.backup', problems), BACKUP_KEYS, {}, problems)
     deploy = _section('vars.deploy', _mapping(variables.get('deploy'), 'vars.deploy', problems), DEPLOY_KEYS, {}, problems)
+    pod_swap = _section('vars.pod_swap', _mapping(variables.get('pod_swap'), 'vars.pod_swap', problems), POD_SWAP_KEYS, {},
+                        problems)
+    swap = dict(POD_SWAP, **pod_swap)
+    for key in ('swap_percent', 'zswap_percent'):
+        if (swap[key] or 0) > 100:
+            problems.append(f'vars.pod_swap.{key} = {swap[key]} must be at most 100.')
+    if (swap['zswap_percent'] or 0) > (swap['swap_percent'] or 0):
+        problems.append(f'vars.pod_swap.zswap_percent = {swap["zswap_percent"]} must be at most swap_percent '
+                        f'({swap["swap_percent"]}).')
     replicas = _section('vars.replicas', _mapping(variables.get('replicas'), 'vars.replicas', problems), REPLICA_KEYS, {}, problems)
     raw_stores = _mapping(variables.get('stores'), 'vars.stores', problems)
     stores = _section('vars.stores', {k: v for k, v in raw_stores.items() if k not in STORE_PARTS},
@@ -735,7 +753,7 @@ def parse(text, check_files=False):
             nodes[name] = Node(name=name, **values)
     if problems:
         raise SiteError(_message(problems))
-    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, deploy=deploy, replicas=replicas, **site_values)
+    site = Site(nodes=nodes, networks=networks, lans=lans, gpu_pool=gpu_pool, backup=backup, stores=stores, deploy=deploy, replicas=replicas, pod_swap=pod_swap, **site_values)
     problems = check(site, check_files=check_files)
     if problems:
         raise SiteError(_message(problems))
@@ -984,7 +1002,7 @@ def document(site):
         variables['lans'] = {name: ({'cidr': cidr} if cidr else {}) for name, cidr in site.lans.items()}
     for title, values, keys in (('gpu_pool', site.gpu_pool, GPU_POOL_KEYS), ('backup', site.backup, BACKUP_KEYS),
                                 ('stores', site.stores, STORES_KEYS), ('deploy', site.deploy, DEPLOY_KEYS),
-                                ('replicas', site.replicas, REPLICA_KEYS)):
+                                ('replicas', site.replicas, REPLICA_KEYS), ('pod_swap', site.pod_swap, POD_SWAP_KEYS)):
         if values:
             variables[title] = {k: _text(values[k]) for k in keys if values.get(k) not in (None, '', ())}
     for part, keys in STORE_PARTS.items():
@@ -1283,6 +1301,7 @@ def network_problems(site):
 def switches(node):
     """The host changes of a node that the site file turns on or off, for the summary of the check."""
     return {'stop_docker': node.stop_docker, 'k3s_volume_group': node.k3s_volume_group or None,
+            'memory_tuning': node.memory_tuning,
             'public_firewall': node.public_firewall,
             'wireguard': {name: 'managed' if m.managed else 'kept' for name, m in node.networks.items()}}
 
@@ -1539,6 +1558,8 @@ def ansible_variables(site, private):
             'storage': dict(node.storage),
             'k3s_volume_group': node.k3s_volume_group,
             'stop_docker': node.stop_docker,
+            'memory_tuning': node.memory_tuning,
+            'pod_swap': dict(POD_SWAP, **site.pod_swap),
             'public_firewall': node.public_firewall,
             'public_address': node.public_address,
             # The media node with a public address gets the chain coturn_peers (../platform/calls/turn_peers.py).

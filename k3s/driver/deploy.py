@@ -1792,6 +1792,23 @@ def measure_speed(ctx, targets):
     return {name: config.speed_report(ctx.site, ctx.private)[name] for name in targets}
 
 
+def memory_recommendations(name, memory):
+    """The recommendations for the memory setup of one node, from the memory facts of the node (role hoover4_facts)."""
+    if not memory:
+        return []
+    out, swaps, zswap = [], memory.get('swap_devices') or [], memory.get('zswap') or {}
+    if not swaps:
+        out.append(f'{name} has no swap device. The sandboxed pods then cannot compress cold memory.')
+    elif zswap.get('enabled') not in ('Y', '1'):
+        out.append(f'{name} has a swap device and zswap is off. Set memory_tuning: true for the node.')
+    total = memory.get('total_bytes') or 0
+    if total and sum(s.get('size_bytes', 0) for s in swaps) > total:
+        out.append(f'{name} has swap devices that are larger than its memory. 25 to 50 % of the memory is enough.')
+    for daemon in memory.get('oom_daemons') or []:
+        out.append(f'{name} runs {daemon}. It can stop k3s and the stores.')
+    return out
+
+
 def check(ctx, targets):
     """The problems of the selected targets, as messages, and their state, as a dict.
 
@@ -1826,6 +1843,8 @@ def check(ctx, targets):
         state[name]['ready'] = node_ready(ctx, name)
         # The stored CPU and disk speeds (role hoover4_speed). note says how to measure a node without a value.
         state[name]['speed'] = speeds[name]
+    # Recommendations are no problems, so the exit code stays the same.
+    state['recommendations'] = [line for name in targets for line in memory_recommendations(name, state[name].get('memory'))]
     if ctx.site.control_plane in targets:
         missing = [str(p) for p in tool_paths(ctx) if not p.exists()]
         if missing:

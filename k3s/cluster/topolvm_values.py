@@ -45,6 +45,11 @@ def values(hosts):
         'storageClasses': [],
         # The volumes are thick LVs, and TopoLVM snapshots need thin LVs.
         'snapshot': {'enabled': False},
+        # Requests without limits for the main containers, from their use on a running site, so the pods are not
+        # BestEffort. The sidecar containers get no request.
+        'resources': {'lvmd': {'requests': {'memory': '64Mi', 'cpu': '10m'}},
+                      'topolvm_node': {'requests': {'memory': '96Mi', 'cpu': '10m'}},
+                      'topolvm_controller': {'requests': {'memory': '64Mi', 'cpu': '10m'}}},
     }
     for tier in tiers_used:
         for kind in ('ext4', 'block'):

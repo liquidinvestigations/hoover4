@@ -107,6 +107,7 @@ The facts give the size of each group. The k3s data volumes of `k3s_volume_group
 | `networks.<name>.managed` | true | Write and start a missing WireGuard interface, and add the peers of the network to it. With false, the installer changes nothing on the interface. |
 | `stop_docker` | false | Stop and disable Docker. With false, the host play reports enabled Docker units and keeps them. |
 | `k3s_volume_group` | empty | Create the logical volumes `rancher` and `kubelet` in this volume group and mount them at `/var/lib/rancher` and `/var/lib/kubelet`. Existing volumes of these names stay. |
+| `memory_tuning` | false | Turn on zswap with `zstd` and its shrinker, set the huge page mode `madvise` and `vm.page-cluster` 0. With false, the next boot restores the values of the operating system. See [Use swap and zswap](#use-swap-and-zswap). |
 | `public_firewall` | true on a `public` or `calls` node with a `public_address` | Install the host firewall of the role `hoover4_public_firewall`. |
 
 `public_firewall` installs two parts. The media node of the call services gets the chain `coturn_peers` in its own table `inet hoover_coturn_peers`.
@@ -421,6 +422,31 @@ The step `hosts:k3s` writes the kubelet file `kubelet.conf.d/10-hoover4.conf`
 systemd-logind. When systemd stops or restarts the host, the kubelet stops the pods in 150 s: first the ordinary pods
 in 120 s, then the critical pods in 30 s. `deploy-k3s up` fails in `hosts:verify` when a kubelet has a different period.
 `poweroff --force` and a power loss skip the lock, so the stores start with crash recovery after them.
+
+### Use swap and zswap.
+
+The host owns its swap device. The installer creates, changes and removes no swap device. A swap device of 25 to 50 %
+of the memory is recommended.
+
+- `memory_tuning: true` of a node writes `/etc/tmpfiles.d/hoover4-memory.conf`: zswap on, the compressor `zstd`, the
+  zswap shrinker on, and the huge page mode `madvise`. It also sets `vm.page-cluster` to 0, because a read-ahead of
+  compressed pages decompresses pages that no process asked for. `max_pool_percent` keeps the kernel default of 20.
+- k3s and its runc containers swap no page: the k3s unit has `MemorySwapMax=0`, and the kubelet has `NoSwap`.
+- The service `hoover4-pod-swap` runs on every node. Every 15 s it gives each pod slice the swap quota
+  `swap_percent` and the zswap quota `zswap_percent` of its memory limit, and turns the write of pod memory to the
+  swap device off (`writeback: false`). A pod without a memory limit gets the quota 0. `vars.pod_swap` of the site
+  file sets the three values. The defaults are 35, 15 and false. `--check` lists the slices that differ.
+- The gVisor sentry and Cloud Hypervisor run in the pod slice, so the quota holds them. A sandboxed pod at its memory
+  limit compresses cold pages into zswap until its zswap quota is full, and then stops at its limit.
+- On a node without a swap device or with zswap off, zswap stores nothing. A pod at its memory limit then stops at
+  its limit.
+- `deploy-k3s check` prints recommendations in `state.recommendations`: a node without a swap device, a node with a
+  swap device and zswap off, swap devices larger than the memory, and an active `systemd-oomd`, `earlyoom` or
+  `nohang`. They do not change the exit code.
+- The alarms `NodeSwapAlmostFull`, `NodeMemoryPressure`, `NodeOutOfMemoryKill` and `PodSwapNearQuota` report a full
+  swap device, memory pressure, a kernel OOM kill and a pod with more than 30 % of its limit in swap.
+- The Kata guests return the pages that they freed to the host (`reclaim_guest_freed_memory`). A running Kata pod
+  keeps its earlier configuration until it starts again.
 
 ### Size the memory.
 

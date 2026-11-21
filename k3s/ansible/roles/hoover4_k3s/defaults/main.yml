@@ -19,3 +19,5 @@ hoover4_registry_endpoint: ""
 hoover4_reserved: ""
 hoover4_kubelet_reserved: ""
 hoover4_k3s_volume_group: ""
+# The swap quota of each pod in percent of its memory limit (config.POD_SWAP of the site file vars.pod_swap).
+hoover4_pod_swap: {swap_percent: 35, zswap_percent: 15, writeback: false}

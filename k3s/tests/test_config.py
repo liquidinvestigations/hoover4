@@ -231,7 +231,8 @@ def test_the_storage_maps_each_tier_to_its_own_volume_group():
 def test_the_switches_have_their_defaults():
     site = parse('remote.yml')
     assert config.switches(site.nodes['server-a']) == {'stop_docker': True, 'k3s_volume_group': 'tier-hdd',
-                                                       'public_firewall': False, 'wireguard': {'site': 'managed'}}
+                                                       'memory_tuning': False, 'public_firewall': False,
+                                                       'wireguard': {'site': 'managed'}}
     assert config.switches(site.nodes['gpu-1'])['wireguard'] == {'site': 'kept'}
     # A public or calls node with a public address gets the host firewall unless the site file turns it off.
     assert site.nodes['edge'].public_firewall and site.nodes['calls'].public_firewall
@@ -384,3 +385,21 @@ def test_a_node_reserves_cpu_in_millicores_or_whole_cpus():
     nodes = config.ansible_variables(site, '/s')['hoover4_nodes']
     assert nodes['a']['reserved'] == 'cpu=700m' and nodes['a']['reserved_cpus'] == 0.7
     assert nodes['b']['reserved_cpus'] == 2.0 and nodes['b']['reserved_memory_gib'] == 4.0
+
+
+def test_the_memory_switch_and_the_pod_swap_quotas_reach_each_node():
+    text = site_text('remote.yml')
+    site = config.parse(text)
+    own = config.ansible_variables(site, '/state')['hoover4_nodes']['worker-b']
+    assert own['memory_tuning'] is False and own['pod_swap'] == {'swap_percent': 35, 'zswap_percent': 15, 'writeback': False}
+    changed = text.replace('node_roles: worker, data', 'node_roles: worker, data' + H + 'memory_tuning: true').replace(
+        '    domain: example.org\n', '    domain: example.org\n    pod_swap: {swap_percent: 40}\n')
+    site = config.parse(changed)
+    own = config.ansible_variables(site, '/state')['hoover4_nodes']['worker-b']
+    assert own['memory_tuning'] is True and own['pod_swap'] == {'swap_percent': 40, 'zswap_percent': 15, 'writeback': False}
+    assert config.parse(json.dumps(config.document(site))).pod_swap == {'swap_percent': 40}
+    assert config.parse(json.dumps(config.document(site))).nodes['worker-b'].memory_tuning
+    message = problems_of(text.replace('    domain: example.org\n', '    domain: example.org\n    pod_swap: {swap_percent: 101}\n'))
+    assert 'vars.pod_swap.swap_percent = 101 must be at most 100.' in message
+    message = problems_of(text.replace('    domain: example.org\n', '    domain: example.org\n    pod_swap: {swap_percent: 10, zswap_percent: 20}\n'))
+    assert 'vars.pod_swap.zswap_percent = 20 must be at most swap_percent (10).' in message

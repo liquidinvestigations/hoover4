@@ -503,3 +503,29 @@ def test_the_kubelet_stops_the_pods_at_a_host_shutdown_and_a_changed_file_restar
     install = {t['name']: t for t in yaml.safe_load((ROLES / 'hoover4_k3s/tasks/install.yml').read_text())}
     assert 'hoover4_kubelet_dropin.changed' in install['Decide the install']['ansible.builtin.set_fact']['hoover4_k3s_install']
     assert install['Wait for the shutdown lock of the kubelet']['until'] == "'kubelet' in hoover4_kubelet_inhibit.stdout"
+
+
+def test_the_memory_switch_writes_the_zswap_settings_and_removes_them_when_it_is_off():
+    tasks = {t['name']: t for t in yaml.safe_load((ROLES / 'hoover4_host/tasks/memory.yml').read_text())}
+    written = tasks['Write the memory settings of the node']
+    assert written['ansible.builtin.copy']['content'].splitlines() == [
+        'w /sys/module/zswap/parameters/compressor - - - - zstd',
+        'w /sys/module/zswap/parameters/shrinker_enabled - - - - Y',
+        'w /sys/module/zswap/parameters/enabled - - - - Y',
+        'w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise']
+    assert written['when'] == 'hoover4_memory_tuning | bool'
+    assert tasks['Remove the memory settings of the node']['when'] == 'not hoover4_memory_tuning | bool'
+    assert 'max_pool_percent' not in written['ansible.builtin.copy']['content']
+    main = {t['name']: t for t in yaml.safe_load((ROLES / 'hoover4_host/tasks/main.yml').read_text())}
+    assert 'when' not in main['Set the memory of the node']
+
+
+def test_the_pod_swap_quota_is_a_share_of_the_memory_limit_in_whole_pages():
+    swap = load(ROLES / 'hoover4_k3s/files/hoover4-pod-swap.py', 'pod_swap')
+    settings = {'swap_percent': 35, 'zswap_percent': 15, 'writeback': False}
+    assert swap.wanted('max', settings) == (0, 0)
+    assert swap.wanted(str(2 ** 30), settings) == (375808000, 161058816)
+    assert swap.wanted('4096', settings) == (0, 0)
+    tasks = {t['name']: t for t in yaml.safe_load((ROLES / 'hoover4_k3s/tasks/main.yml').read_text())}
+    assert tasks['Write the memory settings of the k3s unit']['ansible.builtin.copy']['content'] == '[Service]\nMemorySwapMax=0\n'
+    assert tasks['Read the swap limit of the k3s unit']['failed_when'] == "hoover4_unit_swap.stdout | trim != '0'"

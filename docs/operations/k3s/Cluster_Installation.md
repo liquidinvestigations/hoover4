@@ -46,6 +46,7 @@ The site file is a YAML Ansible inventory with one group, `hoover4`.
 | `hoover4.hosts.<name>` | One node: its roles (`node_roles`), its address in each network and LAN, its public address, the volume group of each storage tier (`storage`), the switches of its host changes, and the TLS mode of a public node. |
 | `hoover4.vars.gpu_pool` | The GPU nodes or the address of an external GPU pool. |
 | `hoover4.vars.backup` | The backup node and the backup folder on that node. |
+| `hoover4.vars.pod_swap` | The swap and zswap quota of each pod in percent of its memory limit (`swap_percent`, `zswap_percent`, default 35 and 15). |
 | `hoover4.vars.deploy` | The count of zone steps that `deploy-k3s up` runs at the same time (`parallel_zones`, default 2). |
 | `hoover4.vars.stores` | The nodes and node counts of the shared stores, and the zone count (`zones`) that the site placement reserves memory and CPU for. |
 | `hoover4.vars.replicas` | The pod count of each stateless processing service of every zone, for example `tika: 2` (default 1). |
@@ -60,10 +61,13 @@ The check prints the switches of each node and the WireGuard peer table. Prepare
 
 1. Create a volume group for each storage tier of each node, for example with `vgcreate`. The installer changes no disk.
    The facts play of `k3s/deploy-k3s check` refuses a volume group that the node does not have.
-2. Choose the switches of each node: `stop_docker`, `k3s_volume_group` and `public_firewall`.
+2. Choose the switches of each node: `stop_docker`, `k3s_volume_group`, `memory_tuning` and `public_firewall`.
    [The reference](../../../k3s/Readme.md) lists what each switch changes.
-3. A site without a WireGuard network connects its nodes at their LAN addresses. Give each node `lan` and declare the LAN in `vars.lans`.
-4. The cidr of each network, and of each LAN that states one, reaches the admin routes of the HTTPS frontend.
+3. Give each node a swap device of 25 to 50 % of its memory, and set `memory_tuning: true`. The installer changes no
+   swap device. Without swap, a sandboxed pod at its memory limit stops at its limit.
+   See [Use swap and zswap](../../../k3s/Readme.md#use-swap-and-zswap).
+4. A site without a WireGuard network connects its nodes at their LAN addresses. Give each node `lan` and declare the LAN in `vars.lans`.
+5. The cidr of each network, and of each LAN that states one, reaches the admin routes of the HTTPS frontend.
 
 The facts play reads the architecture, AVX2, the GPUs and the volume group sizes of each node. Do not write them in the site file.
 The first `up` measures the CPU speed and the write speed of each storage tier of each node before k3s starts, and keeps them.

@@ -1125,3 +1125,20 @@ def test_the_stores_step_applies_the_stores_then_the_pools_and_the_zone_step_lea
     import inspect
     source = inspect.getsource(deploy.step_zone)
     assert "'HOOVER4_POOLS_STEP': '1'" in source
+
+
+def test_the_memory_recommendations_name_each_node_and_change_no_exit_code():
+    gib = 2 ** 30
+    swap = [{'name': '/dev/dm-3', 'size_bytes': 12 * gib, 'used_bytes': 0}]
+    assert deploy.memory_recommendations('a', {'total_bytes': 32 * gib, 'swap_devices': [], 'zswap': {}, 'oom_daemons': []}) == [
+        'a has no swap device. The sandboxed pods then cannot compress cold memory.']
+    assert deploy.memory_recommendations('b', {'total_bytes': 32 * gib, 'swap_devices': swap, 'zswap': {'enabled': 'N'},
+                                               'oom_daemons': []}) == [
+        'b has a swap device and zswap is off. Set memory_tuning: true for the node.']
+    assert deploy.memory_recommendations('c', {'total_bytes': 8 * gib, 'swap_devices': swap, 'zswap': {'enabled': 'Y'},
+                                               'oom_daemons': ['nohang']}) == [
+        'c has swap devices that are larger than its memory. 25 to 50 % of the memory is enough.',
+        'c runs nohang. It can stop k3s and the stores.']
+    assert deploy.memory_recommendations('d', {'total_bytes': 32 * gib, 'swap_devices': swap, 'zswap': {'enabled': 'Y'},
+                                               'oom_daemons': []}) == []
+    assert deploy.memory_recommendations('e', None) == []

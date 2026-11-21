@@ -1,3 +1,18 @@
 # cert-manager makes the certificate of the TopoLVM webhook. The chart installs its CRDs.
 crds:
   enabled: true
+# Requests without limits, from the use on a running site, so the pods are not BestEffort.
+resources:
+  requests:
+    memory: 128Mi
+    cpu: 10m
+cainjector:
+  resources:
+    requests:
+      memory: 96Mi
+      cpu: 10m
+webhook:
+  resources:
+    requests:
+      memory: 96Mi
+      cpu: 10m

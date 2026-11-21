@@ -35,15 +35,28 @@
     that:
       - "'sandbox_cgroup_only = false' in (hoover4_kata_default.content | b64decode)"
       - "'default_memory = 2048' in (hoover4_kata_default.content | b64decode)"
-    fail_msg: The default Kata configuration has no line sandbox_cgroup_only = false or default_memory = 2048. Verify the Kata release.
+      - "'reclaim_guest_freed_memory = false' in (hoover4_kata_default.content | b64decode)"
+    fail_msg: >-
+      The default Kata configuration has no line sandbox_cgroup_only = false, default_memory = 2048 or
+      reclaim_guest_freed_memory = false. Verify the Kata release.
     quiet: true
 
+# reclaim_guest_freed_memory: the guest returns the pages that it freed to the host.
 - name: Write the Kata configuration
   ansible.builtin.copy:
-    content: "{{ hoover4_kata_default.content | b64decode | replace('sandbox_cgroup_only = false', 'sandbox_cgroup_only = true') | replace('default_memory = 2048', 'default_memory = 512') }}"
+    content: >-
+      {{ hoover4_kata_default.content | b64decode | replace('sandbox_cgroup_only = false', 'sandbox_cgroup_only = true')
+         | replace('default_memory = 2048', 'default_memory = 512')
+         | replace('reclaim_guest_freed_memory = false', 'reclaim_guest_freed_memory = true') }}
     dest: /etc/kata-containers/configuration-clh.toml
     mode: "0644"
   register: hoover4_kata_config
+
+# The shim reads the configuration at each sandbox start, so k3s needs no restart.
+- name: Report the Kata pods that keep the earlier configuration
+  ansible.builtin.debug:
+    msg: "The running Kata pods of {{ inventory_hostname }} keep the earlier Kata configuration until they start again."
+  when: hoover4_kata_config.changed
 
 - name: Check the Kata runtime on this host
   ansible.builtin.command: /opt/kata/bin/kata-runtime --config /etc/kata-containers/configuration-clh.toml check --no-network-checks

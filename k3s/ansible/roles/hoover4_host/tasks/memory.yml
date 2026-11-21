@@ -1,0 +1,32 @@
+---
+# The switch memory_tuning: host zswap with the compressor zstd and the shrinker, and the huge page mode madvise. The
+# kernel 6.12 does not compress a large folio, so the pages of a sandbox stay small. The host owns its swap device. The
+# role reads and changes no swap device and writes no value for max_pool_percent, which keeps the kernel default.
+- name: Write the memory settings of the node
+  ansible.builtin.copy:
+    content: |
+      w /sys/module/zswap/parameters/compressor - - - - zstd
+      w /sys/module/zswap/parameters/shrinker_enabled - - - - Y
+      w /sys/module/zswap/parameters/enabled - - - - Y
+      w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise
+    dest: /etc/tmpfiles.d/hoover4-memory.conf
+    mode: "0644"
+  register: hoover4_memory_file
+  when: hoover4_memory_tuning | bool
+
+- name: Apply the memory settings of the node
+  ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/hoover4-memory.conf
+  changed_when: true
+  when: hoover4_memory_tuning | bool and hoover4_memory_file.changed
+
+- name: Remove the memory settings of the node
+  ansible.builtin.file:
+    path: /etc/tmpfiles.d/hoover4-memory.conf
+    state: absent
+  register: hoover4_memory_removed
+  when: not hoover4_memory_tuning | bool
+
+- name: Report the memory settings that stay until the next boot
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} keeps zswap and the huge page mode until the next boot, which restores the values of the operating system."
+  when: not hoover4_memory_tuning | bool and hoover4_memory_removed.changed

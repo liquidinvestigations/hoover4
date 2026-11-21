@@ -73,3 +73,35 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: 'Container {{ $labels.container }} of {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf "%.0f" }} times in 15 minutes.'
+    - name: hoover-memory
+      rules:
+        # The swap device of the node is the limit of the node. The sum of the pod quotas is larger than the device.
+        - alert: NodeSwapAlmostFull
+          expr: node_memory_SwapTotal_bytes > 0 and node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes < 0.25
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: '{{ $labels.instance }} has less than 25 % of its swap free.'
+        - alert: NodeMemoryPressure
+          expr: rate(node_pressure_memory_stalled_seconds_total[5m]) > 0.05
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: 'The processes of {{ $labels.instance }} waited for memory in more than 5 % of the time for 10 minutes.'
+        - alert: NodeOutOfMemoryKill
+          expr: increase(node_vmstat_oom_kill[10m]) > 0
+          labels: {severity: critical}
+          annotations:
+            summary: 'The kernel of {{ $labels.instance }} stopped a process because the memory was full.'
+        # The swap quota of a pod is 35 % of its memory limit (hoover4-pod-swap of the k3s role). The series with
+        # image="" is the pod cgroup. The memory limit comes from kube-state-metrics, because the chart drops
+        # container_spec_*.
+        - alert: PodSwapNearQuota
+          expr: >-
+            max by (namespace, pod) (container_memory_swap{container="", image="", pod!=""})
+            / on (namespace, pod) (sum by (namespace, pod) (kube_pod_container_resource_limits{resource="memory"}) > 0)
+            > 0.30
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} has more than 30 % of its memory limit in swap.'
