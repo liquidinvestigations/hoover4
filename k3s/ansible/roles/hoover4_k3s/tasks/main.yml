@@ -84,6 +84,20 @@
     mode: "0644"
   register: hoover4_k3s_config
 
+# The kubelet stops the pods in the shutdown grace period when systemd stops the host, and it swaps no container.
+- name: Create the folder of the kubelet configuration files
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+    state: directory
+    mode: "0700"
+
+- name: Write the kubelet configuration of hoover4
+  ansible.builtin.template:
+    src: kubelet-hoover4.conf.j2
+    dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-hoover4.conf
+    mode: "0644"
+  register: hoover4_kubelet_dropin
+
 - name: Write the registry mirror of the cluster registry
   ansible.builtin.copy:
     content: "mirrors:\n  \"registry.hoover.internal\":\n    endpoint:\n      - \"http://{{ hoover4_registry_endpoint }}\"\n"

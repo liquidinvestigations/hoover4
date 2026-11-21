@@ -93,6 +93,8 @@ k3s/deploy-k3s up --target all --start
 It also suspends the CronJobs of the zones. The workers end through their grace period, and no workflow is cancelled.
 `up --start` starts the parts in the reverse order and resumes only the CronJobs that `down` suspended.
 
+A host that systemd stops or restarts gives its pods 150 s to stop. `poweroff --force` and a power loss stop the pods without a clean stop.
+
 Each shared store keeps one copy of its data, without replication or failover. While a node is stopped, the part of the store data on that node is out of reach for every zone. The collection copies of the backups are the recovery path for a lost volume. See [the lost store nodes](../../../k3s/Readme.md#lost-store-nodes).
 
 ## Monitor the site

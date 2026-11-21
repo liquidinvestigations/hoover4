@@ -25,6 +25,7 @@
       {{ hoover4_k3s_binary.changed or hoover4_k3s_config.changed or (hoover4_k3s_registries.changed | default(false))
          or (hoover4_scheduler_config.changed | default(false))
          or hoover4_runtimes_changed | bool or hoover4_tokens_changed | default(false) | bool
+         or hoover4_kubelet_dropin.changed
          or not hoover4_unit_file.stat.exists or hoover4_unit_active.stdout != 'active' }}
 
 - name: Install and restart k3s
@@ -69,3 +70,13 @@
   changed_when: false
   check_mode: false
   when: not hoover4_server | bool
+
+# The kubelet takes a delay lock of systemd-logind. Without it a host shutdown stops the pods without a clean stop.
+- name: Wait for the shutdown lock of the kubelet
+  ansible.builtin.command: systemd-inhibit --list --no-legend
+  register: hoover4_kubelet_inhibit
+  until: "'kubelet' in hoover4_kubelet_inhibit.stdout"
+  retries: 12
+  delay: 5
+  changed_when: false
+  check_mode: false

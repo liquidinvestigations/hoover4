@@ -1,0 +1,7 @@
+# The kubelet reads this file after 00-k3s-defaults.conf of k3s.
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+shutdownGracePeriod: 150s
+shutdownGracePeriodCriticalPods: 30s
+memorySwap:
+  swapBehavior: NoSwap

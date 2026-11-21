@@ -494,3 +494,12 @@ def test_the_backup_step_gives_the_folders_to_the_pod_user_and_writes_the_marker
     # A mount that the fstab names and that is missing gets no folder and no marker, so the jobs pause.
     ready = 'hoover4_backup_mounted.rc == 0 or hoover4_backup_fstab.rc != 0'
     assert folders['when'] == marker['when'] == owned['when'] == ready
+
+
+def test_the_kubelet_stops_the_pods_at_a_host_shutdown_and_a_changed_file_restarts_k3s():
+    kubelet = yaml.safe_load((ROLES / 'hoover4_k3s/templates/kubelet-hoover4.conf.j2').read_text())
+    assert kubelet['shutdownGracePeriod'] == '150s' and kubelet['shutdownGracePeriodCriticalPods'] == '30s'
+    assert kubelet['memorySwap'] == {'swapBehavior': 'NoSwap'}
+    install = {t['name']: t for t in yaml.safe_load((ROLES / 'hoover4_k3s/tasks/install.yml').read_text())}
+    assert 'hoover4_kubelet_dropin.changed' in install['Decide the install']['ansible.builtin.set_fact']['hoover4_k3s_install']
+    assert install['Wait for the shutdown lock of the kubelet']['until'] == "'kubelet' in hoover4_kubelet_inhibit.stdout"

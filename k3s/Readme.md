@@ -414,6 +414,14 @@ and CPU, and it refuses a pod that does not fit (`OutOfmemory`, `OutOfcpu`). [ku
   `hosts:kubelet`.
 - The placement plan uses the allocatable after the change, so the plan fits the nodes after `hosts:kubelet`.
 
+### Stop a host.
+
+The step `hosts:k3s` writes the kubelet file `kubelet.conf.d/10-hoover4.conf`
+([template](ansible/roles/hoover4_k3s/templates/kubelet-hoover4.conf.j2)). The kubelet holds a delay lock of
+systemd-logind. When systemd stops or restarts the host, the kubelet stops the pods in 150 s: first the ordinary pods
+in 120 s, then the critical pods in 30 s. `deploy-k3s up` fails in `hosts:verify` when a kubelet has a different period.
+`poweroff --force` and a power loss skip the lock, so the stores start with crash recovery after them.
+
 ### Size the memory.
 
 The memory request of each workload is its peak under load ([zones/memory-requests.json](zones/memory-requests.json),

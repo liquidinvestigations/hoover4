@@ -415,7 +415,9 @@ def test_verify_names_a_missing_kubeconfig_and_the_differences_of_each_node(env,
     monkeypatch.setattr(deploy, 'node_ready', lambda ctx, name: ready[name])
     monkeypatch.setattr(deploy, 'node_label', lambda ctx, name, label: 'true')
     monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['--flannel-iface', 'wg0', '--cluster-init', 'true'])
-    monkeypatch.setattr(deploy.Context, 'kubectl', lambda self, *a, check=True: deploy.K3S_VERSION)
+    grace = {'value': deploy.SHUTDOWN_GRACE}
+    monkeypatch.setattr(deploy.Context, 'kubectl', lambda self, *a, check=True: json.dumps(
+        {'kubeletconfig': {'shutdownGracePeriod': grace['value']}}) if '--raw' in a else deploy.K3S_VERSION)
     with pytest.raises(deploy.StepFailed, match='node edge: the node is not Ready'):
         deploy.step_verify(ctx, attempts=2, pause=0)
     ready['edge'] = True
@@ -425,6 +427,9 @@ def test_verify_names_a_missing_kubeconfig_and_the_differences_of_each_node(env,
     assert "node server-a: flannel-iface is 'eth0', not 'wg0', k3s runs without cluster-init" in str(error.value)
     monkeypatch.setattr(deploy, 'node_args', lambda ctx, name: ['--flannel-iface', 'wg0', '--cluster-init', 'true'])
     assert deploy.step_verify(ctx, attempts=1, pause=0) == {'nodes': ['server-a', 'edge']}
+    grace['value'] = '0s'
+    with pytest.raises(deploy.StepFailed, match='node server-a: the kubelet has shutdownGracePeriod 0s, not 2m30s'):
+        deploy.step_verify(ctx, attempts=1, pause=0)
 
 
 def test_a_dirty_checkout_stays_unchanged_and_the_record_names_its_files(env):

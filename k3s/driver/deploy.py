@@ -425,6 +425,9 @@ def step_k3s(ctx):
 
 # The reasons of a pod that the kubelet refused at its admission, for example after a restart with a smaller
 # allocatable. The controller of such a pod starts a new pod, and the refused pod stays in the phase Failed.
+# The shutdown grace period of the kubelet, as configz prints it. ansible/roles/hoover4_k3s/templates/kubelet-hoover4.conf.j2
+# sets it.
+SHUTDOWN_GRACE = '2m30s'
 REJECTED = ('OutOfmemory', 'OutOfcpu', 'OutOfpods', 'OutOfephemeral-storage', 'UnexpectedAdmissionError')
 
 
@@ -517,6 +520,13 @@ def node_problems(ctx, name, k3s_args=None):
                         f'Run deploy-k3s check --target {name}')
     elif interface != expected:
         problems.append(f'flannel-iface is {interface!r}, not {expected!r}')
+    try:
+        grace = json.loads(ctx.kubectl('get', '--raw', f'/api/v1/nodes/{name}/proxy/configz', check=False) or '{}').get(
+            'kubeletconfig', {}).get('shutdownGracePeriod', '')
+    except (ValueError, AttributeError):
+        grace = ''
+    if grace != SHUTDOWN_GRACE:
+        problems.append(f'the kubelet has shutdownGracePeriod {grace or "unknown"}, not {SHUTDOWN_GRACE}')
     if name == ctx.site.control_plane:
         if arg_value(args, '--cluster-init') != 'true':
             problems.append('k3s runs without cluster-init')
