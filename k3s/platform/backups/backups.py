@@ -910,9 +910,11 @@ def directory_uids(zone):
 
 
 def owners(s, zone):
-    """The sorted directory uid values that own data in a zone: the Hoover users that are not deleted, and the
-    Nextcloud accounts, whose ids are the univentionObjectIdentifier of their directory entry."""
-    names = set()
+    """(the sorted directory uid values that own data in a zone, {univentionObjectIdentifier: uid} of the Nextcloud
+    accounts). The owners are the Hoover users that are not deleted and the Nextcloud accounts. Nextcloud keys an
+    account by the univentionObjectIdentifier of its directory entry, so a directory with the same names and other ids
+    does not find the accounts."""
+    names, ids = set(), {}
     for hoover in (h for h in site_config.hoovers(s).values() if h.zone == zone):
         rows = clickhouse(hoover, f'SELECT username FROM `{hoover.clickhouse_database_prefix}_Processing`.users FINAL '
                                   'WHERE is_deleted = 0')
@@ -920,11 +922,14 @@ def owners(s, zone):
     module = shared_databases(zone)
     if module:
         pod = module.shared().ready_pod('postgresql')
-        ids = kubectl('-n', module.STORES_NS, 'exec', pod, '-c', 'postgresql', '--', 'psql', '-U', 'postgres', '-At', '-d',
-                      module.database_name(zone, 'nextcloud'), '-c', 'SELECT uid FROM oc_accounts').split()
+        ids_of_accounts = kubectl('-n', module.STORES_NS, 'exec', pod, '-c', 'postgresql', '--', 'psql', '-U', 'postgres',
+                                  '-At', '-d', module.database_name(zone, 'nextcloud'), '-c',
+                                  'SELECT uid FROM oc_accounts').split()
         uids = directory_uids(zone)
-        names |= {uids[i] for i in ids if i in uids}
-    return sorted(names)
+        accounts = {i: uids[i] for i in ids_of_accounts if i in uids}
+        names |= set(accounts.values())
+        ids.update(accounts)
+    return sorted(names), ids
 
 
 def write_copy_record(s, zone, partial, kind, parts):
@@ -934,7 +939,8 @@ def write_copy_record(s, zone, partial, kind, parts):
               'source': {'site': s.id, 'zone': zone, 'domain': s.domain},
               'opendesk_release': opendesk_release(), 'hoover_revision': os.environ.get('HOOVER4_REVISION', ''),
               'application_profile': sorted(k for k, v in applications.OPENDESK_APPS.items() if v),
-              'parts': parts, 'owners': owners(s, zone), 'secrets': []}
+              'parts': parts, 'secrets': []}
+    record['owners'], record['owner_ids'] = owners(s, zone)
     (partial / COPY_FILE).write_text(json.dumps(record, indent=1))
     return record
 
@@ -2000,11 +2006,16 @@ def check_copy(folder, record, kind, zone, without_owners=False):
             raise SystemExit(f'the dump {path.relative_to(folder)} of this copy has no end line of its dump tool, so it is '
                              'incomplete. Restore another copy.')
     if kind == 'zone' and not without_owners:
-        present = set(directory_uids(zone).values())
-        missing = sorted(set(record.get('owners') or []) - present)
+        directory = directory_uids(zone)
+        present = set(directory.values())
+        missing = set(record.get('owners') or []) - present
+        # A user with the same name and another id is a new user for Nextcloud.
+        missing |= {uid for i, uid in (record.get('owner_ids') or {}).items() if i not in directory}
+        missing = sorted(missing)
         if missing:
-            raise SystemExit(f'the directory of {zone} has no user {", ".join(missing)}, and the copy holds their data. '
-                             f'Restore the identity copy first: backups.py restore-identity {zone} <generation>')
+            raise SystemExit(f'the directory of {zone} has no user {", ".join(missing)} with the name and the id of the copy, '
+                         f'and the copy holds their data. Restore the identity copy first: backups.py restore-identity '
+                         f'{zone} <generation>')
 
 
 def push_state():

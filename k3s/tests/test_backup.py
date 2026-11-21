@@ -1238,6 +1238,11 @@ def test_a_restore_refuses_a_copy_of_an_earlier_format_and_a_copy_without_the_ow
                                          r'restore-identity zone-b <generation>'):
         backups.check_copy(tmp_path, record, 'zone', 'zone-b')
     backups.check_copy(tmp_path, record, 'zone', 'zone-b', without_owners=True)
+    # The same names with other ids: Nextcloud does not find the accounts of the copy.
+    monkeypatch.setattr(backups, 'directory_uids', lambda zone: {'new-1': 'gabriel', 'new-2': 'stefan'})
+    backups.check_copy(tmp_path, record, 'zone', 'zone-b')
+    with pytest.raises(SystemExit, match=r'has no user gabriel with the name and the id'):
+        backups.check_copy(tmp_path, {**record, 'owner_ids': {'old-1': 'gabriel'}}, 'zone', 'zone-b')
     with pytest.raises(SystemExit, match='restore-identity needs a identity copy'):
         backups.check_copy(tmp_path, record, 'identity', 'zone-b')
     unknown = {**record, 'parts': [{'kind': 'claim', 'name': 'data-new-app-0'}]}
