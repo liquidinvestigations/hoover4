@@ -230,3 +230,18 @@ top_k 20 and top_p 0.95. The model reads images.
 tool-call deltas with no `arguments`, and the agent then made no tool call.
 [research_agent/agent.py](../main_services/agents/research_agent/research_agent/agent.py) keeps the `disable_streaming` workaround and its comment. The
 symptom to look for is an agent that answers with no tool calls.
+
+### Serve one model on two Sparks
+
+Set `llm_distributed = true` in the AI services section on the main host and both Sparks.
+Set `llm_rank_addresses` to the head and worker addresses on the direct RoCE link, in that order.
+Restrict distributed traffic to the trusted peers. Use each Spark's private API interface for `bind_ip`.
+Set `host` to the head's API address on all three hosts.
+Keep a local checkpoint and an NVMe table cache on each Spark.
+Start both AI deployments together. Each rank waits for its peer.
+The head serves the authenticated API. Both ranks use the head's health endpoint.
+
+Each rank defaults to 15 GiB of FP8 KV. Set `llm_kv_cache_bytes_per_gpu` to override this capacity.
+An empty main-service `chat_model_concurrency` selects eight slots in distributed mode.
+An explicit setting takes precedence. The engine admits eight sequences across both ranks.
+Qwen defaults to medium reasoning effort. Requests can still disable thinking.

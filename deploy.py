@@ -15,6 +15,7 @@ import argparse
 import collections
 import configparser
 import hashlib
+import ipaddress
 import json
 import os
 import posixpath
@@ -148,6 +149,10 @@ DEFAULTS = {
         # The self-hosted model server, Qwen Flash on vLLM. Its model and capacity are the
         # QWEN_FLASH constants.
         "llm_enabled": "false",
+        "llm_distributed": "false",
+        "llm_rank_addresses": "",
+        "llm_rendezvous_port": "29501",
+        "llm_kv_cache_bytes_per_gpu": "",
         "vllm_port": "21960",
         # The key file of the GPU services: the model server, the AI server and EasyOCR
         # check its key, and the main side sends it. Empty: ./deploy writes a new key to
@@ -491,6 +496,9 @@ def _after_llm(flag):
 # Compose overlays per side, in order, with the ini flag that enables them.
 AI_OVERLAYS = [
     ("llm_enabled", "compose/vllm.yaml", "hoover4-vllm"),
+    (lambda cfg: cfg.get_bool("ai_services", "llm_enabled")
+     and not cfg.get_bool("ai_services", "llm_distributed"), "compose/vllm-standalone.yaml", None),
+    (_after_llm("llm_distributed"), "compose/vllm-distributed.yaml", None),
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
     # The model server cannot start while the other GPU services hold memory. These
@@ -641,7 +649,9 @@ MAIN_OVERLAYS = [
 
 # The [ai_services] port keys that each overlay of the ai side publishes.
 AI_PUBLISHED = {
-    "compose/vllm.yaml": ("vllm_port",),
+    "compose/vllm.yaml": (),
+    "compose/vllm-distributed.yaml": (),
+    "compose/vllm-standalone.yaml": ("vllm_port",),
     "compose/ai-server.yaml": ("ai_server_port",),
     "compose/easyocr.yaml": ("easyocr_port",),
     "compose/ai-server-after-llm.yaml": (),
@@ -1912,6 +1922,8 @@ def render_main_env(cfg, reachable_host=None):
     for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing",
                  "chat_model", "chat_low_latency", "agent_tool"):
         value = cfg.get(m, "%s_concurrency" % tier)
+        if not value and tier == "chat_model" and cfg.get_bool("ai_services", "llm_distributed"):
+            value = "8"
         if value:
             env["HOOVER4_%s_CONCURRENCY" % tier.upper()] = value
 
@@ -2034,6 +2046,24 @@ def render_ai_env(cfg):
     # Rendered whether or not llm_enabled is true: the VOLUMES rows of the model server
     # name its image through these variables, and a reset resolves them.
     env.update(QWEN_FLASH_ENV)
+    distributed = cfg.get_bool(a, "llm_distributed")
+    capacity = cfg.get(a, "llm_kv_cache_bytes_per_gpu").strip()
+    if capacity and (not capacity.isascii() or not capacity.isdecimal() or int(capacity) <= 0):
+        fail("[ai_services] llm_kv_cache_bytes_per_gpu requires a positive byte count")
+    env["QWEN_KV_BYTES"] = capacity or str(15 * 1024**3 if distributed else 9000000000)
+    if distributed:
+        try:
+            ranks = [str(ipaddress.IPv4Address(item.strip()))
+                     for item in cfg.get(a, "llm_rank_addresses").split(",")]
+        except ValueError:
+            fail("[ai_services] llm_rank_addresses requires two IPv4 addresses")
+        if len(ranks) != 2 or ranks[0] == ranks[1]:
+            fail("[ai_services] llm_rank_addresses requires two different addresses")
+        if env["AI_BIND_IP"] in ("", "0.0.0.0", "::"):
+            fail("[ai_services] bind_ip must name a specific interface for distributed serving")
+        env["QWEN_RANK_ADDRESSES"] = ",".join(ranks)
+        env["QWEN_MASTER_PORT"] = str(port_number(cfg, a, "llm_rendezvous_port"))
+        env["QWEN_API_HOST"] = cfg.get(a, "host")
     # The three GPU services mount this key file and refuse to start without a key.
     env["GPU_API_KEY_FILE_HOST"] = str(gpu_key_path(cfg))
 
@@ -2435,7 +2465,7 @@ def expected_ports(cfg, side):
     preflight and the post-`down` wait so the two can never disagree."""
     if side == "ai":
         selected = selected_overlays(cfg, "ai")
-        return [(svc, int(cfg.get("ai_services", key)))
+        return [(svc or "hoover4-vllm", int(cfg.get("ai_services", key)))
                 for _flag, rel, svc in AI_OVERLAYS if rel in selected
                 for key in AI_PUBLISHED[rel]]
     backdoor_on = cfg.get_bool("main_services", "development_auth_backdoor_enabled")
@@ -2714,6 +2744,8 @@ def verify_network_dns(rt, cfg, side):
                      % project_name(side), "--format", "{{.Names}}"],
                     capture_output=True, text=True)
     names = [n for n in result.stdout.split() if n]
+    if side == "ai" and cfg.get_bool("ai_services", "llm_distributed"):
+        names = [name for name in names if name != "hoover4-vllm"]
     if len(names) < 2:
         return
     first, second = names[0], names[1]
@@ -2829,8 +2861,10 @@ def wait_for_model_server(cfg, rt, clock=time.monotonic, sleep=time.sleep):
     test. Fail when the container stops, when /health does not answer within
     MODEL_SERVER_START_SECONDS, or when no smoke answer names Paris within
     MODEL_SERVER_SMOKE_SECONDS."""
+    distributed = cfg.get_bool("ai_services", "llm_distributed")
     base = model_server_address(cfg)
-    key = _model_server_key(cfg)
+    if distributed:
+        base = "http://%s:%s" % (cfg.get("ai_services", "host"), cfg.get("ai_services", "vllm_port"))
     started = clock()
     reported = started
     print("model server: waiting for %s/health (at most %d s)" % (base, MODEL_SERVER_START_SECONDS))
@@ -2841,7 +2875,7 @@ def wait_for_model_server(cfg, rt, clock=time.monotonic, sleep=time.sleep):
         if state.returncode != 0 or status in ("exited", "dead"):
             fail("hoover4-vllm is %s before it became healthy. Read its log with: "
                  "docker logs --tail 200 hoover4-vllm" % (status or "absent"))
-        code, _payload, _error = _http(base + "/health", key, timeout=10)
+        code, _payload, _error = _http(base + "/health", "", timeout=10)
         if code == 200:
             break
         if clock() - started > MODEL_SERVER_START_SECONDS:
@@ -2855,6 +2889,10 @@ def wait_for_model_server(cfg, rt, clock=time.monotonic, sleep=time.sleep):
             "messages": [{"role": "user", "content": MODEL_SERVER_SMOKE_QUESTION}],
             "max_tokens": 32, "temperature": 0,
             "chat_template_kwargs": {"enable_thinking": False}}
+    if distributed and cfg.get("ai_services", "bind_ip") != cfg.get("ai_services", "host"):
+        # The head checks authenticated generation. The worker can have its own GPU key.
+        return
+    key = _model_server_key(cfg)
     smoke_started = clock()
     last = ""
     while True:
@@ -2877,8 +2915,9 @@ def start_model_server_first(cfg, rt, up_args):
     takes more memory than its steady state. So every GPU container stops, the model
     server starts alone and passes its health check and the smoke test, and only then do
     the other selected services start."""
-    for name in AI_SERVICES:
-        rt.run(["stop", name], capture_output=True)
+    if not cfg.get_bool("ai_services", "llm_distributed"):
+        for name in AI_SERVICES:
+            rt.run(["stop", name], capture_output=True)
     run_or_fail(compose_command(cfg, "ai", rt, up_args + ["--no-deps", "hoover4-vllm"]))
     wait_for_model_server(cfg, rt)
     selected = selected_overlays(cfg, "ai")

@@ -18,4 +18,6 @@ from typing import Any, Dict
 
 def thinking_body(on: bool) -> Dict[str, Any]:
     """The `extra_body` of one model call, with thinking on or off."""
-    return {"chat_template_kwargs": {"enable_thinking": bool(on)}}
+    if on:
+        return {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "medium"}}
+    return {"chat_template_kwargs": {"enable_thinking": False}}

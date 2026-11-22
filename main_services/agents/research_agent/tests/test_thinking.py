@@ -4,7 +4,7 @@ from research_agent.thinking import thinking_body
 
 
 def test_on_enables_thinking_in_the_template():
-    assert thinking_body(True) == {"chat_template_kwargs": {"enable_thinking": True}}
+    assert thinking_body(True) == {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "medium"}}
 
 
 def test_off_disables_thinking_in_the_template():

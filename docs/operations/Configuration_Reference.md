@@ -175,6 +175,7 @@ server itself.
 | group | keys | decides |
 |---|---|---|
 | tier | `enabled`, `host`, `bind_ip` | whether the tier exists, where the main stack reaches it, and which interface it binds |
+| distributed model | `llm_distributed`, `llm_rank_addresses`, `llm_rendezvous_port`, `llm_kv_cache_bytes_per_gpu` | Enable two GPU ranks. List the direct-link IPv4 addresses in head and worker order. Empty cache size selects 9 GB standalone or 15 GiB per distributed rank. |
 | language model | `llm_enabled`, `vllm_port` | whether the self-hosted model server runs, and its port. The model, its checkpoint commit and its capacity are constants of [deploy.py](../../deploy.py) ([the model server](../../ai_services/README.md)) |
 | model server | `ai_server_enabled`, `ai_server_port`, `*_concurrency` | the embeddings, reranking and entity service, and how many of each it will do at once |
 | capabilities | `ner_enabled`, `embeddings_enabled`, `reranker_enabled` | which capabilities load, and which endpoints the main side receives. The models, the embedding dimension and the precision are constants of [the model server](../../ai_services/hoover4_ai_server/README.md) |

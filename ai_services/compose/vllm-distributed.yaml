@@ -1,0 +1,21 @@
+services:
+  hoover4-vllm:
+    network_mode: host
+    devices:
+      - /dev/infiniband:/dev/infiniband
+    volumes:
+      - ${HOOVER4_REPO_ROOT}/ai_services/qwen_flash/distributed.py:/opt/distributed.py:ro
+    entrypoint: ["python3", "/opt/distributed.py"]
+    environment:
+      QWEN_RANK_ADDRESSES: ${QWEN_RANK_ADDRESSES}
+      QWEN_MASTER_PORT: ${QWEN_MASTER_PORT}
+      QWEN_API_HOST: ${QWEN_API_HOST}
+      AI_BIND_IP: ${AI_BIND_IP}
+      VLLM_PORT: ${VLLM_PORT}
+      NCCL_NET: IB
+      NCCL_IB_DISABLE: "0"
+      NCCL_IB_ROCE_VERSION_NUM: "2"
+      NCCL_CUMEM_ENABLE: "0"
+      NCCL_NVLS_ENABLE: "0"
+    healthcheck:
+      test: ["CMD", "python3", "/opt/distributed.py", "--health"]

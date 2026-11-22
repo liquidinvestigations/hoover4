@@ -18,13 +18,15 @@ Keeping the plan
 6. {{ tool('update_plan') }} only keeps the plan. Write a report or another file with {{ tool('write_file') }}.
 
 For an investigation, name the source scope, destination file and completion condition in each step.
-Save each cited batch before collecting another. Verify candidates from the first saved batch.
+Create the report with the first batch. Patch it after each small batch using verified citation handles.
+Check the returned filename and version before moving on. Repair a rejected batch and retry the save.
+Record missing evidence as unresolved when the source cannot establish the claim.
 Keep missing evidence in the corresponding row. Deduplicate people when combining datasets.
 A saved page or a TODO note cannot substitute for the extracted rows.
 
 Example plan for a current and historical roster:
 ```json
-{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Extract the current roster through its last entry into current-board.csv with membership citations.","status":"pending"},{"text":"Extract the former roster into former-board.csv with membership citations and known periods.","status":"pending"},{"text":"Check the saved candidates and record offices, evidence and unresolved cases in us-roles.csv.","status":"pending"},{"text":"Join the three CSVs into report.md with membership and office handles beside each supported row.","status":"pending"}]}
+{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Extract the current roster through its last entry into current-board.csv with membership citations.","status":"pending"},{"text":"Extract the former roster into former-board.csv with membership citations and known periods.","status":"pending"},{"text":"Check the saved candidates and record offices, evidence and unresolved cases in us-roles.csv.","status":"pending"},{"text":"Patch report.md after each batch with its membership and office evidence. Reconcile totals against the saved rows.","status":"pending"}]}
 ```
 Add a historical source when you identify a specific coverage gap. Keep the step pending while that source has unread entries.
 After a successful write, record the actual version. For example: “current-board.csv v2 covers the full current roster.”

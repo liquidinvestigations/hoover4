@@ -59,6 +59,21 @@
     }
   },
   {
+    "tool": "write_file",
+    "arguments": {
+      "name": "report.md",
+      "content": "Daniel Fried serves on the NED board [W1]. Office verification pending."
+    },
+    "result": {
+      "success": true,
+      "name": "report.md",
+      "version": 1,
+      "citations": [
+        "[W1]"
+      ]
+    }
+  },
+  {
     "tool": "read_page",
     "arguments": {
       "urls": [
@@ -152,15 +167,16 @@
     }
   },
   {
-    "tool": "write_file",
+    "tool": "patch_file",
     "arguments": {
       "name": "report.md",
-      "content": "Daniel Fried serves on the NED board [W1] and served as US ambassador to Poland [W2]."
+      "old_string": "Daniel Fried serves on the NED board [W1]. Office verification pending.",
+      "new_string": "Daniel Fried serves on the NED board [W1] and served as US ambassador to Poland [W2]."
     },
     "result": {
       "success": true,
       "name": "report.md",
-      "version": 1,
+      "version": 2,
       "citations": [
         "[W1]",
         "[W2]"
@@ -171,7 +187,7 @@
     "tool": "finish_with_report",
     "arguments": {
       "name": "report.md",
-      "version": 1
+      "version": 2
     },
     "result": {
       "success": true,

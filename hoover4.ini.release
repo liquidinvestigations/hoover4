@@ -25,6 +25,13 @@ bind_ip = 0.0.0.0
 
 # True starts the model server. The research agents start only when this is true.
 llm_enabled = false
+# Two ranks share one model over a direct RDMA link.
+llm_distributed = false
+# Set the head and worker IPv4 addresses in this order.
+llm_rank_addresses =
+llm_rendezvous_port = 29501
+# Empty selects 9 GB on one GPU or 15 GiB per GPU on two.
+llm_kv_cache_bytes_per_gpu =
 vllm_port = 21960
 # This host path names a chmod-600 file outside the repository with the API key of the model server.
 vllm_api_key_file =
@@ -123,14 +130,13 @@ embed_concurrency =
 indexing_concurrency =
 # This value sets the index-worker processes. Empty is 4.
 indexing_workers = 8
-# This value limits the model calls of chat turns in progress. Empty is 3.
+# Empty allows three concurrent chat model calls on one node or eight on two nodes.
 chat_model_concurrency = 3
 # This value limits the chat writes, todo reads and session titles in progress. Empty is 8.
 chat_low_latency_concurrency = 4
 # This value limits the tool calls of all agent runs in progress. Empty is 16.
 agent_tool_concurrency = 16
-# The groups that every user gets from the identity provider. The chat and board forms list them on request.
-# The value is a comma list. An entry that ends in * is a name prefix. Empty is the list below.
+# These comma-separated identity groups apply to every user. A final * matches a name prefix. Empty uses the list below.
 implicit_groups = user, Guests, hoover, hoover4, nextcloud, nextcloud28, nextcloud-admin, wikijs, dokuwiki, codimd, grist, matrix, prophecies, bbb, xwiki, Domain Users, Domain Admins, IAM API - Full Access, managed-by-attribute-*
 # This value limits the chat polls that one user holds at once. Above it, a poll returns at once.
 max_held_polls_per_user = 8

@@ -2574,3 +2574,21 @@ def test_a_named_key_file_must_exist_and_hold_a_key(tmp_path):
     with pytest.raises(deploy.DeployError):
         deploy.ensure_gpu_key(cfg)
     assert not (tmp_path / "missing").exists()
+
+
+def test_two_rank_model_render():
+    cfg = _config("settings-defaults.ini")
+    ai = cfg.values["ai_services"]
+    ai.update(llm_enabled="true", llm_distributed="true", bind_ip="192.0.2.3",
+              llm_rank_addresses="192.0.2.1, 192.0.2.2")
+    env = deploy.render_ai_env(cfg)
+    assert env["QWEN_RANK_ADDRESSES"] == "192.0.2.1,192.0.2.2"
+    assert env["QWEN_KV_BYTES"] == str(15 * 1024**3)
+    assert "compose/vllm-distributed.yaml" in deploy.selected_overlays(cfg, "ai")
+    assert "compose/vllm-standalone.yaml" not in deploy.selected_overlays(cfg, "ai")
+    assert deploy.render_main_env(cfg)["HOOVER4_CHAT_MODEL_CONCURRENCY"] == "8"
+    cfg.values["main_services"]["chat_model_concurrency"] = "4"
+    assert deploy.render_main_env(cfg)["HOOVER4_CHAT_MODEL_CONCURRENCY"] == "4"
+    ai["llm_rank_addresses"] = "192.0.2.1,192.0.2.1"
+    with pytest.raises(deploy.DeployError):
+        deploy.render_ai_env(cfg)
