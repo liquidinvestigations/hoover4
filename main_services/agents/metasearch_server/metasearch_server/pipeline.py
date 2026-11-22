@@ -66,6 +66,7 @@ class SearchOutcome:
     degraded_reasons: dict[str, str] = field(default_factory=dict)
     source_latency_ms: dict[str, float] = field(default_factory=dict)
     source_counts: dict[str, int] = field(default_factory=dict)
+    complete: bool = True
     total_before_dedupe: int = 0
     total_after_dedupe: int = 0
     rerank_applied: bool = False
@@ -117,6 +118,8 @@ async def run_search(
     requested_sources: list[str] | None = None,
     max_results: int = 15,
     timelimit: str | None = None,
+    cache_scope: tuple[str, str] | None = None,
+    refresh: bool = False,
 ) -> SearchOutcome:
     """Fetch each query, fuse the results, and apply source-kind limits.
 
@@ -141,15 +144,26 @@ async def run_search(
     budget_end = fetch_started + FETCH_BUDGET
     skipped: list[str] = []
     routes: dict[str, list[str]] = {}
+    complete = True
     for index, one in enumerate(queries):
         remaining = budget_end - time.monotonic()
         if remaining < MIN_QUERY_SECONDS:
             skipped.append(one)
             continue
-        per_source, per_latency, degraded, degraded_reasons, per_route = await sources_mod.fetch_all(
-            one, names, timelimit=timelimit,
-            overall_timeout=min(sources_mod.OVERALL_TIMEOUT, remaining),
-        )
+        timeout = min(sources_mod.OVERALL_TIMEOUT, remaining)
+        if cache_scope:
+            from metasearch_server.search_cache import fetch_providers
+            try:
+                fetched = await fetch_providers(cache_scope, one, names, timelimit, timeout,
+                                                refresh, sources_mod.fetch_all)
+            except TimeoutError:
+                skipped.append(one)
+                continue
+        else:
+            fetched = await sources_mod.fetch_all(one, names, timelimit=timelimit, overall_timeout=timeout)
+        per_source, per_latency, degraded, degraded_reasons, per_route = fetched
+        if any(reason != sources_mod.NO_RESULTS for reason in degraded_reasons.values()):
+            complete = False
         for name, route in per_route.items():
             for used in filter(None, route.split("+")):
                 if used not in routes.setdefault(name, []):
@@ -189,6 +203,7 @@ async def run_search(
         degraded_reasons={n: reasons[n] for n in degraded_names if reasons.get(n)},
         source_latency_ms=latency,
         source_counts=counts,
+        complete=complete and not skipped,
         total_before_dedupe=sum(len(rows) for rows in rankings.values()),
         fetch_ms=round(fetch_ms, 1),
     )

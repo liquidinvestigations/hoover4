@@ -5,7 +5,7 @@ A pack is a named set of tool names. Configuration gives the chat run a set of p
 runs and lists in its catalogue only the tools of the run's packs. A tool that an MCP server lists and no pack names is refused
 for every run.
 
-The `skills` pack holds the three skill tools and the notes tool `write_note` of the research
+The `skills` pack holds the three skill tools  of the research
 agent. The `workspace` pack holds the file tools of the session tool server, and
 `finish_with_report`, which shows a saved report as the answer and ends the turn.
 `packs_for` adds both to every run kind, also when the configured list omits them, because
@@ -42,7 +42,7 @@ INTERNAL_TOOLS = frozenset({"_page_tool_result"})
 
 PACKS: Dict[str, FrozenSet[str]] = {
     "catalogue": frozenset({"search_agent_tools"}),
-    "skills": frozenset({"search_skills", "read_skill", "read_tool", "write_note"}),
+    "skills": frozenset({"search_skills", "read_skill", "read_tool", "search", "execute"}),
     "collections": frozenset({
         "list_collections", "search_collections", "search_passages", "search_facet_values",
         "search_histogram", "search_entity_explainer", "read_documents", "doc_search_text",
@@ -52,9 +52,10 @@ PACKS: Dict[str, FrozenSet[str]] = {
         "folder_list", "folder_search", "read_more",
     }),
     "conversation": frozenset({"update_plan"}),
-    "workspace": frozenset({"read_file", "write_file", "patch_file", "finish_with_report"}),
+    "workspace": frozenset({"read_file", "write_file", "patch_file", "finish_with_report",
+                            "workspace_list", "workspace_search", "workspace_rows"}),
     "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page", "cite_pages"}),
-    "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
+    "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_extract", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),
     "board": frozenset({"submit_board_fact"}),
     "hoover": frozenset({

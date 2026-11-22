@@ -248,6 +248,9 @@ def write_required(
     if not (request.session_id or "").strip():
         raise ArtifactWriteFailed("no chat session on this call")
 
+    if len(request.detail.encode("utf-8")) > 32768:
+        raise ArtifactWriteFailed("The artifact metadata exceeds its storage limit.")
+
     digest = hashlib.sha256(body).hexdigest()
 
     try:
@@ -270,7 +273,7 @@ def write_required(
         body_key=key,
         body_bytes=body_bytes,
         status=STATUS_OK,
-        detail=(request.detail or "")[:2000],
+        detail=request.detail,
         body_sha256=digest,
         idempotency_key=idempotency_key,
     )
@@ -451,3 +454,21 @@ def artifacts_field(*entries: dict[str, Any]) -> dict[str, Any]:
     """Build the `_hoover4_artifacts` field for a tool result."""
     kept = [e for e in entries if e and e.get("artifact_id")]
     return {ARTIFACTS_KEY: kept} if kept else {}
+
+
+def query_rows(sql: str, **parameters: str) -> list[dict[str, Any]]:
+    """Read artifact metadata with bound ClickHouse query parameters."""
+    import requests
+
+    response = requests.post(
+        os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123").rstrip("/"),
+        params={
+            "database": GLOBAL_DB, "default_format": "JSONEachRow",
+            "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
+            "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
+            **{f"param_{key}": value for key, value in parameters.items()},
+        },
+        data=sql.encode("utf-8"), timeout=CLICKHOUSE_TIMEOUT,
+    )
+    response.raise_for_status()
+    return [json.loads(line) for line in response.text.splitlines() if line.strip()]

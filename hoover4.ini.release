@@ -163,6 +163,7 @@ factcheck_api_key_file =
 
 # This value is a comma list of catalogue, collections, conversation, web, browser and hoover, or all.
 agent_packs_chat = all
+agent_result_character_limit = 15000
 # One catalogue search returns this many matches, from 6 to 12. Empty is 6.
 agent_catalogue_match_count =
 # A model step or a tool call waits at most this many seconds for a slot. Empty sets no limit.

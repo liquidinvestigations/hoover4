@@ -96,6 +96,24 @@ pub async fn chat_workspace_file(session_id: String, name: String, version: Opti
 }
 
 #[server]
+pub async fn chat_workspace_captures(session_id: String, sources: bool, cursor: String)
+    -> Result<common::chat_types::WorkspaceCapturePage, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::workspace_captures(&user, session_id, sources, cursor)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+#[server]
+pub async fn chat_workspace_capture(session_id: String, path: String, offset: usize)
+    -> Result<common::chat_types::WorkspaceCaptureRead, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::workspace_capture(&user, session_id, path, offset)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+#[server]
 pub async fn chat_delete_session(session_id: String) -> Result<(), ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::chat::delete_chat_session(&user, session_id)

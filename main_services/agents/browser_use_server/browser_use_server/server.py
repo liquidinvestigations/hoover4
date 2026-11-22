@@ -20,7 +20,7 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.tools.tool import Tool, ToolResult
 from mcp.types import EmbeddedResource, TextContent, TextResourceContents
 
-from agent_common import artifacts, telemetry
+from agent_common import artifacts, workspace_results, telemetry
 
 from browser_use_server import capture as capture_mod
 from browser_use_server import chat_browser
@@ -181,6 +181,14 @@ class RoutedTool(Tool):
             if capture_mod.should_capture(tool_name):
                 captured = await capture_mod.capture(chat, tool_name, username, failed=failed)
             result = _attach_artifact(result, captured, failed=failed)
+            if not failed and (tool_name == "browser_navigate" or (
+                    tool_name == "browser_press_key"
+                    and str(arguments.get("key", "")).casefold() in {"f5", "control+r", "meta+r"})):
+                retained = await _retain_live_page(chat, username, _header(SESSION_HEADER), captured)
+                if retained is not None:
+                    result.content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                        uri="hoover4://workspace-results", mimeType="application/json",
+                        text=json.dumps([retained], ensure_ascii=False))))
 
             # 4. Tab cap, AFTER the capture: capture reads the active tab, and closing
             #    tabs first could take the one the agent just acted on.
@@ -201,6 +209,8 @@ class RoutedTool(Tool):
         started = time.monotonic()
         if chat.client is None or not chat_browser.sidecar_alive(chat):
             await chat_browser.restart_sidecar(chat)
+        if tool_name == "browser_snapshot":
+            arguments = {key: value for key, value in arguments.items() if key != "filename"}
         try:
             call = await chat.client.call_tool(tool_name, arguments, raise_on_error=False)
         except Exception as exc:  # noqa: BLE001 - a dead sidecar looks like this
@@ -240,6 +250,44 @@ class RoutedTool(Tool):
             ),
             failed,
         )
+
+
+async def _retain_live_page(chat, owner, session, captured=None):
+    """Bind a successful live observation to its chat without publishing it for reuse."""
+    if not owner or not session:
+        return None
+    import time
+
+    started = time.time_ns()
+    try:
+        async with asyncio.timeout(5):
+            error, raw = await read_page._call(
+                chat, "browser_evaluate", {"function": read_page.extract_script(True)},
+            )
+            payload = read_page._decode(raw)
+            if error or not payload or not payload.get("url"):
+                return None
+            page = read_page.PageRead(url=payload["url"], read_ns=started, route="live")
+            if captured is not None and captured.artifact_id:
+                page.artifact = {"artifact_id": captured.artifact_id}
+            if not await read_page._validate_final(page, payload["url"]):
+                return None
+            read_page._extract(page, page.url, "", 0, "", (error, raw))
+            if page.error or page.blocked or not page.full_text:
+                return None
+            read_page.valid_page(page)
+            page.version = read_page.text_version(page.full_text, page.extent)
+            page.saved_id = await asyncio.to_thread(page_citations.store_read, owner, session, page)
+            if not page.saved_id:
+                return None
+            reader = Reader(router.reader, owner, session, durable=True)
+            read_page.keep_page(reader, page, page.url, True, 1)
+            return {"path": f"sources/web/{page.saved_id}", "version": page.version,
+                    "kind": "read_page", "url": page.url,
+                    "extent": {"characters": len(page.full_text)}}
+    except Exception:
+        log.exception("could not retain live page text")
+        return None
 
 
 #: Markdown links into playwright-mcp's own output directory, e.g.
@@ -463,6 +511,46 @@ class RetiredNames(Middleware):
         )
 
 
+async def _reader_view(outcome, owner, session, ceiling):
+    """Build the model view from the requested extent before applying the transport share."""
+    from dataclasses import replace
+
+    try:
+        limit = max(4001, min(30000, int(_header("x-hoover4-result-characters") or 15000)))
+    except ValueError:
+        limit = 15000
+    limit_bytes = 64 * 1024 * 1024
+    if sum(len(page.full_text) * 4 for page in outcome.pages) > limit_bytes:
+        return None
+    pages = []
+    sources = []
+    for page in outcome.pages:
+        if page.saved_id:
+            sources.append({
+                "path": f"sources/web/{page.saved_id}", "version": page.version, "kind": "read_page",
+                "url": page.url, "extent": {"characters": page.full_chars, **page.extent},
+            })
+        complete = replace(page)
+        if page.full_text and not page.find:
+            complete.text = page.full_text[page.offset:]
+            complete.truncated = False
+        elif page.find and page.full_text:
+            read_page._fill_find(complete, ceiling)
+        pages.append(complete)
+    text = read_page.render(read_page.ReadResult(pages, outcome.note))
+    reference = sources[0] if len(sources) == 1 else None
+    if reference is None and sources and owner and session:
+        operation = _header("x-hoover4-idempotency-key")
+        try:
+            reference = await asyncio.to_thread(
+                workspace_results.save, owner, session, operation, "read_page", text, [],
+            )
+        except Exception:
+            log.exception("could not retain the page batch")
+    return {"text": workspace_results.display(text, reference, limit) or text,
+            "reference": reference, "sources": sources}
+
+
 class ReadPageTool(Tool):
     """`read_page(urls=[…], goal=…)`, the batched ninety-percent case.
 
@@ -479,7 +567,7 @@ class ReadPageTool(Tool):
         username = _header(USER_HEADER)
 
         ceiling = page_share()
-        reader = Reader(router.reader, username, _header(SESSION_HEADER))
+        reader = Reader(router.reader, username, _header(SESSION_HEADER), durable=True)
         # The same mapping as the tests, so an emitted continuation object reads what the
         # tests read (`read_page.call_arguments`).
         called = read_page.call_arguments(arguments)
@@ -491,8 +579,9 @@ class ReadPageTool(Tool):
             retained = False
             for page in outcome.pages:
                 try:
-                    retained = bool(await asyncio.to_thread(
-                        page_citations.store_read, username, chat_session, page)) or retained
+                    page.saved_id = page.saved_id or await asyncio.to_thread(
+                        page_citations.store_read, username, chat_session, page)
+                    retained = bool(page.saved_id) or retained
                 except Exception:
                     log.exception("could not retain citation text for %s", page.url)
                     outcome.note += " The page preview could not be stored. Read the page again before citing it."
@@ -519,13 +608,26 @@ class ReadPageTool(Tool):
         )
         # The model reads the page text and the marker block, so both fit the share.
         marker = _marker_text(outcome.artifacts, failed)
+        model_view = await _reader_view(outcome, username, chat_session, ceiling)
         read_page.fit(outcome, ceiling, reserved=len(marker.encode("utf-8")) + MARKER_SLACK)
         result = ToolResult(
             content=[TextContent(type="text", text=read_page.render(outcome))],
             structured_content=None,
         )
-        return _with_images(_append_marker(result, outcome.artifacts, failed=failed),
-                            [page.image for page in outcome.pages if page.image])
+        result = _append_marker(result, outcome.artifacts, failed=failed)
+        saved = [{"path": f"sources/web/{page.saved_id}", "version": page.version,
+                  "kind": "read_page", "url": page.url,
+                  "extent": {"characters": page.full_chars, **page.extent}}
+                 for page in outcome.pages if page.saved_id]
+        if model_view is not None:
+            result.content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                uri="hoover4://workspace-display", mimeType="application/json",
+                text=json.dumps(model_view, ensure_ascii=False))))
+        if saved:
+            result.content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                uri="hoover4://workspace-results", mimeType="application/json",
+                text=json.dumps(saved, ensure_ascii=False))))
+        return _with_images(result, [page.image for page in outcome.pages if page.image])
 
 
 #: The URI of the embedded resource that carries the image references of a result. The
@@ -546,13 +648,29 @@ def _with_images(result: ToolResult, images: list[dict]) -> ToolResult:
     return ToolResult(content=content, structured_content=result.structured_content)
 
 
+class ExtractCaptureTool(Tool):
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        from browser_use_server.extract_capture import extract
+
+        try:
+            result = await asyncio.to_thread(
+                extract, _header(USER_HEADER), _header(SESSION_HEADER), arguments["capture"],
+                arguments["selector"], arguments["fields"], arguments.get("cursor", 0),
+                arguments.get("limit", 25),
+            )
+        except (LookupError, ValueError, PermissionError) as exc:
+            return _refusal(str(exc))
+        return ToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],
+                          structured_content=result)
+
+
 class CitePagesTool(Tool):
     """Return verified quotes and stable references to previously read page text."""
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         payload = await page_citations.cite(
             _header(USER_HEADER), _header(SESSION_HEADER), arguments.get("pages") if "pages" in arguments else [
-                {key: arguments[key] for key in ("url", "terms", "version", "why") if key in arguments}
+                {key: arguments[key] for key in ("url", "terms", "version", "why", "evidence") if key in arguments}
             ],
         )
         return ToolResult(content=[TextContent(type="text", text=json.dumps(payload, ensure_ascii=False))],
@@ -570,14 +688,18 @@ CITE_PAGES_SCHEMA = {
                       "description": "Copy exact source wording to quote and highlight. Case must match."},
             "version": {"type": "string", "description": "Select a read_page text version when needed."},
             "why": {"type": "string", "maxLength": 300, "description": "State what the page supports."},
-        }, "required": ["url", "terms"]}}},
-    "anyOf": [{"required": ["pages"]}, {"required": ["url", "terms"]}],
+            "evidence": {"type": "object", "properties": {
+                "path": {"type": "string"}, "version": {"type": "string"},
+                "start": {"type": "integer", "minimum": 0}, "end": {"type": "integer", "minimum": 1},
+            }, "required": ["path", "version", "start", "end"]},
+        }, "anyOf": [{"required": ["url", "terms"]}, {"required": ["evidence"]}]}}},
+    "anyOf": [{"required": ["pages"]}, {"required": ["url", "terms"]}, {"required": ["evidence"]}],
 }
 CITE_PAGES_SCHEMA["properties"].update(CITE_PAGES_SCHEMA["properties"]["pages"]["items"]["properties"])
 
 CITE_PAGES_DESCRIPTION = (
     "Cite web pages that support the answer. Search for each source and read it with read_page first. "
-    "Give its read_page URL and exact terms from the supporting passage. "
+    "Give its read_page URL and exact terms, or give a saved web evidence span. "
     "The tool verifies those terms against the stored Markdown and returns quotes with stable [W1] handles. "
     "Place each returned handle beside its claim. The reader sees the source card and can open its captured text. "
     "Unread pages, blocked pages, and absent terms cannot supply a citation. "
@@ -677,6 +799,15 @@ READ_PAGE_DESCRIPTION = (
 )
 
 
+def _routed_schema(spec):
+    schema = spec.inputSchema or {"type": "object", "properties": {}}
+    if spec.name != "browser_snapshot":
+        return schema
+    return {**schema, "required": [key for key in schema.get("required", []) if key != "filename"],
+            "properties": {key: value for key, value in schema.get("properties", {}).items()
+                           if key != "filename"}}
+
+
 async def _register_tools() -> int:
     """Register page reads, page citations, and the interactive allowlist.
 
@@ -696,7 +827,7 @@ async def _register_tools() -> int:
                 name=spec.name,
                 title=getattr(spec, "title", None),
                 description=spec.description or "",
-                parameters=spec.inputSchema or {"type": "object", "properties": {}},
+                parameters=_routed_schema(spec),
                 output_schema=getattr(spec, "outputSchema", None),
                 enabled=enabled,
             )
@@ -716,6 +847,18 @@ async def _register_tools() -> int:
                                parameters=CITE_PAGES_SCHEMA))
     advertised += 1
 
+    mcp.add_tool(ExtractCaptureTool(
+        name="browser_extract", description="Select elements and fields from a saved browser capture.",
+        parameters={"type": "object", "properties": {
+            "capture": {"type": "string", "format": "uuid"},
+            "selector": {"type": "string", "minLength": 1, "maxLength": 256},
+            "fields": {"type": "array", "minItems": 1, "maxItems": 8,
+                       "items": {"type": "string", "maxLength": 64}},
+            "cursor": {"type": "integer", "minimum": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+        }, "required": ["capture", "selector", "fields"]},
+    ))
+    advertised += 1
     mcp.add_middleware(RetiredNames())
 
     missing = sorted(allowed - {spec.name for spec in tools})

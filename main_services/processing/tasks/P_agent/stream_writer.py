@@ -339,7 +339,15 @@ def tool_row_fields(name: str, args: Any, content: str, doc_refs: Any = None) ->
         # Web, chat and board citations retain every handle that the answer can reference.
         tool_output = (_dumps(result) if name in ("read_page", "cite_pages", "cite_chats_and_boards")
                        else truncate_json(_dumps(result)))
-    if isinstance(doc_refs, list):
+    if name == "execute" and isinstance(result, dict):
+        receipts = [receipt for receipt in result.get("receipts", []) if isinstance(receipt, dict)]
+        refs = [doc for receipt in receipts if receipt.get("tool") == "cite_documents"
+                and receipt.get("status") == "ok"
+                for doc in extract_doc_refs("cite_documents", receipt)]
+        citations = [receipt for receipt in receipts if receipt.get("tool") in {"cite_pages", "cite_documents"}
+                     and receipt.get("status") == "ok"]
+        tool_output = _dumps({"summary": truncate_json(tool_output), "receipts": citations})
+    elif isinstance(doc_refs, list):
         refs = response_doc_refs(name, doc_refs, call_query(args))
     else:
         refs = extract_doc_refs(name, result, call_query(args))
@@ -555,6 +563,8 @@ def run_message(message, thread_id: str) -> dict[str, Any]:
             out["status"] = status
         if isinstance(message.usage.get("model_content"), str):
             out["model_content"] = message.usage["model_content"]
+        if isinstance(message.usage.get("result_ref"), dict):
+            out["result_ref"] = message.usage["result_ref"]
         out["doc_refs"] = message.usage.get("doc_refs") or []
         out["image_refs"] = message.usage.get("image_refs") or []
     return out

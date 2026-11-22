@@ -34,6 +34,8 @@ def store(monkeypatch):
         body = bodies[artifact_id]
         return body[start:start + length], len(body)
 
+    monkeypatch.setattr(citations.artifacts, "_read_back_body_sha256",
+                        lambda owner, artifact_id: "digest" if artifact_id in rows else None)
     monkeypatch.setattr(citations.artifacts, "write_required", write)
     monkeypatch.setattr(citations.artifacts, "read_range", read)
     monkeypatch.setattr(citations, "_query", query)
@@ -467,3 +469,17 @@ def test_a_repeated_read_rewrites_one_capture(store):
     one, _ = read_redirect()
     two, _ = read_redirect()
     assert one == two and len([r for r in store.rows.values() if r["kind"] == citations.KIND_PAGE_TEXT]) == 1
+
+
+def test_cite_a_saved_span_after_the_middle_was_omitted(store):
+    source = "α" * 8000 + "\nThe register records a verified statement for Ada.\n" + "終" * 8000
+    artifact = read_source(source)
+    start = source.index("a verified statement")
+    evidence = {"path": f"sources/web/{artifact}", "version": "version-1",
+                "start": start, "end": start + len("a verified statement")}
+    result = asyncio.run(citations.cite("owner", "chat", [{"evidence": evidence}]))
+    assert not result["errors"]
+    assert result["citations"][0]["quote_verified"]
+    assert result["citations"][0]["spans"][0]["start"] == start
+    refused = asyncio.run(citations.cite("other", "chat", [{"evidence": evidence}]))
+    assert not refused["citations"] and refused["errors"]

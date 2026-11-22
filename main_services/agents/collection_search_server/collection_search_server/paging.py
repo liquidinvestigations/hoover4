@@ -60,6 +60,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import logging
 import re
 import uuid
 from collections import OrderedDict
@@ -69,12 +70,14 @@ from typing import Annotated, Any, Callable
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from mcp.types import EmbeddedResource, TextResourceContents
+
+from agent_common import workspace_results
 from pydantic import BaseModel, Field, ValidationError
 
 from agent_common import artifacts
 from agent_common.result_pages import (
     ByteLimit, ContinuationInvalid, PageInput, PageMeasure, build_page, canonical_json, continuation_handle,
-    cut_unit, decode_continuation, largest_string_field, replace_at_pointer, utf8_prefix,
+    cut_unit, decode_continuation, encode_continuation, largest_string_field, replace_at_pointer, utf8_prefix,
 )
 from collection_search_server.backend_client import (
     AgentError, AgentModel, BackendClient, CollectionsListResponse,
@@ -85,6 +88,8 @@ from collection_search_server.backend_client import (
     TablesColumnValuesResponse, TablesSearchCellsResponse, FoldersOverviewResponse,
     FoldersListResponse, FoldersSearchResponse,
 )
+
+log = logging.getLogger(__name__)
 
 PAGE_LIMIT = ByteLimit(24_000)
 #: Stands in for a byte position while the broker measures a page envelope. No stored
@@ -425,6 +430,62 @@ def call_measure(text: str, measures: list[PageMeasure]) -> dict[str, Any] | Non
     return None
 
 
+_WORKSPACE_REFS = contextvars.ContextVar("workspace_refs", default=None)
+
+
+def _retain_window(tool, request, window, continuation):
+    refs = _WORKSPACE_REFS.get()
+    if refs is None or not workspace_results.prefix(tool.tool_name):
+        return
+    headers = {key.lower(): value for key, value in get_http_headers().items()}
+    owner = headers.get("x-hoover4-user")
+    session = headers.get("x-hoover4-chat-session")
+    operation = headers.get("x-hoover4-idempotency-key")
+    if not owner or not session or not operation:
+        return
+    allowed = set(headers.get("x-hoover4-collections", "").split(","))
+    requested = getattr(request, "collectionname", None) or getattr(request, "collections", None)
+    if isinstance(requested, str):
+        requested = [requested]
+    collections = sorted(set(requested)) if requested and set(requested) <= allowed else sorted(allowed)
+    try:
+        more = None
+        if continuation:
+            token = encode_continuation(tool.tool_name, _input(request), continuation,
+                                        window.fields.get("source", ""))
+            more = store_handle(token)
+        result = {
+            **window.fields, "tool": tool.tool_name, "request": _input(request),
+            "columns": window.columns, "items": window.items, "total": window.total,
+            "source_refs": window.refs, "continuation": more,
+        }
+        if tool.tool_name == "read_documents":
+            for item in window.items:
+                if not isinstance(item, dict) or not item.get("text") or not item.get("collection"):
+                    continue
+                doc = next((ref for ref in window.refs or []
+                            if ref.get("file_hash", "").startswith(item.get("file_hash", ""))
+                            and ref.get("collectionname") == item["collection"]), {})
+                if not doc:
+                    continue
+                source = {
+                    "collection": item["collection"], "file_hash": doc["file_hash"],
+                    "dataset": doc.get("collection_dataset"), "page": item.get("page"),
+                    "source": item.get("source_used"), "source_version": item.get("source_version"),
+                    "text_range": item.get("text_range"),
+                }
+                refs.append(workspace_results.save(
+                    owner, session, operation, tool.tool_name, item["text"], [item["collection"]], source,
+                ))
+            return
+        refs.append(workspace_results.save(
+            owner, session, operation, tool.tool_name, canonical_json(result),
+            collections,
+        ))
+    except Exception:
+        log.exception("could not retain collection result for %s", tool.tool_name)
+
+
 class MeasureMiddleware(Middleware):
     """Adds the call measure of a paged tool call to its result, as one embedded
     resource after the page text, and the doc refs of the page's rows as a second one."""
@@ -436,12 +497,15 @@ class MeasureMiddleware(Middleware):
         token = _CALL_MEASURES.set(measures)
         refs_token = _CALL_REFS.set(refs)
         images_token = _CALL_IMAGES.set(images)
+        workspace_refs = []
+        workspace_token = _WORKSPACE_REFS.set(workspace_refs)
         try:
             result = await call_next(context)
         finally:
             _CALL_MEASURES.reset(token)
             _CALL_REFS.reset(refs_token)
             _CALL_IMAGES.reset(images_token)
+            _WORKSPACE_REFS.reset(workspace_token)
         content = list(getattr(result, "content", None) or [])
         if len(content) != 1 or getattr(content[0], "type", "") != "text":
             return result
@@ -449,7 +513,7 @@ class MeasureMiddleware(Middleware):
         if text != content[0].text:
             content[0] = content[0].model_copy(update={"text": text})
             result.content = content
-        if not measures and not refs and not images:
+        if not measures and not refs and not images and not workspace_refs:
             return result
         if measures:
             measure = call_measure(content[0].text, measures)
@@ -468,6 +532,11 @@ class MeasureMiddleware(Middleware):
         if images:
             content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
                 uri=IMAGE_REFS_URI, mimeType="application/json", text=canonical_json(images),
+            )))
+        if workspace_refs:
+            content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                uri="hoover4://workspace-results", mimeType="application/json",
+                text=canonical_json(workspace_refs),
             )))
         result.content = content
         return result
@@ -609,6 +678,7 @@ def _live_page(tool: PagedTool, request: BaseModel, window_position: dict | None
                   source, _input(request), None, after, window.fields, tool.max_rows),
         _page_limit(),
     )
+    _retain_window(tool, request, window, _after_window(window))
     if measure.returned_units >= units:
         return page
     try:
@@ -698,6 +768,7 @@ def render_document_reads(tool: PagedTool, request: BaseModel) -> str:
     n = len(window.items)
     if n == 0:
         return _live_page(tool, request, None, window)
+    _retain_window(tool, request, window, None)
     share = page_share()
     envelope = len(canonical_json({"items": [], **window.fields}).encode("utf-8")) + n * 70
     per = unit_limits(share, envelope, n)[0]

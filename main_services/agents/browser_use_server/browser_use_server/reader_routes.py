@@ -66,9 +66,10 @@ class ScopedCache(MutableMapping):
 class Reader:
     """Bind retained reads to their user and chat. Route contexts remain isolated."""
 
-    def __init__(self, pool, username: str, session_id: str) -> None:
+    def __init__(self, pool, username: str, session_id: str, *, durable: bool = False) -> None:
         self.pool = pool
         self.session_id = session_id
+        self.durable = durable and bool(username and session_id)
         self.page_reads = ScopedCache(pool.page_reads, (username, session_id))
 
 

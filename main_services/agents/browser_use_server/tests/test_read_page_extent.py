@@ -190,6 +190,8 @@ def test_equal_text_in_two_windows_has_two_versions_and_two_captures(monkeypatch
     from browser_use_server import page_citations
 
     written = {}
+    monkeypatch.setattr(page_citations.artifacts, "_read_back_body_sha256",
+                        lambda owner, artifact_id: "digest" if artifact_id in written else None)
     monkeypatch.setattr(page_citations.artifacts, "write_required",
                         lambda request, artifact_id, key, body, kind: written.setdefault(artifact_id, (request, body)))
     text = "Repeated text. " * 100

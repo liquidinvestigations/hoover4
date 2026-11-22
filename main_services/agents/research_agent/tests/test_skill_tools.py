@@ -45,7 +45,7 @@ async def test_read_tool_describes_a_callable_tool():
     assert "ready" not in data
     assert data["description"].startswith("Do the work of doc email.")
     assert data["parameters"] == {
-        "properties": {"query": {"type": "string"}}, "required": ["query"]}
+        "type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
     assert "doc_email" in snap.callable_names()
 
 

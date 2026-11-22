@@ -238,7 +238,7 @@ def test_the_summary_contract_asks_for_findings_contradictions_work_and_sources(
     for section in ("## Findings", "## Contradictions", "## Outstanding work",
                     "## Sources to read again"):
         assert section in prompt
-    assert "`write_note`" in prompt and "Who approved the lease?" in prompt
+    assert "saved result paths" in prompt and "Who approved the lease?" in prompt
     record = report.row["summary"]
     assert record.startswith(RECORD_HEADER + "## Searches that found nothing\n")
     assert record.index("## Searches that found nothing") < record.index("## Findings")

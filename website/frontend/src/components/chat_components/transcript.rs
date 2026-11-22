@@ -804,10 +804,18 @@ pub fn session_citation_sources(
     tree: &[common::storage_tree::CollectionNode],
     run_cited_refs: &[ChatDocRef],
 ) -> SessionSources {
-    let pages = common::chat_pages::merge_page_refs(messages.iter().filter(|row| row.tool_name == "cite_pages")
-        .flat_map(|row| common::chat_pages::extract_page_refs(&row.tool_output)).collect::<Vec<_>>());
+    let pages = common::chat_pages::merge_page_refs(messages.iter().flat_map(|row| {
+        match row.tool_name.as_str() {
+            "cite_pages" => common::chat_pages::extract_page_refs(&row.tool_output),
+            "execute" => common::chat_types::code_citation_outputs(&row.tool_output, "cite_pages")
+                .iter().flat_map(|output| common::chat_pages::extract_page_refs(output)).collect(),
+            _ => Vec::new(),
+        }
+    }).collect::<Vec<_>>());
     let mut documents = messages.iter().enumerate().filter(|(_, row)| row.tool_name == "cite_documents")
         .flat_map(|(index, _)| citation_search_context_with_tree(messages, index, tree)).collect::<Vec<_>>();
+    documents.extend(messages.iter().filter(|row| row.tool_name == "execute")
+        .flat_map(ChatMessageItem::parsed_doc_refs));
     documents.extend(run_cited_refs.iter().cloned());
     documents.retain(|source| !source.handle.is_empty());
     let items = common::chat_items::merge_item_refs(messages.iter().filter(|row| row.tool_name == "cite_chats_and_boards")

@@ -1764,7 +1764,7 @@
     {
       "id": "F-chat-17h",
       "source": [
-        "main_services/agents/research_agent/research_agent/note_tools.py"
+        "main_services/agents/research_agent/research_agent/compaction.py"
       ],
       "docs": [
         "docs/user-manual/User_Manual.md#9-ai-chat",

@@ -84,10 +84,25 @@ It returns the method instructions, tool arguments and examples.
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} requires text, with 1 to 2,000 characters. It saves evidence and unresolved questions for later context.
-Include source identities and the next useful call when that context must survive compaction.
+{% if has('execute') %}
+Use language "javascript" and code as a string. Call each function by name with one argument object.
+Return the findings or operation receipts that you need in the next step.
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+Find an exact term in saved sources. Return the match positions for review.
+
 ```json
-{"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+Find a source, verify its wording, and save a supported row in a new report file.
+Use the subject of the report and the exact phrase for the claim.
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+Use the returned version with the direct finish tool when the complete report is ready.
 {% endif %}

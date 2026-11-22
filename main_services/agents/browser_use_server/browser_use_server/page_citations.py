@@ -31,6 +31,7 @@ the handle of the capture. The citation names the cited URL in `cited_url`.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from difflib import SequenceMatcher
 from itertools import islice
 import json
@@ -86,6 +87,22 @@ def _id(owner: str, session: str, kind: str, url: str, version: str) -> str:
     return str(uuid.uuid5(NAMESPACE, canonical_json([owner, session, kind, url, version])))
 
 
+def _store_pdf(owner, session, page):
+    raw = getattr(page, "pdf_data", None)
+    if not raw:
+        return getattr(page, "pdf_artifact", "")
+    version = hashlib.sha256(raw).hexdigest()
+    kind = "web_pdf_source"
+    artifact_id = _id(owner, session, kind, page.url, version)
+    if artifacts._read_back_body_sha256(owner, artifact_id) is None:
+        artifacts.write_required(
+            artifacts.ArtifactRequest(username=owner, session_id=session, kind=kind,
+                                      tool_name="read_page", url=page.url),
+            artifact_id, artifact_id, raw, "application/pdf",
+        )
+    return artifact_id
+
+
 def store_read(owner: str, session: str, page) -> str:
     """Store successful source text before returning its preview identifier."""
     if not owner or not session or page.error or page.blocked or not page.full_text:
@@ -93,20 +110,33 @@ def store_read(owner: str, session: str, page) -> str:
     extent = dict(getattr(page, "extent", None) or {})
     # A PDF window records the format of its version, which hashes the text and the extent.
     formatted = {"extent": extent, "capture_format": CAPTURE_FORMAT} if extent else {}
+    profile = {"links": getattr(page, "links", True),
+               "page_start": getattr(page, "page_start", 1), "reader_format": 1}
     body = canonical_json({"url": page.url, "final_url": page.final_url,
                            "title": page.title, "version": page.version,
-                           "markdown": page.full_text, **formatted}).encode("utf-8")
+                           "markdown": page.full_text, "route": getattr(page, "route", "direct"), "profile": profile,
+                           "image": getattr(page, "image", None), **formatted}).encode("utf-8")
     if len(body) > MAX_BODY_BYTES:
         raise ValueError("The captured page exceeds the citation storage limit.")
-    artifact_id = _id(owner, session, KIND_PAGE_TEXT, page.url, page.version)
+    profile_id = canonical_json([page.version, profile])
+    artifact_id = _id(owner, session, KIND_PAGE_TEXT, page.url, profile_id)
     # The addresses that this read observed for the capture: the requested URL and the
     # final URL after redirects.
     aliases = sorted({u for u in (page.url, getattr(page, "final_url", "") or "") if u})
+    captured = getattr(page, "artifact", {}) or {}
+    capture_id = captured.get("artifact_id", "")
+    if artifacts._read_back_body_sha256(owner, artifact_id) is not None:
+        return artifact_id
+    try:
+        pdf_artifact = _store_pdf(owner, session, page) if extent else ""
+    except artifacts.ArtifactWriteFailed:
+        pdf_artifact = ""
     artifacts.write_required(
         artifacts.ArtifactRequest(username=owner, session_id=session, kind=KIND_PAGE_TEXT,
                                   tool_name="read_page", url=page.url, title=page.title,
-                                  detail=canonical_json({"version": page.version, "read_ns": time.time_ns(),
-                                                         "aliases": aliases, **formatted})),
+                                  detail=canonical_json({"version": page.version, "read_ns": getattr(page, "read_ns", 0) or time.time_ns(),
+                                                         "aliases": aliases, "profile": profile, "capture_id": capture_id, "pdf_artifact": pdf_artifact,
+                                                         "chain": getattr(page, "public_chain", ()), "chars": len(page.full_text), **formatted})),
         artifact_id, artifact_id, body, "application/json",
     )
     return artifact_id
@@ -266,25 +296,55 @@ def _cite(owner: str, session: str, pages: list) -> dict:
     for item in pages:
         url = item.get("url", "") if isinstance(item, dict) else ""
         try:
-            if not isinstance(item, dict) or not isinstance(url, str) or not url:
-                raise ValueError("Give each page as an object with a URL string.")
+            if not isinstance(item, dict):
+                raise ValueError("Give each page as an object.")
+            version = item.get("version", "")
             terms = item.get("terms", [])
+            exact_span = None
+            source = None
+            if "evidence" in item:
+                evidence = item["evidence"]
+                if not isinstance(evidence, dict) or not str(evidence.get("path", "")).startswith("sources/web/"):
+                    raise ValueError("Give a saved web source path and version.")
+                artifact_id = str(uuid.UUID(evidence["path"].rsplit("/", 1)[-1]))
+                row = next((current for current in rows if current["artifact_id"] == artifact_id), None)
+                if row is None or evidence.get("version") != _details(row).get("version"):
+                    raise ValueError("The saved web source version is unavailable.")
+                content, size = artifacts.read_range(owner, session, artifact_id, 0, MAX_BODY_BYTES)
+                if len(content) != size:
+                    raise ValueError("The saved web source is incomplete.")
+                source = json.loads(content)
+                url, version = row["url"], source["version"]
+                start, end = evidence.get("start"), evidence.get("end")
+                if (type(start) is not int or type(end) is not int
+                        or not 0 <= start < end <= len(source["markdown"])):
+                    raise ValueError("The evidence positions are outside the saved source.")
+                term = source["markdown"][start:end]
+                terms = [term]
+                exact_span = {"start": start, "end": end, "text": term}
+            if not isinstance(url, str) or not url:
+                raise ValueError("Give a URL or a saved web evidence span.")
             if (not isinstance(terms, list) or not 1 <= len(terms) <= 8
                     or any(not isinstance(t, str) or not t or len(t) > 200 for t in terms)):
                 raise ValueError("Give one to eight exact terms of one to 200 characters.")
-            version = item.get("version", "")
-            row = _resolve(owner, session, rows, url, version, bindings)
+            if source is None:
+                row = _resolve(owner, session, rows, url, version, bindings)
             if row is None and version:
                 raise ValueError(f"The text of version {version} of this page is not kept. Call "
                                  "read_page for the page, then cite the version that it returns.")
             if row is None:
                 raise ValueError("Read this page successfully with read_page before citing it.")
-            body, size = artifacts.read_range(owner, session, row["artifact_id"], 0, MAX_BODY_BYTES)
-            if size > MAX_BODY_BYTES or len(body) != size:
-                raise ValueError("The captured page exceeds the citation storage limit.")
-            source = json.loads(body)
+            if source is None:
+                body, size = artifacts.read_range(owner, session, row["artifact_id"], 0, MAX_BODY_BYTES)
+                if size > MAX_BODY_BYTES or len(body) != size:
+                    raise ValueError("The captured page exceeds the citation storage limit.")
+                source = json.loads(body)
             try:
-                quotes, spans = passages(source["markdown"], terms)
+                if exact_span is None:
+                    quotes, spans = passages(source["markdown"], terms)
+                else:
+                    quotes = [source["markdown"][max(0, start - 160):end + 240]]
+                    spans = [exact_span]
             except ValueError as exc:
                 candidate = source_context(source["markdown"], " ".join(terms))
                 error = {"url": url, "error": str(exc), "candidate": candidate,
@@ -356,3 +416,68 @@ async def cite(owner: str, session: str, pages: object) -> dict:
             except Exception:
                 pass
             raise
+
+
+def retained(owner, session, url, links, page_start, version=""):
+    """Open an exact compatible capture from this chat."""
+    profile = {"links": links, "page_start": page_start, "reader_format": 1}
+    rows = _query(
+        "SELECT artifact_id, title, url, detail FROM chat_artifacts FINAL "
+        "WHERE username = {owner:String} AND session_id = {session:String} "
+        "AND kind = 'web_page_text' AND is_deleted = 0 AND status = 'ok' "
+        "AND (url = {url:String} OR has(JSONExtract(detail, 'aliases', 'Array(String)'), {url:String})) "
+        "ORDER BY (url = {url:String}) DESC, JSONExtractUInt(detail, 'read_ns') DESC, artifact_id DESC",
+        owner, session, url=url, version=version,
+    )
+    compatible = [row for row in rows if _details(row).get("profile") == profile
+                  and (not version or _details(row).get("version") == version)]
+    exact = [row for row in compatible if row["url"] == url]
+    if exact:
+        compatible = exact
+    elif len({_details(row).get("version") for row in compatible}) > 1:
+        return None
+    for row in compatible:
+        detail = _details(row)
+        raw, size = artifacts.read_range(owner, session, row["artifact_id"], 0, MAX_BODY_BYTES)
+        if len(raw) == size:
+            data = json.loads(raw)
+            data["artifact_id"] = row["artifact_id"]
+            data["read_ns"] = detail.get("read_ns", 0)
+            data["chain"] = detail.get("chain", [])
+            return data
+    if not version:
+        from browser_use_server.read_page import pdf_text, text_version
+        for row in rows:
+            detail = _details(row)
+            pdf_artifact = detail.get("pdf_artifact")
+            if row["url"] != url or not pdf_artifact or detail.get("profile", {}).get("links") != links:
+                continue
+            raw, size = artifacts.read_range(owner, session, pdf_artifact, 0, MAX_BODY_BYTES)
+            if len(raw) != size:
+                continue
+            title, text, error, extent = pdf_text(raw, page_start)
+            if error:
+                return None
+            original, _ = artifacts.read_range(owner, session, row["artifact_id"], 0, MAX_BODY_BYTES)
+            data = json.loads(original)
+            return {**data, "title": title, "markdown": text, "extent": extent,
+                    "version": text_version(text, extent), "artifact_id": "", "pdf_artifact": pdf_artifact,
+                    "chain": detail.get("chain", []), "read_ns": detail.get("read_ns", 0)}
+    return None
+
+
+def captured_text(owner, session, capture_id):
+    """Resolve the text recorded with this archived browser capture."""
+    rows = _query(
+        "SELECT artifact_id FROM chat_artifacts FINAL "
+        "WHERE username = {owner:String} AND session_id = {session:String} "
+        "AND kind = 'web_page_text' AND is_deleted = 0 AND status = 'ok' "
+        "AND JSONExtractString(detail, 'capture_id') = {capture:String} LIMIT 1",
+        owner, session, capture=capture_id,
+    )
+    if rows:
+        artifact_id = rows[0]["artifact_id"]
+        raw, size = artifacts.read_range(owner, session, artifact_id, 0, MAX_BODY_BYTES)
+        if len(raw) == size:
+            return artifact_id, json.loads(raw)
+    return None

@@ -17,7 +17,7 @@
 | Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. The input is at most 350 pixels wide, and the counter and the buttons follow it. |
 | Investigation Board | Open the board of a board explore chat, with the chat's intent selected. | It shows only in a board explore chat, at the right end of the search row. It opens in the same tab. |
 | Board answer card | Open the board of a board explore chat, with the fact of the turn selected. | It is the card at the end of a board explore chat. It opens in the same tab. |
-| Workspace | Open the workspace pane with the files that the assistant wrote in the conversation. | It is in the title row. The pane is read-only. Its file and version are in the address. |
+| Workspace | Open the workspace pane with files, saved sources and results from the conversation. | It is in the title row. The pane is read-only. Its file and version are in the address. |
 | Workspace file | Show the current version of the file in the workspace pane. | The list shows each file with its current version and length. |
 | Open in the workspace | Open the pinned report version of an answer in the workspace pane. | It is in the line above an answer that shows a report. |
 | Delivered file | Open one delivered file version of the turn in the workspace pane. | The Files line under an answer lists each file version that the assistant selected when it selected two or more. A stopped, failed or cancelled turn of an earlier version lists its written files. |

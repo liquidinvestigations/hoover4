@@ -129,3 +129,37 @@ pub async fn tombstone(username: &str, session_id: &str) -> anyhow::Result<()> {
         .await?;
     Ok(())
 }
+
+#[derive(clickhouse::Row, serde::Deserialize)]
+pub struct CaptureRow {
+    pub artifact_id: String,
+    pub kind: String,
+    pub tool_name: String,
+    pub title: String,
+    pub detail: String,
+}
+
+pub fn capture_group(kind: &str, tool: &str) -> &'static str {
+    match (kind, tool) {
+        ("web_page_text", _) => "sources/web",
+        ("workspace_result", "read_documents" | "doc_search_text" | "doc_metadata" | "doc_email"
+            | "doc_diff_sources" | "pdf_search" | "list_document_entities") => "sources/collections",
+        ("workspace_result", tool) if tool.starts_with("browser_") => "sources/browser",
+        _ => "results",
+    }
+}
+
+pub async fn captures(
+    username: &str, session_id: &str, collections: &[String], after: &str, sources: bool,
+) -> anyhow::Result<Vec<CaptureRow>> {
+    let sources_filter = "kind = 'web_page_text' OR (kind = 'workspace_result' AND         (startsWith(tool_name, 'browser_') OR tool_name IN ('read_documents', 'doc_search_text',         'doc_metadata', 'doc_email', 'doc_diff_sources', 'pdf_search', 'list_document_entities')))";
+    let filter = if sources { sources_filter.to_string() } else { format!("NOT ({sources_filter})") };
+    Ok(get_global_client().query(&format!(
+        "SELECT artifact_id, kind, tool_name, title, detail FROM chat_artifacts FINAL          WHERE username = ? AND session_id = ? AND artifact_id > ? AND is_deleted = 0          AND status = 'ok' AND kind IN ('workspace_result', 'web_page_text')          AND hasAll(?, JSONExtract(detail, 'collections', 'Array(String)'))          AND ({filter}) ORDER BY artifact_id LIMIT 26"
+    ))
+    .bind(username)
+    .bind(session_id)
+    .bind(after)
+    .bind(collections)
+    .fetch_all::<CaptureRow>().await?)
+}

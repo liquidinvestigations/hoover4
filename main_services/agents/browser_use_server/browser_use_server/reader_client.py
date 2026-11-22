@@ -37,6 +37,54 @@ def _answer(text: str, error: bool = False) -> SimpleNamespace:
     return SimpleNamespace(content=[SimpleNamespace(text=text)], is_error=error)
 
 
+
+def public_cache_lifetime(headers, now=None, *, allow_range=False) -> float:
+    """Return the allowed shared lifetime of an anonymous response."""
+    from email.utils import parsedate_to_datetime
+
+    values = {str(key).lower(): str(value).lower() for key, value in headers.items()}
+    controls = {}
+    for part in values.get("cache-control", "").split(","):
+        name, _, value = part.partition("=")
+        name = name.strip()
+        if name in controls:
+            return 0
+        controls[name] = value.strip()
+    vary = {item.strip() for item in values.get("vary", "").split(",")}
+    if (set(controls) & {"private", "no-store", "no-cache"}
+            or set(values) & {"set-cookie", "set-cookie2", "www-authenticate", "proxy-authenticate",
+                              }
+            or ("content-range" in values and not allow_range)
+            or "no-cache" in values.get("pragma", "")
+            or vary - {"", "accept-encoding"}):
+        return 0
+    max_age = controls.get("s-maxage", controls.get("max-age"))
+    limit = 168 * 3600
+    try:
+        now = time.time() if now is None else now
+        date = parsedate_to_datetime(values["date"]).timestamp() if "date" in values else now
+        age = max(0, int(values.get("age", 0)), now - date)
+        if max_age is not None:
+            limit = min(limit, int(max_age.strip('"')))
+        elif "expires" in values:
+            limit = min(limit, parsedate_to_datetime(values["expires"]).timestamp() - date)
+        elif {"must-revalidate", "proxy-revalidate"} & controls.keys():
+            return 0
+        return max(0, limit - age)
+    except (ValueError, TypeError, OverflowError):
+        return 0
+
+
+def public_cache_response(headers) -> bool:
+    return public_cache_lifetime(headers) > 0
+
+
+def private_request(headers):
+    return any(str(key).lower() in {"authorization", "proxy-authorization", "cookie", "cookie2",
+                                    "x-api-key", "x-auth-token"}
+               for key in headers)
+
+
 class TabClient:
     """Answers `browser_navigate` and `browser_evaluate` in one tab of the `_reader` session.
 
@@ -56,9 +104,13 @@ class TabClient:
         #: Chromium it is the URL that could not be reached, for example a redirect target.
         self.seen_url = ""
         self.retry_after = ""
+        self.public_response = False
         self.response_status = 0
         self._main_frame = ""
         self._responses = {}
+        self._routes = {}
+        self._private = False
+        self._previous_documents = []
 
     async def call_tool(self, tool: str, arguments: dict, raise_on_error: bool = False):
         timeout = float(arguments.get("timeout") or SCRIPT_TIMEOUT_S)
@@ -83,12 +135,57 @@ class TabClient:
             return
         from nodriver import cdp
 
+        self.tab.add_handler(cdp.network.RequestWillBeSent, self._on_request)
+        self.tab.add_handler(cdp.network.RequestWillBeSentExtraInfo, self._on_request_extra)
+        self.tab.add_handler(cdp.network.ResponseReceivedExtraInfo, self._on_response_extra)
+        self.tab.add_handler(cdp.network.LoadingFailed, self._on_loading_failed)
         self.tab.add_handler(cdp.network.ResponseReceived, self._on_response)
         await self.tab.send(cdp.network.enable())
         self.tab.add_handler(cdp.page.FrameNavigated, self._on_navigated)
         self.tab.add_handler(cdp.page.JavascriptDialogOpening, self._on_dialog)
         await self.tab.send(cdp.page.enable())
         self._enabled = True
+
+    def _on_request(self, event, _tab=None) -> None:
+        if private_request(event.request.headers):
+            self._private = True
+        kind = str(getattr(event.type_, "value", event.type_))
+        if kind != "Document":
+            return
+        chain = self._routes.setdefault(str(event.request_id), [])
+        if event.redirect_response is not None:
+            previous = event.redirect_response
+            chain.append((str(previous.url), public_cache_lifetime(previous.headers), time.time()))
+        if len(chain) > 12 or len(self._routes) > 32:
+            self._private = True
+
+    def _on_request_extra(self, event, _tab=None) -> None:
+        if private_request(event.headers) or any(
+            not cookie.blocked_reasons for cookie in event.associated_cookies
+        ):
+            self._private = True
+
+    def _on_response_extra(self, event, _tab=None) -> None:
+        if any(str(key).lower() in {"set-cookie", "set-cookie2", "www-authenticate"}
+               for key in event.headers):
+            self._private = True
+
+    def _on_loading_failed(self, event, _tab=None) -> None:
+        if str(getattr(event.type_, "value", event.type_)) == "Document" and not event.canceled:
+            self._private = True
+
+    def cache_policy(self, final_url):
+        """Return the checked response chain and its shortest remaining lifetime."""
+        from browser_use_server.public_cache import candidate
+
+        response = self._responses.get(self._main_frame)
+        if self._private or not response:
+            return (), 0
+        chain = [*self._previous_documents, *response[3]]
+        ceiling = min((when + lifetime - time.time() for _, lifetime, when in chain), default=0)
+        if chain[-1][0] != final_url or any(not candidate(url) for url, _, _ in chain):
+            return (), 0
+        return tuple(url for url, _, _ in chain), max(0, ceiling)
 
     def _on_response(self, event, _tab=None) -> None:
         """Retain only the document's bounded Retry-After value from response headers."""
@@ -101,18 +198,28 @@ class TabClient:
         headers = event.response.headers
         retry_after = next((str(value)[:128] for name, value in headers.items()
                             if str(name).lower() == "retry-after"), "")
-        self._responses[frame] = (int(event.response.status), retry_after)
+        mime_type = str(getattr(event.response, "mime_type", "")).lower()
+        lifetime = public_cache_lifetime(headers, allow_range=mime_type == "application/pdf")
+        if frame == self._main_frame and frame in self._responses:
+            self._previous_documents.extend(self._responses[frame][3])
+            if len(self._previous_documents) > 24:
+                self._private = True
+                self._previous_documents.clear()
+        chain = [*self._routes.get(str(getattr(event, "request_id", "")), []),
+                 (str(getattr(event.response, "url", "")), lifetime, time.time())]
+        self._responses[frame] = (int(event.response.status), retry_after, bool(lifetime), chain)
         while len(self._responses) > 16:
             del self._responses[next(iter(self._responses))]
         if frame == self._main_frame:
-            self.response_status, self.retry_after = self._responses[frame]
+            self.response_status, self.retry_after, self.public_response = self._responses[frame][:3]
 
     def _on_navigated(self, event, _tab=None) -> None:
         frame = event.frame
         if getattr(frame, "parent_id", None):
             return
         self._main_frame = str(frame.id_)
-        self.response_status, self.retry_after = self._responses.get(self._main_frame, (0, ""))
+        self.response_status, self.retry_after, self.public_response = self._responses.get(
+            self._main_frame, (0, "", False, []))[:3]
         self._commits.append(str(frame.loader_id))
         self.seen_url = str(getattr(frame, "unreachable_url", None)
                             or getattr(frame, "url", None) or "")
@@ -142,9 +249,13 @@ class TabClient:
         self._own, self._commits = None, []
         self.seen_url = ""
         self.retry_after = ""
+        self.public_response = False
         self.response_status = 0
         self._main_frame = ""
         self._responses = {}
+        self._routes = {}
+        self._private = False
+        self._previous_documents = []
         _frame, loader, error_text, is_download = await self.tab.send(cdp.page.navigate(url))
         if loader is None and not error_text and not is_download:
             # A navigation inside the document keeps the document and its loader.

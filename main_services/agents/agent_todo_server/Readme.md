@@ -2,8 +2,7 @@
 
 The session tool server. One plan per chat or agent run (a goal and a list of steps) is
 exposed as one tool, `update_plan`. The workspace files of a conversation are exposed as
-four more: `read_file`, `write_file`, `patch_file` and `finish_with_report` (see
-[Workspace files](#workspace-files)).
+the [workspace tools](#workspace-files). They read saved captures, edit files and select report versions.
 
 **The server holds no rules.** Every shape, limit and refusal lives in
 [`../../processing/database/chat_todos.py`](../../processing/database/chat_todos.py),
@@ -55,6 +54,14 @@ returns their names, versions and citation handles. It changes no file. A missin
 a repeated name is a tool error, and a storage failure is a tool error with `retryable` true.
 The worker runs the call after every other call of its reply, and a successful result ends
 the turn with that report as the answer.
+
+
+## Saved results
+
+Use `workspace_list` to page through files, sources and results. Use `workspace_search` for literal or regular expression matches. Search results retain the stored version and character positions. Give `read_file` a path and version to read a bounded range. Use `workspace_rows` to filter, sort or project recorded rows. Follow a backend continuation to fetch additional results.
+
+The source and result paths are read-only. Write temporary text, CSV or JSONL files under `./tmp/`. A temporary file cannot be selected for delivery. Each read rechecks collection and earlier item access.
+
 
 ## Build context
 

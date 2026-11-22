@@ -34,8 +34,8 @@ conversation never refuses a call.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import difflib
+import hashlib
 import json
 import logging
 import os
@@ -48,12 +48,14 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, images, llm_events, request_size, skill_store
+from agent_common import workspace_results
+
+from research_agent import compaction, images, llm_events, request_size, result_views, skill_store
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.localization import catalog_revision
 from research_agent.execution import (
     FINISH_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
-    batch_budget, finish_order_problem, is_browser_tool, split_resources, validation_error,
+    batch_budget, finish_order_problem, is_browser_tool, split_resources, validation_error, workspace_refs_of, workspace_resource,
 )
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
@@ -488,22 +490,35 @@ async def _prepare(request: ModelStepRequest, context: Any, system_text: str,
     originals = {(m.thread_id, m.idx): m for m in rows}
     candidates = [index for index in newest if compacted[index].role == "tool"]
     budgets = {index: 24000 for index in candidates}
-    while not size.fits and pager and candidates:
+    while not size.fits and candidates:
         index = max(candidates, key=lambda i: len(compacted[i].content.encode("utf-8")))
         message = compacted[index]
         original = originals.get((message.thread_id, message.idx), message)
         budget = min(budgets[index], max(1024, len(message.content.encode("utf-8")) // 2))
-        result = await pager.ainvoke({"run_id": request.run_id,
-            "call_id": str(message.tool_call_id), "content": original.content,
-            "max_bytes": budget, "doc_refs": original.doc_refs})
-        text = _text_of(result.content if isinstance(result, ToolMessage) else result)
-        try:
-            page = json.loads(text)
-        except (ValueError, TypeError):
-            page = {}
-        if page.get("error") or isinstance(result, ToolMessage) and result.status == "error":
-            raise RuntimeError(f"The complete tool result could not be paged: {text[:600]}")
-        if not page.get("more") or len(text.encode("utf-8")) >= len(message.content.encode("utf-8")):
+        if original.result_ref:
+            keep = max(80, (budget - 256) // 8)
+            text = (f"{original.content[:keep]}\n\n"
+                    + json.dumps({"result_ref": original.result_ref}, ensure_ascii=False)
+                    + f"\n\n{original.content[-keep:]}")
+        elif pager and original.name not in {"workspace_list", "workspace_search",
+                                             "workspace_rows", "read_file", "search", "execute"}:
+            result = await pager.ainvoke({"run_id": request.run_id,
+                "call_id": str(message.tool_call_id), "content": original.content,
+                "max_bytes": budget, "doc_refs": original.doc_refs})
+            text = _text_of(result.content if isinstance(result, ToolMessage) else result)
+            try:
+                page = json.loads(text)
+            except (ValueError, TypeError):
+                page = {}
+            if page.get("error") or isinstance(result, ToolMessage) and result.status == "error":
+                raise RuntimeError(f"The complete tool result could not be paged: {text[:600]}")
+            if not page.get("more"):
+                candidates.remove(index)
+                continue
+        else:
+            candidates.remove(index)
+            continue
+        if len(text.encode("utf-8")) >= len(message.content.encode("utf-8")):
             candidates.remove(index)
             continue
         compacted[index] = message.model_copy(update={"content": text})
@@ -774,6 +789,7 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
 #: its backend did not answer, or answered with a status that a second request can change.
 #: The worker raises for it, so Temporal runs the tool call again.
 TRANSPORT_FAILURE = "transport_failure"
+RESULT_CHARACTER_LIMIT = workspace_results.DISPLAY_LIMIT
 
 
 def transport_exception(exc: BaseException) -> bool:
@@ -931,11 +947,93 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             "message": f"No skill is named {skill!r}. The skills are "
                        f"{', '.join(sorted(request.control.skills))}."}), "error", "tool_error")
 
+    if name == "search":
+        from research_agent import code_mode
+        def discover(**changes):
+            options = {**args, **changes}
+            options.setdefault("query", "")
+            options.setdefault("detail", False)
+            return code_mode.discover(snapshot, allowed=allowed, **options)
+
+        matched = discover()
+        content = json.dumps(matched, ensure_ascii=False)
+        response = _tool_response(request, content)
+        if len(content) > RESULT_CHARACTER_LIMIT:
+            for limit in range(len(matched.get("matches", [])), 0, -1):
+                shown = result_views.encode(discover(limit=limit))
+                if len(shown) <= RESULT_CHARACTER_LIMIT:
+                    response["model_content"] = shown
+                    break
+            else:
+                response["model_content"] = result_views.encode({
+                    "next_call": result_views.call("search", {**args, "limit": 1, "schema_offset": 0}),
+                })
+        return response
+
+    if name == "execute":
+        from research_agent import code_mode
+
+        protected_items = set()
+
+        async def invoke(operation, arguments, ordinal):
+            key = f"{request.idempotency_key}/execute/{ordinal}"
+            nested = request.model_copy(update={
+                "call": ToolCallRecord(name=operation, args=arguments, id=f"{request.call.id}/{ordinal}"),
+                "idempotency_key": key,
+            })
+            result = await _run_tool_call(context, nested)
+            try:
+                value = json.loads(result["content"])
+            except ValueError:
+                value = {"text": result["content"]}
+            if not isinstance(value, dict):
+                value = {"data": value}
+            protected_items.update(result_views.earlier_items(value))
+            receipt = {"status": result["status"]}
+            if result.get("result_ref"):
+                value["result_ref"] = result["result_ref"]
+                receipt["result_ref"] = result["result_ref"]
+            if result.get("source_refs"):
+                value["source_refs"] = result["source_refs"]
+                receipt["source_refs"] = result["source_refs"]
+            if operation in {"cite_documents", "cite_pages"} and value.get("citations"):
+                await asyncio.to_thread(workspace_results.record_citations,
+                                        request.username, request.session_id, key, operation, value)
+            for field in ("citations", "version", "name", "next_offset", "more", "continuation"):
+                if field in value:
+                    receipt[field] = value[field]
+            if result["status"] == "error" or value.get("success") is False:
+                receipt["status"] = "error"
+                receipt["error"] = value.get("error") or value.get("text") or "The tool failed."
+                value["error"] = str(receipt["error"])[:2000]
+            return value, receipt
+
+        result = await code_mode.run(args["language"], args["code"], code_mode.FUNCTIONS & set(allowed), invoke)
+        content = json.dumps(result, ensure_ascii=False)
+        response = _tool_response(request, content, "ok" if result["success"] else "error")
+        if len(content) > RESULT_CHARACTER_LIMIT:
+            reference = None
+            try:
+                reference = await asyncio.to_thread(
+                    workspace_results.save, request.username, request.session_id,
+                    request.idempotency_key, name, content, request.allowed_collections,
+                    {"items": [{"item_kind": kind, "item_id": item_id}
+                               for kind, item_id in sorted(protected_items)]},
+                )
+            except Exception:
+                log.exception("could not retain execution result")
+            response["model_content"] = result_views.execution_view(result, reference)
+            if reference is not None:
+                response["result_ref"] = reference
+        return response
+
     search_tools = {"search_collections", "search_passages", "web_search", "folder_search",
                     "search_facet_values", "search_histogram", "search_entity_explainer",
                     "doc_search_text", "pdf_search"}
     citation_call = name in ("cite_documents", "cite_pages")
-    if citation_call or name in search_tools or name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
+    if (name != "web_search" and "/execute/" not in request.idempotency_key
+            and (citation_call or name in search_tools or name.startswith(
+                ("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")))):
         rows, visible = model_input_rows(request.earlier, request.messages)
         whole = {(m.thread_id, m.idx) for m in visible
                  if m.role == "tool" and m.status == "ok" and _successful_repeat_result(m)
@@ -994,11 +1092,15 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     measure = None
     doc_refs = None
     image_refs = None
+    references = []
+    model_view = None
     status = "ok"
     if isinstance(result, ToolMessage):
         content = _text_of(result.content)
         measure, doc_refs, _ = split_resources(result.artifact)
         image_refs = images.image_refs_of(result.artifact)
+        references = workspace_refs_of(result.artifact)
+        model_view = workspace_resource(result.artifact, "display")
         if result.status == "error":
             status = "error"
     else:
@@ -1010,10 +1112,71 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     selected, kept = images.select(name, args, image_refs or [], mode)
     if kept:
         content = f"{content}\n\n{images.captures_text(kept)}"
-    return _tool_response(
+    reference = references[0] if len(references) == 1 else None
+    if isinstance(model_view, dict) and model_view.get("reference"):
+        reference = model_view["reference"]
+    if not reference and not model_view and status == "ok" and content and workspace_results.prefix(name):
+        try:
+            source = None
+            if name in {"read_chat", "read_board"}:
+                item_kind = name.removeprefix("read_")
+                item_id = args.get("session_id" if item_kind == "chat" else "board_id")
+                payload = json.loads(content)
+                if payload.get("success") is not False and item_id:
+                    source = {"item_kind": item_kind, "item_id": item_id,
+                              "title": payload.get("title") or name}
+                else:
+                    source = {}
+            if name == "list_chats_and_boards":
+                payload = json.loads(content)
+                source = {"items": [
+                    {"item_kind": kind, "item_id": row[field]}
+                    for kind, field in (("chat", "session_id"), ("board", "board_id"))
+                    for row in payload.get(kind + "s", []) if isinstance(row, dict) and row.get(field)
+                ]} if payload.get("success") is not False else {}
+            if source == {}:
+                return _tool_response(request, content)
+
+            reference = await asyncio.to_thread(
+                workspace_results.save, request.username, request.session_id, request.idempotency_key,
+                name, content, request.allowed_collections, source,
+            )
+        except Exception:
+            log.exception("could not retain workspace result for %s", name)
+    response = _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
         _with_repairs(measure, repairs), [], doc_refs, image_refs=selected, capture_refs=kept
     )
+
+    if reference is not None:
+        response["result_ref"] = reference
+    if references:
+        response["source_refs"] = references
+    if isinstance(model_view, dict) and isinstance(model_view.get("text"), str):
+        shown = model_view["text"]
+        if kept:
+            notice = f"\n\n{images.captures_text(kept)}"
+            if len(shown) + len(notice) <= RESULT_CHARACTER_LIMIT:
+                shown += notice
+        response["model_content"] = shown
+    elif name in {"workspace_list", "workspace_search", "workspace_rows", "read_file"}:
+        shown = result_views.workspace_view(name, content, args)
+        if shown is not None:
+            response["model_content"] = shown
+    elif workspace_results.prefix(name):
+        shown = workspace_results.display(content, reference, RESULT_CHARACTER_LIMIT)
+        shortened = name == "read_page" and "[cut:" in content
+        if len(references) == 1 and name == "read_documents" and '"text_cut"' in content:
+            shortened = True
+        if shortened and reference is not None and shown is None:
+            suffix = "\n" + json.dumps({"result_ref": workspace_results.public_reference(reference)}, ensure_ascii=False)
+            if len(content) + len(suffix) <= RESULT_CHARACTER_LIMIT:
+                shown = content + suffix
+            else:
+                shown = workspace_results.display(content, reference, RESULT_CHARACTER_LIMIT - len(suffix))
+        if shown is not None:
+            response["model_content"] = shown
+    return response
 
 
 # ----------------------------------------------------------------- policy support

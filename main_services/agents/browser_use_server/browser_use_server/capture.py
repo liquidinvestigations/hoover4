@@ -96,6 +96,8 @@ class CaptureResult:
     elapsed_ms: float = 0.0
     #: True when the capture stored a screenshot.
     screenshot: bool = False
+    shared_body: bytes | None = None
+    shared_thumb: bytes | None = None
 
 
 def should_capture(tool_name: str) -> bool:
@@ -235,6 +237,9 @@ async def _capture(
     result.status = status
     result.detail = detail
     result.screenshot = thumb is not None
+    if getattr(chat, "retain_public_assets", False):
+        result.shared_body = body[1] if body else None
+        result.shared_thumb = thumb[1] if thumb else None
     return result
 
 

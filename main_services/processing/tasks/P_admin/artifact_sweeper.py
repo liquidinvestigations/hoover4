@@ -93,6 +93,11 @@ def sweep() -> SweepResult:
 
         s3 = get_s3_client()
         result = _sweep_rows(client, s3, rows, result)
+        try:
+            result.deleted_objects += _sweep_public_pages(s3)
+        except Exception as exc:
+            log.warning("could not sweep expired public page captures: %s", exc)
+            result.errors.append("Public page cleanup failed.")
 
     log.info("[artifact-sweeper] %s", result.summary())
     return result
@@ -203,3 +208,16 @@ def sweep_json() -> str:
             "errors": result.errors[:20],
         }
     )
+
+
+def _sweep_public_pages(s3) -> int:
+    """Remove public cache bodies after their fixed lifetime."""
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=168)
+    removed = 0
+    for obj in s3.list_objects(BUCKET, prefix="derived/public-page-cache/", recursive=True):
+        if obj.last_modified is not None and obj.last_modified <= cutoff:
+            s3.remove_object(BUCKET, obj.object_name)
+            removed += 1
+    return removed

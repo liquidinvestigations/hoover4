@@ -21,7 +21,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from agent_common.tool_packs import pack_of
-from research_agent import note_tools, skill_tools
+from research_agent import code_mode, skill_tools
 from research_agent.localization import (
     DEFAULT_LANGUAGE,
     catalog_revision,
@@ -138,8 +138,7 @@ def build_snapshot(
     `allowed` is the tool names of the run's packs. A tool outside them is left out, and
     its name is logged once. When `search_agent_tools` is allowed, the snapshot gets its own
     search tool, which searches this snapshot and no other. The skill tools that `allowed`
-    holds are built the same way, over this snapshot and its skill context, and so is the
-    notes tool `write_note`.
+    holds use this snapshot and its skill context.
 
     `skill_context` gives the profile and `collections_hint` of the run. The snapshot keeps a
     copy whose `tool_names` are the snapshot's tools. With no context, the profile is the one
@@ -165,7 +164,8 @@ def build_snapshot(
         kept[SEARCH_TOOL] = make_search_tool(lambda: holder["snapshot"])
     for tool in skill_tools.make_skill_tools(
         lambda: holder["snapshot"], lambda: holder["snapshot"].skill_context
-    ) + note_tools.make_note_tools():
+    ) + (code_mode.tools(lambda: holder["snapshot"])
+         if skill_context is None or skill_context.language == DEFAULT_LANGUAGE else []):
         if tool.name in allowed:
             kept[tool.name] = tool
 

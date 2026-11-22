@@ -121,6 +121,7 @@ def test_the_ordered_tools_are_the_plan_and_file_tools():
     This list is the same set, so the stored kind says what the worker does."""
     assert execution.ORDERED_TOOLS == frozenset({
         "update_plan", "read_file", "write_file", "patch_file",
+        "workspace_list", "workspace_search", "workspace_rows", "execute",
     })
 
 

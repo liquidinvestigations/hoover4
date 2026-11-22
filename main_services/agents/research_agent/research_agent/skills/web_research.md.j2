@@ -175,3 +175,10 @@ A null registrant means the registry did not publish that value. The registrar s
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Use {{ tool('workspace_list') }} with prefix "sources/web/" to find saved page text.
+Find the passage with {{ tool('workspace_search') }}. Pass its path, version, start and end as evidence to {{ tool('cite_pages') }}.
+Save the claim with the returned handle.
+{% endif %}

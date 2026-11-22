@@ -194,7 +194,12 @@ async fn chats_read_body(user: &CurrentUser, run_group: &str, body: ChatsReadReq
 /// that report version.
 pub fn chat_turns(messages: &[ChatMessageItem], reports: &[WorkspaceVersion], documents: &[ChatDocRef]) -> Vec<AgentChatTurn> {
     let pages = common::chat_pages::merge_page_refs(
-        messages.iter().filter(|m| m.tool_name == "cite_pages").flat_map(|m| extract_page_refs(&m.tool_output)).collect(),
+        messages.iter().flat_map(|message| match message.tool_name.as_str() {
+            "cite_pages" => extract_page_refs(&message.tool_output),
+            "execute" => common::chat_types::code_citation_outputs(&message.tool_output, "cite_pages")
+                .iter().flat_map(|output| extract_page_refs(output)).collect(),
+            _ => Vec::new(),
+        }).collect(),
     );
     let items = common::chat_items::merge_item_refs(
         messages

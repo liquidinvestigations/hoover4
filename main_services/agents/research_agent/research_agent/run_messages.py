@@ -63,6 +63,7 @@ class RunMessage(BaseModel):
     status: Optional[Literal["ok", "error"]] = None
     #: The persisted model view. The complete evidence stays in `content`.
     model_content: Optional[str] = None
+    result_ref: Optional[Dict[str, Any]] = None
     doc_refs: List[Dict[str, Any]] = Field(default_factory=list)
     #: `tool` only: the images of the result (`images.py`). Each request reads them again.
     image_refs: List[Dict[str, Any]] = Field(default_factory=list)

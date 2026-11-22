@@ -17,8 +17,11 @@ After each result, do one of these things.
 4. You have enough to answer. Write the answer, or the report when it needs citations or a document.
 
 Use visible results when they answer the current question.
-After context compaction, use the retained index and notes to identify earlier results.
-Refresh a required passage explicitly when its text is no longer visible.
+{% if has('workspace_search') %}
+Find saved results and files with {{ tool('workspace_list') }}.
+Search a saved path for the missing words with {{ tool('workspace_search') }}.
+Use the match positions to read the exact text. Verify citations before adding findings to a report.
+{% endif %}
 
 When a search returns no useful result, change the query or use another source.
 

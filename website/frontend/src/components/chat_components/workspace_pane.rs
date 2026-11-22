@@ -7,7 +7,9 @@
 
 use dioxus::prelude::*;
 
-use crate::api::chat_api::{chat_workspace_file, chat_workspace_files};
+use crate::api::chat_api::{
+    chat_workspace_capture, chat_workspace_captures, chat_workspace_file, chat_workspace_files,
+};
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::data_definitions::doc_viewer_state::{DocViewerState, DocViewerStateControl};
 use crate::tr;
@@ -32,9 +34,18 @@ pub fn WorkspacePane(
 ) -> Element {
     let control = use_context::<DocViewerStateControl>();
     let files = use_resource(move || chat_workspace_files(session_id()));
+    let mut capture_offset = use_signal(|| (String::new(), 0));
+    let capture = use_resource(move || async move {
+        let path = file();
+        let (selected, offset) = capture_offset();
+        if !is_capture(&path) {
+            return None;
+        }
+        Some(chat_workspace_capture(session_id(), path.clone(), if selected == path { offset } else { 0 }).await)
+    });
     let content = use_resource(move || async move {
         let name = file();
-        if name.is_empty() {
+        if name.is_empty() || is_capture(&name) {
             return None;
         }
         Some(chat_workspace_file(session_id(), name, version()).await)
@@ -51,6 +62,7 @@ pub fn WorkspacePane(
     let listed = files.read().clone();
     let shown = content.read().clone().flatten();
     let current = file();
+    let shown_capture = capture.read().clone().flatten();
     rsx! {
         div { "data-workspace-pane": "true",
             style: "height: 100%; display: flex; flex-direction: column; background: #F5F6F8;",
@@ -94,10 +106,25 @@ pub fn WorkspacePane(
                         }
                     },
                 }
+                CaptureList { session_id: session_id(), sources: true, open: move |path| open(path, None) }
+                CaptureList { session_id: session_id(), sources: false, open: move |path| open(path, None) }
             }
             div { "data-workspace-content": "true", style: "overflow: auto; padding: 16px; flex: 1;",
                 if current.is_empty() {
                     span { style: "color: var(--x-ink-muted);", {tr!("chat-workspace-pane-choose-a-file-to-read")} }
+                } else if is_capture(&current) {
+                    match shown_capture {
+                        None => rsx! { span { {tr!("chat-workspace-pane-loading-the-file-u")} } },
+                        Some(Err(error)) => rsx! { span { style: "color: var(--x-danger);",
+                            {tr!("chat-workspace-pane-the-file-could-not-be", error: error.to_string())}
+                        } },
+                        Some(Ok(found)) => rsx! {
+                            pre { style: "white-space: pre-wrap; overflow-wrap: anywhere;", "{found.text}" }
+                            if let Some(offset) = found.next_offset {
+                                button { onclick: move |_| capture_offset.set((found.path.clone(), offset)), "Next part" }
+                            }
+                        },
+                    }
                 } else {
                     match shown {
                         None => rsx! { span { style: "color: var(--x-ink-muted);", {tr!("chat-workspace-pane-loading-the-file-u")} } },
@@ -110,6 +137,52 @@ pub fn WorkspacePane(
                         },
                     }
                 }
+            }
+        }
+    }
+}
+
+
+fn is_capture(path: &str) -> bool {
+    path.starts_with("sources/") || path.starts_with("results/")
+}
+
+#[component]
+fn CaptureList(session_id: String, sources: bool, open: Callback<String>) -> Element {
+    let mut expanded = use_signal(|| false);
+    let mut cursor = use_signal(String::new);
+    let page = use_resource(move || {
+        let session = session_id.clone();
+        async move {
+            if !expanded() {
+                return None;
+            }
+            Some(chat_workspace_captures(session, sources, cursor()).await)
+        }
+    });
+    let listed = page.read().clone().flatten();
+    rsx! {
+        details {
+            ontoggle: move |_| expanded.set(true),
+            summary { if sources { "Sources" } else { "Results" } }
+            match listed {
+                Some(Ok(page)) => rsx! {
+                    for entry in page.entries {
+                        button {
+                            key: "{entry.path}",
+                            style: "display: block; text-align: left;",
+                            onclick: move |_| open.call(entry.path.clone()),
+                            "{entry.title}"
+                        }
+                    }
+                    if let Some(next) = page.next_cursor {
+                        button { onclick: move |_| cursor.set(next.clone()), "More" }
+                    }
+                },
+                Some(Err(error)) => rsx! { span { style: "color: var(--x-danger);",
+                    {tr!("chat-workspace-pane-the-files-could-not-be", error: error.to_string())}
+                } },
+                None => rsx! { span { {tr!("chat-workspace-pane-loading-the-files-u")} } },
             }
         }
     }

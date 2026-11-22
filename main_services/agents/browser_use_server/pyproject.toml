@@ -19,6 +19,8 @@ dependencies = [
     # separately.
     "requests>=2.31",
     "minio>=7.2",
+    "redis>=5.2,<7",
+    "selectolax>=0.3,<1",
 ]
 
 [project.optional-dependencies]

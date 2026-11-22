@@ -29,7 +29,7 @@ NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending"})
 
 #: Every tool of a chat run. The `board` pack belongs to board turns only.
 EVERY_TOOL = frozenset().union(*(t for p, t in PACKS.items() if p != "board"))
-LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "write_note"}
+LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "search", "execute"}
 
 
 class FakeTool:
@@ -304,7 +304,7 @@ def test_the_first_step_has_the_delivery_and_citation_contract():
     assert "Apply a restriction or permission to its stated scope." in text
     assert "Keep sourced findings in a report unless the user asks for them in chat." in text
     assert "Cite any sourced claim in the closing message too." in text
-    assert "Copy the returned handle beside each supported claim." in text
+    assert "Put each returned handle in the same sentence as its claim." in text
     assert "`finish_with_report` with its name and version as the last call" in text
     assert "`cite_chats_and_boards`" in text
 

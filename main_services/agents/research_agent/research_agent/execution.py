@@ -46,6 +46,7 @@ import jsonschema
 from langchain_core.messages import ToolMessage
 from mcp.shared._httpx_utils import create_mcp_http_client
 
+from agent_common import workspace_results
 from agent_common.result_pages import SAFE_MODE_BATCH_BYTES, ByteLimit, PageInput, build_page
 
 log = logging.getLogger(__name__)
@@ -54,7 +55,8 @@ log = logging.getLogger(__name__)
 #: workspace tools, because each one reads or changes state that the next one reads.
 #: `/model_step` gives them the kind `ordered`. The worker's copy is `STATE_TOOLS` in
 #: `processing/tasks/P_agent/steps.py`, and the two lists change in one patch.
-ORDERED_TOOLS = frozenset({"update_plan", "read_file", "write_file", "patch_file"})
+ORDERED_TOOLS = frozenset({"update_plan", "read_file", "write_file", "patch_file",
+                           "workspace_list", "workspace_search", "workspace_rows", "execute"})
 
 #: The terminal tool that shows a saved report as the answer and ends the turn. The worker
 #: runs it after every other call of its reply. Mirrored as `FINISH_TOOL` in
@@ -93,6 +95,7 @@ def is_browser_tool(name: str) -> bool:
 PAGE_SHARE_HEADER = "X-Hoover4-Page-Share"
 #: The request header that carries one call's idempotency key.
 IDEMPOTENCY_HEADER = "X-Hoover4-Idempotency-Key"
+DISPLAY_LIMIT_HEADER = "X-Hoover4-Result-Characters"
 #: The URI of the embedded resource in which the broker returns the call measure.
 CALL_MEASURE_URI = "hoover4://call-measure"
 #: The URI of the embedded resource in which the broker returns the doc refs of a page.
@@ -123,6 +126,7 @@ def page_share_client(
     share = _PAGE_SHARE.get()
     key = _IDEMPOTENCY_KEY.get()
     merged = dict(headers or {})
+    merged[DISPLAY_LIMIT_HEADER] = str(workspace_results.DISPLAY_LIMIT)
     if share is not None:
         merged[PAGE_SHARE_HEADER] = str(share)
     if key:
@@ -190,6 +194,26 @@ def split_resources(artifact: Any) -> Tuple[Optional[Dict[str, Any]], Optional[L
                 continue
         rest.append(block)
     return measure, doc_refs, (rest or None)
+
+
+def workspace_resource(artifact: Any, name: str) -> Any:
+    if not isinstance(artifact, list):
+        return None
+    for block in artifact:
+        resource = getattr(block, "resource", None)
+        if str(getattr(resource, "uri", "")) == f"hoover4://workspace-{name}":
+            try:
+                return json.loads(resource.text)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def workspace_refs_of(artifact: Any) -> list[dict]:
+    value = workspace_resource(artifact, "results")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict) and item.get("path")]
 
 
 def _text_of(content: Any) -> str:

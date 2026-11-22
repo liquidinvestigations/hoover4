@@ -73,6 +73,7 @@ CITATION_NOTE_NAME = "citation_check"
 #: reads the state that the call before it wrote.
 STATE_TOOLS = frozenset({
     "update_plan", "read_file", "write_file", "patch_file",
+    "workspace_list", "workspace_search", "workspace_rows", "execute",
 })
 
 
@@ -358,7 +359,8 @@ def _chat_row(row):
 def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, status: str,
                        measure: Any = None, error_class: str = "", doc_refs: Any = None,
                        shared_from: str = "", image_refs: Any = None,
-                       capture_refs: Any = None) -> None:
+                       capture_refs: Any = None, model_content: Any = None,
+                       result_ref: Any = None) -> None:
     """The `tool` message of one call, and for a run that writes the transcript, its
     finished tool row at the call's seq and the final stream row. `doc_refs` is the list
     that the `/tool_call` response carried beside the result, or None. `image_refs` names
@@ -383,6 +385,10 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
         row.thread_id, idx)
     usage = {"chat_seq": call.seq, "status": status, "measure": measure,
              "error_class": error_class, "evidence": evidence, "doc_refs": doc_refs or []}
+    if isinstance(model_content, str):
+        usage["model_content"] = model_content
+    if result_ref:
+        usage["result_ref"] = result_ref
     if shared_from:
         usage["shared_from"] = shared_from
     if image_refs:
@@ -475,7 +481,8 @@ def workspace_inventory(row) -> list[dict[str, Any]]:
     a workspace with no file."""
     from database import chat_workspace
 
-    return chat_workspace.list_files(row.username, row.session_id)
+    return [f for f in chat_workspace.list_files(row.username, row.session_id)
+            if not f["name"].startswith("./tmp/")]
 
 
 def _write_compaction(row, ai, record: dict) -> None:
@@ -985,7 +992,8 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
             _write_tool_result(row, params.turn_uuid, ai, call, content, status,
                                result.get("measure"), error_class, result.get("doc_refs"),
                                image_refs=result.get("image_refs"),
-                               capture_refs=result.get("capture_refs"))
+                               capture_refs=result.get("capture_refs"),
+                               model_content=result.get("model_content"), result_ref=result.get("result_ref"))
             # A result with an error code only in its text, such as not_found, is a result.
             event.ok = status != "error"
             event.error_class = error_class

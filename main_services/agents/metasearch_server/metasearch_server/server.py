@@ -149,7 +149,9 @@ class WebSearchResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
     @model_serializer
-    def _slim_result(self) -> dict[str, Any]:
+    def _slim_result(self, info) -> dict[str, Any]:
+        if info.context and info.context.get("cache"):
+            return {name: getattr(self, name) for name in type(self).model_fields}
         if not self.success:
             return {"success": False, "error": self.error}
         several = len(self.queries) > 1
@@ -246,6 +248,7 @@ async def web_search(
     sources: Annotated[list[str] | None, Field(description='Optional source names from list_search_sources. Omission uses all available sources.')] = None,
     max_results: Annotated[int, Field(description='Maximum results to return. Omission uses 15. The configured limit applies.')] = DEFAULT_MAX_RESULTS,
     timelimit: Annotated[str | None, Field(description='Use d, w, m or y for supported sources. Omission applies no time filter.')] = None,
+    refresh: Annotated[bool, Field(description="Fetch current provider results.")] = False,
 ) -> WebSearchResponse:
     """Search every source for every query, and rank the merged pool once.
 
@@ -286,6 +289,29 @@ async def web_search(
             error="timelimit must be one of 'd', 'w', 'm', 'y'",
         )
 
+    scope = (_header(USER_HEADER), _header(SESSION_HEADER))
+    providers, unknown = pipeline.sources_mod.resolve_sources(batching.as_list(sources) or None)
+    if all(scope):
+        from agent_common.fusion import RRF_K
+        from metasearch_server import search_cache
+        key = search_cache.key_for(scope, "web_search_cache", [
+            wanted, providers, unknown, limit, timelimit, note, RRF_K, pipeline.MIN_PER_KIND,
+            pipeline.MAX_PER_KIND, pipeline.SNIPPET_CHARS, search_cache.provider_profile(),
+        ])
+        async with search_cache.serialized(key):
+            previous = None if refresh else await search_cache.cached(scope, "web_search_cache", key)
+            if previous is not None:
+                return WebSearchResponse.model_validate(previous)
+            response, complete = await _search(wanted, sources, limit, timelimit, note, scope, refresh)
+            if complete and response.success:
+                await search_cache.retain(scope, "web_search_cache", key,
+                                          response.model_dump(mode="json", context={"cache": True}))
+            return response
+    response, _ = await _search(wanted, sources, limit, timelimit, note)
+    return response
+
+
+async def _search(wanted, sources, limit, timelimit, note, scope=None, refresh=False):
     try:
         async with search_gate.slot():
             outcome = await pipeline.run_search(
@@ -295,16 +321,17 @@ async def web_search(
                 requested_sources=batching.as_list(sources) or None,
                 max_results=limit,
                 timelimit=timelimit,
+                **({"cache_scope": scope, "refresh": refresh} if scope else {}),
             )
     except Busy as exc:
         return WebSearchResponse(
             success=False, query=pipeline.QUERY_JOIN.join(wanted), queries=wanted, error=str(exc)
-        )
+        ), False
     except Exception as exc:  # noqa: BLE001 - surfaced to the model, not raised at it
         log.exception("metasearch failed")
         return WebSearchResponse(
             success=False, query=pipeline.QUERY_JOIN.join(wanted), queries=wanted, error=str(exc)
-        )
+        ), False
 
     if not outcome.ranked:
         note = batching.corrective_note(note, no_result_note(outcome.degraded_reasons))
@@ -352,7 +379,7 @@ async def web_search(
         total_ms=outcome.total_ms,
         **artifacts.artifacts_field({"artifact_id": artifact_id, "kind": "json",
                                      "tool_name": "web_search"}),
-    )
+    ), outcome.complete
 
 
 @mcp.tool(

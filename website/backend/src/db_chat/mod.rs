@@ -1006,16 +1006,22 @@ fn narration_step(thread_id: String, idx: u32, text: String, reasoning: String, 
 pub async fn session_citation_outputs(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
     let rows = get_global_client()
         .query(
-            "SELECT content FROM agent_run_messages FINAL \
+            "SELECT tool_name, content FROM agent_run_messages FINAL \
              WHERE username = ? AND session_id = ? AND role = 'tool' \
-               AND tool_name = 'cite_documents' AND is_final = 1 \
+               AND tool_name IN ('cite_documents', 'execute') AND is_final = 1 \
              ORDER BY thread_id, idx",
         )
         .bind(username)
         .bind(session_id)
-        .fetch_all::<String>()
+        .fetch_all::<(String, String)>()
         .await?;
-    Ok(rows)
+    Ok(rows.into_iter().flat_map(|(tool, output)| {
+        if tool == "execute" {
+            common::chat_types::code_citation_outputs(&output, "cite_documents")
+        } else {
+            vec![output]
+        }
+    }).collect())
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]

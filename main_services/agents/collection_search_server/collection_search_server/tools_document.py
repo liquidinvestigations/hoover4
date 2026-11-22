@@ -130,6 +130,7 @@ class EmailTool(PagedTool):
         count = len(body.get("attachments", []))
         if count == len(window.items):
             return paging._live_page(self, request, None, window)
+        paging._retain_window(self, request, window, paging._after_window(window))
         artifact_id, data, head, ends = paging._store_window(self, window, paging._input(request), None)
 
         def after(n: int) -> dict[str, Any] | None:

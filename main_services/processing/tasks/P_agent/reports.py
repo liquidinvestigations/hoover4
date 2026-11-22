@@ -423,6 +423,11 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
         entries = _item_citations(parsed, error)
     elif tool_name == "cite_documents":
         entries = _citations(parsed, args, doc_refs, error)
+    elif tool_name == "execute" and isinstance(parsed, dict):
+        entries = []
+        for receipt in parsed.get("receipts", []):
+            if isinstance(receipt, dict) and receipt.get("tool") in {"cite_pages", "cite_documents"}:
+                entries.extend(normalize(receipt["tool"], {}, json.dumps(receipt), receipt.get("status", "error")))
     elif tool_name == "write_note":
         entries = _note(parsed, error)
     elif error:
@@ -605,4 +610,36 @@ def session_citation_entries(username: str, session_id: str) -> list[dict]:
             for message in messages:
                 entries = message_evidence(message)
                 out.extend(e for e in entries if e.get("kind") == KIND_CITATION)
+    out.extend(_code_citation_entries(username, session_id))
     return out
+
+
+def _code_citation_entries(username: str, session_id: str) -> list[dict]:
+    """Read citation receipts that the program saved before its report mutation."""
+    from database.clickhouse import get_global_client
+    from database.s3 import SYSTEM_BUCKET, get_s3_client
+
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT tool_name, body_key FROM chat_artifacts FINAL "
+            "WHERE username = {owner:String} AND session_id = {session:String} "
+            "AND kind = 'workspace_code_citation' AND is_deleted = 0 AND status = 'ok' "
+            "AND body_bytes <= 1048576 ORDER BY created_at, artifact_id",
+            parameters={"owner": username, "session": session_id},
+        ).result_rows
+    if not rows:
+        return []
+    store = get_s3_client()
+    evidence = []
+    for tool, key in rows:
+        if tool not in {"cite_documents", "cite_pages"}:
+            continue
+        response = store.get_object(SYSTEM_BUCKET, key)
+        try:
+            body = response.read().decode("utf-8")
+        finally:
+            response.close()
+            response.release_conn()
+        evidence.extend(entry for entry in normalize(tool, {}, body, "ok")
+                        if entry.get("kind") == KIND_CITATION)
+    return evidence

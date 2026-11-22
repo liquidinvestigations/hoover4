@@ -66,6 +66,7 @@ services:
       # registered source silently never runs. The server's own default is derived from
       # the registry, and a list written out by hand cannot be.
       - METASEARCH_SOURCES=${METASEARCH_SOURCES:-}
+      - RESEARCH_CACHE_REDIS_URL=${RESEARCH_CACHE_REDIS_URL:-redis://redis:6379/0}
       - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
       # GDELT answers in ten to twelve seconds even when it answers 429, so it carries its
       # own deadline. It must stay under the overall one, which bounds the fan-out anyway.

@@ -138,3 +138,10 @@ Read supporting text when the passage does not answer the question.
 {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Find saved text with {{ tool('workspace_search') }} and prefix "sources/collections/".
+Use the returned path, version, start and end as a citation evidence span.
+Save the claim with its verified handle.
+{% endif %}

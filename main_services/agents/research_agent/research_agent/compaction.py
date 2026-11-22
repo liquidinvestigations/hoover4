@@ -138,8 +138,7 @@ such a fact, whole and word for word, in quotation marks. After the quote, give 
 of the result that holds it, in this form: [source: collection name, first 16 characters of \
 the file hash, path] or [source: URL] or [source: report]. Do not shorten a quote and do \
 not merge two sources. Copy every number, date, name, \
-amount, count and identifier exactly. Include each note that the agent saved with \
-`write_note`. Read every `read_page` result at the end of the history below. Keep every \
+amount, count and identifier exactly. Preserve saved result paths and file versions. Keep every \
 finding that answers its call's goal, including each numbered clause, with its URL.
 
 ## Contradictions

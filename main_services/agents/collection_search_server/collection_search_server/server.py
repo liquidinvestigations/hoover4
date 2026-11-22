@@ -53,6 +53,7 @@ from collection_search_server.citations import (
     QUOTE_REASON_SHORT,
     quote_match_in_pages,
 )
+from collection_search_server.backend_client import AgentRequest, BackendClient, DocumentsReadRequest
 from collection_search_server.backends import (
     manticore_query_options,
     GLOBAL_DB,
@@ -1407,13 +1408,21 @@ def _structured_entities(
     ]
 
 
+class DocumentEvidence(BaseModel):
+    path: str
+    version: str
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+
+
 class Citation(BaseModel):
     """One document the agent is putting forward as evidence for one point."""
 
     model_config = ConfigDict(extra="forbid")
 
-    collection: str = Field(description="Copy the collection from the document result.")
-    file_hash: str = Field(description="Copy the hash from the same document result.")
+    collection: str = Field(default="", description="Copy the collection from the document result.")
+    file_hash: str = Field(default="", description="Copy the hash from the same document result.")
+    evidence: DocumentEvidence | None = Field(default=None, description="Select a span from a saved document read.")
     #: A span copied from the document, checked against its text before a handle is
     #: issued. Not a paraphrase: the check is what makes the difference between a
     #: citation and a claim.
@@ -1555,12 +1564,17 @@ def cite_documents(citations: Annotated[list[Citation] | str, Field(description=
         parsed = parsed[:MAX_CITATIONS_PER_CALL]
 
     session = _session_id()
+    saved_acl = acl
+    if any(citation.evidence is not None for citation in parsed):
+        allowed = BackendClient().post("collections/list", AgentRequest())
+        permitted = {row.get("collectionname") for row in allowed.get("collections", [])} if isinstance(allowed, dict) else set()
+        saved_acl = CallerAcl(acl.username, tuple(name for name in acl.collections if name in permitted))
     results: list[CitationResult] = []
     short = 0
     absent = 0
     lookup_failed = 0
     for citation in parsed:
-        result = _cite_one(acl, session, citation)
+        result = _cite_one(saved_acl if citation.evidence else acl, session, citation)
         if result.quote_reason == QUOTE_REASON_SHORT:
             short += 1
         elif result.quote_reason == QUOTE_REASON_ABSENT:
@@ -1693,6 +1707,34 @@ def _first_and_rest(pages):
 
 
 def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResult:
+    bound_source = None
+    if citation.evidence is not None:
+        from agent_common import workspace_results
+
+        span = citation.evidence
+        try:
+            entry, text = workspace_results.read(acl.username, session, list(acl.collections),
+                                                 span.path, span.version)
+            if entry.tool != "read_documents" or not entry.source or not 0 <= span.start < span.end <= len(text):
+                raise ValueError("The evidence positions are outside the saved document.")
+            quote = text[span.start:span.end]
+            bound_source = entry.source
+            text_range = bound_source.get("text_range") or {}
+            offset = text_range.get("start", 0) + span.start
+            current = BackendClient().post("documents/read", DocumentsReadRequest(
+                collectionname=bound_source["collection"], file_hash=[bound_source["file_hash"]],
+                source=bound_source.get("source"), page=bound_source.get("page"),
+                offset=offset, length=len(quote), expected_source=bound_source.get("source_version"),
+            ))
+            documents = current.get("documents", []) if isinstance(current, dict) else []
+            if not any(document.get("text") == quote for document in documents):
+                raise ValueError("The saved span does not match the current document version.")
+            citation = citation.model_copy(update={
+                "collection": bound_source["collection"], "file_hash": bound_source["file_hash"],
+                "quote": quote, "evidence": None,
+            })
+        except (ValueError, LookupError, PermissionError) as exc:
+            return CitationResult(error=str(exc))
     result = CitationResult(
         collectionname=citation.collection,
         file_hash=citation.file_hash,
@@ -1725,6 +1767,8 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
 
     def page_texts():
         for source, page, text in _extracted_page_rows(citation.collection, citation.file_hash, dataset):
+            if bound_source and (source != bound_source.get("source") or page != bound_source.get("page")):
+                continue
             matched_page.update(source=source, page=max(1, page))
             yield text
 
@@ -1736,6 +1780,8 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
             params={"hash": citation.file_hash},
         )
         dataset = (path_rows[0].get("collection_dataset") or "") if path_rows else ""
+        if bound_source and bound_source.get("dataset"):
+            dataset = bound_source["dataset"]
         has_text, pages = _first_and_rest(
             page_texts()
         )

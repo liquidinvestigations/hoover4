@@ -277,6 +277,7 @@ DEFAULTS = {
         "llm_streaming": "",
         # Empty keeps the compaction trigger fraction of the agent.
         "agent_compaction_fraction": "",
+        "agent_result_character_limit": "15000",
         "mcp_browser_mem_limit": "24G",
         "full_research_agent_workers": "4",
         # Three internet-facing MCP servers: browser, metasearch, whois. Off means
@@ -1978,6 +1979,7 @@ def render_main_env(cfg, reachable_host=None):
     env["METASEARCH_TOR_ROUTES"] = routes
     env["READ_PAGE_TOR_PROXIES"] = routes
     env["AGENT_PACKS_CHAT"] = cfg.get(m, "agent_packs_chat") or "all"
+    env["AGENT_RESULT_CHARACTER_LIMIT"] = cfg.get(m, "agent_result_character_limit")
     env.update(agent_probe_env(cfg))
     env.update(agent_model_env(cfg))
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")

@@ -9,6 +9,7 @@ dependencies = [
     # server reads the caller's headers.
     "fastmcp>=2.12,<3",
     "pydantic>=2.0",
+    "regex>=2024.11.6",
     # The store this server wraps talks to ClickHouse through the same driver the
     # pipeline uses, because it is the same module -- see the Dockerfile.
     "clickhouse-connect>=0.10.0",

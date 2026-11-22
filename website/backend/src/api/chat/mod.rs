@@ -264,6 +264,103 @@ pub async fn workspace_version(
         .ok_or_else(|| anyhow::anyhow!("the workspace has no file {name}"))
 }
 
+async fn capture_source_readable(
+    user: &CurrentUser, group: &str, detail: &serde_json::Value,
+) -> anyhow::Result<bool> {
+    let Some(source) = detail.get("source") else { return Ok(true); };
+    if let Some(items) = source.get("items").and_then(|v| v.as_array()) {
+        for item in items {
+            if !capture_item_readable(user, group, item).await? {
+                return Ok(false);
+            }
+        }
+        return Ok(true);
+    }
+    if source.get("item_kind").is_none() {
+        return Ok(true);
+    }
+    capture_item_readable(user, group, source).await
+}
+
+async fn capture_item_readable(
+    user: &CurrentUser, group: &str, source: &serde_json::Value,
+) -> anyhow::Result<bool> {
+    let Some(kind) = source.get("item_kind").and_then(|v| v.as_str()) else { return Ok(false); };
+    let Some(id) = source.get("item_id").and_then(|v| v.as_str()) else { return Ok(false); };
+    match kind {
+        "chat" => {
+            let Some(chat) = db_chat::get_session_by_id(id).await? else { return Ok(false); };
+            Ok(item_access::in_run_group(group, &chat.owner_group)
+                && item_access::access(user, &chat.owner_group, &chat.username).await?.read)
+        }
+        "board" => {
+            match crate::api::boards::board_for_agent(user, id).await? {
+                item_access::ItemLookup::Readable(board) =>
+                    Ok(item_access::in_run_group(group, &board.board.owner_group)),
+                _ => Ok(false),
+            }
+        }
+        _ => Ok(false),
+    }
+}
+
+pub async fn workspace_captures(
+    user: &CurrentUser, session_id: String, sources: bool, cursor: String,
+) -> anyhow::Result<common::chat_types::WorkspaceCapturePage> {
+    use common::chat_types::{WorkspaceCapture, WorkspaceCapturePage};
+    let session = readable_session(user, &session_id).await?;
+    let collections = item_access::shared_collections(user, &session.owner_group).await?;
+    let rows = db_chat::workspace::captures(&session.username, &session_id, &collections, &cursor, sources).await?;
+    let next_cursor = rows.get(25).map(|_| rows[24].artifact_id.clone());
+    let mut entries = Vec::new();
+    for row in rows.into_iter().take(25) {
+        let Ok(detail) = serde_json::from_str::<serde_json::Value>(&row.detail) else { continue; };
+        let Some(version) = detail.get("version").and_then(|v| v.as_str()) else { continue; };
+        if !capture_source_readable(user, &session.owner_group, &detail).await? {
+            continue;
+        }
+        let group = db_chat::workspace::capture_group(&row.kind, &row.tool_name);
+        entries.push(WorkspaceCapture { path: format!("{group}/{}", row.artifact_id), version: version.to_owned(),
+            title: if row.title.is_empty() { row.tool_name } else { row.title } });
+    }
+    Ok(WorkspaceCapturePage { entries, next_cursor })
+}
+
+pub async fn workspace_capture(
+    user: &CurrentUser, session_id: String, path: String, offset: usize,
+) -> anyhow::Result<common::chat_types::WorkspaceCaptureRead> {
+    use common::chat_types::WorkspaceCaptureRead;
+    let session = readable_session(user, &session_id).await?;
+    let Some((group, artifact_id)) = path.rsplit_once('/') else {
+        anyhow::bail!("saved result not found");
+    };
+    let Some(row) = db_chat::artifacts::get_artifact(artifact_id).await? else {
+        anyhow::bail!("saved result not found");
+    };
+    if row.session_id != session_id || row.username != session.username || row.status != "ok"
+        || !matches!(row.kind.as_str(), "workspace_result" | "web_page_text")
+        || group != db_chat::workspace::capture_group(&row.kind, &row.tool_name)
+        || !artifact_readable(user, &row).await? {
+        anyhow::bail!("saved result not found");
+    }
+    let detail: serde_json::Value = serde_json::from_str(&row.detail)?;
+    let version = detail.get("version").and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("saved result version not found"))?.to_owned();
+    let body = crate::server_extra::chat_artifact::fetch_artifact_object(&row.body_key).await?;
+    let body = String::from_utf8(body)?;
+    let web: serde_json::Value;
+    let text = if row.kind == "web_page_text" {
+        web = serde_json::from_str(&body)?;
+        web.get("markdown").and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("saved page text not found"))?
+    } else {
+        &body
+    };
+    let mut page = text.chars().skip(offset).take(10001).collect::<Vec<_>>();
+    let next_offset = if page.len() > 10000 { page.pop(); offset.checked_add(10000) } else { None };
+    Ok(WorkspaceCaptureRead { path, version, text: page.into_iter().collect(), next_offset })
+}
+
 /// The refusal of a delete by a member who did not create the item.
 pub const ONLY_CREATOR_DELETES: &str = "Only the creator or an administrator can delete it.";
 
@@ -317,15 +414,26 @@ pub async fn get_chat_artifact_detail(
 /// True when the caller may read the artifact: an administrator, or a member of the group of
 /// the chat of the artifact.
 pub async fn artifact_readable(user: &CurrentUser, row: &db_chat::artifacts::ChatArtifactRow) -> anyhow::Result<bool> {
-    if user.is_admin {
-        return Ok(true);
+    let Some(session) = db_chat::get_session_by_id(&row.session_id).await? else {
+        return Ok(false);
+    };
+    if session.username != row.username || (!user.is_admin
+        && !item_access::access(user, &session.owner_group, &session.username).await?.read) {
+        return Ok(false);
     }
-    match db_chat::get_session_by_id(&row.session_id).await? {
-        Some(session) if session.username == row.username => {
-            Ok(item_access::access(user, &session.owner_group, &session.username).await?.read)
+    if row.kind == "workspace_result" {
+        let detail: serde_json::Value = serde_json::from_str(&row.detail)?;
+        let wanted: Vec<String> = serde_json::from_value(
+            detail.get("collections").cloned().unwrap_or_else(|| serde_json::json!([])))?;
+        if !capture_source_readable(user, &session.owner_group, &detail).await? {
+            return Ok(false);
         }
-        _ => Ok(false),
+        if !wanted.is_empty() {
+            let allowed = item_access::shared_collections(user, &session.owner_group).await?;
+            return Ok(wanted.iter().all(|name| allowed.contains(name)));
+        }
     }
+    Ok(true)
 }
 
 /// Change which collections a conversation searches. Every member of the group can change

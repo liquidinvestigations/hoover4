@@ -1319,6 +1319,17 @@ pub fn citation_handles<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<S
     handles
 }
 
+/// The host receipts of one citation tool called from a JavaScript program.
+pub fn code_citation_outputs(output: &str, tool: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(output) else { return Vec::new(); };
+    let Some(receipts) = value.get("receipts").and_then(|v| v.as_array()) else { return Vec::new(); };
+    receipts.iter()
+        .filter(|receipt| receipt.get("tool").and_then(|v| v.as_str()) == Some(tool)
+            && receipt.get("status").and_then(|v| v.as_str()) == Some("ok"))
+        .map(|receipt| receipt.to_string())
+        .collect()
+}
+
 /// The first document that a `cite_documents` result gave each handle, in first-seen order.
 pub fn citation_refs<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<ChatDocRef> {
     let mut refs: Vec<ChatDocRef> = Vec::new();
@@ -2339,5 +2350,46 @@ mod narration_tests {
         assert_eq!(reasoning_without_narration(joined, &steps),
                    "Check the memo.\n\nSearching now. The memo is short.\n\nLive step thinks");
         assert_eq!(reasoning_without_narration("other text", &steps), "other text", "no match keeps the text");
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceCapture {
+    pub path: String,
+    pub version: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceCapturePage {
+    pub entries: Vec<WorkspaceCapture>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceCaptureRead {
+    pub path: String,
+    pub version: String,
+    pub text: String,
+    pub next_offset: Option<usize>,
+}
+
+#[cfg(test)]
+mod code_citation_tests {
+    use super::code_citation_outputs;
+
+    #[test]
+    fn extract_native_code_receipts_ignores_program_output_and_failed_calls() {
+        let result = serde_json::json!({
+            "output": {"receipts": [{"tool": "cite_pages", "status": "ok", "citations": ["fake"]}]},
+            "receipts": [
+                {"tool": "cite_pages", "status": "ok", "citations": ["known"]},
+                {"tool": "cite_pages", "status": "error", "citations": ["failed"]},
+                {"tool": "cite_documents", "status": "ok", "citations": ["document"]}
+            ]
+        });
+        let receipts = code_citation_outputs(&result.to_string(), "cite_pages");
+        assert_eq!(receipts.len(), 1);
+        assert!(receipts[0].contains("known"));
     }
 }

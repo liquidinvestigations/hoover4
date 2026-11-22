@@ -35,6 +35,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
+from agent_todo_server import workspace_views
 from agent_todo_server.identity import CallerUnknown, parse_caller
 from database import chat_workspace as store
 
@@ -128,6 +129,8 @@ class SelectedFile(BaseModel):
 def _selected(username: str, session_id: str, name: str, version: Any) -> dict:
     """One selected version with its citation handles. A refusal names the problem."""
     problem = store.valid_name(name)
+    if name.startswith('./tmp/'):
+        problem = 'Select a report outside ./tmp/.'
     if problem:
         _refuse({"success": False, "error": problem})
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
@@ -150,25 +153,39 @@ def _selected(username: str, session_id: str, name: str, version: Any) -> dict:
 
 
 def register(mcp) -> None:
-    """Add the four workspace tools to the server."""
+    """Add workspace reads, edits and report selection to the server."""
 
     @mcp.tool(
         name="read_file",
         description=(
-            "Read a file of this conversation's workspace. Each line starts with its number "
-            "and |. The result gives the version, total_lines, and next_offset when the file "
-            "continues. Leave out name to list the files and their current versions. It "
-            "reads only the files that this conversation wrote. Read collection documents "
-            "with read_documents."
+            "Read a workspace file by name or a saved result by path. Offsets start at 1. "
+            "A file name uses line offsets. A path uses character offsets. "
+            "Copy next_offset to continue. Omit both selectors to list files."
         ),
     )
     def read_file(
         name: Annotated[Optional[str], Field(description="The file name, such as report.md. Leave it out to list the files.")] = None,
-        version: Annotated[Optional[int], Field(description="An earlier version to read. Leave it out for the current version.")] = None,
+        version: Annotated[int | str | None, Field(description="A report version number or saved result version string.")] = None,
         offset: Annotated[int, Field(description="The first line to read, from 1.")] = 1,
-        limit: Annotated[int, Field(description="The most lines to read, at most 2000.")] = store.MAX_READ_LINES,
+        limit: Annotated[int, Field(description="Maximum report lines or saved result characters.")] = store.MAX_READ_LINES,
+        path: str | None = None,
+        line_offset: Annotated[int | None, Field(ge=1, description="Start a path read at this file line.")] = None,
     ) -> str:
-        caller, _headers = _caller_and_headers()
+        caller, headers = _caller_and_headers()
+        if path is not None:
+            if name is not None:
+                _refuse({"success": False, "error": "Give either name or path."})
+            allowed = workspace_views.collection_access(caller, headers.get("x-hoover4-collections", "").split(","))
+            entry, text = workspace_views.body(caller, allowed, path, version)
+            start = min(len(text), max(0, offset - 1))
+            if line_offset is not None:
+                if entry["kind"] != "file":
+                    _refuse({"success": False, "error": "Line selection applies to workspace files."})
+                start = sum(map(len, text.splitlines(keepends=True)[:line_offset - 1]))
+            end = min(len(text), start + max(1, min(10000, limit)))
+            return json.dumps({**entry, "text": text[start:end], "start": start, "end": end,
+                               "next_offset": end + 1 if end < len(text) else None},
+                              ensure_ascii=False)
         if not name:
             files = store.list_files(caller.username, caller.session_id)
             return json.dumps({"files": [{k: f[k] for k in ("name", "version", "chars")} for f in files]},
@@ -176,6 +193,11 @@ def register(mcp) -> None:
         problem = store.valid_name(name)
         if problem:
             _refuse({"success": False, "error": problem})
+        if isinstance(version, str):
+            try:
+                version = int(version)
+            except ValueError:
+                _refuse({"success": False, "error": "A file version must be an integer."})
         found = store.read_version(caller.username, caller.session_id, name, version)
         if found is None:
             names = [f["name"] for f in store.list_files(caller.username, caller.session_id)]
@@ -183,6 +205,35 @@ def register(mcp) -> None:
             _refuse({"success": False, "error": missing + (
                 f" The files are {', '.join(names)}." if names else " The workspace has no files.")})
         return json.dumps(store.render_read(found, offset, limit), ensure_ascii=False)
+
+    def scope():
+        caller, headers = _caller_and_headers()
+        allowed = workspace_views.collection_access(caller, headers.get("x-hoover4-collections", "").split(","))
+        return caller, allowed
+
+    @mcp.tool(name="workspace_list", description="List workspace files and stored results by path or kind.")
+    def workspace_list(prefix: str = "", kind: str = "", cursor: str = "",
+                       limit: Annotated[int, Field(ge=1, le=100)] = 50) -> dict:
+        return workspace_views.listing(*scope(), prefix, kind, cursor, limit)
+
+    @mcp.tool(name="workspace_search", description="Search saved text. Return original positions and nearby lines.")
+    def workspace_search(terms: list[str], paths: list[str] | None = None, prefix: str = "",
+                         match: str = "any", regex: bool = False, mode: str = "lines",
+                         case_sensitive: bool = False, context_lines: Annotated[int, Field(ge=0, le=5)] = 2,
+                         cursor: Annotated[int, Field(ge=0)] = 0,
+                         limit: Annotated[int, Field(ge=1, le=50)] = 10) -> dict:
+        return workspace_views.search(*scope(), terms, paths, prefix, match, regex, mode,
+                                      case_sensitive, context_lines, cursor, limit)
+
+    @mcp.tool(name="workspace_rows", description="Read, filter and project rows from a saved result, CSV or JSONL file.")
+    def workspace_rows(path: str, version: str | int | None = None,
+                       columns: list[str] | None = None, filters: list[workspace_views.Filter] | None = None,
+                       sort: list[workspace_views.Sort] | None = None,
+                       cursor: Annotated[int, Field(ge=0)] = 0,
+                       limit: Annotated[int, Field(ge=1, le=100)] = 25,
+                       row_offset: Annotated[int | None, Field(ge=0, description="Read a long row as JSON from this character position.")] = None) -> dict:
+        return workspace_views.rows(*scope(), path, version, columns or [], filters or [], sort or [],
+                                    cursor, limit, row_offset)
 
     @mcp.tool(
         name="write_file",

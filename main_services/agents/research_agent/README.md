@@ -418,10 +418,8 @@ Three properties hold.
 what the agent read, so the worker adds one line to the answer (`summarised` of
 `model_turn`). A failed summary sets no such line.
 
-**The notes tool.** `note_tools.py` gives the tool `write_note` (`text`, 1 to 2,000
-characters). It returns `{"saved": n, "note": text}`, where `n` counts the notes that the
-step context of the run saved. It is in the `skills` pack. A note in the prefix goes to the
-summary request, and the summary prompt asks for each note.
+Save working details in checklist files. Historical note results stay in the transcript.
+The compaction request preserves saved result paths and file versions.
 
 Every compaction writes a `chat_compactions` row: the record whole, the citation handles in
 the list, the list after, the trigger and its window, and the token counts before and after.

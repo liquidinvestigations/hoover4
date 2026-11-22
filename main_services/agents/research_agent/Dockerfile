@@ -38,7 +38,11 @@ ENV PYTHONUNBUFFERED=1 \
     VENV_PATH="/opt/pysetup/.venv"
 ENV PATH="$VENV_PATH/bin:$PATH"
 
+RUN apt-get update && apt-get install --no-install-recommends -y nodejs npm \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+COPY research_agent/package.json research_agent/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund --ignore-scripts
 COPY --from=builder $VENV_PATH $VENV_PATH
 COPY research_agent/pyproject.toml ./
 COPY research_agent/research_agent/ ./research_agent/
@@ -47,7 +51,7 @@ COPY research_agent/main.py ./
 COPY research_agent/README.md ./
 
 # Install requests for health check
-RUN pip install requests
+RUN pip install requests 'minio>=7.2,<8'
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

@@ -74,7 +74,8 @@ def valid_name(name: str) -> str:
         return "Give the file a name, such as report.md."
     if len(name) > MAX_NAME_CHARS:
         return f"A file name has at most {MAX_NAME_CHARS} characters."
-    if not NAME_PATTERN.fullmatch(name) or ".." in name:
+    basename = name.removeprefix("./tmp/")
+    if not NAME_PATTERN.fullmatch(basename) or ".." in basename:
         return ("A file name holds letters, digits, dots, dashes and underscores, starts with a "
                 "letter or a digit, and holds no folder, such as report.md.")
     return ""

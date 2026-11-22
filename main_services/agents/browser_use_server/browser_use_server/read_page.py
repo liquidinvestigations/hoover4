@@ -65,6 +65,7 @@ import logging
 import os
 import re
 import time
+import weakref
 from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import urlsplit
@@ -171,8 +172,10 @@ PDF_SLICE_BYTES = 1024 * 1024
 _PDF_SLICE_JS = """
 async () => {
   if (!window.__h4pdf) {
-    const response = await fetch(location.href);
+    const response = await fetch(location.href, { credentials: 'omit', redirect: 'error' });
+    if (!response.ok || response.status !== 200) throw Error('The PDF response is incomplete.');
     window.__h4pdf = new Uint8Array(await response.arrayBuffer());
+    window.__h4pdfHeaders = Object.fromEntries(response.headers.entries());
   }
   const all = window.__h4pdf;
   const part = all.subarray(START, Math.min(all.length, START + SIZE));
@@ -180,7 +183,7 @@ async () => {
   for (let i = 0; i < part.length; i += 32768) {
     binary += String.fromCharCode.apply(null, part.subarray(i, i + 32768));
   }
-  return JSON.stringify({ text: btoa(binary), total: all.length, url: location.href });
+  return JSON.stringify({ text: btoa(binary), total: all.length, url: location.href, headers: START === 0 ? window.__h4pdfHeaders : null });
 }
 """
 
@@ -194,6 +197,15 @@ class PageRead:
                      "unavailable", "extension_block", "timeout", "transport_error"] = "content"
     status: int = 0
     retry_after_s: float = 0
+    public_response: bool = False
+    public_lifetime: float | None = None
+    public_chain: tuple[str, ...] = ()
+    shared_body: bytes | None = None
+    shared_thumb: bytes | None = None
+    pdf_data: bytes | None = None
+    pdf_artifact: str = ""
+    saved_id: str = ""
+    read_ns: int = 0
     challenge_signal: bool = False
     diagnostics: list[dict] = field(default_factory=list)
     title: str = ""
@@ -250,7 +262,7 @@ def plan(raw_urls: object) -> tuple[list[str], list[str], list[str], str]:
     twenty-at-once call are turned into a plan and a sentence explaining it.
     """
     urls = batching.as_list(raw_urls)
-    kept, repeats = batching.dedupe(urls)
+    kept, repeats = batching.dedupe(urls, casefold=False)
     over_cap = kept[MAX_URLS:]
     to_read = kept[:MAX_URLS]
 
@@ -599,7 +611,7 @@ def fit(result: ReadResult, ceiling: int, reserved: int = 0) -> None:
 
 #: The fields of one kept read, by position in its cache entry. Position 3 is the text,
 #: which the reader pool's size bound reads.
-_KEPT = ("expires", "title", "final_url", "full_text", "version", "route", "image", "extent")
+_KEPT = ("expires", "title", "final_url", "full_text", "version", "route", "image", "extent", "saved_id", "read_ns", "chain")
 
 
 async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0,
@@ -634,6 +646,51 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
                 del chat.page_reads[old_url]
         cached = (chat.page_reads.get((url, links, page_start, version)) if version else None) or chat.page_reads.get((url, links, page_start))
         kept_url = url
+        if getattr(chat, "durable", False):
+            try:
+                await asyncio.to_thread(check_url, url)
+                if cached:
+                    await asyncio.to_thread(check_url, cached[2] or url)
+                    for hop in cached[10] if len(cached) > 10 else ():
+                        await asyncio.to_thread(check_url, hop)
+            except UrlNotAllowed as exc:
+                outcomes.append(PageRead(url=url, error=f"refused: {exc}", outcome="transport_error"))
+                continue
+            if not cached or (version and cached[4] != version):
+                try:
+                    from browser_use_server import page_citations
+                    stored = await asyncio.to_thread(
+                        page_citations.retained, username, chat.session_id, url, links, page_start, version,
+                    )
+                    if stored is not None:
+                        await asyncio.to_thread(check_url, stored["final_url"] or url)
+                        kept_url = stored["url"]
+                        chain = tuple(stored.get("chain", ()))
+                        for hop in chain:
+                            await asyncio.to_thread(check_url, hop)
+                        if not stored["artifact_id"]:
+                            derived = PageRead(
+                                url=kept_url, final_url=stored["final_url"], title=stored["title"],
+                                full_text=stored["markdown"], version=stored["version"],
+                                image=stored.get("image"), extent=stored["extent"],
+                                links=links, page_start=page_start, pdf_artifact=stored["pdf_artifact"],
+                                public_chain=chain, read_ns=stored["read_ns"],
+                            )
+                            stored["artifact_id"] = await asyncio.to_thread(
+                                page_citations.store_read, username, chat.session_id, derived,
+                            )
+                        cached = (now + KEEP_SECONDS, stored["title"], stored["final_url"], stored["markdown"],
+                                  stored["version"], stored.get("route", "direct"), stored.get("image"),
+                                  stored.get("extent", {}), stored["artifact_id"], stored["read_ns"], chain)
+                        chat.page_reads[(kept_url, links, page_start, stored["version"])] = cached
+                        if not version:
+                            chat.page_reads[(url, links, page_start)] = cached
+                        log.info("read_page cache workspace hit")
+                except UrlNotAllowed as exc:
+                    outcomes.append(PageRead(url=url, error=f"refused: {exc}", outcome="transport_error"))
+                    continue
+                except Exception:
+                    log.exception("could not open retained capture")
         if version and (not cached or cached[4] != version):
             # The final URL of a redirected read, with its version, names that kept read.
             alias = next((key for key, stored in chat.page_reads.items()
@@ -641,6 +698,14 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
                           and stored[2] == url and stored[4] == version), None)
             if alias is not None:
                 kept_url, cached = alias[0], chat.page_reads[alias]
+                if getattr(chat, "durable", False):
+                    try:
+                        chain = cached[10] if len(cached) > 10 else ()
+                        for hop in dict.fromkeys([kept_url, cached[2] or url, *chain]):
+                            await asyncio.to_thread(check_url, hop)
+                    except UrlNotAllowed as exc:
+                        outcomes.append(PageRead(url=url, error=f"refused: {exc}", outcome="transport_error"))
+                        continue
         if version and (not cached or cached[4] != version):
             page = PageRead(url=url, find=find, offset=offset)
             # The version can belong to another kept window of the same URL.
@@ -672,12 +737,13 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             page = PageRead(url=kept_url, title=kept["title"], final_url=kept["final_url"],
                             full_text=kept["full_text"], version=kept["version"],
                             route=kept.get("route") or "direct", page_start=page_start,
-                            extent=dict(kept.get("extent") or {}))
+                            extent=dict(kept.get("extent") or {}),
+                            saved_id=kept.get("saved_id") or "", read_ns=kept.get("read_ns") or 0)
             if screenshot and kept.get("image"):
                 page.image = dict(kept["image"])
         else:
             outcomes.append(asyncio.create_task(
-                _read_fresh(chat, url, goal, per_page, username, deadline, links=links,
+                _read_cache_miss(chat, url, goal, per_page, username, deadline, links=links,
                             page_start=page_start)))
             continue
         outcomes.append(page)
@@ -703,12 +769,9 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         else:
             page = outcome.result()
             valid_page(page)
-            if page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
+            if not page.error and page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
                 page.version = text_version(page.full_text, page.extent)
-                chat.page_reads[(url, links, page_start)] = (
-                    time.monotonic() + KEEP_SECONDS, page.title, page.final_url,
-                    page.full_text, page.version, page.route, page.image, dict(page.extent),
-                )
+                keep_page(chat, page, url, links, page_start)
         if page.error and page.outcome == "content":
             page.outcome = "transport_error"
         valid_page(page)
@@ -722,6 +785,8 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             page.find = find
             page.full_chars = len(page.full_text)
         page.page_start = page_start
+        if screenshot and page.full_text and not page.image:
+            page.note = batching.corrective_note(page.note, "This saved source has no screenshot.")
         if page.image and page.version:
             # The arguments that return this screenshot without a new navigation.
             page.image["retry_arguments"] = continuation_arguments(page, screenshot=True)
@@ -733,6 +798,67 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         if page.artifact:
             result.artifacts.append(page.artifact)
     return result
+
+
+def keep_page(chat, page, url, links, page_start):
+    key = (url, links, page_start)
+    entry = (time.monotonic() + KEEP_SECONDS, page.title, page.final_url, page.full_text,
+             page.version, page.route, page.image, dict(page.extent), page.saved_id, page.read_ns, page.public_chain)
+    previous = chat.page_reads.get(key)
+    if previous and len(previous) >= 10 and previous[9] > page.read_ns:
+        chat.page_reads[(*key, page.version)] = entry
+    else:
+        chat.page_reads[key] = entry
+
+
+_INFLIGHT = weakref.WeakValueDictionary()
+
+
+async def _read_cache_miss(chat, url, goal, limit, username, deadline, links=True, page_start=1):
+    async def fetch():
+        return await _read_fresh(chat, url, goal, limit, username, deadline, links=links,
+                                 page_start=page_start)
+
+    if not getattr(chat, "durable", False):
+        return await fetch()
+    from browser_use_server import page_citations, public_cache
+
+    cache_key = (url, links, page_start)
+    lock = _INFLIGHT.setdefault((username, chat.session_id, *cache_key), asyncio.Lock())
+    async with lock:
+        current = chat.page_reads.get(cache_key)
+        if current and current[0] > time.monotonic():
+            kept = dict(zip(_KEPT, current))
+            try:
+                await asyncio.to_thread(check_url, kept["final_url"] or url)
+                for hop in kept.get("chain", ()):
+                    await asyncio.to_thread(check_url, hop)
+            except UrlNotAllowed as exc:
+                return PageRead(url=url, error=f"refused: {exc}", outcome="transport_error")
+            return PageRead(
+                url=url, title=kept["title"], final_url=kept["final_url"], full_text=kept["full_text"],
+                version=kept["version"], route=kept.get("route") or "direct", links=links,
+                page_start=page_start, extent=dict(kept.get("extent") or {}),
+                saved_id=kept.get("saved_id") or "", read_ns=kept.get("read_ns") or 0,
+                image=dict(kept["image"]) if kept.get("image") else None,
+                public_chain=tuple(kept.get("chain", ())),
+            )
+        read_ns = time.time_ns()
+        page = await public_cache.read(url, links, page_start, deadline, fetch, check=check_url)
+        page.read_ns = read_ns
+        if page.full_text and not page.error and not page.blocked:
+            valid_page(page)
+            page.links = links
+            page.page_start = page_start
+            page.version = text_version(page.full_text, page.extent)
+            try:
+                await asyncio.to_thread(public_cache.copy_representation, page, username, chat.session_id)
+                page.saved_id = await asyncio.to_thread(page_citations.store_read, username, chat.session_id, page)
+                if page.saved_id and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
+                    keep_page(chat, page, url, links, page_start)
+            except Exception:
+                log.exception("could not retain captured page")
+        return page
 
 
 async def _read_one(chat, url: str, goal: str, limit: int, username: str,
@@ -769,6 +895,7 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str,
         return page
 
     first = await _probe(chat)
+    page.public_response = getattr(chat.client, "public_response", False)
     page.status = int((first or {}).get("status") or getattr(chat.client, "response_status", 0))
     page.retry_after_s = retry_after_seconds(getattr(chat.client, "retry_after", ""))
     page.challenge_signal = bool(first and first.get("check"))
@@ -801,6 +928,16 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str,
     if page.error and page.outcome == "content":
         page.outcome = "timeout" if "did not settle" in page.error else "transport_error"
 
+    policy = getattr(chat.client, "cache_policy", None)
+    if policy is not None:
+        page.public_chain, lifetime = policy(page.final_url)
+        page.public_lifetime = min(lifetime, page.public_lifetime if page.public_lifetime is not None else lifetime)
+        if navigated and not page.pdf_data:
+            page.public_lifetime = 0
+        for hop in page.public_chain:
+            if not await _validate_final(PageRead(url), hop):
+                page.public_lifetime = 0
+                break
     if capture_result:
         await _capture_read(chat, page, url, goal, username)
     return page
@@ -857,10 +994,14 @@ def _response_status(page: PageRead, payload: dict) -> None:
 
 async def _capture_read(chat, page, url, goal, username):
     """Capture the selected attempt with its caller ownership and explicit tab."""
+    if page.public_lifetime and not page.error:
+        chat.retain_public_assets = True
     captured = await capture_mod.capture(
         chat, "read_page", username, failed=bool(page.error),
         **({"tab": chat.tab} if getattr(chat, "tab", None) is not None else {})
     )
+    page.shared_body = getattr(captured, "shared_body", None)
+    page.shared_thumb = getattr(captured, "shared_thumb", None)
     if captured.artifact_id:
         entry = {
             "artifact_id": captured.artifact_id,
@@ -959,6 +1100,9 @@ async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe
         if payload is None:
             page.error = failure or "the PDF could not be fetched in the page"
             return
+        if not data and isinstance(payload.get("headers"), dict):
+            from browser_use_server.reader_client import public_cache_lifetime
+            page.public_lifetime = public_cache_lifetime(payload["headers"])
         chunk = base64.b64decode(str(payload.get("text") or ""))
         total = int(payload.get("total") or 0)
         if total > PDF_MAX_BYTES:
@@ -971,7 +1115,12 @@ async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe
         data.extend(chunk)
         if not chunk or len(data) >= total:
             break
-    title, text, error, extent = await asyncio.to_thread(pdf_text, bytes(data), page_start)
+    if len(data) != total or not total:
+        page.error = "The PDF response is incomplete."
+        return
+    page.pdf_data = bytes(data)
+    page.status = 200
+    title, text, error, extent = await asyncio.to_thread(pdf_text, page.pdf_data, page_start)
     page.title = title
     page.extent = extent
     if error:

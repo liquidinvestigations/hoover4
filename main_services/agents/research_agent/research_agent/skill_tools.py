@@ -107,10 +107,7 @@ def read_tool_result(name: str, snapshot: Any) -> Dict[str, Any]:
     return {
         "tool": name,
         "description": localize_text((getattr(tool, "description", "") or "").strip(), language),
-        "parameters": {
-            "properties": localize_schema(schema.get("properties") or {}, language),
-            "required": list(schema.get("required") or []),
-        },
+        "parameters": localize_schema(schema, language),
     }
 
 
