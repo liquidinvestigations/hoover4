@@ -129,7 +129,7 @@ Read several web pages concurrently through a separate bounded reader queue. Kee
 
 Source ownership uses [main_services/processing/tasks/P_agent](../../main_services/processing/tasks/P_agent), [website/backend/src/api/chat](../../website/backend/src/api/chat), [website/frontend/src/components/chat_components](../../website/frontend/src/components/chat_components).
 
-An ordinary page read checks scoped memory and compatible stored page text before the origin. Store page text within the chat for later reads and citations. A public cache entry expires within 168 hours of the origin fetch. Honor shorter HTTP freshness limits. Copy the available representations into the receiving chat. Recheck each address in the recorded redirect chain before reuse. Keep complete PDF bytes with the chat when available. Use those bytes to read another PDF window. Live browser navigation and reload reach the site through the run's browser. Search reuse stays within the chat. An explicit refresh calls the providers.
+An ordinary page read checks scoped memory and compatible stored page text before the origin. Store page text within the chat for later reads and citations. A public cache entry expires within 168 hours of the origin fetch. Honor shorter HTTP freshness limits. Copy the available representations into the receiving chat. Recheck each address in the recorded redirect chain before reuse. Keep complete PDF bytes with the chat when available. Use those bytes to read another PDF window. Live browser navigation and reload reach the site through the run's browser. The browser handles `F5`, `Control+r` and `Meta+r` as reloads that bypass its cache. Search reuse stays within the chat. An explicit refresh calls the providers.
 
 
 ## F-chat-07

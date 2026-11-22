@@ -11,6 +11,8 @@ Page reads use a separate reader browser and bounded tab queue.
 Metasearch source fetches use another browser and bounded tab queue.
 Interactive browser calls retain their own run locks and browser limit.
 A stalled page read does not occupy an interactive browser.
+The browser reloads the current page when `browser_press_key` receives `F5`, `Control+r`, or `Meta+r`.
+It bypasses the browser cache and saves the new observation in the chat.
 
 | Setting | Default | Behavior |
 |---|---|---|
@@ -49,9 +51,9 @@ HTTP error pages and unresolved bot checks provide no source text.
 Each URL reports its own failure without discarding completed reads.
 
 The reader retains text for versioned offset and literal-find continuations.
-Cache entries belong to one caller and agent run.
-A global character limit bounds the retained text across callers.
-The cache also preserves the selected route and link mode.
+Compatible captures stay available in the caller's chat.
+The public cache can reuse eligible captures in a different chat for up to seven days.
+The reader preserves the route and matches the requested link mode when it opens a capture.
 PDF reads retain the page and byte limits defined in `read_page.py`.
 One PDF read extracts at most 50 pages, from the `page_start` argument.
 The result, a find result and the stored capture name the extracted pages and the page count.

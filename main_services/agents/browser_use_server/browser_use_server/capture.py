@@ -144,7 +144,7 @@ async def _capture(
     chat: ChatBrowser, tool_name: str, username: str, failed: bool, *, tab=None
 ) -> CaptureResult:
     if tab is None:
-        tab = await _active_tab(chat)
+        tab = await active_tab(chat)
     if tab is None:
         return CaptureResult(status=artifacts.STATUS_FAILED, detail="no active page")
 
@@ -245,7 +245,7 @@ async def _capture(
 
 # ------------------------------------------------------------------ CDP calls
 
-async def _active_tab(chat: ChatBrowser):
+async def active_tab(chat: ChatBrowser):
     """The tab the sidecar is driving.
 
     nodriver's `browser.tabs` is ordered by creation, and Playwright works on the last

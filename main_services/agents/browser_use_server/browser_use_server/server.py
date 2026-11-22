@@ -131,6 +131,35 @@ def _refusal(message: str) -> ToolResult:
     )
 
 
+def _is_reload(tool_name: str, arguments: dict[str, Any]) -> bool:
+    return tool_name == "browser_press_key" and str(arguments.get("key", "")).casefold() in {
+        "f5", "control+r", "meta+r",
+    }
+
+
+async def _reload_page(chat: chat_browser.ChatBrowser) -> ToolResult:
+    """Reload through CDP because Playwright sends key presses only to the page."""
+    from nodriver import cdp
+
+    tab = await capture_mod.active_tab(chat)
+    if tab is None:
+        raise RuntimeError("The browser has no page to reload.")
+    loaded = asyncio.Event()
+
+    def on_loaded(_event) -> None:
+        loaded.set()
+
+    tab.add_handler(cdp.page.DomContentEventFired, on_loaded)
+    try:
+        async with asyncio.timeout(chat_browser.NAV_TIMEOUT_MS / 1000):
+            await tab.send(cdp.page.enable())
+            await tab.reload(ignore_cache=True)
+            await loaded.wait()
+    finally:
+        tab.remove_handler(cdp.page.DomContentEventFired, on_loaded)
+    return ToolResult(content=[TextContent(type="text", text="Reloaded the current page.")])
+
+
 class RoutedTool(Tool):
     """One of the sidecar's tools, re-exposed here with routing, checks and capture.
 
@@ -142,6 +171,7 @@ class RoutedTool(Tool):
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         tool_name = self.name
+        reload = _is_reload(tool_name, arguments)
 
         # 1. The security boundary, before anything is dispatched.
         try:
@@ -178,12 +208,10 @@ class RoutedTool(Tool):
             result = _loading_note(tool_name, result)
 
             captured = None
-            if capture_mod.should_capture(tool_name):
+            if capture_mod.should_capture(tool_name) or reload:
                 captured = await capture_mod.capture(chat, tool_name, username, failed=failed)
             result = _attach_artifact(result, captured, failed=failed)
-            if not failed and (tool_name == "browser_navigate" or (
-                    tool_name == "browser_press_key"
-                    and str(arguments.get("key", "")).casefold() in {"f5", "control+r", "meta+r"})):
+            if not failed and (tool_name == "browser_navigate" or reload):
                 retained = await _retain_live_page(chat, username, _header(SESSION_HEADER), captured)
                 if retained is not None:
                     result.content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
@@ -199,7 +227,7 @@ class RoutedTool(Tool):
     async def _forward(
         self, chat, tool_name: str, arguments: dict[str, Any]
     ) -> tuple[ToolResult, bool]:
-        """Call the sidecar once. A sidecar that died before the call starts again first.
+        """Send one browser action. Restart an unavailable sidecar before the call.
 
         A call that raises restarts the sidecar for the next call and returns an error.
         The router sends no second call: the worker's `tool_call` activity is the only
@@ -212,7 +240,10 @@ class RoutedTool(Tool):
         if tool_name == "browser_snapshot":
             arguments = {key: value for key, value in arguments.items() if key != "filename"}
         try:
-            call = await chat.client.call_tool(tool_name, arguments, raise_on_error=False)
+            if _is_reload(tool_name, arguments):
+                call = await _reload_page(chat)
+            else:
+                call = await chat.client.call_tool(tool_name, arguments, raise_on_error=False)
         except Exception as exc:  # noqa: BLE001 - a dead sidecar looks like this
             log.warning("sidecar call %s failed: %s", tool_name, exc)
             await chat_browser.restart_sidecar(chat)

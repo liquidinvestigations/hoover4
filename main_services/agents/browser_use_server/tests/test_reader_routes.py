@@ -131,7 +131,7 @@ def test_explicit_capture_never_selects_another_parallel_tab(monkeypatch):
         return b"thumbnail"
     async def snapshot(tab):
         return b"snapshot"
-    monkeypatch.setattr(capture, "_active_tab", wrong_tab)
+    monkeypatch.setattr(capture, "active_tab", wrong_tab)
     monkeypatch.setattr(capture, "_page_identity", identity)
     monkeypatch.setattr(capture, "_screenshot", screenshot)
     monkeypatch.setattr(capture, "_snapshot_mhtml", snapshot)
