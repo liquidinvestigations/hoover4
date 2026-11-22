@@ -466,7 +466,8 @@ async def _prepare(request: ModelStepRequest, context: Any, system_text: str,
         schemas_json=schemas_json, model_id=context.model_id, window=window,
         measured=size.tokens, safe_input=size.safe_input, force=force,
         allow_oversized_newest=True, username=request.username,
-        collections=request.allowed_collections)
+        collections=request.allowed_collections,
+        workspace_state=workspace_state.compaction_inventory(request.workspace))
     report = None
     compacted = list(applied)
     sent_size = size.record()

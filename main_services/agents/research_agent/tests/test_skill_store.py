@@ -184,7 +184,8 @@ def test_the_internal_chat_lists_no_browser_and_no_web_skill():
 def test_todo_upkeep_shows_the_whole_list_with_statuses():
     text = normalised(render_skill("todo_upkeep", context("full_research")))
     assert "Send the whole list in every call, in order." in text
-    assert '{"text":"Find the message.","status":"done","note":"found"}' in text
+    assert all(name in text for name in ("current-board.csv", "former-board.csv", "us-roles.csv", "report.md"))
+    assert "current-board.csv v2 covers the full current roster" in text
     assert "Write a report or another file with `write_file`." in text
 
 

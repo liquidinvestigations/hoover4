@@ -109,7 +109,7 @@ EVICTION_PLACEHOLDER = (
 #: user message, and a later compaction replaces it.
 RECORD_HEADER = (
     "[Summary of earlier steps. Code wrote the lists of searches, sources and citations. "
-    "Read saved workspace files to recover their text. Read an unresolved passage before quoting it.]\n\n"
+    "Read an unresolved passage before quoting it.]\n\n"
 )
 #: The starts of the records of version 2 and version 1 rows.
 _V2_RECORD_HEAD = "[Record of earlier steps. Code wrote the lists"
@@ -866,7 +866,7 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
                     safe_input: int = 0, force: bool = False,
                     summary_window: Optional[int] = None,
                     allow_oversized_newest: bool = False, username: str = "",
-                    collections: Sequence[str] = ()) -> Optional[CompactionPlan]:
+                    collections: Sequence[str] = (), workspace_state: str = "") -> Optional[CompactionPlan]:
     """The plan of a compaction, with no model call. `None` when the trigger does not fire or
     no complete group is older than the newest one that must stay.
 
@@ -910,7 +910,7 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
                   for k in [_key(applied[i])] if k}
         visible = {k for m in applied if m.role == "tool"
                    for k in [_key(m)] if k and k not in hidden}
-        return thread_index.render(rows, visible_after=visible)
+        return "\n\n".join(filter(None, (workspace_state, thread_index.render(rows, visible_after=visible))))
 
     # A low trigger can make its fractional target smaller than the input that must stay.
     compulsory = fixed + header + newest + est.tokens_text(index_for(len(steps) - 1))
@@ -957,6 +957,8 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
     texts, extracts = fit_blocks(summary_blocks(applied, prefix),
                                  est.chars_for(max(0, budget - image_room - labels)))
     prompt = render_prompt(texts, task, SUMMARY_TOKENS, previous)
+    if workspace_state:
+        prompt += "\n\n" + workspace_state
     if replaced:
         index += ("\n\nImages that the summary replaces. Read the document or the page again "
                   "to see one:\n" + image_labels(replaced))

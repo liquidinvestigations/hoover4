@@ -6,11 +6,9 @@ The worker reads the files of the session from storage for each model step
 the sizes, and the read instructions. `with_inventory` adds that text to the newest message
 of the model input.
 
-The text is not stored in the thread and no compaction summary holds it, so a summary that
-omits a file cannot remove it from the next request. Each request renders it again from
-storage, so it shows the versions after the last write, also after a worker restart and on
-a later turn. Only the newest message holds it, so the input holds one copy. The step
-counts the text with the fixed input when it measures the request and plans a compaction.
+Each model request uses the current inventory from storage. A compaction also records
+the working files and versions available at the time of its summary. A later request
+can therefore show newer versions than the saved compaction record.
 
 The text gives no file content. The model reads a file with `read_file`.
 """
@@ -42,6 +40,15 @@ def inventory_text(files: Optional[Sequence[Dict[str, Any]]]) -> str:
                      "to list every file.")
     lines.append("Use read_file with a name to recover the current text.")
     return "\n".join(lines)
+
+
+def compaction_inventory(files: Optional[Sequence[Dict[str, Any]]]) -> str:
+    """Describe the non-scratch files at the time of compaction."""
+    if files is None:
+        return "At compaction the workspace inventory was unavailable."
+    if not files:
+        return "At compaction there were no saved working files. Source captures and citations are indexed separately."
+    return "Workspace at compaction:\n" + inventory_text(files)
 
 
 def with_inventory(messages: List[BaseMessage], text: str) -> List[BaseMessage]:

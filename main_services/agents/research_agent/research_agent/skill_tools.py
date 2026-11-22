@@ -104,7 +104,11 @@ def read_tool_result(name: str, snapshot: Any) -> Dict[str, Any]:
         return json.loads(_refusal("tool_unavailable", message))
     schema = tool_schema(tool)
     language = getattr(snapshot, "language", "en")
+    from research_agent.investigation_examples import examples_for
+
+    examples = examples_for(name, snapshot.tools_by_name) if language == "en" else {}
     return {
+        **({"examples": examples} if examples else {}),
         "tool": name,
         "description": localize_text((getattr(tool, "description", "") or "").strip(), language),
         "parameters": localize_schema(schema, language),

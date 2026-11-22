@@ -59,7 +59,7 @@ Read its schema with {{ tool('read_tool') }}.
 ```
 Then call {{ tool('update_plan') }} with goal and steps.
 ```json
-{"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]}
+{"goal":"Verify the approval date.","steps":[{"text":"Save the approval message date and verified citation in approvals.csv.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}

@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: how to keep the plan with update_plan, its steps and their statuses
+description: how to plan research by source, save cited datasets, and update progress
 tools: update_plan
 ---
 {# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
@@ -12,13 +12,19 @@ Keeping the plan
 
 1. Send the whole list in every call, in order. A step that you leave out is no longer in the plan.
 2. Give each step as an object with text and status. status is pending or done.
-3. A step is pending until its work ends. Then send it as done with a note, such as found, not found or replaced.
+3. A step is pending until its work ends. Then send it as done with a note, giving the saved version and coverage for a dataset.
 4. Keep the text of a step the same when only its status changes. The step then keeps its id.
 5. A new goal starts a new plan.
 6. {{ tool('update_plan') }} only keeps the plan. Write a report or another file with {{ tool('write_file') }}.
 
-This is an example. Step 1 found what you need, and step 2 is still open.
+For an investigation, name the source scope, destination file and completion condition in each step.
+Save each cited batch before collecting another. Verify candidates from the first saved batch.
+Keep missing evidence in the corresponding row. Deduplicate people when combining datasets.
+A saved page or a TODO note cannot substitute for the extracted rows.
+
+Example plan for a current and historical roster:
 ```json
-{"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]}
+{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Extract the current roster through its last entry into current-board.csv with membership citations.","status":"pending"},{"text":"Extract the former roster into former-board.csv with membership citations and known periods.","status":"pending"},{"text":"Check the saved candidates and record offices, evidence and unresolved cases in us-roles.csv.","status":"pending"},{"text":"Join the three CSVs into report.md with membership and office handles beside each supported row.","status":"pending"}]}
 ```
-The result shows the whole plan with the id of each step. A call that changes nothing returns unchanged. Correct the named field before you call again.
+Add a historical source when you identify a specific coverage gap. Keep the step pending while that source has unread entries.
+After a successful write, record the actual version. For example: “current-board.csv v2 covers the full current roster.”

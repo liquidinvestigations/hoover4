@@ -240,9 +240,12 @@ def tool_function(strict: bool):
 
 def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object]:
     """The names a skill body can read."""
+    from research_agent.investigation_examples import EXCHANGES
+
     names = ctx.tool_names
     artefact, resolver = ROLE_CONTEXT.get(ctx.profile, ROLE_CONTEXT[DEFAULT_PROFILE])
     return {
+        "example_exchanges": [item for item in EXCHANGES if item["tool"] in names],
         "has": lambda name: name in names,
         "tool": tool_function(strict),
         "web_enabled": "web_search" in names,

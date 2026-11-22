@@ -182,3 +182,20 @@ Use {{ tool('workspace_list') }} with prefix "sources/web/" to find saved page t
 Find the passage with {{ tool('workspace_search') }}. Pass its path, version, start and end as evidence to {{ tool('cite_pages') }}.
 Save the claim with the returned handle.
 {% endif %}
+
+{% if has('workspace_rows') and has('write_file') and has('cite_pages') %}
+Worked direct exchange for one person. The example shows the relevant response fields.
+Use the handles and versions from your own calls. Use patch_file for later batches in an existing file.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+{% if has('execute') %}
+This complete execute call illustrates a fresh workspace with one candidate. Use returned handles for each fact.
+```json
+{"language": "javascript", "code": "const sources = [\n  ['https://www.ned.org/about/board-of-directors/', 'Daniel Fried Veteran Diplomat', 'current-board.csv', 'board member'],\n  ['https://www.ned.org/experts/ambassador-daniel-fried/', 'ambassador to Poland', 'us-roles.csv', 'ambassador to Poland']\n];\nfor (const [url, term, file, fact] of sources) {\n  read_page({urls:[url]});\n  const hit = workspace_search({prefix:'sources/web/',terms:[term]}).matches.find(m => m.url === url);\n  if (!hit) return {unresolved:term};\n  const proof = cite_pages({url,version:hit.version,terms:[hit.text]}).citations?.find(c => c.quote_verified);\n  if (!proof) return {unresolved:term};\n  const saved = write_file({name:file,content:'person,fact,source\\nDaniel Fried,' + fact + ',' + proof.handle});\n  if (!saved.success) return saved;\n}\nconst member = workspace_rows({path:'current-board.csv'}).rows[0].values;\nconst role = workspace_rows({path:'us-roles.csv'}).rows.find(row => row.values.person === member.person)?.values;\nif (!role) return {unresolved:member.person};\nreturn write_file({name:'report.md',content:member.person + ' serves on the board ' + member.source + ' and served as ' + role.fact + ' ' + role.source + '.'});"}
+```
+After a partial failure, inspect receipts and reopen the saved versions. Patch existing files before continuing with other candidates.
+Deliver the saved report with the direct finish tool.
+{% endif %}
+{% endif %}

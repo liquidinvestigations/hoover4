@@ -47,7 +47,7 @@ log = logging.getLogger(__name__)
 SERVER_INSTRUCTIONS = (
     "Keep the plan for this conversation with `update_plan`. Send the goal in one or two "
     "sentences and the whole list of steps, each with its text and its status, pending or "
-    "done. Give a done step a short note, such as found or not found. Send the whole list "
+    "done. Give a done step a short note, including the saved filename and version for an investigation. Send the whole list "
     "again when a step ends or the plan changes. The result shows the whole plan."
 )
 
@@ -65,9 +65,9 @@ class TodoItem(BaseModel):
 class PlanStep(BaseModel):
     """One step of an `update_plan` call."""
 
-    text: str = Field(description="The step, as a short sentence.")
+    text: str = Field(description="The step. For an investigation, give the source scope, destination file and completion condition.")
     status: Literal["pending", "in_progress", "done"] = Field(default="pending", description="pending, or done when the work of the step ended. in_progress counts as pending.")
-    note: str = Field(default="", description="For a done step, a short reason, such as found or not found.")
+    note: str = Field(default="", description="For a done step, a short reason, including the saved version and remaining coverage for a dataset.")
 
 
 class TodoResponse(BaseModel):
@@ -147,7 +147,7 @@ def _refused(caller: Caller | None, message: str) -> NoReturn:
     name="update_plan",
     description=(
         "Set the plan of this conversation: the goal and the whole list of steps, each "
-        "with its status. Use it for work with several steps. Send the whole list again "
+        "with its status. For investigations, plan separate cited datasets. Save each batch before expanding the search. Send the whole list again "
         "when a step ends or the plan changes. A step with the same text keeps its id. "
         "The result shows the whole plan. This tool only keeps the plan. It writes no "
         "file and no answer."
