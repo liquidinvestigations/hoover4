@@ -16,6 +16,9 @@
   "note": "not",
   "plan": "plan",
   "investigation board": "pano",
-  "manual": "kılavuz"
+  "manual": "kılavuz",
+  "patch": "yama",
+  "turn": "tur",
+  "finding": "bulgu"
  }
 }

@@ -13,7 +13,7 @@ Para pesquisar muitos documentos, usa {{ tool('search_passages') }}. Pesquisa as
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-Para pesquisar um documento longo, usa estas ferramentas.
+Para pesquisar um só documento longo, usa estas ferramentas.
 {% if has('doc_search_text') %}
 {{ tool('doc_search_text') }} lista os resultados de uma consulta numa fonte de texto, por ordem de página, com a página de cada resultado.
 {% endif %}
@@ -60,7 +60,7 @@ Copia para outra chamada o objeto read_after devolvido do segundo documento.
 ```
 Usa os valores realmente devolvidos para cada documento. Não acrescentes campos numerados como source2 ou offset2.
 Uma chamada inicial repetida devolve o mesmo texto. Usa continuation quando precisares de mais texto.
-Pára de ler quando a passagem fornece provas suficientes para a afirmação pedida.
+Para de ler quando a passagem fornece provas suficientes para a afirmação pedida.
 
 Esta chamada mínima abre a primeira página guardada.
 ```json
@@ -130,10 +130,10 @@ max_results seleciona o número de resultados por forma de consulta dentro do li
 O resultado indica collection, file_hash, page e snippet. q regista os índices das consultas a partir de zero.
 Lê o texto de apoio quando a passagem não responde à pergunta.
 ```json
-{"queries":"approval of the transfer"}
+{"queries":"aprovação da transferência"}
 ```
 ```json
-{"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
+{"collection":["alpha","beta"],"queries":["aprovação da transferência","autorização de transferência"],"max_results":5}
 ```
 {% endif %}
 

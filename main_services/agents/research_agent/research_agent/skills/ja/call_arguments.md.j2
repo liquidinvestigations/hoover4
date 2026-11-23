@@ -91,14 +91,14 @@ language には "javascript" を、code には文字列を指定してくださ�
 {% endif %}
 
 {% if has('execute') and has('workspace_list') and has('workspace_search') %}
-保存された情報源の中で正確な語を探します。確認のために一致した位置を返してください。
+保存されたソースの中で正確な語を探します。確認のために一致した位置を返してください。
 
 ```json
 {"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
 {% endif %}
 {% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
-情報源を探し、その文言を確認し、裏付けのある行を新しいレポートファイルに保存します。
+ソースを探し、その文言を確認し、裏付けのある行を新しいレポートファイルに保存します。
 レポートの主題と、記述の正確な語句を使ってください。
 
 ```json

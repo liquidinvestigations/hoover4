@@ -16,6 +16,9 @@
   "note": "nota",
   "plan": "plano",
   "investigation board": "quadro",
-  "manual": "manual"
+  "manual": "manual",
+  "patch": "patch",
+  "step": "passo",
+  "turn": "turno"
  }
 }

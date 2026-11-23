@@ -186,7 +186,7 @@ Gruppe 1 erstellt report.md. Gruppe 2 patcht die Datei. Eine abgelehnte Belegken
 Verwenden Sie die Belegkennungen und Versionen Ihrer eigenen Aufrufe.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Ergebnis: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example bleibt als ungeklärte Zeile mit dem fehlenden Beleg im Bericht.
 Der abgelehnte Patch verwendete [W9], das kein Aufruf zurückgegeben hat. Die Korrektur verwendete [W3], das {{ tool('cite_pages') }} zurückgegeben hat.

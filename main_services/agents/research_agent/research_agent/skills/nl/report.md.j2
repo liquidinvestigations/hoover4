@@ -1,7 +1,7 @@
 ---
 name: report
 group: general
-description: waar een rapport, een lijst, een tabel, een concept of een antwoord met bronvermeldingen heen gaat, hoe je het bewerkt en hoe je het toont
+description: waar een rapport, een lijst, een tabel, een concept of een antwoord met bronverwijzingen heen gaat, hoe je het bewerkt en hoe je het toont
 tools: write_file
 ---
 Noem een bestand naar zijn inhoud, zoals `report.md`, `timeline.md` of `sources.md`. Schrijf
@@ -27,13 +27,13 @@ Wijs een uitspraak over het ene onderwerp niet toe aan een ander.
 
 `todo-search-list.md` · `report.md`
 
-Rond een kleine groep afzenders af voordat je met de volgende begint. Zoek, sla de kandidaten op, controleer en citeer de bronnen en werk daarna het rapport bij.
+Rond een kleine groep afzenders af voordat je met de volgende begint. Zoek, sla de kandidaten op, controleer en haal de bronnen aan en patch daarna het rapport.
 
-Sla voor een afzenderlijst vóór verificatie per kandidaat de afzender, collectie, bestandshash en volgende actie op. Noteer het zoekbereik als er geen treffer is en de fout als lezen mislukt. Werk het rapport bij zodra de verwijzing slaagt en markeer het item als voltooid.
+Sla voor een afzenderlijst vóór verificatie per kandidaat de afzender, collectie, bestandshash en volgende actie op. Noteer het zoekbereik als er geen treffer is en de fout als lezen mislukt. Patch het rapport zodra de bronverwijzing slaagt en markeer het item als voltooid.
 
-Maak bij een lijst personen of een lange lijst het rapport met de rijen van de eerste groep. Voeg de rijen van elke volgende groep toe met één aanroep van {{ tool('patch_file') }}. Controleer de teruggegeven versie voordat je met de volgende groep begint.
+Maak bij een ledenlijst of een lange lijst het rapport met de rijen van de eerste groep. Voeg de rijen van elke volgende groep toe met één aanroep van {{ tool('patch_file') }}. Controleer de teruggegeven versie voordat je met de volgende groep begint.
 Houd een rij die de bronnen niet vaststellen in het rapport. Markeer haar als onopgelost en noem het ontbrekende bewijs.
-Wanneer een patch wordt geweigerd omdat een label niet wordt opgelost, zet je het label in dat de citatie-aanroep teruggaf en stuur je de patch opnieuw.
+Wanneer een patch wordt geweigerd omdat een label niet wordt gevonden, zet je het label in dat de aanroep voor de bronverwijzing teruggaf en stuur je de patch opnieuw.
 Wanneer een patch wordt geweigerd omdat old_string niet overeenkomt, lees je dat deel van het rapport en stuur je een gecorrigeerde patch voor dezelfde groep.
 Lever na de laatste groep de opgeslagen versie op met {{ tool('finish_with_report') }}. Een schrijfactie of een patch slaat werk op en levert het rapport niet op.
 

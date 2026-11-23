@@ -29,11 +29,11 @@ N’attribuez pas à un sujet la déclaration qui porte sur un autre.
 
 Terminez un petit groupe d’expéditeurs avant de commencer le suivant. Recherchez, enregistrez les candidats, vérifiez et citez les sources, puis appliquez un patch au rapport.
 
-Pour une liste d’expéditeurs, enregistrez l’expéditeur, la collection, le hachage du fichier et l’action suivante de chaque candidat avant la vérification. Notez la portée de la recherche en cas d’absence et l’erreur en cas d’échec de lecture. Après la réussite de la citation, appliquez un patch au rapport et marquez l’entrée de la liste de contrôle comme terminée.
+Pour une liste d’expéditeurs, enregistrez l’expéditeur, la collection, l’empreinte du fichier et l’action suivante de chaque candidat avant la vérification. Notez la portée de la recherche en cas d’absence et l’erreur en cas d’échec de lecture. Après la réussite de la citation, appliquez un patch au rapport et marquez l’entrée de la liste de contrôle comme terminée.
 
-Pour une liste d’expéditeurs ou une longue liste, créez le rapport avec les lignes du premier groupe. Ajoutez les lignes de chaque groupe suivant avec un seul appel à {{ tool('patch_file') }}. Vérifiez la version renvoyée avant de commencer le groupe suivant.
+Pour une liste de membres ou une longue liste, créez le rapport avec les lignes du premier groupe. Ajoutez les lignes de chaque groupe suivant avec un seul appel à {{ tool('patch_file') }}. Vérifiez la version renvoyée avant de commencer le groupe suivant.
 Gardez dans le rapport une ligne que les sources n’établissent pas. Marquez-la comme non résolue et nommez la preuve manquante.
-Quand un patch est refusé parce qu’un repère ne se résout pas, mettez le repère que l’appel de citation a renvoyé et renvoyez le patch.
+Quand un patch est refusé parce qu’un repère est introuvable, insérez le repère que l’appel de citation a renvoyé et renvoyez le patch.
 Quand un patch est refusé parce qu’old_string ne correspond pas, lisez cette partie du rapport et envoyez un patch corrigé pour le même groupe.
 Après le dernier groupe, livrez la version enregistrée avec {{ tool('finish_with_report') }}. Une écriture ou un patch enregistre le travail et ne livre pas le rapport.
 

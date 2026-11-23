@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Lettura dei documenti email
 
 {% if has('search_collections') %}
-Trova le email con {{ tool('search_collections') }}. Raggruppa le varianti di un mittente. Cerca separatamente mittenti diversi per mantenere l’attribuzione dei risultati.
+Trova le email con {{ tool('search_collections') }}. Raggruppa le varianti di un mittente. Cerca separatamente mittenti diversi perché ogni risultato mantenga il proprio mittente.
 
 {% endif %}
 {% if has('doc_email') %}

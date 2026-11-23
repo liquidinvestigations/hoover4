@@ -107,7 +107,7 @@ Omite node_id para ler a raiz do conjunto de dados. Copia os identificadores dos
 {% if has('search_histogram') %}
 {{ tool('search_histogram') }} aceita os mesmos filtros que search_collections, exceto sort e queries.
 field é date, mentioned_date ou size. Por omissão é date. query tem por omissão uma consulta vazia.
-Se collection for omitido, abrange todas as coleções permitidas. O resultado devolve os intervalos e o campo selecionado.
+Se collection for omitido, abrange todas as coleções permitidas. O resultado devolve buckets e o campo selecionado.
 ```json
 {}
 ```

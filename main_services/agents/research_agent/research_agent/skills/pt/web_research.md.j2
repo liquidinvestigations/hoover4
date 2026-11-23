@@ -34,10 +34,10 @@ version seleciona opcionalmente uma versão capturada. why indica opcionalmente 
 O resultado devolve citações verificadas e um identificador web estável. Uma página falhada devolve um erro sem identificador.
 
 Exemplo. {{ tool('read_page') }} leu o URL https://example.org/report. O seu texto diz
-"The plant closed in March 2019." Chama {{ tool('cite_pages') }} com argumentos simples para uma página:
+"A fábrica encerrou em março de 2019." Chama {{ tool('cite_pages') }} com argumentos simples para uma página:
 url, copiado do resultado da leitura, terms com a expressão exata, e why.
 ```json
-{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"O relatório indica a data de encerramento."}
+{"url":"COPY_READ_URL","terms":["A fábrica encerrou em março de 2019"],"why":"O relatório indica a data de encerramento."}
 ```
 Depois escreve "A fábrica encerrou em março de 2019 [W1]." com o identificador que a chamada devolveu.
 Divide uma lista de mais de doze páginas em chamadas separadas.
@@ -54,15 +54,15 @@ Por exemplo, uma chamada cita três páginas e duas têm êxito com [W1] e [W2].
 identificadores. Envia a chamada seguinte apenas com a terceira página e usa os seus argumentos de nova tentativa.
 Por exemplo, esta chamada junta palavras através de uma quebra de linha da fonte e falha.
 ```json
-{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+{"url":"https://example.org/report","terms":["A fábrica encerrou em março de 2019"]}
 ```
 O erro pode devolver estes argumentos de nova tentativa com o texto exato da fonte.
 ```json
-{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["A fábrica encerrou"]}}
 ```
 Chama {{ tool('cite_pages') }} com esse objeto devolvido, incluindo a sua versão real e os terms exatos.
 ```json
-{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["A fábrica encerrou"]}
 ```
 Uma janela de PDF tem a sua própria versão. Para citar uma passagem das páginas 51 a 100, copia a versão dessa leitura.
 ```json
@@ -123,10 +123,10 @@ Indica pelo menos uma consulta. Omite sources para pesquisar em todas as fontes 
 max_results tem por omissão 15. timelimit é d, w, m ou y e aplica-se apenas às fontes de notícias suportadas.
 O resultado devolve URL classificados, títulos, excertos e as formas de consulta correspondentes. Lê os URL selecionados antes de te apoiares nas suas afirmações.
 ```json
-{"queries":["transfer approval"]}
+{"queries":["aprovação da transferência"]}
 ```
 ```json
-{"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+{"queries":["aprovação da transferência","autorização de transferência"],"query":"acordo de transferência","sources":["gdelt"],"max_results":5,"timelimit":"m"}
 ```
 {% endif %}
 {% if has('list_search_sources') %}
@@ -153,12 +153,12 @@ Repetir a primeira chamada lê de novo o primeiro texto.
 {"urls":["COPY_SEARCH_RESULT_URL"]}
 ```
 ```json
-{"urls":["COPY_READ_URL"],"goal":"Encontrar a data de aprovação.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+{"urls":["COPY_READ_URL"],"goal":"Encontrar a data de aprovação.","find":"aprovado","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
 ```
 Por exemplo, um resultado de PDF diz "The text covers PDF pages 1 to 50 of 120 only" e indica a janela seguinte.
 Um find nessa janela devolve mais correspondências com este objeto. Copia-o como a chamada seguinte.
 ```json
-{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"aprovado","offset":1200}
 ```
 {% endif %}
 {% if has('whois_lookup') %}
@@ -186,7 +186,7 @@ O lote 1 cria report.md. O lote 2 aplica-lhe um patch. Um identificador rejeitad
 Usa os identificadores e as versões das tuas próprias chamadas.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Resultado: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example fica no relatório como linha por resolver, com a prova em falta.
 O patch rejeitado usou [W9], que nenhuma chamada devolveu. A reparação usou [W3], que {{ tool('cite_pages') }} devolveu.

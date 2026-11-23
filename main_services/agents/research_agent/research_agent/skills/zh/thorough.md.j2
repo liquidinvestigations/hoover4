@@ -11,5 +11,5 @@ tools: search_collections, web_search
 
 {% if has('search_collections') %}
 对于彼此靠近的相关词，使用邻近搜索，例如 "water pollution"~10。
-对于包含多个相关词的主题，使用法定人数搜索，例如 "water pollution plant"/2。
+对于包含多个相关词的主题，使用 quorum 搜索，例如 "water pollution plant"/2。
 {% endif %}

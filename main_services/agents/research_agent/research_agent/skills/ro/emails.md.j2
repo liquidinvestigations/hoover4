@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Citirea documentelor de tip e-mail
 
 {% if has('search_collections') %}
-Găsește e-mailuri cu {{ tool('search_collections') }}. Grupează variantele unui singur expeditor. Caută separat expeditorii diferiți pentru a păstra atribuirea rezultatelor.
+Găsește e-mailuri cu {{ tool('search_collections') }}. Grupează variantele unui singur expeditor. Caută separat expeditorii diferiți pentru ca fiecare rezultat să-și păstreze expeditorul.
 
 {% endif %}
 {% if has('doc_email') %}

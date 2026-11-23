@@ -28,7 +28,7 @@ Nie przypisuj wypowiedzi o jednym podmiocie do innego.
 
 Zakończ pracę nad małą grupą nadawców, zanim zaczniesz następną. Wyszukaj i zapisz kandydatów, sprawdź i zacytuj źródła, a następnie zaktualizuj raport.
 
-Dla listy nadawców zapisz nadawcę, kolekcję, skrót pliku i następny krok dla każdego kandydata przed weryfikacją. Przy braku wyniku zapisz zakres wyszukiwania, a przy błędzie odczytu podaj błąd. Po uzyskaniu cytowania popraw raport i oznacz pozycję jako ukończoną.
+Dla listy nadawców zapisz nadawcę, kolekcję, skrót pliku i następny krok dla każdego kandydata przed weryfikacją. Przy braku wyniku zapisz zakres wyszukiwania, a przy błędzie odczytu podaj błąd. Po uzyskaniu cytowania zastosuj poprawkę do raportu i oznacz pozycję listy kontrolnej jako ukończoną.
 
 Przy liście osób lub długiej liście utwórz raport z wierszami pierwszej grupy. Dodaj wiersze każdej następnej grupy jednym wywołaniem {{ tool('patch_file') }}. Sprawdź zwróconą wersję, zanim zaczniesz następną grupę.
 Zostaw w raporcie wiersz, którego źródła nie potwierdzają. Oznacz go jako nierozstrzygnięty i nazwij brakujący dowód.
@@ -53,7 +53,7 @@ nie istnieje. Przeczytaj błąd, popraw treść i wywołaj {{ tool('write_file')
 ponownie bez expected_version. Nie wywołuj {{ tool('patch_file') }}, zanim zapis tego
 pliku się nie powiedzie.
 ```json
-{"success":false,"name":"cases.md","error":"The file was not changed, because a citation handle does not resolve."}
+{"success":false,"name":"cases.md","error":"Plik nie został zmieniony, ponieważ sygnatura cytowania się nie rozpoznaje."}
 ```
 ```json
 {"name":"cases.md","content":"Sąd oddalił roszczenie [D2]."}

@@ -17,7 +17,7 @@ not_for: 요청이 컬렉션의 문서만 물을 때는 필요하지 않습니�
 2. 관련된 각 채팅을 {{ tool('read_chat') }}(으)로 읽으십시오. 결과에 next_page가 있고 이후 턴이 필요하면 다음 페이지를 읽으십시오.
 {% endif %}
 {% if has('read_board') %}
-3. 관련된 각 보드를 {{ tool('read_board') }}(으)로 읽으십시오. 한 조사 결과의 출처를 읽으려면 node를 지정하십시오.
+3. 관련된 각 보드를 {{ tool('read_board') }}(으)로 읽으십시오. 한 발견 사항의 출처를 읽으려면 node를 지정하십시오.
 {% endif %}
 {% if has('cite_chats_and_boards') %}
 4. 사용하는 각 채팅과 각 보드로 {{ tool('cite_chats_and_boards') }}을(를) 호출하십시오. 반환된 인용 핸들(예: [C1] 또는 [B1])을 그것에 근거한 각 진술 옆에 쓰십시오.
@@ -26,6 +26,6 @@ not_for: 요청이 컬렉션의 문서만 물을 때는 필요하지 않습니�
 
 읽은 채팅이나 보드의 (D1) 같은 레이블은 그 항목의 출처를 가리킵니다. 그것을 자신의 인용 핸들로 쓰지 마십시오.
 {% if has('read_documents') and has('cite_documents') %}
-이전 조사 결과의 문서를 인용하려면 {{ tool('read_documents') }}(으)로 문서를 읽고 {{ tool('cite_documents') }}(으)로 인용하십시오.
+이전 발견 사항의 문서를 인용하려면 {{ tool('read_documents') }}(으)로 문서를 읽고 {{ tool('cite_documents') }}(으)로 인용하십시오.
 {% endif %}
 목록에 주제에 관한 채팅이나 보드가 없으면 그렇다고 말하십시오.

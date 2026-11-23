@@ -16,6 +16,9 @@
   "note": "заметка",
   "plan": "план",
   "investigation board": "доска",
-  "manual": "руководство"
+  "manual": "руководство",
+  "patch": "правка",
+  "turn": "ход",
+  "finding": "находка"
  }
 }

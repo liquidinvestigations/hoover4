@@ -14,17 +14,17 @@ Använd den här metoden när personen frågar om tidigare chattar, utredningsta
 1. Anropa {{ tool('list_chats_and_boards') }}. Skriv ämnets ord i query, eller lämna query tomt för att visa de nyaste objekten.
 {% endif %}
 {% if has('read_chat') %}
-2. Läs varje relevant chatt med {{ tool('read_chat') }}. Läs nästa sida när resultatet har next_page och du behöver de senare turerna.
+2. Läs varje relevant chatt med {{ tool('read_chat') }}. Läs nästa sida när resultatet har next_page och du behöver de senare varven.
 {% endif %}
 {% if has('read_board') %}
 3. Läs varje relevant tavla med {{ tool('read_board') }}. Ange node för att läsa källorna till ett fynd.
 {% endif %}
 {% if has('cite_chats_and_boards') %}
-4. Anropa {{ tool('cite_chats_and_boards') }} med varje chatt och varje tavla som du använder. Skriv det returnerade källhandtaget, till exempel [C1] eller [B1], vid varje påstående som bygger på det.
+4. Anropa {{ tool('cite_chats_and_boards') }} med varje chatt och varje tavla som du använder. Skriv det returnerade handtaget, till exempel [C1] eller [B1], vid varje påstående som bygger på det.
 {% endif %}
 5. Skriv sammanfattningen: vad varje chatt eller tavla frågade, vad den hittade och vad som fortfarande är öppet.
 
-Etiketter som (D1) i en läst chatt eller tavla namnger källorna till det objektet. Skriv dem inte som dina egna källhandtag.
+Etiketter som (D1) i en läst chatt eller tavla namnger källorna till det objektet. Skriv dem inte som dina egna handtag.
 {% if has('read_documents') and has('cite_documents') %}
 För att citera ett dokument från ett tidigare fynd läser du dokumentet med {{ tool('read_documents') }} och citerar det med {{ tool('cite_documents') }}.
 {% endif %}

@@ -1,13 +1,13 @@
 ---
 name: web_research
 group: technique
-description: hur du söker på det öppna webben, läser en webbsida eller en domäns ägaruppgifter och hänvisar till de webbsidor som stöder ett svar eller en rapport
+description: hur du söker på den öppna webben, läser en webbsida eller en domäns ägaruppgifter och hänvisar till de webbsidor som stöder ett svar eller en rapport
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
 {# Each tool sentence renders when the run has that tool. The web citation protocol is
    here, and the skill `citation` holds the document protocol. Both include the failure
    rules of `partials/citation_failures.j2`. #}
-Efterforska på det öppna webben
+Efterforska på den öppna webben
 
 Använd webbkällor när de kan besvara personens fråga.
 
@@ -33,7 +33,7 @@ Använd dess returnerade webbhandtag bredvid de påståenden de stöder.
 Ersätt nakna käll-URL:er med de handtagen.
 {{ tool('cite_pages') }} tar emot url och terms för en sida, eller pages för upp till tolv sidobjekt.
 Varje sida kräver url och terms. terms innehåller upp till åtta exakta fraser, var och en på högst 200 tecken. Skiftläget måste stämma.
-version väljer valfritt en fångad version. why anger valfritt vilket påstående som stöds, på högst 300 tecken.
+version väljer valfritt en sparad version. why anger valfritt vilket påstående som stöds, på högst 300 tecken.
 Resultatet ger verifierade citat och ett stabilt webbhandtag. En misslyckad sida ger ett fel utan handtag.
 
 Exempel. {{ tool('read_page') }} läste URL:en https://example.org/report. Dess text säger
@@ -42,7 +42,7 @@ url, kopierad från läsresultatet, terms med den exakta frasen och why.
 ```json
 {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"Rapporten anger nedläggningsdatumet."}
 ```
-Skriv sedan "The plant closed in March 2019 [W1]." med det handtag som anropet returnerade.
+Skriv sedan "Anläggningen stängdes i mars 2019 [W1]." med det handtag som anropet returnerade.
 Dela upp en lista med fler än tolv sidor i separata anrop.
 ```json
 {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Det här avsnittet anger godkännandedatumet."}]}
@@ -73,7 +73,7 @@ Ett PDF-fönster har sin egen version. För att hänvisa till ett avsnitt på si
 ```
 Om ett anrop överskrider åtta terms, dela upp dess terms i grupper om högst åtta och hänvisa till varje grupp separat.
 Behåll URL:en och källversionen för varje grupp. Att ändra anropets struktur minskar inte antalet terms.
-Handtaget öppnar den fångade sidtexten och dess verifierade citat.
+Handtaget öppnar den sparade sidtexten och dess verifierade citat.
 Använd en sida per anrop om en grupp anländer skadad.
 En sida som inte är läst, är blockerad eller är overifierad kan inte stödja ett påstående.
 
@@ -94,9 +94,9 @@ hittar ingen sida om bruket. En sökning efter "Harlow mill closure" ger samma r
 inte en tredje form av de orden. Sök efter ägarbolagets namn tillsammans med
 ortens namn. En lokal nyhetssida anger nedläggningsmånaden, så läs den, och kandidaten är verifierad.
 
-Till exempel: du minns ett andra rättsfall mot samma bolag. Sökningar efter
+Till exempel: du minns ett ytterligare rättsfall mot samma bolag. Sökningar efter
 bolaget med "lawsuit", efter domstolens namn och efter formatet på målnumret hittar inget fall.
-Ingen annan metod återstår. Skriv att de lästa källorna inte bekräftar ett andra fall, och
+Ingen annan metod återstår. Skriv att de lästa källorna inte bekräftar ett ytterligare fall, och
 ange det inte som ett fall.
 
 En läsning omfattar bara sin extraherade text. En find utan träff visar att den extraherade texten
@@ -143,7 +143,7 @@ Resultatet returnerar rangordnade URL:er, rubriker, utdrag och matchade sökfrå
 goal registrerar valfritt frågan. Det väljer inte matchande text.
 find väljer valfritt bokstavliga textträffar utan begränsning av skiftläge.
 offset är en nollbaserad teckenposition. Om det utelämnas börjar läsningen på noll.
-version väljer den fångade textversionen. Kopiera den från en tidigare läsning av samma URL för att fortsätta med den texten.
+version väljer den sparade textversionen. Kopiera den från en tidigare läsning av samma URL för att fortsätta med den texten.
 En version tillhör en URL. För en annan URL, läs först den URL:en och kopiera dess egen version.
 links är som standard true och tar med länkmål i texten.
 page_start väljer den första sidan i ett PDF-fönster. En läsning extraherar högst 50 PDF-sidor.
@@ -184,15 +184,15 @@ Spara påståendet med det returnerade handtaget.
 {% endif %}
 
 {% if has('write_file') and has('patch_file') and has('cite_pages') %}
-Genomgånget direktflöde för en namnlista i två grupper. Exemplet visar de relevanta svarsfälten.
+Genomarbetat exempel på ett direkt flöde för en medlemslista i två grupper. Exemplet visar de relevanta svarsfälten.
 Grupp 1 skapar report.md. Grupp 2 patchar den. Ett avvisat handtag åtgärdas och den sparade versionen levereras.
 Använd handtagen och versionerna från dina egna anrop.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Resultat: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example finns kvar i rapporten som en olöst rad med det belägg som saknas.
-Den avvisade patchen använde [W9], som inget anrop returnerade. Åtgärden använde [W3], som {{ tool('cite_pages') }} returnerade.
+Den avvisade patchen använde [W9], som inget anrop returnerade. Rättelsen använde [W3], som {{ tool('cite_pages') }} returnerade.
 {% if has('execute') %}
 Samma grupp 2 som ett execute-anrop. Programmet stannar vid den första misslyckade sparningen och returnerar dess kvitto.
 ```json

@@ -1,13 +1,13 @@
 ---
 name: emails
 group: technique
-description: comment lire des documents e-mail, expéditeur, destinataires, date, objet, en-têtes, copies et fils de discussion
+description: comment lire des documents e-mail : expéditeur, destinataires, date, objet, en-têtes, copies et fils de discussion
 tools: doc_email, doc_metadata, read_documents
 ---
 Lire des documents e-mail
 
 {% if has('search_collections') %}
-Trouvez des e-mails avec {{ tool('search_collections') }}. Groupe les variantes d’un même expéditeur. Recherche les autres expéditeurs séparément pour conserver l’attribution des résultats.
+Trouvez des e-mails avec {{ tool('search_collections') }}. Regroupez les variantes d’un même expéditeur. Cherchez des expéditeurs différents séparément pour conserver l’attribution des résultats.
 
 {% endif %}
 {% if has('doc_email') %}

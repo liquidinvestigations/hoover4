@@ -7,7 +7,7 @@ tools: doc_email, doc_metadata, read_documents
 Ler documentos de correio eletrónico
 
 {% if has('search_collections') %}
-Encontra mensagens de correio eletrónico com {{ tool('search_collections') }}. Agrupa as variantes do mesmo remetente. Pesquisa outros remetentes separadamente para manter a atribuição dos resultados.
+Encontra mensagens de correio eletrónico com {{ tool('search_collections') }}. Agrupa as variantes do mesmo remetente. Pesquisa outros remetentes separadamente para que cada resultado mantenha o seu remetente.
 
 {% endif %}
 {% if has('doc_email') %}

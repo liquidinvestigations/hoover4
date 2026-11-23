@@ -43,9 +43,9 @@ offset pasajın başlangıcını geçersiz kılar. O sayfa içinde sıfırdan Un
 length pozitif bir karakter sayısıdır. Atlanırsa 6.000 karakter kullanılır.
 source_version isteğe bağlı olarak dönen kaynak parmak izini doğrular. Bir aralığı yeniden okumak için onu kopyala.
 
-Sonuç; başlangıcı, dahil olmayan sonu, sayfanın toplam karakterini ve birimi olan text_range döndürür.
+Sonuç; başlangıcı, dahil olmayan sonu, sayfanın toplam karakter sayısını ve birimi olan text_range döndürür.
 page_complete, aralığın sayfanın tamamını kapsadığı anlamına gelir.
-Bir kesme işareti, aracın aralığın yalnızca bir kısmını verdiği anlamına gelir. Sayfanın orada bittiği anlamına gelmez.
+Bir kesinti işareti, aracın aralığın yalnızca bir kısmını verdiği anlamına gelir. Sayfanın orada bittiği anlamına gelmez.
 O belgeyi sürdürmek için bir öğenin more değerini kullan. Kalan sayfayı ya da sonraki sayfaları sürdürmek için üst düzey more değerini kullan.
 Dönen etiketi {{ tool('read_more') }} aracına continuation olarak tam olarak kopyala.
 Çevresindeki metin için read_before ya da read_after değerini read_documents argümanları olarak kopyala. Offset hesabı gerekmez.

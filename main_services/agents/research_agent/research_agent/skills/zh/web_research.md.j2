@@ -29,12 +29,12 @@ tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 引用网页
 
 对每个已读取的页面 URL，调用 {{ tool('cite_pages') }}，并在 `terms` 中给出支持论断的准确原文。
-把返回的网页标识放在它们所支持的论断旁边。
-用这些标识替换裸露的来源 URL。
+把返回的网页引用标识放在它们所支持的论断旁边。
+用这些引用标识替换裸露的来源 URL。
 {{ tool('cite_pages') }} 接受针对一个页面的 url 和 terms，或最多十二个页面对象组成的 pages。
 每个页面要求提供 url 和 terms。terms 最多包含八个准确的短语，每个最长 200 个字符。大小写必须一致。
 version 可选，用于选择已捕获的某个版本。why 可选，用于说明所支持的论断，最长 300 个字符。
-结果给出已核实的引文和一个稳定的网页标识。失败的页面只给出错误，没有标识。
+结果给出已核实的引文和一个稳定的网页引用标识。失败的页面只给出错误，没有引用标识。
 
 示例。{{ tool('read_page') }} 读取了 URL https://example.org/report。它的文本写着
 "The plant closed in March 2019."。用针对一个页面的平铺参数调用 {{ tool('cite_pages') }}：
@@ -42,19 +42,19 @@ url（从读取结果中复制）、含有准确短语的 terms，以及 why。
 ```json
 {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"该报告给出了关闭日期。"}
 ```
-然后用该调用返回的标识写出“工厂于 2019 年 3 月关闭 [W1]。”
+然后用该调用返回的引用标识写出“工厂于 2019 年 3 月关闭 [W1]。”
 超过十二个页面的列表要拆分成多次调用。
 ```json
 {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"该段落给出了批准日期。"}]}
 ```
-把返回的网页标识（例如 `[W1]`）复制到它所支持的论断旁边。
-每个标识都要与其返回的引用对象中的 URL 和引文对应起来。
-错误不会分配标识。在引用成功之前，省略该来源的论断。
+把返回的网页引用标识（例如 `[W1]`）复制到它所支持的论断旁边。
+每个引用标识都要与其返回的引用对象中的 URL 和引文对应起来。
+错误不会分配引用标识。在引用成功之前，省略该来源的论断。
 对于不存在的措辞，从返回的候选文本中复制准确的文本，再次调用该工具。
 错误中包含 `errors[i].retry_arguments` 时，把该对象原样复制到下一次调用中。
 部分成功的结果中，保留成功的引用。只重试失败的页面。
-例如，一次调用引用了三个页面，其中两个成功，标识为 [W1] 和 [W2]。使用这两个
-标识。下一次调用只发送第三个页面，并使用它的重试参数。
+例如，一次调用引用了三个页面，其中两个成功，引用标识为 [W1] 和 [W2]。使用这两个
+引用标识。下一次调用只发送第三个页面，并使用它的重试参数。
 又如，下面这个调用把跨越来源换行的词连在了一起，因而失败。
 ```json
 {"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
@@ -73,8 +73,8 @@ PDF 窗口有自己的版本。要引用第 51 页到第 100 页的段落，复�
 ```
 如果一次调用超过八个 terms，把 terms 拆分成每组最多八个，并分别引用每一组。
 每一组都要保留 URL 和来源版本。改变调用结构并不会减少词项的数量。
-该标识会打开已捕获的页面文本及其已核实的引文。
-批量调用的结果出现损坏时，每次调用只处理一个页面。
+该引用标识会打开已捕获的页面文本及其已核实的引文。
+批量调用的内容出现损坏时，每次调用只处理一个页面。
 未读取、被拦截或未核实的页面不能支持论断。
 
 {% include "citation_failures.j2" %}
@@ -185,11 +185,11 @@ registrant 为 null，表示注册机构没有公布该值。注册商出售域�
 
 {% if has('write_file') and has('patch_file') and has('cite_pages') %}
 名册分两批处理的直接交互示例。示例显示响应中的相关字段。
-第 1 批创建 report.md。第 2 批修补它。被拒绝的标识得到修复，并交付已保存的版本。
-使用你自己调用返回的标识和版本。
+第 1 批创建 report.md。第 2 批修补它。被拒绝的引用标识得到修复，并交付已保存的版本。
+使用你自己调用返回的引用标识和版本。
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-结果: {{ exchange.result | tojson }}
+结果：{{ exchange.result | tojson }}
 {% endfor %}
 Ben Example 作为未解决的行留在报告中，并写明缺少的证据。
 被拒绝的修补使用了没有任何调用返回过的 [W9]。修复时使用了 {{ tool('cite_pages') }} 返回的 [W3]。

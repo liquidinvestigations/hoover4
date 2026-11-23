@@ -16,6 +16,12 @@
   "note": "note",
   "plan": "plan",
   "investigation board": "tableau",
-  "manual": "manuel"
+  "manual": "manuel",
+  "capture": "copie conservée",
+  "roster": "liste de membres",
+  "hash": "empreinte",
+  "turn": "tour",
+  "patch": "patch",
+  "batch": "lot"
  }
 }

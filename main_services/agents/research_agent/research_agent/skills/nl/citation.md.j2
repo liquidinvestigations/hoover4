@@ -40,7 +40,7 @@ Voorbeeld. {{ tool('read_documents') if has('read_documents') else 'Een tool' }}
 De tekst zegt "The talking points look great to me. Best of luck today." Je rapport zegt
 dat Jim Steffes het concept goedkeurde. Roep {{ tool('cite_documents') }} aan met collection enron, de
 file_hash uit het resultaat, het citaat "talking points look great to me", find "look great",
-en why "Steffes approves the draft of 27 December".
+en why "Steffes keurt het concept van 27 december goed".
 Schrijf dan "Steffes keurde het concept goed [D1]."
 Citeer niet "Subject: Re: DRAFT talking points", want dat is een koptekstregel. Citeer niet
 "Can you check the notes?", want dat bevat een vraagteken.
@@ -68,7 +68,7 @@ Probeer alleen mislukte items opnieuw, met exacte bewoording. Een geverifieerd c
 {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
 ```
 ```json
-{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"oorspronkelijke zoekopdracht","why":"Deze passage onderbouwt de genoemde goedkeuring."}]}
 ```
 Deze batch verifieert twee passages uit hetzelfde document.
 ```json

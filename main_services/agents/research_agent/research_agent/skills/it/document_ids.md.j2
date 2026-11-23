@@ -8,7 +8,7 @@ Nominare un documento
 
 L'hash di un documento ha 64 caratteri esadecimali. Gli strumenti per documenti accettano anche un inizio univoco di almeno 12 caratteri.
 
-1. Copia il file_hash e la collection della stessa riga di risultato. Non scrivere mai un hash da solo.
+1. Copia il file_hash e la raccolta della stessa riga di risultato. Non scrivere mai un hash da solo.
    Un segnaposto come COPY_RETURNED_HASH o un valore di soli zeri non è un hash. Anche l'id di una
    cartella proviene da un elenco o da un risultato di ricerca di questa conversazione.
 2. {% if has('read_documents') %}{{ tool('read_documents') }} può anche risolvere un nome di file o un percorso quando indica un solo documento.{% endif %} Gli altri strumenti per documenti usano l'hash.

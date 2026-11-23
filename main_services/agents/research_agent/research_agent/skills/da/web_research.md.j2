@@ -181,12 +181,12 @@ Gem påstanden med det returnerede mærke.
 {% endif %}
 
 {% if has('write_file') and has('patch_file') and has('cite_pages') %}
-Gennemgået direkte udveksling for en navneliste i to grupper. Eksemplet viser de relevante svarfelter.
+Gennemarbejdet eksempel på en direkte udveksling for en navneliste i to grupper. Eksemplet viser de relevante svarfelter.
 Gruppe 1 opretter report.md. Gruppe 2 patcher den. Et afvist mærke rettes, og den gemte version leveres.
 Brug mærkerne og versionerne fra dine egne kald.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Resultat: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example forbliver i rapporten som en uafklaret række med det manglende bevis.
 Den afviste patch brugte [W9], som intet kald returnerede. Rettelsen brugte [W3], som {{ tool('cite_pages') }} returnerede.

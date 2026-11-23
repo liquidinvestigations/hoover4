@@ -40,7 +40,7 @@ Ejemplo. {{ tool('read_documents') if has('read_documents') else 'Una herramient
 Su cuerpo dice "The talking points look great to me. Best of luck today." Tu informe dice
 que Jim Steffes aprobó el borrador. Llama a {{ tool('cite_documents') }} con collection enron, el
 file_hash del resultado, la cita textual "talking points look great to me", find "look great"
-y why "Steffes approves the draft of 27 December".
+y why "Steffes aprueba el borrador del 27 de diciembre".
 Luego escribe "Steffes aprobó el borrador [D1]."
 No cites "Subject: Re: DRAFT talking points", porque es una línea de encabezado. No cites
 "Can you check the notes?", porque contiene un signo de interrogación.
@@ -68,7 +68,7 @@ Reintenta solo las entradas fallidas con la redacción exacta. Una cita textual 
 {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
 ```
 ```json
-{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"búsqueda original","why":"Este pasaje respalda la aprobación indicada."}]}
 ```
 Este lote verifica dos pasajes del mismo documento.
 ```json

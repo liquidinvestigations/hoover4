@@ -99,7 +99,7 @@ nie zawiera tych słów. Nie pokazuje, że dokument ich nie zawiera. Wynik PDF
 podaje strony, które odczyt wyodrębnił. Zanim napiszesz, że dokument nie
 wymienia osoby, podaj strony lub tekst, które przeszukano.
 Dla listy wydarzeń z datami trzymaj jeden zapis dla każdego wydarzenia z jego datą, nazwą i
-źródłem. Zapisy bez daty, zduplikowane doniesienia i źródła, których nie mogłeś przeczytać, podaj
+źródłem. Zapisy bez daty, zduplikowane doniesienia i źródła, których nie udało się przeczytać, podaj
 osobno od zapisów z datami.
 
 Zastosuj każde żądane ograniczenie do każdej pozycji w odpowiedzi.
@@ -184,7 +184,7 @@ Partia 1 tworzy report.md. Partia 2 stosuje do niego poprawkę. Odrzucona sygnat
 Użyj sygnatur i wersji ze swoich własnych wywołań.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Wynik: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example zostaje w raporcie jako wiersz nierozstrzygnięty, z brakującym dowodem.
 Odrzucona poprawka użyła [W9], którego żadne wywołanie nie zwróciło. Naprawa użyła [W3], które zwróciło {{ tool('cite_pages') }}.

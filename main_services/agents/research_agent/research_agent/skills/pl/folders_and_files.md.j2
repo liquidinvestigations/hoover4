@@ -63,7 +63,7 @@ Komórka null oznacza zgłoszony błąd. Pusta komórka nie ma zwróconych warto
 Liczby dotyczą zindeksowanych dopasowań dokumentów dla każdej wartości. Jeden dokument może mieć kilka wartości.
 Nie dodawaj liczb filtrów, aby podać odrębną sumę. Sumy spisu pochodzą z list_collections.
 Domyślna lista filtrów może pomijać rzadkie wartości. Użyj query, aby znaleźć konkretną wartość.
-Użyj more z read_more, gdy wynik jest ciągły.
+Użyj more z read_more, gdy wynik ma ciąg dalszy.
 
 To minimalne wywołanie robi spis formatów plików i języków we wszystkich dozwolonych kolekcjach.
 ```json
@@ -107,7 +107,7 @@ Pomiń node_id, aby czytać korzeń zbioru danych. Kopiuj identyfikatory węzł�
 {% if has('search_histogram') %}
 {{ tool('search_histogram') }} przyjmuje te same filtry co search_collections, z wyjątkiem sort i queries.
 field to date, mentioned_date lub size. Domyślnie jest to date. query domyślnie jest puste zapytanie.
-Pominięte collection obejmuje każdą dozwoloną kolekcję. Wynik zwraca przedziały i wybrane pole.
+Pominięte collection obejmuje każdą dozwoloną kolekcję. Wynik zwraca buckets i wybrane pole.
 ```json
 {}
 ```

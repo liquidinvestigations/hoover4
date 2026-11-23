@@ -16,6 +16,9 @@
   "note": "nota",
   "plan": "piano",
   "investigation board": "bacheca",
-  "manual": "manuale"
+  "manual": "manuale",
+  "patch": "patch",
+  "step": "passo",
+  "turn": "turno"
  }
 }

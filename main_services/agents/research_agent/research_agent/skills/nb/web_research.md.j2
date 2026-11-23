@@ -39,7 +39,7 @@ url, kopiert fra leseresultatet, terms med den nøyaktige frasen, og why.
 ```json
 {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"Rapporten oppgir nedleggelsesdatoen."}
 ```
-Skriv deretter "The plant closed in March 2019 [W1]." med henvisningsmerket som kallet returnerte.
+Skriv deretter "Anlegget ble nedlagt i mars 2019 [W1]." med henvisningsmerket som kallet returnerte.
 Del en liste med mer enn tolv sider i separate kall.
 ```json
 {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Dette tekstutdraget gir godkjenningsdatoen."}]}
@@ -78,7 +78,7 @@ En side som ikke er lest, er blokkert eller ikke er verifisert, kan ikke støtte
 {% endif %}
 
 Et navn eller en hendelse du husker, er en kandidat inntil en kilde nevner det. Finn en kilde som
-nevner den før du bruker den. Ikke send et søk på nytt med de samme ordene eller med små
+nevner det før du bruker det. Ikke send et søk på nytt med de samme ordene eller med små
 endringer i ordlyden. Det neste søket må bruke en annen metode: andre identifiserende fakta om
 kandidaten, en navngitt kilde, språket på stedet, eller en side som et leseresultat
 lenker til. Når ingen gjenværende metode kan finne en kilde, merk kandidaten som ikke verifisert, og
@@ -91,9 +91,9 @@ finner ingen side om fabrikken. Et søk etter "Harlow mill closure" gir de samme
 send en tredje form av disse ordene. Søk etter navnet på eierselskapet sammen med navnet på
 byen. En lokal nyhetsside nevner nedleggelsesmåneden, så les den, og kandidaten er verifisert.
 
-Du husker for eksempel en andre rettssak mot det samme selskapet. Søk etter
+Du husker for eksempel en ytterligere rettssak mot det samme selskapet. Søk etter
 selskapet med "lawsuit", etter rettens navn og etter formatet på saksnummeret finner ingen sak.
-Ingen annen metode gjenstår. Skriv at kildene du har lest, ikke bekrefter en andre sak, og
+Ingen annen metode gjenstår. Skriv at kildene du har lest, ikke bekrefter en ytterligere sak, og
 ikke omtal den som en sak.
 
 En lesing dekker bare den uthentede teksten. En find uten treff viser at den uthentede teksten
@@ -181,12 +181,12 @@ Lagre påstanden med det returnerte henvisningsmerket.
 {% endif %}
 
 {% if has('write_file') and has('patch_file') and has('cite_pages') %}
-Eksempel på en direkte utveksling for en liste over personer i to grupper. Eksempelet viser de relevante responsfeltene.
+Eksempel på en direkte utveksling for en medlemsliste i to grupper. Eksempelet viser de relevante responsfeltene.
 Gruppe 1 oppretter report.md. Gruppe 2 patcher den. Et avvist henvisningsmerke repareres, og den lagrede versjonen leveres.
 Bruk henvisningsmerkene og versjonene fra dine egne kall.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Resultat: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example blir stående i rapporten som en uløst rad med de manglende bevisene.
 Den avviste patchen brukte [W9], som ingen kall returnerte. Reparasjonen brukte [W3], som {{ tool('cite_pages') }} returnerte.

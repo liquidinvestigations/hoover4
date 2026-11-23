@@ -4,7 +4,7 @@
   "tool": "tool",
   "tool call": "toolaanroep",
   "argument": "argument",
-  "citation handle": "bronlabel",
+  "citation handle": "label",
   "quote": "citaat",
   "workspace file": "werkruimtebestand",
   "report": "rapport",
@@ -16,6 +16,10 @@
   "note": "notitie",
   "plan": "plan",
   "investigation board": "bord",
-  "manual": "handleiding"
+  "manual": "handleiding",
+  "capture": "vastgelegde kopie",
+  "roster": "ledenlijst",
+  "turn": "beurt",
+  "patch": "patch"
  }
 }

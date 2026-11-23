@@ -14,7 +14,7 @@ old_string no coincide o coincide más de una vez, lee de nuevo esa parte del ar
 envía un parche corregido. No escribas de nuevo el archivo entero porque un parche falló.
 
 Para cada elemento de una lista, verifica cada restricción en el texto de la fuente antes de incluirlo.
-Fusiona los informes sobre el mismo elemento.
+Fusiona los relatos sobre el mismo elemento.
 Verifica en la fuente cada propiedad que la solicitud exige de un elemento.
 Una propiedad relacionada no establece la exigida.
 Cuenta una vez un mismo caso, hecho o entidad, aunque varias fuentes informen de sus etapas.
@@ -28,7 +28,7 @@ No atribuyas a un sujeto una declaración sobre otro.
 
 Completa un grupo pequeño de remitentes antes de empezar el siguiente. Busca, guarda los candidatos, verifica y cita las fuentes y luego actualiza el informe.
 
-Para una lista de remitentes, guarda el remitente, la colección, el hash del archivo y la acción siguiente de cada candidato antes de verificarlo. Registra el ámbito de búsqueda si no hay coincidencia y el error si falla la lectura. Tras obtener la cita, modifica el informe y marca la entrada como completada.
+Para una lista de remitentes, guarda el remitente, la colección, el hash del archivo y la acción siguiente de cada candidato antes de verificarlo. Registra el ámbito de búsqueda si no hay coincidencia y el error si falla la lectura. Tras obtener la cita, modifica el informe y marca como completada la entrada de la lista de control.
 
 Para una lista de personas o una lista larga, crea el informe con las filas del primer grupo. Añade las filas de cada grupo posterior con una sola llamada a {{ tool('patch_file') }}. Comprueba la versión devuelta antes de empezar el grupo siguiente.
 Mantén en el informe una fila que las fuentes no establezcan. Márcala como sin resolver y nombra la prueba que falta.
@@ -54,8 +54,8 @@ no existe. Lee el error, corrige el contenido y llama de nuevo a {{ tool('write_
 sin expected_version. No llames a {{ tool('patch_file') }} antes de que una escritura de ese
 archivo tenga éxito.
 ```json
-{"success":false,"name":"cases.md","error":"The file was not changed, because a citation handle does not resolve."}
+{"success":false,"name":"cases.md","error":"El archivo no se cambió, porque un identificador de cita no se resuelve."}
 ```
 ```json
-{"name":"cases.md","content":"The court dismissed the claim [D2]."}
+{"name":"cases.md","content":"El tribunal desestimó la demanda [D2]."}
 ```

@@ -14,7 +14,7 @@ Usa este método quando a pessoa pergunta por conversas anteriores, quadros de i
 1. Chama {{ tool('list_chats_and_boards') }}. Põe as palavras do tema em query, ou deixa query vazio para listar os itens mais recentes.
 {% endif %}
 {% if has('read_chat') %}
-2. Lê cada conversa relevante com {{ tool('read_chat') }}. Lê a página seguinte quando o resultado tiver next_page e precisares das voltas posteriores.
+2. Lê cada conversa relevante com {{ tool('read_chat') }}. Lê a página seguinte quando o resultado tiver next_page e precisares das turnos posteriores.
 {% endif %}
 {% if has('read_board') %}
 3. Lê cada quadro relevante com {{ tool('read_board') }}. Indica node para ler as fontes de uma conclusão.

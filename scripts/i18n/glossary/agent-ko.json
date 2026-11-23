@@ -16,6 +16,14 @@
   "note": "메모",
   "plan": "계획",
   "investigation board": "보드",
-  "manual": "매뉴얼"
+  "manual": "매뉴얼",
+  "patch": "패치",
+  "step": "단계",
+  "evidence span": "근거 범위",
+  "roster": "명단",
+  "verify": "검증",
+  "check": "확인",
+  "source": "출처",
+  "extracted source": "소스"
  }
 }

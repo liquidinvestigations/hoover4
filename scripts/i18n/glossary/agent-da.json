@@ -4,7 +4,7 @@
   "tool": "værktøj",
   "tool call": "værktøjskald",
   "argument": "argument",
-  "citation handle": "henvisningsmærke",
+  "citation handle": "mærke",
   "quote": "citat",
   "workspace file": "arbejdsfil",
   "report": "rapport",
@@ -16,6 +16,10 @@
   "note": "note",
   "plan": "plan",
   "investigation board": "tavle",
-  "manual": "vejledning"
+  "manual": "vejledning",
+  "capture": "indfangning",
+  "roster": "navneliste",
+  "turn": "runde",
+  "patch": "patch"
  }
 }

@@ -42,7 +42,7 @@
 1. 先读取所需的技能和工具定义。
 2. 把候选项规划成有界的分组。为每组指定输出文件和完成条件。
 3. 用第一组中已引用的行和未解决的行创建报告。每个后续分组之后，修补同一份报告。
-4. 修复被拒绝的标识或修补，并重试同一分组，直到保存成功。开始下一组之前，检查返回的版本。
+4. 修复被拒绝的引用标识或修补，并重试同一分组，直到保存成功。开始下一组之前，检查返回的版本。
 5. 压缩之后从文件恢复工作。交付已保存的版本。
 {% endif %}
 
@@ -55,7 +55,7 @@
 
 {% if has('cite_pages') or has('cite_documents') %}
 先阅读来源段落，再使用其中的论断。
-对文档调用 {% if has('cite_documents') %}`cite_documents`{% endif %}{% if has('cite_documents') and has('cite_pages') %}，对网页调用 {% endif %}{% if has('cite_pages') %}`cite_pages`{% endif %}，并提供来源中的原文。
+{% if has('cite_documents') %}对文档调用 `cite_documents`{% endif %}{% if has('cite_documents') and has('cite_pages') %}，{% endif %}{% if has('cite_pages') %}对网页调用 `cite_pages`{% endif %}，并提供来源中的原文。
 把每个返回的引用标识放在其论断所在的同一句中。
 说明来源没有证实的任何所请求的部分。
 只有返回的引用标识才能标注来源。不要自行在方括号中写标签。

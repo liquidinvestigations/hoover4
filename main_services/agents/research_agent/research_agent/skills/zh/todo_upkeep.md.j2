@@ -4,8 +4,6 @@ group: stumble
 description: 如何把研究规划为有界的分组、把每组保存到报告中并更新进度
 tools: update_plan
 ---
-{# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
-   other than pending or done, or no goal. A step has two statuses, pending and done. #}
 维护计划
 
 {{ tool('update_plan') }} 接受目标和完整的步骤列表。每个步骤有 text 和 status，已完成的步骤有一条简短的备注。

@@ -4,7 +4,7 @@
   "tool": "verktyg",
   "tool call": "verktygsanrop",
   "argument": "argument",
-  "citation handle": "källhandtag",
+  "citation handle": "handtag",
   "quote": "citat",
   "workspace file": "arbetsytefil",
   "report": "rapport",
@@ -16,6 +16,11 @@
   "note": "notering",
   "plan": "plan",
   "investigation board": "tavla",
-  "manual": "handbok"
+  "manual": "handbok",
+  "capture": "sparad kopia",
+  "roster": "medlemslista",
+  "turn": "varv",
+  "patch": "patch",
+  "batch": "grupp"
  }
 }

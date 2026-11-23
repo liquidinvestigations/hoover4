@@ -47,7 +47,7 @@ Wynik zwraca text_range z początkiem, wyłącznym końcem, łączną liczbą zn
 page_complete oznacza, że zakres obejmuje całą stronę.
 Znacznik cięcia oznacza, że narzędzie dostarczyło tylko część zakresu. Nie oznacza, że strona tam się kończy.
 Użyj more elementu, aby kontynuować ten dokument. Użyj more najwyższego poziomu, aby kontynuować resztę strony lub dalsze strony.
-Skopiuj zwrócony uchwyt dokładnie do {{ tool('read_more') }} jako continuation.
+Skopiuj zwróconą sygnaturę dokładnie do {{ tool('read_more') }} jako continuation.
 Skopiuj read_before lub read_after jako argumenty read_documents, aby dostać otaczający tekst. Nie trzeba liczyć offsetu.
 Argumenty zakresu dotyczą każdego skrótu w jednym wywołaniu. Użyj osobnych wywołań, gdy dokumenty mają różne źródła, zakresy lub wersje źródeł.
 Na przykład skopiuj zwrócony obiekt read_after pierwszego dokumentu do jednego wywołania.
@@ -74,7 +74,7 @@ To wywołanie otwiera zwrócony zakres w wybranym źródle i na wybranej stronie
 ```json
 {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
 ```
-Ta kontynuacja czyta następny zwrócony zakres. Użyj rzeczywiście wydanego uchwytu.
+Ta kontynuacja czyta następny zwrócony zakres. Użyj rzeczywiście wydanej sygnatury.
 ```json
 {"continuation":"COPY_RETURNED_MORE"}
 ```
@@ -104,7 +104,7 @@ Zwraca nazwy źródeł i zakresy zapisanych stron. Skopiuj nazwę źródła, gdy
 {% if has('doc_diff_sources') %}
 {{ tool('doc_diff_sources') }} wymaga collection, file_hash, source_a i source_b.
 page_a i page_b opcjonalnie wybierają strony. Pominięcie ich wybiera pierwszą zapisaną stronę każdego źródła.
-Wynik to ujednolicony diff tekstu. Użyj read_more, gdy wynik jest ciągły.
+Wynik to ujednolicony diff tekstu. Użyj read_more, gdy wynik ma ciąg dalszy.
 ```json
 {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
 ```

@@ -37,15 +37,15 @@ version selecciona de forma opcional una versión capturada. why indica de forma
 El resultado da las citas textuales verificadas y un identificador web estable. Una página fallida da un error sin identificador.
 
 Ejemplo. {{ tool('read_page') }} leyó la URL https://example.org/report. Su texto dice
-"The plant closed in March 2019." Llama a {{ tool('cite_pages') }} con argumentos planos para una página:
+"La planta cerró en marzo de 2019." Llama a {{ tool('cite_pages') }} con argumentos planos para una página:
 url, copiada del resultado de la lectura, terms con la frase exacta y why.
 ```json
-{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."}
+{"url":"COPY_READ_URL","terms":["La planta cerró en marzo de 2019"],"why":"El informe da la fecha de cierre."}
 ```
 Luego escribe "La planta cerró en marzo de 2019 [W1]." con el identificador que devolvió la llamada.
 Divide en llamadas separadas una lista de más de doce páginas.
 ```json
-{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]}
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Este pasaje da la fecha de aprobación."}]}
 ```
 Copia el identificador web devuelto, por ejemplo `[W1]`, junto a la afirmación que respalda.
 Mantén cada identificador con la URL y las citas textuales de su objeto de cita devuelto.
@@ -57,15 +57,15 @@ Por ejemplo, una llamada cita tres páginas y dos tienen éxito con [W1] y [W2].
 identificadores. Envía la llamada siguiente solo con la tercera página y usa sus argumentos de reintento.
 Por ejemplo, esta llamada une palabras a través de un salto de línea de la fuente y falla.
 ```json
-{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+{"url":"https://example.org/report","terms":["La planta cerró en marzo de 2019"]}
 ```
 El error puede devolver estos argumentos de reintento con el texto exacto de la fuente.
 ```json
-{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["La planta cerró"]}}
 ```
 Llama a {{ tool('cite_pages') }} con ese objeto devuelto, con su versión real y sus terms exactos.
 ```json
-{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["La planta cerró"]}
 ```
 Una ventana de PDF tiene su propia versión. Para citar un pasaje de las páginas 51 a 100, copia la versión de esa lectura.
 ```json
@@ -103,7 +103,7 @@ Una lectura cubre solo su texto extraído. Un find sin coincidencias muestra que
 no contiene las palabras. No muestra que el documento no las contenga. El resultado de un PDF da las páginas que
 extrajo la lectura. Antes de afirmar que un documento no nombra a una persona, indica las páginas o el texto en que buscaste.
 Para una lista de acontecimientos fechados, conserva un registro por cada acontecimiento con su fecha, su nombre y su
-fuente. Indica aparte de los registros fechados los registros sin fecha, los informes duplicados y las fuentes que no pudiste leer.
+fuente. Indica aparte de los registros fechados los registros sin fecha, los relatos duplicados y las fuentes que no pudiste leer.
 
 Aplica cada restricción solicitada a cada elemento de la respuesta.
 Indica qué restricción incumple un elemento.
@@ -111,7 +111,7 @@ Identifica cada elemento por sus datos distintivos.
 Para un caso judicial, da el tribunal, la fecha y el número de expediente cuando las fuentes los den.
 Verifica en la fuente cada propiedad que la solicitud exige de un elemento.
 Cuenta una vez un mismo caso, hecho o entidad, y lista juntos los identificadores de sus etapas.
-Fusiona los informes sobre el mismo elemento.
+Fusiona los relatos sobre el mismo elemento.
 Indica cuándo las fuentes establecen menos elementos distintos de los solicitados.
 Antes de responder, verifica los datos distintivos de cada elemento y cada restricción con las páginas que leíste.
 Mantén fuera de la lista de coincidencias un elemento que incumpla una restricción, y nombra la restricción incumplida.
@@ -124,10 +124,10 @@ Da al menos una consulta. Omite sources para buscar en todas las fuentes disponi
 max_results es 15 por omisión. timelimit es d, w, m o y y se aplica solo a las fuentes de noticias compatibles.
 El resultado devuelve URL clasificadas, títulos, fragmentos y las formas de consulta que coincidieron. Lee las URL seleccionadas antes de fiarte de sus afirmaciones.
 ```json
-{"queries":["transfer approval"]}
+{"queries":["aprobación de la transferencia"]}
 ```
 ```json
-{"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+{"queries":["aprobación de la transferencia","autorización de transferencia"],"query":"acuerdo de transferencia","sources":["gdelt"],"max_results":5,"timelimit":"m"}
 ```
 {% endif %}
 {% if has('list_search_sources') %}
@@ -154,12 +154,12 @@ Repetir la primera llamada vuelve a leer el primer texto.
 {"urls":["COPY_SEARCH_RESULT_URL"]}
 ```
 ```json
-{"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+{"urls":["COPY_READ_URL"],"goal":"Encontrar la fecha de aprobación.","find":"aprobado","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
 ```
 Por ejemplo, el resultado de un PDF dice "The text covers PDF pages 1 to 50 of 120 only" y da la ventana siguiente.
 Un find en esa ventana da más coincidencias con este objeto. Cópialo como la llamada siguiente.
 ```json
-{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"aprobado","offset":1200}
 ```
 {% endif %}
 {% if has('whois_lookup') %}
@@ -187,7 +187,7 @@ El lote 1 crea report.md. El lote 2 le aplica un parche. Se repara un identifica
 Usa los identificadores y las versiones de tus propias llamadas.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Resultado: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example permanece en el informe como una fila sin resolver, con la prueba que falta.
 El parche rechazado usó [W9], que ninguna llamada devolvió. La reparación usó [W3], que devolvió {{ tool('cite_pages') }}.

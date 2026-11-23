@@ -26,13 +26,13 @@ Tilskriv ikke et udsagn om ét subjekt til et andet.
 
 `todo-search-list.md` · `report.md`
 
-Gør en lille gruppe afsendere færdig, før du starter den næste gruppe. Søg, gem kandidaterne, kontrollér og citér kilderne, og ret derefter rapporten.
+Gør en lille gruppe afsendere færdig, før du starter den næste gruppe. Søg, gem kandidaterne, kontrollér og henvis til kilderne, og patch derefter rapporten.
 
-Gem afsender, samling, filhash og næste handling for hver kandidat på en afsenderliste før kontrol. Notér søgeomfanget ved fravær og fejlen ved mislykket læsning. Ret rapporten efter en vellykket kildehenvisning, og markér posten som færdig.
+Gem afsender, samling, filhash og næste handling for hver kandidat på en afsenderliste før kontrol. Notér søgeomfanget ved fravær og fejlen ved mislykket læsning. Patch rapporten efter en vellykket kildehenvisning, og markér posten som færdig.
 
-For en liste eller en lang rapport: Opret rapporten med rækkerne fra den første gruppe. Tilføj rækkerne fra hver senere gruppe med ét {{ tool('patch_file') }}-kald. Kontrollér den returnerede version, før du starter den næste gruppe.
+For en navneliste eller en lang liste: Opret rapporten med rækkerne fra den første gruppe. Tilføj rækkerne fra hver senere gruppe med ét {{ tool('patch_file') }}-kald. Kontrollér den returnerede version, før du starter den næste gruppe.
 Behold en række, som kilderne ikke fastslår, i rapporten. Markér den som uafklaret, og nævn det manglende bevis.
-Når en patch afvises, fordi et mærke ikke kan opløses, skal du sætte det mærke ind, som kildehenvisningskaldet returnerede, og sende patchen igen.
+Når en patch afvises, fordi et mærke ikke kan slås op, skal du sætte det mærke ind, som kildehenvisningskaldet returnerede, og sende patchen igen.
 Når en patch afvises, fordi old_string ikke passer, skal du læse den del af rapporten og sende en rettet patch for den samme gruppe.
 Efter den sidste gruppe skal du levere den gemte version med {{ tool('finish_with_report') }}. En skrivning eller en patch gemmer arbejdet og leverer ikke rapporten.
 

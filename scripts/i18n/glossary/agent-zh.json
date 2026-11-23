@@ -16,6 +16,12 @@
   "note": "系统提示",
   "plan": "计划",
   "investigation board": "调查板",
-  "manual": "手册"
+  "manual": "手册",
+  "patch": "修补",
+  "step": "步骤",
+  "evidence span": "证据范围",
+  "roster": "名册",
+  "verify": "核实",
+  "check": "检查"
  }
 }

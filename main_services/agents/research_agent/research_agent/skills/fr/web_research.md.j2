@@ -30,7 +30,7 @@ Placez les repères Web renvoyés à côté des affirmations qu’ils étayent.
 Remplacez les URL de sources nues par ces repères.
 {{ tool('cite_pages') }} accepte url et terms pour une page, ou pages pour au plus douze objets de page.
 Chaque page exige url et terms. terms contient au plus huit expressions exactes, de 200 caractères au plus chacune. La casse doit correspondre.
-version sélectionne facultativement une version capturée. why énonce facultativement l’affirmation étayée, en 300 caractères au plus.
+version sélectionne facultativement une version conservée. why énonce facultativement l’affirmation étayée, en 300 caractères au plus.
 Le résultat donne les extraits vérifiés et un repère Web stable. Une page en échec donne une erreur sans repère.
 
 Exemple. {{ tool('read_page') }} a lu l’URL https://example.org/report. Son texte dit
@@ -70,7 +70,7 @@ Une fenêtre PDF a sa propre version. Pour citer un passage des pages 51 à 100,
 ```
 Si un appel dépasse huit termes, scindez ses termes en groupes d’au plus huit et citez chaque groupe séparément.
 Gardez l’URL et la version de la source avec chaque groupe. Changer la structure de l’appel ne réduit pas son nombre de termes.
-Le repère ouvre le texte capturé de la page et ses extraits vérifiés.
+Le repère ouvre le texte conservé de la page et ses extraits vérifiés.
 Utilisez une page par appel si un lot arrive abîmé.
 Une page non lue, bloquée ou non vérifiée ne peut pas étayer une affirmation.
 
@@ -139,7 +139,7 @@ Le résultat renvoie les URL classées, les titres, les extraits et les formes d
 goal enregistre facultativement la question. Il ne sélectionne pas de texte correspondant.
 find sélectionne facultativement des correspondances de texte littérales, sans distinction de casse.
 offset est une position de caractère à partir de zéro. Sans offset, la lecture commence à zéro.
-version sélectionne la version du texte capturé. Copiez-la depuis une lecture précédente de la même URL pour poursuivre ce texte.
+version sélectionne la version du texte conservé. Copiez-la depuis une lecture précédente de la même URL pour poursuivre ce texte.
 Une version appartient à une URL. Pour une autre URL, lisez d’abord cette URL et copiez sa propre version.
 links vaut true par défaut et inclut les destinations des liens dans le texte.
 page_start sélectionne la première page d’une fenêtre PDF. Une lecture extrait au plus 50 pages PDF.
@@ -180,12 +180,12 @@ Enregistrez l’affirmation avec le repère renvoyé.
 {% endif %}
 
 {% if has('write_file') and has('patch_file') and has('cite_pages') %}
-Échange direct commenté pour une liste en deux lots. L’exemple montre les champs de réponse utiles.
+Échange direct commenté pour une liste de membres en deux lots. L’exemple montre les champs de réponse utiles.
 Le lot 1 crée report.md. Le lot 2 lui applique un patch. Un repère rejeté est réparé, et la version enregistrée est livrée.
 Utilisez les repères et les versions de vos propres appels.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Résultat : {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example reste dans le rapport comme ligne non résolue, avec la preuve manquante.
 Le patch rejeté utilisait [W9], qu’aucun appel n’a renvoyé. La réparation a utilisé [W3], que {{ tool('cite_pages') }} a renvoyé.

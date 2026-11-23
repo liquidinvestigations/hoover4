@@ -16,6 +16,9 @@
   "note": "notatka",
   "plan": "plan",
   "investigation board": "tablica",
-  "manual": "podręcznik"
+  "manual": "podręcznik",
+  "patch": "poprawka",
+  "step": "krok",
+  "turn": "tura"
  }
 }

@@ -18,15 +18,15 @@ Het plan bijhouden
 6. {{ tool('update_plan') }} bewaart alleen het plan. Schrijf een rapport of een ander bestand met {{ tool('write_file') }}.
 
 Geef bij een onderzoek elke stap een afgebakende groep kandidaten, het uitvoerbestand en de voltooiingsvoorwaarde ervan.
-Maak het rapport met de eerste groep. Pas hetzelfde rapport na elke volgende groep aan met een patch, met gecontroleerde bronlabels.
+Maak het rapport met de eerste groep. Pas hetzelfde rapport na elke volgende groep aan met een patch, met gecontroleerde labels.
 Controleer de teruggegeven bestandsnaam en versie voordat je met de volgende groep begint. Herstel een geweigerde opslag en probeer dezelfde groep opnieuw.
 Sla een rij op als onopgelost, met het ontbrekende bewijs, wanneer de bronnen de bewering niet kunnen vaststellen.
 Ontdubbel personen wanneer je groepen samenvoegt.
 Een opgeslagen pagina of een TODO-notitie kan de geëxtraheerde rijen niet vervangen.
 
-Voorbeeldplan voor een lijst personen:
+Voorbeeldplan voor een ledenlijst:
 ```json
-{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Verify roster group 1 for board membership and qualifying offices. Create report.md with cited results and unresolved rows.","status":"pending"},{"text":"Verify roster group 2. Patch report.md. Check the returned version before group 3.","status":"pending"},{"text":"Reconcile scope, duplicate names and totals. Deliver report.md with the saved version.","status":"pending"}]}
+{"goal":"Identificeer bestuursleden die een kwalificerend ambt bekleedden.","steps":[{"text":"Controleer groep 1 van de ledenlijst op bestuurslidmaatschap en kwalificerende ambten. Maak report.md met aangehaalde resultaten en onopgeloste rijen.","status":"pending"},{"text":"Controleer groep 2 van de ledenlijst. Patch report.md. Controleer de teruggegeven versie voor groep 3.","status":"pending"},{"text":"Stem bereik, dubbele namen en totalen af. Lever report.md op met de opgeslagen versie.","status":"pending"}]}
 ```
 Voeg een stap toe voor elke volgende groep. Houd een stap pending zolang zijn groep ongelezen items heeft.
 Noteer na een geslaagde opslag de werkelijke versie in de notitie. Bijvoorbeeld: "report.md v2 bevat groep 1 en 2."

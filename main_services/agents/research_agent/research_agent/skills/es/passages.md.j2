@@ -15,7 +15,7 @@ Para buscar en muchos documentos, usa {{ tool('search_passages') }}. Busca en lo
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-Para buscar en un documento largo, usa estas herramientas.
+Para buscar en un solo documento largo, usa estas herramientas.
 {% if has('doc_search_text') %}
 {{ tool('doc_search_text') }} lista los resultados de una consulta en una fuente de texto, en orden de página, con la página de cada resultado.
 {% endif %}
@@ -132,10 +132,10 @@ max_results selecciona el número de resultados por forma de consulta dentro del
 El resultado da collection, file_hash, page y snippet. q registra los índices de consulta que empiezan en cero.
 Lee el texto de apoyo cuando el pasaje no responda a la pregunta.
 ```json
-{"queries":"approval of the transfer"}
+{"queries":"aprobación de la transferencia"}
 ```
 ```json
-{"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
+{"collection":["alpha","beta"],"queries":["aprobación de la transferencia","autorización de transferencia"],"max_results":5}
 ```
 {% endif %}
 

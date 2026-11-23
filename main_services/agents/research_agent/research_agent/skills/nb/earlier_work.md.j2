@@ -14,7 +14,7 @@ Bruk denne metoden når personen spør om tidligere chatter, undersøkelsestavle
 1. Kall {{ tool('list_chats_and_boards') }}. Skriv ordene for emnet i query, eller la query være tom for å vise de nyeste elementene.
 {% endif %}
 {% if has('read_chat') %}
-2. Les hver relevant chat med {{ tool('read_chat') }}. Les neste side når resultatet har next_page og du trenger de senere rundene.
+2. Les hver relevant chat med {{ tool('read_chat') }}. Les neste side når resultatet har next_page og du trenger de senere omgangene.
 {% endif %}
 {% if has('read_board') %}
 3. Les hver relevant tavle med {{ tool('read_board') }}. Angi node for å lese kildene til ett funn.
@@ -24,7 +24,7 @@ Bruk denne metoden når personen spør om tidligere chatter, undersøkelsestavle
 {% endif %}
 5. Skriv oppsummeringen: hva hver chat eller tavle spurte om, hva den fant, og hva som fortsatt er åpent.
 
-Merker som (D1) i en lest chat eller tavle navngir kildene til det elementet. Ikke skriv dem som dine egne henvisningsmerker.
+Merkelapper som (D1) i en lest chat eller tavle navngir kildene til det elementet. Ikke skriv dem som dine egne henvisningsmerker.
 {% if has('read_documents') and has('cite_documents') %}
 For å sitere et dokument fra et tidligere funn leser du dokumentet med {{ tool('read_documents') }} og siterer det med {{ tool('cite_documents') }}.
 {% endif %}

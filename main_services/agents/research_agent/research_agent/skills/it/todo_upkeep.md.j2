@@ -6,16 +6,16 @@ tools: update_plan
 ---
 Tenere il piano
 
-{{ tool('update_plan') }} accetta l'obiettivo e l'intero elenco dei passaggi. Ogni passaggio ha text e status, e un passaggio completato ha una nota breve.
+{{ tool('update_plan') }} accetta l'obiettivo e l'intero elenco dei passi. Ogni passo ha text e status, e un passo completato ha una nota breve.
 
-1. Invia l'intero elenco in ogni chiamata, in ordine. Un passaggio che ometti non fa più parte del piano.
-2. Indica ogni passaggio come oggetto con text e status. status è pending o done.
-3. Un passaggio è pending finché il suo lavoro non termina. Poi invialo come done con una nota, che indica la versione salvata e la copertura di un dataset.
-4. Mantieni invariato il testo di un passaggio quando cambia solo il suo stato. Il passaggio conserva allora il suo id.
+1. Invia l'intero elenco in ogni chiamata, in ordine. Un passo che ometti non fa più parte del piano.
+2. Indica ogni passo come oggetto con text e status. status è pending o done.
+3. Un passo è pending finché il suo lavoro non termina. Poi invialo come done con una nota, che indica la versione salvata e la copertura di un dataset.
+4. Mantieni invariato il testo di un passo quando cambia solo il suo stato. Il passo conserva allora il suo id.
 5. Un nuovo obiettivo avvia un nuovo piano.
 6. {{ tool('update_plan') }} conserva soltanto il piano. Scrivi un report o un altro file con {{ tool('write_file') }}.
 
-Per un'indagine, dai a ogni passaggio un gruppo limitato di candidati, il file di output e la sua condizione di completamento.
+Per un'indagine, dai a ogni passo un gruppo limitato di candidati, il file di output e la sua condizione di completamento.
 Crea il report con il primo gruppo. Applica una patch allo stesso report dopo ogni gruppo successivo, usando etichette di citazione verificate.
 Controlla il nome del file e la versione restituiti prima di iniziare il gruppo successivo. Ripara un salvataggio rifiutato e ripeti lo stesso gruppo.
 Salva una riga come non risolta, con le prove mancanti, quando le fonti non possono stabilire l'affermazione.
@@ -26,5 +26,5 @@ Esempio di piano per un elenco di persone:
 ```json
 {"goal":"Individuare i membri del consiglio che hanno ricoperto una carica idonea.","steps":[{"text":"Verificare il gruppo 1 dell'elenco per l'appartenenza al consiglio e le cariche idonee. Creare report.md con i risultati citati e le righe non risolte.","status":"pending"},{"text":"Verificare il gruppo 2. Applicare una patch a report.md. Controllare la versione restituita prima del gruppo 3.","status":"pending"},{"text":"Riconciliare l'ambito, i nomi duplicati e i totali. Consegnare report.md con la versione salvata.","status":"pending"}]}
 ```
-Aggiungi un passaggio per ogni gruppo ulteriore. Tieni un passaggio pending finché il suo gruppo ha voci non lette.
+Aggiungi un passo per ogni gruppo ulteriore. Tieni un passo pending finché il suo gruppo ha voci non lette.
 Dopo un salvataggio riuscito, scrivi nella nota la versione effettiva. Per esempio: «report.md v2 contiene i gruppi 1 e 2.»

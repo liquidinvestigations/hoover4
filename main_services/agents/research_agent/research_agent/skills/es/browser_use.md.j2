@@ -37,22 +37,22 @@ doubleClick selecciona un doble clic de forma opcional. modifiers contiene de fo
 {"target":"COPY_SNAPSHOT_REFERENCE"}
 ```
 ```json
-{"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]}
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Botón de búsqueda","button":"left","doubleClick":false,"modifiers":["Control"]}
 ```
 {{ tool('browser_type') }} requiere target y text. element describe el destino de forma opcional.
 submit pulsa Enter después de escribir, de forma opcional. slowly escribe los caracteres uno a uno para activar los controladores de teclas, de forma opcional.
 ```json
-{"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"}
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"aprobación"}
 ```
 ```json
-{"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true}
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Campo de búsqueda","text":"aprobación","submit":true,"slowly":true}
 ```
 {{ tool('browser_select_option') }} requiere target y values, una lista de valores de opción. element describe el destino de forma opcional.
 ```json
 {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
 ```
 ```json
-{"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Selector de formato","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
 ```
 {{ tool('browser_press_key') }} requiere key, como Enter o Control+ArrowRight.
 ```json

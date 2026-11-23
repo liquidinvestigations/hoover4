@@ -40,8 +40,8 @@ Exempel. {{ tool('read_documents') if has('read_documents') else 'Ett verktyg' }
 Dess brödtext säger "The talking points look great to me. Best of luck today." Din rapport säger
 att Jim Steffes godkände utkastet. Anropa {{ tool('cite_documents') }} med collection enron, det
 file_hash som finns i resultatet, citatet "talking points look great to me", find "look great"
-och why "Steffes approves the draft of 27 December".
-Skriv sedan "Steffes approved the draft [D1]."
+och why "Steffes godkänner utkastet av den 27 december".
+Skriv sedan "Steffes godkände utkastet [D1]."
 Citera inte "Subject: Re: DRAFT talking points", eftersom det är en rubrikrad. Citera inte
 "Can you check the notes?", eftersom det innehåller ett frågetecken.
 Radbrytningar, skiljetecken och `>`-markeringar i ett citerat e-postmeddelande behöver inte stämma.
@@ -68,7 +68,7 @@ Försök igen bara med de misslyckade posterna och med exakt ordalydelse. Ett ve
 {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
 ```
 ```json
-{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"Det här avsnittet stöder det angivna godkännandet."}]}
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"ursprunglig sökning","why":"Det här avsnittet stöder det angivna godkännandet."}]}
 ```
 Den här gruppen verifierar två avsnitt från samma dokument.
 ```json

@@ -34,10 +34,10 @@ version selectează opțional o versiune capturată. why spune opțional ce afir
 Rezultatul dă citatele verificate și o etichetă web stabilă. O pagină eșuată dă o eroare, fără etichetă.
 
 Exemplu. {{ tool('read_page') }} a citit URL-ul https://example.org/report. Textul lui spune
-"The plant closed in March 2019." Apelează {{ tool('cite_pages') }} cu argumente simple pentru o pagină:
+"Fabrica s-a închis în martie 2019." Apelează {{ tool('cite_pages') }} cu argumente simple pentru o pagină:
 url, copiat din rezultatul citirii, terms cu expresia exactă și why.
 ```json
-{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"Raportul dă data închiderii."}
+{"url":"COPY_READ_URL","terms":["Fabrica s-a închis în martie 2019"],"why":"Raportul dă data închiderii."}
 ```
 Apoi scrie "Fabrica s-a închis în martie 2019 [W1]." cu eticheta pe care a returnat-o apelul.
 Împarte o listă de mai mult de douăsprezece pagini în apeluri separate.
@@ -54,15 +54,15 @@ De exemplu, un apel citează trei pagini, iar două reușesc cu [W1] și [W2]. F
 etichete. Trimite următorul apel doar cu a treia pagină și folosește argumentele ei de reîncercare.
 De exemplu, acest apel unește cuvinte peste o întrerupere de rând a sursei și eșuează.
 ```json
-{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+{"url":"https://example.org/report","terms":["Fabrica s-a închis în martie 2019"]}
 ```
 Eroarea poate returna aceste argumente de reîncercare, cu textul exact al sursei.
 ```json
-{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Fabrica s-a închis"]}}
 ```
 Apelează {{ tool('cite_pages') }} cu acel obiect returnat, inclusiv versiunea lui reală și terms exacte.
 ```json
-{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Fabrica s-a închis"]}
 ```
 O fereastră PDF are propria versiune. Pentru a cita un pasaj din paginile 51 până la 100, copiază versiunea acelei citiri.
 ```json
@@ -101,7 +101,7 @@ nu conține cuvintele. Nu arată că documentul nu le conține. Un rezultat PDF
 dă paginile pe care le-a extras citirea. Înainte de a afirma că un document nu
 numește o persoană, spune paginile sau textul în care ai căutat.
 Pentru o listă de evenimente datate, păstrează o înregistrare pentru fiecare eveniment cu data, numele și
-sursa lui. Spune separat de înregistrările datate înregistrările fără dată, rapoartele duplicate și sursele pe care nu le-ai putut citi.
+sursa lui. Spune separat de înregistrările datate înregistrările fără dată, relatările duplicate și sursele pe care nu le-ai putut citi.
 
 Aplică fiecare constrângere cerută fiecărui element din răspuns.
 Spune ce constrângere nu o respectă un element.
@@ -109,7 +109,7 @@ Identifică fiecare element prin faptele lui distinctive.
 Pentru un proces, dă instanța, data și numărul dosarului când sursele le oferă.
 Verifică în sursă fiecare proprietate pe care cererea o cere de la un element.
 Numără un caz, un eveniment sau o entitate o singură dată și listează împreună identificatorii etapelor lui.
-Îmbină rapoartele despre același element.
+Îmbină relatările despre același element.
 Spune când sursele stabilesc mai puține elemente distincte decât s-a cerut.
 Înainte de a răspunde, verifică faptele distinctive ale fiecărui element și fiecare constrângere în paginile pe care le-ai citit.
 Păstrează un element care nu respectă o constrângere în afara listei de potriviri și numește constrângerea nerespectată.
@@ -152,12 +152,12 @@ Repetarea primului apel citește din nou primul text.
 {"urls":["COPY_SEARCH_RESULT_URL"]}
 ```
 ```json
-{"urls":["COPY_READ_URL"],"goal":"Găsește data aprobării.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+{"urls":["COPY_READ_URL"],"goal":"Găsește data aprobării.","find":"aprobat","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
 ```
 De exemplu, un rezultat PDF spune "The text covers PDF pages 1 to 50 of 120 only" și dă fereastra următoare.
 Un find în acea fereastră dă mai multe potriviri cu acest obiect. Copiază-l ca următorul apel.
 ```json
-{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"aprobat","offset":1200}
 ```
 {% endif %}
 {% if has('whois_lookup') %}
@@ -185,7 +185,7 @@ Lotul 1 creează report.md. Lotul 2 îi aplică un patch. O etichetă respinsă 
 Folosește etichetele și versiunile apelurilor tale.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Rezultat: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example rămâne în raport ca rând nerezolvat, cu dovada lipsă.
 Patch-ul respins a folosit [W9], pe care niciun apel nu l-a returnat. Repararea a folosit [W3], pe care l-a returnat {{ tool('cite_pages') }}.

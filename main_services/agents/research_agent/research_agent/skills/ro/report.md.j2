@@ -15,7 +15,7 @@ a fișierului și trimite un patch corectat. Nu scrie din nou întregul fișier 
 patch a eșuat.
 
 Pentru fiecare element listat, verifică în textul sursei fiecare constrângere înainte de a-l include.
-Îmbină rapoartele despre același element.
+Îmbină relatările despre același element.
 Verifică în sursă fiecare proprietate pe care cererea o cere de la un element.
 O proprietate înrudită nu o stabilește pe cea cerută.
 Numără un caz, un eveniment sau o entitate o singură dată, chiar dacă mai multe surse raportează etapele lui.
@@ -27,9 +27,9 @@ Nu atribui unui subiect o afirmație despre altul.
 
 `todo-search-list.md` · `report.md`
 
-Termină un grup mic de expeditori înainte să începi următorul grup. Caută, salvează rezultatele candidate, verifică și citează sursele, apoi actualizează raportul.
+Termină un grup mic de expeditori înainte să începi următorul grup. Caută, salvează candidații, verifică și citează sursele, apoi actualizează raportul.
 
-Pentru o listă de expeditori, salvează expeditorul, colecția, hash-ul fișierului și acțiunea următoare pentru fiecare candidat înainte de verificare. Înregistrează domeniul căutării dacă nu găsești un rezultat și eroarea dacă citirea eșuează. După citare, modifică raportul și marchează elementul ca finalizat.
+Pentru o listă de expeditori, salvează expeditorul, colecția, hash-ul fișierului și acțiunea următoare pentru fiecare candidat înainte de verificare. Înregistrează domeniul căutării dacă nu găsești un rezultat și eroarea dacă citirea eșuează. După citare, modifică raportul și marchează ca finalizat elementul din lista de verificare.
 
 Pentru o listă de persoane sau o listă lungă, creează raportul cu rândurile primului grup. Adaugă rândurile fiecărui grup următor cu un singur apel {{ tool('patch_file') }}. Verifică versiunea returnată înainte să începi grupul următor.
 Păstrează în raport un rând pe care sursele nu îl stabilesc. Marchează-l ca nerezolvat și numește dovada lipsă.
@@ -55,7 +55,7 @@ nu există. Citește eroarea, corectează conținutul și apelează din nou {{ t
 fără expected_version. Nu apela {{ tool('patch_file') }} înainte ca o scriere a acelui fișier
 să reușească.
 ```json
-{"success":false,"name":"cases.md","error":"The file was not changed, because a citation handle does not resolve."}
+{"success":false,"name":"cases.md","error":"Fișierul nu a fost modificat, deoarece o etichetă de citare nu se rezolvă."}
 ```
 ```json
 {"name":"cases.md","content":"Instanța a respins cererea [D2]."}

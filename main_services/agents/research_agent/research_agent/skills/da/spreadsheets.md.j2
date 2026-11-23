@@ -11,7 +11,7 @@ Læsning af et regneark
 Et regneark, en CSV-fil eller en tabel i et dokument er et tabeldokument. Angiv det med file_hash og collection fra et søgeresultat.
 
 1. {{ tool('table_overview') }} opregner arkene og kolonnerne med deres id'er.
-2. Læs rækker med {{ tool('table_page') }}. Ét kald giver 50 rækker. Sortér og filtrér rækkerne i kaldet. Angiv row_start for at gå til en række i et stort ark, og columns for at læse kolonnerne efter den 60.
+2. Læs rækker med {{ tool('table_page') }}. Ét kald giver 50 rækker. Sortér og filtrér rækkerne i kaldet. Angiv row_start for at gå til en række i et stort ark, og columns for at læse kolonnerne efter den 60..
 3. {{ tool('table_column_values') }} opregner værdierne i én kolonne og deres antal.
 4. For at finde en værdi i et ark kald {{ tool('table_search_cells') }}. Læs omgivende rækker
 med {{ tool('table_page') }}, når matchet kræver kontekst.

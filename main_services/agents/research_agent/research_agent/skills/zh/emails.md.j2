@@ -9,7 +9,7 @@ tools: doc_email, doc_metadata, read_documents
 阅读电子邮件文档
 
 {% if has('search_collections') %}
-用 {{ tool('search_collections') }} 查找邮件。 将同一发件人的拼写变体放在一起搜索。分别搜索不同发件人，以保留结果的归属。
+用 {{ tool('search_collections') }} 查找邮件。将同一发件人的拼写变体放在一起搜索。分别搜索不同发件人，以保留结果的归属。
 
 {% endif %}
 {% if has('doc_email') %}

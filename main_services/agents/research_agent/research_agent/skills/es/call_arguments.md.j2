@@ -38,7 +38,7 @@ Cuando se rechaza una llamada, el error nombra el argumento y lo que tiene mal. 
 {{ tool('search_agent_tools') }} requiere query, una descripción de la tarea de hasta 160 caracteres.
 Devuelve nombres y resúmenes de herramientas relevantes. Lee cada herramienta con {{ tool('read_tool') }} antes de su primera llamada.
 ```json
-{"query":"Find a passage late in one long document."}
+{"query":"Encontrar un pasaje hacia el final de un documento largo."}
 ```
 {% endif %}
 {% if has('read_tool') %}
@@ -51,7 +51,7 @@ Después de un error de argumento desconocido, lee el esquema de la herramienta 
 {% if has('update_plan') %}
 Por ejemplo, esta llamada a {{ tool('update_plan') }} falla porque `plan` no es un argumento.
 ```json
-{"plan":["Find the message."]}
+{"plan":["Encontrar el mensaje."]}
 ```
 Lee su esquema con {{ tool('read_tool') }}.
 ```json
@@ -59,7 +59,7 @@ Lee su esquema con {{ tool('read_tool') }}.
 ```
 Luego llama a {{ tool('update_plan') }} con goal y steps.
 ```json
-{"goal":"Verify the approval date.","steps":[{"text":"Save the approval message date and verified citation in approvals.csv.","status":"pending"}]}
+{"goal":"Verificar la fecha de aprobación.","steps":[{"text":"Guardar en approvals.csv la fecha del mensaje de aprobación y la cita verificada.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -74,7 +74,7 @@ Devuelve nombres y descripciones de métodos.
 {}
 ```
 ```json
-{"query":"Read a long document and continue its matching passage."}
+{"query":"Leer un documento largo y continuar en su pasaje correspondiente."}
 ```
 {% endif %}
 {% if has('read_skill') %}

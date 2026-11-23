@@ -23,10 +23,10 @@ word_counts와 철자 제안을 읽으십시오. 제안은 의도한 이름에�
 단어 순서가 중요하면 skilling << resigned를 사용하십시오.
 3. 필터를 하나씩 제거하십시오. 필터 없이 검색하십시오.
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }}으로 필터 값을 확인하십시오.
+{{ tool('search_facet_values') }}으로 필터 값을 검증하십시오.
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }}으로 날짜를 확인하십시오.
+{{ tool('search_histogram') }}으로 날짜를 검증하십시오.
 {% endif %}
 {% if has('search_passages') %}
 4. {{ tool('search_passages') }}으로 내용의 설명을 검색하십시오.

@@ -152,12 +152,12 @@ Ripetere la prima chiamata legge di nuovo il primo testo.
 {"urls":["COPY_SEARCH_RESULT_URL"]}
 ```
 ```json
-{"urls":["COPY_READ_URL"],"goal":"Trova la data di approvazione.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+{"urls":["COPY_READ_URL"],"goal":"Trova la data di approvazione.","find":"approvato","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
 ```
 Per esempio, il risultato di un PDF dice "The text covers PDF pages 1 to 50 of 120 only" e indica la finestra successiva.
 Un find in quella finestra dà altre corrispondenze con questo oggetto. Copialo come chiamata successiva.
 ```json
-{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approvato","offset":1200}
 ```
 {% endif %}
 {% if has('whois_lookup') %}
@@ -185,7 +185,7 @@ Il lotto 1 crea report.md. Il lotto 2 gli applica una patch. Un'etichetta rifiut
 Usa le etichette e le versioni delle tue chiamate.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Risultato: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example resta nel report come riga non risolta, con le prove mancanti.
 La patch rifiutata usava [W9], che nessuna chiamata ha restituito. La riparazione ha usato [W3], che {{ tool('cite_pages') }} ha restituito.

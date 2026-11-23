@@ -26,11 +26,11 @@ Tillskriv inte ett uttalande om ett subjekt ett annat.
 
 `todo-search-list.md` · `report.md`
 
-Slutför en liten grupp avsändare innan du börjar med nästa grupp. Sök, spara kandidaterna, kontrollera och citera källorna och uppdatera sedan rapporten.
+Slutför en liten grupp avsändare innan du börjar med nästa grupp. Sök, spara kandidaterna, kontrollera och hänvisa till källorna och patcha sedan rapporten.
 
-Spara avsändare, samling, filhash och nästa åtgärd för varje kandidat på en avsändarlista före kontrollen. Ange sökomfånget vid utebliven träff och felet vid misslyckad läsning. Uppdatera rapporten efter en lyckad källhänvisning och markera posten som klar.
+Spara avsändare, samling, filhash och nästa åtgärd för varje kandidat på en avsändarlista före kontrollen. Ange sökomfånget vid utebliven träff och felet vid misslyckad läsning. Patcha rapporten efter en lyckad källhänvisning och markera posten som klar.
 
-För en avsändarlista eller en lång lista, skapa rapporten med raderna från den första gruppen. Lägg till raderna från varje senare grupp med ett anrop av {{ tool('patch_file') }}. Kontrollera den returnerade versionen innan du börjar med nästa grupp.
+För en medlemslista eller en lång lista, skapa rapporten med raderna från den första gruppen. Lägg till raderna från varje senare grupp med ett anrop av {{ tool('patch_file') }}. Kontrollera den returnerade versionen innan du börjar med nästa grupp.
 Behåll en rad som källorna inte fastställer i rapporten. Markera den som olöst och ange vilket belägg som saknas.
 När en patch avvisas för att ett handtag inte kan lösas upp, sätt in det handtag som källhänvisningsanropet returnerade och skicka patchen igen.
 När en patch avvisas för att old_string inte matchar, läs den delen av rapporten och skicka en rättad patch för samma grupp.

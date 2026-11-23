@@ -185,7 +185,7 @@ find في تلك النافذة يعطي مطابقات أكثر مع هذا ا�
 استخدم معرّفات الاستشهاد والإصدارات التي تعيدها استدعاءاتك أنت.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+النتيجة: {{ exchange.result | tojson }}
 {% endfor %}
 يبقى Ben Example في التقرير صفًا غير محسوم مع الدليل الناقص.
 استخدم التعديل المرفوض [W9]، ولم يُعِده أي استدعاء. استخدم الإصلاح [W3]، الذي أعاده {{ tool('cite_pages') }}.

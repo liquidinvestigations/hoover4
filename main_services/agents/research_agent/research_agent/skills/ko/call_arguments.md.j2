@@ -56,7 +56,7 @@ tools:
 ```
 그런 다음 goal과 steps로 {{ tool('update_plan') }}을(를) 호출하십시오.
 ```json
-{"goal":"승인 날짜 확인하기.","steps":[{"text":"승인 메시지의 날짜와 확인된 인용을 approvals.csv에 저장하기.","status":"pending"}]}
+{"goal":"승인 날짜 검증하기.","steps":[{"text":"승인 메시지의 날짜와 검증된 인용을 approvals.csv에 저장하기.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -95,7 +95,7 @@ language는 "javascript"로, code는 문자열로 지정하십시오. 각 함수
 ```
 {% endif %}
 {% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
-출처를 찾고, 그 표현을 확인하고, 뒷받침되는 행을 새 보고서 파일에 저장하십시오.
+출처를 찾고, 그 표현을 검증하고, 뒷받침되는 행을 새 보고서 파일에 저장하십시오.
 보고서의 주제와 주장에 해당하는 정확한 문구를 사용하십시오.
 
 ```json

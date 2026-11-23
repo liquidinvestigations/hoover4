@@ -3,7 +3,7 @@ name: earlier_work
 group: technique
 description: come trovare, leggere, citare e riassumere chat e bacheche precedenti
 tools: list_chats_and_boards, read_chat, read_board, cite_chats_and_boards
-terms: Parole per indicarlo: chat precedente, conversazione precedente, l’ultima volta, bacheca di indagine, lavoro precedente, cosa abbiamo trovato, cosa ha trovato il team, inserimento, riepilogo delle bacheche, cronologia.
+terms: Parole per indicarlo: chat precedente, conversazione precedente, l'ultima volta, bacheca di indagine, lavoro precedente, cosa abbiamo trovato, cosa ha trovato il team, inserimento, riepilogo delle bacheche, cronologia.
 not_for: Non serve quando la richiesta riguarda solo i documenti delle raccolte.
 ---
 Chat e bacheche precedenti
@@ -11,21 +11,21 @@ Chat e bacheche precedenti
 Usa questo metodo quando la persona chiede di chat precedenti, bacheche di indagine o lavoro precedente.
 
 {% if has('list_chats_and_boards') %}
-1. Chiama {{ tool('list_chats_and_boards') }}. Metti le parole dell’argomento in query, oppure lascia query vuoto per elencare gli elementi più recenti.
+1. Chiama {{ tool('list_chats_and_boards') }}. Metti le parole dell'argomento in query, oppure lascia query vuoto per elencare gli elementi più recenti.
 {% endif %}
 {% if has('read_chat') %}
 2. Leggi ogni chat rilevante con {{ tool('read_chat') }}. Leggi la pagina successiva quando il risultato ha next_page e ti servono i turni successivi.
 {% endif %}
 {% if has('read_board') %}
-3. Leggi ogni bacheca rilevante con {{ tool('read_board') }}. Indica node per leggere le fonti di un risultato dell’indagine.
+3. Leggi ogni bacheca rilevante con {{ tool('read_board') }}. Indica node per leggere le fonti di un risultato dell'indagine.
 {% endif %}
 {% if has('cite_chats_and_boards') %}
-4. Chiama {{ tool('cite_chats_and_boards') }} con ogni chat e ogni bacheca che usi. Scrivi l’etichetta di citazione restituita, per esempio [C1] o [B1], accanto a ogni affermazione che si basa su di essa.
+4. Chiama {{ tool('cite_chats_and_boards') }} con ogni chat e ogni bacheca che usi. Scrivi l'etichetta di citazione restituita, per esempio [C1] o [B1], accanto a ogni affermazione che si basa su di essa.
 {% endif %}
 5. Scrivi il riepilogo: che cosa ha chiesto ogni chat o bacheca, che cosa ha trovato e che cosa resta aperto.
 
-Le etichette come (D1) in una chat o bacheca letta nominano le fonti di quell’elemento. Non scriverle come tue etichette di citazione.
+Le etichette come (D1) in una chat o bacheca letta nominano le fonti di quell'elemento. Non scriverle come tue etichette di citazione.
 {% if has('read_documents') and has('cite_documents') %}
 Per citare un documento di un risultato precedente, leggi il documento con {{ tool('read_documents') }} e citalo con {{ tool('cite_documents') }}.
 {% endif %}
-Quando l’elenco non contiene nessuna chat né bacheca sull’argomento, dillo.
+Quando l'elenco non contiene nessuna chat né bacheca sull'argomento, dillo.

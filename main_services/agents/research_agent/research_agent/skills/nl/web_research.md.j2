@@ -184,12 +184,12 @@ Sla de bewering op met het teruggegeven label.
 {% endif %}
 
 {% if has('write_file') and has('patch_file') and has('cite_pages') %}
-Uitgewerkt rechtstreeks voorbeeld voor een lijst personen in twee batches. Het voorbeeld toont de relevante velden van het antwoord.
+Uitgewerkt voorbeeld van een directe uitwisseling voor een ledenlijst in twee batches. Het voorbeeld toont de relevante velden van het antwoord.
 Batch 1 maakt report.md. Batch 2 past het aan met een patch. Een geweigerd label wordt hersteld en de opgeslagen versie wordt opgeleverd.
 Gebruik de labels en versies uit je eigen aanroepen.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
-Result: {{ exchange.result | tojson }}
+Resultaat: {{ exchange.result | tojson }}
 {% endfor %}
 Ben Example blijft in het rapport als onopgeloste rij met het ontbrekende bewijs.
 De geweigerde patch gebruikte [W9], dat geen enkele aanroep teruggaf. Het herstel gebruikte [W3], dat {{ tool('cite_pages') }} teruggaf.
