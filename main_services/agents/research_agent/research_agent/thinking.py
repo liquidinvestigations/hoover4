@@ -9,15 +9,23 @@ The admin switch `server_settings.llm_thinking` (on `/admin/llm`) decides the va
 each agent model step. The worker reads the setting before each model call and sends
 `thinking` in the step request. The title call and the compaction summary send
 `enable_thinking: false` of their own.
+
+Thinking requests send `reasoning_effort: xhigh`. That is the default of the pinned checkpoint
+template. The model server sets `medium` as its default template value, and a request value
+overrides that default, so the agent sends the checkpoint default explicitly. The value guides
+reasoning length and sets no token limit.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
+#: The effort of the pinned checkpoint template when the request omits it.
+REASONING_EFFORT = "xhigh"
+
 
 def thinking_body(on: bool) -> Dict[str, Any]:
     """The `extra_body` of one model call, with thinking on or off."""
     if on:
-        return {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "medium"}}
+        return {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": REASONING_EFFORT}}
     return {"chat_template_kwargs": {"enable_thinking": False}}

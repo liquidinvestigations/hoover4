@@ -10,6 +10,9 @@ Each skill is one file, `skills/<name>.md.j2`. The file starts with front matter
 * `tools` is a comma list of tool names that a pack of `agent_common.tool_packs` holds, or
   empty. A skill is listed in a run when the list is empty or one of its names is a tool of
   the run.
+* `required_by` is optional. It is a comma list of tool names that a pack holds. The skill
+  must be visible in the model input before the first call of each named tool
+  (`prerequisites`). A run that does not list the skill has no such requirement.
 * `terms` and `not_for` are optional. `terms` lists the words that requests use for the
   method, and `not_for` names the requests that look similar and do not need it. The
   worker's preparation question reads them with the description. The system prompt lists
@@ -25,7 +28,7 @@ same names as the body that includes it. The `citation` and `web_research` skill
 
 A run in another language reads `skills/<language>/` over the English skills
 (`skills_for`). A translated file gives the description, `terms`, `not_for` and the body.
-The name, the group and the tools come from the English file, so a translation cannot
+The name, the group, the tools and `required_by` come from the English file, so a translation cannot
 change which runs list a skill. A partial of `skills/<language>/partials/` replaces the
 English partial of the same name. A skill or a partial without a translation stays English.
 """
@@ -87,6 +90,7 @@ class Skill:
     body: str  # the Jinja source after the front matter
     terms: str = ""
     not_for: str = ""
+    required_by: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -131,8 +135,13 @@ def _parse(path: Path) -> Skill:
     unknown = [t for t in tools if pack_of(t) is None]
     if unknown:
         raise UnboundToolError(f"{path.name}: no pack holds the tools {unknown}")
+    required_by = tuple(t.strip() for t in fields.get("required_by", "").split(",") if t.strip())
+    unknown = [t for t in required_by if pack_of(t) is None]
+    if unknown:
+        raise UnboundToolError(f"{path.name}: no pack holds the required_by tools {unknown}")
     return Skill(name, group, description, tools, "\n".join(lines[end + 1:]),
-                 terms=fields.get("terms", ""), not_for=fields.get("not_for", ""))
+                 terms=fields.get("terms", ""), not_for=fields.get("not_for", ""),
+                 required_by=required_by)
 
 
 def load_skills(directory: Path = SKILL_DIR) -> Dict[str, Skill]:
@@ -175,7 +184,7 @@ def skills_for(language: str) -> Dict[str, Skill]:
             out[english.name] = Skill(
                 english.name, english.group, _clip(description), english.tools,
                 "\n".join(lines[end + 1:]), terms=fields.get("terms", english.terms),
-                not_for=fields.get("not_for", english.not_for))
+                not_for=fields.get("not_for", english.not_for), required_by=english.required_by)
         _TRANSLATED[language] = out
     return _TRANSLATED[language]
 

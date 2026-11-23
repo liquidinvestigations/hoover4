@@ -3,6 +3,7 @@ name: report
 group: general
 description: where a report, a list, a table, a draft or an answer with citations goes, how to edit it, and how to show it
 tools: write_file
+required_by: write_file, patch_file, finish_with_report
 ---
 Name a file after its content, such as `report.md`, `timeline.md` or `sources.md`. Write
 Markdown for formatted text. A list or a table can be its own file.
@@ -29,6 +30,12 @@ Do not assign a statement about one subject to another.
 Complete one small group of senders before you start the next group. Search, save the candidates, verify and cite the sources, then patch the report.
 
 For a sender roster, save each candidate's sender, collection, file hash, and next action before verification. Record the search scope for an absence and the error for a failed read. After citation succeeds, patch the report and mark the checklist entry complete.
+
+For a roster or a long list, create the report with the rows of the first group. Add the rows of each later group with one {{ tool('patch_file') }} call. Check the returned version before you start the next group.
+Keep a row that the sources do not establish in the report. Mark it unresolved and name the missing evidence.
+When a patch is refused because a handle does not resolve, put in the handle that the citation call returned, and send the patch again.
+When a patch is refused because old_string does not match, read that part of the report and send a corrected patch for the same group.
+After the last group, deliver the saved version with {{ tool('finish_with_report') }}. A write or a patch saves work and does not deliver the report.
 
 After a summary of earlier steps, the list of saved files after the newest message gives
 the name and the version of each file. Read the report and the checklist with

@@ -9,7 +9,7 @@ tools:
 呼び出しの引数の指定
 
 {% if has('read_tool') %}
-ツールの引数に自信がないときは、{{ tool('read_tool') }}を、そのツールの名前を指定して呼び出してください。各引数、その型、ツールが必須とする引数が返されます。
+ツールを最初に呼び出す前に、その名前を指定して {{ tool('read_tool') }} を呼び出してください。各引数、その型、ツールが必須とする引数が示されます。名前や要約の一覧は完全な定義ではありません。
 
 {% endif %}
 1. ツールが定める引数名だけを指定してください。それ以外の名前の引数は拒否されます。
@@ -36,7 +36,7 @@ tools:
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }}にはqueryが必須です。queryは、160文字以内の作業の説明です。
-関連するツールの名前と説明が返されます。使い慣れない引数を使う前に、そのツールを読んでください。
+関連するツールの名前と要約を返します。各ツールは、最初に呼び出す前に {{ tool('read_tool') }} で読んでください。
 ```json
 {"query":"長い1つのドキュメントの後半にある箇所を探す。"}
 ```
@@ -59,7 +59,7 @@ tools:
 ```
 そのうえで、goalとstepsを指定して{{ tool('update_plan') }}を呼び出します。
 ```json
-{"goal":"承認の日付を見つける。","steps":[{"text":"メッセージを見つける。","status":"pending"}]}
+{"goal":"承認の日付を確認する。","steps":[{"text":"承認メッセージの日付と確認済みの引用を approvals.csv に保存する。","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -84,10 +84,26 @@ tools:
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }}にはtextが必須で、1〜2,000文字です。後のコンテキストのために、証拠と未解決の問いを保存します。
-コンテキストの圧縮後も残す必要があるときは、ソースの識別情報と、次に有用な呼び出しを含めてください。
+{% if has('execute') %}
+プログラムが関数を呼び出す前に、その関数を {{ tool('read_tool') }}、または detail を true にした {{ tool('search') }} で読んでください。
+language には "javascript" を、code には文字列を指定してください。各関数は名前で呼び出し、引数オブジェクトを1つ渡してください。
+次のステップで必要な結果または操作の受領情報を返してください。
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+保存された情報源の中で正確な語を探します。確認のために一致した位置を返してください。
+
 ```json
-{"text":"承認の箇所は、返されたドキュメントの範囲にある。作成者を帰属させる前に、元の書き手を確認すること。"}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+情報源を探し、その文言を確認し、裏付けのある行を新しいレポートファイルに保存します。
+レポートの主題と、記述の正確な語句を使ってください。
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+レポート全体ができたら、返されたバージョンを直接の終了ツールで使ってください。
 {% endif %}

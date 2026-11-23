@@ -23,6 +23,8 @@ It bypasses the browser cache and saves the new observation in the chat.
 | `READ_PAGE_CALL_TIMEOUT_S` | `180` | This setting limits the complete page-read call. |
 | `BROWSER_IDLE_SECONDS` | `900` | This setting controls interactive browser idle expiry. |
 | `BROWSER_MAX_TABS_PER_CHAT` | `6` | This setting limits tabs in each interactive browser. |
+| `OUTBOUND_INTERVAL_SECONDS` | `6` | This setting sets the shortest time between two request starts to one remote. |
+| `OUTBOUND_POLICY_INTERVALS` | Empty. | This setting gives `key=seconds` items for a host or a provider group. |
 
 Set deployment values in `hoover4.ini`.
 The deployment generates the corresponding environment variables.
@@ -73,6 +75,7 @@ It does not appear in the model's tool catalogue.
 Tor fallback remains disabled until the deployment enables it.
 Configured routes retry blocked or failed public reads within the complete call deadline.
 Each attempt uses a separate context and SOCKS authentication identity.
+Each attempt and each `browser_navigate` call waits for the shared permit of its remote ([outbound_pacing.py](../agent_common/agent_common/outbound_pacing.py)). A permit after the deadline gives a `deferred` result, and the page is not read.
 The result records the selected route and earlier failed attempts.
 The deployment's Tor clients have no published ports or control interface.
 See the configuration reference for the deployment switches and token file setting.

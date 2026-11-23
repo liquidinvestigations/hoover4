@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: wie Sie den Plan mit update_plan, seinen Schritten und deren Status führen
+description: wie Sie Recherche in begrenzten Gruppen planen, jede Gruppe im Bericht speichern und den Fortschritt führen
 tools: update_plan
 ---
 Den Plan führen
@@ -10,13 +10,21 @@ Den Plan führen
 
 1. Senden Sie in jedem Aufruf die ganze Liste, in der Reihenfolge. Ein Schritt, den Sie weglassen, ist nicht mehr im Plan.
 2. Geben Sie jeden Schritt als Objekt mit text und status an. status ist pending oder done.
-3. Ein Schritt hat den Status pending, bis seine Arbeit endet. Senden Sie ihn dann als done mit einer Notiz, zum Beispiel gefunden, nicht gefunden oder ersetzt.
+3. Ein Schritt hat den Status pending, bis seine Arbeit endet. Senden Sie ihn dann als done mit einer Notiz, die bei einem Datensatz die gespeicherte Version und die Abdeckung nennt.
 4. Lassen Sie den Text eines Schritts gleich, wenn sich nur sein Status ändert. Der Schritt behält dann seine ID.
 5. Ein neues Ziel beginnt einen neuen Plan.
 6. {{ tool('update_plan') }} speichert nur den Plan. Schreiben Sie einen Bericht oder eine andere Datei mit {{ tool('write_file') }}.
 
-Dies ist ein Beispiel. Schritt 1 hat gefunden, was Sie brauchen, und Schritt 2 ist noch offen.
+Geben Sie bei einer Untersuchung jedem Schritt eine begrenzte Gruppe von Kandidaten, die Ausgabedatei und ihre Abschlussbedingung.
+Erstellen Sie den Bericht mit der ersten Gruppe. Patchen Sie denselben Bericht nach jeder weiteren Gruppe mit geprüften Belegkennungen.
+Prüfen Sie den zurückgegebenen Dateinamen und die Version, bevor Sie die nächste Gruppe beginnen. Korrigieren Sie ein abgelehntes Speichern und wiederholen Sie dieselbe Gruppe.
+Speichern Sie eine Zeile als ungeklärt, mit dem fehlenden Beleg, wenn die Quellen die Aussage nicht belegen.
+Entfernen Sie doppelte Personen, wenn Sie Gruppen zusammenführen.
+Eine gespeicherte Seite oder eine TODO-Notiz ersetzt nicht die ausgelesenen Zeilen.
+
+Beispielplan für eine Namensliste:
 ```json
-{"goal":"Das Genehmigungsdatum finden.","steps":[{"text":"Die Nachricht finden.","status":"done","note":"gefunden"},{"text":"Die stützende Textstelle lesen.","status":"pending"}]}
+{"goal":"Vorstandsmitglieder finden, die ein passendes Amt hatten.","steps":[{"text":"Gruppe 1 der Namensliste auf Vorstandsmitgliedschaft und passende Ämter prüfen. report.md mit belegten Ergebnissen und ungeklärten Zeilen erstellen.","status":"pending"},{"text":"Gruppe 2 der Namensliste prüfen. report.md patchen. Die zurückgegebene Version vor Gruppe 3 prüfen.","status":"pending"},{"text":"Umfang, doppelte Namen und Summen abgleichen. report.md mit der gespeicherten Version liefern.","status":"pending"}]}
 ```
-Das Ergebnis zeigt den ganzen Plan mit der ID jedes Schritts. Ein Aufruf, der nichts ändert, liefert unchanged. Korrigieren Sie das genannte Feld, bevor Sie erneut aufrufen.
+Fügen Sie für jede weitere Gruppe einen Schritt hinzu. Lassen Sie einen Schritt auf pending, solange seine Gruppe ungelesene Einträge hat.
+Halten Sie nach einem erfolgreichen Speichern die tatsächliche Version in der Notiz fest. Zum Beispiel: "report.md v2 enthält die Gruppen 1 und 2."

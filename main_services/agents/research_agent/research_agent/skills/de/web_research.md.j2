@@ -172,3 +172,31 @@ Ein Registrant mit null bedeutet, dass die Registry diesen Wert nicht veröffent
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Verwenden Sie {{ tool('workspace_list') }} mit dem Präfix "sources/web/", um gespeicherten Seitentext zu finden.
+Finden Sie die Textstelle mit {{ tool('workspace_search') }}. Übergeben Sie ihren Pfad, die Version, start und end als Beleg an {{ tool('cite_pages') }}.
+Speichern Sie die Aussage mit der zurückgegebenen Belegkennung.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Ausgearbeiteter direkter Ablauf für eine Namensliste in zwei Gruppen. Das Beispiel zeigt die wichtigen Felder der Antworten.
+Gruppe 1 erstellt report.md. Gruppe 2 patcht die Datei. Eine abgelehnte Belegkennung wird korrigiert, und die gespeicherte Version wird geliefert.
+Verwenden Sie die Belegkennungen und Versionen Ihrer eigenen Aufrufe.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example bleibt als ungeklärte Zeile mit dem fehlenden Beleg im Bericht.
+Der abgelehnte Patch verwendete [W9], das kein Aufruf zurückgegeben hat. Die Korrektur verwendete [W3], das {{ tool('cite_pages') }} zurückgegeben hat.
+{% if has('execute') %}
+Dieselbe Gruppe 2 als ein Aufruf von execute. Das Programm hält beim ersten fehlgeschlagenen Speichern an und gibt dessen Beleg zurück.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Das Programm gibt das Ergebnis des Patches mit seiner Version zurück. Prüfen Sie die Version vor der nächsten Gruppe.
+Wenn ein Aufruf des Programms fehlschlägt, behalten die Belege der Operationen die früheren erfolgreichen Speicherungen. Beginnen Sie erneut bei der fehlgeschlagenen Operation.
+Liefern Sie den gespeicherten Bericht nach der letzten Gruppe mit dem direkten Aufruf von {{ tool('finish_with_report') }}.
+{% endif %}
+{% endif %}

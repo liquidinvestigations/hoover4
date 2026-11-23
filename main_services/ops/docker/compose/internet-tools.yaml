@@ -67,6 +67,10 @@ services:
       # the registry, and a list written out by hand cannot be.
       - METASEARCH_SOURCES=${METASEARCH_SOURCES:-}
       - RESEARCH_CACHE_REDIS_URL=${RESEARCH_CACHE_REDIS_URL:-redis://redis:6379/0}
+      # Shared pacing of outbound requests (agent_common/outbound_pacing.py): seconds
+      # between starts to one remote, and `key=seconds` items for a host or a provider group.
+      - OUTBOUND_INTERVAL_SECONDS=${OUTBOUND_INTERVAL_SECONDS:-6}
+      - OUTBOUND_POLICY_INTERVALS=${OUTBOUND_POLICY_INTERVALS:-}
       - METASEARCH_SOURCE_TIMEOUT=${METASEARCH_SOURCE_TIMEOUT:-8}
       # GDELT answers in ten to twelve seconds even when it answers 429, so it carries its
       # own deadline. It must stay under the overall one, which bounds the fan-out anyway.
@@ -159,6 +163,10 @@ services:
       - SPECIAL_BROWSER_MAX_WAITING=${SPECIAL_BROWSER_MAX_WAITING:-32}
       - READ_PAGE_CALL_TIMEOUT_S=${READ_PAGE_CALL_TIMEOUT_S:-180}
       - READ_PAGE_TOR_PROXIES=${READ_PAGE_TOR_PROXIES:-}
+      # Shared pacing of outbound requests (agent_common/outbound_pacing.py): seconds
+      # between starts to one remote, and `key=seconds` items for a host or a provider group.
+      - OUTBOUND_INTERVAL_SECONDS=${OUTBOUND_INTERVAL_SECONDS:-6}
+      - OUTBOUND_POLICY_INTERVALS=${OUTBOUND_POLICY_INTERVALS:-}
       - BROWSER_FETCH_TOKEN_FILE=/run/secrets/browser_fetch_token
       - BROWSER_IDLE_SECONDS=${BROWSER_IDLE_SECONDS:-900}
       - BROWSER_MAX_TABS_PER_CHAT=${BROWSER_MAX_TABS_PER_CHAT:-6}

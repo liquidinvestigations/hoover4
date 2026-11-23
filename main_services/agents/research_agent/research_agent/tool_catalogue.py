@@ -214,6 +214,10 @@ class SearchAgentToolsArgs(BaseModel):
 #: The lead of the text of a search that matched.
 MATCH_TEXT = "These tools match your request:"
 
+#: The sentence after the names of a search that matched. A name and a summary are not
+#: the full definition that the first call of a tool needs (`prerequisites`).
+READ_HINT = "Read each tool with read_tool before its first call."
+
 
 def search_result(snapshot: CatalogueSnapshot, query: str) -> Dict[str, Any]:
     """Return the result of one `search_agent_tools` call as a dict."""
@@ -225,7 +229,7 @@ def search_result(snapshot: CatalogueSnapshot, query: str) -> Dict[str, Any]:
         "text": (
             localize_text(MATCH_TEXT, snapshot.language) + " "
             + ", ".join(m["name"] for m in matches)
-            + "."
+            + ". " + localize_text(READ_HINT, snapshot.language)
         ),
     }
 
@@ -242,7 +246,8 @@ def make_search_tool(snapshot_of) -> StructuredTool:
         description=(
             "Find tools for a task. Describe the task in a few words. Use it for work "
             "inside one document, a table, a "
-            "folder, facets, histograms, entity explainers, email details and PDF search."
+            "folder, facets, histograms, entity explainers, email details and PDF search. "
+            "It returns names and summaries. Read each tool with read_tool before its first call."
         ),
         args_schema=SearchAgentToolsArgs,
     )

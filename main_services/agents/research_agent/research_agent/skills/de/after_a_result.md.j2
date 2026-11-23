@@ -15,8 +15,11 @@ Tun Sie nach jedem Ergebnis eines der folgenden Dinge.
 4. Sie haben genug für die Antwort. Schreiben Sie die Antwort, oder den Bericht, wenn die Antwort Belege oder ein Dokument braucht.
 
 Verwenden Sie sichtbare Ergebnisse, wenn sie die aktuelle Frage beantworten.
-Verwenden Sie nach einer Komprimierung des Kontexts den behaltenen Index und die behaltenen Notizen, um frühere Ergebnisse zu finden.
-Rufen Sie eine benötigte Textstelle ausdrücklich erneut ab, wenn ihr Text nicht mehr sichtbar ist.
+{% if has('workspace_search') %}
+Finden Sie gespeicherte Ergebnisse und Dateien mit {{ tool('workspace_list') }}.
+Durchsuchen Sie einen gespeicherten Pfad mit {{ tool('workspace_search') }} nach den fehlenden Wörtern.
+Lesen Sie den genauen Text an den gefundenen Positionen. Prüfen Sie die Belege, bevor Sie Ergebnisse in einen Bericht aufnehmen.
+{% endif %}
 
 Wenn eine Suche kein nützliches Ergebnis liefert, ändern Sie die Suchanfrage oder verwenden Sie eine andere Quelle.
 

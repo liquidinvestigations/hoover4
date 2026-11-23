@@ -72,7 +72,7 @@ def tools(snapshot_of):
 
     return [
         StructuredTool.from_function(coroutine=search, name="search", args_schema=SearchArgs,
-                                     description="Find functions for a JavaScript program. Set detail for call schemas."),
+                                     description="Find functions for a JavaScript program. Set detail for call schemas. A result without detail gives names and summaries only. Read each function with detail true or with read_tool before a program calls it."),
         StructuredTool.from_function(coroutine=execute, name="execute", args_schema=ExecuteArgs,
                                      description="Run JavaScript with named research functions. Use read_page for web pages. Ambient fetch is unavailable. Return a summary and receipts."),
     ]

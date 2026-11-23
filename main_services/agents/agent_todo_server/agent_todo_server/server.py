@@ -147,7 +147,11 @@ def _refused(caller: Caller | None, message: str) -> NoReturn:
     name="update_plan",
     description=(
         "Set the plan of this conversation: the goal and the whole list of steps, each "
-        "with its status. For investigations, plan separate cited datasets. Save each batch before expanding the search. Send the whole list again "
+        "with its status. Read the skill todo_upkeep first. For an investigation, give each "
+        "step a bounded group of candidates, the output file and its completion condition. "
+        "For example: verify roster group 1 and create report.md with cited and unresolved rows. "
+        "Verify group 2, patch report.md and check the returned version. Reconcile the totals "
+        "and deliver the saved version. Send the whole list again "
         "when a step ends or the plan changes. A step with the same text keeps its id. "
         "The result shows the whole plan. This tool only keeps the plan. It writes no "
         "file and no answer."

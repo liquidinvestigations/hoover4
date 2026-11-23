@@ -69,13 +69,15 @@ async def server_texts() -> List[str]:
 
 def local_texts() -> List[str]:
     """The texts of the tools that the agent builds itself, and its result texts."""
-    from research_agent import skill_tools, tool_catalogue
+    from research_agent import skill_tools, steps, tool_catalogue
 
     snapshot = tool_catalogue.build_snapshot([], ["search_agent_tools", "search_skills",
-                                                  "read_skill", "read_tool", "write_note"], "chat")
+                                                  "read_skill", "read_tool", "write_note",
+                                                  "search", "execute"], "chat")
     return tool_texts(snapshot.tools_for()) + [
-        tool_catalogue.NO_MATCH_TEXT, tool_catalogue.MATCH_TEXT, skill_tools.READ_SKILL_HINT,
-        skill_tools.NO_SKILL_TEXT,
+        tool_catalogue.NO_MATCH_TEXT, tool_catalogue.MATCH_TEXT, tool_catalogue.READ_HINT,
+        skill_tools.READ_SKILL_HINT,
+        skill_tools.NO_SKILL_TEXT, steps.SAVE_REMINDER,
     ]
 
 

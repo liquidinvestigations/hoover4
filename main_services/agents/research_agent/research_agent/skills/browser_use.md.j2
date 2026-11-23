@@ -3,6 +3,7 @@ name: browser_use
 group: technique
 description: how to drive a web browser: open an address, read the page snapshot, then click, type or choose by the element reference
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+required_by: browser_navigate, browser_snapshot, browser_extract, browser_click, browser_type, browser_select_option, browser_press_key
 ---
 {# How to drive the browser tools. An element reference is valid only for the snapshot that
    gave it, so the text asks for a new snapshot after each action. The sentence on

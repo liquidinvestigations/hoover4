@@ -3,6 +3,7 @@ name: web_research
 group: technique
 description: how to search the open web, read a web page or the owner record of a domain, and cite the web pages that support an answer or a report
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+required_by: web_search, read_page, cite_pages, whois_lookup
 ---
 {# Each tool sentence renders when the run has that tool. The web citation protocol is
    here, and the skill `citation` holds the document protocol. Both include the failure
@@ -183,21 +184,23 @@ Find the passage with {{ tool('workspace_search') }}. Pass its path, version, st
 Save the claim with the returned handle.
 {% endif %}
 
-{% if has('workspace_rows') and has('write_file') and has('cite_pages') %}
-Worked direct exchange for one person. The example shows the relevant response fields.
-Use the handles and versions from your own calls. Use patch_file for later batches in an existing file.
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Worked direct exchange for a roster in two batches. The example shows the relevant response fields.
+Batch 1 creates report.md. Batch 2 patches it. A rejected handle is repaired, and the saved version is delivered.
+Use the handles and versions from your own calls.
 {% for exchange in example_exchanges %}
 {{ exchange.tool }} {{ exchange.arguments | tojson }}
 Result: {{ exchange.result | tojson }}
 {% endfor %}
+Ben Example stays in the report as an unresolved row with the missing evidence.
+The rejected patch used [W9], which no call returned. The repair used [W3], which {{ tool('cite_pages') }} returned.
 {% if has('execute') %}
-This complete execute call illustrates a fresh workspace with one candidate. Use returned handles for each fact.
+The same batch 2 as one execute call. The program stops at the first failed save and returns its receipt.
 ```json
-{"language": "javascript", "code": "const sources = [\n  ['https://www.ned.org/about/board-of-directors/', 'Daniel Fried Veteran Diplomat', 'current-board.csv', 'board member'],\n  ['https://www.ned.org/experts/ambassador-daniel-fried/', 'ambassador to Poland', 'us-roles.csv', 'ambassador to Poland']\n];\nfor (const [url, term, file, fact] of sources) {\n  read_page({urls:[url]});\n  const hit = workspace_search({prefix:'sources/web/',terms:[term]}).matches.find(m => m.url === url);\n  if (!hit) return {unresolved:term};\n  const proof = cite_pages({url,version:hit.version,terms:[hit.text]}).citations?.find(c => c.quote_verified);\n  if (!proof) return {unresolved:term};\n  const saved = write_file({name:file,content:'person,fact,source\\nDaniel Fried,' + fact + ',' + proof.handle});\n  if (!saved.success) return saved;\n  if (file === 'current-board.csv') {\n    const draft = write_file({name:'report.md',content:'Daniel Fried serves on the NED board ' + proof.handle + '. Office verification pending.'});\n    if (!draft.success) return draft;\n  }\n}\nconst member = workspace_rows({path:'current-board.csv'}).rows[0].values;\nconst role = workspace_rows({path:'us-roles.csv'}).rows.find(row => row.values.person === member.person)?.values;\nif (!role) return {unresolved:member.person};\nreturn patch_file({name:'report.md',old_string:member.person + ' serves on the NED board ' + member.source + '. Office verification pending.',new_string:member.person + ' serves on the board ' + member.source + ' and served as ' + role.fact + ' ' + role.source + '.'});"}
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
 ```
-If a citation fails, find the passage again and use the returned handle. If evidence remains unavailable, record the gap.
-If a patch fails, read the saved passage and correct the rejected patch. Retry this batch until the save succeeds.
-After partial execution, resume at the failed operation. Earlier successful writes already have saved versions.
-Deliver the saved report with the direct finish tool.
+The program returns the patch result with its version. Check the version before the next batch.
+When a call of the program fails, the receipts keep the earlier successful saves. Start again at the failed operation.
+Deliver the saved report with the direct {{ tool('finish_with_report') }} call after the last batch.
 {% endif %}
 {% endif %}

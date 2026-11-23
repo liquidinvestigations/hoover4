@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any
 
 from fastmcp import FastMCP
@@ -20,7 +21,7 @@ from fastmcp.server.middleware import Middleware
 from fastmcp.tools.tool import Tool, ToolResult
 from mcp.types import EmbeddedResource, TextContent, TextResourceContents
 
-from agent_common import artifacts, workspace_results, telemetry
+from agent_common import artifacts, outbound_pacing, workspace_results, telemetry
 
 from browser_use_server import capture as capture_mod
 from browser_use_server import chat_browser
@@ -118,6 +119,10 @@ def _busy(exc: Exception) -> ToolResult:
     )
 
 
+#: The most seconds that `browser_navigate` waits for the permit of its remote.
+NAV_PERMIT_WAIT_S = 30.0
+
+
 def _refusal(message: str) -> ToolResult:
     """A refusal the model can read and act on.
 
@@ -180,6 +185,16 @@ class RoutedTool(Tool):
             log.info("refused %s: %s", tool_name, exc)
             return _refusal(str(exc))
 
+        # 2. The shared permit of the remote (`agent_common.outbound_pacing`). A link that
+        #    a click follows and a redirect start without their own permit.
+        if tool_name == "browser_navigate" and str(arguments.get("url") or "").startswith("http"):
+            try:
+                await outbound_pacing.admit(str(arguments["url"]),
+                                            time.monotonic() + NAV_PERMIT_WAIT_S,
+                                            route="chat_browser")
+            except outbound_pacing.Deferred as exc:
+                return _refusal(f"{exc} The page was not opened.")
+
         await router.ensure_reaper()
         session_id = browser_key()
         username = _header(USER_HEADER)
@@ -194,13 +209,13 @@ class RoutedTool(Tool):
             log.error("could not start a browser for chat %r: %s", session_id, exc)
             return _refusal(f"no browser could be started: {exc}")
 
-        # 2. Forward, serialised per chat. One conversation's calls must not interleave in
+        # 3. Forward, serialised per chat. One conversation's calls must not interleave in
         #    its own browser; different conversations run in parallel, which is the whole
         #    reason the old global lock is gone.
         async with chat.lock:
             result, failed = await self._forward(chat, tool_name, arguments)
 
-            # 3. Capture, including on failure, the error path is where the evidence
+            # 4. Capture, including on failure, the error path is where the evidence
             #    matters most. A tool that captures nothing still gets an empty marker:
             #    the card authenticates the marker by its position, and that only works
             #    if every result this router returns ends with one.
@@ -218,7 +233,7 @@ class RoutedTool(Tool):
                         uri="hoover4://workspace-results", mimeType="application/json",
                         text=json.dumps([retained], ensure_ascii=False))))
 
-            # 4. Tab cap, AFTER the capture: capture reads the active tab, and closing
+            # 5. Tab cap, AFTER the capture: capture reads the active tab, and closing
             #    tabs first could take the one the agent just acted on.
             await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
 

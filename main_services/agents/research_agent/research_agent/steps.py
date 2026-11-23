@@ -52,7 +52,7 @@ from agent_common import workspace_results
 
 from research_agent import compaction, images, llm_events, request_size, result_views, skill_store
 from research_agent.chat_model import ThinkingChatOpenAI
-from research_agent.localization import catalog_revision
+from research_agent.localization import catalog_revision, localize_text
 from research_agent.execution import (
     FINISH_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
     batch_budget, finish_order_problem, is_browser_tool, split_resources, validation_error, workspace_refs_of, workspace_resource,
@@ -60,7 +60,7 @@ from research_agent.execution import (
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
 )
-from research_agent import thinking, workspace_state
+from research_agent import prerequisites, thinking, workspace_state
 from research_agent.tool_args import DamagedArguments, model_schema, normalize_arguments, repair_json_arguments
 from research_agent.skill_tools import READ_SKILL
 from research_agent.tool_catalogue import SEARCH_TOOL, shown_definition, tool_schema
@@ -824,7 +824,55 @@ def retryable_result(content: str) -> bool:
 
 async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
     """Run one tool call and return its result."""
-    return await _run_tool_call(await _context(agent, request), request)
+    context = await _context(agent, request)
+    response = await _run_tool_call(context, request)
+    reminder = save_reminder(request, response)
+    if reminder:
+        shown = response.get("model_content") or response["content"]
+        response["model_content"] = f"{shown}\n\n{localize_text(reminder, context.snapshot.language)}"
+    return response
+
+
+#: The tools whose successful result gives citation handles.
+CITATION_TOOLS = frozenset({"cite_pages", "cite_documents"})
+#: The tools whose successful result is a saved file version.
+SAVE_TOOLS = frozenset({"write_file", "patch_file"})
+
+#: The instruction after a citation result when an earlier citation result of the run
+#: also came after the last saved file version.
+SAVE_REMINDER = ("Earlier citations are not in a saved report version yet. Save the rows that "
+                 "these handles support with write_file or patch_file before you read the next group.")
+
+
+def _json_body(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _gave_citations(body: Any) -> bool:
+    return isinstance(body, dict) and any(
+        isinstance(c, dict) and c.get("handle") for c in body.get("citations") or [])
+
+
+def save_reminder(request: ToolCallRequest, response: Dict[str, Any]) -> str:
+    """`SAVE_REMINDER` for a successful citation call when an earlier successful citation
+    call of this run also came after the last successful write or patch, else an empty
+    string. A call inside `execute` gets no reminder. The reminder refuses nothing."""
+    if (request.call.name not in CITATION_TOOLS or response.get("status") != "ok"
+            or "/execute/" in request.idempotency_key
+            or not _gave_citations(_json_body(response.get("content")))):
+        return ""
+    for message in reversed(request.messages):
+        if message.role != "tool" or message.status == "error":
+            continue
+        body = _json_body(message.content)
+        if message.name in SAVE_TOOLS and isinstance(body, dict) and body.get("success") is True:
+            return ""
+        if message.name in CITATION_TOOLS and _gave_citations(body):
+            return SAVE_REMINDER
+    return ""
 
 
 def _failed_result(body: Any) -> bool:
@@ -879,6 +927,23 @@ def batch_problem(request: ToolCallRequest) -> str:
         if message.role == "ai" and any(c.id == request.call.id for c in message.tool_calls):
             return finish_order_problem([c.name for c in message.tool_calls])
     return ""
+
+
+def prerequisite_refusal(context: Any, request: ToolCallRequest, name: str) -> str:
+    """The refusal text of a call whose required reads are not in the model input, or an
+    empty string (`prerequisites`). The listed skills are the turn's pinned skills when the
+    turn has them, else the skills of the run."""
+    if name in prerequisites.EXEMPT_TOOLS or request.call.id.startswith(prerequisites.POLICY_CALL_PREFIX):
+        return ""
+    if request.control is not None and request.control.skills:
+        listed = [skill_store.SKILLS[n] for n in request.control.skills if n in skill_store.SKILLS]
+    else:
+        ctx = getattr(context, "skill_context", None)
+        listed = skill_store.listed_skills(ctx) if ctx is not None else []
+    _, applied = model_input_rows(request.earlier, request.messages)
+    skills, definition = prerequisites.missing_reads(name, request.call.id, applied, listed)
+    return prerequisites.refusal_text(name, skills, definition,
+                                      nested="/execute/" in request.idempotency_key) or ""
 
 
 async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
@@ -936,6 +1001,11 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             request, _error("invalid_arguments", problem + argument_hint, tool=name), "error", "invalid_arguments",
             _with_repairs(None, repairs),
         )
+
+    refusal = prerequisite_refusal(context, request, name)
+    if refusal:
+        return _tool_response(request, _error(prerequisites.MISSING_PREREQUISITE, refusal, tool=name),
+                              "error", prerequisites.MISSING_PREREQUISITE)
 
     if (name == READ_SKILL and request.control is not None
             and (request.control.skills or request.control.tool_definitions is not None)):

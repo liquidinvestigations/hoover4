@@ -3,35 +3,19 @@
     "tool": "read_page",
     "arguments": {
       "urls": [
-        "https://www.ned.org/about/board-of-directors/"
+        "https://example.org/harbor-fund/board"
       ]
     },
-    "result": "Daniel Fried Veteran Diplomat"
-  },
-  {
-    "tool": "workspace_search",
-    "arguments": {
-      "prefix": "sources/web/",
-      "terms": [
-        "Daniel Fried Veteran Diplomat"
-      ],
-      "limit": 1
-    },
-    "result": {
-      "matches": [
-        {
-          "text": "Daniel Fried Veteran Diplomat",
-          "url": "https://www.ned.org/about/board-of-directors/"
-        }
-      ]
-    }
+    "result": "Board of Directors. Ada Sample, Director. Ben Example, Director. Cora Placeholder, Director."
   },
   {
     "tool": "cite_pages",
     "arguments": {
-      "url": "https://www.ned.org/about/board-of-directors/",
+      "url": "https://example.org/harbor-fund/board",
       "terms": [
-        "Daniel Fried Veteran Diplomat"
+        "Ada Sample, Director",
+        "Ben Example, Director",
+        "Cora Placeholder, Director"
       ]
     },
     "result": {
@@ -44,68 +28,20 @@
     }
   },
   {
-    "tool": "write_file",
-    "arguments": {
-      "name": "current-board.csv",
-      "content": "person,fact,source\nDaniel Fried,current member,[W1]"
-    },
-    "result": {
-      "success": true,
-      "name": "current-board.csv",
-      "version": 1,
-      "citations": [
-        "[W1]"
-      ]
-    }
-  },
-  {
-    "tool": "write_file",
-    "arguments": {
-      "name": "report.md",
-      "content": "Daniel Fried serves on the NED board [W1]. Office verification pending."
-    },
-    "result": {
-      "success": true,
-      "name": "report.md",
-      "version": 1,
-      "citations": [
-        "[W1]"
-      ]
-    }
-  },
-  {
     "tool": "read_page",
     "arguments": {
       "urls": [
-        "https://www.ned.org/experts/ambassador-daniel-fried/"
+        "https://example.org/people/ada-sample"
       ]
     },
-    "result": "ambassador to Poland"
-  },
-  {
-    "tool": "workspace_search",
-    "arguments": {
-      "prefix": "sources/web/",
-      "terms": [
-        "ambassador to Poland"
-      ],
-      "limit": 1
-    },
-    "result": {
-      "matches": [
-        {
-          "text": "ambassador to Poland",
-          "url": "https://www.ned.org/experts/ambassador-daniel-fried/"
-        }
-      ]
-    }
+    "result": "Ada Sample served as Deputy Secretary of Trade from 2015 to 2019."
   },
   {
     "tool": "cite_pages",
     "arguments": {
-      "url": "https://www.ned.org/experts/ambassador-daniel-fried/",
+      "url": "https://example.org/people/ada-sample",
       "terms": [
-        "ambassador to Poland"
+        "served as Deputy Secretary of Trade"
       ]
     },
     "result": {
@@ -120,48 +56,41 @@
   {
     "tool": "write_file",
     "arguments": {
-      "name": "us-roles.csv",
-      "content": "person,fact,source\nDaniel Fried,ambassador to Poland,[W2]"
+      "name": "report.md",
+      "content": "# Harbor Civic Fund board and public offices\n\n| Person | Board membership | Qualifying office |\n|---|---|---|\n| Ada Sample | Board member [W1] | Deputy Secretary of Trade [W2] |\n| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |\n"
     },
     "result": {
       "success": true,
-      "name": "us-roles.csv",
+      "name": "report.md",
       "version": 1,
       "citations": [
+        "[W1]",
         "[W2]"
       ]
     }
   },
   {
-    "tool": "workspace_rows",
+    "tool": "read_page",
     "arguments": {
-      "path": "current-board.csv"
-    },
-    "result": {
-      "rows": [
-        {
-          "values": {
-            "person": "Daniel Fried",
-            "fact": "current member",
-            "source": "[W1]"
-          }
-        }
+      "urls": [
+        "https://example.org/people/cora-placeholder"
       ]
-    }
+    },
+    "result": "Cora Placeholder was Ambassador to Norway from 2009 to 2012."
   },
   {
-    "tool": "workspace_rows",
+    "tool": "cite_pages",
     "arguments": {
-      "path": "us-roles.csv"
+      "url": "https://example.org/people/cora-placeholder",
+      "terms": [
+        "Ambassador to Norway"
+      ]
     },
     "result": {
-      "rows": [
+      "citations": [
         {
-          "values": {
-            "person": "Daniel Fried",
-            "fact": "ambassador to Poland",
-            "source": "[W2]"
-          }
+          "handle": "[W3]",
+          "quote_verified": true
         }
       ]
     }
@@ -170,8 +99,31 @@
     "tool": "patch_file",
     "arguments": {
       "name": "report.md",
-      "old_string": "Daniel Fried serves on the NED board [W1]. Office verification pending.",
-      "new_string": "Daniel Fried serves on the NED board [W1] and served as US ambassador to Poland [W2]."
+      "old_string": "| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |",
+      "new_string": "| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |\n| Cora Placeholder | Board member [W1] | Ambassador to Norway [W9] |"
+    },
+    "result": {
+      "success": false,
+      "name": "report.md",
+      "error": "The file was not changed, because a citation handle does not resolve. Correct each finding and send the call again.",
+      "file_changed": false,
+      "current_version": 1,
+      "findings": [
+        {
+          "file": "report.md",
+          "line": 6,
+          "handle": "[W9]",
+          "action": "No successful cite_pages call of this conversation gave [W9]. Cite the source with cite_pages and use the handle that it returns."
+        }
+      ]
+    }
+  },
+  {
+    "tool": "patch_file",
+    "arguments": {
+      "name": "report.md",
+      "old_string": "| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |",
+      "new_string": "| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |\n| Cora Placeholder | Board member [W1] | Ambassador to Norway [W3] |"
     },
     "result": {
       "success": true,
@@ -179,8 +131,22 @@
       "version": 2,
       "citations": [
         "[W1]",
-        "[W2]"
+        "[W2]",
+        "[W3]"
       ]
+    }
+  },
+  {
+    "tool": "read_file",
+    "arguments": {
+      "name": "report.md",
+      "offset": 5,
+      "limit": 3
+    },
+    "result": {
+      "name": "report.md",
+      "version": 2,
+      "text": "5|| Ada Sample | Board member [W1] | Deputy Secretary of Trade [W2] |\n6|| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |\n7|| Cora Placeholder | Board member [W1] | Ambassador to Norway [W3] |"
     }
   },
   {

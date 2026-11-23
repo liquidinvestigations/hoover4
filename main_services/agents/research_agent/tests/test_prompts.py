@@ -67,7 +67,7 @@ def all_skills(profile):
 
 
 def listed_lines(text):
-    return re.findall(r"^\* `([a-z_]+)`: ", text, re.M)
+    return re.findall(r"^\* `([a-z_]+)`(?:: | before )", text, re.M)
 
 
 # -------------------------------------------------------------------------- normal
@@ -77,8 +77,17 @@ def test_the_full_chat_lists_each_skill_without_tool_descriptions():
     skills = all_skills("full_research")
     assert len(skills) == 19
     text = rendered("full_research", skills=skills)
-    assert listed_lines(text) == [skill.name for skill in skills]
+    assert sorted(listed_lines(text)) == sorted(skill.name for skill in skills)
     assert "Find a tool by a few words with `search_agent_tools`." in text
+
+
+def test_a_required_skill_names_the_tools_it_precedes():
+    text = rendered("full_research", skills=all_skills("full_research"))
+    assert "* `todo_upkeep` before `update_plan`." in text
+    assert "* `report` before `write_file`, `patch_file`, `finish_with_report`." in text
+    assert "* `web_research` before `web_search`, `read_page`, `cite_pages` and 1 more." in text
+    assert "* `thorough`: " in text
+    assert "when its method helps" not in text
 
 
 def test_the_internal_chat_lists_no_web_tool():

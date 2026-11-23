@@ -536,3 +536,39 @@ def test_browser_probe_reports_denied_authentication(monkeypatch, transport):
     monkeypatch.delenv("BROWSER_FETCH_TOKEN_FILE", raising=False)
     transport.state["handler"] = lambda _: httpx.Response(403, json={"error": "The caller is not authorized."})
     assert "HTTP 403" in _run(fetch_mod.probe_browser())
+
+
+class TestPacing:
+    """The shared permits of `agent_common.outbound_pacing`, with process state."""
+
+    @pytest.fixture(autouse=True)
+    def interval(self, monkeypatch):
+        monkeypatch.setenv("OUTBOUND_INTERVAL_SECONDS", "0.4")
+
+    def test_two_requests_to_one_remote_start_one_interval_apart(self, clients):
+        async def two():
+            await fetch_mod.fetch("wikipedia", "https://en.wikipedia.org/w/api.php", timeout=8)
+            started = time.monotonic()
+            await fetch_mod.fetch("wikidata", "https://www.wikidata.org/w/api.php", timeout=8)
+            return time.monotonic() - started
+
+        assert _run(two()) >= 0.35
+        assert len(clients) == 2
+
+    def test_a_permit_after_the_deadline_defers_without_a_cooldown(self, clients):
+        async def two():
+            await fetch_mod.fetch("brave", "https://search.brave.com/search?q=a", timeout=8)
+            await fetch_mod.fetch("brave", "https://search.brave.com/search?q=b", timeout=2.2)
+
+        with pytest.raises(FetchError, match="deferred: search.brave.com"):
+            _run(two())
+        assert len(clients) == 1
+        assert fetch_mod.cooldowns() == {}
+
+    def test_a_429_with_retry_after_holds_every_route_of_the_remote(self, clients):
+        clients.answers["direct"] = FetchResponse(
+            status=429, text="", url="https://en.wikipedia.org/w/api.php",
+            headers={"retry-after": "30"})
+        with pytest.raises(FetchError, match="provider cooldown"):
+            _run(fetch_mod.fetch("wikipedia", "https://en.wikipedia.org/w/api.php", timeout=8))
+        assert [route for _, route, _ in clients] == ["direct"]

@@ -40,6 +40,13 @@ Contract:
 * Redirects are followed unless `follow_redirects` is false. `FetchResponse.url` is the
   final URL.
 
+Pacing: each attempt waits for the shared permit of its remote
+(`agent_common.outbound_pacing`) after the rate cap. All routes of a remote share one
+permit sequence, also across replicas. When the permit comes too late for the deadline of
+the source, the request stops with a note that starts with `deferred:`. A deferral is a
+local decision and puts no route in cooldown. Each answer is recorded, so a 429 or 503
+answer delays the next permit of that remote.
+
 Rate caps: each search engine has one token bucket (:data:`CAPS`) for all its routes
 together. Each attempt takes one token. A request that gets no token before the deadline of
 its source fails with the reason "rate cap of <engine>".
@@ -68,6 +75,8 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import httpx
+
+from agent_common import outbound_pacing
 
 log = logging.getLogger(__name__)
 
@@ -136,6 +145,10 @@ TRANSPORTS: dict[str, Transport] = {
 
 #: The most routes that one request tries.
 MAX_ATTEMPTS = 3
+
+#: The fewest seconds that an attempt keeps for itself after it waits for its permit
+#: (`agent_common.outbound_pacing`). A later permit defers the request.
+PACED_MIN_ATTEMPT_S = 2.0
 
 #: Seconds for one attempt when a later route can still take the request. The last attempt
 #: gets all the time that is left.
@@ -399,6 +412,15 @@ async def fetch(
                 notes.append(f"rate cap of {transport.cap}: no request slot within {budget:.1f} s")
                 break
             budget = min(budget, end - time.monotonic() - DEADLINE_MARGIN_S)
+        try:
+            # The shared permit of the remote, for every route and replica. The request
+            # keeps at least PACED_MIN_ATTEMPT_S of its budget after the wait.
+            await outbound_pacing.admit(url, time.monotonic() + budget - PACED_MIN_ATTEMPT_S,
+                                        route=route)
+        except outbound_pacing.Deferred as exc:
+            notes.append(str(exc))
+            break
+        budget = min(budget, end - time.monotonic() - DEADLINE_MARGIN_S)
         if several and not last and transport.client != BROWSER:
             budget = min(budget, ATTEMPT_TIMEOUT_S)
         attempts += 1
@@ -409,6 +431,9 @@ async def fetch(
             cause = str(exc) if isinstance(exc, FetchError) else f"{type(exc).__name__}: {exc}"
             notes.append(f"{route}: {_short(cause)}")
             continue
+        await outbound_pacing.follow(url, response.url, route=route)
+        await outbound_pacing.record(response.url or url, response.status,
+                                     response.headers.get("retry-after"), route=route)
         why = blocked(response) if blocked else ""
         if why:
             notes.append(f"{route}: {why}")

@@ -171,3 +171,31 @@ find في تلك النافذة يعطي مطابقات أكثر مع هذا ا�
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+استخدم {{ tool('workspace_list') }} مع البادئة "sources/web/" للعثور على نص الصفحة المحفوظ.
+ابحث عن المقطع باستخدام {{ tool('workspace_search') }}. مرّر مساره وإصداره وstart وend كدليل إلى {{ tool('cite_pages') }}.
+احفظ العبارة مع معرّف الاستشهاد المُعاد.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+مثال كامل لاستدعاءات مباشرة لقائمة أسماء على مجموعتين. يعرض المثال حقول الاستجابة المهمة.
+المجموعة 1 تنشئ report.md. المجموعة 2 تعدّله. يُصلَح معرّف استشهاد مرفوض، ثم يُسلَّم الإصدار المحفوظ.
+استخدم معرّفات الاستشهاد والإصدارات التي تعيدها استدعاءاتك أنت.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+يبقى Ben Example في التقرير صفًا غير محسوم مع الدليل الناقص.
+استخدم التعديل المرفوض [W9]، ولم يُعِده أي استدعاء. استخدم الإصلاح [W3]، الذي أعاده {{ tool('cite_pages') }}.
+{% if has('execute') %}
+المجموعة 2 نفسها في استدعاء execute واحد. يتوقف البرنامج عند أول حفظ فاشل ويعيد إيصاله.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+يعيد البرنامج نتيجة التعديل مع إصدارها. تحقق من الإصدار قبل المجموعة التالية.
+عندما يفشل استدعاء في البرنامج، تحتفظ الإيصالات بعمليات الحفظ الناجحة السابقة. ابدأ من جديد عند العملية الفاشلة.
+سلّم التقرير المحفوظ باستدعاء مباشر لـ {{ tool('finish_with_report') }} بعد المجموعة الأخيرة.
+{% endif %}
+{% endif %}

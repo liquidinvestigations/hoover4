@@ -9,7 +9,7 @@ tools:
 Filling in the arguments of a call
 
 {% if has('read_tool') %}
-When you are not sure of the arguments of a tool, call {{ tool('read_tool') }} with its name. It gives each argument, its type and the arguments that the tool requires.
+Before the first call of a tool, call {{ tool('read_tool') }} with its name. It gives each argument, its type and the arguments that the tool requires. A list of names or summaries is not a full definition.
 
 {% endif %}
 1. Give only the argument names that the tool gives. An argument with another name is refused.
@@ -36,7 +36,7 @@ When a call is refused, the error names the argument and what is wrong with it. 
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} requires query, a task description of up to 160 characters.
-It returns relevant tool names and descriptions. Read a tool before using unfamiliar arguments.
+It returns relevant tool names and summaries. Read each tool with {{ tool('read_tool') }} before its first call.
 ```json
 {"query":"Find a passage late in one long document."}
 ```
@@ -85,6 +85,7 @@ It returns the method instructions, tool arguments and examples.
 ```
 {% endif %}
 {% if has('execute') %}
+Before a program calls a function, read the function with {{ tool('read_tool') }}, or with {{ tool('search') }} and detail true.
 Use language "javascript" and code as a string. Call each function by name with one argument object.
 Return the findings or operation receipts that you need in the next step.
 {% endif %}

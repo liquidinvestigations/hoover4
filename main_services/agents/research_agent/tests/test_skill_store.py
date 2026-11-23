@@ -184,8 +184,10 @@ def test_the_internal_chat_lists_no_browser_and_no_web_skill():
 def test_todo_upkeep_shows_the_whole_list_with_statuses():
     text = normalised(render_skill("todo_upkeep", context("full_research")))
     assert "Send the whole list in every call, in order." in text
-    assert all(name in text for name in ("current-board.csv", "former-board.csv", "us-roles.csv", "report.md"))
-    assert "current-board.csv v2 covers the full current roster" in text
+    assert "Create report.md with cited results and unresolved rows." in text
+    assert "Verify roster group 2. Patch report.md. Check the returned version before group 3." in text
+    assert "Reconcile scope, duplicate names and totals. Deliver report.md with the saved version." in text
+    assert "report.md v2 holds groups 1 and 2." in text
     assert "Write a report or another file with `write_file`." in text
 
 
@@ -278,3 +280,21 @@ def test_a_request_about_earlier_work_or_the_use_of_hoover_finds_its_skill():
     ctx = context("full_research", EVERY_TOOL)
     assert skill_store.search_skills("summary of the earlier boards", ctx)[0]["name"] == "earlier_work"
     assert skill_store.search_skills("how to use Hoover uploads", ctx)[0]["name"] == "using_hoover"
+
+
+def test_the_worked_roster_exchange_creates_patches_repairs_and_delivers():
+    """The direct exchange of `web_research` shows the first create, a later patch, a
+    rejected handle, its repair and the delivery of the saved version. The execute example
+    is valid JSON."""
+    import json
+    import re
+
+    text = render_skill("web_research", context("full_research"))
+    order = [text.index(part) for part in (
+        'write_file {"content"', 'Result: {"citations": ["[W1]", "[W2]"], "name": "report.md"',
+        '[W9]', '"version": 2', 'finish_with_report {"name": "report.md", "version": 2}')]
+    assert order == sorted(order)
+    assert "Unresolved: no read source names a public office." in text
+    assert "Daniel Fried" not in text and "ned.org" not in text
+    program = re.search(r"```json\n(\{\"language\": \"javascript\".*?)\n```", text, re.S).group(1)
+    assert "patch_file" in json.loads(program)["code"]

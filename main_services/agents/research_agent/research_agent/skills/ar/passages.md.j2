@@ -136,3 +136,10 @@ max_results يحدد عدد النتائج لكل صيغة استعلام ضمن
 {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+ابحث عن النص المحفوظ باستخدام {{ tool('workspace_search') }} والبادئة "sources/collections/".
+استخدم المسار والإصدار وstart وend المُعادة كنطاق دليل للاستشهاد.
+احفظ العبارة مع معرّف الاستشهاد الذي تم التحقق منه.
+{% endif %}

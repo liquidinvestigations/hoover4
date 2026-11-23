@@ -1,8 +1,9 @@
 ---
 name: todo_upkeep
 group: stumble
-description: how to plan research by source, save cited datasets, and update progress
+description: how to plan research in bounded groups, save each group in the report, and update progress
 tools: update_plan
+required_by: update_plan
 ---
 {# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
    other than pending or done, or no goal. A step has two statuses, pending and done. #}
@@ -17,16 +18,16 @@ Keeping the plan
 5. A new goal starts a new plan.
 6. {{ tool('update_plan') }} only keeps the plan. Write a report or another file with {{ tool('write_file') }}.
 
-For an investigation, name the source scope, destination file and completion condition in each step.
-Create the report with the first batch. Patch it after each small batch using verified citation handles.
-Check the returned filename and version before moving on. Repair a rejected batch and retry the save.
-Record missing evidence as unresolved when the source cannot establish the claim.
-Keep missing evidence in the corresponding row. Deduplicate people when combining datasets.
+For an investigation, give each step a bounded group of candidates, the output file and its completion condition.
+Create the report with the first group. Patch the same report after each later group, using verified citation handles.
+Check the returned filename and version before you start the next group. Repair a rejected save and retry the same group.
+Save a row as unresolved, with its missing evidence, when the sources cannot establish the claim.
+Deduplicate people when you combine groups.
 A saved page or a TODO note cannot substitute for the extracted rows.
 
-Example plan for a current and historical roster:
+Example plan for a roster:
 ```json
-{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Extract the current roster through its last entry into current-board.csv with membership citations.","status":"pending"},{"text":"Extract the former roster into former-board.csv with membership citations and known periods.","status":"pending"},{"text":"Check the saved candidates and record offices, evidence and unresolved cases in us-roles.csv.","status":"pending"},{"text":"Patch report.md after each batch with its membership and office evidence. Reconcile totals against the saved rows.","status":"pending"}]}
+{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Verify roster group 1 for board membership and qualifying offices. Create report.md with cited results and unresolved rows.","status":"pending"},{"text":"Verify roster group 2. Patch report.md. Check the returned version before group 3.","status":"pending"},{"text":"Reconcile scope, duplicate names and totals. Deliver report.md with the saved version.","status":"pending"}]}
 ```
-Add a historical source when you identify a specific coverage gap. Keep the step pending while that source has unread entries.
-After a successful write, record the actual version. For example: “current-board.csv v2 covers the full current roster.”
+Add a step for each further group. Keep a step pending while its group has unread entries.
+After a successful save, record the actual version in the note. For example: "report.md v2 holds groups 1 and 2."

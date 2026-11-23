@@ -283,7 +283,7 @@ async def test_the_thinking_value_follows_the_request(model):
     await frames_of(agent, step_request(thinking=True))
     await frames_of(agent, step_request(thinking=False))
     bodies = [k["extra_body"] for k in model.kwargs_log]
-    on = {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "medium"}}
+    on = {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "xhigh"}}
     off = {"chat_template_kwargs": {"enable_thinking": False}}
     assert bodies == [on, off]
 

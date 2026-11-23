@@ -40,9 +40,10 @@ NO_SKILL_TEXT = "No skill matches this request."
 
 DESCRIPTIONS = {
     SEARCH_SKILLS: "Find skills by a few words. An empty query lists every skill of this run.",
-    READ_SKILL: "Read one method skill with tool arguments, defaults and call examples.",
+    READ_SKILL: ("Read one method skill with tool arguments, defaults and call examples. "
+                 "Read each required skill before its workflow starts."),
     READ_TOOL: (
-        "Read the full text and the arguments of one tool."
+        "Read the full text and the arguments of one tool. Read each tool before its first call."
     ),
 }
 

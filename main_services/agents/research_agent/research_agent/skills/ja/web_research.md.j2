@@ -170,3 +170,31 @@ versionは、1つのURLと1つのPDFのウィンドウに属します。
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+保存されたページのテキストは、{{ tool('workspace_list') }} と接頭辞 "sources/web/" で探してください。
+{{ tool('workspace_search') }} で箇所を探してください。そのパス、バージョン、start、end を証拠として {{ tool('cite_pages') }} に渡してください。
+返された引用ハンドルとともに記述を保存してください。
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+名簿を2つのグループで処理する、直接呼び出しの実例です。例には、応答の関連フィールドが示されています。
+グループ1で report.md を作成します。グループ2でそのファイルにパッチを適用します。拒否された引用ハンドルを直し、保存済みのバージョンを渡します。
+自分の呼び出しで返された引用ハンドルとバージョンを使ってください。
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example は、欠けている証拠を示した未解決の行としてレポートに残ります。
+拒否されたパッチは、どの呼び出しも返していない [W9] を使っていました。修正では、{{ tool('cite_pages') }} が返した [W3] を使いました。
+{% if has('execute') %}
+同じグループ2を、execute の呼び出し1回で行う例です。プログラムは最初に失敗した保存で止まり、その受領情報を返します。
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+プログラムは、バージョンを含むパッチの結果を返します。次のグループの前にバージョンを確認してください。
+プログラムの呼び出しが失敗しても、受領情報には以前に成功した保存が残ります。失敗した操作からやり直してください。
+最後のグループのあとに、保存済みのレポートを {{ tool('finish_with_report') }} の直接の呼び出しで渡してください。
+{% endif %}
+{% endif %}

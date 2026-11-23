@@ -194,7 +194,8 @@ class PageRead:
 
     url: str
     outcome: Literal["content", "challenge", "forbidden", "rate_limited", "legal_restriction",
-                     "unavailable", "extension_block", "timeout", "transport_error"] = "content"
+                     "unavailable", "extension_block", "timeout", "transport_error",
+                     "deferred"] = "content"
     status: int = 0
     retry_after_s: float = 0
     public_response: bool = False

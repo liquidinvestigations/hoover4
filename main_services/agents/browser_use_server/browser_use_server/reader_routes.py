@@ -11,6 +11,7 @@ from collections.abc import MutableMapping
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
+from agent_common import outbound_pacing
 from browser_use_server import tor_routes
 from browser_use_server.reader_client import TabClient
 from browser_use_server.special_browser import SlotWaitTimeout
@@ -20,6 +21,9 @@ log = logging.getLogger(__name__)
 
 KEEP_MAX_CHARS = int(os.getenv("READ_PAGE_KEEP_MAX_CHARS", "32000000"))
 TOR_MIN_LEFT_S = 15.0
+#: The fewest seconds that a read attempt keeps for itself after it waits for the permit
+#: of its remote (`agent_common.outbound_pacing`). A later permit defers the read.
+PACED_MIN_ATTEMPT_S = 10.0
 _RETRY_ERRORS = (
     "ERR_TIMED_OUT", "ERR_CONNECTION_TIMED_OUT", "ERR_CONNECTION_RESET",
     "ERR_CONNECTION_CLOSED", "ERR_CONNECTION_REFUSED", "ERR_EMPTY_RESPONSE",
@@ -127,6 +131,19 @@ async def _routes(reader, lease, url, goal, limit, username, deadline, links, pa
         if tried and deadline - time.monotonic() < TOR_MIN_LEFT_S:
             break
         route = None if name == tor_routes.DIRECT else tor_routes.route(name)
+        # The shared permit of the remote. Every route and replica shares it, and the
+        # caches of the read are already behind this point.
+        try:
+            await outbound_pacing.admit(url, deadline - PACED_MIN_ATTEMPT_S, route=name)
+        except outbound_pacing.Deferred as exc:
+            page = read_page.PageRead(url=url, error=f"{exc} The page was not read.",
+                                      outcome="deferred")
+            diagnostics.append({"route": "direct" if name == tor_routes.DIRECT else "tor",
+                                "outcome": "deferred", "status": 0, "challenge": "",
+                                "elapsed_ms": 0, "final_url_class": "unvalidated",
+                                "retry_reason": ""})
+            log.info("read_page route outcome %s", json.dumps(diagnostics[-1], sort_keys=True))
+            break
         # Every attempt gets a fresh cookie context and a public-destination proxy.
         async with tor_routes.SocksRelay(route) as relay:
             async with reader.pool.context_tab(lease, relay.proxy_server, "<-loopback>") as tab:
@@ -140,6 +157,9 @@ async def _routes(reader, lease, url, goal, limit, username, deadline, links, pa
                     page.outcome = "transport_error"
                 page.route = name
                 tor_routes.record(host, name, page.blocked)
+                await outbound_pacing.follow(url, page.final_url, route=name)
+                await outbound_pacing.record(page.final_url or url, page.status or None,
+                                             page.retry_after_s or None, route=name)
                 try_next = retry(page) and index + 1 < len(names) and deadline - time.monotonic() >= TOR_MIN_LEFT_S
                 if try_next and page.status == 429 and page.retry_after_s:
                     if deadline - time.monotonic() - page.retry_after_s < TOR_MIN_LEFT_S:

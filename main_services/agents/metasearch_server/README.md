@@ -39,6 +39,8 @@ The server does not solve image or behavior challenges.
 Direct routes run independently of configured Tor fallback routes.
 A request tries at most three routes within its source deadline.
 Blocked route and host pairs enter cooldown.
+Each attempt waits for the shared permit of its remote ([outbound_pacing.py](../agent_common/agent_common/outbound_pacing.py)). All routes of a remote share the permits and its provider cooldown.
+A permit after the source deadline stops the request with a `deferred:` note. A deferral puts no route in cooldown.
 Each Tor attempt uses isolated SOCKS authentication unless a multi-request source needs one circuit.
 Empty Tor configuration disables fallback.
 
@@ -92,6 +94,8 @@ The service also reads these environment variables.
 | `BROWSER_FETCH_URL` | Empty. | Configure the internal browser fetch route. |
 | `BROWSER_FETCH_TOKEN_FILE` | Empty. | Read the shared token for internal browser source fetches. |
 | `METASEARCH_COOLDOWN_SECONDS` | `600` | Delay a blocked route for the same host. |
+| `OUTBOUND_INTERVAL_SECONDS` | `6` | Set the shortest time between two request starts to one remote. |
+| `OUTBOUND_POLICY_INTERVALS` | Empty. | Set `key=seconds` items for a host or a provider group. |
 | `METASEARCH_SOLVE_TIMEOUT` | `30` | Bound a proof-of-work solve. |
 | `METASEARCH_SOLVE_BACKOFF` | `300` | Delay a new solve after failure. |
 | `METASEARCH_PER_SOURCE_RESULTS` | `15` | Bound results from each source. |

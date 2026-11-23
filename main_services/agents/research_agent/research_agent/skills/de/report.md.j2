@@ -7,6 +7,12 @@ tools: write_file
 Benennen Sie eine Datei nach ihrem Inhalt, zum Beispiel `report.md`, `timeline.md` oder `sources.md`. Schreiben Sie
 Markdown für formatierten Text. Eine Liste oder eine Tabelle kann eine eigene Datei sein.
 
+Erstellen Sie bei einer Namensliste oder einer langen Liste den Bericht mit den Zeilen der ersten Gruppe. Fügen Sie die Zeilen jeder weiteren Gruppe mit einem Aufruf von {{ tool('patch_file') }} hinzu. Prüfen Sie die zurückgegebene Version, bevor Sie die nächste Gruppe beginnen.
+Behalten Sie eine Zeile, die die Quellen nicht belegen, im Bericht. Markieren Sie sie als ungeklärt und nennen Sie den fehlenden Beleg.
+Wenn ein Patch abgelehnt wird, weil eine Belegkennung nicht aufgelöst wird, setzen Sie die Belegkennung ein, die der Belegaufruf zurückgegeben hat, und senden Sie den Patch erneut.
+Wenn ein Patch abgelehnt wird, weil old_string nicht passt, lesen Sie diesen Teil des Berichts und senden Sie einen korrigierten Patch für dieselbe Gruppe.
+Liefern Sie nach der letzten Gruppe die gespeicherte Version mit {{ tool('finish_with_report') }}. Ein Schreib- oder Patch-Aufruf speichert die Arbeit und liefert den Bericht nicht.
+
 {{ tool('patch_file') }} nimmt name, old_string, new_string und replace_all. Es nimmt kein
 expected_version. Kopieren Sie old_string aus dem Text der Datei, ohne das Präfix `N|`,
 das {{ tool('read_file') }} vor jede Zeile setzt. Wenn ein Patch fehlschlägt, weil

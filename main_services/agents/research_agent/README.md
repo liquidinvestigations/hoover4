@@ -50,6 +50,10 @@ denies the second outright.
 The [system prompt](research_agent/prompts/agent.md.j2) gives the profile role, available sources, agent language, and delivery rules.
 The model receives tool definitions separately. It can find a tool by name or description.
 The model can read a skill for a method. The [skill store](research_agent/skills/) filters skills by the tools of the turn.
+The `required_by` front matter of a skill names the tools that need the skill. The prompt lists those tools beside the skill.
+Before the first call of a tool, the model input must hold each listed skill that the tool needs and the definition of the tool
+([prerequisites.py](research_agent/prerequisites.py)). A successful `read_tool` result, or a `search` match with `detail`, gives the definition.
+A read that a compaction removed does not count. The skill and tool reads, the tool searches and the worker's policy calls need no read.
 `SYSTEM_PROMPT` replaces the rendered prompt when the setting has a value.
 
 The turn pins the prompt, skill texts, and tool definitions. A tool must also remain available under the caller's permissions.
@@ -78,7 +82,7 @@ language, with English as the fallback for each file and each text.
 |---|---|---|
 | System prompt | `prompts/<code>/agent.md.j2` | Jinja names |
 | Role line | `prompts/<code>/role_lines.json` | Jinja names |
-| Skill | `skills/<code>/<name>.md.j2`, `skills/<code>/partials/` | name, group and tools of the front matter |
+| Skill | `skills/<code>/<name>.md.j2`, `skills/<code>/partials/` | name, group, tools and `required_by` of the front matter |
 | Tool and argument descriptions, and the result texts of the agent's own tools | `research_agent/tool_texts/<code>.json`, from the English list `research_agent/tool_texts/en.json` | tool names, argument names, enum values and schema keys |
 
 The prompt names the answer language. It tells the model to keep tool names, argument names,
@@ -235,7 +239,7 @@ response is JSON:
 | `tool_call_id`, `name` | the call |
 | `content` | the result text that the model reads |
 | `status` | `ok` or `error` |
-| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools) or `invalid_arguments` (damaged or unreadable arguments, or arguments that do not match the schema). A stored result of an older run can hold `budget_exhausted` |
+| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools) or `invalid_arguments` (damaged or unreadable arguments, or arguments that do not match the schema) or `missing_prerequisite` (a required skill or tool definition is not in the model input, and the result names each missing read). The call has no effect. A stored result of an older run can hold `budget_exhausted` |
 | `measure` | the call measure of a broker tool, or `null`. When `/tool_call` changed the arguments itself, `argument_repairs` lists each change. A call that `/model_step` normalized holds its changes in its call entry |
 | `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
@@ -244,6 +248,11 @@ A `tool_unavailable` result names the unavailable tool and at most two tools of 
 the call, less the required arguments that the call lacks, then when its spelling is closer.
 A `write_report` call with `name` and `content` gets `write_file`, and a `workspace_read`
 call with only `name` gets `read_file` first. `search_agent_tools` can list available names.
+
+A successful `cite_pages` or `cite_documents` result gets one more instruction when an earlier
+successful citation result of the run also came after the last successful `write_file` or
+`patch_file` result (`steps.save_reminder`). The instruction asks the model to save the cited rows
+before it reads the next group. It refuses nothing, and a call inside `execute` does not get it.
 
 **The arguments are normalized before the call.** `/tool_call` runs the normalization of
 [Tool arguments](#tool-arguments) again, which changes nothing for a call that `/model_step`
@@ -296,6 +305,8 @@ The admin switch "Thinking" on `/admin/llm` decides the value. It is the `server
 row `llm_thinking`, and an absent row is on. The worker reads the row before each model
 call and sends `thinking`, a required boolean of `POST /model_step`. The service sends it as
 `chat_template_kwargs.enable_thinking` in the request body, in both modes (`thinking.py`).
+With thinking on, it also sends `reasoning_effort: xhigh`, the default of the pinned checkpoint template.
+The model server sets `medium` as its default template value, and a request value overrides it.
 The title call and the compaction summary send `enable_thinking: false` of their own. The output cap `AGENT_MAX_OUTPUT_TOKENS` bounds a request with thinking on.
 
 The thinking text arrives in the delta field `reasoning` from vLLM, and in

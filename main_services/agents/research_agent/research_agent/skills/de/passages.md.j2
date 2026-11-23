@@ -136,3 +136,10 @@ Lesen Sie stützenden Text, wenn die Textstelle die Frage nicht beantwortet.
 {"collection":["alpha","beta"],"queries":["Genehmigung der Überweisung","Überweisung Freigabe"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Finden Sie gespeicherten Text mit {{ tool('workspace_search') }} und dem Präfix "sources/collections/".
+Verwenden Sie den zurückgegebenen Pfad, die Version, start und end als Belegbereich.
+Speichern Sie die Aussage mit ihrer geprüften Belegkennung.
+{% endif %}

@@ -155,6 +155,7 @@ def render(
         has=lambda name: name in tool_names,
         role_line=role_line,
         skills=list(skills),
+        tool_names=tool_names,
         catalogue_search="search_agent_tools" in tool_names,
     ).strip()
 

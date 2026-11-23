@@ -323,7 +323,7 @@ def _strip_tags(html: str) -> str:
 
 #: Every JSON API below sends the same agent string. Crossref and the Wikimedia APIs give
 #: more capacity to a caller with an identifiable agent string than to an anonymous one.
-API_USER_AGENT = "from-the-cracks-metasearch/1.0 (research tool)"
+API_USER_AGENT = "hoover4-metasearch/1.0 (https://github.com/liquidinvestigations/hoover4)"
 
 
 async def _get_json(

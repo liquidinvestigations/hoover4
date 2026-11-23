@@ -243,3 +243,36 @@ def test_same_chat_retains_distinct_versions_across_runs_without_navigation(monk
     assert old.pages[0].full_text == "old text" and not old.pages[0].error
     assert key not in Reader(pool, "other", "chat").page_reads
     assert key not in Reader(pool, "owner", "other-chat").page_reads
+
+
+def test_a_read_after_the_permit_deadline_is_deferred_and_not_attempted(monkeypatch):
+    """Two reads of one remote share its permits (`agent_common.outbound_pacing`)."""
+    monkeypatch.setenv("OUTBOUND_INTERVAL_SECONDS", "0.5")
+    pool = Pool()
+    starts = []
+    async def attempt(chat, url, goal, limit, username, **kwargs):
+        starts.append(url)
+        return read_page.PageRead(url=url, full_text="Content")
+    async def archive(*args, **kwargs):
+        pass
+    monkeypatch.setattr(reader_routes, "check_url", lambda _: None)
+    monkeypatch.setattr(tor_routes, "SocksRelay", Relay)
+    monkeypatch.setattr(tor_routes, "order", lambda _: ["direct", "tor-test"])
+    monkeypatch.setattr(tor_routes, "record", lambda *_: None)
+    monkeypatch.setattr(read_page, "_read_one", attempt)
+    monkeypatch.setattr(read_page, "_capture_read", archive)
+
+    async def two():
+        reader = Reader(pool, "user", "run")
+        first = await reader_routes.read_fresh(reader, "https://en.wikipedia.org/wiki/A", "", 1000,
+                                               "user", time.monotonic() + 60)
+        limit = time.monotonic() + reader_routes.PACED_MIN_ATTEMPT_S + 0.2
+        second = await reader_routes.read_fresh(reader, "https://www.wikidata.org/wiki/Q1", "", 1000,
+                                                "user", limit)
+        return first, second
+
+    first, second = asyncio.run(two())
+    assert first.full_text and starts == ["https://en.wikipedia.org/wiki/A"]
+    assert second.outcome == "deferred" and not second.full_text
+    assert second.error.startswith("deferred: wikimedia ") and "The page was not read." in second.error
+    assert second.diagnostics[-1]["outcome"] == "deferred"
