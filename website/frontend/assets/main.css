@@ -719,10 +719,11 @@ line. A goal is blue with white text. */
 /* A hover on a card dims every card and edge outside the path of that card. */
 .x-board-node,
 .x-board-edge {
-    transition: opacity 0.12s;
+    transition: opacity 0.5s;
 }
+/* The dim removes 40% of the opacity of a card or an edge. */
 .x-board-hover-dim {
-    opacity: 0.2;
+    opacity: 0.6;
 }
 @media (prefers-reduced-motion: reduce) {
     .x-board-node,
