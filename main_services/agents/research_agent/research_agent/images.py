@@ -22,7 +22,9 @@ capture ownership on every read. `prepare` decodes the bytes and limits the long
 too large. `parts_for` appends one label line and one `image_url` part for each image after
 the text part of the tool message. An image that cannot be read gives a line with the
 reason. A cached copy is sent only after the website answers `304` to a request that names
-it. So a caller that lost access gets no cached image.
+it. The answer stays valid for `REVALIDATE_SECONDS` for the same user, collections and
+image in every process of the service, so the steps of a run do not ask again for each
+image. A caller that lost access gets no cached image after that time.
 
 **A model that takes no images.** `supports_vision` reads `llm_models.supports_vision`.
 For a model with 0, `hide` removes the references and adds `NO_VISION_TEXT` to the result.
@@ -52,6 +54,7 @@ compaction trigger, the retained-history selection and the summary request use i
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -80,6 +83,15 @@ TOKEN_SIDE = 32
 IMAGE_FRAME_TOKENS = 16
 #: The prepared bytes that the cache keeps, over every run of this process.
 CACHE_BYTES = 64 * 1024 * 1024
+#: Seconds that a website answer for one image stays valid for the same user and collections.
+#: Each answer is a call in the per-user API rate limit of the website.
+REVALIDATE_SECONDS = 60.0
+#: The folder of the answer times. The worker processes of the service share it, because
+#: the steps of one run go to different processes. Each file is named by a hash of the
+#: user, the collections and the image, and its modification time is the answer time.
+REVALIDATED_DIR = os.getenv("IMAGE_REVALIDATED_DIR", "/tmp/hoover4-image-answers")
+#: Seconds between two removals of expired answer files by one process.
+REVALIDATED_PRUNE_SECONDS = 600.0
 #: The (connect, read) timeout of one image request, in seconds.
 REQUEST_TIMEOUT = httpx.Timeout(30.0, connect=3.0)
 #: How long a catalog value of `supports_vision` is used before it is read again.
@@ -339,6 +351,38 @@ class _Cache:
 
 
 _cache = _Cache(CACHE_BYTES)
+_last_prune = [0.0]
+
+
+def _answer_path(identity: Tuple[Any, ...]) -> str:
+    digest = hashlib.sha256(json.dumps(identity, default=str).encode("utf-8")).hexdigest()
+    return os.path.join(REVALIDATED_DIR, digest)
+
+
+def _fresh(identity: Tuple[Any, ...]) -> bool:
+    """Whether a website answer for `identity` came less than REVALIDATE_SECONDS ago, in
+    any process of the service. A missing or unreadable file is no answer."""
+    try:
+        return time.time() - os.stat(_answer_path(identity)).st_mtime < REVALIDATE_SECONDS
+    except OSError:
+        return False
+
+
+def _answered(identity: Tuple[Any, ...]) -> None:
+    """Record a website answer for `identity` now. A write failure is logged, and the next
+    read asks the website again."""
+    try:
+        os.makedirs(REVALIDATED_DIR, exist_ok=True)
+        with open(_answer_path(identity), "a"):
+            pass
+        os.utime(_answer_path(identity), None)
+        if time.time() - _last_prune[0] > REVALIDATED_PRUNE_SECONDS:
+            _last_prune[0] = time.time()
+            for entry in os.scandir(REVALIDATED_DIR):
+                if time.time() - entry.stat().st_mtime > REVALIDATE_SECONDS:
+                    os.unlink(entry.path)
+    except OSError as exc:
+        log.warning("could not record an image answer: %s", exc)
 
 
 def _base_url() -> str:
@@ -364,6 +408,9 @@ def load(ref: Dict[str, Any], *, username: str, collections: Sequence[str],
         route, body = "images/document", {"collectionname": key[1], "file_hash": key[2]}
     headers = {"x-hoover4-user": username, "X-Hoover4-Collections": ",".join(collections)}
     cached = _cache.get(key)
+    identity = (username, tuple(collections), key)
+    if cached is not None and _fresh(identity):
+        return Loaded(data_url=cached[1])
     if cached is not None:
         headers["If-None-Match"] = f'"{cached[0]}"'
     try:
@@ -376,6 +423,7 @@ def load(ref: Dict[str, Any], *, username: str, collections: Sequence[str],
         log.warning("could not read the image %s: %s", key, exc)
         return Loaded(reason=f"the image could not be read ({type(exc).__name__})")
     if response.status_code == 304 and cached is not None:
+        _answered(identity)
         return Loaded(data_url=cached[1])
     if response.status_code >= 300:
         return Loaded(reason=f"the image could not be read: {_error_message(response)}")
@@ -387,6 +435,7 @@ def load(ref: Dict[str, Any], *, username: str, collections: Sequence[str],
     etag = (response.headers.get("etag") or "").strip('"')
     if etag:
         _cache.put(key, etag, data_url)
+        _answered(identity)
     return Loaded(data_url=data_url)
 
 

@@ -2,6 +2,7 @@
 check, the model without images, and the images of a compaction."""
 
 import io
+import time
 import json
 from types import SimpleNamespace
 
@@ -97,9 +98,11 @@ def _png(width, height, color=(200, 10, 10)):
     return buffer.getvalue()
 
 
-def test_a_cached_image_is_sent_only_after_the_website_checks_access(monkeypatch):
+def test_a_cached_image_is_sent_only_after_the_website_checks_access(monkeypatch, tmp_path):
     pytest.importorskip("PIL")
     monkeypatch.setattr(images, "_cache", images._Cache(images.CACHE_BYTES))
+    monkeypatch.setattr(images, "REVALIDATED_DIR", str(tmp_path))
+    monkeypatch.setattr(images, "REVALIDATE_SECONDS", 0.0)
     first = httpx.Response(200, content=_png(40, 20), headers={"etag": '"capture-a1"'})
     client = FakeClient(first, httpx.Response(304),
                         httpx.Response(403, json={"error": "permission_denied",
@@ -113,6 +116,26 @@ def test_a_cached_image_is_sent_only_after_the_website_checks_access(monkeypatch
     assert url.endswith("/api/agent/v1/images/capture") and body == {"artifact_id": "a1"}
     assert headers["If-None-Match"] == '"capture-a1"' and headers["x-hoover4-user"] == "u"
     assert "If-None-Match" not in client.requests[0][2]
+
+
+def test_a_website_answer_stays_valid_for_the_same_identity_within_the_window(monkeypatch, tmp_path):
+    """The answer times are files, so another process of the service reads them too."""
+    pytest.importorskip("PIL")
+    monkeypatch.setattr(images, "_cache", images._Cache(images.CACHE_BYTES))
+    monkeypatch.setattr(images, "REVALIDATED_DIR", str(tmp_path))
+    clock = [time.time()]
+    monkeypatch.setattr(images.time, "time", lambda: clock[0])
+    first = httpx.Response(200, content=_png(40, 20), headers={"etag": '"capture-a1"'})
+    client = FakeClient(first, httpx.Response(304), httpx.Response(304))
+    loaded = images.load(PAGE, username="u", collections=["c"], client=client)
+    clock[0] += images.REVALIDATE_SECONDS - 1
+    assert images.load(PAGE, username="u", collections=["c"], client=client) == loaded
+    assert len(client.requests) == 1
+    assert images.load(PAGE, username="v", collections=["c"], client=client) == loaded
+    assert len(client.requests) == 2
+    clock[0] += 2
+    assert images.load(PAGE, username="u", collections=["c"], client=client) == loaded
+    assert len(client.requests) == 3
 
 
 def test_a_document_image_is_read_with_the_collections_of_the_run(monkeypatch):

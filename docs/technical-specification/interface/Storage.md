@@ -44,7 +44,7 @@ The permitted-storage response includes optional collection display names and ex
 Missing display names retain the canonical identifiers.
 One session resource shares the permitted tree across cards, filters, navigation, and document locations.
 Storage and permission edits invalidate that resource.
-Window focus and visibility changes refresh identity and permitted storage.
+Window focus and visibility changes refresh identity and permitted storage, at most once in 30 seconds.
 Same-user refreshes retain names until the current response arrives.
 An identity or access change discards the previous tree and any pending response.
 Search cards and document title bars resolve collection display names through dataset membership.

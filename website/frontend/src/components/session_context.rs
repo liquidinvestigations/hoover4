@@ -1,5 +1,5 @@
 //! Session identity and permitted storage share resources across the website.
-//! Focus and visibility changes refresh identity and access.
+//! Focus and visibility changes refresh identity and access, at most once in 30 seconds.
 //! Storage and permission edits invalidate the permitted tree.
 
 use common::current_user::CurrentUser;
@@ -39,8 +39,16 @@ pub fn SessionProvider(children: Element) -> Element {
     });
     use_context_provider(|| StorageResource(storage));
     use_future(move || async move {
+        // One tab switch fires both events. Each refresh is two API calls in the per-user
+        // rate limit, so a refresh comes at most once in REFRESH_GAP_MS.
         let mut events = document::eval(r#"
-            const refresh = () => { if (!document.hidden) dioxus.send(true); };
+            const REFRESH_GAP_MS = 30000;
+            let last = Date.now();
+            const refresh = () => {
+                if (document.hidden || Date.now() - last < REFRESH_GAP_MS) return;
+                last = Date.now();
+                dioxus.send(true);
+            };
             window.addEventListener('focus', refresh);
             document.addEventListener('visibilitychange', refresh);
         "#);

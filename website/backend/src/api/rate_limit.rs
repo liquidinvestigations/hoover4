@@ -28,7 +28,9 @@
 //! in every window, so its per-minute number is a flat ceiling. The decay
 //! exists to distinguish a burst of human activity from an hour of it; a
 //! streaming turn polls at the 500 ms floor for as long as the model generates,
-//! so for that limiter "sustained" is "working". See `load_config`.
+//! so for that limiter "sustained" is "working". See `load_config`. A poll is not
+//! counted in the `ApiCall` limiter (see [`counts_as_api_call`]), so the poll ceiling
+//! is the only limit of polling.
 //!
 //! **Why in-process and not Redis.** The counters follow the
 //! `PERM_CACHE`/`SYNC_CACHE` idiom from `session_middleware.rs`: a
@@ -49,6 +51,15 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
+
+/// The server functions with a limiter of their own, which the `ApiCall` limiter skips.
+const OWN_LIMITER_FUNCTIONS: &[&str] = &["chat_poll"];
+
+/// Whether the session middleware counts a call of `function_name` in the `ApiCall`
+/// limiter. `chat_poll` checks `ChatPoll` itself.
+pub fn counts_as_api_call(function_name: &str) -> bool {
+    !OWN_LIMITER_FUNCTIONS.contains(&function_name)
+}
 
 /// Which limiter a call is subject to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -328,6 +339,13 @@ pub fn per_minute_limit(kind: RateLimitKind) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_poll_has_its_own_limiter_and_other_calls_count_as_api_calls() {
+        assert!(!counts_as_api_call("chat_poll"));
+        assert!(counts_as_api_call("whoami"));
+        assert!(counts_as_api_call("other_server_fn"));
+    }
 
     fn events_at(now: Instant, ages_seconds: &[u64]) -> VecDeque<Instant> {
         ages_seconds

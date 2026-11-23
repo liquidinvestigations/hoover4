@@ -505,7 +505,7 @@ async fn run_authenticated(
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(0);
 
-    if let Some(_fn_name) = function_name {
+    if let Some(_fn_name) = function_name.filter(|name| rate_limit::counts_as_api_call(name)) {
         if let Err(limit) = rate_limit::check_and_record(
             &current_user.username,
             rate_limit::RateLimitKind::ApiCall,
