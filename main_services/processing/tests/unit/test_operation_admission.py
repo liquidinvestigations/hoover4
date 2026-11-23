@@ -1,6 +1,7 @@
 """Unit tests for the operation caps and for admission."""
 
 import logging
+import os
 from datetime import datetime
 
 import pytest
@@ -62,11 +63,21 @@ def test_the_track_classes_match_the_registry_and_deploy():
     from tasks.P_admin.updates.registry import TRACKS
 
     assert TRACK_CAP_CLASSES == tuple(f"update_{track}" for track in TRACKS)
-    root = pathlib.Path(__file__).resolve().parents[4]
-    spec = importlib.util.spec_from_file_location("deploy_for_test", root / "deploy.py")
-    deploy = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(deploy)
-    keys = [key[:-len("_cap")] for key in deploy.DEFAULTS["operations"]]
+    # deploy.py is at the repository root, outside the /app mount of the worker. There the
+    # check reads the value that deploy.py rendered from its defaults, in the same order.
+    here = pathlib.Path(__file__).resolve()
+    script = next((parent / "deploy.py" for parent in here.parents
+                   if (parent / "deploy.py").is_file()), None)
+    if script is not None:
+        spec = importlib.util.spec_from_file_location("deploy_for_test", script)
+        deploy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(deploy)
+        keys = [key[:-len("_cap")] for key in deploy.DEFAULTS["operations"]]
+    else:
+        rendered = os.environ.get("HOOVER4_OPERATION_CAPS", "")
+        if not rendered:
+            pytest.skip("neither deploy.py nor HOOVER4_OPERATION_CAPS is available")
+        keys = [item.partition("=")[0] for item in rendered.split(",")]
     assert keys == [kind for kind in KINDS if kind != "change_ocr_languages"] + list(TRACK_CAP_CLASSES)
 
 
