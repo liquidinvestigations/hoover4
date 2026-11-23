@@ -286,10 +286,15 @@ async fn list_sessions(
         .bind(limit)
         .fetch_all::<ChatSessionRow>()
         .await?;
+    items_of_rows(rows).await
+}
+
+/// The list items of `rows`, in their order, with the message count and the running state.
+async fn items_of_rows(rows: Vec<ChatSessionRow>) -> anyhow::Result<Vec<ChatSessionItem>> {
     if rows.is_empty() {
         return Ok(Vec::new());
     }
-
+    let client = get_global_client();
     // Message counts in one grouped query rather than one per session. A session id names
     // one session, so the creator is not needed to group the counts.
     let ids: Vec<&str> = rows.iter().map(|r| r.session_id.as_str()).collect();
@@ -302,12 +307,14 @@ async fn list_sessions(
         .fetch_all()
         .await?;
     let counts: std::collections::HashMap<String, u64> = counts.into_iter().collect();
+    let running = running_sessions(&ids).await?;
 
     Ok(rows
         .into_iter()
         .map(|r| ChatSessionItem {
             message_count: counts.get(&r.session_id).copied().unwrap_or(0) as u32,
             options: r.options(),
+            running: running.contains(&r.session_id),
             session_id: r.session_id,
             title: r.title,
             summary: r.summary,
@@ -319,6 +326,91 @@ async fn list_sessions(
             can_delete: false,
         })
         .collect())
+}
+
+/// A run whose row did not change for this long is not running for the lists. A run moves
+/// `updated_at` every 30 s while it works. The limit keeps a run row that a lost worker left
+/// open from hiding the delete button for ever.
+const RUNNING_ROW_SECONDS: u32 = 900;
+
+/// The sessions among `ids` with an open agent run (`agent_runs.state = 'running'`) whose
+/// row changed in the last `RUNNING_ROW_SECONDS`.
+async fn running_sessions(ids: &[&str]) -> anyhow::Result<std::collections::HashSet<String>> {
+    let rows: Vec<String> = get_global_client()
+        .query(
+            "SELECT DISTINCT session_id FROM agent_runs FINAL WHERE session_id IN ? \
+             AND state = 'running' AND updated_at > now64(3) - toIntervalSecond(?)",
+        )
+        .bind(ids)
+        .bind(RUNNING_ROW_SECONDS)
+        .fetch_all()
+        .await?;
+    Ok(rows.into_iter().collect())
+}
+
+/// One page of the chat history of the groups `owner_groups`, for `query`. `username` is
+/// the reader, for `query.mine`. The caller sets `can_delete` of each item.
+pub async fn page_sessions(
+    owner_groups: &[String],
+    username: &str,
+    query: &common::item_list::ItemListQuery,
+) -> anyhow::Result<common::item_list::ItemPage<ChatSessionItem>> {
+    use common::item_list::{ItemPage, ITEM_LIST_PAGE_SIZE};
+    if owner_groups.is_empty() {
+        return Ok(ItemPage { items: Vec::new(), total: 0, groups: Vec::new() });
+    }
+    let client = get_global_client();
+    let search = query.search_text();
+    // Every item that the reader can read, before the filters of the query.
+    const READABLE: &str = "owner_group IN ? AND owner_group != '' AND is_deleted = 0 \
+         AND (? OR NOT startsWith(session_id, ?))";
+    const FILTERS: &str = "AND (? = '' OR owner_group = ?) AND (NOT ? OR username = ?) \
+         AND (? = '' OR positionCaseInsensitiveUTF8(title, ?) > 0 \
+              OR positionCaseInsensitiveUTF8(summary, ?) > 0)";
+    let order = if query.oldest_first { "ASC" } else { "DESC" };
+    let rows = client
+        .query(&format!(
+            "{SESSION_SELECT} WHERE {READABLE} {FILTERS} \
+             ORDER BY updated_at {order}, session_id LIMIT ? OFFSET ?"
+        ))
+        .bind(owner_groups)
+        .bind(query.include_boards)
+        .bind(common::board_types::BOARD_SESSION_PREFIX)
+        .bind(&query.group)
+        .bind(&query.group)
+        .bind(query.mine)
+        .bind(username)
+        .bind(&search)
+        .bind(&search)
+        .bind(&search)
+        .bind(ITEM_LIST_PAGE_SIZE)
+        .bind(query.offset())
+        .fetch_all::<ChatSessionRow>()
+        .await?;
+    let total: u64 = client
+        .query(&format!("SELECT count() FROM chat_sessions FINAL WHERE {READABLE} {FILTERS}"))
+        .bind(owner_groups)
+        .bind(query.include_boards)
+        .bind(common::board_types::BOARD_SESSION_PREFIX)
+        .bind(&query.group)
+        .bind(&query.group)
+        .bind(query.mine)
+        .bind(username)
+        .bind(&search)
+        .bind(&search)
+        .bind(&search)
+        .fetch_one()
+        .await?;
+    let groups: Vec<String> = client
+        .query(&format!(
+            "SELECT DISTINCT owner_group FROM chat_sessions FINAL WHERE {READABLE} ORDER BY owner_group"
+        ))
+        .bind(owner_groups)
+        .bind(query.include_boards)
+        .bind(common::board_types::BOARD_SESSION_PREFIX)
+        .fetch_all()
+        .await?;
+    Ok(ItemPage { items: items_of_rows(rows).await?, total, groups })
 }
 
 pub async fn list_messages(

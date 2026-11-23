@@ -137,7 +137,7 @@ pub fn AiChatPage() -> Element {
                 div {
                     style: "margin-bottom: 15px;",
                     Link {
-                        to: Route::AiChatHistoryPage {},
+                        to: Route::ai_chat_history(&Default::default()),
                         style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none;",
                         {tr!("ai-chat-homepage-view-all-conversations")}
                     }
@@ -197,6 +197,14 @@ fn BoardsOverview() -> Element {
                     style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none; font-weight: 500;",
                     {tr!("ai-chat-homepage-new-board")}
                 }
+            }
+            Link {
+                class: "x-board-list-link",
+                to: Route::ai_board_list(&Default::default()),
+                style: "display: block; text-align: center; background-color: white; border: 1px solid; \
+                        border-color: var(--x-border); border-radius: 8px; padding: 8px 12px; \
+                        font-size: var(--x-text-sm); font-weight: 500; color: var(--x-link); text-decoration: none;",
+                {tr!("ai-chat-homepage-boards-list")}
             }
             match &*boards_res.read() {
                 None => rsx! { div { style: "color: var(--x-ink-faint); font-size: var(--x-text-sm);", {tr!("ai-chat-homepage-loading-boards-u")} } },

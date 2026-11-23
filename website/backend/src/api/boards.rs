@@ -583,6 +583,62 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
     list_boards_with(user, None).await
 }
 
+/// One page of the board list of the groups of the caller. The search matches a part of
+/// the title or of the generated summary of the board. The boards sort by `created_at`.
+pub async fn page_boards(
+    user: &CurrentUser,
+    query: common::item_list::ItemListQuery,
+) -> anyhow::Result<common::item_list::ItemPage<BoardListItem>> {
+    use common::item_list::{ItemPage, ITEM_LIST_PAGE_SIZE};
+    let groups = item_access::member_groups(user).await?;
+    if groups.is_empty() {
+        return Ok(ItemPage { items: Vec::new(), total: 0, groups: Vec::new() });
+    }
+    let client = get_global_client();
+    let search = query.search_text();
+    const READABLE: &str = "owner_group IN ? AND owner_group != '' AND is_deleted = 0";
+    // The summary of a board is the label of its empty node id (`read_labels`).
+    const FILTERS: &str = "AND (? = '' OR owner_group = ?) \
+         AND (? = '' OR positionCaseInsensitiveUTF8(title, ?) > 0 \
+              OR board_id IN (SELECT board_id FROM board_labels FINAL WHERE node_id = '' \
+                              AND positionCaseInsensitiveUTF8(summary, ?) > 0))";
+    let order = if query.oldest_first { "ASC" } else { "DESC" };
+    let ids: Vec<String> = client
+        .query(&format!(
+            "SELECT board_id FROM boards FINAL WHERE {READABLE} {FILTERS} \
+             ORDER BY created_at {order}, board_id LIMIT ? OFFSET ?"
+        ))
+        .bind(&groups)
+        .bind(&query.group)
+        .bind(&query.group)
+        .bind(&search)
+        .bind(&search)
+        .bind(&search)
+        .bind(ITEM_LIST_PAGE_SIZE)
+        .bind(query.offset())
+        .fetch_all()
+        .await?;
+    let total: u64 = client
+        .query(&format!("SELECT count() FROM boards FINAL WHERE {READABLE} {FILTERS}"))
+        .bind(&groups)
+        .bind(&query.group)
+        .bind(&query.group)
+        .bind(&search)
+        .bind(&search)
+        .bind(&search)
+        .fetch_one()
+        .await?;
+    let owners: Vec<String> = client
+        .query(&format!("SELECT DISTINCT owner_group FROM boards FINAL WHERE {READABLE} ORDER BY owner_group"))
+        .bind(&groups)
+        .fetch_all()
+        .await?;
+    let mut items = list_boards_with(user, Some(&ids)).await?;
+    // `list_boards_with` sorts newest first. The page keeps the order of the query.
+    items.sort_by_key(|b| ids.iter().position(|id| *id == b.board_id).unwrap_or(usize::MAX));
+    Ok(ItemPage { items, total, groups: owners })
+}
+
 /// The boards of the groups of the caller, newest first. `ids` keeps only the boards with
 /// these ids: the cards of cited boards and the agent citation check read them.
 pub async fn list_boards_with(user: &CurrentUser, ids: Option<&[String]>) -> anyhow::Result<Vec<BoardListItem>> {

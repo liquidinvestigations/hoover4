@@ -25,6 +25,7 @@ pub mod entity_cards;
 pub mod entity_stoplist;
 pub mod failure_types;
 pub mod item_groups;
+pub mod item_list;
 pub mod language;
 pub mod links;
 pub mod manual;

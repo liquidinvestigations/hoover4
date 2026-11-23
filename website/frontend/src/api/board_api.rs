@@ -38,6 +38,7 @@ macro_rules! board_server_fn {
 }
 
 board_server_fn!(list_boards, () -> Vec<BoardListItem>);
+board_server_fn!(page_boards, (query: common::item_list::ItemListQuery) -> common::item_list::ItemPage<BoardListItem>);
 /// Create a board. The browser language decides the board language when the caller has
 /// saved none.
 #[server]

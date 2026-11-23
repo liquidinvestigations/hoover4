@@ -634,7 +634,7 @@ fn ChatConversationPanel(
                     {tr!("ai-chat-session-u-chats")}
                 }
                 Link {
-                    to: Route::AiChatHistoryPage {},
+                    to: Route::ai_chat_history(&Default::default()),
                     style: "color: var(--x-ink-muted); text-decoration: none; font-size: var(--x-text-sm); \
                             white-space: nowrap;",
                     {tr!("ai-chat-session-history")}

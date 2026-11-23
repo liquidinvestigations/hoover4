@@ -1,24 +1,41 @@
-//! `/ai_chat/history`, full conversation list with delete.
+//! `/ai_chat/history`, the conversation history of the groups of the user.
 //!
-//! The list holds the chats of the groups of the user. Each row shows its group. The explore
-//! chats of the investigation boards are hidden unless the checkbox "Show board chats" is
-//! ticked. A board chat is marked as such and has no delete button, because its board deletes
-//! it when the board is dropped. Another chat has a delete button when the user created it or
-//! is an administrator.
+//! The page shows one page of chats at a time (`common::item_list`). The search matches a
+//! part of the title or the summary and marks each match. The filters are the group, the
+//! creator ("Chats started by me") and the explore chats of the boards, and the time order
+//! is the last activity. The route query holds every value.
+//!
+//! A board chat is marked as such and has no delete button, because its board deletes it
+//! when the board is dropped. Another chat has a delete button when the user created it or
+//! is an administrator. A running chat shows a "Running" chip in place of the button.
 
 use common::board_types::is_board_session;
+use common::item_list::ItemListQuery;
 use dioxus::prelude::*;
 
-use crate::api::chat_api::{chat_delete_session, chat_list_sessions};
-use crate::components::chat_components::GroupName;
+use crate::api::chat_api::{chat_delete_session, chat_page_sessions};
+use crate::api::error_util::user_facing_message;
+use crate::components::chat_components::{GroupName, Highlighted, ItemListBar, ItemPager, RunningChip};
 use crate::routes::Route;
 use crate::tr;
 
 #[component]
-pub fn AiChatHistoryPage() -> Element {
-    let mut show_boards = use_signal(|| false);
-    // The resource reads the signal, so a tick of the checkbox reads the list again.
-    let mut sessions_res = use_resource(move || chat_list_sessions(show_boards()));
+pub fn AiChatHistoryPage(q: String, group: String, mine: String, boards: String, sort: String, page: String) -> Element {
+    let query = use_memo(use_reactive!(|(q, group, mine, boards, sort, page)| {
+        ItemListQuery::from_route(&q, &group, &mine, &boards, &sort, &page)
+    }));
+    let mut sessions_res = use_resource(move || {
+        let query = query();
+        async move { chat_page_sessions(query).await }
+    });
+    let open = move |next: ItemListQuery| {
+        navigator().push(Route::ai_chat_history(&next));
+    };
+    let current = query();
+    let groups = match &*sessions_res.read() {
+        Some(Ok(page)) => page.groups.clone(),
+        _ => Vec::new(),
+    };
 
     rsx! {
         Title { {tr!("ai-chat-history-hoover-search-chat-history")} }
@@ -36,35 +53,33 @@ pub fn AiChatHistoryPage() -> Element {
                     style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);",
                     {tr!("ai-chat-history-conversation-history")}
                 }
-                label {
-                    style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); color: var(--x-ink-muted); cursor: pointer;",
-                    input {
-                        class: "x-history-show-boards",
-                        r#type: "checkbox",
-                        checked: show_boards(),
-                        onchange: move |e: FormEvent| show_boards.set(e.checked()),
-                    }
-                    {tr!("ai-chat-history-show-board-chats")}
-                }
             }
+            ItemListBar { query: current.clone(), groups, show_chat_filters: true, on_change: open }
             match sessions_res.read().as_ref() {
                 None => rsx! { div { style: "color: var(--x-ink-faint);", {tr!("ai-chat-history-loading-u")} } },
                 Some(Err(e)) => rsx! {
                     div {
                         class: "x-error-display",
                         style: "color: var(--x-danger);",
-                        {tr!("ai-chat-history-could-not-load-history", e: e.to_string())}
+                        {tr!("ai-chat-history-could-not-load-history", e: user_facing_message(e))}
                     }
                 },
-                Some(Ok(list)) if list.is_empty() => rsx! {
-                    div { style: "color: var(--x-ink-faint);", {tr!("ai-chat-history-no-conversations-yet")} }
+                Some(Ok(page)) if page.items.is_empty() => rsx! {
+                    div { style: "color: var(--x-ink-faint);",
+                        if current.search_text().is_empty() && current.group.is_empty() && !current.mine {
+                            {tr!("ai-chat-history-no-conversations-yet")}
+                        } else {
+                            {tr!("item-list-no-chat-matches")}
+                        }
+                    }
                 },
-                Some(Ok(list)) => rsx! {
+                Some(Ok(page)) => rsx! {
                     div {
                         style: "display: flex; flex-direction: column; gap: 10px; max-width: 860px;",
-                        for s in list.clone() {
+                        for s in page.items.clone() {
                             div {
                                 key: "{s.session_id}",
+                                class: "x-history-row",
                                 style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
                                         padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start;",
                                 Link {
@@ -80,14 +95,18 @@ pub fn AiChatHistoryPage() -> Element {
                                                 {tr!("ai-chat-history-board")}
                                             }
                                         }
-                                        if s.title.is_empty() { {tr!("ai-chat-history-new-chat")} } else { "{s.title}" }
+                                        if s.title.is_empty() {
+                                            {tr!("ai-chat-history-new-chat")}
+                                        } else {
+                                            Highlighted { text: s.title.clone(), needle: current.search_text() }
+                                        }
                                     }
                                     div {
                                         style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px; line-height: 1.45;",
                                         if s.summary.is_empty() {
                                             {tr!("ai-chat-history-messages", s_message_count: s.message_count)}
                                         } else {
-                                            "{s.summary}"
+                                            Highlighted { text: s.summary.clone(), needle: current.search_text() }
                                         }
                                     }
                                     div {
@@ -97,27 +116,33 @@ pub fn AiChatHistoryPage() -> Element {
                                         GroupName { name: s.owner_group.clone() }
                                     }
                                 }
-                                if !is_board_session(&s.session_id) && s.can_delete { button {
-                                    style: "background: none; border: 1px solid #FEE2E2; color: var(--x-danger); \
-                                            border-radius: 8px; padding: 6px 10px; cursor: pointer; \
-                                            font-size: var(--x-text-xs); flex-shrink: 0;",
-                                    title: tr!("ai-chat-history-delete-conversation"),
-                                    onclick: {
-                                        let id = s.session_id.clone();
-                                        move |_| {
-                                            let id = id.clone();
-                                            spawn(async move {
-                                                if chat_delete_session(id).await.is_ok() {
-                                                    sessions_res.restart();
-                                                }
-                                            });
-                                        }
-                                    },
-                                    {tr!("ai-chat-history-delete")}
-                                } }
+                                if s.running {
+                                    RunningChip {}
+                                } else if !is_board_session(&s.session_id) && s.can_delete {
+                                    button {
+                                        class: "x-history-delete",
+                                        style: "background: none; border: 1px solid #FEE2E2; color: var(--x-danger); \
+                                                border-radius: 8px; padding: 6px 10px; cursor: pointer; \
+                                                font-size: var(--x-text-xs); flex-shrink: 0;",
+                                        title: tr!("ai-chat-history-delete-conversation"),
+                                        onclick: {
+                                            let id = s.session_id.clone();
+                                            move |_| {
+                                                let id = id.clone();
+                                                spawn(async move {
+                                                    if chat_delete_session(id).await.is_ok() {
+                                                        sessions_res.restart();
+                                                    }
+                                                });
+                                            }
+                                        },
+                                        {tr!("ai-chat-history-delete")}
+                                    }
+                                }
                             }
                         }
                     }
+                    ItemPager { query: current.clone(), total: page.total, on_change: open }
                 },
             }
         }

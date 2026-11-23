@@ -29,6 +29,9 @@ pub struct ChatSessionItem {
     /// The reader may delete the chat: the creator and administrators.
     #[serde(default)]
     pub can_delete: bool,
+    /// A turn of the chat runs now. The lists show a "Running" chip and no delete button.
+    #[serde(default)]
+    pub running: bool,
 }
 
 /// The internet setting for one conversation, locked at the first message.

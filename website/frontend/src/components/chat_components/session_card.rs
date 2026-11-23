@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
 
-use crate::components::chat_components::GroupName;
+use crate::components::chat_components::{GroupName, RunningChip};
 use crate::routes::Route;
 use crate::tr;
 
@@ -48,8 +48,9 @@ pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
                                 overflow: hidden;",
                         "{summary}"
                     }
-                    div { style: "margin-top: 4px; display: flex;",
+                    div { style: "margin-top: 4px; display: flex; gap: 8px; align-items: center; justify-content: space-between;",
                         GroupName { name: session.owner_group.clone() }
+                        if session.running { RunningChip {} }
                     }
                 }
             }

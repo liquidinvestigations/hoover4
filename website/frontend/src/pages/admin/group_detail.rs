@@ -55,6 +55,9 @@ fn GroupDetailContent(groupname: String) -> Element {
     let mut msg = use_signal(|| None::<String>);
     let mut error_msg = use_signal(|| None::<String>);
     let mut form_seeded = use_signal(|| false);
+    // The shown state of the AI checkbox. A refused change sets it back, because the
+    // stored value did not change and so the checkbox gets no new value to show.
+    let mut ai_shown = use_signal(|| None::<bool>);
 
     let detail = detail_res
         .read()
@@ -137,17 +140,19 @@ fn GroupDetailContent(groupname: String) -> Element {
                     input {
                         class: "x-group-ai-enabled",
                         r#type: "checkbox",
-                        checked: detail.group.ai_enabled,
+                        checked: ai_shown().unwrap_or(detail.group.ai_enabled),
                         onchange: {
                             let gname = gname.clone();
                             move |e: FormEvent| {
                                 let gname = gname.clone();
                                 let on = e.checked();
+                                ai_shown.set(Some(on));
                                 spawn(async move {
                                     msg.set(None);
                                     error_msg.set(None);
                                     if let Err(e) = admin_set_group_ai(gname, on).await {
                                         error_msg.set(Some(user_facing_message(&e)));
+                                        ai_shown.set(Some(!on));
                                     }
                                     detail_res.restart();
                                 });

@@ -78,6 +78,19 @@ pub async fn list_chat_sessions(user: &CurrentUser, include_boards: bool) -> any
     Ok(items)
 }
 
+/// One page of the chat history of the groups of the caller.
+pub async fn page_chat_sessions(
+    user: &CurrentUser,
+    query: common::item_list::ItemListQuery,
+) -> anyhow::Result<common::item_list::ItemPage<ChatSessionItem>> {
+    let groups = item_access::member_groups(user).await?;
+    let mut page = db_chat::page_sessions(&groups, &user.username, &query).await?;
+    for item in &mut page.items {
+        item.can_delete = item_access::item_access(user, &groups, &item.owner_group, &item.owner).delete;
+    }
+    Ok(page)
+}
+
 /// The most cited items of each kind that one card request reads.
 const MAX_CARD_ITEMS: usize = 50;
 
@@ -163,6 +176,7 @@ pub async fn get_chat_session(
             owner_group: row.owner_group,
             owner: row.username,
             can_delete: access.delete,
+            running: false,
         },
         messages,
         available_collections,

@@ -271,7 +271,7 @@ pub fn parse_link(text: &str, host: LinkHost) -> Result<HooverLink, LinkError> {
         ["ai_chat", "c", session_id, _selected, _viewer] => {
             Ok(HooverLink::Chat { session_id: nonempty(session_id, "chat")? })
         }
-        ["ai_chat", "boards", "new"] => Err(LinkError::UnknownAddress),
+        ["ai_chat", "boards"] | ["ai_chat", "boards", "new"] => Err(LinkError::UnknownAddress),
         ["ai_chat", "boards", board_id] => Ok(HooverLink::Board {
             board_id: nonempty(board_id, "board")?,
             node: query_value(&query, "selected"),

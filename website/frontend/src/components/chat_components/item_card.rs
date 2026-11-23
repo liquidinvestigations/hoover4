@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 
 use crate::api::chat_api::chat_cited_item_cards;
 use crate::components::board_graph::BoardThumbnail;
-use crate::components::chat_components::{ChatSessionCard, GroupName};
+use crate::components::chat_components::{ChatSessionCard, GroupName, Highlighted};
 use crate::pages::admin::llm_reports::format_utc_ms;
 use crate::routes::Route;
 use crate::tr;
@@ -68,7 +68,12 @@ pub fn ItemCitationCard(item: ChatItemRef) -> Element {
 /// the newest event and the group. The board list on `/ai_chat` and a board citation in a chat
 /// answer show it.
 #[component]
-pub fn BoardCard(board: BoardListItem) -> Element {
+pub fn BoardCard(
+    board: BoardListItem,
+    /// A search text whose matches the title and the summary mark. Empty marks nothing.
+    #[props(default)]
+    highlight: String,
+) -> Element {
     let status = match (board.status.as_str(), board.graph.not_answered.len()) {
         ("active", _) => tr!("ai-chat-homepage-active"),
         ("paused", _) => tr!("ai-chat-homepage-paused"),
@@ -93,7 +98,9 @@ pub fn BoardCard(board: BoardListItem) -> Element {
             style: "display: block; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
                     padding: 12px 14px; text-decoration: none; color: inherit;",
             div { style: "display: flex; justify-content: space-between; gap: 8px;",
-                span { style: "font-size: var(--x-text-body); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{board.title}" }
+                span { style: "font-size: var(--x-text-body); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                    Highlighted { text: board.title.clone(), needle: highlight.clone() }
+                }
                 span { style: "font-size: var(--x-text-detail); color: var(--x-ink-muted); white-space: nowrap;", "{status}" }
             }
             BoardThumbnail { input: board.graph.clone() }
@@ -101,7 +108,7 @@ pub fn BoardCard(board: BoardListItem) -> Element {
                 class: "x-board-card-summary",
                 style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); color: var(--x-ink); \
                         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;",
-                "{summary}"
+                Highlighted { text: summary.clone(), needle: highlight.clone() }
             }
             div { style: "display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 2px;",
                 span { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint);", {tr!("ai-chat-homepage-updated", format_utc_ms_board_updated_ms: (format_utc_ms(board.updated_ms)).to_string())} }

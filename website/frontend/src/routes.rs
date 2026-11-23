@@ -21,7 +21,7 @@ use crate::pages::admin::{
     user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
     failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage, feedback::AdminFeedbackPage,
 };
-use crate::pages::ai_chat::{AiBoardCreatePage, AiBoardPage, AiChatHistoryPage, AiChatPage, AiChatSessionPage};
+use crate::pages::ai_chat::{AiBoardCreatePage, AiBoardListPage, AiBoardPage, AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
 use crate::pages::docs_page::{DocsAdminPage, DocsPage};
 use crate::pages::file_browser_page::{
@@ -95,8 +95,15 @@ pub enum Route {
     #[route("/ai_chat")]
     AiChatPage {},
 
-    #[route("/ai_chat/history")]
-    AiChatHistoryPage {},
+    // The chat history. Every value may be empty. `q` is the search text, `group` one group
+    // or empty for all, `mine` and `boards` are `1` or empty, `sort` is `oldest` or empty for
+    // the newest first, and `page` counts from 1 (`common::item_list::ItemListQuery`).
+    #[route("/ai_chat/history?:q&:group&:mine&:boards&:sort&:page")]
+    AiChatHistoryPage { q: String, group: String, mine: String, boards: String, sort: String, page: String },
+
+    // The board list, with the values of the chat history.
+    #[route("/ai_chat/boards?:q&:group&:sort&:page")]
+    AiBoardListPage { q: String, group: String, sort: String, page: String },
 
     // /ai_chat/boards/new must be declared before the board page, or "new" is a board id.
     #[route("/ai_chat/boards/new")]
@@ -269,6 +276,29 @@ impl Route {
         }
     }
 
+    /// The chat history for `query`.
+    pub fn ai_chat_history(query: &common::item_list::ItemListQuery) -> Self {
+        use common::item_list::{flag_value, sort_value};
+        Self::AiChatHistoryPage {
+            q: query.search.clone(),
+            group: query.group.clone(),
+            mine: flag_value(query.mine),
+            boards: flag_value(query.include_boards),
+            sort: sort_value(query.oldest_first),
+            page: if query.page > 1 { query.page.to_string() } else { String::new() },
+        }
+    }
+
+    /// The board list for `query`.
+    pub fn ai_board_list(query: &common::item_list::ItemListQuery) -> Self {
+        Self::AiBoardListPage {
+            q: query.search.clone(),
+            group: query.group.clone(),
+            sort: common::item_list::sort_value(query.oldest_first),
+            page: if query.page > 1 { query.page.to_string() } else { String::new() },
+        }
+    }
+
     /// Open a board with the node `selected` (a slug or a storage id, empty for none), at
     /// 100 % zoom and with no popup.
     pub fn ai_board(board_id: String, selected: String) -> Self {
@@ -381,7 +411,8 @@ mod link_tests {
         for route in [
             Route::HomePage {},
             Route::AiChatPage {},
-            Route::AiChatHistoryPage {},
+            Route::ai_chat_history(&Default::default()),
+            Route::ai_board_list(&Default::default()),
             Route::AiBoardCreatePage {},
             Route::AdminUsersPage {},
             Route::UploadsPage { collection: "enron".into() },

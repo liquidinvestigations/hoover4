@@ -32,6 +32,17 @@ pub async fn chat_list_sessions(include_boards: bool) -> Result<Vec<ChatSessionI
         .map_err(to_server_fn_error)
 }
 
+/// One page of the chat history.
+#[server]
+pub async fn chat_page_sessions(
+    query: common::item_list::ItemListQuery,
+) -> Result<common::item_list::ItemPage<ChatSessionItem>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::page_chat_sessions(&user, query)
+        .await
+        .map_err(to_server_fn_error)
+}
+
 /// The cards of the chats and boards that an answer cites, read with the rule of the reader.
 #[server]
 pub async fn chat_cited_item_cards(
