@@ -171,3 +171,31 @@ Un registrant null significa che il registro non ha pubblicato quel valore. Il r
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Usa {{ tool('workspace_list') }} con prefix "sources/web/" per trovare il testo salvato delle pagine.
+Trova il passaggio con {{ tool('workspace_search') }}. Passa il suo percorso, la versione, start e end come prova a {{ tool('cite_pages') }}.
+Salva l'affermazione con l'etichetta restituita.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Scambio diretto come esempio, per un elenco di persone in due lotti. L'esempio mostra i campi di risposta pertinenti.
+Il lotto 1 crea report.md. Il lotto 2 gli applica una patch. Un'etichetta rifiutata viene riparata e la versione salvata viene consegnata.
+Usa le etichette e le versioni delle tue chiamate.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example resta nel report come riga non risolta, con le prove mancanti.
+La patch rifiutata usava [W9], che nessuna chiamata ha restituito. La riparazione ha usato [W3], che {{ tool('cite_pages') }} ha restituito.
+{% if has('execute') %}
+Lo stesso lotto 2 come una sola chiamata a execute. Il programma si ferma al primo salvataggio non riuscito e restituisce la sua ricevuta.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Il programma restituisce il risultato della patch con la sua versione. Controlla la versione prima del lotto successivo.
+Quando una chiamata del programma non riesce, le ricevute mantengono i salvataggi riusciti precedenti. Riparti dall'operazione non riuscita.
+Consegna il report salvato con la chiamata diretta a {{ tool('finish_with_report') }} dopo l'ultimo lotto.
+{% endif %}
+{% endif %}

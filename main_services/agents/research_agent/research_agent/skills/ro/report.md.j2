@@ -31,6 +31,12 @@ Termină un grup mic de expeditori înainte să începi următorul grup. Caută,
 
 Pentru o listă de expeditori, salvează expeditorul, colecția, hash-ul fișierului și acțiunea următoare pentru fiecare candidat înainte de verificare. Înregistrează domeniul căutării dacă nu găsești un rezultat și eroarea dacă citirea eșuează. După citare, modifică raportul și marchează elementul ca finalizat.
 
+Pentru o listă de persoane sau o listă lungă, creează raportul cu rândurile primului grup. Adaugă rândurile fiecărui grup următor cu un singur apel {{ tool('patch_file') }}. Verifică versiunea returnată înainte să începi grupul următor.
+Păstrează în raport un rând pe care sursele nu îl stabilesc. Marchează-l ca nerezolvat și numește dovada lipsă.
+Când un patch este refuzat pentru că o etichetă nu se rezolvă, pune eticheta returnată de apelul de citare și trimite din nou patch-ul.
+Când un patch este refuzat pentru că old_string nu se potrivește, citește acea parte a raportului și trimite un patch corectat pentru același grup.
+După ultimul grup, livrează versiunea salvată cu {{ tool('finish_with_report') }}. O scriere sau un patch salvează munca și nu livrează raportul.
+
 După un rezumat al pașilor anteriori, lista fișierelor salvate de după cel mai nou mesaj
 dă numele și versiunea fiecărui fișier. Citește raportul și lista de verificare cu
 {{ tool('read_file') }} înainte să continui. Nu căuta din nou un element pe care lista de

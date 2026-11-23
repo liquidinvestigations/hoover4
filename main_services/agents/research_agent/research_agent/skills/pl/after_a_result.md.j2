@@ -16,8 +16,11 @@ Po każdym wyniku zrób jedną z tych rzeczy.
 4. Masz dość, aby odpowiedzieć. Napisz odpowiedź albo raport, gdy wymaga cytowań lub dokumentu.
 
 Używaj widocznych wyników, gdy odpowiadają na bieżące pytanie.
-Po kompaktowaniu kontekstu użyj zachowanego indeksu i notatek, aby rozpoznać wcześniejsze wyniki.
-Odśwież wymagany fragment jawnie, gdy jego tekst nie jest już widoczny.
+{% if has('workspace_search') %}
+Znajdź zapisane wyniki i pliki za pomocą {{ tool('workspace_list') }}.
+Przeszukaj zapisaną ścieżkę pod kątem brakujących słów za pomocą {{ tool('workspace_search') }}.
+Użyj pozycji dopasowań, aby przeczytać dokładny tekst. Zweryfikuj cytowania, zanim dodasz ustalenia do raportu.
+{% endif %}
 
 Gdy wyszukiwanie nie zwraca użytecznego wyniku, zmień zapytanie albo użyj innego źródła.
 

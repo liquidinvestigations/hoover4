@@ -171,3 +171,31 @@ Un titulaire null signifie que le registre n’a pas publié cette valeur. Le bu
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Utilisez {{ tool('workspace_list') }} avec prefix "sources/web/" pour trouver le texte enregistré des pages.
+Trouvez le passage avec {{ tool('workspace_search') }}. Passez son chemin, sa version, start et end comme preuve à {{ tool('cite_pages') }}.
+Enregistrez l’affirmation avec le repère renvoyé.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Échange direct commenté pour une liste en deux lots. L’exemple montre les champs de réponse utiles.
+Le lot 1 crée report.md. Le lot 2 lui applique un patch. Un repère rejeté est réparé, et la version enregistrée est livrée.
+Utilisez les repères et les versions de vos propres appels.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example reste dans le rapport comme ligne non résolue, avec la preuve manquante.
+Le patch rejeté utilisait [W9], qu’aucun appel n’a renvoyé. La réparation a utilisé [W3], que {{ tool('cite_pages') }} a renvoyé.
+{% if has('execute') %}
+Le même lot 2 sous forme d’un seul appel execute. Le programme s’arrête au premier enregistrement en échec et renvoie son reçu.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Le programme renvoie le résultat du patch avec sa version. Vérifiez la version avant le lot suivant.
+Quand un appel du programme échoue, les reçus gardent les enregistrements réussis précédents. Reprenez à l’opération en échec.
+Livrez le rapport enregistré avec l’appel direct à {{ tool('finish_with_report') }} après le dernier lot.
+{% endif %}
+{% endif %}

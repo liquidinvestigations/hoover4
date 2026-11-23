@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: jak prowadzić plan za pomocą update_plan, jego kroki i ich statusy
+description: jak planować badanie w ograniczonych grupach, zapisywać każdą grupę w raporcie i aktualizować postęp
 tools: update_plan
 ---
 Prowadzenie planu
@@ -10,13 +10,21 @@ Prowadzenie planu
 
 1. Wysyłaj całą listę w każdym wywołaniu, po kolei. Krok, który pominiesz, nie jest już w planie.
 2. Podaj każdy krok jako obiekt z text i status. status to pending lub done.
-3. Krok ma status pending, dopóki jego praca się nie skończy. Potem wyślij go jako done z notatką, na przykład znaleziono, nie znaleziono lub zastąpiono.
+3. Krok ma status pending, dopóki jego praca się nie skończy. Potem wyślij go jako done z notatką, która podaje zapisaną wersję i pokrycie zbioru danych.
 4. Zachowaj ten sam text kroku, gdy zmienia się tylko jego status. Krok zachowuje wtedy swój id.
 5. Nowy cel rozpoczyna nowy plan.
 6. {{ tool('update_plan') }} tylko przechowuje plan. Raport lub inny plik zapisz za pomocą {{ tool('write_file') }}.
 
-To jest przykład. Krok 1 znalazł to, czego potrzebujesz, a krok 2 jest nadal otwarty.
+Przy dochodzeniu daj każdemu krokowi ograniczoną grupę kandydatów, plik wyjściowy i warunek jego ukończenia.
+Utwórz raport z pierwszą grupą. Po każdej następnej grupie zastosuj poprawkę do tego samego raportu, używając zweryfikowanych sygnatur cytowania.
+Sprawdź zwróconą nazwę pliku i wersję, zanim zaczniesz następną grupę. Napraw odrzucony zapis i ponów tę samą grupę.
+Zapisz wiersz jako nierozstrzygnięty, z brakującym dowodem, gdy źródła nie potwierdzają twierdzenia.
+Usuń duplikaty osób, gdy łączysz grupy.
+Zapisana strona ani notatka TODO nie zastępują wyodrębnionych wierszy.
+
+Przykładowy plan dla listy osób:
 ```json
-{"goal":"Znajdź datę zatwierdzenia.","steps":[{"text":"Znajdź wiadomość.","status":"done","note":"znaleziono"},{"text":"Przeczytaj fragment potwierdzający.","status":"pending"}]}
+{"goal":"Zidentyfikuj członków zarządu, którzy pełnili kwalifikującą funkcję.","steps":[{"text":"Zweryfikuj grupę 1 listy pod kątem członkostwa w zarządzie i kwalifikujących funkcji. Utwórz report.md z cytowanymi wynikami i nierozstrzygniętymi wierszami.","status":"pending"},{"text":"Zweryfikuj grupę 2. Zastosuj poprawkę do report.md. Sprawdź zwróconą wersję przed grupą 3.","status":"pending"},{"text":"Uzgodnij zakres, zduplikowane nazwiska i sumy. Dostarcz report.md z zapisaną wersją.","status":"pending"}]}
 ```
-Wynik pokazuje cały plan z id każdego kroku. Wywołanie, które niczego nie zmienia, zwraca unchanged. Popraw wskazane pole, zanim wywołasz ponownie.
+Dodaj krok dla każdej dalszej grupy. Zostaw krok pending, dopóki jego grupa ma nieprzeczytane wpisy.
+Po udanym zapisie wpisz rzeczywistą wersję w notatce. Na przykład: „report.md v2 zawiera grupy 1 i 2.”

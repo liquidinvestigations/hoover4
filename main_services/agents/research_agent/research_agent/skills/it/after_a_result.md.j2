@@ -16,8 +16,11 @@ Dopo ogni risultato, fai una di queste cose.
 4. Hai abbastanza per rispondere. Scrivi la risposta, oppure il report quando servono citazioni o un documento.
 
 Usa i risultati visibili quando rispondono alla domanda corrente.
-Dopo la compattazione del contesto, usa l'indice e le note conservati per identificare i risultati precedenti.
-Aggiorna in modo esplicito un passaggio necessario quando il suo testo non è più visibile.
+{% if has('workspace_search') %}
+Trova i risultati e i file salvati con {{ tool('workspace_list') }}.
+Cerca in un percorso salvato le parole mancanti con {{ tool('workspace_search') }}.
+Usa le posizioni delle corrispondenze per leggere il testo esatto. Verifica le citazioni prima di aggiungere risultati a un report.
+{% endif %}
 
 Quando una ricerca non restituisce nessun risultato utile, cambia la query oppure usa un'altra fonte.
 

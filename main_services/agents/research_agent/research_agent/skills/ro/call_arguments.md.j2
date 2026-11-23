@@ -7,7 +7,7 @@ tools:
 Completarea argumentelor unui apel
 
 {% if has('read_tool') %}
-Când nu ești sigur de argumentele unui instrument, apelează {{ tool('read_tool') }} cu numele lui. Primești fiecare argument, tipul lui și argumentele pe care instrumentul le cere.
+Înainte de primul apel al unui instrument, apelează {{ tool('read_tool') }} cu numele lui. Dă fiecare argument, tipul lui și argumentele pe care le cere instrumentul. O listă de nume sau de rezumate nu este o definiție completă.
 
 {% endif %}
 1. Dă doar numele de argumente pe care le dă instrumentul. Un argument cu alt nume este refuzat.
@@ -34,7 +34,7 @@ Când un apel este refuzat, eroarea numește argumentul și spune ce nu este cor
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} cere query, o descriere a sarcinii de cel mult 160 de caractere.
-Returnează numele și descrierile instrumentelor relevante. Citește un instrument înainte de a folosi argumente necunoscute.
+Returnează nume și rezumate de instrumente relevante. Citește fiecare instrument cu {{ tool('read_tool') }} înainte de primul apel.
 ```json
 {"query":"Găsește un pasaj aflat spre sfârșitul unui document lung."}
 ```
@@ -57,7 +57,7 @@ Citește schema lui cu {{ tool('read_tool') }}.
 ```
 Apoi apelează {{ tool('update_plan') }} cu goal și steps.
 ```json
-{"goal":"Găsește data aprobării.","steps":[{"text":"Găsește mesajul.","status":"pending"}]}
+{"goal":"Verifică data aprobării.","steps":[{"text":"Salvează în approvals.csv data mesajului de aprobare și citarea verificată.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -82,10 +82,26 @@ Returnează instrucțiunile metodei, argumentele instrumentelor și exemplele.
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} cere text, de 1 până la 2.000 de caractere. Salvează dovezile și întrebările nerezolvate pentru contextul de mai târziu.
-Include identitatea surselor și următorul apel util când acel context trebuie să supraviețuiască comprimării.
+{% if has('execute') %}
+Înainte ca un program să apeleze o funcție, citește funcția cu {{ tool('read_tool') }}, sau cu {{ tool('search') }} și detail true.
+Folosește language "javascript" și code ca șir de text. Apelează fiecare funcție după nume, cu un singur obiect de argumente.
+Returnează constatările sau recipisele de operație de care ai nevoie în pasul următor.
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+Găsește un termen exact în sursele salvate. Returnează pozițiile potrivirilor pentru verificare.
+
 ```json
-{"text":"Pasajul cu aprobarea se află în intervalul returnat al documentului. Verifică autorul original înainte de a i-l atribui."}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+Găsește o sursă, verifică formularea ei și salvează un rând susținut într-un fișier de raport nou.
+Folosește subiectul raportului și fraza exactă a afirmației.
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+Folosește versiunea returnată cu instrumentul de livrare directă când raportul complet este gata.
 {% endif %}

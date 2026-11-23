@@ -136,3 +136,11 @@ Pročitaj potkrepljujući tekst kad odsječak ne odgovara na pitanje.
 {"collection":["alpha","beta"],"queries":["odobrenje prijenosa","ovlaštenje za prijenos"],"max_results":5}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Pronađi spremljeni tekst pomoću {{ tool('workspace_search') }} s prefiksom "sources/collections/".
+Vraćenu putanju, verziju, start i end koristi kao raspon dokaza za citat.
+Spremi tvrdnju s njezinom provjerenom oznakom citata.
+{% endif %}

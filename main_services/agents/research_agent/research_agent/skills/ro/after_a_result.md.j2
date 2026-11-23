@@ -16,8 +16,11 @@ După fiecare rezultat, fă una dintre aceste acțiuni.
 4. Ai destule informații pentru a răspunde. Scrie răspunsul sau raportul, când are nevoie de citări sau de un document.
 
 Folosește rezultatele vizibile când răspund la întrebarea curentă.
-După comprimarea contextului, folosește indexul și notele păstrate pentru a identifica rezultatele anterioare.
-Reîncarcă explicit un pasaj necesar când textul lui nu mai este vizibil.
+{% if has('workspace_search') %}
+Găsește rezultatele și fișierele salvate cu {{ tool('workspace_list') }}.
+Caută într-o cale salvată cuvintele lipsă cu {{ tool('workspace_search') }}.
+Folosește pozițiile potrivirilor ca să citești textul exact. Verifică citările înainte să adaugi constatări într-un raport.
+{% endif %}
 
 Când o căutare nu dă niciun rezultat util, schimbă interogarea sau folosește altă sursă.
 

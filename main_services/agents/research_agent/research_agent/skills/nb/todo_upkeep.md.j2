@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: hvordan du holder planen oppdatert med update_plan, trinnene og statusene deres
+description: hvordan du planlegger research i avgrensede grupper, lagrer hver gruppe i rapporten og oppdaterer fremdriften
 tools: update_plan
 ---
 Holde planen oppdatert
@@ -10,13 +10,21 @@ Holde planen oppdatert
 
 1. Send hele listen i hvert kall, i rekkefølge. Et trinn du utelater, er ikke lenger i planen.
 2. Oppgi hvert trinn som et objekt med text og status. status er pending eller done.
-3. Et trinn er pending til arbeidet er ferdig. Send det da som done med et notat, for eksempel found, not found eller replaced.
+3. Et trinn er pending til arbeidet er ferdig. Send det da som done med et notat som oppgir den lagrede versjonen og dekningen for et datasett.
 4. La teksten i et trinn være uendret når bare statusen endres. Trinnet beholder da id-en sin.
 5. Et nytt mål starter en ny plan.
 6. {{ tool('update_plan') }} lagrer bare planen. Skriv en rapport eller en annen fil med {{ tool('write_file') }}.
 
-Dette er et eksempel. Trinn 1 fant det du trenger, og trinn 2 er fortsatt åpent.
+For en undersøkelse gir du hvert trinn en avgrenset gruppe kandidater, utdatafilen og fullføringsvilkåret.
+Opprett rapporten med den første gruppen. Patch den samme rapporten etter hver senere gruppe, med kontrollerte henvisningsmerker.
+Kontroller det returnerte filnavnet og versjonen før du starter neste gruppe. Reparer en avvist lagring og prøv den samme gruppen på nytt.
+Lagre en rad som uløst, med manglende bevis, når kildene ikke kan fastslå påstanden.
+Fjern duplikater av personer når du slår sammen grupper.
+En lagret side eller et TODO-notat kan ikke erstatte de uttrukne radene.
+
+Eksempelplan for en liste over personer:
 ```json
-{"goal":"Finn godkjenningsdatoen.","steps":[{"text":"Finn meldingen.","status":"done","note":"found"},{"text":"Les det støttende tekstutdraget.","status":"pending"}]}
+{"goal":"Identifiser styremedlemmer som hadde et kvalifiserende verv.","steps":[{"text":"Kontroller liste gruppe 1 for styremedlemskap og kvalifiserende verv. Opprett report.md med henviste resultater og uløste rader.","status":"pending"},{"text":"Kontroller liste gruppe 2. Patch report.md. Kontroller den returnerte versjonen før gruppe 3.","status":"pending"},{"text":"Avstem omfang, dupliserte navn og totaler. Lever report.md med den lagrede versjonen.","status":"pending"}]}
 ```
-Resultatet viser hele planen med id-en til hvert trinn. Et kall som ikke endrer noe, returnerer unchanged. Rett det nevnte feltet før du kaller på nytt.
+Legg til et trinn for hver ytterligere gruppe. La et trinn være pending så lenge gruppen har uleste oppføringer.
+Etter en vellykket lagring skriver du den faktiske versjonen i notatet. For eksempel: "report.md v2 inneholder gruppe 1 og 2."

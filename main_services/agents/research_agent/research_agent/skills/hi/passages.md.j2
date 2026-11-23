@@ -136,3 +136,10 @@ max_results परोसी गई स्कीमा की सीमा के
 {"collection":["alpha","beta"],"queries":["हस्तांतरण की स्वीकृति","हस्तांतरण का प्राधिकरण"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+सहेजा गया टेक्स्ट {{ tool('workspace_search') }} से और उपसर्ग "sources/collections/" के साथ खोजें।
+लौटाए गए पथ, संस्करण, start और end को उद्धरण के प्रमाण-अंश के रूप में उपयोग करें।
+दावे को उसके सत्यापित हैंडल के साथ सहेजें।
+{% endif %}

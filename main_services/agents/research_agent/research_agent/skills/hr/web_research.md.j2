@@ -172,3 +172,32 @@ Null registrant znači da registar nije objavio tu vrijednost. Registrar prodaje
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') %}
+Pomoću {{ tool('workspace_list') }} s prefiksom "sources/web/" pronađi spremljeni tekst stranice.
+Pronađi odsječak pomoću {{ tool('workspace_search') }}. Njegovu putanju, verziju, start i end proslijedi kao dokaz alatu {{ tool('cite_pages') }}.
+Spremi tvrdnju s vraćenom oznakom citata.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Razrađen izravan primjer za popis osoba u dvije serije. Primjer prikazuje relevantna polja odgovora.
+Serija 1 stvara report.md. Serija 2 ga zakrpava. Odbijena oznaka citata se popravlja, a spremljena verzija se isporučuje.
+Koristi oznake citata i verzije iz vlastitih poziva.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Rezultat: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example ostaje u izvješću kao neriješen redak s dokazom koji nedostaje.
+Odbijena zakrpa upotrijebila je [W9], koju nijedan poziv nije vratio. Popravak je upotrijebio [W3], koju je vratio {{ tool('cite_pages') }}.
+{% if has('execute') %}
+Ista serija 2 kao jedan poziv execute. Program staje kod prvog neuspjelog spremanja i vraća njegovu potvrdu.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Program vraća rezultat zakrpe s njezinom verzijom. Provjeri verziju prije sljedeće serije.
+Kad poziv unutar programa ne uspije, potvrde zadržavaju ranija uspješna spremanja. Počni ponovno od neuspjele operacije.
+Nakon posljednje serije isporuči spremljeno izvješće izravnim pozivom {{ tool('finish_with_report') }}.
+{% endif %}
+{% endif %}

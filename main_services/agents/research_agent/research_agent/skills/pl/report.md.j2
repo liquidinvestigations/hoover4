@@ -30,6 +30,12 @@ Zakończ pracę nad małą grupą nadawców, zanim zaczniesz następną. Wyszuka
 
 Dla listy nadawców zapisz nadawcę, kolekcję, skrót pliku i następny krok dla każdego kandydata przed weryfikacją. Przy braku wyniku zapisz zakres wyszukiwania, a przy błędzie odczytu podaj błąd. Po uzyskaniu cytowania popraw raport i oznacz pozycję jako ukończoną.
 
+Przy liście osób lub długiej liście utwórz raport z wierszami pierwszej grupy. Dodaj wiersze każdej następnej grupy jednym wywołaniem {{ tool('patch_file') }}. Sprawdź zwróconą wersję, zanim zaczniesz następną grupę.
+Zostaw w raporcie wiersz, którego źródła nie potwierdzają. Oznacz go jako nierozstrzygnięty i nazwij brakujący dowód.
+Gdy poprawka zostanie odrzucona, bo sygnatura się nie rozpoznaje, wstaw sygnaturę zwróconą przez wywołanie cytowania i wyślij poprawkę ponownie.
+Gdy poprawka zostanie odrzucona, bo old_string nie pasuje, przeczytaj tę część raportu i wyślij poprawioną poprawkę dla tej samej grupy.
+Po ostatniej grupie dostarcz zapisaną wersję za pomocą {{ tool('finish_with_report') }}. Zapis lub poprawka zapisuje pracę i nie dostarcza raportu.
+
 Po podsumowaniu wcześniejszych kroków lista zapisanych plików po najnowszej wiadomości
 podaje nazwę i wersję każdego pliku. Przeczytaj raport i listę kontrolną za pomocą
 {{ tool('read_file') }}, zanim będziesz kontynuować. Nie wyszukuj ponownie pozycji, którą

@@ -136,3 +136,10 @@ Citește textul care susține răspunsul când pasajul nu răspunde la întrebar
 {"collection":["alpha","beta"],"queries":["aprobarea transferului","autorizarea transferului"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Găsește textul salvat cu {{ tool('workspace_search') }} și prefix "sources/collections/".
+Folosește calea, versiunea, start și end returnate ca interval de dovadă al citării.
+Salvează afirmația cu eticheta ei verificată.
+{% endif %}

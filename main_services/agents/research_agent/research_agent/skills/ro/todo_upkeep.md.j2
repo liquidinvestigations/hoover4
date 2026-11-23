@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: cum ții planul cu update_plan, pașii lui și stările lor
+description: cum planifici cercetarea în grupuri limitate, salvezi fiecare grup în raport și actualizezi progresul
 tools: update_plan
 ---
 Ținerea planului
@@ -10,13 +10,21 @@ tools: update_plan
 
 1. Trimite întreaga listă în fiecare apel, în ordine. Un pas pe care îl omiți nu mai face parte din plan.
 2. Dă fiecare pas ca obiect cu text și status. status este pending sau done.
-3. Un pas rămâne pending până când se termină munca lui. Apoi trimite-l ca done, cu o notă, de exemplu found, not found sau replaced.
+3. Un pas rămâne pending până când se termină munca lui. Apoi trimite-l ca done, cu o notă care dă versiunea salvată și acoperirea pentru un set de date.
 4. Păstrează neschimbat textul unui pas când se schimbă doar statusul. Pasul își păstrează atunci id-ul.
 5. Un obiectiv nou începe un plan nou.
 6. {{ tool('update_plan') }} doar păstrează planul. Scrie un raport sau alt fișier cu {{ tool('write_file') }}.
 
-Acesta este un exemplu. Pasul 1 a găsit ce îți trebuie, iar pasul 2 este încă deschis.
+Pentru o investigație, dă fiecărui pas un grup limitat de candidați, fișierul de ieșire și condiția lui de încheiere.
+Creează raportul cu primul grup. Aplică un patch aceluiași raport după fiecare grup următor, folosind etichete de citare verificate.
+Verifică numele fișierului și versiunea returnate înainte să începi grupul următor. Repară o salvare respinsă și reia același grup.
+Salvează un rând ca nerezolvat, cu dovada lipsă, când sursele nu pot stabili afirmația.
+Elimină dublurile dintre persoane când combini grupurile.
+O pagină salvată sau o notă TODO nu înlocuiește rândurile extrase.
+
+Exemplu de plan pentru o listă de persoane:
 ```json
-{"goal":"Găsește data aprobării.","steps":[{"text":"Găsește mesajul.","status":"done","note":"found"},{"text":"Citește pasajul care susține.","status":"pending"}]}
+{"goal":"Identifică membrii consiliului care au deținut o funcție eligibilă.","steps":[{"text":"Verifică grupul 1 al listei pentru apartenența la consiliu și funcțiile eligibile. Creează report.md cu rezultatele citate și rândurile nerezolvate.","status":"pending"},{"text":"Verifică grupul 2. Aplică un patch lui report.md. Verifică versiunea returnată înainte de grupul 3.","status":"pending"},{"text":"Reconciliază domeniul, numele duplicate și totalurile. Livrează report.md cu versiunea salvată.","status":"pending"}]}
 ```
-Rezultatul arată întregul plan cu id-ul fiecărui pas. Un apel care nu schimbă nimic returnează unchanged. Corectează câmpul numit înainte de a apela din nou.
+Adaugă un pas pentru fiecare grup suplimentar. Păstrează un pas pending cât timp grupul lui are intrări necitite.
+După o salvare reușită, notează versiunea reală în notă. De exemplu: „report.md v2 conține grupurile 1 și 2.”

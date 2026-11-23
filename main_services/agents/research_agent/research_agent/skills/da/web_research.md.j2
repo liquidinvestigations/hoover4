@@ -172,3 +172,31 @@ En null-registrant betyder, at registret ikke har offentliggjort den værdi. Reg
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Brug {{ tool('workspace_list') }} med præfikset "sources/web/" for at finde gemt sidetekst.
+Find passagen med {{ tool('workspace_search') }}. Send dens sti, version, start og slut som bevis til {{ tool('cite_pages') }}.
+Gem påstanden med det returnerede mærke.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Gennemgået direkte udveksling for en navneliste i to grupper. Eksemplet viser de relevante svarfelter.
+Gruppe 1 opretter report.md. Gruppe 2 patcher den. Et afvist mærke rettes, og den gemte version leveres.
+Brug mærkerne og versionerne fra dine egne kald.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example forbliver i rapporten som en uafklaret række med det manglende bevis.
+Den afviste patch brugte [W9], som intet kald returnerede. Rettelsen brugte [W3], som {{ tool('cite_pages') }} returnerede.
+{% if has('execute') %}
+Den samme gruppe 2 som ét execute-kald. Programmet stopper ved den første mislykkede gemning og returnerer dens kvittering.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Programmet returnerer patchresultatet med dets version. Kontrollér versionen før næste gruppe.
+Når et kald i programmet mislykkes, beholder kvitteringerne de tidligere vellykkede gemninger. Start igen ved den mislykkede operation.
+Lever den gemte rapport med det direkte {{ tool('finish_with_report') }}-kald efter den sidste gruppe.
+{% endif %}
+{% endif %}

@@ -169,3 +169,31 @@ null registrant का अर्थ है कि रजिस्ट्री �
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+सहेजा गया पेज टेक्स्ट खोजने के लिए {{ tool('workspace_list') }} का उपयोग उपसर्ग "sources/web/" के साथ करें।
+{{ tool('workspace_search') }} से अंश खोजें। उसका पथ, संस्करण, start और end प्रमाण के रूप में {{ tool('cite_pages') }} को दें।
+दावे को लौटाए गए हैंडल के साथ सहेजें।
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+दो बैचों में सूची के लिए सीधे आदान-प्रदान का एक पूरा उदाहरण। उदाहरण प्रतिक्रिया के प्रासंगिक फ़ील्ड दिखाता है।
+बैच 1 report.md बनाता है। बैच 2 उसमें पैच करता है। अस्वीकृत हैंडल सुधारा जाता है, और सहेजा गया संस्करण सौंपा जाता है।
+अपनी कॉल के हैंडल और संस्करणों का उपयोग करें।
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+परिणाम: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example रिपोर्ट में छूटे हुए प्रमाण के साथ अनसुलझी पंक्ति के रूप में रहता है।
+अस्वीकृत पैच ने [W9] का उपयोग किया, जिसे किसी कॉल ने नहीं लौटाया। सुधार में [W3] का उपयोग हुआ, जिसे {{ tool('cite_pages') }} ने लौटाया।
+{% if has('execute') %}
+वही बैच 2 एक execute कॉल के रूप में। प्रोग्राम पहली विफल सहेजने पर रुकता है और उसकी रसीद लौटाता है।
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+प्रोग्राम संस्करण के साथ पैच का परिणाम लौटाता है। अगले बैच से पहले संस्करण जाँचें।
+प्रोग्राम की कोई कॉल विफल हो, तो रसीदें पहले के सफल सहेजने रखती हैं। विफल ऑपरेशन से फिर शुरू करें।
+अंतिम बैच के बाद रिपोर्ट को सीधी {{ tool('finish_with_report') }} कॉल से सौंपें।
+{% endif %}
+{% endif %}

@@ -172,3 +172,31 @@ En null-registrant betyr at registeret ikke publiserte den verdien. Registraren 
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Bruk {{ tool('workspace_list') }} med prefix "sources/web/" for å finne lagret sidetekst.
+Finn tekstutdraget med {{ tool('workspace_search') }}. Send stien, versjonen, start og end som bevis til {{ tool('cite_pages') }}.
+Lagre påstanden med det returnerte henvisningsmerket.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Eksempel på en direkte utveksling for en liste over personer i to grupper. Eksempelet viser de relevante responsfeltene.
+Gruppe 1 oppretter report.md. Gruppe 2 patcher den. Et avvist henvisningsmerke repareres, og den lagrede versjonen leveres.
+Bruk henvisningsmerkene og versjonene fra dine egne kall.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example blir stående i rapporten som en uløst rad med de manglende bevisene.
+Den avviste patchen brukte [W9], som ingen kall returnerte. Reparasjonen brukte [W3], som {{ tool('cite_pages') }} returnerte.
+{% if has('execute') %}
+Den samme gruppe 2 som ett execute-kall. Programmet stopper ved den første mislykkede lagringen og returnerer kvitteringen for den.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Programmet returnerer patch-resultatet med versjonen. Kontroller versjonen før neste gruppe.
+Når et kall til programmet mislykkes, beholder kvitteringene de tidligere vellykkede lagringene. Start på nytt ved den mislykkede operasjonen.
+Lever den lagrede rapporten med det direkte {{ tool('finish_with_report') }}-kallet etter den siste gruppen.
+{% endif %}
+{% endif %}

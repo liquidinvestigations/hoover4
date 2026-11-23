@@ -7,7 +7,7 @@ tools:
 Popunjavanje argumenata poziva
 
 {% if has('read_tool') %}
-Kad nisi siguran u argumente alata, pozovi {{ tool('read_tool') }} s njegovim nazivom. Vraća svaki argument, njegov tip i argumente koje alat zahtijeva.
+Prije prvog poziva alata pozovi {{ tool('read_tool') }} s njegovim nazivom. Vraća svaki argument, njegov tip i argumente koje alat zahtijeva. Popis naziva ili sažetaka nije potpuna definicija.
 
 {% endif %}
 1. Navedi samo nazive argumenata koje alat daje. Argument s drugim nazivom bit će odbijen.
@@ -34,7 +34,7 @@ Kad je poziv odbijen, pogreška navodi argument i što je s njim pogrešno. Ispr
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} zahtijeva query, opis zadatka do 160 znakova.
-Vraća nazive i opise relevantnih alata. Pročitaj alat prije nego što upotrijebiš nepoznate argumente.
+Vraća nazive i sažetke relevantnih alata. Pročitaj svaki alat pomoću {{ tool('read_tool') }} prije njegova prvog poziva.
 ```json
 {"query":"Pronađi odsječak pri kraju jednog dugog dokumenta."}
 ```
@@ -57,7 +57,7 @@ Pročitaj njegovu shemu pomoću {{ tool('read_tool') }}.
 ```
 Zatim pozovi {{ tool('update_plan') }} s goal i steps.
 ```json
-{"goal":"Pronađi datum odobrenja.","steps":[{"text":"Pronađi poruku.","status":"pending"}]}
+{"goal":"Provjeri datum odobrenja.","steps":[{"text":"Spremi datum poruke o odobrenju i provjereni citat u approvals.csv.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -82,10 +82,26 @@ Vraća upute metode, argumente alata i primjere.
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} zahtijeva text, od 1 do 2.000 znakova. Sprema dokaze i neriješena pitanja za kasniji kontekst.
-Uključi identitete izvora i sljedeći koristan poziv kad taj kontekst mora preživjeti sažimanje.
+{% if has('execute') %}
+Prije nego što program pozove funkciju, pročitaj funkciju pomoću {{ tool('read_tool') }} ili pomoću {{ tool('search') }} s detail true.
+Koristi language "javascript" i code kao tekst. Pozovi svaku funkciju po nazivu s jednim objektom argumenata.
+Vrati nalaze ili potvrde operacija koji su ti potrebni u sljedećem koraku.
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+Pronađi točan pojam u spremljenim izvorima. Vrati položaje podudaranja radi provjere.
+
 ```json
-{"text":"Odsječak o odobrenju nalazi se u vraćenom rasponu dokumenta. Provjeri tko ga je izvorno napisao prije nego što ga pripišeš."}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+Pronađi izvor, provjeri njegov tekst i spremi potkrijepljen redak u novu datoteku izvješća.
+Koristi temu izvješća i točnu frazu za tvrdnju.
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+Kad je cijelo izvješće spremno, upotrijebi vraćenu verziju s izravnim alatom za završetak.
 {% endif %}

@@ -136,3 +136,10 @@ max_results는 제공되는 스키마의 한도 안에서 검색어 형태마다
 {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+저장된 텍스트는 {{ tool('workspace_search') }}로 접두사 "sources/collections/"를 지정해 찾으십시오.
+반환된 경로, 버전, start, end를 인용 근거 범위로 사용하십시오.
+주장을 확인된 핸들과 함께 저장하십시오.
+{% endif %}

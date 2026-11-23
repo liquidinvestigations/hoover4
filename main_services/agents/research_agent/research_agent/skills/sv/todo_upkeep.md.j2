@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: hur du håller planen med update_plan, dess steg och deras status
+description: hur du planerar research i avgränsade grupper, sparar varje grupp i rapporten och uppdaterar framsteg
 tools: update_plan
 ---
 {# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
@@ -12,13 +12,21 @@ Hålla planen
 
 1. Skicka hela listan i varje anrop, i ordning. Ett steg som du utelämnar finns inte längre i planen.
 2. Ange varje steg som ett objekt med text och status. status är pending eller done.
-3. Ett steg är pending tills dess arbete är slutfört. Skicka det då som done med en notering, till exempel hittat, inte hittat eller ersatt.
+3. Ett steg är pending tills dess arbete är slutfört. Skicka det då som done med en notering, och ange den sparade versionen och täckningen för en datamängd.
 4. Behåll ett stegs text oförändrad när bara dess status ändras. Steget behåller då sitt id.
 5. Ett nytt mål startar en ny plan.
 6. {{ tool('update_plan') }} sparar bara planen. Skriv en rapport eller en annan fil med {{ tool('write_file') }}.
 
-Det här är ett exempel. Steg 1 hittade det du behöver, och steg 2 är fortfarande öppet.
+För en utredning, ge varje steg en avgränsad grupp av kandidater, utdatafilen och dess slutvillkor.
+Skapa rapporten med den första gruppen. Patcha samma rapport efter varje senare grupp med verifierade källhandtag.
+Kontrollera det returnerade filnamnet och versionen innan du börjar med nästa grupp. Åtgärda en avvisad sparning och försök igen med samma grupp.
+Spara en rad som olöst, med det belägg som saknas, när källorna inte kan fastställa påståendet.
+Ta bort dubbletter av personer när du slår ihop grupper.
+En sparad sida eller en TODO-notering ersätter inte de extraherade raderna.
+
+Exempelplan för en namnlista:
 ```json
-{"goal":"Hitta godkännandedatumet.","steps":[{"text":"Hitta meddelandet.","status":"done","note":"hittat"},{"text":"Läs det stödjande avsnittet.","status":"pending"}]}
+{"goal":"Identifiera styrelseledamöter som hade ett kvalificerande ämbete.","steps":[{"text":"Verifiera namnlistans grupp 1 för styrelseledamotskap och kvalificerande ämbeten. Skapa report.md med belagda resultat och olösta rader.","status":"pending"},{"text":"Verifiera namnlistans grupp 2. Patcha report.md. Kontrollera den returnerade versionen före grupp 3.","status":"pending"},{"text":"Stäm av omfång, dubblettnamn och summor. Leverera report.md med den sparade versionen.","status":"pending"}]}
 ```
-Resultatet visar hela planen med id för varje steg. Ett anrop som inte ändrar något returnerar unchanged. Rätta det angivna fältet innan du anropar igen.
+Lägg till ett steg för varje ytterligare grupp. Låt ett steg vara pending så länge dess grupp har olästa poster.
+Anteckna den faktiska versionen i noteringen efter en lyckad sparning. Till exempel: "report.md v2 innehåller grupp 1 och 2."

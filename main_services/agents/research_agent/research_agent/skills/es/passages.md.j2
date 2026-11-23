@@ -138,3 +138,10 @@ Lee el texto de apoyo cuando el pasaje no responda a la pregunta.
 {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Encuentra el texto guardado con {{ tool('workspace_search') }} y prefix "sources/collections/".
+Usa la ruta, la versión, start y end devueltos como intervalo de prueba de la cita.
+Guarda la afirmación con su identificador verificado.
+{% endif %}

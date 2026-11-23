@@ -174,3 +174,32 @@ registrant ריק פירושו שמרשם הדומיינים לא פרסם את 
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') %}
+השתמש ב-{{ tool('workspace_list') }} עם הקידומת "sources/web/" כדי למצוא טקסט שמור של דף.
+מצא את הקטע באמצעות {{ tool('workspace_search') }}. העבר את path, version, start ו-end שלו כראיה ל-{{ tool('cite_pages') }}.
+שמור את הטענה עם התגית שהוחזרה.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+דוגמה מפורטת של חילופי קריאות ישירים לרשימת אנשים בשתי אצוות. הדוגמה מציגה את שדות התשובה הרלוונטיים.
+אצווה 1 יוצרת את report.md. אצווה 2 מתקנת אותו. תגית שנדחתה מתוקנת, והגרסה השמורה נמסרת.
+השתמש בתגיות ובגרסאות מהקריאות שלך.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+תוצאה: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example נשאר בדוח כשורה לא פתורה עם הראיה החסרה.
+התיקון שנדחה השתמש ב-[W9], שאף קריאה לא החזירה. התיקון החוזר השתמש ב-[W3], ש-{{ tool('cite_pages') }} החזיר.
+{% if has('execute') %}
+אותה אצווה 2 כקריאת execute אחת. התוכנית נעצרת בשמירה הראשונה שנכשלה ומחזירה את האישור שלה.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+התוכנית מחזירה את תוצאת התיקון עם הגרסה שלו. בדוק את הגרסה לפני האצווה הבאה.
+כשקריאה בתוך התוכנית נכשלת, האישורים שומרים את השמירות המוצלחות הקודמות. התחל שוב מהפעולה שנכשלה.
+אחרי האצווה האחרונה, מסור את הדוח השמור בקריאה הישירה ל-{{ tool('finish_with_report') }}.
+{% endif %}
+{% endif %}

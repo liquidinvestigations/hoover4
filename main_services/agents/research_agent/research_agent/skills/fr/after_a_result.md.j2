@@ -16,8 +16,11 @@ Après chaque résultat, faites l’une de ces choses.
 4. Vous en savez assez pour répondre. Écrivez la réponse, ou le rapport quand il exige des citations ou un document.
 
 Utilisez les résultats visibles quand ils répondent à la question en cours.
-Après un compactage du contexte, utilisez l’index et les notes conservés pour identifier les résultats précédents.
-Actualisez explicitement un passage nécessaire quand son texte n’est plus visible.
+{% if has('workspace_search') %}
+Trouvez les résultats et les fichiers enregistrés avec {{ tool('workspace_list') }}.
+Cherchez les mots manquants dans un chemin enregistré avec {{ tool('workspace_search') }}.
+Utilisez les positions des correspondances pour lire le texte exact. Vérifiez les citations avant d’ajouter des constats à un rapport.
+{% endif %}
 
 Quand une recherche ne renvoie aucun résultat utile, changez la requête ou utilisez une autre source.
 

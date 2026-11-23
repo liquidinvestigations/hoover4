@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: 如何用 update_plan 维护计划、计划的步骤及其状态
+description: 如何把研究规划为有界的分组、把每组保存到报告中并更新进度
 tools: update_plan
 ---
 {# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
@@ -12,13 +12,21 @@ tools: update_plan
 
 1. 每次调用都按顺序发送完整的列表。你省略的步骤就不再属于计划。
 2. 把每个步骤写成带有 text 和 status 的对象。status 是 pending 或 done。
-3. 步骤在其工作结束之前保持 pending。然后把它作为 done 发送，并附上备注，例如“已找到”“未找到”或“已替换”。
+3. 步骤在其工作结束之前保持 pending。然后把它作为 done 发送，并附上备注，写明数据集已保存的版本和覆盖范围。
 4. 只有状态改变时，保持步骤的 text 不变。这样步骤会保留它的 id。
 5. 新的目标会开始新的计划。
 6. {{ tool('update_plan') }} 只保存计划。撰写报告或其他文件时，使用 {{ tool('write_file') }}。
 
-下面是一个示例。步骤 1 找到了你需要的内容，步骤 2 仍未完成。
+对于调查，给每个步骤指定一组有界的候选项、输出文件及其完成条件。
+用第一组创建报告。每个后续分组之后，用已核实的引用标识修补同一份报告。
+开始下一组之前，检查返回的文件名和版本。修复被拒绝的保存，并重试同一分组。
+来源无法证实某项论断时，把该行保存为未解决，并写明缺少的证据。
+合并分组时，对人员去重。
+已保存的页面或 TODO 备注不能代替提取出的行。
+
+名册的示例计划：
 ```json
-{"goal":"查找批准日期。","steps":[{"text":"查找这封邮件。","status":"done","note":"已找到"},{"text":"阅读支持的段落。","status":"pending"}]}
+{"goal":"识别担任过符合条件职务的董事会成员。","steps":[{"text":"核实名册第 1 组的董事会成员身份和符合条件的职务。创建包含已引用结果和未解决行的 report.md。","status":"pending"},{"text":"核实名册第 2 组。修补 report.md。开始第 3 组之前，检查返回的版本。","status":"pending"},{"text":"核对范围、重复的姓名和总数。交付已保存版本的 report.md。","status":"pending"}]}
 ```
-结果会显示完整的计划以及每个步骤的 id。没有改变任何内容的调用会返回 unchanged。再次调用之前，先更正所指出的字段。
+每多一组就增加一个步骤。只要某组还有未读的条目，就让它的步骤保持 pending。
+保存成功后，在备注中记录实际版本。例如：“report.md v2 包含第 1 组和第 2 组。”

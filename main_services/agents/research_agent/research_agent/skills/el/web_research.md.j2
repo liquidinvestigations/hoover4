@@ -170,3 +170,32 @@ url, αντιγραμμένο από το αποτέλεσμα ανάγνωση�
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') %}
+Χρησιμοποίησε το {{ tool('workspace_list') }} με πρόθεμα "sources/web/" για να βρεις αποθηκευμένο κείμενο σελίδας.
+Βρες το απόσπασμα με το {{ tool('workspace_search') }}. Πέρασε το path, το version, το start και το end ως τεκμήριο στο {{ tool('cite_pages') }}.
+Αποθήκευσε τον ισχυρισμό με την ετικέτα που επιστράφηκε.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Επεξεργασμένο παράδειγμα άμεσης ανταλλαγής για έναν κατάλογο προσώπων σε δύο παρτίδες. Το παράδειγμα δείχνει τα σχετικά πεδία των απαντήσεων.
+Η παρτίδα 1 δημιουργεί το report.md. Η παρτίδα 2 το διορθώνει. Μια απορριφθείσα ετικέτα επανορθώνεται και παραδίδεται η αποθηκευμένη έκδοση.
+Χρησιμοποίησε τις ετικέτες και τις εκδόσεις από τις δικές σου κλήσεις.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Αποτέλεσμα: {{ exchange.result | tojson }}
+{% endfor %}
+Ο Ben Example μένει στην έκθεση ως ανεπίλυτη γραμμή με το στοιχείο που λείπει.
+Η απορριφθείσα διόρθωση χρησιμοποίησε το [W9], που καμία κλήση δεν επέστρεψε. Η επανόρθωση χρησιμοποίησε το [W3], που επέστρεψε το {{ tool('cite_pages') }}.
+{% if has('execute') %}
+Η ίδια παρτίδα 2 ως μία κλήση execute. Το πρόγραμμα σταματά στην πρώτη αποτυχημένη αποθήκευση και επιστρέφει την απόδειξή της.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Το πρόγραμμα επιστρέφει το αποτέλεσμα της διόρθωσης με την έκδοσή του. Έλεγξε την έκδοση πριν από την επόμενη παρτίδα.
+Όταν αποτύχει μια κλήση μέσα στο πρόγραμμα, οι αποδείξεις κρατούν τις προηγούμενες επιτυχείς αποθηκεύσεις. Ξεκίνησε ξανά από την αποτυχημένη λειτουργία.
+Μετά την τελευταία παρτίδα, παράδωσε την αποθηκευμένη έκθεση με την άμεση κλήση {{ tool('finish_with_report') }}.
+{% endif %}
+{% endif %}

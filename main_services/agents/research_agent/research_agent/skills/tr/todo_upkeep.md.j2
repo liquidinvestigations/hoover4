@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: update_plan ile planın, adımlarının ve durumlarının nasıl tutulacağı
+description: araştırmayı sınırlı gruplarla planlama, her grubu raporda kaydetme ve ilerlemeyi güncelleme
 tools: update_plan
 ---
 Planı tutma
@@ -10,13 +10,21 @@ Planı tutma
 
 1. Her çağrıda tüm listeyi sırayla gönder. Dışarıda bıraktığın bir adım artık planda değildir.
 2. Her adımı text ve status içeren bir nesne olarak ver. status pending ya da done olur.
-3. Bir adım, işi bitene kadar pending durumundadır. İşi bitince onu found, not found ya da replaced gibi bir notla done olarak gönder.
+3. Bir adım, işi bitene kadar pending kalır. Sonra onu, bir veri kümesi için kayıtlı sürümü ve kapsamı belirten bir notla done olarak gönder.
 4. Yalnızca durumu değiştiğinde bir adımın metnini aynı tut. Böylece adım kimliğini korur.
 5. Yeni bir hedef yeni bir plan başlatır.
 6. {{ tool('update_plan') }} yalnızca planı saklar. Rapor ya da başka bir dosyayı {{ tool('write_file') }} ile yaz.
 
-Bu bir örnektir. 1. adım ihtiyacın olanı buldu, 2. adım hâlâ açık.
+Bir soruşturmada her adıma sınırlı bir aday grubu, çıktı dosyası ve tamamlanma koşulu ver.
+Raporu ilk grupla oluştur. Sonraki her gruptan sonra aynı raporu, doğrulanmış atıf etiketleriyle yamala.
+Sonraki grubu başlatmadan önce dönen dosya adını ve sürümü kontrol et. Reddedilen bir kaydı düzelt ve aynı grubu yeniden dene.
+Kaynaklar iddiayı kanıtlayamıyorsa satırı, eksik kanıtıyla birlikte çözülmemiş olarak kaydet.
+Grupları birleştirirken yinelenen kişileri çıkar.
+Kayıtlı bir sayfa ya da bir TODO notu, çıkarılan satırların yerini tutmaz.
+
+Bir kişi listesi için örnek plan:
 ```json
-{"goal":"Onay tarihini bul.","steps":[{"text":"İletiyi bul.","status":"done","note":"found"},{"text":"Destekleyen pasajı oku.","status":"pending"}]}
+{"goal":"Uygun bir makamda bulunmuş yönetim kurulu üyelerini belirle.","steps":[{"text":"Liste grubu 1'i yönetim kurulu üyeliği ve uygun makamlar açısından doğrula. Atıflı sonuçlar ve çözülmemiş satırlarla report.md oluştur.","status":"pending"},{"text":"Liste grubu 2'yi doğrula. report.md dosyasını yamala. 3. gruptan önce dönen sürümü kontrol et.","status":"pending"},{"text":"Kapsamı, yinelenen adları ve toplamları uzlaştır. report.md dosyasını kayıtlı sürümle teslim et.","status":"pending"}]}
 ```
-Sonuç, her adımın kimliğiyle birlikte planın tamamını gösterir. Hiçbir şeyi değiştirmeyen bir çağrı unchanged döndürür. Yeniden çağırmadan önce adı verilen alanı düzelt.
+Her ek grup için bir adım ekle. Grubunda okunmamış kayıtlar olduğu sürece adımı pending tut.
+Başarılı bir kayıttan sonra gerçek sürümü nota yaz. Örneğin: "report.md v2, 1. ve 2. grupları içerir."

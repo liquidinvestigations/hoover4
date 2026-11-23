@@ -9,7 +9,7 @@ tools:
 Fylla i argumenten i ett anrop
 
 {% if has('read_tool') %}
-När du inte är säker på ett verktygs argument, anropa {{ tool('read_tool') }} med verktygets namn. Det anger varje argument, dess typ och vilka argument verktyget kräver.
+Före det första anropet av ett verktyg, anropa {{ tool('read_tool') }} med verktygets namn. Det anger varje argument, dess typ och vilka argument verktyget kräver. En lista med namn eller sammanfattningar är ingen fullständig definition.
 
 {% endif %}
 1. Ange bara de argumentnamn som verktyget anger. Ett argument med ett annat namn avvisas.
@@ -36,7 +36,7 @@ När ett anrop avvisas anger felet argumentet och vad som är fel med det. Rätt
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} kräver query, en uppgiftsbeskrivning på högst 160 tecken.
-Det returnerar namn och beskrivningar på relevanta verktyg. Läs om ett verktyg innan du använder obekanta argument.
+Det returnerar namn och sammanfattningar på relevanta verktyg. Läs varje verktyg med {{ tool('read_tool') }} före dess första anrop.
 ```json
 {"query":"Hitta ett avsnitt sent i ett långt dokument."}
 ```
@@ -59,7 +59,7 @@ Läs dess schema med {{ tool('read_tool') }}.
 ```
 Anropa sedan {{ tool('update_plan') }} med goal och steps.
 ```json
-{"goal":"Hitta godkännandedatumet.","steps":[{"text":"Hitta meddelandet.","status":"pending"}]}
+{"goal":"Verifiera godkännandedatumet.","steps":[{"text":"Spara godkännandemeddelandets datum och den verifierade källhänvisningen i approvals.csv.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -84,10 +84,26 @@ Det returnerar metodinstruktionerna, verktygsargumenten och exemplen.
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} kräver text, med 1 till 2 000 tecken. Det sparar belägg och olösta frågor för senare kontext.
-Ta med källidentiteter och nästa användbara anrop när den kontexten måste överleva komprimeringen.
+{% if has('execute') %}
+Innan ett program anropar en funktion, läs funktionen med {{ tool('read_tool') }} eller med {{ tool('search') }} och detail true.
+Använd language "javascript" och code som en sträng. Anropa varje funktion med dess namn och ett argumentobjekt.
+Returnera de fynd eller operationskvitton som du behöver i nästa steg.
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+Hitta en exakt term i sparade källor. Returnera träffpositionerna för granskning.
+
 ```json
-{"text":"Godkännandeavsnittet finns i det returnerade dokumentintervallet. Verifiera dess ursprungliga skribent innan du tillskriver det någon."}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+Hitta en källa, verifiera dess ordalydelse och spara en belagd rad i en ny rapportfil.
+Använd rapportens ämne och den exakta frasen för påståendet.
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+Använd den returnerade versionen med det direkta avslutningsverktyget när den fullständiga rapporten är klar.
 {% endif %}

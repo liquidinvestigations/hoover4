@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: kako voditi plan pomoću update_plan, njegovih koraka i statusa
+description: kako planirati istraživanje u ograničenim skupinama, spremiti svaku skupinu u izvješće i ažurirati napredak
 tools: update_plan
 ---
 Vođenje plana
@@ -10,13 +10,21 @@ Vođenje plana
 
 1. Pošalji cijeli popis u svakom pozivu, redom. Korak koji izostaviš više nije u planu.
 2. Daj svaki korak kao objekt s text i status. status je pending ili done.
-3. Korak je pending dok se njegov rad ne završi. Zatim ga pošalji kao done s bilješkom, na primjer pronađeno, nije pronađeno ili zamijenjeno.
+3. Korak je pending dok se njegov rad ne završi. Zatim ga pošalji kao done s bilješkom koja za skup podataka navodi spremljenu verziju i pokrivenost.
 4. Zadrži text koraka isti kad se mijenja samo njegov status. Korak tada zadržava svoj ID.
 5. Novi cilj započinje novi plan.
 6. {{ tool('update_plan') }} samo čuva plan. Izvješće ili drugu datoteku napiši pomoću {{ tool('write_file') }}.
 
-Ovo je primjer. Korak 1 je pronašao što trebaš, a korak 2 je još otvoren.
+Za istragu svakom koraku daj ograničenu skupinu kandidata, izlaznu datoteku i uvjet dovršetka.
+Stvori izvješće s prvom skupinom. Zakrpaj isto izvješće nakon svake sljedeće skupine, s provjerenim oznakama citata.
+Provjeri vraćeni naziv datoteke i verziju prije nego što započneš sljedeću skupinu. Popravi odbijeno spremanje i ponovi istu skupinu.
+Spremi redak kao neriješen, s dokazom koji nedostaje, kad izvori ne mogu potvrditi tvrdnju.
+Ukloni duplikate osoba kad spajaš skupine.
+Spremljena stranica ili bilješka TODO ne zamjenjuje izdvojene retke.
+
+Primjer plana za popis osoba:
 ```json
-{"goal":"Pronađi datum odobrenja.","steps":[{"text":"Pronađi poruku.","status":"done","note":"pronađeno"},{"text":"Pročitaj odsječak koji to potkrepljuje.","status":"pending"}]}
+{"goal":"Utvrdi članove uprave koji su obnašali odgovarajuću dužnost.","steps":[{"text":"Provjeri skupinu 1 popisa za članstvo u upravi i odgovarajuće dužnosti. Stvori report.md s citiranim rezultatima i neriješenim recima.","status":"pending"},{"text":"Provjeri skupinu 2 popisa. Zakrpaj report.md. Provjeri vraćenu verziju prije skupine 3.","status":"pending"},{"text":"Uskladi opseg, duplicirana imena i zbrojeve. Isporuči report.md sa spremljenom verzijom.","status":"pending"}]}
 ```
-Rezultat prikazuje cijeli plan s ID-om svakog koraka. Poziv koji ništa ne mijenja vraća unchanged. Ispravi navedeno polje prije novog poziva.
+Dodaj korak za svaku sljedeću skupinu. Zadrži korak pending dok njegova skupina ima nepročitanih unosa.
+Nakon uspješnog spremanja upiši stvarnu verziju u bilješku. Na primjer: "report.md v2 sadrži skupine 1 i 2."

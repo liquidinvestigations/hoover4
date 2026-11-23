@@ -17,8 +17,11 @@ Doe na elk resultaat een van deze dingen.
 4. Je hebt genoeg om te antwoorden. Schrijf het antwoord, of het rapport als het bronverwijzingen of een document nodig heeft.
 
 Gebruik zichtbare resultaten wanneer ze de huidige vraag beantwoorden.
-Gebruik na het samenvatten van de context de bewaarde index en notities om eerdere resultaten te vinden.
-Haal een vereiste passage expliciet opnieuw op wanneer de tekst ervan niet meer zichtbaar is.
+{% if has('workspace_search') %}
+Vind opgeslagen resultaten en bestanden met {{ tool('workspace_list') }}.
+Zoek in een opgeslagen pad naar de ontbrekende woorden met {{ tool('workspace_search') }}.
+Gebruik de posities van de treffers om de exacte tekst te lezen. Controleer bronverwijzingen voordat je bevindingen aan een rapport toevoegt.
+{% endif %}
 
 Wanneer een zoekopdracht geen bruikbaar resultaat geeft, wijzig de zoekopdracht of gebruik een andere bron.
 

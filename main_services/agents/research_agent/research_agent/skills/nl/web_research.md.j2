@@ -175,3 +175,31 @@ Een lege registrant betekent dat het register die waarde niet publiceerde. De re
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Gebruik {{ tool('workspace_list') }} met prefix "sources/web/" om opgeslagen paginatekst te vinden.
+Zoek de passage met {{ tool('workspace_search') }}. Geef het pad, de versie, start en end als bewijs aan {{ tool('cite_pages') }}.
+Sla de bewering op met het teruggegeven label.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Uitgewerkt rechtstreeks voorbeeld voor een lijst personen in twee batches. Het voorbeeld toont de relevante velden van het antwoord.
+Batch 1 maakt report.md. Batch 2 past het aan met een patch. Een geweigerd label wordt hersteld en de opgeslagen versie wordt opgeleverd.
+Gebruik de labels en versies uit je eigen aanroepen.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example blijft in het rapport als onopgeloste rij met het ontbrekende bewijs.
+De geweigerde patch gebruikte [W9], dat geen enkele aanroep teruggaf. Het herstel gebruikte [W3], dat {{ tool('cite_pages') }} teruggaf.
+{% if has('execute') %}
+Dezelfde batch 2 als één aanroep van execute. Het programma stopt bij de eerste mislukte opslag en geeft het ontvangstbewijs ervan terug.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Het programma geeft het patchresultaat met zijn versie terug. Controleer de versie voor de volgende batch.
+Wanneer een aanroep van het programma mislukt, bewaren de ontvangstbewijzen de eerdere geslaagde opslagen. Begin opnieuw bij de mislukte bewerking.
+Lever het opgeslagen rapport op met de directe aanroep van {{ tool('finish_with_report') }} na de laatste batch.
+{% endif %}
+{% endif %}

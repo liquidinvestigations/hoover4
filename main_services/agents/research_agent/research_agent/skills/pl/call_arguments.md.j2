@@ -7,7 +7,7 @@ tools:
 Wypełnianie argumentów wywołania
 
 {% if has('read_tool') %}
-Gdy nie masz pewności co do argumentów narzędzia, wywołaj {{ tool('read_tool') }} z jego nazwą. Zwraca każdy argument, jego typ i argumenty, których narzędzie wymaga.
+Przed pierwszym wywołaniem narzędzia wywołaj {{ tool('read_tool') }} z jego nazwą. Podaje każdy argument, jego typ i argumenty, których narzędzie wymaga. Lista nazw lub streszczeń nie jest pełną definicją.
 
 {% endif %}
 1. Podawaj tylko nazwy argumentów, które podaje narzędzie. Argument o innej nazwie zostanie odrzucony.
@@ -34,7 +34,7 @@ Gdy wywołanie zostanie odrzucone, błąd wskazuje argument i to, co jest z nim 
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} wymaga argumentu query, czyli opisu zadania do 160 znaków.
-Zwraca nazwy i opisy odpowiednich narzędzi. Przeczytaj narzędzie, zanim użyjesz nieznanych argumentów.
+Zwraca nazwy i streszczenia odpowiednich narzędzi. Przeczytaj każde narzędzie za pomocą {{ tool('read_tool') }} przed jego pierwszym wywołaniem.
 ```json
 {"query":"Znajdź fragment w końcowej części jednego długiego dokumentu."}
 ```
@@ -57,7 +57,7 @@ Przeczytaj jego schemat za pomocą {{ tool('read_tool') }}.
 ```
 Potem wywołaj {{ tool('update_plan') }} z argumentami goal i steps.
 ```json
-{"goal":"Znajdź datę zatwierdzenia.","steps":[{"text":"Znajdź wiadomość.","status":"pending"}]}
+{"goal":"Zweryfikuj datę zatwierdzenia.","steps":[{"text":"Zapisz w approvals.csv datę wiadomości o zatwierdzeniu i zweryfikowane cytowanie.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -82,10 +82,26 @@ Zwraca instrukcje metody, argumenty narzędzi i przykłady.
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} wymaga argumentu text, od 1 do 2000 znaków. Zapisuje dowody i nierozstrzygnięte pytania na potrzeby późniejszego kontekstu.
-Dołącz tożsamości źródeł i następne użyteczne wywołanie, gdy ten kontekst ma przetrwać kompaktowanie.
+{% if has('execute') %}
+Zanim program wywoła funkcję, przeczytaj ją za pomocą {{ tool('read_tool') }} albo za pomocą {{ tool('search') }} z detail true.
+Użyj language "javascript" i code jako ciągu znaków. Wywołaj każdą funkcję po nazwie z jednym obiektem argumentów.
+Zwróć ustalenia lub potwierdzenia operacji, których potrzebujesz w następnym kroku.
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+Znajdź dokładne wyrażenie w zapisanych źródłach. Zwróć pozycje dopasowań do przeglądu.
+
 ```json
-{"text":"Fragment o zatwierdzeniu jest w zwróconym zakresie dokumentu. Sprawdź jego pierwotnego autora, zanim go przypiszesz."}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+Znajdź źródło, zweryfikuj jego sformułowanie i zapisz poparty wiersz w nowym pliku raportu.
+Użyj tematu raportu i dokładnej frazy twierdzenia.
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+Użyj zwróconej wersji z narzędziem bezpośredniego dostarczenia, gdy kompletny raport jest gotowy.
 {% endif %}

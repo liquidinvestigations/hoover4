@@ -31,6 +31,12 @@ Rond een kleine groep afzenders af voordat je met de volgende begint. Zoek, sla 
 
 Sla voor een afzenderlijst vóór verificatie per kandidaat de afzender, collectie, bestandshash en volgende actie op. Noteer het zoekbereik als er geen treffer is en de fout als lezen mislukt. Werk het rapport bij zodra de verwijzing slaagt en markeer het item als voltooid.
 
+Maak bij een lijst personen of een lange lijst het rapport met de rijen van de eerste groep. Voeg de rijen van elke volgende groep toe met één aanroep van {{ tool('patch_file') }}. Controleer de teruggegeven versie voordat je met de volgende groep begint.
+Houd een rij die de bronnen niet vaststellen in het rapport. Markeer haar als onopgelost en noem het ontbrekende bewijs.
+Wanneer een patch wordt geweigerd omdat een label niet wordt opgelost, zet je het label in dat de citatie-aanroep teruggaf en stuur je de patch opnieuw.
+Wanneer een patch wordt geweigerd omdat old_string niet overeenkomt, lees je dat deel van het rapport en stuur je een gecorrigeerde patch voor dezelfde groep.
+Lever na de laatste groep de opgeslagen versie op met {{ tool('finish_with_report') }}. Een schrijfactie of een patch slaat werk op en levert het rapport niet op.
+
 Na een samenvatting van eerdere stappen geeft de lijst van opgeslagen bestanden na het
 nieuwste bericht de naam en de versie van elk bestand. Lees het rapport en de checklist
 met {{ tool('read_file') }} voordat je verdergaat. Zoek niet opnieuw naar een item dat de

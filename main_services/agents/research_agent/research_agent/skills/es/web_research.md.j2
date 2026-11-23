@@ -173,3 +173,31 @@ Un registrant nulo significa que el registro no publicó ese valor. El registrad
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Usa {{ tool('workspace_list') }} con prefix "sources/web/" para encontrar el texto guardado de las páginas.
+Encuentra el pasaje con {{ tool('workspace_search') }}. Pasa su ruta, su versión, start y end como prueba a {{ tool('cite_pages') }}.
+Guarda la afirmación con el identificador devuelto.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Intercambio directo resuelto para una lista de personas en dos lotes. El ejemplo muestra los campos de respuesta relevantes.
+El lote 1 crea report.md. El lote 2 le aplica un parche. Se repara un identificador rechazado y se entrega la versión guardada.
+Usa los identificadores y las versiones de tus propias llamadas.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example permanece en el informe como una fila sin resolver, con la prueba que falta.
+El parche rechazado usó [W9], que ninguna llamada devolvió. La reparación usó [W3], que devolvió {{ tool('cite_pages') }}.
+{% if has('execute') %}
+El mismo lote 2 como una sola llamada a execute. El programa se detiene en el primer guardado fallido y devuelve su recibo.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+El programa devuelve el resultado del parche con su versión. Comprueba la versión antes del lote siguiente.
+Cuando falla una llamada del programa, los recibos conservan los guardados correctos anteriores. Empieza de nuevo en la operación fallida.
+Entrega el informe guardado con la llamada directa a {{ tool('finish_with_report') }} después del último lote.
+{% endif %}
+{% endif %}

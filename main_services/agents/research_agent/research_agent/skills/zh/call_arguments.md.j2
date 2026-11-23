@@ -9,7 +9,7 @@ tools:
 填写调用的参数
 
 {% if has('read_tool') %}
-当你不确定某个工具的参数时，用工具名称调用 {{ tool('read_tool') }}。它会给出每个参数、参数的类型，以及该工具要求提供的参数。
+首次调用某个工具之前，用工具名称调用 {{ tool('read_tool') }}。它会给出每个参数、参数的类型，以及该工具要求提供的参数。名称或摘要的列表不是完整的定义。
 
 {% endif %}
 1. 只使用该工具给出的参数名称。名称不同的参数会被拒绝。
@@ -36,7 +36,7 @@ tools:
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} 要求提供 query，即不超过 160 个字符的任务描述。
-它会返回相关的工具名称和说明。使用不熟悉的参数之前，先读取该工具。
+它会返回相关的工具名称和摘要。首次调用每个工具之前，用 {{ tool('read_tool') }} 读取该工具。
 ```json
 {"query":"在一份很长的文档的靠后部分查找一个段落。"}
 ```
@@ -59,7 +59,7 @@ tools:
 ```
 然后用 goal 和 steps 调用 {{ tool('update_plan') }}。
 ```json
-{"goal":"查找批准日期。","steps":[{"text":"查找这封邮件。","status":"pending"}]}
+{"goal":"核实批准日期。","steps":[{"text":"把批准邮件的日期和已核实的引用保存到 approvals.csv。","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -84,10 +84,26 @@ tools:
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} 要求提供 text，长度为 1 到 2,000 个字符。它会保存证据和未解决的问题，供之后的上下文使用。
-如果这些内容必须在上下文压缩后保留，请写入来源的标识和下一步有用的调用。
+{% if has('execute') %}
+程序调用某个函数之前，用 {{ tool('read_tool') }}，或用 detail 为 true 的 {{ tool('search') }}，读取该函数。
+使用 language "javascript"，并把 code 写成字符串。按名称调用每个函数，并传入一个参数对象。
+返回下一步需要的发现或操作回执。
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+在已保存的来源中查找准确的词语。返回匹配位置以供审阅。
+
 ```json
-{"text":"批准的段落在返回的文档范围内。在归因之前，先核实其原始作者。"}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+查找来源，核实其措辞，并把有依据的行保存到新的报告文件中。
+使用报告的主题和该论断的准确短语。
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+完整的报告就绪后，把返回的版本用于直接的结束工具。
 {% endif %}

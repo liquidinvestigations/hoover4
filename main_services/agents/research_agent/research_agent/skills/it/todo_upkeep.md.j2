@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: come tenere il piano con update_plan, i suoi passaggi e i loro stati
+description: come pianificare la ricerca in gruppi limitati, salvare ogni gruppo nel report e aggiornare l'avanzamento
 tools: update_plan
 ---
 Tenere il piano
@@ -10,13 +10,21 @@ Tenere il piano
 
 1. Invia l'intero elenco in ogni chiamata, in ordine. Un passaggio che ometti non fa più parte del piano.
 2. Indica ogni passaggio come oggetto con text e status. status è pending o done.
-3. Un passaggio è pending finché il suo lavoro non termina. Poi invialo come done con una nota, come trovato, non trovato o sostituito.
+3. Un passaggio è pending finché il suo lavoro non termina. Poi invialo come done con una nota, che indica la versione salvata e la copertura di un dataset.
 4. Mantieni invariato il testo di un passaggio quando cambia solo il suo stato. Il passaggio conserva allora il suo id.
 5. Un nuovo obiettivo avvia un nuovo piano.
 6. {{ tool('update_plan') }} conserva soltanto il piano. Scrivi un report o un altro file con {{ tool('write_file') }}.
 
-Questo è un esempio. Il passaggio 1 ha trovato ciò che serve e il passaggio 2 è ancora aperto.
+Per un'indagine, dai a ogni passaggio un gruppo limitato di candidati, il file di output e la sua condizione di completamento.
+Crea il report con il primo gruppo. Applica una patch allo stesso report dopo ogni gruppo successivo, usando etichette di citazione verificate.
+Controlla il nome del file e la versione restituiti prima di iniziare il gruppo successivo. Ripara un salvataggio rifiutato e ripeti lo stesso gruppo.
+Salva una riga come non risolta, con le prove mancanti, quando le fonti non possono stabilire l'affermazione.
+Elimina i duplicati tra le persone quando combini i gruppi.
+Una pagina salvata o una nota TODO non sostituisce le righe estratte.
+
+Esempio di piano per un elenco di persone:
 ```json
-{"goal":"Trova la data di approvazione.","steps":[{"text":"Trova il messaggio.","status":"done","note":"trovato"},{"text":"Leggi il passaggio di supporto.","status":"pending"}]}
+{"goal":"Individuare i membri del consiglio che hanno ricoperto una carica idonea.","steps":[{"text":"Verificare il gruppo 1 dell'elenco per l'appartenenza al consiglio e le cariche idonee. Creare report.md con i risultati citati e le righe non risolte.","status":"pending"},{"text":"Verificare il gruppo 2. Applicare una patch a report.md. Controllare la versione restituita prima del gruppo 3.","status":"pending"},{"text":"Riconciliare l'ambito, i nomi duplicati e i totali. Consegnare report.md con la versione salvata.","status":"pending"}]}
 ```
-Il risultato mostra l'intero piano con l'id di ogni passaggio. Una chiamata che non cambia nulla restituisce unchanged. Correggi il campo indicato prima di chiamare di nuovo.
+Aggiungi un passaggio per ogni gruppo ulteriore. Tieni un passaggio pending finché il suo gruppo ha voci non lette.
+Dopo un salvataggio riuscito, scrivi nella nota la versione effettiva. Per esempio: «report.md v2 contiene i gruppi 1 e 2.»

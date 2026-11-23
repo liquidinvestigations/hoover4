@@ -170,3 +170,31 @@ Pusty rejestrujący (null) oznacza, że rejestr nie opublikował tej wartości. 
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Użyj {{ tool('workspace_list') }} z prefix "sources/web/", aby znaleźć zapisany tekst stron.
+Znajdź fragment za pomocą {{ tool('workspace_search') }}. Przekaż jego ścieżkę, wersję, start i end jako dowód do {{ tool('cite_pages') }}.
+Zapisz twierdzenie ze zwróconą sygnaturą.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Przykład bezpośredniej wymiany dla listy osób w dwóch partiach. Przykład pokazuje istotne pola odpowiedzi.
+Partia 1 tworzy report.md. Partia 2 stosuje do niego poprawkę. Odrzucona sygnatura zostaje naprawiona, a zapisana wersja zostaje dostarczona.
+Użyj sygnatur i wersji ze swoich własnych wywołań.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example zostaje w raporcie jako wiersz nierozstrzygnięty, z brakującym dowodem.
+Odrzucona poprawka użyła [W9], którego żadne wywołanie nie zwróciło. Naprawa użyła [W3], które zwróciło {{ tool('cite_pages') }}.
+{% if has('execute') %}
+Ta sama partia 2 jako jedno wywołanie execute. Program zatrzymuje się przy pierwszym nieudanym zapisie i zwraca jego potwierdzenie.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Program zwraca wynik poprawki z jej wersją. Sprawdź wersję przed następną partią.
+Gdy wywołanie programu zawiedzie, potwierdzenia zachowują wcześniejsze udane zapisy. Zacznij od nowa od nieudanej operacji.
+Dostarcz zapisany raport bezpośrednim wywołaniem {{ tool('finish_with_report') }} po ostatniej partii.
+{% endif %}
+{% endif %}

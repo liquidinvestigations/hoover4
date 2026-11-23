@@ -15,8 +15,11 @@ Etter hvert resultat gjør du ett av disse punktene.
 4. Du har nok til å svare. Skriv svaret, eller rapporten når den trenger kildehenvisninger eller et dokument.
 
 Bruk synlige resultater når de besvarer det gjeldende spørsmålet.
-Etter komprimering av konteksten bruker du den bevarte indeksen og notatene til å identifisere tidligere resultater.
-Hent et nødvendig tekstutdrag på nytt uttrykkelig når teksten ikke lenger er synlig.
+{% if has('workspace_search') %}
+Finn lagrede resultater og filer med {{ tool('workspace_list') }}.
+Søk i en lagret sti etter de manglende ordene med {{ tool('workspace_search') }}.
+Bruk treffposisjonene til å lese den nøyaktige teksten. Kontroller henvisningene før du legger funn i en rapport.
+{% endif %}
 
 Når et søk ikke gir noe nyttig resultat, endre søkestrengen eller bruk en annen kilde.
 

@@ -16,8 +16,11 @@ Nakon svakog rezultata učini jedno od sljedećeg.
 4. Imaš dovoljno za odgovor. Napiši odgovor ili izvješće kad ono treba citate ili dokument.
 
 Koristi vidljive rezultate kad odgovaraju na trenutno pitanje.
-Nakon sažimanja konteksta koristi zadržani indeks i bilješke da prepoznaš ranije rezultate.
-Izričito osvježi potreban odsječak kad njegov tekst više nije vidljiv.
+{% if has('workspace_search') %}
+Pronađi spremljene rezultate i datoteke pomoću {{ tool('workspace_list') }}.
+Potraži riječi koje nedostaju u spremljenoj putanji pomoću {{ tool('workspace_search') }}.
+Pomoću položaja podudaranja pročitaj točan tekst. Provjeri citate prije nego što nalaze dodaš u izvješće.
+{% endif %}
 
 Kad pretraga ne vrati koristan rezultat, promijeni upit ili upotrijebi drugi izvor.
 

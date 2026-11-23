@@ -136,3 +136,10 @@ Læs den understøttende tekst, når passagen ikke besvarer spørgsmålet.
 {"collection":["alpha","beta"],"queries":["godkendelse af overførslen","bemyndigelse til overførsel"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Find gemt tekst med {{ tool('workspace_search') }} og præfikset "sources/collections/".
+Brug den returnerede sti, version, start og slut som kildehenvisningens bevisinterval.
+Gem påstanden med dens kontrollerede mærke.
+{% endif %}

@@ -26,9 +26,15 @@ Ikke tilskriv en uttalelse om ett subjekt til et annet.
 
 `todo-search-list.md` · `report.md`
 
-Fullfør en liten gruppe avsendere før du begynner på neste gruppe. Søk, lagre kandidatene, kontroller og siter kildene, og oppdater deretter rapporten.
+Fullfør en liten gruppe avsendere før du begynner på neste gruppe. Søk, lagre kandidatene, kontroller og siter kildene, og patch deretter rapporten.
 
-Lagre avsender, samling, filhash og neste handling for hver kandidat på en avsenderliste før kontroll. Oppgi søkeomfanget ved fravær og feilen ved mislykket lesing. Oppdater rapporten etter en vellykket henvisning og merk posten som ferdig.
+For en liste over avsendere lagrer du avsender, samling, filhash og neste handling for hver kandidat før kontroll. Oppgi søkeomfanget for et fravær og feilen for en mislykket lesing. Etter en vellykket henvisning patcher du rapporten og markerer sjekklisteposten som ferdig.
+
+For en liste over personer eller en lang liste oppretter du rapporten med radene i den første gruppen. Legg til radene i hver senere gruppe med ett {{ tool('patch_file') }}-kall. Kontroller den returnerte versjonen før du starter neste gruppe.
+Behold en rad som kildene ikke fastslår, i rapporten. Marker den som uløst og nevn de manglende bevisene.
+Når en patch avvises fordi et henvisningsmerke ikke blir funnet, setter du inn merket som henvisningskallet returnerte, og sender patchen på nytt.
+Når en patch avvises fordi old_string ikke passer, leser du den delen av rapporten og sender en rettet patch for den samme gruppen.
+Etter den siste gruppen leverer du den lagrede versjonen med {{ tool('finish_with_report') }}. En skriving eller en patch lagrer arbeid og leverer ikke rapporten.
 
 Etter et sammendrag av tidligere trinn gir listen over lagrede filer etter den nyeste
 meldingen navnet og versjonen til hver fil. Les rapporten og sjekklisten med

@@ -175,3 +175,31 @@ registrant 为 null，表示注册机构没有公布该值。注册商出售域�
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+用 {{ tool('workspace_list') }} 并指定前缀 "sources/web/" 查找已保存的页面文本。
+用 {{ tool('workspace_search') }} 查找段落。把它的路径、版本、start 和 end 作为证据传给 {{ tool('cite_pages') }}。
+把论断连同返回的引用标识一起保存。
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+名册分两批处理的直接交互示例。示例显示响应中的相关字段。
+第 1 批创建 report.md。第 2 批修补它。被拒绝的标识得到修复，并交付已保存的版本。
+使用你自己调用返回的标识和版本。
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+结果: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example 作为未解决的行留在报告中，并写明缺少的证据。
+被拒绝的修补使用了没有任何调用返回过的 [W9]。修复时使用了 {{ tool('cite_pages') }} 返回的 [W3]。
+{% if has('execute') %}
+同样的第 2 批，作为一次 execute 调用。程序在第一次保存失败时停止，并返回其回执。
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+程序返回带有版本的修补结果。开始下一批之前，检查版本。
+程序的某个调用失败时，回执保留之前成功的保存。从失败的操作重新开始。
+最后一批之后，用直接的 {{ tool('finish_with_report') }} 调用交付已保存的报告。
+{% endif %}
+{% endif %}

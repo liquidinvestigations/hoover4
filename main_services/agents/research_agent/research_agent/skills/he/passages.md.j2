@@ -138,3 +138,11 @@ max_results בוחר את מספר ההתאמות לכל צורת שאילתה �
 {"collection":["alpha","beta"],"queries":["אישור ההעברה","הרשאה להעברה"],"max_results":5}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+מצא טקסט שמור באמצעות {{ tool('workspace_search') }} עם הקידומת "sources/collections/".
+השתמש ב-path, ב-version, ב-start וב-end שהוחזרו כטווח ראיה לציטוט.
+שמור את הטענה עם התגית המאומתת שלה.
+{% endif %}

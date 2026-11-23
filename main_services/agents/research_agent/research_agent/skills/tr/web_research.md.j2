@@ -170,3 +170,32 @@ Boş (null) bir registrant, kayıt defterinin o değeri yayımlamadığı anlam�
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') %}
+Kayıtlı sayfa metnini bulmak için {{ tool('workspace_list') }} aracını "sources/web/" önekiyle kullan.
+Pasajı {{ tool('workspace_search') }} ile bul. Onun path, version, start ve end değerlerini kanıt olarak {{ tool('cite_pages') }} aracına ver.
+İddiayı dönen etiketle kaydet.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+İki toplu işte bir kişi listesi için çalışılmış doğrudan değişim örneği. Örnek, yanıtların ilgili alanlarını gösterir.
+1. toplu iş report.md dosyasını oluşturur. 2. toplu iş onu yamalar. Reddedilen bir etiket düzeltilir ve kayıtlı sürüm teslim edilir.
+Kendi çağrılarının etiketlerini ve sürümlerini kullan.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Sonuç: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example, eksik kanıtla birlikte çözülmemiş bir satır olarak raporda kalır.
+Reddedilen yama, hiçbir çağrının döndürmediği [W9] etiketini kullandı. Düzeltme, {{ tool('cite_pages') }} aracının döndürdüğü [W3] etiketini kullandı.
+{% if has('execute') %}
+Aynı 2. toplu iş tek bir execute çağrısı olarak. Program ilk başarısız kayıtta durur ve onun makbuzunu döndürür.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Program yama sonucunu sürümüyle birlikte döndürür. Sonraki toplu işten önce sürümü kontrol et.
+Programdaki bir çağrı başarısız olduğunda makbuzlar önceki başarılı kayıtları korur. Başarısız işlemden yeniden başla.
+Son toplu işten sonra kayıtlı raporu doğrudan {{ tool('finish_with_report') }} çağrısıyla teslim et.
+{% endif %}
+{% endif %}

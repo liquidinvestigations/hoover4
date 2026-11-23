@@ -31,6 +31,12 @@ Sonraki gruba başlamadan önce küçük bir gönderici grubunu tamamla. Ara, ad
 
 Gönderen listesinde doğrulamadan önce her adayın gönderenini, koleksiyonunu, dosya karmasını ve sonraki işlemini kaydet. Sonuç yoksa aramanın kapsamını, okuma başarısızsa hatayı kaydet. Alıntı başarılı olunca raporu düzenle ve maddeyi tamamlandı olarak işaretle.
 
+Bir kişi listesi ya da uzun bir liste için raporu ilk grubun satırlarıyla oluştur. Sonraki her grubun satırlarını tek bir {{ tool('patch_file') }} çağrısıyla ekle. Sonraki grubu başlatmadan önce dönen sürümü kontrol et.
+Kaynakların kanıtlamadığı bir satırı raporda tut. Onu çözülmemiş olarak işaretle ve eksik kanıtı adlandır.
+Bir yama, bir etiket çözülmediği için reddedildiğinde, atıf çağrısının döndürdüğü etiketi yerleştir ve yamayı yeniden gönder.
+Bir yama, old_string eşleşmediği için reddedildiğinde, raporun o bölümünü oku ve aynı grup için düzeltilmiş bir yama gönder.
+Son gruptan sonra kayıtlı sürümü {{ tool('finish_with_report') }} ile teslim et. Yazma ya da yama işi kaydeder, raporu teslim etmez.
+
 Önceki adımların bir özetinden sonra, en yeni mesajdan sonra gelen kaydedilmiş dosyalar
 listesi her dosyanın adını ve sürümünü verir. Devam etmeden önce raporu ve kontrol
 listesini {{ tool('read_file') }} ile oku. Kontrol listesinin tamamlandı olarak

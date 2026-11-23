@@ -136,3 +136,11 @@ max_results выбирает число результатов на форму �
 {"collection":["alpha","beta"],"queries":["утверждение перевода","разрешение на перевод"],"max_results":5}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Находи сохранённый текст с помощью {{ tool('workspace_search') }} с префиксом "sources/collections/".
+Используй возвращённые path, version, start и end как диапазон доказательства для цитаты.
+Сохрани утверждение с его проверенной меткой.
+{% endif %}

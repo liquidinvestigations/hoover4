@@ -136,3 +136,10 @@ Przeczytaj tekst potwierdzający, gdy fragment nie odpowiada na pytanie.
 {"collection":["alpha","beta"],"queries":["zatwierdzenie transferu","autoryzacja transferu"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Znajdź zapisany tekst za pomocą {{ tool('workspace_search') }} z prefix "sources/collections/".
+Użyj zwróconej ścieżki, wersji, start i end jako zakresu dowodu cytowania.
+Zapisz twierdzenie z jego zweryfikowaną sygnaturą.
+{% endif %}

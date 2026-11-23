@@ -136,3 +136,10 @@ Les støttende tekst når tekstutdraget ikke besvarer spørsmålet.
 {"collection":["alpha","beta"],"queries":["godkjenning av overføringen","tillatelse til overføring"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Finn lagret tekst med {{ tool('workspace_search') }} og prefix "sources/collections/".
+Bruk den returnerte stien, versjonen, start og end som bevisområde for et henvisningsmerke.
+Lagre påstanden med det kontrollerte henvisningsmerket.
+{% endif %}

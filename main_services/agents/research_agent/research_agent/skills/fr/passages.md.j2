@@ -136,3 +136,10 @@ Lisez le texte à l’appui quand le passage ne répond pas à la question.
 {"collection":["alpha","beta"],"queries":["approbation du transfert","autorisation de transfert"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Trouvez le texte enregistré avec {{ tool('workspace_search') }} et prefix "sources/collections/".
+Utilisez le chemin, la version, start et end renvoyés comme étendue de preuve de la citation.
+Enregistrez l’affirmation avec son repère vérifié.
+{% endif %}

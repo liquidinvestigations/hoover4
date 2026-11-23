@@ -30,6 +30,12 @@ Dovrši malu skupinu pošiljatelja prije nego što započneš sljedeću. Pretra�
 
 Za popis pošiljatelja prije provjere spremi pošiljatelja, zbirku, sažetak datoteke i sljedeću radnju za svaki kandidat. Ako nema rezultata, zabilježi opseg pretrage. Ako čitanje ne uspije, zabilježi pogrešku. Nakon citiranja izmijeni izvješće i označi stavku dovršenom.
 
+Za popis osoba ili dugačak popis stvori izvješće s recima prve skupine. Retke svake sljedeće skupine dodaj jednim pozivom {{ tool('patch_file') }}. Provjeri vraćenu verziju prije nego što započneš sljedeću skupinu.
+Redak koji izvori ne potvrđuju zadrži u izvješću. Označi ga kao neriješen i navedi dokaz koji nedostaje.
+Kad je zakrpa odbijena jer se oznaka citata ne razrješava, upiši oznaku koju je vratio poziv citiranja i ponovno pošalji zakrpu.
+Kad je zakrpa odbijena jer se old_string ne podudara, pročitaj taj dio izvješća i pošalji ispravljenu zakrpu za istu skupinu.
+Nakon posljednje skupine isporuči spremljenu verziju pomoću {{ tool('finish_with_report') }}. Pisanje ili zakrpa sprema rad i ne isporučuje izvješće.
+
 Nakon sažetka ranijih koraka popis spremljenih datoteka nakon najnovije poruke daje naziv
 i verziju svake datoteke. Pročitaj izvješće i kontrolni popis s {{ tool('read_file') }}
 prije nego što nastaviš. Ne pretražuj ponovno stavku koju kontrolni popis označava kao

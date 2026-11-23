@@ -138,3 +138,10 @@ max_results 选择每种查询形式的命中数，不超过所用模式的限�
 {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+用 {{ tool('workspace_search') }} 并指定前缀 "sources/collections/" 查找已保存的文本。
+把返回的路径、版本、start 和 end 用作引用的证据范围。
+把论断连同其已核实的引用标识一起保存。
+{% endif %}

@@ -31,6 +31,12 @@ Conclui um pequeno grupo de remetentes antes de começar o seguinte. Pesquisa, g
 
 Para uma lista de remetentes, guarda o remetente, a coleção, o hash do ficheiro e a próxima ação de cada candidato antes da verificação. Regista o âmbito da pesquisa se não houver resultados e o erro se a leitura falhar. Depois da citação, altera o relatório e marca a entrada como concluída.
 
+Numa lista de pessoas ou numa lista longa, cria o relatório com as linhas do primeiro grupo. Acrescenta as linhas de cada grupo seguinte com uma única chamada a {{ tool('patch_file') }}. Verifica a versão devolvida antes de começares o grupo seguinte.
+Mantém no relatório uma linha que as fontes não estabelecem. Marca-a como por resolver e indica a prova em falta.
+Quando um patch é recusado porque um identificador não se resolve, coloca o identificador que a chamada de citação devolveu e envia o patch de novo.
+Quando um patch é recusado porque old_string não corresponde, lê essa parte do relatório e envia um patch corrigido para o mesmo grupo.
+Depois do último grupo, entrega a versão guardada com {{ tool('finish_with_report') }}. Uma escrita ou um patch guarda o trabalho e não entrega o relatório.
+
 Depois de um resumo de passos anteriores, a lista de ficheiros guardados após a mensagem
 mais recente dá o nome e a versão de cada ficheiro. Lê o relatório e a lista de
 verificação com {{ tool('read_file') }} antes de continuares. Não pesquises de novo um

@@ -175,3 +175,31 @@ En registrant som är null betyder att registret inte publicerade det värdet. R
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Använd {{ tool('workspace_list') }} med prefixet "sources/web/" för att hitta sparad sidtext.
+Hitta avsnittet med {{ tool('workspace_search') }}. Skicka dess sökväg, version, start och end som belägg till {{ tool('cite_pages') }}.
+Spara påståendet med det returnerade handtaget.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Genomgånget direktflöde för en namnlista i två grupper. Exemplet visar de relevanta svarsfälten.
+Grupp 1 skapar report.md. Grupp 2 patchar den. Ett avvisat handtag åtgärdas och den sparade versionen levereras.
+Använd handtagen och versionerna från dina egna anrop.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example finns kvar i rapporten som en olöst rad med det belägg som saknas.
+Den avvisade patchen använde [W9], som inget anrop returnerade. Åtgärden använde [W3], som {{ tool('cite_pages') }} returnerade.
+{% if has('execute') %}
+Samma grupp 2 som ett execute-anrop. Programmet stannar vid den första misslyckade sparningen och returnerar dess kvitto.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Programmet returnerar patchens resultat med dess version. Kontrollera versionen före nästa grupp.
+När ett anrop av programmet misslyckas behåller kvittona de tidigare lyckade sparningarna. Börja om vid den misslyckade operationen.
+Leverera den sparade rapporten med det direkta anropet av {{ tool('finish_with_report') }} efter den sista gruppen.
+{% endif %}
+{% endif %}

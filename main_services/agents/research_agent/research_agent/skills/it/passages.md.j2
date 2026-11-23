@@ -136,3 +136,10 @@ Leggi il testo di supporto quando il passaggio non risponde alla domanda.
 {"collection":["alpha","beta"],"queries":["approvazione del trasferimento","autorizzazione al trasferimento"],"max_results":5}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Trova il testo salvato con {{ tool('workspace_search') }} e prefix "sources/collections/".
+Usa il percorso, la versione, start e end restituiti come intervallo di prova della citazione.
+Salva l'affermazione con la sua etichetta verificata.
+{% endif %}

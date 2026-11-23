@@ -30,6 +30,12 @@ Completa un grupo pequeño de remitentes antes de empezar el siguiente. Busca, g
 
 Para una lista de remitentes, guarda el remitente, la colección, el hash del archivo y la acción siguiente de cada candidato antes de verificarlo. Registra el ámbito de búsqueda si no hay coincidencia y el error si falla la lectura. Tras obtener la cita, modifica el informe y marca la entrada como completada.
 
+Para una lista de personas o una lista larga, crea el informe con las filas del primer grupo. Añade las filas de cada grupo posterior con una sola llamada a {{ tool('patch_file') }}. Comprueba la versión devuelta antes de empezar el grupo siguiente.
+Mantén en el informe una fila que las fuentes no establezcan. Márcala como sin resolver y nombra la prueba que falta.
+Cuando se rechace un parche porque un identificador no se resuelve, pon el identificador que devolvió la llamada de cita y envía el parche de nuevo.
+Cuando se rechace un parche porque old_string no coincide, lee esa parte del informe y envía un parche corregido para el mismo grupo.
+Después del último grupo, entrega la versión guardada con {{ tool('finish_with_report') }}. Una escritura o un parche guarda el trabajo y no entrega el informe.
+
 Después de un resumen de pasos anteriores, la lista de archivos guardados tras el mensaje
 más reciente da el nombre y la versión de cada archivo. Lee el informe y la lista de
 control con {{ tool('read_file') }} antes de continuar. No busques de nuevo un elemento

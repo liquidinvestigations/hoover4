@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: cómo mantener el plan con update_plan, sus pasos y sus estados
+description: cómo planificar la investigación en grupos acotados, guardar cada grupo en el informe y actualizar el avance
 tools: update_plan
 ---
 {# Cómo mantener correcto el plan. Las llamadas de plan fallidas envían los pasos como cadenas simples, un estado
@@ -12,13 +12,21 @@ Mantener el plan
 
 1. Envía la lista completa en cada llamada, en orden. Un paso que omites ya no está en el plan.
 2. Da cada paso como un objeto con text y status. status es pending o done.
-3. Un paso está pending hasta que termina su trabajo. Entonces envíalo como done con una nota, como found, not found o replaced.
+3. Un paso está pending hasta que termina su trabajo. Entonces envíalo como done con una nota, que da la versión guardada y la cobertura de un conjunto de datos.
 4. Mantén igual el texto de un paso cuando solo cambie su estado. El paso conserva entonces su id.
 5. Un objetivo nuevo inicia un plan nuevo.
 6. {{ tool('update_plan') }} solo guarda el plan. Escribe un informe u otro archivo con {{ tool('write_file') }}.
 
-Este es un ejemplo. El paso 1 encontró lo que necesitas y el paso 2 sigue abierto.
+Para una investigación, da a cada paso un grupo acotado de candidatos, el archivo de salida y su condición de finalización.
+Crea el informe con el primer grupo. Aplica un parche al mismo informe después de cada grupo posterior, con identificadores de cita verificados.
+Comprueba el nombre de archivo y la versión devueltos antes de empezar el grupo siguiente. Repara un guardado rechazado y repite el mismo grupo.
+Guarda una fila como sin resolver, con la prueba que falta, cuando las fuentes no puedan establecer la afirmación.
+Elimina las personas duplicadas cuando combines los grupos.
+Una página guardada o una nota TODO no sustituye a las filas extraídas.
+
+Ejemplo de plan para una lista de personas:
 ```json
-{"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]}
+{"goal":"Identify board members who held a qualifying office.","steps":[{"text":"Verify roster group 1 for board membership and qualifying offices. Create report.md with cited results and unresolved rows.","status":"pending"},{"text":"Verify roster group 2. Patch report.md. Check the returned version before group 3.","status":"pending"},{"text":"Reconcile scope, duplicate names and totals. Deliver report.md with the saved version.","status":"pending"}]}
 ```
-El resultado muestra el plan completo con el id de cada paso. Una llamada que no cambia nada devuelve unchanged. Corrige el campo nombrado antes de volver a llamar.
+Añade un paso por cada grupo adicional. Mantén un paso pending mientras su grupo tenga entradas sin leer.
+Tras un guardado correcto, anota la versión real en la nota. Por ejemplo: «report.md v2 contiene los grupos 1 y 2.»

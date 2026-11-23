@@ -16,8 +16,11 @@ Depois de cada resultado, faz uma destas coisas.
 4. Tens o suficiente para responder. Escreve a resposta, ou o relatório quando precisa de citações ou de um documento.
 
 Usa os resultados visíveis quando respondem à pergunta atual.
-Depois da compactação do contexto, usa o índice e as notas retidos para identificar os resultados anteriores.
-Atualiza explicitamente uma passagem necessária quando o seu texto já não está visível.
+{% if has('workspace_search') %}
+Encontra os resultados e os ficheiros guardados com {{ tool('workspace_list') }}.
+Pesquisa num caminho guardado as palavras em falta com {{ tool('workspace_search') }}.
+Usa as posições das correspondências para ler o texto exato. Verifica as citações antes de acrescentares conclusões a um relatório.
+{% endif %}
 
 Quando uma pesquisa não devolve nenhum resultado útil, muda a consulta ou usa outra fonte.
 

@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: comment tenir le plan avec update_plan, ses étapes et leurs statuts
+description: comment planifier la recherche par groupes bornés, enregistrer chaque groupe dans le rapport et mettre à jour l’avancement
 tools: update_plan
 ---
 Tenir le plan
@@ -10,13 +10,21 @@ Tenir le plan
 
 1. Envoyez la liste complète à chaque appel, dans l’ordre. Une étape que vous omettez n’est plus dans le plan.
 2. Donnez chaque étape comme un objet avec text et status. status vaut pending ou done.
-3. Une étape reste pending jusqu’à la fin de son travail. Envoyez-la ensuite comme done avec une note, par exemple trouvé, non trouvé ou remplacé.
+3. Une étape reste pending jusqu’à la fin de son travail. Envoyez-la ensuite comme done avec une note, qui donne la version enregistrée et la couverture pour un jeu de données.
 4. Gardez le texte d’une étape identique quand seul son statut change. L’étape garde alors son identifiant.
 5. Un nouvel objectif démarre un nouveau plan.
 6. {{ tool('update_plan') }} conserve seulement le plan. Écrivez un rapport ou un autre fichier avec {{ tool('write_file') }}.
 
-Voici un exemple. L’étape 1 a trouvé ce dont vous avez besoin, et l’étape 2 est encore ouverte.
+Pour une investigation, donnez à chaque étape un groupe borné de candidats, le fichier de sortie et sa condition d’achèvement.
+Créez le rapport avec le premier groupe. Appliquez un patch au même rapport après chaque groupe suivant, avec des repères de citation vérifiés.
+Vérifiez le nom de fichier et la version renvoyés avant de commencer le groupe suivant. Réparez un enregistrement rejeté et relancez le même groupe.
+Enregistrez une ligne comme non résolue, avec les preuves manquantes, quand les sources ne peuvent pas établir l’affirmation.
+Dédoublonnez les personnes quand vous combinez les groupes.
+Une page enregistrée ou une note TODO ne remplace pas les lignes extraites.
+
+Exemple de plan pour une liste de membres :
 ```json
-{"goal":"Trouver la date d’approbation.","steps":[{"text":"Trouver le message.","status":"done","note":"trouvé"},{"text":"Lire le passage à l’appui.","status":"pending"}]}
+{"goal":"Identifier les membres du conseil qui ont exercé une fonction qualifiante.","steps":[{"text":"Vérifier le groupe 1 de la liste pour l’appartenance au conseil et les fonctions qualifiantes. Créer report.md avec les résultats cités et les lignes non résolues.","status":"pending"},{"text":"Vérifier le groupe 2. Appliquer un patch à report.md. Vérifier la version renvoyée avant le groupe 3.","status":"pending"},{"text":"Rapprocher le périmètre, les noms en double et les totaux. Livrer report.md avec la version enregistrée.","status":"pending"}]}
 ```
-Le résultat montre le plan complet avec l’identifiant de chaque étape. Un appel qui ne change rien renvoie unchanged. Corrigez le champ nommé avant d’appeler à nouveau.
+Ajoutez une étape pour chaque groupe supplémentaire. Gardez une étape pending tant que son groupe a des entrées non lues.
+Après un enregistrement réussi, notez la version réelle dans la note. Par exemple : « report.md v2 contient les groupes 1 et 2. »

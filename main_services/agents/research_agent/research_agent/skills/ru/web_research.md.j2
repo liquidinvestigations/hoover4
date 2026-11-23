@@ -172,3 +172,32 @@ page_start выбирает первую страницу окна PDF. Одно
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') %}
+Находи сохранённый текст страницы с помощью {{ tool('workspace_list') }} с префиксом "sources/web/".
+Находи фрагмент с помощью {{ tool('workspace_search') }}. Передай его path, version, start и end как доказательство в {{ tool('cite_pages') }}.
+Сохрани утверждение с возвращённой меткой.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Разобранный пример прямого обмена для списка лиц в две партии. Пример показывает нужные поля ответов.
+Партия 1 создаёт report.md. Партия 2 правит его. Отклонённая метка исправляется, и сохранённая версия сдаётся.
+Используй метки и версии из собственных вызовов.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Результат: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example остаётся в отчёте как нерешённая строка с указанием недостающего доказательства.
+Отклонённая правка использовала [W9], которую не вернул ни один вызов. Исправление использовало [W3], которую вернул {{ tool('cite_pages') }}.
+{% if has('execute') %}
+Та же партия 2 одним вызовом execute. Программа останавливается на первом неудавшемся сохранении и возвращает его квитанцию.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Программа возвращает результат правки с её версией. Проверь версию перед следующей партией.
+Когда вызов внутри программы завершается ошибкой, квитанции сохраняют прежние успешные сохранения. Начни снова с неудавшейся операции.
+После последней партии сдай сохранённый отчёт прямым вызовом {{ tool('finish_with_report') }}.
+{% endif %}
+{% endif %}

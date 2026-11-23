@@ -7,7 +7,7 @@ tools:
 Compilazione dei parametri di una chiamata
 
 {% if has('read_tool') %}
-Quando non sei sicuro dei parametri di uno strumento, chiama {{ tool('read_tool') }} con il suo nome. Restituisce ogni parametro, il suo tipo e i parametri che lo strumento richiede.
+Prima della prima chiamata a uno strumento, chiama {{ tool('read_tool') }} con il suo nome. Indica ogni parametro, il suo tipo e i parametri che lo strumento richiede. Un elenco di nomi o di riepiloghi non è una definizione completa.
 
 {% endif %}
 1. Indica solo i nomi di parametro che lo strumento prevede. Un parametro con un altro nome viene rifiutato.
@@ -34,7 +34,7 @@ Quando una chiamata viene rifiutata, l'errore indica il parametro e che cosa non
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} richiede query, una descrizione dell'attività di al massimo 160 caratteri.
-Restituisce i nomi e le descrizioni degli strumenti pertinenti. Leggi uno strumento prima di usare parametri che non conosci.
+Restituisce nomi e riepiloghi degli strumenti pertinenti. Leggi ogni strumento con {{ tool('read_tool') }} prima della sua prima chiamata.
 ```json
 {"query":"Trova un passaggio verso la fine di un documento lungo."}
 ```
@@ -57,7 +57,7 @@ Leggi il suo schema con {{ tool('read_tool') }}.
 ```
 Poi chiama {{ tool('update_plan') }} con goal e steps.
 ```json
-{"goal":"Trova la data di approvazione.","steps":[{"text":"Trova il messaggio.","status":"pending"}]}
+{"goal":"Verificare la data di approvazione.","steps":[{"text":"Salvare in approvals.csv la data del messaggio di approvazione e la citazione verificata.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -82,10 +82,26 @@ Restituisce le istruzioni del metodo, i parametri degli strumenti e gli esempi.
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} richiede text, da 1 a 2.000 caratteri. Salva prove e domande irrisolte per il contesto successivo.
-Includi le identità delle fonti e la prossima chiamata utile quando quel contesto deve sopravvivere alla compattazione.
+{% if has('execute') %}
+Prima che un programma chiami una funzione, leggi la funzione con {{ tool('read_tool') }}, oppure con {{ tool('search') }} e detail true.
+Usa language "javascript" e code come stringa di testo. Chiama ogni funzione per nome con un solo oggetto di parametri.
+Restituisci i risultati o le ricevute di operazione che servono nel passaggio successivo.
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+Trova un termine esatto nelle fonti salvate. Restituisci le posizioni delle corrispondenze per la revisione.
+
 ```json
-{"text":"Il passaggio sull'approvazione si trova nell'intervallo di documento restituito. Verifica chi lo ha scritto in origine prima di attribuirlo."}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+Trova una fonte, verifica la sua formulazione e salva una riga supportata in un nuovo file di report.
+Usa l'argomento del report e la frase esatta dell'affermazione.
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+Usa la versione restituita con lo strumento di consegna diretta quando il report completo è pronto.
 {% endif %}

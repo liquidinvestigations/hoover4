@@ -7,7 +7,7 @@ tools:
 कॉल के आर्ग्युमेंट भरना
 
 {% if has('read_tool') %}
-जब आपको किसी टूल के आर्ग्युमेंट पर भरोसा न हो, तो उसके नाम के साथ {{ tool('read_tool') }} को कॉल करें। वह हर आर्ग्युमेंट, उसका प्रकार और टूल के लिए आवश्यक आर्ग्युमेंट देता है।
+कोई टूल पहली बार कॉल करने से पहले, उसके नाम के साथ {{ tool('read_tool') }} को कॉल करें। वह हर आर्ग्युमेंट, उसका प्रकार और टूल के लिए आवश्यक आर्ग्युमेंट देता है। नामों या सारांशों की सूची पूरी परिभाषा नहीं है।
 
 {% endif %}
 1. केवल वे आर्ग्युमेंट नाम दें जो टूल देता है। दूसरे नाम का आर्ग्युमेंट अस्वीकार हो जाता है।
@@ -34,7 +34,7 @@ tools:
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} के लिए query आवश्यक है, जो 160 अक्षरों तक का कार्य विवरण है।
-वह प्रासंगिक टूल के नाम और विवरण लौटाता है। अपरिचित आर्ग्युमेंट उपयोग करने से पहले टूल को पढ़ें।
+वह प्रासंगिक टूल के नाम और सारांश लौटाता है। हर टूल को पहली कॉल से पहले {{ tool('read_tool') }} से पढ़ें।
 ```json
 {"query":"एक लंबे दस्तावेज़ में आगे के किसी अंश को खोजें।"}
 ```
@@ -57,7 +57,7 @@ tools:
 ```
 फिर goal और steps के साथ {{ tool('update_plan') }} को कॉल करें।
 ```json
-{"goal":"स्वीकृति की तारीख़ खोजें।","steps":[{"text":"संदेश खोजें।","status":"pending"}]}
+{"goal":"स्वीकृति की तारीख़ सत्यापित करें।","steps":[{"text":"स्वीकृति संदेश की तारीख़ और सत्यापित उद्धरण approvals.csv में सहेजें।","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}
@@ -82,10 +82,26 @@ tools:
 {"name":"passages"}
 ```
 {% endif %}
-{% if has('write_note') %}
-{{ tool('write_note') }} के लिए text आवश्यक है, 1 से 2,000 अक्षर। वह आगे के संदर्भ के लिए प्रमाण और अनसुलझे प्रश्न सहेजता है।
-जब वह संदर्भ संक्षिप्त होने के बाद भी बचना चाहिए, तब स्रोतों की पहचान और अगली उपयोगी कॉल शामिल करें।
+{% if has('execute') %}
+किसी प्रोग्राम के फ़ंक्शन को कॉल करने से पहले, उस फ़ंक्शन को {{ tool('read_tool') }} से, या detail true के साथ {{ tool('search') }} से, पढ़ें।
+language "javascript" और code को स्ट्रिंग के रूप में दें। हर फ़ंक्शन को उसके नाम से एक आर्ग्युमेंट ऑब्जेक्ट के साथ कॉल करें।
+अगले चरण में जो निष्कर्ष या ऑपरेशन रसीदें चाहिए, उन्हें लौटाएँ।
+{% endif %}
+
+{% if has('execute') and has('workspace_list') and has('workspace_search') %}
+सहेजे गए स्रोतों में सटीक शब्द खोजें। समीक्षा के लिए मिलान की स्थितियाँ लौटाएँ।
+
 ```json
-{"text":"स्वीकृति का अंश लौटाई गई दस्तावेज़ सीमा में है। उसका श्रेय देने से पहले उसके मूल लेखक की पुष्टि करें।"}
+{"language":"javascript","code":"const list = workspace_list({prefix:'sources/web/',limit:3}); const paths = list.entries.map(entry => entry.path); if (!paths.length) return {matches:[]}; return workspace_search({paths,terms:['Deputy Secretary'],limit:5});"}
 ```
+{% endif %}
+{% if has('execute') and has('web_search') and has('read_page') and has('workspace_search') and has('cite_pages') and has('write_file') %}
+कोई स्रोत खोजें, उसके शब्दों की पुष्टि करें, और समर्थित पंक्ति को नई रिपोर्ट फ़ाइल में सहेजें।
+रिपोर्ट के विषय और दावे के सटीक वाक्यांश का उपयोग करें।
+
+```json
+{"language":"javascript","code":"const found = web_search({queries:['Ada Sample official biography'],max_results:3}); const url = (found.results || [])[0]?.url; if (!url) return {status:'source unavailable'}; const page = read_page({urls:[url]}); const source = (page.source_refs || [])[0]; if (!source) return {status:'source unavailable'}; const hit = workspace_search({paths:[source.path],terms:['served as Deputy Secretary'],limit:1}).matches[0]; if (!hit) return {status:'phrase unavailable'}; const cited = cite_pages({evidence:{path:hit.path,version:hit.version,start:hit.start,end:hit.end}}); const proof = cited.citations.find(ref => ref.quote_verified); if (!proof) return {status:'citation unavailable'}; return write_file({name:'biography.md',content:'The biography states that the subject served as Deputy Secretary. ' + proof.handle});"}
+```
+
+रिपोर्ट पूरी होने पर लौटाए गए संस्करण को सीधे समाप्ति टूल के साथ उपयोग करें।
 {% endif %}

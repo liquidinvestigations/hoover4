@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: como manter o plano com update_plan, os seus passos e os respetivos estados
+description: como planear a pesquisa em grupos limitados, guardar cada grupo no relatório e atualizar o progresso
 tools: update_plan
 ---
 Manter o plano
@@ -10,13 +10,21 @@ Manter o plano
 
 1. Envia a lista completa em cada chamada, por ordem. Um passo que omitires deixa de estar no plano.
 2. Indica cada passo como um objeto com text e status. status é pending ou done.
-3. Um passo fica pending até o seu trabalho terminar. Depois envia-o como done com uma nota, como encontrado, não encontrado ou substituído.
+3. Um passo fica pending até o seu trabalho terminar. Depois envia-o como done com uma nota, que indica a versão guardada e a cobertura de um conjunto de dados.
 4. Mantém o text de um passo igual quando só o estado muda. O passo mantém então o seu identificador.
 5. Um novo objetivo inicia um novo plano.
 6. {{ tool('update_plan') }} só guarda o plano. Escreve um relatório ou outro ficheiro com {{ tool('write_file') }}.
 
-Este é um exemplo. O passo 1 encontrou o que precisas, e o passo 2 ainda está em aberto.
+Numa investigação, dá a cada passo um grupo limitado de candidatos, o ficheiro de saída e a sua condição de conclusão.
+Cria o relatório com o primeiro grupo. Aplica um patch ao mesmo relatório depois de cada grupo seguinte, com identificadores de citação verificados.
+Verifica o nome do ficheiro e a versão devolvidos antes de começares o grupo seguinte. Repara o que foi rejeitado ao guardar e repete o mesmo grupo.
+Guarda uma linha como por resolver, com a prova em falta, quando as fontes não conseguem estabelecer a afirmação.
+Elimina as pessoas duplicadas quando combinares os grupos.
+Uma página guardada ou uma nota TODO não substitui as linhas extraídas.
+
+Exemplo de plano para uma lista de pessoas:
 ```json
-{"goal":"Encontrar a data de aprovação.","steps":[{"text":"Encontrar a mensagem.","status":"done","note":"encontrado"},{"text":"Ler a passagem de apoio.","status":"pending"}]}
+{"goal":"Identificar os membros do conselho que exerceram um cargo elegível.","steps":[{"text":"Verificar o grupo 1 da lista quanto à pertença ao conselho e aos cargos elegíveis. Criar report.md com os resultados citados e as linhas por resolver.","status":"pending"},{"text":"Verificar o grupo 2. Aplicar um patch a report.md. Verificar a versão devolvida antes do grupo 3.","status":"pending"},{"text":"Reconciliar o âmbito, os nomes duplicados e os totais. Entregar report.md com a versão guardada.","status":"pending"}]}
 ```
-O resultado mostra o plano completo com o identificador de cada passo. Uma chamada que não altera nada devolve unchanged. Corrige o campo indicado antes de chamares de novo.
+Acrescenta um passo para cada grupo adicional. Mantém um passo pending enquanto o seu grupo tiver entradas por ler.
+Depois de guardar com êxito, regista a versão real na nota. Por exemplo: «report.md v2 contém os grupos 1 e 2.»

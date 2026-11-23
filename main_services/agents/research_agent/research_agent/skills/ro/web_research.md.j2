@@ -171,3 +171,31 @@ Un registrant null înseamnă că registrul nu a publicat acea valoare. Registra
 {"domains":["example.org","example.com"],"domain":"example.net"}
 ```
 {% endif %}
+
+
+{% if has('workspace_search') %}
+Folosește {{ tool('workspace_list') }} cu prefix "sources/web/" ca să găsești textul salvat al paginilor.
+Găsește pasajul cu {{ tool('workspace_search') }}. Transmite calea, versiunea, start și end ale lui ca dovadă lui {{ tool('cite_pages') }}.
+Salvează afirmația cu eticheta returnată.
+{% endif %}
+
+{% if has('write_file') and has('patch_file') and has('cite_pages') %}
+Schimb direct ca exemplu, pentru o listă de persoane în două loturi. Exemplul arată câmpurile relevante ale răspunsului.
+Lotul 1 creează report.md. Lotul 2 îi aplică un patch. O etichetă respinsă este reparată, iar versiunea salvată este livrată.
+Folosește etichetele și versiunile apelurilor tale.
+{% for exchange in example_exchanges %}
+{{ exchange.tool }} {{ exchange.arguments | tojson }}
+Result: {{ exchange.result | tojson }}
+{% endfor %}
+Ben Example rămâne în raport ca rând nerezolvat, cu dovada lipsă.
+Patch-ul respins a folosit [W9], pe care niciun apel nu l-a returnat. Repararea a folosit [W3], pe care l-a returnat {{ tool('cite_pages') }}.
+{% if has('execute') %}
+Același lot 2 ca un singur apel execute. Programul se oprește la prima salvare eșuată și returnează recipisa ei.
+```json
+{"language": "javascript", "code": "const url = 'https://example.org/people/cora-placeholder';\nread_page({urls:[url]});\nconst proof = cite_pages({url,terms:['Ambassador to Norway']}).citations?.find(c => c.quote_verified);\nconst row = '| Ben Example | Board member [W1] | Unresolved: no read source names a public office. |';\nconst office = proof ? 'Ambassador to Norway ' + proof.handle : 'Unresolved: the page did not verify the office.';\nconst saved = patch_file({name:'report.md',old_string:row,new_string:row + '\\n| Cora Placeholder | Board member [W1] | ' + office + ' |'});\nif (!saved.success) return {stopped:'patch', saved};\nreturn {name:saved.name, version:saved.version, citations:saved.citations};"}
+```
+Programul returnează rezultatul patch-ului cu versiunea lui. Verifică versiunea înainte de lotul următor.
+Când un apel al programului eșuează, recipisele păstrează salvările reușite anterioare. Reia de la operația eșuată.
+Livrează raportul salvat cu apelul direct {{ tool('finish_with_report') }} după ultimul lot.
+{% endif %}
+{% endif %}

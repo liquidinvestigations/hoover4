@@ -136,3 +136,11 @@ not_for: Δεν χρειάζεται για πλήθη, λίστες αρχεί�
 {"collection":["alpha","beta"],"queries":["έγκριση της μεταφοράς","εξουσιοδότηση μεταφοράς"],"max_results":5}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Βρες αποθηκευμένο κείμενο με το {{ tool('workspace_search') }} και πρόθεμα "sources/collections/".
+Χρησιμοποίησε τα path, version, start και end που επιστράφηκαν ως εύρος τεκμηρίωσης για την παραπομπή.
+Αποθήκευσε τον ισχυρισμό με την επαληθευμένη ετικέτα του.
+{% endif %}

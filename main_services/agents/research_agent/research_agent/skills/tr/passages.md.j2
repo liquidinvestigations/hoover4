@@ -136,3 +136,11 @@ Pasaj soruyu yanıtlamıyorsa destekleyici metni oku.
 {"collection":["alpha","beta"],"queries":["transferin onayı","transfer yetkilendirmesi"],"max_results":5}
 ```
 {% endif %}
+
+
+
+{% if has('workspace_search') and has('cite_documents') %}
+Kayıtlı metni {{ tool('workspace_search') }} ile "sources/collections/" önekiyle bul.
+Dönen path, version, start ve end değerlerini atıf kanıt aralığı olarak kullan.
+İddiayı doğrulanmış etiketiyle kaydet.
+{% endif %}
