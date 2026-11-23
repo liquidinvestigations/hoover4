@@ -253,6 +253,9 @@ A successful `cite_pages` or `cite_documents` result gets one more instruction w
 successful citation result of the run also came after the last successful `write_file` or
 `patch_file` result (`steps.save_reminder`). The instruction asks the model to save the cited rows
 before it reads the next group. It refuses nothing, and a call inside `execute` does not get it.
+After a reminder, the next reminder needs 5 minutes and 3 citation results, the current one
+included. Of the citation calls of one model reply, only the last can get the reminder. The result keeps its `reminded_at` time in the stored usage, and the worker sends it
+back with the message.
 
 **The arguments are normalized before the call.** `/tool_call` runs the normalization of
 [Tool arguments](#tool-arguments) again, which changes nothing for a call that `/model_step`

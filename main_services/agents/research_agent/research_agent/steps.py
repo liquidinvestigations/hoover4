@@ -40,6 +40,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Sequence, Tuple
 
 import httpx
@@ -826,10 +827,12 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
     """Run one tool call and return its result."""
     context = await _context(agent, request)
     response = await _run_tool_call(context, request)
-    reminder = save_reminder(request, response)
+    now = time.time()
+    reminder = save_reminder(request, response, now)
     if reminder:
         shown = response.get("model_content") or response["content"]
         response["model_content"] = f"{shown}\n\n{localize_text(reminder, context.snapshot.language)}"
+        response["reminded_at"] = now
     return response
 
 
@@ -844,6 +847,13 @@ SAVE_REMINDER = ("Earlier citations are not in a saved report version yet. Save 
                  "these handles support with write_file or patch_file before you read the next group.")
 
 
+#: The fewest seconds between two save reminders of a run.
+SAVE_REMINDER_INTERVAL_S = 300.0
+#: The fewest citation results after a save reminder, the current one included, before the
+#: next save reminder.
+SAVE_REMINDER_CITATIONS = 3
+
+
 def _json_body(text: str) -> Any:
     try:
         return json.loads(text)
@@ -856,23 +866,40 @@ def _gave_citations(body: Any) -> bool:
         isinstance(c, dict) and c.get("handle") for c in body.get("citations") or [])
 
 
-def save_reminder(request: ToolCallRequest, response: Dict[str, Any]) -> str:
+def save_reminder(request: ToolCallRequest, response: Dict[str, Any], now: float) -> str:
     """`SAVE_REMINDER` for a successful citation call when an earlier successful citation
     call of this run also came after the last successful write or patch, else an empty
-    string. A call inside `execute` gets no reminder. The reminder refuses nothing."""
+    string. A call inside `execute` gets no reminder. The reminder refuses nothing.
+
+    After a reminder, the next reminder needs SAVE_REMINDER_INTERVAL_S seconds (`now` is a
+    Unix time) and SAVE_REMINDER_CITATIONS citation results, the current one included. The
+    `reminded_at` value of a tool message gives the time of an earlier reminder. Of the
+    citation calls of one model reply, only the last can get the reminder, because the
+    calls of one reply run without each other's results."""
     if (request.call.name not in CITATION_TOOLS or response.get("status") != "ok"
             or "/execute/" in request.idempotency_key
             or not _gave_citations(_json_body(response.get("content")))):
         return ""
     for message in reversed(request.messages):
+        if message.role == "ai" and any(c.id == request.call.id for c in message.tool_calls):
+            if [c.id for c in message.tool_calls if c.name in CITATION_TOOLS][-1] != request.call.id:
+                return ""
+            break
+    reminded = [m.reminded_at for m in request.messages if m.reminded_at is not None]
+    if reminded and now - max(reminded) < SAVE_REMINDER_INTERVAL_S:
+        return ""
+    citations = 1
+    for message in reversed(request.messages):
         if message.role != "tool" or message.status == "error":
             continue
+        if message.reminded_at is not None:
+            return SAVE_REMINDER if citations >= SAVE_REMINDER_CITATIONS else ""
         body = _json_body(message.content)
         if message.name in SAVE_TOOLS and isinstance(body, dict) and body.get("success") is True:
-            return ""
+            break
         if message.name in CITATION_TOOLS and _gave_citations(body):
-            return SAVE_REMINDER
-    return ""
+            citations += 1
+    return SAVE_REMINDER if citations >= 2 else ""
 
 
 def _failed_result(body: Any) -> bool:

@@ -17,6 +17,8 @@ import pytest
 from metasearch_server import fetch as fetch_mod, server, sources as sources_mod
 from metasearch_server.fetch import FetchError, FetchResponse
 
+from agent_common import outbound_pacing
+
 
 @pytest.fixture(autouse=True)
 def no_cooldowns(monkeypatch):
@@ -539,36 +541,35 @@ def test_browser_probe_reports_denied_authentication(monkeypatch, transport):
 
 
 class TestPacing:
-    """The shared permits of `agent_common.outbound_pacing`, with process state."""
+    """Search attempts take no shared permit and record each answer, with process state."""
 
     @pytest.fixture(autouse=True)
     def interval(self, monkeypatch):
-        monkeypatch.setenv("OUTBOUND_INTERVAL_SECONDS", "0.4")
+        monkeypatch.setenv("OUTBOUND_INTERVAL_SECONDS", "5")
 
-    def test_two_requests_to_one_remote_start_one_interval_apart(self, clients):
-        async def two():
-            await fetch_mod.fetch("wikipedia", "https://en.wikipedia.org/w/api.php", timeout=8)
+    def test_requests_to_one_remote_start_without_a_wait(self, clients):
+        async def three():
             started = time.monotonic()
-            await fetch_mod.fetch("wikidata", "https://www.wikidata.org/w/api.php", timeout=8)
+            for query in "abc":
+                await fetch_mod.fetch("brave", f"https://search.brave.com/search?q={query}",
+                                      timeout=8)
             return time.monotonic() - started
 
-        assert _run(two()) >= 0.35
-        assert len(clients) == 2
+        assert _run(three()) < 1
+        assert len(clients) == 3
 
-    def test_a_permit_after_the_deadline_defers_without_a_cooldown(self, clients):
-        async def two():
-            await fetch_mod.fetch("brave", "https://search.brave.com/search?q=a", timeout=8)
-            await fetch_mod.fetch("brave", "https://search.brave.com/search?q=b", timeout=2.2)
-
-        with pytest.raises(FetchError, match="deferred: search.brave.com"):
-            _run(two())
-        assert len(clients) == 1
-        assert fetch_mod.cooldowns() == {}
-
-    def test_a_429_with_retry_after_holds_every_route_of_the_remote(self, clients):
+    def test_a_429_sets_the_shared_cooldown_and_the_next_route_still_runs(self, clients):
         clients.answers["direct"] = FetchResponse(
             status=429, text="", url="https://en.wikipedia.org/w/api.php",
             headers={"retry-after": "30"})
-        with pytest.raises(FetchError, match="provider cooldown"):
-            _run(fetch_mod.fetch("wikipedia", "https://en.wikipedia.org/w/api.php", timeout=8))
-        assert [route for _, route, _ in clients] == ["direct"]
+        response = _run(fetch_mod.fetch("wikipedia", "https://en.wikipedia.org/w/api.php",
+                                        timeout=8))
+        assert response.route in fetch_mod.TOR_ROUTES
+        assert [route for _, route, _ in clients] == ["direct", response.route]
+
+        async def page_read():
+            await outbound_pacing.admit("https://en.wikipedia.org/w/api.php",
+                                        time.monotonic() + 1)
+
+        with pytest.raises(outbound_pacing.Deferred, match="provider cooldown"):
+            _run(page_read())

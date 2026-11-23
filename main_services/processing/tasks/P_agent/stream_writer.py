@@ -565,6 +565,8 @@ def run_message(message, thread_id: str) -> dict[str, Any]:
             out["model_content"] = message.usage["model_content"]
         if isinstance(message.usage.get("result_ref"), dict):
             out["result_ref"] = message.usage["result_ref"]
+        if isinstance(message.usage.get("reminded_at"), (int, float)):
+            out["reminded_at"] = message.usage["reminded_at"]
         out["doc_refs"] = message.usage.get("doc_refs") or []
         out["image_refs"] = message.usage.get("image_refs") or []
     return out

@@ -360,7 +360,7 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
                        measure: Any = None, error_class: str = "", doc_refs: Any = None,
                        shared_from: str = "", image_refs: Any = None,
                        capture_refs: Any = None, model_content: Any = None,
-                       result_ref: Any = None) -> None:
+                       result_ref: Any = None, reminded_at: Any = None) -> None:
     """The `tool` message of one call, and for a run that writes the transcript, its
     finished tool row at the call's seq and the final stream row. `doc_refs` is the list
     that the `/tool_call` response carried beside the result, or None. `image_refs` names
@@ -373,7 +373,8 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
     The usage of the message holds the typed evidence of the result (`reports.normalize`)
     at every run depth. The evidence is metadata: the model reads the content only. A call
     of a policy batch gets `origin` in the usage of its transcript row, and a shared result
-    names the call whose result it shares."""
+    names the call whose result it shares. `reminded_at` is the Unix time of a save
+    reminder in the result, which the agent service reads to space the next reminder."""
     from database import agent_runs
     from tasks.P_agent import reports
     from tasks.P_agent.stream_writer import ToolCallWriter, tool_row_fields
@@ -389,6 +390,8 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
         usage["model_content"] = model_content
     if result_ref:
         usage["result_ref"] = result_ref
+    if isinstance(reminded_at, (int, float)):
+        usage["reminded_at"] = reminded_at
     if shared_from:
         usage["shared_from"] = shared_from
     if image_refs:
@@ -993,7 +996,8 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                                result.get("measure"), error_class, result.get("doc_refs"),
                                image_refs=result.get("image_refs"),
                                capture_refs=result.get("capture_refs"),
-                               model_content=result.get("model_content"), result_ref=result.get("result_ref"))
+                               model_content=result.get("model_content"), result_ref=result.get("result_ref"),
+                               reminded_at=result.get("reminded_at"))
             # A result with an error code only in its text, such as not_found, is a result.
             event.ok = status != "error"
             event.error_class = error_class

@@ -692,6 +692,16 @@ def test_the_image_refs_of_a_result_reach_the_message_the_row_and_the_next_reque
     assert stream_writer.run_message(tool, RUN_ID)["image_refs"] == [image]
 
 
+def test_the_reminder_time_of_a_result_reaches_the_next_request(store, monkeypatch):
+    calls = _with_calls(store, [_entry(LONG_ID_A, "cite_pages", {"urls": ["https://x.org"]})])
+    monkeypatch.setattr(steps, "_post_json", lambda url, body, read_seconds: {
+        "content": "cited", "status": "ok", "reminded_at": 1700000000.5})
+    assert _tool(calls[0]).status == "ok"
+    tool = next(m for m in store["messages"] if m.role == "tool")
+    assert json.loads(tool.usage_json)["reminded_at"] == 1700000000.5
+    assert stream_writer.run_message(tool, RUN_ID)["reminded_at"] == 1700000000.5
+
+
 def test_a_call_with_unreadable_arguments_sends_its_argument_error(store, monkeypatch):
     """The agent service stores a call whose arguments the model client could not read
     with empty arguments and `argument_error`. The worker sends the error with the call."""

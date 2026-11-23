@@ -67,6 +67,8 @@ class RunMessage(BaseModel):
     doc_refs: List[Dict[str, Any]] = Field(default_factory=list)
     #: `tool` only: the images of the result (`images.py`). Each request reads them again.
     image_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    #: `tool` only: the Unix time of the save reminder that the result showed, if any.
+    reminded_at: Optional[float] = None
 
 
 def _usage_metadata(usage: Optional[Dict[str, int]]) -> Optional[Dict[str, int]]:
