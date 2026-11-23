@@ -591,8 +591,8 @@ pub async fn send_message(
     // a resend; not checking costs them the message.
     db_chat::detect_seq_collision(username, &session_id, user_seq, &turn_uuid).await?;
 
-    // Provisional title from the first user turn; the summariser replaces it at the end
-    // of the turn, and it stays as the fallback when the summariser produces nothing.
+    // Provisional title from the first user turn. The worker replaces it before the first
+    // model step, and it stays when the summariser produces nothing.
     if is_first_turn {
         let provisional_title = title_from_message(&message.display_text());
         db_chat::touch_session(username, &session_id, Some(&provisional_title), None).await?;
@@ -623,7 +623,8 @@ pub async fn send_message(
 
     // The input holds ids and settings only. The worker reads the message text from the
     // user row written above, so no text crosses a Temporal payload. The worker decides
-    // whether this is the first turn, and titles the session then.
+    // whether this is the first turn, and titles the session before it runs. It writes a
+    // new summary after every turn.
     if let Err(e) = start_agent_workflow(AgentWorkflowStart {
         workflow_type: "AgentRun",
         task_queue: CHAT_TASK_QUEUE,

@@ -209,7 +209,7 @@ After 600 model steps, it writes an incomplete result from stored evidence.
 Two empty replies of one model step also end the run with an incomplete result.
 
 An activity that sends one external request gets two attempts: `model_step`, `tool_call`,
-`write_followups`, `summarize_if_first_turn`, `label_board`, `board_reason` and
+`write_followups`, `title_at_start`, `summarize_turn`, `label_board`, `board_reason` and
 `convert_explore_report`. Browser calls that change a
 page get one attempt. An activity that only reads and writes ClickHouse gets
 `ACTIVITY_MAX_ATTEMPTS` (5), for the lost dispatches of the section on activity liveness.

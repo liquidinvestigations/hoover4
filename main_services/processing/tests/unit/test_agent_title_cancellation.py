@@ -19,4 +19,4 @@ def test_title_activity_propagates_wrapped_cancellation(monkeypatch):
     monkeypatch.setattr(workflows.workflow, "execute_activity", execute)
     params = AgentRunInput(run_id="run", username="user", session_id="session")
     with pytest.raises(RuntimeError, match="activity failed"):
-        asyncio.run(workflows.AgentRun()._summarize_if_first_turn(params))
+        asyncio.run(workflows.AgentRun()._summarize_turn(params))

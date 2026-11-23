@@ -234,7 +234,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     monkeypatch.setattr(activities, "title_session", lambda p: titled.append(p) or "")
     client = None
     acts = [activities.open_run, activities.write_ending,
-            activities.summarize_if_first_turn,
+            activities.title_at_start, activities.summarize_turn,
             steps.record_step_failure, _pin_no_rules, _no_control,
             steps.write_incomplete, steps.publish_report]
     try:
@@ -369,7 +369,9 @@ def test_two_parallel_calls_overlap_and_keep_their_rows(monkeypatch):
         assert json.loads(messages[2].usage_json)["measure"]["sha256"] == "digest-" + LONG_ID_A[-6:]
         assert stub.requests[0]["messages"][0]["content"] == "What is in the reports?"
         assert case.run_id in stub.released
-        assert [t.session_id for t in titled] == [case.session_id]
+        # The stub titles nothing, so the summary after the turn asks for a title too.
+        assert [(t.session_id, t.at_start, t.with_title) for t in titled] == [
+            (case.session_id, True, False), (case.session_id, False, True)]
         with pytest.raises(WorkflowAlreadyStartedError):
             await _start(client, case, queue)
 

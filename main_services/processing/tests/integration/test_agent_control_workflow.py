@@ -15,7 +15,8 @@ from temporalio.client import WorkflowFailureError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Replayer, Worker
 
-from tasks.P_agent.activities import AgentRunInput, CallRef, OpenedRun, RunRef, WriteEndingParams
+from tasks.P_agent.activities import (
+    AgentRunInput, CallRef, OpenedRun, RunRef, SummarizeRef, TitleStart, WriteEndingParams)
 from tasks.P_agent.control_steps import ControlOutcome, ControlParams, PinnedTurn
 from tasks.P_agent.steps import (
     IncompleteParams, ModelStepParams, ModelStepResult, PublishParams, StepFailure,
@@ -91,9 +92,15 @@ async def write_ending(params: WriteEndingParams) -> None:
     LOG.append(f"ending:{params.state}")
 
 
-@activity.defn(name="summarize_if_first_turn")
-async def summarize_if_first_turn(ref: RunRef) -> str:
+@activity.defn(name="title_at_start")
+async def title_at_start(ref: RunRef) -> TitleStart:
     LOG.append("title")
+    return TitleStart()
+
+
+@activity.defn(name="summarize_turn")
+async def summarize_turn(ref: SummarizeRef) -> str:
+    LOG.append("summary")
     return ""
 
 
@@ -111,7 +118,7 @@ def _workers(client, executor, *, tools=True, cache_size=1000):
     workers = [
         Worker(client, task_queue=CHAT_TASK_QUEUE, workflows=[AgentRun],
                activities=[open_run, pin_turn_control, control_event, write_ending,
-                           summarize_if_first_turn, record_step_failure, write_incomplete,
+                           title_at_start, summarize_turn, record_step_failure, write_incomplete,
                            publish_report],
                activity_executor=executor, max_cached_workflows=cache_size),
         Worker(client, task_queue=CHAT_MODEL_TASK_QUEUE, activities=[model_step, write_followups],
@@ -192,9 +199,9 @@ def test_empty_rule_turn_publishes_once_without_hooks(monkeypatch, restart):
             await Replayer(workflows=[AgentRun]).replay_workflow(history)
 
     asyncio.run(main())
-    assert LOG == ["open_run", "pin_turn_control", "model:1", "tool:filter", "model:2",
+    assert LOG == ["open_run", "title", "pin_turn_control", "model:1", "tool:filter", "model:2",
                    "tool:read", "model:3", "tool:cite", "model:4", "tool:write",
-                   "tool:finish", "publish:finish:11", "followups", "ending:completed", "title"]
+                   "tool:finish", "publish:finish:11", "followups", "ending:completed", "summary"]
 
 
 def test_hooks_run_policy_batches_before_the_next_model_step_and_replay():
@@ -226,16 +233,16 @@ def test_hooks_run_policy_batches_before_the_next_model_step_and_replay():
             await Replayer(workflows=[AgentRun]).replay_workflow(history)
 
     asyncio.run(main())
-    assert LOG[:5] == ["open_run", "pin_turn_control", "control:turn_started:0:", "tool:ctl-a-0",
+    assert LOG[:6] == ["open_run", "title", "pin_turn_control", "control:turn_started:0:", "tool:ctl-a-0",
                        "control:tool_batch_completed:1:"]
-    assert LOG[5] == "model:1"
-    batch = LOG[6:9]
+    assert LOG[6] == "model:1"
+    batch = LOG[7:10]
     assert set(batch) == {"tool:m-0", "tool:m-1<m-0", "tool:m-2"}
     assert batch.index("tool:m-0") < batch.index("tool:m-1<m-0")
     # An answer ends the turn: no hook reviews it.
-    assert LOG[9:] == ["control:tool_batch_completed:3:", "tool:ctl-b-0",
+    assert LOG[10:] == ["control:tool_batch_completed:3:", "tool:ctl-b-0",
                        "control:tool_batch_completed:5:", "model:2", "followups",
-                       "ending:completed", "title"]
+                       "ending:completed", "summary"]
 
 
 def test_a_stop_during_a_hook_ends_the_run_with_no_model_step():
@@ -277,7 +284,7 @@ def test_a_restarted_worker_resumes_after_the_completed_hooks():
                 # model step with no activity in flight. It keeps no workflow in its cache,
                 # so the next workflow task goes to the shared queue.
                 first = Worker(env.client, task_queue=CHAT_TASK_QUEUE, workflows=[AgentRun],
-                               activities=[open_run, pin_turn_control, control_event], activity_executor=executor,
+                               activities=[open_run, title_at_start, pin_turn_control, control_event], activity_executor=executor,
                                max_cached_workflows=0)
                 task = asyncio.ensure_future(first.run())
                 handle = await env.client.start_workflow(AgentRun.run, inp, id=inp.run_id,
@@ -298,8 +305,8 @@ def test_a_restarted_worker_resumes_after_the_completed_hooks():
     asyncio.run(main())
     assert LOG.count("control:turn_started:0:") == 1
     assert LOG.count("open_run") == 1
-    assert LOG == ["open_run", "pin_turn_control", "control:turn_started:0:", "model:1", "followups",
-                   "ending:completed", "title"]
+    assert LOG == ["open_run", "title", "pin_turn_control", "control:turn_started:0:", "model:1", "followups",
+                   "ending:completed", "summary"]
 
 
 def test_progress_ends_through_the_incomplete_activity_without_another_model_step():
@@ -314,4 +321,4 @@ def test_progress_ends_through_the_incomplete_activity_without_another_model_ste
             assert await _run_with(env, scenario) == "completed"
     asyncio.run(main())
     assert LOG.count("model:1") == 1 and "model:2" not in LOG
-    assert LOG[-2:] == ["ending:completed", "title"]
+    assert LOG[-2:] == ["ending:completed", "summary"]

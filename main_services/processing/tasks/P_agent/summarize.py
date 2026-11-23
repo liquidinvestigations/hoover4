@@ -1,11 +1,11 @@
-"""Title and one-line summary for a conversation, from the LLM's own words.
+"""Title and short summary for a conversation, from the LLM's own words.
 
-Runs at the end of the first turn of a conversation. The title is how a person finds a
-conversation in a list a week later, and the first few words of a question are routinely
-a bad name for what the conversation turned into.
+The title and the first summary come from the first user message, before the first turn
+runs. The title then stays. At the end of every turn a new summary replaces the stored one.
+The chat lists show both, and their search reads both.
 
-**Nothing here may raise into a turn.** By the time it runs the answer is already written
-and read; a failed summarisation must cost the conversation a good title, never an answer.
+**Nothing here may raise into a turn.** A failed call must cost the conversation a good
+title or summary, never an answer.
 Every entry point returns a result object, and the caller writes the provisional title's
 fallback by doing nothing. The one exception is a transport failure (`TransportFailure`),
 which the title activity raises so Temporal sends it once more. The workflow catches the
@@ -345,24 +345,73 @@ def complete(system: str, prompt: str, max_tokens: int) -> Completion:
     return Completion(text=raw, model=model, latency_ms=elapsed(), **tokens)
 
 
-def title_and_summary(user_message: str, answer: str, language: str = "") -> TitleSummary:
-    """Ask the LLM for a title and a summary of one turn, in the agent language of the run.
-    Raises only `TransportFailure`."""
-    from tasks.P_agent.language import english_name
+#: The longest user message or answer, in characters, that a summary request sends. An
+#: answer can be a long report, and the summary needs its start only.
+MAX_INPUT_CHARS = 8000
 
-    prompt = (
-        "Given this chat turn, reply with exactly two lines:\n"
-        "Line 1: a short title (max 8 words, no quotes).\n"
-        "Line 2: a one-or-two sentence summary of what was asked and answered.\n"
-        f"Write both lines in {english_name(language)}.\n\n"
-        f"User: {user_message}\n\nAssistant: {answer}"
-    )
+
+def _clip(text: str) -> str:
+    text = (text or "").strip()
+    return text if len(text) <= MAX_INPUT_CHARS else text[:MAX_INPUT_CHARS] + " [...]"
+
+
+def parse_summary(raw: str) -> str:
+    """The summary of a one-line reply: every line without its label, joined."""
+    lines = [ln for ln in (l.strip() for l in strip_think_blocks(raw).splitlines()) if ln]
+    return " ".join(strip_label(ln) for ln in lines)[:400]
+
+
+def _ask(prompt: str, with_title: bool) -> TitleSummary:
+    """One summariser call. Raises only `TransportFailure`."""
     result = complete(SYSTEM_PROMPT, prompt, MAX_TOKENS)
     meta = dict(model=result.model, latency_ms=result.latency_ms,
                 prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens)
     if result.error:
         return TitleSummary(**meta, error=result.error)
-    title, summary = parse_reply(result.text)
-    if not title:
+    if with_title:
+        title, summary = parse_reply(result.text)
+        if not title:
+            return TitleSummary(**meta, error="no usable lines")
+        return TitleSummary(title=title, summary=summary, **meta)
+    summary = parse_summary(result.text)
+    if not summary:
         return TitleSummary(**meta, error="no usable lines")
-    return TitleSummary(title=title, summary=summary, **meta)
+    return TitleSummary(summary=summary, **meta)
+
+
+def title_from_prompt(user_message: str, language: str = "") -> TitleSummary:
+    """A title and a first summary from the first user message, in the agent language of
+    the run. Raises only `TransportFailure`."""
+    from tasks.P_agent.language import english_name
+
+    prompt = (
+        "Given the first message of a chat, reply with exactly two lines:\n"
+        "Line 1: a short title (max 8 words, no quotes).\n"
+        "Line 2: one sentence that says what the user asks.\n"
+        f"Write both lines in {english_name(language)}.\n\n"
+        f"User: {_clip(user_message)}"
+    )
+    return _ask(prompt, with_title=True)
+
+
+def summary_after_turn(previous: str, user_message: str, answer: str, language: str = "",
+                       with_title: bool = False) -> TitleSummary:
+    """A new summary of the whole conversation after a turn, from the stored summary, the
+    last user message and the last answer. With `with_title`, a title too. Raises only
+    `TransportFailure`."""
+    from tasks.P_agent.language import english_name
+
+    if with_title:
+        shape = ("reply with exactly two lines:\n"
+                 "Line 1: a short title (max 8 words, no quotes).\n"
+                 "Line 2: a one-or-two sentence summary of the whole conversation.\n"
+                 f"Write both lines in {english_name(language)}.")
+    else:
+        shape = ("reply with one line: a one-or-two sentence summary of the whole "
+                 f"conversation. Write it in {english_name(language)}.")
+    earlier = f"Summary of the conversation so far: {previous.strip()}\n\n" if previous.strip() else ""
+    prompt = (
+        f"Given the summary of a chat and its latest turn, {shape}\n\n"
+        f"{earlier}User: {_clip(user_message)}\n\nAssistant: {_clip(answer)}"
+    )
+    return _ask(prompt, with_title=with_title)

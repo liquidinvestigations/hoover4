@@ -78,7 +78,7 @@ def test_the_tool_call_goes_to_the_tool_queue():
 
 def test_short_agent_activities_go_to_the_low_latency_queue():
     for activity in ("open_run", "write_ending",
-                     "summarize_if_first_turn",
+                     "title_at_start", "summarize_turn",
                      "record_step_failure",
                      "control_event", "write_incomplete"):
         queues = [

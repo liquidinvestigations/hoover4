@@ -1121,7 +1121,8 @@ async def run_chat_worker():
   """
   from .P_agent.activities import (
       open_run,
-      summarize_if_first_turn,
+      summarize_turn,
+      title_at_start,
       write_ending,
   )
   from .P_agent.control import registry as control_registry
@@ -1173,7 +1174,7 @@ async def run_chat_worker():
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[AgentRun, WorkspaceWriter],
         activities=[
-            open_run, write_ending, summarize_if_first_turn,
+            open_run, write_ending, title_at_start, summarize_turn,
             record_step_failure, control_event, pin_turn_control,
             write_incomplete, publish_report,
             prepare_workspace_mutation, commit_workspace_mutation,

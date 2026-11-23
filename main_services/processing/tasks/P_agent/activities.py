@@ -1,4 +1,4 @@
-"""Activities open and finish durable chat turns and set conversation titles.
+"""Activities open and finish durable chat turns and set conversation titles and summaries.
 
 Step activities in `steps.py` make model calls and tool calls.
 The website resolves the caller's collection permissions before submission.
@@ -171,36 +171,46 @@ def _raise_session_peak(username: str, session_id: str, peak: int) -> None:
 
 @dataclass
 class TitleSessionParams:
-    """One conversation to name, and the exchange to name it from."""
+    """One conversation to name or summarise, and the texts to do it from."""
 
     username: str
     session_id: str
     user_message: str
-    answer: str
-    #: The chat lead run that answered the turn, for the `agent_step_events` row.
+    #: The answer of the turn. Empty for the call before the first turn.
+    answer: str = ""
+    #: The chat lead run of the turn, for the `agent_step_events` row.
     run_id: str = ""
     #: The agent language of the run. The title and the summary are in it.
     language: str = ""
+    #: The stored summary, for the call after a turn.
+    previous_summary: str = ""
+    #: True before the first turn: a title and a first summary from the user message.
+    at_start: bool = False
+    #: True after a turn when the call must write a title as well as the summary.
+    with_title: bool = False
 
 
 def title_session(params: TitleSessionParams) -> str:
-    """Name a conversation from its first exchange. Returns the title, or empty.
+    """Name or summarise a conversation. Returns the new summary, or empty.
 
-    `summarize_if_first_turn` calls it. It runs after the answer is written and read. An
-    unusable reply or an unreachable database costs the conversation its title only, and
-    the function returns empty. A transport failure of the model request raises
+    Before the first turn (`at_start`), the call writes a title and a first summary from the
+    user message. After a turn, it writes a new summary, and a title only with
+    `with_title`. An unusable reply or an unreachable database leaves the stored row as it
+    is, and the function returns empty. A transport failure of the model request raises
     `summarize.TransportFailure`, after its telemetry row, so Temporal sends the activity
     once more. The workflow catches the last failure.
-
-    The provisional title the website wrote from the first message stays in place
-    whenever this produces nothing.
     """
     if activity.in_activity():
         activity.heartbeat("summarising the conversation")
-    from tasks.P_agent.summarize import TitleSummary, TransportFailure, title_and_summary
+    from tasks.P_agent.summarize import (
+        TitleSummary, TransportFailure, summary_after_turn, title_from_prompt)
 
     try:
-        result = title_and_summary(params.user_message, params.answer, params.language)
+        if params.at_start:
+            result = title_from_prompt(params.user_message, params.language)
+        else:
+            result = summary_after_turn(params.previous_summary, params.user_message,
+                                        params.answer, params.language, params.with_title)
     except TransportFailure as exc:
         failed = getattr(exc, "completion", None)
         _record_summarizer_call(params, TitleSummary(
@@ -212,11 +222,9 @@ def title_session(params: TitleSessionParams) -> str:
         return ""
 
     _record_summarizer_call(params, result)
-    if not result.title:
-        log.info(
-            "[P_agent] session %s keeps its provisional title: %s",
-            params.session_id, result.error or "no title produced",
-        )
+    if not result.summary:
+        log.info("[P_agent] session %s keeps its stored title and summary: %s",
+                 params.session_id, result.error or "no summary produced")
         return ""
 
     try:
@@ -224,11 +232,12 @@ def title_session(params: TitleSessionParams) -> str:
     except Exception:  # noqa: BLE001
         log.warning("[P_agent] could not store the session title", exc_info=True)
         return ""
-    return result.title
+    return result.summary
 
 
 def _set_session_title(username: str, session_id: str, title: str, summary: str) -> None:
-    """Rewrite one `chat_sessions` row with a new title and summary.
+    """Rewrite one `chat_sessions` row with a new summary, and a new title when `title` is
+    not empty.
 
     Read-modify-write rather than an UPDATE: the table is a ReplacingMergeTree keyed on
     `(username, session_id)` and versioned by `updated_at`, so a whole row with a newer
@@ -254,10 +263,24 @@ def _set_session_title(username: str, session_id: str, title: str, summary: str)
             log.warning("[P_agent] session %s vanished before it could be titled", session_id)
             return
         row = list(rows[0])
-        row[columns.index("title")] = title
+        if title:
+            row[columns.index("title")] = title
         row[columns.index("summary")] = summary
         row[columns.index("updated_at")] = datetime.now(timezone.utc).replace(tzinfo=None)
         client.insert("chat_sessions", [row], column_names=columns)
+
+
+def _session_summary(username: str, session_id: str) -> str:
+    """The stored summary of a session, or empty."""
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT summary FROM chat_sessions FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String}",
+            parameters={"u": username, "s": session_id},
+        ).result_rows
+    return str(rows[0][0]) if rows else ""
 
 
 def _record_summarizer_call(params: TitleSessionParams, result) -> None:
@@ -272,7 +295,7 @@ def _record_summarizer_call(params: TitleSessionParams, result) -> None:
     from database.clickhouse import get_global_client
     from tasks.llm_endpoints import endpoint as llm_endpoint
 
-    ok = 1 if result.title else 0
+    ok = 1 if result.summary else 0
     username = params.username.strip()
     # Guests are one bucket: their usernames are per-session and would otherwise turn the
     # telemetry into a cardinality problem with one row per visitor.
@@ -359,6 +382,9 @@ class AgentRunInput:
     #: turn starts. The whole run keeps it. Empty, as in a run started before the field,
     #: means English (`language.turn_language`).
     language: str = ""
+    #: The summary call after the turn writes a title too, because the first turn started
+    #: and its title call wrote none. A continue-as-new run keeps it.
+    title_at_end: bool = False
 
     def __post_init__(self):
         if self.allowed_collections is None:
@@ -654,13 +680,61 @@ def write_ending(params: WriteEndingParams) -> None:
     _write_ending(params)
 
 
+@dataclass
+class TitleStart:
+    """What `title_at_start` returns."""
+
+    #: The run answers the first turn of its session.
+    first_turn: bool = False
+    #: The call wrote a title.
+    titled: bool = False
+
+
 @activity.defn
 @with_heartbeat
-def summarize_if_first_turn(ref: RunRef) -> str:
-    """Name the conversation when this run answered its first turn. Returns the title.
+def title_at_start(ref: RunRef) -> TitleStart:
+    """Name the conversation from its first user message, before the first turn runs.
 
-    Reads the user message and the answer from the database, so neither crosses a Temporal
-    payload. Raises only a transport failure of the model request, like `title_session`.
+    Reads the user message from the database, so it does not cross a Temporal payload. A
+    later turn returns `first_turn` false and makes no call. Raises only a transport
+    failure of the model request, like `title_session`.
+    """
+    from database import agent_runs
+
+    try:
+        row = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
+        if row is None or _earlier_user_rows(row.username, row.session_id, row.turn_seq):
+            return TitleStart()
+        question = _user_row_text(row.username, row.session_id, row.turn_seq)
+    except Exception:  # noqa: BLE001 - a title is never worth a turn
+        log.warning("[P_agent] could not read the first turn of %s", ref.session_id,
+                    exc_info=True)
+        return TitleStart()
+    summary = title_session(TitleSessionParams(
+        username=row.username, session_id=row.session_id, user_message=question,
+        run_id=row.run_id, language=ref.language, at_start=True,
+    ))
+    return TitleStart(first_turn=True, titled=bool(summary))
+
+
+@dataclass
+class SummarizeRef:
+    """One run whose turn ended, and if the summary call must write a title too."""
+
+    run_id: str
+    username: str
+    session_id: str
+    language: str = ""
+    with_title: bool = False
+
+
+@activity.defn
+@with_heartbeat
+def summarize_turn(ref: SummarizeRef) -> str:
+    """Write a new summary of the conversation after a turn. Returns the summary.
+
+    Reads the stored summary, the user message and the answer from the database. Raises
+    only a transport failure of the model request, like `title_session`.
     """
     from database import agent_runs
 
@@ -668,14 +742,13 @@ def summarize_if_first_turn(ref: RunRef) -> str:
         row = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
         if row is None:
             return ""
-        if _earlier_user_rows(row.username, row.session_id, row.turn_seq):
-            return ""
         question = _user_row_text(row.username, row.session_id, row.turn_seq)
-    except Exception:  # noqa: BLE001 - a title is never worth a turn
-        log.warning("[P_agent] could not read the first turn of %s", ref.session_id,
-                    exc_info=True)
+        previous = _session_summary(row.username, row.session_id)
+    except Exception:  # noqa: BLE001 - a summary is never worth a turn
+        log.warning("[P_agent] could not read the turn of %s", ref.session_id, exc_info=True)
         return ""
     return title_session(TitleSessionParams(
         username=row.username, session_id=row.session_id, user_message=question,
         answer=row.result, run_id=row.run_id, language=ref.language,
+        previous_summary=previous, with_title=ref.with_title,
     ))

@@ -37,9 +37,12 @@ with workflow.unsafe.imports_passed_through():
         OpenedRun,
         RunRef,
         RunSummary,
+        SummarizeRef,
         WriteEndingParams,
         open_run,
-        summarize_if_first_turn,
+        TitleStart,
+        summarize_turn,
+        title_at_start,
         write_ending,
     )
     from tasks.P_agent.control_steps import (
@@ -230,6 +233,8 @@ class AgentRun:
         if opened.state == "closed":
             return "closed"
         self._steps = opened.model_steps
+        if opened.model_steps == 0:
+            await self._title_at_start(inp)
         try:
             summary = await self._rounds(inp, opened)
         except asyncio.CancelledError:
@@ -270,8 +275,7 @@ class AgentRun:
                     raise
                 workflow.logger.warning("could not generate follow-up suggestions for %s", inp.session_id)
         await self._finish(inp, "completed")
-        if not inp.board_turn:
-            await self._summarize_if_first_turn(inp)
+        await self._summarize_turn(inp)
         return "completed"
 
     @staticmethod
@@ -547,13 +551,38 @@ class AgentRun:
             task_queue=CHAT_TASK_QUEUE,
         )
 
-    async def _summarize_if_first_turn(self, inp: AgentRunInput) -> None:
-        """Name the conversation after its first turn. Propagate cancellation."""
+    async def _title_at_start(self, inp: AgentRunInput) -> None:
+        """Name the conversation from its first user message before the first model step.
+        A failure keeps the provisional title. Propagate cancellation."""
         try:
-            await workflow.execute_activity(
-                summarize_if_first_turn,
+            start = await workflow.execute_activity(
+                title_at_start,
                 RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
                        language=inp.language),
+                start_to_close_timeout=TIMEOUTS.title_activity,
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=EXTERNAL_RETRY,
+                task_queue=CHAT_TASK_QUEUE,
+                result_type=TitleStart,
+            )
+        except Exception as exc:
+            if _was_cancelled(exc):
+                raise
+            workflow.logger.warning(
+                "could not title session %s, keeping the provisional title", inp.session_id
+            )
+            # The first turn is not known here. The summary after the turn writes no title.
+            return
+        inp.title_at_end = start.first_turn and not start.titled
+
+    async def _summarize_turn(self, inp: AgentRunInput) -> None:
+        """Write a new summary of the conversation after the turn. Propagate cancellation."""
+        try:
+            await workflow.execute_activity(
+                summarize_turn,
+                SummarizeRef(run_id=inp.run_id, username=inp.username,
+                             session_id=inp.session_id, language=inp.language,
+                             with_title=inp.title_at_end),
                 start_to_close_timeout=TIMEOUTS.title_activity,
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=EXTERNAL_RETRY,
@@ -563,7 +592,7 @@ class AgentRun:
             if _was_cancelled(exc):
                 raise
             workflow.logger.warning(
-                "could not title session %s, keeping the provisional title", inp.session_id
+                "could not summarise session %s, keeping the stored summary", inp.session_id
             )
 
 
