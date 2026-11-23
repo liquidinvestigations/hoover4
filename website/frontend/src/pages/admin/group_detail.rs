@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_add_member, admin_delete_group, admin_get_group, admin_grant_permission,
-    admin_list_collections, admin_remove_member, admin_revoke_permission, admin_set_group_admin, admin_set_uploader,
+    admin_list_collections, admin_remove_member, admin_revoke_permission, admin_set_group_admin, admin_set_group_ai, admin_set_uploader,
     admin_update_group,
 };
 use crate::components::admin_components::{
@@ -131,6 +131,32 @@ fn GroupDetailContent(groupname: String) -> Element {
                     },
                     {tr!("admin-group-detail-save")}
                 }
+            }
+            div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 4px;",
+                label { style: LABEL,
+                    input {
+                        class: "x-group-ai-enabled",
+                        r#type: "checkbox",
+                        checked: detail.group.ai_enabled,
+                        onchange: {
+                            let gname = gname.clone();
+                            move |e: FormEvent| {
+                                let gname = gname.clone();
+                                let on = e.checked();
+                                spawn(async move {
+                                    msg.set(None);
+                                    error_msg.set(None);
+                                    if let Err(e) = admin_set_group_ai(gname, on).await {
+                                        error_msg.set(Some(user_facing_message(&e)));
+                                    }
+                                    detail_res.restart();
+                                });
+                            }
+                        },
+                    }
+                    {tr!("admin-group-detail-ai-content")}
+                }
+                p { style: "margin: 0; {HELP_TEXT}", {tr!("admin-group-detail-ai-content-help")} }
             }
         }
         div { class: "x-admin-module", style: MODULE,

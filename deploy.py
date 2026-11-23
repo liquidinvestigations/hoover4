@@ -242,11 +242,6 @@ DEFAULTS = {
         "chat_model_concurrency": "",
         "chat_low_latency_concurrency": "",
         "agent_tool_concurrency": "",
-        # The groups that the identity provider gives to every user: a comma list of names,
-        # and an entry that ends in * is a name prefix. The create forms of chats and boards
-        # list them only on request. Empty is this list, which the website also holds
-        # (DEFAULT_IMPLICIT_GROUPS in website/backend/src/auth/item_access.rs).
-        "implicit_groups": "user, Guests, hoover, hoover4, nextcloud, nextcloud28, nextcloud-admin, wikijs, dokuwiki, codimd, grist, matrix, prophecies, bbb, xwiki, Domain Users, Domain Admins, IAM API - Full Access, managed-by-attribute-*",
         # Chat poll and browser caps. Empty would fall back to the code defaults.
         "max_held_polls_per_user": "8",
         "rate_chat_poll_per_minute": "1800",
@@ -603,6 +598,9 @@ REMOVED_SETTINGS.update({
                            "Delete it.")
     for key in FIXED_MODEL_SETTINGS
 })
+
+REMOVED_SETTINGS[("main_services", "implicit_groups")] = (
+    "The admin page of each group sets if the group can hold AI chats and boards. Delete it.")
 
 
 def llm_active(cfg):
@@ -1967,7 +1965,6 @@ def render_main_env(cfg, reachable_host=None):
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")
     env["HOOVER4_ERROR_RATE_ALERT_PERCENT"] = cfg.get(m, "error_rate_alert_percent")
 
-    env["HOOVER4_IMPLICIT_GROUPS"] = cfg.get(m, "implicit_groups").strip() or DEFAULTS[m]["implicit_groups"]
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")

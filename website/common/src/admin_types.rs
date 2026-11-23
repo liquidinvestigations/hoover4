@@ -32,6 +32,9 @@ pub struct AdminGroupItem {
     pub fullname: String,
     pub member_count: u32,
     pub collection_count: u32,
+    /// The group can hold AI chats and investigation boards.
+    #[serde(default)]
+    pub ai_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

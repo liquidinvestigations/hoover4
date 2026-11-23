@@ -15,6 +15,9 @@ pub struct GroupRow {
     #[serde(with = "clickhouse::serde::time::datetime")]
     pub updated_at: time::OffsetDateTime,
     pub is_deleted: u8,
+    /// 1 when the group can hold AI chats and investigation boards
+    /// (`00058_group_ai_content.sql`).
+    pub ai_enabled: u8,
 }
 
 /// One stored membership of a user in a group.
@@ -67,7 +70,7 @@ static MEMBERSHIP_LOCKS: KeyedLocks = LazyLock::new(Default::default);
 pub async fn list_groups() -> anyhow::Result<Vec<GroupRow>> {
     let client = get_global_client();
     client
-        .query("SELECT groupname, fullname, created_at, updated_at, is_deleted FROM user_groups FINAL WHERE is_deleted = 0 ORDER BY groupname")
+        .query("SELECT groupname, fullname, created_at, updated_at, is_deleted, ai_enabled FROM user_groups FINAL WHERE is_deleted = 0 ORDER BY groupname")
         .fetch_all::<GroupRow>()
         .await
         .map_err(Into::into)
@@ -76,7 +79,7 @@ pub async fn list_groups() -> anyhow::Result<Vec<GroupRow>> {
 pub async fn get_group(groupname: &str) -> anyhow::Result<Option<GroupRow>> {
     let client = get_global_client();
     let mut rows = client
-        .query("SELECT groupname, fullname, created_at, updated_at, is_deleted FROM user_groups FINAL WHERE groupname = ? AND is_deleted = 0")
+        .query("SELECT groupname, fullname, created_at, updated_at, is_deleted, ai_enabled FROM user_groups FINAL WHERE groupname = ? AND is_deleted = 0")
         .bind(groupname)
         .fetch_all::<GroupRow>()
         .await?;
@@ -93,6 +96,20 @@ pub async fn upsert_group(mut row: GroupRow) -> anyhow::Result<()> {
     row.updated_at = now();
     row.is_deleted = 0;
     insert_row("user_groups", &row).await
+}
+
+/// The groups among `names` that can hold AI chats and boards, sorted.
+pub async fn ai_enabled_among(names: &[String]) -> anyhow::Result<Vec<String>> {
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut list: Vec<String> = get_global_client()
+        .query("SELECT groupname FROM user_groups FINAL WHERE is_deleted = 0 AND ai_enabled = 1 AND groupname IN ?")
+        .bind(names)
+        .fetch_all()
+        .await?;
+    list.sort();
+    Ok(list)
 }
 
 pub async fn soft_delete_group(groupname: &str) -> anyhow::Result<()> {

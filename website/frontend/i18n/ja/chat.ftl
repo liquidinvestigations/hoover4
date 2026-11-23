@@ -458,8 +458,6 @@ chat-transcript-generic-tool = ツール
 
 group-picker-loading-groups-u = グループを読み込み中…
 group-picker-group = グループ
-group-picker-show-groups-of-all-users = すべてのユーザーのグループを表示
-group-picker-you-have-no-group-of-your-own = 自分のグループがありません。「すべてのユーザーのグループを表示」を選択するか、管理者にグループへの追加を依頼してください。
 group-picker-you-are-not-in-a-group = どのグループにも属していません。管理者にグループへの追加を依頼してください。
 ai-chat-homepage-members-of-the-group-can-read = グループのすべてのメンバーがこのチャットを読み、続けることができます。
 chat-board-create-members-of-the-group-can-read = グループのすべてのメンバーがこのボードを読み、操作できます。

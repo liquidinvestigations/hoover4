@@ -544,8 +544,6 @@ chat-transcript-generic-tool = alat
 
 group-picker-loading-groups-u = Učitavanje grupa…
 group-picker-group = Grupa
-group-picker-show-groups-of-all-users = Prikaži grupe svih korisnika
-group-picker-you-have-no-group-of-your-own = Nemate vlastitu grupu. Odaberite „Prikaži grupe svih korisnika” ili zamolite administratora da vas doda u grupu.
 group-picker-you-are-not-in-a-group = Niste ni u jednoj grupi. Zamolite administratora da vas doda u grupu.
 ai-chat-homepage-members-of-the-group-can-read = Svaki član grupe može čitati i nastaviti ovaj razgovor.
 chat-board-create-members-of-the-group-can-read = Svaki član grupe može čitati ovu ploču i djelovati na njoj.

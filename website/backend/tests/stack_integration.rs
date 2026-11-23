@@ -593,6 +593,7 @@ async fn permissions_restrict_search_to_granted_collections() {
         created_at: now,
         updated_at: now,
         is_deleted: 0,
+        ai_enabled: 0,
     })
     .await
     .unwrap();
@@ -1097,6 +1098,7 @@ async fn dataset_search_respects_permissions() {
         created_at: now,
         updated_at: now,
         is_deleted: 0,
+        ai_enabled: 0,
     })
     .await
     .unwrap();
@@ -1166,6 +1168,7 @@ async fn vfs_endpoints_respect_permissions() {
         created_at: now,
         updated_at: now,
         is_deleted: 0,
+        ai_enabled: 0,
     })
     .await
     .unwrap();
@@ -3939,6 +3942,7 @@ mod upload_permission {
             created_at: now,
             updated_at: now,
             is_deleted: 0,
+            ai_enabled: 0,
         })
         .await
         .unwrap();

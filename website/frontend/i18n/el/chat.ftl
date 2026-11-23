@@ -521,8 +521,6 @@ chat-transcript-generic-tool = το εργαλείο
 
 group-picker-loading-groups-u = Φόρτωση ομάδων…
 group-picker-group = Ομάδα
-group-picker-show-groups-of-all-users = Εμφάνιση των ομάδων όλων των χρηστών
-group-picker-you-have-no-group-of-your-own = Δεν έχετε δική σας ομάδα. Επιλέξτε «Εμφάνιση των ομάδων όλων των χρηστών» ή ζητήστε από έναν διαχειριστή να σας προσθέσει σε μια ομάδα.
 group-picker-you-are-not-in-a-group = Δεν ανήκετε σε καμία ομάδα. Ζητήστε από έναν διαχειριστή να σας προσθέσει σε μια ομάδα.
 ai-chat-homepage-members-of-the-group-can-read = Κάθε μέλος της ομάδας μπορεί να διαβάσει και να συνεχίσει αυτή τη συνομιλία.
 chat-board-create-members-of-the-group-can-read = Κάθε μέλος της ομάδας μπορεί να διαβάσει αυτόν τον ερευνητικό πίνακα και να ενεργήσει σε αυτόν.

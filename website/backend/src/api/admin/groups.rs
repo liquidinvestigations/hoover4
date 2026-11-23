@@ -51,6 +51,7 @@ pub async fn admin_list_groups(user: &CurrentUser) -> anyhow::Result<Vec<AdminGr
             fullname: g.fullname,
             member_count: members.len() as u32,
             collection_count: perms.len() as u32,
+            ai_enabled: g.ai_enabled == 1,
         });
     }
     Ok(result)
@@ -72,6 +73,7 @@ pub async fn admin_get_group(
             fullname: g.fullname,
             member_count: members.len() as u32,
             collection_count: perms.len() as u32,
+            ai_enabled: g.ai_enabled == 1,
         },
         members: members
             .into_iter()
@@ -110,6 +112,7 @@ pub async fn admin_create_group(
         created_at: time::OffsetDateTime::now_utc(),
         updated_at: time::OffsetDateTime::now_utc(),
         is_deleted: 0,
+        ai_enabled: 0,
     })
     .await
 }
@@ -141,6 +144,44 @@ pub async fn admin_delete_group(user: &CurrentUser, groupname: String) -> anyhow
         collections::revoke_permission(&groupname, &p.collectionname).await?;
     }
     groups::soft_delete_group(&groupname).await
+}
+
+/// The refusal of a change that turns the AI flag off while the group owns chats or boards.
+/// The values are the counts of chats and boards.
+pub fn ai_content_left(chats: u64, boards: u64) -> String {
+    format!(
+        "Delete the chats and boards of this group first. Chats: {chats}. Boards: {boards}. \
+         Join the group to see them on the history pages."
+    )
+}
+
+/// Set the AI flag of a group. The flag goes off only when the group owns no chat and no
+/// board. The explore chats of a board are not counted, because the board deletes them.
+pub async fn admin_set_group_ai(user: &CurrentUser, groupname: String, on: bool) -> anyhow::Result<()> {
+    guard::require_admin(user)?;
+    let Some(mut row) = groups::get_group(&groupname).await? else {
+        anyhow::bail!("group not found");
+    };
+    if !on {
+        let client = crate::db_utils::clickhouse_utils::get_global_client();
+        let chats: u64 = client
+            .query("SELECT count() FROM chat_sessions FINAL WHERE owner_group = ? AND is_deleted = 0 \
+                    AND NOT startsWith(session_id, ?)")
+            .bind(&groupname)
+            .bind(common::board_types::BOARD_SESSION_PREFIX)
+            .fetch_one()
+            .await?;
+        let boards: u64 = client
+            .query("SELECT count() FROM boards FINAL WHERE owner_group = ? AND is_deleted = 0")
+            .bind(&groupname)
+            .fetch_one()
+            .await?;
+        if chats > 0 || boards > 0 {
+            return Err(guard::InvalidInput(ai_content_left(chats, boards)).into());
+        }
+    }
+    row.ai_enabled = u8::from(on);
+    groups::upsert_group(row).await
 }
 
 /// Add a user to a group. A user who is already a member keeps the stored membership,

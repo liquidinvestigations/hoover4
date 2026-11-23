@@ -512,8 +512,6 @@ chat-transcript-generic-tool = værktøjet
 
 group-picker-loading-groups-u = Indlæser grupper…
 group-picker-group = Gruppe
-group-picker-show-groups-of-all-users = Vis alle brugeres grupper
-group-picker-you-have-no-group-of-your-own = Du har ingen egen gruppe. Vælg »Vis alle brugeres grupper«, eller bed en administrator om at føje dig til en gruppe.
 group-picker-you-are-not-in-a-group = Du er ikke i nogen gruppe. Bed en administrator om at føje dig til en gruppe.
 ai-chat-homepage-members-of-the-group-can-read = Alle medlemmer af gruppen kan læse og fortsætte denne chat.
 chat-board-create-members-of-the-group-can-read = Alle medlemmer af gruppen kan læse denne tavle og handle på den.

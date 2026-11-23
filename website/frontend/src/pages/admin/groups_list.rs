@@ -86,6 +86,7 @@ fn GroupsListContent() -> Element {
                             th { style: TH, {tr!("admin-groups-list-display-name-2")} }
                             th { style: TH, {tr!("admin-groups-list-members")} }
                             th { style: TH, {tr!("admin-groups-list-collections")} }
+                            th { style: TH, {tr!("admin-groups-list-ai-content")} }
                         }
                     }
                     tbody {
@@ -97,6 +98,9 @@ fn GroupsListContent() -> Element {
                                 td { style: TD, "{g.fullname}" }
                                 td { style: TD, "{g.member_count}" }
                                 td { style: TD, "{g.collection_count}" }
+                                td { style: TD,
+                                    if g.ai_enabled { {tr!("admin-groups-list-ai-content-on")} } else { {tr!("admin-groups-list-ai-content-off")} }
+                                }
                             }
                         }
                     }

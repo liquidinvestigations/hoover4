@@ -11,11 +11,9 @@
 //! with the live permission of the person who sends it.
 //!
 //! The memberships are the stored rows of `user_group_membership` (header and manual origin)
-//! and the groups of the current request. A group that the identity provider gives to every
-//! user is implicit. `HOOVER4_IMPLICIT_GROUPS` (`[main_services] implicit_groups`) lists the
-//! implicit groups as a comma list: an entry that ends in `*` is a name prefix, every other
-//! entry is an exact name. Absent or empty gives [`DEFAULT_IMPLICIT_GROUPS`]. The create
-//! forms list implicit groups only when the person asks for them.
+//! and the groups of the current request. A new chat or board can belong only to a group of
+//! the person with the AI flag (`user_groups.ai_enabled`). An administrator sets the flag on
+//! the admin page of the group.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -27,43 +25,6 @@ use common::item_groups::GroupChoice;
 use crate::auth::guard;
 use crate::db_auth::groups;
 use crate::db_utils::clickhouse_utils::{get_global_client, list_permitted_collections};
-
-/// The implicit groups when `HOOVER4_IMPLICIT_GROUPS` is absent. **Mirrored in `deploy.py`**
-/// (`DEFAULTS["main_services"]["implicit_groups"]`): the groups that liquid-core and openDesk
-/// give to every user, and their application groups.
-pub const DEFAULT_IMPLICIT_GROUPS: &str = "user, Guests, hoover, hoover4, nextcloud, nextcloud28, \
-     nextcloud-admin, wikijs, dokuwiki, codimd, grist, matrix, prophecies, bbb, xwiki, Domain Users, \
-     Domain Admins, IAM API - Full Access, managed-by-attribute-*";
-
-/// The entries of an implicit group list: comma separated, trimmed, empty entries dropped.
-/// An absent or empty value gives the default list.
-pub fn implicit_rules_from(value: Option<&str>) -> Vec<String> {
-    value
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or(DEFAULT_IMPLICIT_GROUPS)
-        .split(',')
-        .map(str::trim)
-        .filter(|entry| !entry.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-static IMPLICIT_RULES: LazyLock<Vec<String>> =
-    LazyLock::new(|| implicit_rules_from(std::env::var("HOOVER4_IMPLICIT_GROUPS").ok().as_deref()));
-
-/// True when `name` matches an entry of `rules`: the same name, or a name that starts with
-/// the text before the `*` of an entry that ends in `*`.
-pub fn is_implicit_in(name: &str, rules: &[String]) -> bool {
-    rules.iter().any(|rule| match rule.strip_suffix('*') {
-        Some(prefix) => name.starts_with(prefix),
-        None => name == rule,
-    })
-}
-
-/// True when the configured list names `name` as an implicit group.
-pub fn is_implicit(name: &str) -> bool {
-    is_implicit_in(name, &IMPLICIT_RULES)
-}
 
 /// What one person may do with one item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,16 +113,17 @@ pub async fn shared_collections(user: &CurrentUser, group: &str) -> anyhow::Resu
     Ok(group_collections(group).await?.into_iter().filter(|c| permitted.contains(c)).collect())
 }
 
-/// The groups that the person can choose for a new chat or board, explicit groups first, each
-/// with the collections that the person and the group can both read.
+/// The groups that the person can choose for a new chat or board: the groups of the person
+/// with the AI flag, sorted by name, each with the collections that the person and the group
+/// can both read.
 pub async fn group_choices(user: &CurrentUser) -> anyhow::Result<Vec<GroupChoice>> {
     let permitted = list_permitted_collections(user).await?;
     let mut choices = Vec::new();
-    for name in member_groups(user).await? {
+    for name in groups::ai_enabled_among(&member_groups(user).await?).await? {
         let collections = group_collections(&name).await?.into_iter().filter(|c| permitted.contains(c)).collect();
-        choices.push(GroupChoice { implicit: is_implicit(&name), name, collections });
+        choices.push(GroupChoice { name, collections });
     }
-    choices.sort_by(|a, b| (a.implicit, a.name.to_lowercase()).cmp(&(b.implicit, b.name.to_lowercase())));
+    choices.sort_by_key(|c| c.name.to_lowercase());
     Ok(choices)
 }
 
@@ -169,10 +131,13 @@ pub async fn group_choices(user: &CurrentUser) -> anyhow::Result<Vec<GroupChoice
 pub const CHOOSE_A_GROUP: &str = "Choose a group.";
 /// The refusal of a create request for a group of which the person is not a member.
 pub const NOT_A_MEMBER: &str = "You are not a member of this group.";
+/// The refusal of a create request for a group without the AI flag.
+pub const NO_AI_CONTENT: &str = "This group cannot hold AI chats and boards.";
 /// The refusal of a collection that the group or the person cannot read.
 pub const GROUP_CANNOT_READ: &str = "The group cannot read one of the selected collections.";
 
-/// The group of a new item, checked: the person must be a member.
+/// The group of a new item, checked: the person must be a member, and the group must have
+/// the AI flag.
 pub async fn require_member(user: &CurrentUser, group: &str) -> anyhow::Result<String> {
     let group = group.trim();
     if group.is_empty() {
@@ -180,6 +145,9 @@ pub async fn require_member(user: &CurrentUser, group: &str) -> anyhow::Result<S
     }
     if !member_groups(user).await?.iter().any(|g| g == group) {
         return Err(guard::Forbidden(NOT_A_MEMBER.into()).into());
+    }
+    if groups::ai_enabled_among(&[group.to_string()]).await?.is_empty() {
+        return Err(guard::Forbidden(NO_AI_CONTENT.into()).into());
     }
     Ok(group.to_string())
 }
@@ -250,23 +218,6 @@ mod tests {
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn an_implicit_group_is_an_exact_name_or_a_name_with_a_listed_prefix() {
-        let rules = implicit_rules_from(None);
-        for name in ["user", "Guests", "Domain Users", "IAM API - Full Access", "managed-by-attribute-Notes",
-                     "managed-by-attribute-FileshareAdmin", "nextcloud"] {
-            assert!(is_implicit_in(name, &rules), "{name}");
-        }
-        for name in ["users", "team-a", "demo_fr", "admin", "managed-by-attr", "Domain Users 2"] {
-            assert!(!is_implicit_in(name, &rules), "{name}");
-        }
-        let custom = implicit_rules_from(Some(" staff , ,org-* "));
-        assert_eq!(custom, names(&["staff", "org-*"]));
-        assert!(is_implicit_in("org-sales", &custom) && is_implicit_in("staff", &custom));
-        assert!(!is_implicit_in("user", &custom));
-        assert_eq!(implicit_rules_from(Some(" ")), rules);
     }
 
     #[test]

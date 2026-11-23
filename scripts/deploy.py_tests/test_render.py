@@ -1232,6 +1232,7 @@ REMOVED_SERVICE_SETTINGS = {
     "[main_services] testdata_dir": "Use a [dataset_mount.<name>] section",
     "[main_services] datasets_mount_path": "Use a [dataset_mount.<name>] section",
     "[cluster]": "Give the registry address to main_services/ops/publish-images.sh",
+    "[main_services] implicit_groups": "The admin page of each group sets if the group can hold",
 }
 NO_REPLACEMENT = (
     "[ai_services] embeddings_model", "[ai_services] embeddings_dim",

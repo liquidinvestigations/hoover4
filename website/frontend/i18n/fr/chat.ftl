@@ -516,8 +516,6 @@ chat-transcript-generic-tool = l’outil
 
 group-picker-loading-groups-u = Chargement des groupes…
 group-picker-group = Groupe
-group-picker-show-groups-of-all-users = Afficher les groupes de tous les utilisateurs
-group-picker-you-have-no-group-of-your-own = Vous n’avez aucun groupe propre. Sélectionnez « Afficher les groupes de tous les utilisateurs » ou demandez à un administrateur de vous ajouter à un groupe.
 group-picker-you-are-not-in-a-group = Vous n’êtes dans aucun groupe. Demandez à un administrateur de vous ajouter à un groupe.
 ai-chat-homepage-members-of-the-group-can-read = Chaque membre du groupe peut lire et poursuivre cette discussion.
 chat-board-create-members-of-the-group-can-read = Chaque membre du groupe peut lire ce tableau d’enquête et agir dessus.

@@ -47,6 +47,7 @@ admin_server_fn!(admin_add_member, backend::api::admin::groups::admin_add_member
 admin_server_fn!(admin_remove_member, backend::api::admin::groups::admin_remove_member, (groupname: String, username: String));
 admin_server_fn!(admin_set_group_admin, backend::api::admin::groups::admin_set_group_admin, (groupname: String, username: String, is_group_admin: bool));
 admin_server_fn!(admin_set_uploader, backend::api::admin::groups::admin_set_uploader, (groupname: String, username: String, on: bool));
+admin_server_fn!(admin_set_group_ai, backend::api::admin::groups::admin_set_group_ai, (groupname: String, on: bool));
 
 admin_server_fn!(admin_list_collections, backend::api::admin::collections::admin_list_collections, () -> Vec<AdminCollectionItem>);
 admin_server_fn!(admin_list_datasets, backend::api::admin::collections::admin_list_datasets, () -> Vec<AdminDatasetListItem>);

@@ -458,8 +458,6 @@ chat-transcript-generic-tool = 工具
 
 group-picker-loading-groups-u = 正在加载组…
 group-picker-group = 组
-group-picker-show-groups-of-all-users = 显示所有用户的组
-group-picker-you-have-no-group-of-your-own = 您没有自己的组。请选择“显示所有用户的组”，或请管理员将您加入某个组。
 group-picker-you-are-not-in-a-group = 您不在任何组中。请管理员将您加入某个组。
 ai-chat-homepage-members-of-the-group-can-read = 该组的每个成员都可以阅读并继续此聊天。
 chat-board-create-members-of-the-group-can-read = 该组的每个成员都可以阅读此调查板并对其操作。

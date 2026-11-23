@@ -544,8 +544,6 @@ chat-transcript-generic-tool = instrumentul
 
 group-picker-loading-groups-u = Se încarcă grupurile…
 group-picker-group = Grup
-group-picker-show-groups-of-all-users = Afișează grupurile tuturor utilizatorilor
-group-picker-you-have-no-group-of-your-own = Nu ai un grup propriu. Selectează „Afișează grupurile tuturor utilizatorilor” sau cere unui administrator să te adauge într-un grup.
 group-picker-you-are-not-in-a-group = Nu ești în niciun grup. Cere unui administrator să te adauge într-un grup.
 ai-chat-homepage-members-of-the-group-can-read = Fiecare membru al grupului poate citi și continua acest chat.
 chat-board-create-members-of-the-group-can-read = Fiecare membru al grupului poate citi acest tablou și poate acționa asupra lui.

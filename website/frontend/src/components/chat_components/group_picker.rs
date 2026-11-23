@@ -1,12 +1,11 @@
 //! The group choice of a new chat or board.
 //!
 //! Every chat and board belongs to one group (`common::item_groups`). The list shows the
-//! explicit groups of the person. A checkbox adds the implicit groups, which the identity
-//! provider gives to every user. The first explicit group is selected at first. With no group
-//! to select, the picker says why and what to do, and `selected` stays empty, so the form
-//! does not submit.
+//! groups of the person that can hold AI chats and boards. The first group is selected at
+//! first. With no group to select, the picker says why and what to do, and `selected` stays
+//! empty, so the form does not submit.
 
-use common::item_groups::{default_group, keep_or_first, listed_groups, GroupChoice};
+use common::item_groups::{default_group, GroupChoice};
 use dioxus::prelude::*;
 use dioxus_free_icons::icons::md_social_icons::MdGroup;
 use dioxus_free_icons::Icon;
@@ -22,7 +21,6 @@ use crate::tr;
 #[component]
 pub fn GroupPicker(selected: Signal<String>, choices: Signal<Option<Vec<GroupChoice>>>, hint: String) -> Element {
     let groups_res = use_resource(chat_group_choices);
-    let mut show_implicit = use_signal(|| false);
 
     use_effect(move || {
         if let Some(Ok(list)) = &*groups_res.read() {
@@ -44,8 +42,7 @@ pub fn GroupPicker(selected: Signal<String>, choices: Signal<Option<Vec<GroupCho
         }
         None => return rsx! { span { style: HELP_TEXT, {tr!("group-picker-loading-groups-u")} } },
     };
-    let listed = listed_groups(&all, show_implicit());
-    let has_implicit = all.iter().any(|g| g.implicit);
+    let listed = all;
     let current = selected.read().clone();
 
     rsx! {
@@ -64,32 +61,10 @@ pub fn GroupPicker(selected: Signal<String>, choices: Signal<Option<Vec<GroupCho
                         }
                     }
                 }
-                if has_implicit {
-                    label { style: LABEL,
-                        input {
-                            class: "x-group-picker-implicit",
-                            r#type: "checkbox",
-                            checked: show_implicit(),
-                            onchange: {
-                                let all = all.clone();
-                                move |e: FormEvent| {
-                                    show_implicit.set(e.checked());
-                                    let next = keep_or_first(&listed_groups(&all, e.checked()), &selected.peek());
-                                    selected.set(next);
-                                }
-                            },
-                        }
-                        {tr!("group-picker-show-groups-of-all-users")}
-                    }
-                }
             }
             if listed.is_empty() {
                 p { class: "x-group-picker-empty", style: "margin: 0; color: var(--x-danger); font-size: var(--x-text-detail);",
-                    if has_implicit {
-                        {tr!("group-picker-you-have-no-group-of-your-own")}
-                    } else {
-                        {tr!("group-picker-you-are-not-in-a-group")}
-                    }
+                    {tr!("group-picker-you-are-not-in-a-group")}
                 }
             } else {
                 p { style: "margin: 0; {HELP_TEXT}", "{hint}" }

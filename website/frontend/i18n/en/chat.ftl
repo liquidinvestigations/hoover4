@@ -504,8 +504,6 @@ chat-transcript-generic-tool = the tool
 
 group-picker-loading-groups-u = Loading groups…
 group-picker-group = Group
-group-picker-show-groups-of-all-users = Show groups of all users
-group-picker-you-have-no-group-of-your-own = You have no group of your own. Select “Show groups of all users”, or ask an administrator to add you to a group.
-group-picker-you-are-not-in-a-group = You are not in a group. Ask an administrator to add you to a group.
+group-picker-you-are-not-in-a-group = You are in no group that can hold AI chats and boards. Ask an administrator to add you to one.
 ai-chat-homepage-members-of-the-group-can-read = Every member of the group can read and continue this chat.
 chat-board-create-members-of-the-group-can-read = Every member of the group can read this board and act on it.

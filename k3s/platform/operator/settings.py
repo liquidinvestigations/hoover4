@@ -216,7 +216,6 @@ SERVICE_RULES = [
                                        'hoover4-web-tor', *AGENTS, WORKER, WEBSITE, 'hoover4-ops')),
     (None, r'full_research_agent_workers', ('hoover4-full-research-agent',)),
     (None, r'(agent_.*|llm_.*|title_request_timeout_seconds|board_reason_request_seconds)', (WORKER, *AGENTS)),
-    (None, r'implicit_groups', (WEBSITE,)),
     (None, r'(max_held_polls_per_user|rate_chat_poll_per_minute|error_rate_alert_percent|search_.*)',
      (WEBSITE, 'hoover4-mcp-collections')),
     (None, r'(ops_.*)', ('hoover4-ops',)),
@@ -233,7 +232,7 @@ def _kind(section, key, default):
         return 'bool'
     if key == 'temporal_retention':
         return 'duration'
-    if key in ('agent_packs_chat', 'implicit_groups'):
+    if key == 'agent_packs_chat':
         return 'text'
     if key.endswith(('_mem_limit', '_heap', '_heap_new', '_direct_memory')) or key == 'tika_parse_heap':
         return 'size'

@@ -412,8 +412,8 @@ mod tests {
     #[test]
     fn the_collections_are_the_collections_of_the_selected_group() {
         let choices = vec![
-            GroupChoice { name: "team-a".into(), implicit: false, collections: names(&["enron"]) },
-            GroupChoice { name: "user".into(), implicit: true, collections: names(&["enron", "tables"]) },
+            GroupChoice { name: "team-a".into(), collections: names(&["enron"]) },
+            GroupChoice { name: "user".into(), collections: names(&["enron", "tables"]) },
         ];
         assert_eq!(group_collections(Some(&choices), "user"), Some(names(&["enron", "tables"])));
         assert_eq!(group_collections(Some(&choices), "team-a"), Some(names(&["enron"])));

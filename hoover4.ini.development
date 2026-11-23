@@ -136,8 +136,6 @@ chat_model_concurrency = 3
 chat_low_latency_concurrency = 4
 # This value limits the tool calls of all agent runs in progress. Empty is 16.
 agent_tool_concurrency = 16
-# These comma-separated identity groups apply to every user. A final * matches a name prefix. Empty uses the list below.
-implicit_groups = user, Guests, hoover, hoover4, nextcloud, nextcloud28, nextcloud-admin, wikijs, dokuwiki, codimd, grist, matrix, prophecies, bbb, xwiki, Domain Users, Domain Admins, IAM API - Full Access, managed-by-attribute-*
 # This value limits the chat polls that one user holds at once. Above it, a poll returns at once.
 max_held_polls_per_user = 8
 # This value limits the chat polls that one user sends in one minute.

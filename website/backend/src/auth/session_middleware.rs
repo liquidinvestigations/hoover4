@@ -192,6 +192,7 @@ async fn sync_header_user(identity: &HeaderIdentity) -> anyhow::Result<()> {
                 created_at: time::OffsetDateTime::now_utc(),
                 updated_at: time::OffsetDateTime::now_utc(),
                 is_deleted: 0,
+                ai_enabled: 0,
             })
             .await?;
         }
