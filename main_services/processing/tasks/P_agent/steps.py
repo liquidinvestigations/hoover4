@@ -125,16 +125,6 @@ def runs_in_browser(call) -> bool:
 TOOL_UNAVAILABLE_TEXT = ("The tool call did not finish ({error_class}). Try it again, or use "
                          "another tool.")
 
-#: The line that an answer gets when the compaction of a model call of its round
-#: summarised the thread. Eviction leaves every result in the transcript, so it adds no
-#: line. A summary replaces the model's own working prose, so the answer says so.
-SUMMARY_NOTICE = (
-    "\n\n---\n\n*This turn grew past the model's context window, so its earlier steps were "
-    "summarised before the answer was written. Every step is unchanged above, and every "
-    "citation still points at the document it was made from.*"
-)
-
-
 #: The chat role of the compaction line: one row for each compaction of a run that writes
 #: the transcript, at the first seq of its step.
 COMPACTION_ROLE = "compaction"
@@ -636,8 +626,6 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     metadata = citations.answer_metadata(answer, entries,
                                          effective_internet_tools(params.internet_tools), report,
                                          delivered)
-    if any(m.usage.get("summarised") for m in round_ai):
-        answer = answer + SUMMARY_NOTICE
     ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
     agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
     transcript = True
@@ -1036,8 +1024,7 @@ def publish_report(params: PublishParams) -> int:
 
     The answer row holds the `message` argument of the call, else the text of the reply that
     made the call, else the name of the primary report. With a `message`, the text of the
-    reply goes to the reasoning. When a compaction summarised the round, the answer ends with
-    `SUMMARY_NOTICE`, as an answer of `_write_answer` does. Its metadata pins the versions that
+    reply goes to the reasoning. Its metadata pins the versions that
     the call selected (`P_workspace.selection.finish_result`), with the citation status of the
     primary report (`citations.answer_metadata`). The `ai` message of the call records the
     seq of the answer row under `PUBLISHED_KEY` before the row is written, so a retry and a
@@ -1046,7 +1033,7 @@ def publish_report(params: PublishParams) -> int:
     """
     from database import agent_runs
     from tasks.P_agent import citations, reports
-    from tasks.P_agent.stream_writer import context_window_for, round_view, starts_round
+    from tasks.P_agent.stream_writer import context_window_for, round_view
     from tasks.P_workspace.selection import finish_result
 
     row = _read_row(params)
@@ -1084,9 +1071,6 @@ def publish_report(params: PublishParams) -> int:
     agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
     earlier = [m for m in messages if m.idx < ai.idx]
     plan_prose, round_reasoning, _ = round_view(earlier)
-    start = max((i for i, m in enumerate(earlier) if starts_round(m)), default=0)
-    if any(m.role == "ai" and m.usage.get("summarised") for m in earlier[start:] + [ai]):
-        answer = answer + SUMMARY_NOTICE
     reasoning = "\n\n".join(p for p in (plan_prose, round_reasoning, narration,
                                          (ai.reasoning or "").strip()) if p)
     model = str(ai.usage.get("model") or "")

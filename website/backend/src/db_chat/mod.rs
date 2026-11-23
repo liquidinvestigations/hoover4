@@ -340,7 +340,7 @@ pub async fn list_messages(
         .map(|r| ChatMessageItem {
             seq: r.seq,
             role: ChatRole::from_str(&r.role),
-            content: r.content,
+            content: common::chat_types::without_summary_notice(r.content),
             tool_name: r.tool_name,
             tool_input: r.tool_input,
             tool_output: r.tool_output,
@@ -383,7 +383,7 @@ pub async fn list_messages_after(
         .map(|r| ChatMessageItem {
             seq: r.seq,
             role: ChatRole::from_str(&r.role),
-            content: r.content,
+            content: common::chat_types::without_summary_notice(r.content),
             tool_name: r.tool_name,
             tool_input: r.tool_input,
             tool_output: r.tool_output,

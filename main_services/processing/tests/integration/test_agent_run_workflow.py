@@ -1045,7 +1045,7 @@ def test_a_compaction_step_retried_after_its_ai_row_keeps_the_answer_seq(monkeyp
         [(seq, content)] = _line(case)
         assert (seq, content["state"], content["tokens_after"]) == (case.start_seq, "done", 11)
         answers = [r for r in case.chat_rows() if r[1] == "assistant"]
-        assert [(r[0], r[2]) for r in answers] == [(case.start_seq + 1, "Written." + steps.SUMMARY_NOTICE)]
+        assert [(r[0], r[2]) for r in answers] == [(case.start_seq + 1, "Written.")]
 
     asyncio.run(_run_case(monkeypatch, script, body))
 

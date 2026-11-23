@@ -1310,7 +1310,7 @@ def test_a_failed_file_list_read_fails_the_model_step(store, monkeypatch):
         _step()
 
 
-def test_a_published_answer_after_a_compaction_says_so(store):
+def test_a_published_answer_after_a_compaction_has_no_notice(store):
     _explicit(store)
     call = _finish_reply(store, 1, 1, {"name": "report.md", "version": 1, "message": "Done."},
                          seq=5)
@@ -1320,4 +1320,4 @@ def test_a_published_answer_after_a_compaction_says_so(store):
         usage_json=json.dumps({**ai.usage, "summarised": True}), tool_calls_json=ai.tool_calls_json)
     _publish(call)
     [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
-    assert answer["content"] == "Done." + steps.SUMMARY_NOTICE
+    assert answer["content"] == "Done."

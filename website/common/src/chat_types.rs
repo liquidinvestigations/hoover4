@@ -929,6 +929,32 @@ pub fn is_canonical_page(text: &str) -> bool {
     matches!(serde_json::to_string(&value), Ok(rendered) if rendered == text)
 }
 
+/// The text that the worker once added to the end of an answer after a compaction. Stored
+/// answers keep it. The website removes it when it reads them, because it confused users.
+pub const OLD_SUMMARY_NOTICE: &str = "\n\n---\n\n*This turn grew past the model's context window, so its earlier steps were \
+summarised before the answer was written. Every step is unchanged above, and every \
+citation still points at the document it was made from.*";
+
+/// `content` without the old compaction notice at its end.
+pub fn without_summary_notice(content: String) -> String {
+    match content.strip_suffix(OLD_SUMMARY_NOTICE) {
+        Some(rest) => rest.to_string(),
+        None => content,
+    }
+}
+
+#[cfg(test)]
+mod summary_notice_tests {
+    use super::*;
+
+    #[test]
+    fn the_old_compaction_notice_leaves_a_stored_answer() {
+        assert_eq!(without_summary_notice(format!("Done.{OLD_SUMMARY_NOTICE}")), "Done.");
+        assert_eq!(without_summary_notice("Done.".into()), "Done.");
+        assert!(OLD_SUMMARY_NOTICE.contains("context window, so its earlier steps were summarised before"));
+    }
+}
+
 /// Derive a session title from its first user message.
 pub fn title_from_message(message: &str) -> String {
     let flat: String = message.split_whitespace().collect::<Vec<_>>().join(" ");
