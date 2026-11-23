@@ -276,3 +276,5 @@ shared-item-access-choose-a-group = Odaberite grupu.
 shared-item-access-not-a-member = Niste član ove grupe.
 shared-item-access-group-cannot-read = Grupa ne može čitati jednu od odabranih zbirki.
 shared-item-access-only-creator-deletes = Samo autor ili administrator može ga izbrisati.
+shared-item-access-no-ai-content = Ova grupa ne može sadržavati AI razgovore i ploče.
+shared-admin-groups-ai-content-left = Najprije izbrišite razgovore i ploče ove grupe. Razgovori: { $chats }. Ploče: { $boards }. Pridružite se grupi da biste ih vidjeli na stranicama povijesti.

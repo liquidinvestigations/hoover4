@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = 请选择一个组。
 shared-item-access-not-a-member = 您不是该组的成员。
 shared-item-access-group-cannot-read = 该组无法读取所选文档集之一。
 shared-item-access-only-creator-deletes = 只有创建者或管理员可以删除它。
+shared-item-access-no-ai-content = 此组不能包含 AI 对话和调查板。
+shared-admin-groups-ai-content-left = 请先删除此组的对话和调查板。对话：{ $chats }。调查板：{ $boards }。加入该组后，可在历史页面中看到它们。

@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = Choisissez un groupe.
 shared-item-access-not-a-member = Vous n’êtes pas membre de ce groupe.
 shared-item-access-group-cannot-read = Le groupe ne peut pas lire l’une des collections sélectionnées.
 shared-item-access-only-creator-deletes = Seul le créateur ou un administrateur peut le supprimer.
+shared-item-access-no-ai-content = Ce groupe ne peut pas contenir de conversations IA ni de tableaux d’enquête.
+shared-admin-groups-ai-content-left = Supprimez d’abord les conversations et les tableaux d’enquête de ce groupe. Conversations : { $chats }. Tableaux : { $boards }. Rejoignez le groupe pour les voir dans les pages d’historique.

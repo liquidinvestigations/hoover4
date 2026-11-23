@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = एक समूह चुनें।
 shared-item-access-not-a-member = आप इस समूह के सदस्य नहीं हैं।
 shared-item-access-group-cannot-read = समूह चुने गए संग्रहों में से एक को नहीं पढ़ सकता।
 shared-item-access-only-creator-deletes = केवल निर्माता या व्यवस्थापक इसे हटा सकता है।
+shared-item-access-no-ai-content = इस समूह में AI चैट और बोर्ड नहीं रह सकते।
+shared-admin-groups-ai-content-left = पहले इस समूह की चैट और बोर्ड हटाएँ। चैट: { $chats }। बोर्ड: { $boards }। उन्हें इतिहास पृष्ठों पर देखने के लिए समूह में शामिल हों।

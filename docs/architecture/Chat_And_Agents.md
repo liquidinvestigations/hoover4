@@ -30,8 +30,15 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 
 Routes (see [website/frontend/src/routes.rs](../../website/frontend/src/routes.rs)):
 
-- `/ai_chat`, homepage ("What are you researching?") with recent-session cards, the group picker and composer
-- `/ai_chat/history`, full conversation list of the groups of the person
+- `/ai_chat`, homepage ("What are you researching?") with recent-session cards, the group picker and composer, and the board overview with a "Boards list" link
+- `/ai_chat/history?q&group&mine&boards&sort&page`, the conversation history of the groups of
+  the person, 25 chats on a page ([common/src/item_list.rs](../../website/common/src/item_list.rs)).
+  `q` keeps the chats whose title or summary holds the text, with no regard to case, and the rows
+  mark each match. `group` keeps one group, `mine=1` keeps the chats that the person started,
+  `boards=1` adds the explore chats of the boards, and `sort=oldest` puts the oldest last
+  activity first. A chat with an open run, whose run row changed in the last 15 minutes, shows a
+  "Running" chip in place of its delete button.
+- `/ai_chat/boards?q&group&sort&page`, the board list of the groups of the person
 - `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state`, transcript + document preview (60/40)
 
 Storage lives in the global ClickHouse database: `chat_sessions` (migration `00011`) and
@@ -58,10 +65,14 @@ same rule ([Boards.md](Boards.md#groups-of-boards)).
   stops its turn and changes its collections. A person outside the group gets "not found",
   administrators too. The chat list and the history show the chats of the groups of the person.
 - Only the creator and administrators delete a chat. Another member gets 403.
-- The homepage composer has a group picker. It lists the explicit groups of the person, and the
-  checkbox "Show groups of all users" adds the implicit groups (`[main_services]
-  implicit_groups`). With no group to select, the composer does not send. The server refuses a
-  group of which the person is not a member.
+- The homepage composer has a group picker. It lists the groups of the person that can hold AI
+  chats and boards (`user_groups.ai_enabled`, migration `00058`). With no group to select, the
+  composer does not send. The server refuses a group of which the person is not a member, and a
+  group without the flag.
+- An administrator sets the flag on the admin page of a group. The groups `user` and `admin`
+  start with it. The flag goes off only for a group that owns no chat and no board. Otherwise
+  the server refuses the change and names the counts. The explore chats of a board are not
+  counted, because the board deletes them.
 - The collections of a chat are collections that its group can read. A group reads its granted
   collections and the public collections. A new chat gets every collection that the group
   and the creator can both read. The server refuses a collection outside that set. A turn uses
@@ -582,7 +593,7 @@ row into the transcript and logs at ERROR with the session and the turn uuid.
 
 | Class | Activities | Attempts |
 |---|---|---|
-| External request | `model_step`, `tool_call`, `write_followups`, `summarize_if_first_turn`, `label_board`, `board_reason`, `convert_explore_report` | 2, the second after 1 s. A browser tool that can change the page gets 1. |
+| External request | `model_step`, `tool_call`, `write_followups`, `title_at_start`, `summarize_turn`, `label_board`, `board_reason`, `convert_explore_report` | 2, the second after 1 s. A browser tool that can change the page gets 1. |
 | Storage write | `open_run`, `control_event`, `write_asked_answer`, `write_incomplete`, `publish_report`, `write_ending`, `record_step_failure`, `prepare_workspace_mutation`, `commit_workspace_mutation`, and the board storage activities | 5 (`ACTIVITY_MAX_ATTEMPTS`). Each write has a fixed key, so a repeat is harmless. |
 
 No activity sends a second request to the same target. The collection server's backend
@@ -666,11 +677,17 @@ sequenceDiagram
 
 ## Naming a conversation
 
-The first turn writes a provisional title from the user's own words, and the workflow then
-asks the LLM for a better one. **It cannot fail the turn**: the answer is already written
-and read by the time it runs. A transport failure gets the second attempt of the external
-request class, and the workflow catches the last failure. Every other failure returns no
-title. The provisional title is the fallback and doing nothing is the correct failure.
+The website writes a provisional title from the user's own words when it accepts the first
+turn. Before the first model step, the workflow asks the LLM for a title and a first summary
+from the user message only (`title_at_start`). The title does not change after that. At the
+end of every completed turn, `summarize_turn` writes a new summary of the whole conversation
+from the stored summary, the user message and the answer of the turn. When the first call
+gave no title, the call after the first turn writes one. Chat turns and the explore turns of
+the boards both run the two calls.
+
+**Neither call can fail the turn.** A transport failure gets the second attempt of the
+external request class, and the workflow catches the last failure. Every other failure
+writes nothing, so the stored title and summary stay.
 
 Naming a conversation is not a reasoning problem, and a reasoning model given one spends
 its whole token budget on the thought and returns nothing usable. The request therefore

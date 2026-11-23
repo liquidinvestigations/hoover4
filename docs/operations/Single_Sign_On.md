@@ -32,9 +32,8 @@ Other groups receive collection access through stored grants.
 Every chat and every board belongs to one group. Every member of the group reads it, continues a chat, and acts on a board.
 Only the creator and administrators delete it.
 The header groups and the groups that an administrator adds both count as memberships.
-A group that the identity provider gives to every user is implicit.
-`[main_services] implicit_groups` lists the implicit groups. An entry that ends in `*` is a name prefix.
-The create forms list implicit groups only when the person selects "Show groups of all users".
+A new chat or board can belong only to a group that can hold AI chats and boards.
+An administrator sets this on the admin page of the group. The groups `user` and `admin` have it at first.
 Add each team to its own group so that its members can share chats and boards.
 [Chat and agents](../architecture/Chat_And_Agents.md#a-chat-belongs-to-a-group) describes the rule.
 

@@ -278,3 +278,5 @@ shared-item-access-choose-a-group = Vælg en gruppe.
 shared-item-access-not-a-member = Du er ikke medlem af denne gruppe.
 shared-item-access-group-cannot-read = Gruppen kan ikke læse en af de valgte samlinger.
 shared-item-access-only-creator-deletes = Kun opretteren eller en administrator kan slette den.
+shared-item-access-no-ai-content = Denne gruppe kan ikke indeholde AI-chats og tavler.
+shared-admin-groups-ai-content-left = Slet først denne gruppes chats og tavler. Chats: { $chats }. Tavler: { $boards }. Bliv medlem af gruppen for at se dem på historiksiderne.

@@ -802,8 +802,8 @@ Use these procedures to [start a conversation](#start-a-conversation), [inspect 
 4. Set **Internet tools** before you send the first message.
 5. Select the send arrow.
 
-The **Group** list shows the groups that you are a member of. Select **Show groups of all users** to add the groups that every user has.
-If you are in no group, the composer does not send. Ask an administrator to add you to a group.
+The **Group** list shows the groups that you are a member of and that can hold AI chats and boards.
+If you are in no such group, the composer does not send. Ask an administrator to add you to one.
 The chat searches the collections that both you and the group can read.
 
 Name the collection, people, dates, and result you need.
@@ -988,7 +988,16 @@ A summary can omit earlier detail. Repeat a source or requirement when it remain
 Select **History**, or **View all conversations** on the chat home page, to open the conversation list.
 Select a title to restore its transcript.
 The list shows the conversations of your groups, with the summary, message count, last update and group of each.
-**Show board chats** includes the explore conversations created by your investigation boards.
+The newest conversation is first, and each page shows 25 conversations. Use **Previous** and **Next** to change the page.
+
+- Enter text in **Search titles and summaries** and select **Search**. The list keeps the conversations whose title or summary contains the text, and marks each match.
+- Select a group in **Group** to show the conversations of that group only. **All** shows every group.
+- To show the oldest conversation first, select **Oldest first** in the **Order** list.
+- Select **Chats started by me** to show only the conversations that you started.
+- Select **Show board chats** to include the explore conversations created by your investigation boards.
+
+The title and a first summary appear when the first message starts. The summary changes after each answer, and the title stays.
+A conversation that is answering shows **Running** in place of its deletion control.
 
 <a href="img/chat-history.png"><img src="img/chat-history.png" alt="Conversation history with summaries, deletion controls, and the Show board chats option" width="100%"></a>
 
@@ -1014,6 +1023,8 @@ Use these procedures to [create a board](#create-a-board), [read findings](#read
 
 The right side of the AI chat home page lists the boards of your groups.
 Each card shows a graph preview, summary, status, last update, and group.
+Select **Boards list** above the cards to open the full board list.
+It has the same search, **Group**, **Order** and page controls as the conversation list. The board list orders boards by creation time.
 Every member of the group of a board can read it and act on it. Only the creator and administrators can drop it.
 Select a card to open the board.
 
@@ -1022,7 +1033,7 @@ Select a card to open the board.
 1. Select **New board** on the AI chat home page.
 2. Enter a title and between one and six goals.
 3. Enter background context that defines known facts, constraints, and the required result.
-4. Check the **Group** of the board. **Show groups of all users** adds the groups that every user has.
+4. Check the **Group** of the board. The list shows your groups that can hold AI chats and boards.
 5. Select the collections to search. The list shows the collections that both you and the group can read. **Collections** selects or clears every collection. A board without collections searches the web only and needs **Internet tools**.
 6. Enter a hint when you have a useful lead. Select **Add hint** for each further hint. A hint or a goal can hold pasted Hoover links, as a chat message can.
 7. Set **Internet tools** when the investigation must compare documents with online sources.

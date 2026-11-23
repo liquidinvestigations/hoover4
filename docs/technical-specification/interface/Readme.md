@@ -19,7 +19,8 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-FileBrowserPage` | `/file_browser/…` | [Storage.md](Storage.md) |
 | `UI-EmailGraphPage` | `/email_graph/…` | [Connected_Email.md](Connected_Email.md) |
 | `UI-AiChatPage` | `/ai_chat` | - |
-| `UI-AiChatHistoryPage` | `/ai_chat/history` | - |
+| `UI-AiChatHistoryPage` | `/ai_chat/history?q=&group=&mine=&boards=&sort=&page=` | [`Chat.md`](Chat.md#controls-of-the-history-page) |
+| `UI-AiBoardListPage` | `/ai_chat/boards?q=&group=&sort=&page=` | [`Board.md`](Board.md#controls-of-the-board-list) |
 | `UI-AiBoardCreatePage` | `/ai_chat/boards/new` | [`Board.md`](Board.md#controls-of-the-create-form) |
 | `UI-AiBoardPage` | `/ai_chat/boards/:board_id?selected=&zoom=&assessment=` | [`Board.md`](Board.md) |
 | `UI-AiChatSessionPage` | `/ai_chat/c/…` | [`Chat.md`](Chat.md) |

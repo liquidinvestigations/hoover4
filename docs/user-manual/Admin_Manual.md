@@ -163,8 +163,12 @@ Every chat and investigation board belongs to one group. Every member of the gro
 Only the creator and administrators delete a chat or drop a board.
 An administrator who is not a member of the group does not see the chat or board.
 The collections of a chat or board are the collections that its group can read, so grant a group the collections that its members share.
-A group that the identity provider gives to every user is implicit. `[main_services] implicit_groups` lists these groups.
-The chat and board forms hide implicit groups until the person selects **Show groups of all users**.
+The chat and board forms list only the groups that can hold AI chats and boards.
+Select **Members can create AI chats and boards in this group** on the page of a group to add it to these forms.
+The groups `user` and `admin` have this setting at first, and the **AI chats and boards** column of the group list shows it.
+You can clear the setting only for a group that owns no chat and no board.
+Otherwise the page shows the count of each and keeps the setting.
+To delete those items, join the group, and delete them on the chat history and board list pages.
 Add a person to a group here so that they can create and share chats and boards.
 
 

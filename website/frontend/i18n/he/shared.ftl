@@ -276,3 +276,5 @@ shared-item-access-choose-a-group = בחרו קבוצה.
 shared-item-access-not-a-member = אינכם חברים בקבוצה הזו.
 shared-item-access-group-cannot-read = הקבוצה לא יכולה לקרוא אחד מהאוספים שנבחרו.
 shared-item-access-only-creator-deletes = רק היוצר או מנהל יכולים למחוק אותו.
+shared-item-access-no-ai-content = קבוצה זו אינה יכולה להכיל צ'אטים של AI ולוחות.
+shared-admin-groups-ai-content-left = מחקו קודם את הצ'אטים והלוחות של הקבוצה. צ'אטים: { $chats }. לוחות: { $boards }. הצטרפו לקבוצה כדי לראות אותם בדפי ההיסטוריה.

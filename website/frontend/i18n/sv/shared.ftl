@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = Välj en grupp.
 shared-item-access-not-a-member = Du är inte medlem i den här gruppen.
 shared-item-access-group-cannot-read = Gruppen kan inte läsa en av de valda samlingarna.
 shared-item-access-only-creator-deletes = Bara skaparen eller en administratör kan ta bort den.
+shared-item-access-no-ai-content = Den här gruppen kan inte innehålla AI-chattar och utredningstavlor.
+shared-admin-groups-ai-content-left = Ta först bort gruppens chattar och utredningstavlor. Chattar: { $chats }. Utredningstavlor: { $boards }. Gå med i gruppen för att se dem på historiksidorna.

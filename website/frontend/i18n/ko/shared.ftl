@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = 그룹을 선택하세요.
 shared-item-access-not-a-member = 이 그룹의 구성원이 아닙니다.
 shared-item-access-group-cannot-read = 그룹이 선택한 컬렉션 중 하나를 읽을 수 없습니다.
 shared-item-access-only-creator-deletes = 작성자나 관리자만 삭제할 수 있습니다.
+shared-item-access-no-ai-content = 이 그룹에는 AI 채팅과 보드를 둘 수 없습니다.
+shared-admin-groups-ai-content-left = 먼저 이 그룹의 채팅과 보드를 삭제하세요. 채팅: { $chats }. 보드: { $boards }. 기록 페이지에서 보려면 그룹에 가입하세요.

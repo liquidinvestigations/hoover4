@@ -10,11 +10,24 @@
 | Title, Goal, Context (optional), Hint (optional) | Give the title, the goals, the background context and the first hints. | A board has one to 6 goals. A goal, the context and a hint take pasted Hoover links as reference chips. |
 | Add a goal / Remove | Add a goal field, or remove one. | Add a goal shows below 6 goals. Remove shows with two or more goals. |
 | Add hint / Remove | Add a hint field, or remove one. | Remove shows with two or more hints. An empty hint is not sent. |
+| Group | Choose the group of the board. | It lists the groups of the person that can hold AI chats and boards, and selects the first. With no group, the form says why and does not submit. |
 | Collections | Select every listed collection, or clear them all. | It is checked when every collection is selected, indeterminate when some are, and clear when none are. A click on a checked box clears every collection. A click on a clear or indeterminate box selects every collection. |
 | Collection checkbox | Select or clear one collection. | Every readable collection is selected at first. The boxes stay active when none is selected. |
 | Internet tools | Let the explores search the web and read web pages. | It shows only when `internet_tools_enabled` is true, and it is on at first. |
 | Agent language | Show the agent language that the board gets, and open the language settings in a new tab. | It is beside Create board. The control reads the settings again when the page gets the focus. The board keeps the language of its creation. |
 | Create board | Create the board and open it. | It is disabled while no source is selected. The Sources group then shows "Select a collection or turn on internet tools.", or "Select at least one collection." when the deployment has no internet tools. |
+
+## Controls of the board list
+
+`UI-AiBoardListPage` lists the boards of the groups of the person, 25 on a page. The address holds every value. The AI Chat homepage opens it with the Boards list row above the board cards.
+
+| Control | Behavior | Constraint |
+|---|---|---|
+| Search titles and summaries / Search | Keep the boards whose title or generated summary contains the text, and mark each match. | The match ignores case. The server uses the first 200 characters. |
+| Group | Keep the boards of one group. All shows every group. | It lists the groups that own a board that the person can read. |
+| Order | Put the newest or the oldest board first. | The order uses the creation time. Newest first is the default. |
+| Previous / Next | Open the previous or the next page. | They show when the matches fill more than one page. |
+| New board | Open the create form. | |
 
 ## Controls of the board page
 

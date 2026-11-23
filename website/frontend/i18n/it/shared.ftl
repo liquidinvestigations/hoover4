@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = Scegli un gruppo.
 shared-item-access-not-a-member = Non sei membro di questo gruppo.
 shared-item-access-group-cannot-read = Il gruppo non può leggere una delle raccolte selezionate.
 shared-item-access-only-creator-deletes = Solo il creatore o un amministratore può eliminarlo.
+shared-item-access-no-ai-content = Questo gruppo non può contenere chat IA e bacheche.
+shared-admin-groups-ai-content-left = Elimina prima le chat e le bacheche di questo gruppo. Chat: { $chats }. Bacheche: { $boards }. Unisciti al gruppo per vederle nelle pagine della cronologia.

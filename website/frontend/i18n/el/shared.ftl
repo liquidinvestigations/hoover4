@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = Επιλέξτε μια ομάδα.
 shared-item-access-not-a-member = Δεν είστε μέλος αυτής της ομάδας.
 shared-item-access-group-cannot-read = Η ομάδα δεν μπορεί να διαβάσει μία από τις επιλεγμένες συλλογές.
 shared-item-access-only-creator-deletes = Μόνο ο δημιουργός ή ένας διαχειριστής μπορεί να το διαγράψει.
+shared-item-access-no-ai-content = Αυτή η ομάδα δεν μπορεί να περιέχει συνομιλίες AI και ερευνητικούς πίνακες.
+shared-admin-groups-ai-content-left = Διαγράψτε πρώτα τις συνομιλίες και τους ερευνητικούς πίνακες αυτής της ομάδας. Συνομιλίες: { $chats }. Πίνακες: { $boards }. Γίνετε μέλος της ομάδας για να τους δείτε στις σελίδες ιστορικού.

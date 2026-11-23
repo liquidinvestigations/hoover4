@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = Bir grup seçin.
 shared-item-access-not-a-member = Bu grubun üyesi değilsiniz.
 shared-item-access-group-cannot-read = Grup, seçilen koleksiyonlardan birini okuyamıyor.
 shared-item-access-only-creator-deletes = Yalnızca oluşturan kişi veya bir yönetici silebilir.
+shared-item-access-no-ai-content = Bu grup yapay zekâ sohbetleri ve panolar içeremez.
+shared-admin-groups-ai-content-left = Önce bu grubun sohbetlerini ve panolarını silin. Sohbetler: { $chats }. Panolar: { $boards }. Bunları geçmiş sayfalarında görmek için gruba katılın.

@@ -47,7 +47,13 @@ then the saved interface language, then English (`activities.board_language`).
 - `/ai_chat` shows the chat on the left and the board overview on the right: a card per board
   of the groups of the person, with its title, status, a thumbnail of its graph, the board
   summary (the first goal before the summary exists) and its group. The overview shows while the chat gate
-  is open, because the explores are chat turns.
+  is open, because the explores are chat turns. A "Boards list" row above the cards opens the
+  board list.
+- `/ai_chat/boards?q=&group=&sort=&page=` is the board list, 25 boards on a page
+  ([common/src/item_list.rs](../../website/common/src/item_list.rs)). `q` keeps the boards whose
+  title or summary holds the text, with no regard to case, and the cards mark each match.
+  `group` keeps one group, `sort=oldest` puts the oldest board first, and the boards sort by
+  `created_at`.
 - `/ai_chat/boards/new` is the create form. "Create board" opens the new board after its
   command writer wrote its goals. The form has the group picker of
   [Groups of boards](#groups-of-boards).
@@ -76,12 +82,13 @@ same rule as for chats.
   popup shows no drop button to that member.
 - A person outside the group gets "not found", administrators too. Only a drop by an
   administrator works without membership.
-- The create form lists the explicit groups of the person and selects the first one. The
-  checkbox "Show groups of all users" adds the implicit groups (`[main_services]
-  implicit_groups`). With no group to select, the form says what to do and does not submit.
+- The create form lists the groups of the person that can hold AI chats and boards
+  (`user_groups.ai_enabled`) and selects the first one. With no group to select, the form says
+  what to do and does not submit.
 - The form offers the collections that the group and the person can both read. A group reads
   its granted collections and the public collections. The server refuses a group of which the
-  person is not a member. It also refuses a collection outside that set.
+  person is not a member, and a group without the AI flag. It also refuses a collection
+  outside that set.
 - The explores run as chat turns of the creator. Their sessions have the creator as `username`
   and the group of the board as `owner_group`, so every member reads them. The agent of an
   explore runs with the identity of the creator. Each new explore checks the current group grants and public collections.
@@ -575,6 +582,8 @@ the session's web page card of the same handle and address. A click on a web pag
 A `[Cn]` or `[Bn]` handle of the fact text shows the card of the chat or the board that the
 explore cited with `cite_chats_and_boards`, loaded with the read rule of the reader.
 
+An explore chat gets a title and a first summary before its first turn, and a new summary
+after each turn, as a chat does ([Naming a conversation](Chat_And_Agents.md#naming-a-conversation)).
 The chat history leaves board sessions out unless the person ticks "Show board chats", and
 `send_message` refuses a board session. The explorer links to the session page, where a person
 reads the full turn.

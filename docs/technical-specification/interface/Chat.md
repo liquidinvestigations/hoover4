@@ -91,3 +91,18 @@ A bracket after a backslash, such as `\[D9]`, and a bracket in code are text, no
 A later edit of a file does not change the report of an earlier answer.
 The search-term line is absent when its originating search cannot be reconstructed.
 The answer omits redundant citation-status and tool-scope text.
+
+## Controls of the history page
+
+`UI-AiChatHistoryPage` lists the chats of the groups of the person, 25 on a page. The address holds every value.
+
+| Control | Behavior | Constraint |
+|---|---|---|
+| Search titles and summaries / Search | Keep the chats whose title or summary contains the text, and mark each match. | The match ignores case. The server uses the first 200 characters. |
+| Group | Keep the chats of one group. All shows every group. | It lists the groups that own a chat that the person can read. |
+| Order | Put the newest or the oldest last activity first. | Newest first is the default. |
+| Chats started by me | Keep the chats that the person created. | It is clear at first. |
+| Show board chats | Add the explore chats of the boards. | It is clear at first. |
+| Previous / Next | Open the previous or the next page. | They show when the matches fill more than one page. The line before them shows the count of matches. |
+| Delete | Delete the chat. | It shows to the creator and to administrators, and not for a board chat. A running chat shows Running in its place. |
+

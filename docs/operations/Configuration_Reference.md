@@ -127,6 +127,7 @@ complete list.
 | `[main_services] embeddings_cpu_port`, `gpu_fallback` and `agent_compaction_model` | Delete them. |
 | `[main_services] serena_enabled` and `serena_port` | Delete them. The Serena development server is removed. |
 | `[main_services] agent_packs_planner`, `agent_packs_organizer`, `agent_packs_subagent`, `agent_plan_run_budget`, `research_concurrency`, `agent_max_page_tokens` and `agent_completion_reserve_tokens` | Delete them. |
+| `[main_services] implicit_groups` | Delete it. The admin page of each group sets if the group can hold AI chats and boards. |
 | `[cluster]` | Delete the section. Give the registry address to [publish-images.sh](../../main_services/ops/publish-images.sh) as its first argument. |
 
 ## Store credential file paths in configuration.
@@ -311,16 +312,6 @@ default is `false`. The release sample sets `true`, and the development sample s
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults. `max_held_polls_per_user` is how many chat polls one user
 may hold at once. `rate_chat_poll_per_minute` is the flat poll ceiling per user.
-
-`implicit_groups` lists the groups that the identity provider gives to every user, as a comma
-list. An entry that ends in `*` is a name prefix, and every other entry is an exact name. The
-chat and board forms list these groups only when the person selects "Show groups of all
-users". Empty is the default list: `user`, `Guests`, the liquid-core application groups
-(`hoover`, `hoover4`, `nextcloud`, `nextcloud28`, `nextcloud-admin`, `wikijs`, `dokuwiki`,
-`codimd`, `grist`, `matrix`, `prophecies`, `bbb`, `xwiki`), `Domain Users`, `Domain Admins`,
-`IAM API - Full Access` and the prefix `managed-by-attribute-*`. `./deploy` renders it as
-`HOOVER4_IMPLICIT_GROUPS` for the website, and a k3s installation gets it from its operator
-setting `main_services.implicit_groups`. A change needs a website restart.
 
 `development_auth_backdoor_enabled` switches on `hoover4-development-auth-backdoor`, a
 header-setting reverse proxy that asserts a fixed identity on every request, with no
@@ -740,7 +731,7 @@ literally. This index maps each key to the group above that explains it.
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `agent_tool_concurrency`
-- `implicit_groups`, `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
+- `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
 - `agent_packs_chat`
 - `agent_catalogue_match_count`

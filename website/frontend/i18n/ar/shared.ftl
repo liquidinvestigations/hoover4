@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = اختر مجموعة مستخدمين.
 shared-item-access-not-a-member = لست عضوًا في هذه المجموعة.
 shared-item-access-group-cannot-read = لا تستطيع مجموعة المستخدمين قراءة إحدى المجموعات المحددة.
 shared-item-access-only-creator-deletes = لا يستطيع حذفه إلا المنشئ أو مسؤول.
+shared-item-access-no-ai-content = لا يمكن لهذه المجموعة أن تحتوي على محادثات ذكاء اصطناعي ولوحات.
+shared-admin-groups-ai-content-left = احذف محادثات هذه المجموعة ولوحاتها أولًا. المحادثات: { $chats }. اللوحات: { $boards }. انضم إلى المجموعة لتراها في صفحات السجل.

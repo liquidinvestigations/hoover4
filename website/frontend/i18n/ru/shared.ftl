@@ -279,3 +279,5 @@ shared-item-access-choose-a-group = Выберите группу.
 shared-item-access-not-a-member = Вы не участник этой группы.
 shared-item-access-group-cannot-read = Группа не может читать одну из выбранных коллекций.
 shared-item-access-only-creator-deletes = Удалить может только создатель или администратор.
+shared-item-access-no-ai-content = Эта группа не может содержать чаты ИИ и доски.
+shared-admin-groups-ai-content-left = Сначала удалите чаты и доски этой группы. Чаты: { $chats }. Доски: { $boards }. Вступите в группу, чтобы увидеть их на страницах истории.

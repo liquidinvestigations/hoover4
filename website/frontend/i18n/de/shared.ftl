@@ -276,3 +276,5 @@ shared-item-access-choose-a-group = Wählen Sie eine Gruppe.
 shared-item-access-not-a-member = Sie sind kein Mitglied dieser Gruppe.
 shared-item-access-group-cannot-read = Die Gruppe kann eine der ausgewählten Sammlungen nicht lesen.
 shared-item-access-only-creator-deletes = Nur der Ersteller oder ein Administrator kann es löschen.
+shared-item-access-no-ai-content = Diese Gruppe kann keine KI-Chats und Boards enthalten.
+shared-admin-groups-ai-content-left = Löschen Sie zuerst die Chats und Boards dieser Gruppe. Chats: { $chats }. Boards: { $boards }. Treten Sie der Gruppe bei, um sie auf den Verlaufsseiten zu sehen.
